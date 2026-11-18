@@ -1,9 +1,10 @@
 // The Helm's predicted path (spec §10b layer 7): the same flyShip the sim runs, on a copy, with the current axes held.
 // Pure: never touches the state. It stops at the first planet or asteroid contact, which it does not resolve.
 import { queryGrid } from './grid';
+import { flyMissile } from './missiles';
 import { flyShip } from './physics';
-import { classOf, cloneShip, Room, type Axes, type TacticalState } from './state';
-import { DEFAULT_FLIGHT, type FlightTuning } from './tuning';
+import { classOf, cloneShip, missileOf, Room, type Axes, type TacticalState } from './state';
+import { DEFAULT_FLIGHT, MISSILE_RADIUS, type FlightTuning } from './tuning';
 
 export interface PathPoint { x: number; y: number }
 
@@ -20,13 +21,33 @@ export function touchesSolid(state: TacticalState, x: number, y: number, r: numb
 
 /** Positions after every `every` ticks for `ticks` ticks, ending early (with that point) at the first solid contact. */
 export function predictPath(state: TacticalState, shipIndex: number, axes: Axes, ticks: number, every: number, tuning: FlightTuning = DEFAULT_FLIGHT): PathPoint[] {
+  return predictFlight(state, shipIndex, axes, ticks, every, tuning).points;
+}
+
+/** predictPath's points, and the first solid contact it stopped at (Feel-ii spec §1.2: its point and the tick after now,
+ *  1-based), or null when the path ran its whole length. */
+export function predictFlight(state: TacticalState, shipIndex: number, axes: Axes, ticks: number, every: number, tuning: FlightTuning = DEFAULT_FLIGHT): { points: PathPoint[]; contact: (PathPoint & { tick: number }) | null } {
   const s = cloneShip(state.ships[shipIndex]!), stride = Math.max(1, Math.floor(every));
   const cls = classOf(state, shipIndex), engines = state.systems[shipIndex]!.rooms[Room.Engines];
-  const out: PathPoint[] = [];
+  const points: PathPoint[] = [];
   for (let t = 1; t <= ticks; t++) {
     flyShip(s, axes, tuning, engines, cls);
-    if (touchesSolid(state, s.x, s.y, cls.radius)) { out.push({ x: s.x, y: s.y }); break; }
-    if (t % stride === 0) out.push({ x: s.x, y: s.y });
+    if (touchesSolid(state, s.x, s.y, cls.radius)) { points.push({ x: s.x, y: s.y }); return { points, contact: { x: s.x, y: s.y, tick: t } }; }
+    if (t % stride === 0) points.push({ x: s.x, y: s.y });
+  }
+  return { points, contact: null };
+}
+
+/** Feel-ii spec §1.6: ship i's torpedo in flight on a copy (flyMissile, the sim's own flight), a point every `every` ticks
+ *  for `ticks` ticks, ending at the first solid contact. Empty when it has none in flight. Pure: the state is untouched. */
+export function predictMissile(state: TacticalState, i: number, ticks: number, every: number): PathPoint[] {
+  const copy: TacticalState = { ...state, missiles: state.missiles.map((m) => ({ ...m })) as TacticalState['missiles'] };
+  const m = missileOf(copy, i), stride = Math.max(1, Math.floor(every)), out: PathPoint[] = [];
+  if (!m) return out;
+  for (let t = 1; t <= ticks; t++) {
+    flyMissile(copy, i);
+    if (touchesSolid(state, m.x, m.y, MISSILE_RADIUS)) { out.push({ x: m.x, y: m.y }); break; }
+    if (t % stride === 0) out.push({ x: m.x, y: m.y });
   }
   return out;
 }

@@ -8,7 +8,7 @@ import { createTickDriver } from './tickDriver';
 import { createLedger, type AdmittedEnvelope, type Ledger } from './ledger';
 import type { AttachOptions, AuthorityDeps, EncounterAuthorityDeps } from './authority';
 import { inputTickAllowed, REMOTE_HELD_TIMEOUT_MS, type AdmissionPolicy } from '../net/receivePolicy';
-import type { AuthorityEvent, ClientAuxMessage } from '../net/contracts';
+import { PING_GAP_MS, type AuthorityEvent, type ClientAuxMessage } from '../net/contracts';
 import { replayDataEqual, type ReplayAction, type ReplayFrame, type Replay } from '../sim/replay';
 import type { CheckpointOf, EncounterRules, EncounterTypes, FrozenTickInput } from './rules';
 import { sectorRules, type SectorTypes } from './sectorRules';
@@ -78,6 +78,7 @@ function createLiveCore<T extends EncounterTypes>(rules: EncounterRules<T>, deps
   let previousCues = rules.cueBaseline(state), completedHash = rules.hash(state);
   const auxiliarySequences = heldSequences.map(() => 0);
   const pendingCallouts = new Map<number, ClientAuxMessage>();
+  const lastPings: (number | undefined)[] = [];   // Feel-ii §2.7: each player's last relayed ping (ms), the one-a-second limit
   let baseline = snapshotOf(), baselineHighWater: readonly number[] = heldSequences.slice(), baselineHeldSequences: readonly number[] = heldSequences.slice(), baselineControlRevision = 0;
   let baselineHeld = held.map((h) => ({ ...h }));
   let baselineControlState: CrashRecord['baselineControlState'] = { phase, pauseOwner, pauseReason, revision: controlRevision };
@@ -297,7 +298,7 @@ function createLiveCore<T extends EncounterTypes>(rules: EncounterRules<T>, deps
   }
   function emit(payload: AuthorityEvent['payload']): void {
     const event: AuthorityEvent = { runId: deps.init.runId, eventSequence: ++eventSequence, tick: tickOf(), payload };
-    if (payload.kind !== 'callout') activeFrame?.events.push({ eventSequence, tick: tickOf(), kind: payload.kind });
+    if (payload.kind !== 'callout' && payload.kind !== 'ping') activeFrame?.events.push({ eventSequence, tick: tickOf(), kind: payload.kind });   // cosmetic: never in a frame
     for (const binding of bindings) send(binding, { kind: 'event', event }, true);
   }
   function flushCallouts(): void {
@@ -342,15 +343,24 @@ function createLiveCore<T extends EncounterTypes>(rules: EncounterRules<T>, deps
       if (incoming.length) { begin({ kind: 'cursor', receiveOrder }); complete(); }
       return;
     }
-    const recorded = incoming.filter(entry => entry.message.kind !== 'callout');
-    if (recorded.length) begin({ kind: 'admission', entries: recorded.map(({ binding, message, order }) => ({ binding: binding.id, players: [...binding.players], message: message as Exclude<ClientMessage, { kind: 'callout' }>, order,
+    const recorded = incoming.filter(entry => entry.message.kind !== 'callout' && entry.message.kind !== 'ping');
+    if (recorded.length) begin({ kind: 'admission', entries: recorded.map(({ binding, message, order }) => ({ binding: binding.id, players: [...binding.players], message: message as Exclude<ClientMessage, { kind: 'callout' | 'ping' }>, order,
       ...(binding.admissionPolicy === 'receive-time' ? { admissionPolicy: binding.admissionPolicy, effectiveTick: tickOf() } : {}) })) });
+    const pings: Extract<AuthorityEvent['payload'], { kind: 'ping' }>[] = [];   // emitted after complete(): a ping's eventSequence never lands in an admission frame
     for (const { binding, message, order, receivedAt } of incoming) {
       if (message.kind === 'held') { acceptHeld(binding, message.frame, receivedAt); continue; }
       if (message.kind === 'callout') {
         if (message.runId === deps.init.runId && binding.players.includes(message.player) && message.sequence > auxiliarySequences[message.player]!) {
           auxiliarySequences[message.player] = message.sequence;
           pendingCallouts.set(message.player, message);
+        }
+        continue;
+      }
+      if (message.kind === 'ping') {   // Feel-ii §2.7: relayed at once to every seat, at most one a second a player, never journalled
+        if (message.runId === deps.init.runId && binding.players.includes(message.player) && message.sequence > auxiliarySequences[message.player]!) {
+          auxiliarySequences[message.player] = message.sequence;
+          const now = deps.clock.nowMs(), last = lastPings[message.player];
+          if (!replaying && phase === 'running' && (last === undefined || now - last >= PING_GAP_MS)) { lastPings[message.player] = now; pings.push({ kind: 'ping', player: message.player, x: message.x, y: message.y, target: message.target }); }
         }
         continue;
       }
@@ -371,7 +381,8 @@ function createLiveCore<T extends EncounterTypes>(rules: EncounterRules<T>, deps
       else pending.push({ binding, envelope });
     }
     if (recorded.length) complete();
-    if (incoming.some(entry => entry.message.kind === 'callout')) { begin({ kind: 'cursor', receiveOrder }); complete(); }
+    for (const ping of pings) emit(ping);
+    if (incoming.some(entry => entry.message.kind === 'callout' || entry.message.kind === 'ping')) { begin({ kind: 'cursor', receiveOrder }); complete(); }
   }
   function applyControls(replayCutoff?: number): void {
     if (!settlingFence && !permitted() && !controlQueue.every(entry => entry.record.source === 'lifecycle' && entry.record.control.paused)) return;

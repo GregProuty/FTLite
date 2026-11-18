@@ -51,7 +51,7 @@ describe('the throttle levels (Artemis spec §5.1, §5.3)', () => {
 describe('the helm module (Artemis spec §5.1)', () => {
   it('sits after round and before interior, owns throttle, and its field moves the duel hash', () => {
     expect(DUEL_MODULES.map(({ module }) => module.id)).toEqual(['space', 'ship', 'science', 'presence', 'repair', 'round', 'helm', 'interior']);
-    expect([helmModule.commands, helmModule.reasons]).toEqual([['throttle'], ['invalid-seat', 'malformed', 'stale-tick']]);
+    expect([helmModule.commands, helmModule.reasons]).toEqual([['throttle', 'heading'], ['invalid-seat', 'malformed', 'stale-tick']]);   // Feel-ii adds the held heading
     const d = createSeatedDuel(CUTTER, 5);
     try {
       expect(d.throttle).toBe(0);

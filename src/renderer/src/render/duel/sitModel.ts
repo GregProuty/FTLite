@@ -10,7 +10,8 @@ export const FRAME_ZOOM_MIN = 0.25, FRAME_ZOOM_MAX = 1, FRAME_MARGIN = 110;
 
 export type SitSeat = 'helm' | 'weapons';
 /** `top`: the card sits at the top of the map, clear of an enemy below the ship; else at the bottom. */
-export interface SitCardView { seat: SitSeat; title: string; keys: readonly string[]; alpha: number; top: boolean }
+/** `under` (Feel-ii §3.9): the online start's notice (YOU: HELM) shows, so a top card moves below it. */
+export interface SitCardView { seat: SitSeat; title: string; keys: readonly string[]; alpha: number; top: boolean; under?: boolean }
 export const SIT_CARDS: Readonly<Record<SitSeat, { title: string; keys: readonly string[] }>> = {
   helm: { title: 'HELM: POINT AT THE ENEMY', keys: ['A/D  TURN', 'W/S  THROTTLE', 'HOLD SPACE  AUTO-FACE'] },
   weapons: { title: 'WEAPONS: CLICK A WEAPON, THEN A ROOM', keys: ['1  LASER', '2  TORPEDO', 'E/Q  NEXT ROOM'] }
@@ -35,9 +36,9 @@ export function trackSit(tr: SitTracker, active: 0 | 1, seats: readonly [SitSeat
 
 /** The card `age` seconds after sitting, or null once its time is up or the seat has acted. Fades over its last half
  *  second. `enemyBelow`: the enemy is below the ship on screen, so the card goes to the top to keep it in view. */
-export function sitCard(seat: SitSeat, age: number, acted: boolean, enemyBelow = false): SitCardView | null {
+export function sitCard(seat: SitSeat, age: number, acted: boolean, enemyBelow = false, notice = false): SitCardView | null {
   if (acted || age >= SIT_CARD_S || age < 0) return null;
-  return { seat, ...SIT_CARDS[seat], alpha: Math.min(1, (SIT_CARD_S - age) / SIT_CARD_FADE_S), top: enemyBelow };
+  return { seat, ...SIT_CARDS[seat], alpha: Math.min(1, (SIT_CARD_S - age) / SIT_CARD_FADE_S), top: enemyBelow, ...(notice ? { under: true } : {}) };
 }
 
 /** The zoom that fits the enemy at (dx, dy) world units from the own ship on screen, the camera centred on the own ship:

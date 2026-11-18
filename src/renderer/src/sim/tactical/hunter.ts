@@ -29,11 +29,22 @@ export function pursuitTurn(heading: number, dx: number, dy: number): number {
  *  and none once the point is within AUTO_FACE_SIN of the nose. Reads the state as it stands; pure. */
 export function autoFaceTurn(state: TacticalState, i: number): number {
   const me = state.ships[i]!, t = state.ships[state.systems[i]!.target]!;
-  const dx = t.x - me.x + t.vx * HUNTER_LEAD_S, dy = t.y - me.y + t.vy * HUNTER_LEAD_S, d = Math.sqrt(dx * dx + dy * dy);
+  return faceTurn(me.heading, t.x - me.x + t.vx * HUNTER_LEAD_S, t.y - me.y + t.vy * HUNTER_LEAD_S);
+}
+
+/** Feel-ii's click-to-heading (Feel-ii spec §1.1): auto-face's turn law aimed at the fixed bearing of heading index `h`
+ *  instead of the lead point. Pure. */
+export function headingTurn(state: TacticalState, i: number, h: number): number {
+  return faceTurn(state.ships[i]!.heading, hx(h), hy(h));
+}
+
+/** The auto-face turn law: toward (dx, dy) as pursuitTurn, none once it is within AUTO_FACE_SIN of the nose. */
+function faceTurn(heading: number, dx: number, dy: number): number {
+  const d = Math.sqrt(dx * dx + dy * dy);
   if (d === 0) return 0;
-  const h0 = hx(me.heading), h1 = hy(me.heading);
+  const h0 = hx(heading), h1 = hy(heading);
   if (h0 * dx + h1 * dy > 0 && Math.abs(h0 * dy - h1 * dx) <= AUTO_FACE_SIN * d) return 0;
-  return pursuitTurn(me.heading, dx, dy);
+  return pursuitTurn(heading, dx, dy);
 }
 
 /** The first solid body ship i's straight-line path over the lookahead comes within its radius + margin of, or null. */

@@ -131,7 +131,7 @@ describe('the duel modules (spec §6 module contract)', () => {
       const space: number[] = [], ship: number[] = [], science: number[] = [];
       flattenModule(spaceModule, d.tactical, space); flattenModule(shipModule, d.tactical, ship); flattenModule(scienceModule, d.tactical, science);
       expect(Array.from(flattenTactical(d.tactical))).toEqual([...space, ...ship, ...science].map((v) => (v === 0 ? 0 : v)));
-      expect(Array.from(flattenDuel(d))).toEqual([SIM_VERSION, ...flattenTactical(d.tactical), d.present[0] ? 1 : 0, d.present[1] ? 1 : 0, ...d.repair, d.round, d.helmPlayer, d.baseTick, d.decidedTick, d.throttle, ...flatten(d.interior)]);
+      expect(Array.from(flattenDuel(d))).toEqual([SIM_VERSION, ...flattenTactical(d.tactical), d.present[0] ? 1 : 0, d.present[1] ? 1 : 0, ...d.repair, d.round, d.helmPlayer, d.baseTick, d.decidedTick, d.throttle, d.holdHeading, ...flatten(d.interior)]);
       const copy = cloneTactical(d.tactical), fresh = createTacticalState(1);
       expect(unflattenTactical(fresh, flattenTactical(copy))).toBe(flattenTactical(copy).length);
       expect(flattenTactical(fresh)).toEqual(flattenTactical(copy));
@@ -141,7 +141,7 @@ describe('the duel modules (spec §6 module contract)', () => {
   });
   it('the modules own the duel\'s command kinds (setPaused is the core\'s), and their reasons are enum members', () => {
     const kinds = DUEL_MODULES.flatMap(({ module }) => [...module.commands]).sort();
-    expect(kinds).toEqual(['contactScan', 'designate', 'laserCharge', 'laserFrequency', 'laserLock', 'missileLaunch', 'presence', 'rematch', 'sit', 'stand', 'throttle', 'torpLock']);
+    expect(kinds).toEqual(['contactScan', 'designate', 'heading', 'laserCharge', 'laserFrequency', 'laserLock', 'missileLaunch', 'presence', 'rematch', 'sit', 'stand', 'throttle', 'torpLock']);
     for (const { module } of DUEL_MODULES) for (const reason of module.reasons) expect(COMMAND_REASONS, `${module.id}: ${reason}`).toContain(reason);
   });
   it('cloneTactical is derived from the space and ship modules: every field is copied, and changing it on the copy leaves the original', () => {

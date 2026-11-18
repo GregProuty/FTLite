@@ -8,12 +8,14 @@ import { HEADING_COUNT, MAGAZINE } from '../../sim/tactical/tuning';
 import { canLaunch, torpedoInRange } from '../../sim/tactical/weapons';
 import type { MapOverlayView } from '../../ui/views';
 import { chargeRow, type ReadoutRow } from './readoutModel';
-import { gunnerPresent, laserCardReason, laserSituation } from './situationModel';
+import { gunnerPresent, laserCardReason, laserSituation, type RefusedControl } from './situationModel';
 import { laserOffline } from '../../sim/tactical/weapons';
 
 export type ConsoleStation = 'helm' | 'weapons' | 'science' | 'ship';
 export type TabState = 'current' | 'open' | 'locked';
-export interface HelmPanel { heading: number; speed: number; held: HeldFlags; throttle: number }
+/** Feel-ii §2.8: a refused control on this block: which, the reason, and whether it is still in its flash. */
+export interface RefusedView { control: RefusedControl; reason: string; flash: boolean }
+export interface HelmPanel { heading: number; speed: number; held: HeldFlags; throttle: number; refused?: RefusedView | null; holdHeading?: number }
 /** `freq`: the crew laser's tuned frequency 0..2; `weakFreq`: the enemy's weak one, shown only after a Level 2 scan (Sci-1 spec §7.4). */
 /** `torpedoInRange`: the target within the torpedo's range (weapons update spec §2), shown IN RANGE / OUT OF RANGE. */
 /** FTL targeting spec §1, the weapon cards: `laserTarget` the laser's target room (−1 none), `torpTarget` the torpedo's
@@ -22,7 +24,7 @@ export interface HelmPanel { heading: number; speed: number; held: HeldFlags; th
  *  612/450`, `WEAPONS OFFLINE`) or FIRING, null while it simply charges; `goal` the card's goal glow (§1: untargeted, and
  *  not yet picked up this sit). */
 export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: string; canLaunch: boolean; torpedoInRange: boolean; missileFlying: boolean; fireHeld: boolean; held: HeldFlags; freq: number; weakFreq: number | null;
-  laserTarget: number; torpTarget: number; burst: number; laserReason?: string | null; goal?: boolean }
+  laserTarget: number; torpTarget: number; burst: number; laserReason?: string | null; goal?: boolean; refused?: RefusedView | null }
 /** The Science block (Sci-1 spec §7.3): the hover readout, or null with no cursor over the map. */
 export interface SciencePanel { hover: string | null }
 export interface ConsoleView {
@@ -44,6 +46,8 @@ export interface ConsoleModelInput {
   /** Feel-i: seconds since the crew laser last fired on this screen (the FIRING hold; absent: never), and whether the
    *  LASER card's goal glow may show this sit (the scene stops it once the laser is picked up). */
   sinceShot?: number; goal?: boolean; t?: number;
+  /** Feel-ii §2.8: the latest refused control while its reason shows; it goes to the block that owns the control. */
+  refused?: RefusedView | null;
 }
 
 /** The tab rule of spec §6.3 on its inputs alone: `reach` is the console `consoleInReach` gives while standing (null
@@ -66,6 +70,8 @@ export function consoleStation(d: DuelState, me: 0 | 1): ConsoleStation {
   return seat === 'standing' ? 'ship' : seat;
 }
 
+const HELM_CONTROLS: readonly RefusedControl[] = ['turn', 'auto-face', 'throttle', 'heading'];
+
 export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   if (i.hidden) return null;
   const d = i.duel, seat = seatOf(d, i.me), station = consoleStation(d, i.me);
@@ -75,13 +81,15 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   const t = d.tactical, held = i.held ?? NO_HELD_FLAGS;
   const ship = t.ships[0]!;
   const helm: HelmPanel | null = station === 'helm'
-    ? { heading: ((Math.round((ship.heading / HEADING_COUNT) * 360) % 360) + 360) % 360, speed: Math.round(Math.hypot(ship.vx, ship.vy)), held, throttle: i.throttle ?? d.throttle }
+    ? { heading: ((Math.round((ship.heading / HEADING_COUNT) * 360) % 360) + 360) % 360, speed: Math.round(Math.hypot(ship.vx, ship.vy)), held, throttle: i.throttle ?? d.throttle,
+        refused: i.refused && HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, holdHeading: d.holdHeading }
     : null;
   const flying = missileOf(t, 0) !== null, sys = t.systems[0];
   const weapons: WeaponsPanel | null = station === 'weapons'
     ? { lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null,
       laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock, burst: classOf(t, 0).slots.laser.shots,
-      laserReason: laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), laserOffline(t, 0)), goal: (i.goal ?? false) && !sys.laserTargeted }
+      laserReason: laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), laserOffline(t, 0)), goal: (i.goal ?? false) && !sys.laserTargeted,
+      refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null }
     : null;
   const side = i.overlay && station !== 'ship'
     ? { zoom: i.overlay.zoomText.replace(/^ZOOM\s+/, ''), free: i.overlay.snapHint, snapLabel: station === 'weapons' ? 'CAMERA' as const : 'SNAP' as const }

@@ -10,12 +10,11 @@ import { Life, LifeState, Position } from '../../sim/components';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope, type DuelResult } from '../../sim/duel/commands';
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, type DuelState } from '../../sim/duel/state';
-import { stepDuelTick } from '../../sim/duel/step';
+import { helmTurn, stepDuelTick } from '../../sim/duel/step';
 import { throttleThrust } from '../../sim/duel/throttle';
 import { duelEndSummary, duelRoundRecord, type DuelRoundRecord } from '../../sim/duel/summary';
 import { createTelemetry, recordTick } from '../../sim/duel/telemetry';
 import type { ShipLayout } from '../../sim/ship/schema';
-import { autoFaceTurn } from '../../sim/tactical/hunter';
 import { stepSoloFlight } from '../../sim/tactical/physics';
 import { CONTACT_MAX_LEVEL, createTacticalState, missileOf, NO_AXES, Outcome, type Axes, type Missile, type TacticalState } from '../../sim/tactical/state';
 import { TICK_HZ } from '../../sim/tuning';
@@ -27,6 +26,8 @@ import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxMod
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import { consoleInReach, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
 import type { ContactRequests } from './contactController';
+import type { Refusal } from './scene';
+import { refusal } from '../../render/duel/situationModel';
 import { accumulateWheel, emptyPresses, frequencyRequest, helmAxes, NO_HELD_FLAGS, throttleRequest, WHEEL_IDLE_MS, type HeldFlags, type KeySample, type PointerSample } from './input';
 
 export type PauseReason = 'user' | 'blur' | 'hidden' | 'suspend';
@@ -102,9 +103,10 @@ export function createCameraInput(now: () => number, vp: Viewport) {
   };
   const cursor = (p: PointerSample): { x: number; y: number } | null => (p.x !== null && p.y !== null ? { x: p.x, y: p.y } : null);
   return {
-    apply(camera: Camera, k: KeySample, p: PointerSample): void {
+    /** `aims` (Feel-ii spec §1.1): the right button aims the Helm's heading, so only the rest of the drag pans. */
+    apply(camera: Camera, k: KeySample, p: PointerSample, aims = false): void {
       zoomBy(camera, vp, k.presses.zoomIn - k.presses.zoomOut);
-      pan(camera, p.dragX, p.dragY);
+      pan(camera, p.dragX - (aims ? p.rightX ?? 0 : 0), p.dragY - (aims ? p.rightY ?? 0 : 0));
       zoomBy(camera, vp, notches(p.wheel), cursor(p));
     },
     applyInterior(camera: InteriorCamera, k: KeySample, p: PointerSample): void {
@@ -167,6 +169,8 @@ export interface DuelRuntimeDeps extends FlightRuntimeDeps {
   onRound?(record: DuelRoundRecord): void;
   /** The contact window's requests since the last frame (Sci-1 spec §7.2, §7.3): designate and scan, sent by seat. */
   takeContactRequests?(): ContactRequests;
+  /** Feel-ii §1.1: the Helm map's heading request since the last frame (mapRequests.ts), sent from the Helm only. */
+  takeHeading?(): number | null;
 }
 
 export interface DuelRuntime {
@@ -216,22 +220,22 @@ export interface DuelRuntime {
   running(): boolean;
   /** The Helm throttle level the console shows (Artemis spec §6.1): the active player's latest queued throttle, else the duel's. */
   throttle(): number;
+  /** Feel-ii §2.8: the console controls refused since the last take (the scene flashes them). */
+  takeRefusals(): Refusal[];
   dispose(): void;
 }
 
 const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'laserCharge' || c.kind === 'missileLaunch';
 /** The commands only a seated console's player sends (Weapons, the Helm's throttle, Sci-1's three): a Tab or a stand drops them. */
-const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';
+const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'heading' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';
 const NO_REQUESTS: ContactRequests = { designate: null, scan: null };
 const NEUTRAL: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 const IDLE_KEYS = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() });
 const shipBody = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
 const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null);
-/** The turn the Helm's held input flies (the sim's rule, sim/duel/step.ts): A/D, else auto-face's turn, else none. */
-export function heldTurn(d: DuelState, h: HeldInput): number {
-  const turn = Math.sign(h.moveX) || 0;
-  return turn !== 0 ? turn : h.face === true && d.tactical.outcome === Outcome.Running ? autoFaceTurn(d.tactical, 0) : 0;
-}
+/** The turn the Helm's held input flies (the sim's rule, helmTurn in sim/duel/step.ts): A/D, else auto-face's turn, else
+ *  the held heading's (Feel-ii), else none. */
+export function heldTurn(d: DuelState, h: HeldInput): number { return helmTurn(d, { ...h, moveX: Math.sign(h.moveX) || 0 }); }
 const hitCounts = (d: DuelState): number[][] => d.tactical.ships.map((s) => [s.planetHits, s.asteroidHits, s.shipHits]);
 
 export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
@@ -241,7 +245,9 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   // The sim checks sits and stands against presence before it applies that tick's presence commands, so a seat change
   // queued after a Tab waits here until the Tab's presence tick has run, then goes out on the following tick.
   let switching = false, deferred: { player: number; command: DuelCommand }[] = [];
-  let lastHeld: HeldFlags = NO_HELD_FLAGS;   // the last frame's merged held flags (Artemis spec §6.1)
+  let lastHeld: HeldFlags = NO_HELD_FLAGS, prevHeld: HeldFlags = NO_HELD_FLAGS;   // the last frame's merged held flags (Artemis spec §6.1), and the frame's before
+  let refusals: Refusal[] = [];   // Feel-ii §2.8: refused controls since the scene's last take
+  const refuse = (control: Refusal['control'], reason: string): void => { refusals.push({ control, reason }); };
   let activeHeld: HeldInput = NEUTRAL, sentHeld: readonly HeldInput[] = [NEUTRAL, NEUTRAL], sentAxes: Axes = NO_AXES;
   let menuAsked = false;
   let events: ViewEvent[] = [], results: DuelResult[] = [], counts = hitCounts(d), lastTickTime: number | null = null, frameAlpha = 1;
@@ -321,6 +327,9 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   };
   /** The active player's latest queued designation and laser frequency, else the sim's (as throttleBase). */
   const designateBase = (): number => { const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'designate')?.command; return c && c.kind === 'designate' ? c.contact : d.tactical.designated; };
+  /** Feel-ii §1.1: the active player's latest queued heading, else the sim's held one; −1 while A/D or auto-face is held at
+   *  the Helm (`turning`), since the sim clears the hold after the tick's commands. */
+  const headingBase = (turning: boolean): number => { if (turning) return -1; const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'heading')?.command; return c && c.kind === 'heading' ? c.heading : d.holdHeading; };
   const freqBase = (): number => { const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'laserFrequency')?.command; return c && c.kind === 'laserFrequency' ? c.freq : d.tactical.systems[0].freq; };
 
   /** A new round (H-2 spec §7): its seed and presence came with the rematch; the view's state starts again. */
@@ -333,7 +342,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   }
 
   /** One frame's press edges for the active character, by where it is (spec §5 table). */
-  function play(k: KeySample, requests: ContactRequests): KeySample {
+  function play(k: KeySample, requests: ContactRequests, heading: number | null): KeySample {
     if (k.presses.switch > 0) {   // Tab: presence true for the one taken; false for the character left unless it is seated; nothing carries over
       // The left character's queued weapons commands would reach the sim after it has gone (not-at-weapons): drop them.
       pending = pending.filter((c) => !isConsoleCommand(c.command));
@@ -361,6 +370,15 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       if (p.camera > 0) snapBack(cameras.helm);
       const level = throttleRequest(throttleBase(), p, k.throttleTo);   // W/S a notch, or a notch click (Artemis spec §5.4)
       if (level !== null) queue({ kind: 'throttle', level });
+      if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== headingBase((Math.sign(k.moveX) || 0) !== 0 || k.fireHeld)) queue({ kind: 'heading', heading });   // Feel-ii §1.1
+      // Feel-ii §2.8: with Engines off the Helm's controls fly nothing (the commands still go: they apply once repaired).
+      const off = refusal(d, 'turn'), held = k.held ?? NO_HELD_FLAGS;
+      if (off) {
+        if ((held.left && !prevHeld.left) || (held.right && !prevHeld.right)) refuse('turn', off);
+        if (held.fire && !prevHeld.fire) refuse('auto-face', off);
+        if (level !== null) refuse('throttle', off);
+        if (heading !== null && heading >= 0) refuse('heading', off);
+      }
       return k;
     }
     if (seat === 'science') {   // Sci-1 spec §7.3: the window's selection designates; C snaps the Science camera back
@@ -389,6 +407,10 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     if (freq !== null) queue({ kind: 'laserFrequency', freq });
     if (p.fireDown > 0) queue({ kind: 'laserCharge', held: true });   // FTL targeting spec §2: one press fires a full laser
     if (p.launch > 0) queue({ kind: 'missileLaunch' });
+    // Feel-ii §2.8: FIRE and LAUNCH say why when the sim would refuse them (the tick drops them by the same checks).
+    const fireWhy = p.fireDown > 0 ? refusal(d, 'fire') : null, launchWhy = p.launch > 0 ? refusal(d, 'launch') : null;
+    if (fireWhy) refuse('fire', fireWhy);
+    if (launchWhy) refuse('launch', launchWhy);
     if (p.camera > 0) {
       const cam = cameras.weapons;
       snapBack(cam, missileOf(d.tactical, 0) && cam.follow !== 'missile' ? 'missile' : 'ship');
@@ -419,16 +441,17 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     alpha: () => frameAlpha,
     frame(dt) {
       let k = deps.sampleKeys();
-      lastHeld = k.held ?? NO_HELD_FLAGS;
+      prevHeld = lastHeld; lastHeld = k.held ?? NO_HELD_FLAGS;
       const requests = deps.takeContactRequests?.() ?? NO_REQUESTS;   // drained every frame; dropped while paused or ended
+      const heading = deps.takeHeading?.() ?? null;   // Feel-ii §1.1: drained every frame, like the contact requests
       const sampled = deps.samplePointer();
       let pointer = sampled;
       pacer.toggleUser(k.presses.pause);
       if (k.presses.menu > 0 && (ended() || pacer.reasons.has('user'))) menuAsked = true;
       // A Tab or a rematch changes which camera the pointer would move: this frame's sampled drag and wheel belong to the old one.
-      const moved = (): void => { pointer = { ...sampled, wheel: 0, dragX: 0, dragY: 0 }; };
+      const moved = (): void => { pointer = { ...sampled, wheel: 0, dragX: 0, dragY: 0, rightX: 0, rightY: 0 }; };   // the right drag too: the Helm pans by minus it
       if (ended()) { if (k.presses.confirm > 0 && !pending.some((c) => c.command.kind === 'rematch')) { pending.push({ player: active, command: { kind: 'rematch' } }); k = IDLE_KEYS(); moved(); } }
-      else if (pacer.reasons.size === 0) { if (k.presses.switch > 0) moved(); k = play(k, requests); }   // while paused, gameplay presses are dropped; the camera still moves
+      else if (pacer.reasons.size === 0) { if (k.presses.switch > 0) moved(); k = play(k, requests, heading); }   // while paused, gameplay presses are dropped; the camera still moves
       // Quantised as online (H-2 spec §3), and neutral on the end card as online sends it.
       // Feel-i (console feel spec §2): Space held at the Helm is auto-face, sent only from the Helm, as the sim admits it.
       activeHeld = ended() ? NEUTRAL : { moveX: Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld, ...(k.fireHeld && seatOf(d, active) === 'helm' ? { face: true } : {}) };
@@ -436,7 +459,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       pacer.pump();
       frameAlpha = alphaAt(deps.now(), lastTickTime);
       const view = seatOf(d, active), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : view === 'science' ? cameras.science : null;
-      if (cam) cameraInput.apply(cam, k, pointer);
+      if (cam) cameraInput.apply(cam, k, pointer, view === 'helm');
       else cameraInput.applyInterior(interiorCamera, k, pointer);
       for (const c of [cameras.helm, cameras.weapons, cameras.science]) {
         if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');   // the followed missile ended
@@ -457,6 +480,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     uiHeld: () => lastHeld,
     running: () => pacer.reasons.size === 0 && !ended(),
     throttle: throttleBase,
+    takeRefusals() { const out = refusals; refusals = []; return out; },
     dispose() { pacer.dispose(); disposeDuel(d); }
   };
 }

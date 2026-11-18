@@ -45,15 +45,19 @@ const ROUND: ModuleField<DuelState>[] = [
   scalar('decidedTick', (d) => d.decidedTick, (d, v) => { d.decidedTick = v; })
 ];
 
-/** The Helm's throttle (Artemis spec §5.1): one canonical level, set by the `throttle` command (sim/duel/step.ts). */
+/** The Helm's throttle (Artemis spec §5.1): one canonical level, set by the `throttle` command (sim/duel/step.ts), and
+ *  Feel-ii's held heading (−1 none), set by the `heading` command. */
 export const helmModule: SimModule<DuelState> = {
   id: 'helm',
   fields: () => HELM,
   notSnapshotted: {},
-  commands: ['throttle'],
+  commands: ['throttle', 'heading'],
   reasons: ['invalid-seat', 'malformed', 'stale-tick']
 };
-const HELM: ModuleField<DuelState>[] = [scalar('throttle', (d) => d.throttle, (d, v) => { d.throttle = v; })];
+const HELM: ModuleField<DuelState>[] = [
+  scalar('throttle', (d) => d.throttle, (d, v) => { d.throttle = v; }),
+  scalar('holdHeading', (d) => d.holdHeading, (d, v) => { d.holdHeading = v; })
+];
 
 /** The duel ship (the Hound) interior: today's SimState, through the sector snapshot path (flatten / unflatten, validated). */
 export const interiorModule: SimModule<DuelState> = {

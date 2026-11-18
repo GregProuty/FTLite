@@ -7,7 +7,8 @@ import type { Renderer } from '../../render/renderer';
 import { computeLetterbox } from '../../render/letterbox';
 import { endModel } from '../../render/duel/endModel';
 import type { DuelPlaytestRecord } from '../../net/duelRecord';
-import { createDuelKeyboard, createPointerSource, type ConsoleInput, type EventSource } from './input';
+import { createDuelKeyboard, createPointerSource, PING_CODE, type ConsoleInput, type EventSource } from './input';
+import { createMapRequests } from './mapRequests';
 import { consoleChange } from './consoleChange';
 import { createContactController, type ContactActions } from './contactController';
 import { createDuelRuntime } from './runtime';
@@ -41,10 +42,14 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
   const { renderer } = deps, viewport = { w: INTERNAL_W, h: INTERNAL_H };
   const exitHint = deps.onExit ? '   M: MAIN MENU' : '', pauseText = `PAUSED   ESC: RESUME${exitHint}`;
   // Enemy ship window spec §6.1: the contact window's state, local to this screen; its intercept takes Esc and T first.
-  const contact = createContactController();
-  const scene = createDuelScene(renderer, { seed: deps.seed, pauseText, ui: deps.ui, audio: deps.audio, contact, takeClick: () => pointer.takeClick(), pointer: () => pointer.position() });
+  const contact = createContactController(), requests = createMapRequests();
+  // Feel-ii §2.7: G pings at the pointer (taken from the keyboard, as the contact window's keys are); a middle click pings too.
+  let pingKey = false;
+  const takePingAt = (): { x: number; y: number } | null => { const key = pingKey ? pointer.position() : null; pingKey = false; return pointer.takeMiddleClick() ?? key; };
+  const scene = createDuelScene(renderer, { seed: deps.seed, pauseText, ui: deps.ui, audio: deps.audio, contact, takeClick: () => pointer.takeClick(), pointer: () => pointer.position(),
+    takeAim: () => pointer.takeAim(), requests, takePingAt });
   const canvas = renderer.app.canvas;
-  const keyboard = createDuelKeyboard(window as unknown as EventSource, { intercept: (code) => contact.intercept(code) });
+  const keyboard = createDuelKeyboard(window as unknown as EventSource, { intercept: (code) => contact.intercept(code) || (code === PING_CODE && (pingKey = true)) });
   deps.setConsole?.(keyboard.ui);
   deps.setContact?.(contact);
   const trackConsole = consoleChange(() => keyboard.clearUi());   // Artemis spec §6.2: a console change drops its holds
@@ -56,10 +61,13 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     now: () => performance.now(),
     scheduler: { schedule(delay, cb) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } },
     sampleKeys: () => keyboard.sample(), samplePointer: () => pointer.sample(),
-    takeContactRequests: () => contact.takeRequests(),
+    takeContactRequests: () => contact.takeRequests(), takeHeading: () => requests.takeHeading(),
     clearKeys: () => { keyboard.clear(); pointer.clear(); },
     seed: deps.seed, viewport, layout: deps.layout, onRound: (summary) => { void Promise.resolve(deps.recordDuel?.(solo.record(summary))).catch(() => {}); }
   });
+  // Feel-ii visual checks: a staging hook, Single player only, set only when the page asked for it before the duel began.
+  const stage = window as unknown as { __FTLITE_STAGE__?: boolean; __ftliteDuel?: unknown };
+  if (stage.__FTLITE_STAGE__ === true) stage.__ftliteDuel = runtime;
   // The solo record (H-2 spec §8, Helm §11a); `seat` is the character the keyboard drives when the round is decided.
   const solo = soloRecorder({ now: () => new Date().toISOString(), active: () => runtime.active(), helmPlayer: () => runtime.duel.helmPlayer });
 
@@ -91,6 +99,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     window.removeEventListener('beforeunload', dispose);
     offSuspend?.(); offResume?.();
     deps.setConsole?.(null); deps.setContact?.(null);
+    if (stage.__ftliteDuel === runtime) delete stage.__ftliteDuel;
     keyboard.destroy(); pointer.destroy(); runtime.dispose(); scene.dispose();
   };
   window.addEventListener('beforeunload', dispose, { once: true });

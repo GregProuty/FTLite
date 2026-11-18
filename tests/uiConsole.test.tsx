@@ -137,12 +137,15 @@ describe('clicks reach the keyboard (spec §6.2)', () => {
     fireEvent.pointerDown(btn('zoom-in'), { button: 0 }); expect(input.press).toHaveBeenCalledWith('zoomIn');
     fireEvent.pointerDown(btn('snap'), { button: 0 }); expect(input.press).toHaveBeenCalledWith('camera');
   });
-  it('a locked tab and a disabled LAUNCH do nothing', () => {
+  it('a locked tab does nothing; a LAUNCH that cannot launch still presses, so it can say why (Feel-ii §2.8)', () => {
     const { duel, input } = mount();
     act(() => duel.frame(view({ ...weaponsConsole, tabs: { ...weaponsConsole.tabs, helm: 'locked' }, tabActions: { ...weaponsConsole.tabActions, helm: null },
       weapons: { ...weaponsConsole.weapons!, canLaunch: false } })));
-    fireEvent.pointerDown(btn('tab-helm'), { button: 0 }); fireEvent.pointerDown(btn('launch'), { button: 0 });
+    fireEvent.pointerDown(btn('tab-helm'), { button: 0 });
     expect(input.press).not.toHaveBeenCalled();
+    expect(btn('launch').getAttribute('data-ui-button')).toBe('disabled');   // it still looks unready
+    fireEvent.pointerDown(btn('launch'), { button: 0 });
+    expect(input.press).toHaveBeenCalledWith('launch');
   });
   it('the console going away releases a held button', () => {
     const { duel, input } = mount(); act(() => duel.frame(view(helmConsole)));

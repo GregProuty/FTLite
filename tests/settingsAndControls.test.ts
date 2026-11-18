@@ -41,7 +41,9 @@ describe('the controls list', () => {
     expect(sections[0]!.rows.find(r => r.keys === 'M')!.action).toContain('main menu');
     expect(all).not.toMatch(/pad|stick|arrow/i);
     const action = (keys: string): string => sections[0]!.rows.find(r => r.keys === keys)!.action;   // interior zoom spec rule 6
-    expect([action('Mouse wheel'), action('Right or middle drag'), action('C')].every(t => /ship/.test(t))).toBe(true);
+    expect([action('Mouse wheel'), action('Middle drag'), action('C')].every(t => /ship/.test(t))).toBe(true);
+    expect(action('Right click or drag')).toMatch(/Helm.*heading/);   // Feel-ii: the Helm's right button aims the heading
+    expect([action('Shift+W'), action('G / Middle click')]).toEqual(['At the Helm, full throttle', 'Ping the map point (or the enemy) for the crew']);
     expect([keyLabel('KeyE'), keyLabel('Equal'), keyLabel('NumpadAdd'), keyLabel('Escape')]).toEqual(['E', '=', 'Num +', 'Esc']);
   });
 });

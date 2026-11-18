@@ -62,6 +62,8 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
   const barColour = crt ? crtRowLook(c, now).bar : c.bar?.colour ?? TEXT;
   const L = weaponCard('laser'), T = weaponCard('torpedo'), lx = L.x + 6, tx = T.x + 6;
   const reason = weapons.laserReason ?? null, firing = reason === 'FIRING';
+  // Feel-ii §2.8: a refused FIRE or LAUNCH flashes, and the row under the cards names why for REFUSAL_SHOW_S.
+  const refused = weapons.refused ?? null, flash = (c: string): boolean => refused?.control === c && refused.flash;
   return (
     <>
       <Panel x={STATION.x} y={top} w={STATION.w} h={STATION.h.weapons} />
@@ -72,7 +74,7 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
       <PixelText text={firing ? 'FIRING' : c.value} x={lx} y={L.y + 20} size={FONT_SIZE} tint={firing ? hot : main} />
       <Bar x={lx} y={L.y + 44} w={L.w - 12} h={6} fill={c.bar?.fill ?? 0} colour={barColour} />
       <PixelText text={targetText(weapons.laserTarget)} x={lx} y={L.y + 56} size={FONT_NATIVE} tint={weapons.laserTarget >= 0 ? hot : dim} />
-      <Button name="fire" label="FIRE" hint="SPC" x={lx} y={L.y + L.hitH + 4} w={L.w - 12} h={24} onPress={() => actions.console.press('fireDown')} />
+      <Button name="fire" label="FIRE" hint="SPC" x={lx} y={L.y + L.hitH + 4} w={L.w - 12} h={24} flash={flash('fire')} onPress={() => actions.console.press('fireDown')} />
       <Card weapon="torpedo" lit={aim === 'torpedo'} crt={crt} />
       <PixelText text="TORPEDO" x={tx} y={T.y + 6} size={FONT_NATIVE} tint={aim === 'torpedo' ? hot : dim} />
       <PixelText text="2" x={T.x + T.w - 6} y={T.y + 6} size={FONT_NATIVE} tint={dim} anchorX={1} />
@@ -81,8 +83,10 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
         ? <PixelText text="FLYING" x={tx} y={T.y + 42} size={FONT_NATIVE} tint={hot} />
         : <PixelText text={weapons.torpedoInRange ? 'IN RANGE' : 'OUT OF RANGE'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={weapons.torpedoInRange ? main : dim} />}
       <PixelText text={targetText(weapons.torpTarget)} x={tx} y={T.y + 56} size={FONT_NATIVE} tint={weapons.torpTarget >= 0 ? hot : dim} />
-      <Button name="launch" label="LAUNCH" hint="F" x={tx} y={T.y + T.hitH + 4} w={T.w - 12} h={24} disabled={!weapons.canLaunch} onPress={() => actions.console.press('launch')} />
-      {reason !== null && !firing
+      <Button name="launch" label="LAUNCH" hint="F" x={tx} y={T.y + T.hitH + 4} w={T.w - 12} h={24} dim={!weapons.canLaunch} flash={flash('launch')} onPress={() => actions.console.press('launch')} />
+      {refused !== null
+        ? <PixelText text={`${refused.control === 'launch' ? 'LAUNCH' : 'FIRE'}: ${refused.reason}`} x={refused.control === 'launch' ? tx : x0} y={y0 + 116} size={FONT_NATIVE} tint={hot} />
+        : reason !== null && !firing
         ? <PixelText text={`LASER: ${reason}`} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={hot} />
         : <PixelText text={firing ? 'LASER: FIRING' : 'CLICK A WEAPON, THEN A ROOM'} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={firing ? hot : dim} />}
       <PixelText text={reason !== null && !firing ? 'CLICK A WEAPON, THEN A ROOM' : 'RIGHT-CLICK A WEAPON: CLEAR'} x={x0} y={y0 + 134} size={FONT_NATIVE} tint={dim} />

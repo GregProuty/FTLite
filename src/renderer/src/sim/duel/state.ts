@@ -54,6 +54,9 @@ export interface DuelState {
   /** The helm module (Artemis spec §5.1): the Helm's throttle level, an integer −1..4 (sim/duel/throttle.ts). Kept
    *  across stand and sit; 0 in a fresh duel, so a new round starts at STOP. */
   throttle: number;
+  /** The helm module (Feel-ii spec §1.1): the heading index 0..255 the Helm holds (click-to-heading), or −1 for none.
+   *  Set by the `heading` command; A/D or auto-face held at the Helm clears it. −1 in a fresh duel and every new round. */
+  holdHeading: number;
 }
 
 /**
@@ -84,7 +87,7 @@ export function createDuel(layout: ShipLayout, seed: number, helmPlayer: 0 | 1 =
       if (room < 0 || roomAt(interior, tx + 0.5, ty + 0.5) !== room) throw new Error(`repair point ${p.room} ${tx},${ty} is not inside its room`);
       return { tacticalRoom: p.tacticalRoom, room, tile: ty * interior.derived.width + tx };
     });
-    return { interior, tactical, present: [true, true], repair: [0, 0, 0], points, nav, weapons, science, events: [], round: 0, helmPlayer, baseTick: 0, decidedTick: -1, throttle: 0 };
+    return { interior, tactical, present: [true, true], repair: [0, 0, 0], points, nav, weapons, science, events: [], round: 0, helmPlayer, baseTick: 0, decidedTick: -1, throttle: 0, holdHeading: -1 };
   } catch (err) {
     disposeSimState(interior);   // release its entities and component storage before rethrowing
     throw err;

@@ -46,6 +46,15 @@ describe('the duel audio adapter (Audio-i spec section 4)', () => {
       expect(r.status[1]).toMatchObject({ engaged: true, fires: 1, hum: { thrust: 1 } });
     } finally { disposeDuel(d); }
   });
+  it("the lock tone's steady tone does not repeat after a frozen or paused frame (Feel-ii §2.5)", () => {
+    const d = createDuel(parseShip(hound), 1), r = recorder(), a = createDuelAudio(r.out);
+    try {
+      const torpedo = { locked: true, distance: 300, range: 360, target: 2 };
+      const frame = (o: { live?: boolean; paused?: boolean }) => { d.tactical.tick += 1; a.frame({ duel: d, events: [], axes: { turn: 0, thrust: 0 }, paused: o.paused ?? false, pan: () => 0, ...OK, torpedo, ...(o.live === undefined ? {} : { live: o.live }) }); };
+      frame({}); frame({ live: false }); frame({}); frame({ paused: true }); frame({});
+      expect(r.sounds.filter((s) => s.key === 'jumpCharge')).toHaveLength(1);
+    } finally { disposeDuel(d); }
+  });
   it('the hum thrust follows the magnitude of the axes thrust (a quarter throttle hums a quarter)', () => {
     const d = createDuel(parseShip(hound), 1), r = recorder(), a = createDuelAudio(r.out);
     try {

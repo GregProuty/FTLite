@@ -10,7 +10,7 @@ import { roomAt } from '../grid';
 import { inReachOfTile } from '../interact';
 import { movementSystem } from '../movement';
 import { stepDuel } from '../tactical/duel';
-import { autoFaceTurn } from '../tactical/hunter';
+import { autoFaceTurn, headingTurn } from '../tactical/hunter';
 import { scanCommand } from '../tactical/science';
 import { SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
 import { CONTACT_MAX_LEVEL, Outcome } from '../tactical/state';
@@ -19,7 +19,7 @@ import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
 import { extinguishWork, firePhase, pointBurning } from './fire';
 import { applyHitDamage, healthPhase } from './health';
 import { followingSeed } from './seeds';
-import { throttleThrust, validThrottle } from './throttle';
+import { throttleThrust, validHoldHeading, validThrottle } from './throttle';
 import { createDuel, disposeDuel, type DuelState } from './state';
 import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
 
@@ -29,7 +29,7 @@ const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 /** The fixed order weapon commands take effect in within one tick. */
 const WEAPON_ORDER = ['laserLock', 'torpLock', 'laserCharge', 'missileLaunch'] as const;
 /** Every duel command kind the step handles; any other kind is rejected not-in-duel. */
-const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'torpLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle', 'contactScan', 'designate', 'laserFrequency'];
+const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'torpLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency'];
 
 function resetScratch(d: DuelState): void {
   const sc = d.interior.scratch;
@@ -84,6 +84,16 @@ function repairPhase(d: DuelState, held: readonly HeldInput[]): void {
     d.repair[r] += n === 1 ? REPAIR_RATE_SOLO : n * REPAIR_RATE_TEAM;
     if (d.repair[r] >= REPAIR_UNITS) { crewShip.rooms[r]--; d.repair[r] = 0; d.events.push({ kind: 'repairDone', room: r, players: workers[r]! }); }
   }
+}
+
+/** The turn the Helm attendant's held input flies this tick (Artemis spec §5.3, Feel-i, Feel-ii spec §1.1): A/D, else
+ *  auto-face's turn, else the held heading's, else none. Pure; reads the state before the step (the app's predicted
+ *  path calls it too). */
+export function helmTurn(d: DuelState, h: HeldInput): number {
+  if ((Math.sign(h.moveX) || 0) !== 0) return h.moveX;
+  if (d.tactical.outcome !== Outcome.Running) return 0;
+  if (h.face === true) return autoFaceTurn(d.tactical, 0);
+  return d.holdHeading >= 0 ? headingTurn(d.tactical, 0, d.holdHeading) : 0;
 }
 
 /**
@@ -198,6 +208,16 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (level === d.throttle) { result(e, undefined, 'noop'); continue; }
     d.throttle = level; result(e);
   }
+  // Feel-ii's click-to-heading (Feel-ii spec §1.1), checked like the throttle: stale, the Helm attendant, the heading
+  // (−1 or 0..255), then noop. Envelope order holds and the last applied heading wins.
+  for (const e of input.commands) if (e.command.kind === 'heading') {
+    const h = e.command.heading;
+    if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
+    if (helm < 0 || e.id.player !== helm) { result(e, 'invalid-seat'); continue; }
+    if (!validHoldHeading(h)) { result(e, 'malformed'); continue; }
+    if (h === d.holdHeading) { result(e, undefined, 'noop'); continue; }
+    d.holdHeading = h; result(e);
+  }
   // Sci-1 (spec §5), against the seats as they now stand: every laserFrequency in envelope order, then every designate,
   // then every contactScan; each is checked for stale-tick first, and within a kind the last applied wins.
   const t = d.tactical, scientist = d.science >= 0 ? attendant(d, d.science) : -1;
@@ -229,10 +249,12 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   for (const e of input.commands) if (e.command.kind === 'rematch') result(e, 'duel-running');
   for (const e of input.commands) if (!DUEL_KINDS.includes(e.command.kind)) result(e, 'not-in-duel');
   // Artemis spec §5.3: held moveX turns, the throttle thrusts; held moveY no longer does. Feel-i (console feel spec §2):
-  // the Helm's held `face` turns the nose onto the enemy's lead point instead, unless A/D turns.
+  // the Helm's held `face` turns the nose onto the enemy's lead point instead, unless A/D turns. Feel-ii (spec §1.1): A/D
+  // or auto-face held at the Helm clears a held heading; otherwise a held heading turns the nose onto its bearing.
   if (helm >= 0) {
-    const h = input.held[helm] ?? NO_HELD, turn = (Math.sign(h.moveX) || 0) !== 0 ? h.moveX : h.face === true ? autoFaceTurn(d.tactical, 0) : 0;
-    crew.axes = { turn, thrust: throttleThrust(d.throttle) };
+    const h = input.held[helm] ?? NO_HELD;
+    crew.axes = { turn: helmTurn(d, h), thrust: throttleThrust(d.throttle) };
+    if ((Math.sign(h.moveX) || 0) !== 0 || h.face === true) d.holdHeading = -1;
   }
 
   repairPhase(d, input.held);
