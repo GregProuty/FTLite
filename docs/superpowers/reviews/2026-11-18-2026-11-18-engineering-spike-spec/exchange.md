@@ -140,3 +140,96 @@ Confirmed (doors.ts:L75-L85). §5 states that the duel keeps the Doors station o
 
 ---
 
+# Round 2 (delta, reviewing 86fafcec, effort medium, 150 s, 605450 in / 534460 cached / 14604 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 Bars live in a DuelState module, but every gate that must read them takes only TacticalState and indexes by rooms
+§2 says ship 0's laserOffline, canLaunch, flight, laser charge, magazine and shields read the tables by bars, and §7 puts the bars in a new DuelState module `power`. Every function that must change takes a TacticalState and reads `systems[i].rooms[...]`: canLaunch, laserOffline, tickWeapons' chargeRate and shield rate, flyShip through physics, and predictFlight. The spec doesn't say how ship 0's bars reach the tactical state: a field on systems[0], an argument to stepDuel or ShipInput, or a copy each tick. It also leaves out predictFlight. That function runs flyShip with the damage level, and the sim's scripted pilot uses it through predictPath, so the Helm's predicted path and the bot would fly with the wrong engine factor. Tactical commands are admitted in step 1 (canLaunch(d.tactical, 0)), before the power commands in step 2, and the spec never says which bars that admission reads. · spec L63-L67, L205-L206, L212-L217. weapons.ts:L51 (canLaunch reads rooms[Weapons] < 2), L61 (laserOffline), L154-L155 (chargeRate[rooms[Weapons]]), L159 (shields.rate[rooms[Shields]]). physics.ts:L63 (flyShip(..., rooms[Room.Engines], ...)). predict.ts:L31-L34 (engines = rooms[Engines], fed to flyShip). duel/scripted.ts:L87 (predictPath, used by the sim's scripted pilot). duel/step.ts:L200 (canLaunch admission before any new power phase), L268 (stepDuel(d.tactical, crew): no DuelState). · Where the bars live decides the snapshot and hash layout, and the duelModules test has to cover it. One build might store bars on TacticalState.systems[0] and leave the `power` module half-empty. Another might pass bars through ShipInput. Their goldens would differ, and so would their behaviour when a missileLaunch and a Weapons −1 arrive in the same tick. A prediction or scripted pilot left on rooms would quietly desync from the flown path. · Say exactly how ship 0's effective bars reach the tactical code. For example, the tactical system state gains `bars: number[5]`, which the duel writes from `power` before step 1, or stepDuel gains a bars argument. Then list every reader that switches to bars: canLaunch, laserOffline, tickWeapons charge and shields, flyShip in physics, predictFlight/predictPath, and the scan rate. Say that step-1 admission reads the bars as they stood at the start of the tick.
+
+### [P1] R2-F2 The capacity update runs before fire damage, contradicting 'excess bars return at once'
+§2 says that when capacity falls (damage rises or the system fails), the excess bars return at once. §7 runs the capacity update at step 8, but firePhase's damage cadence, which also raises a tactical Room, comes later at step 10. A fire-damage rise therefore leaves powered bars above capacity until the next tick's step 8. Meanwhile, the next tick's step-1 admission (canLaunch) runs against those over-capacity bars, and so would stepDuel if the update didn't run first. The spec doesn't say whether repair (step 3) or the overheat at step 11 triggers the same update. · spec L58-L60 ('the excess bars return to the reactor pool at once'), L218-L221 (8 capacity update, then 10 firePhase damage cadence). duel/fire.ts:L51 (the damage cadence does rooms[p.tacticalRoom]++). spec L107 (overheat returns bars, at step 11). · Two implementers would either enforce capacity wherever damage changes or only at step 8. Those give different bars for one tick, and different missile admission on the next tick. The goldens diverge on any seed where a fire's damage tick lands. · Define capacity enforcement as a function, `clampToCapacity`, called right after every change to damage or failure: after stepDuel (step 6/7), after the firePhase damage cadence (step 10) and at overheat (step 11). Alternatively, move the single capacity update to after step 10 and state that overheat clamps inline.
+
+### [P2] R2-F3 The scan rate per Sensors bar is fixed when the scan starts; the spec doesn't say when the table is read or what 0 bars does to a scan
+The rate table gives Science and Helm/Weapons scan rates per Sensors bar, with 0 at 0 bars. scanCommand stores the rate in t.scan.rate when the command is applied, so a later Sensors change doesn't touch a scan already running. At 0 bars, a contactScan would start a scan at rate 0 that never progresses, with result 'applied'. The spec doesn't say whether a bar change updates a running scan, or whether a scan at 0 bars is rejected (`unavailable`) or paused. · spec L81-L82 (scan rows), L63-L64. tactical/science.ts:L12-L20 (s.rate set once; same-level re-scan is noop unless the rate is higher). duel/step.ts:L248 (rate chosen at admission from SCAN_RATE_SCIENCE/OTHER). · Two builds would split here: one rereads the rate every tick, the other freezes it. That changes scan times whenever Engineering moves Sensors bars, which is exactly the trade-off the spike is meant to test. · State that the scan's per-tick progress reads the table at the current Sensors bars every tick, so s.rate becomes the station's base or is recomputed each tick. Also state that a contactScan with Sensors at 0 bars is rejected `unavailable`, or that it starts and pauses. Pick one.
+
+### [P2] R2-F4 Fires in non-point rooms, spread ignitions and breaches have no event shape
+Today's fireWork, fireOut and fireStart events carry `room` as a tactical Room index (0..2). §4 adds firefighting in B, Q, M, L and H, fire spread through fireStep, breach rolls and patching. None of these has a tactical Room, and the spec defines no events for them. The HUD's breach and fire icons and any cues need to know which room changed. · spec L143-L153. duel/step.ts:L76 and L81 (events keyed by point.tacticalRoom). duel/fire.ts:L38 (fireStart room: e.room, a tactical Room). hazards/fire.ts:L35-L36 (spread ignition pushes no event). · Implementers would each invent different event kinds and fields, or emit none. Events are part of the step's output that tests and the app read. · Add events keyed by interior room index, for example fireWork, fireOut and fireStart with `interiorRoom`, plus breachStart, breachWork and breachPatched. Say whether spread and overheat ignitions push fireStart. Or state that the HUD reads state only and these rooms push no events.
+
+### [P3] R2-F5 The overheat draw's consumption when the room is already burning, and the order across systems, are unstated
+§3 says 'One rng.hazards draw at OVERHEAT_FIRE_CHANCE ignites its room if that room isn't burning'. That reads two ways: skip the draw when the room is burning, or always draw, which is what heat.ts does ('draw always consumed'). It also doesn't say in what order several systems overheating on the same hazard tick draw. Weapons and Sensors share room O. · spec L107-L108, L226. heat.ts:L40 (draw always consumed; no-op if burning), L46 (ascending index). · Either reading changes the rng.hazards stream, and so the goldens. · Say 'the draw is always consumed, in ascending system index (Shields, Weapons, Engines, Sensors)'.
+
+## Prior findings
+- R1-F1: still open — §7 now gives a numbered order and the hazard cadence (tick − baseTick) % HAZARD_EVERY, which is correct. But steps 9 and 10 put the hit fire/breach rolls before firePhase's damage cadence, while today's firePhase applies the damage cadence first and then igniteFromHits (duel/fire.ts:L45-L54; duel/step.ts:L270). So 'the rest is today's order' (spec L210) is false. A room ignited on a cadence tick would be damaged at once under the spec's order and not under today's. Either restore today's order (10 before 9) or state the change. The capacity-timing problem in the same list is raised as a new finding.
+- R1-F2: resolved — spec L143-L148: fireStep is the only growth/shrink/spread rule, DUEL_FIRE_GROW is dropped, and the 20%/10% hysteresis is correct (hazards/fire.ts:L28-L29). Closed-door spread is 0.05× (passageFor oxygen.ts:L14, PASSAGE_CLOSED tuning.ts:L19). The §8 test is statistical.
+- R1-F3: resolved — spec L149-L151: rooms without a point are fought at their breach-site tile. hound.json:L123-L163 has exactly one site per room for all eight rooms, and seated damage is stated.
+- R1-F4: resolved — spec L53-L67: capacity = max(0, slots − damage × ceil(slots/2)) gives 5/2/0 and 4/2/0. Excess returns with the overdrive bar first, ship-0 gates read bars, and the Hunter lock (hunter.ts:L111) is recorded. How the bars reach the tactical code is raised as a new finding.
+- R1-F5: resolved — spec L76, L85-L88: the 1-layer round start is stated as deliberate, the drop of layers above the cap and the clock reset are stated, and there is a test at L234.
+- R1-F6: resolved — spec L74-L91: an explicit table for every system and bar count. The magazine units clock of 10800 at 4 per tick = 2700 ticks matches MAGAZINE_REGEN_TICKS. The oxygen factor at 0.5 × INJECT_FRAC 0.06 = 0.03/s matches tuning.ts:L58. When the scan rate is read is raised as a new P2.
+- R1-F7: resolved — spec L128-L131: the duel injection INJECT_FRAC × V × HAZARD_DT × OXY_FACTOR into every room, with oxygenStep's clamp and venting skip (oxygen.ts:L111-L117).
+- R1-F8: resolved — spec L120-L122: quirk 3. quirks.ts:L18 shows quirk 3's only hook is quirkDebrisHullOffset (debris.ts only). SimOptions.quirk exists (state.ts:L104, L139).
+- R1-F9: resolved — spec L101-L111: explicit per-hazard-tick rules, failed cooling (240/1 per 5 ticks = 20 s, 240/3 ≈ 6.7 s), fire heat out, the coolant wrap, and a room per system (L42-L48). The overheat draw's consumption is raised as a new P3.
+- R1-F10: resolved — spec L170-L172 (UI rule) and L189-L203 (sim rule: four kinds in DUEL_KINDS, then the reason order stale → malformed → unavailable). stepDecided answers duel-decided for any DUEL_KINDS member (duel/step.ts:L142).
+- R1-F11: resolved — spec L132-L139, L152-L153: breaches.repair as a whole-unit fraction (breach.ts:L4-L14 resets it), precedence fire > breach > repair with ties to the lowest room, the fire roll before the breach roll, and a single site per room.
+- R1-F12: resolved — spec L163-L165: the Doors station is kept online, so doorsFailSafe never fires (doors.ts:L75-L81), with a 600-tick airlock test. The duel toggle avoids cycleDoor's Sealed path (doors.ts:L60-L65).
+
+## Verified
+- Today's duel step order and firePhase internals: duel/step.ts:L262-L271 and duel/fire.ts:L45-L54 (growth and damage first, then igniteFromHits).
+- fireStep's hysteresis and spread: hazards/fire.ts:L23-L38. passageFor gives PASSAGE_OPEN for open doors and non-door edges and PASSAGE_CLOSED 0.05 for closed doors: oxygen.ts:L10-L19, tuning.ts:L19.
+- The quirk hooks: quirks.ts:L15-L18. Only quirk 3 changes debris, and the override is applied after the draw (state.ts:L138-L139).
+- The heat constants match the spec: tuning.ts:L77-L83 (HEAT_MAX 240, RISE 2, COOL_UNIT 1, COOL_IDLE 4, OVERHEAT_FIRE_CHANCE 0.5). HAZARD_EVERY = 5 gives 12 Hz (tuning.ts:L4-L5).
+- INJECT_FRAC 0.06, so 0.5 × 0.06 = the 0.03/s stub (tuning.ts:L58). O2_DAMAGE is 6 (tuning.ts:L34).
+- The Hound has one breach site in each of B, Q, O, M, L, E, R and H (hound.json:L123-L163), airlocks in H and L (L221-L230), and the Doors station at allocation 1 (L191-L195).
+- activateBreach and repairBreach exist and reset breaches.repair (hazards/breach.ts:L4-L14).
+- doorSystem's fail-safe and HeldOpen handling: doors.ts:L75-L100. cycleDoor passes through Sealed: doors.ts:L60-L65.
+- Every tactical reader of rooms[] is listed (weapons.ts:L51, L61, L154-L159; physics.ts:L63; predict.ts:L31; missiles.ts:L93; hunter.ts:L67-L75, L111).
+
+## Not verified
+- Whether opening the doors between a burning room and a venting airlock room actually drives its air below 10 % while Life Support keeps injecting into the burning room (spec L154-L155). roomVenting only skips rooms with their own breach or airlock (oxygen.ts:L28-L33). Checking this needs a sim run.
+- Whether the Cutter layout still runs duels (DUEL_REPAIR_POINTS includes cutter, duel/tuning.ts:L24). If it does, the spec's Hound-only room table and its 'one breach site per room' claim would need a Cutter mapping. I didn't read the Cutter layout.
+- Whether the sector movementSystem lets crew pass auto (Closed) doors the way the sector game does, now that createDuel stops holding them open. I didn't read movement.ts, since it is outside the touched regions.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json` against the subject at `86fafcec`. 6 accepted (5 new, 1 reopened), 0 rejected, 0 deferred. R1-F2 to R1-F12 are confirmed resolved.
+
+## R1-F1 [P1]: No step order or hazard cadence (reopened)
+
+Confirmed. duel/fire.ts:L45-L54 applies the damage cadence before igniteFromHits. §7 step 8 now keeps today's firePhase order (the damage cadence, then the per-hit fire roll) and adds the breach roll after the fire roll. The steps are renumbered 1 to 10.
+
+## R2-F1 [P1]: Bars in a DuelState module, but the gates take TacticalState
+
+Confirmed (weapons.ts:L51, L61, L154-L159; physics.ts:L63; predict.ts:L31). The bars now live in `ShipSystems.bars`, a canonical `ship` module field, so the tactical readers get them from the state they already take. §2 lists every ship-0 reader, including predictFlight and predictPath, and says the step-1 admission reads the bars as they stood at the start of the tick. The `power` module keeps heat, coolant and failed (§7).
+
+## R2-F2 [P1]: The capacity update runs before fire damage
+
+Confirmed. §7 defines `clampToCapacity`, which runs at the end of step 8 (after the damage cadence and the hit rolls) and inline at each overheat. Repair only raises capacity. §8 has a same-tick clamp test.
+
+## R2-F3 [P2]: Scan rate fixed at the scan's start
+
+Confirmed (science.ts:L12-L20 stores the rate, and L49 adds it). §2 now has a Scans rule: progress is read from the table each tick at the current Sensors bars, using the Science row or the other row by `by`. The scan pauses at 0 bars, and contactScan at 0 bars is `unavailable`. §8 has a test.
+
+## R2-F4 [P2]: New fire and breach cases have no event shape
+
+Confirmed. The spike adds no events for them. §4 Events says the HUD reads the interior state each frame, and the only new event is crewHurt 'air'.
+
+## R2-F5 [P3]: Overheat draw consumption and order
+
+Confirmed (heat.ts:L40). §3 says the draw is always consumed, in ascending system index, and that a second roll in room O is a no-op once the room is lit.
+
+## Also changed
+
+- §8 gains three tests: the prediction matches the flight, scan bars, and the same-tick clamp.
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-18-engineering-spike-design.md
+
+<!-- end -->
+
+---
+

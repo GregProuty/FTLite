@@ -60,8 +60,21 @@ is where it burns, breaches and overheats:
   adds no bar: a player must put the bar back. The **effective bars** are the powered bars.
 - Sensors and Oxygen take no weapon damage in the spike (they have no tactical Room). Their rooms still burn and
   breach, and Sensors can overheat. The report notes this.
-- **The crew ship's gates read bars, not damage.** For ship 0 only, `laserOffline` is Weapons bars = 0, `canLaunch`
-  needs Weapons bars ≥ 1, and the flight code, laser charge, magazine and shields read the tables below by bars. Because
+- **Where the bars live.** The powered bars are tactical state: `ShipSystems` gains `bars: number[5]`, in system order
+  Shields, Weapons, Engines, Sensors, Oxygen. It's a canonical field of the `ship` module, so it is hashed and
+  snapshotted with the rest of `systems`. The Hunter's `bars` stays all zero and is never read. The duel `power` module
+  (§7) holds the rest: heat, coolant, failed. The tactical code therefore reads bars from the TacticalState it already
+  takes, and no new argument is needed.
+- **The crew ship's gates read bars, not damage.** For ship 0 only, every one of these reads `systems[0].bars`:
+  - `laserOffline`: Weapons bars = 0;
+  - `canLaunch`: Weapons bars ≥ 1;
+  - `tickWeapons`: the laser charge rate, the shield recharge rate and layer cap, and the magazine clock;
+  - `flyShip` in physics: the engine factor;
+  - `predictFlight` and `predictPath`, which the Helm's predicted path and the scripted pilot use, so the prediction
+    matches the flight;
+  - the scan progress.
+  The duel's step-1 admission (for example `canLaunch` on a missileLaunch) reads the bars as they stood at the start of
+  the tick, before this tick's `power` commands. Because
   damage 2 means capacity 0, a level-2 Room still means off, as today. The Hunter (ship 1) keeps every rule, table and
   gate it has today. That includes its laser lock (hunter.ts: target Shields while the crew's Shields Room is below 2),
   which reads the crew's Room damage and is unchanged.
@@ -86,6 +99,10 @@ column is the round start, which matches today's undamaged crew ship except wher
   moving 2 more bars into Shields. The report says whether it felt right.
 - **Layers above the cap drop at once.** When the bars fall and the layer cap drops below the current layers, the extra
   layers are lost that tick and the shield clock resets to 0.
+- **Scans.** A running scan's progress per tick is read from the table each tick at the current Sensors bars, using the
+  Science row when the scan's station `by` is Science and the Helm/Weapons row otherwise. `scan.rate` then only
+  records which row. A Sensors change speeds up or slows a running scan at once, and at 0 bars it pauses. A
+  `contactScan` with Sensors at 0 bars is rejected `unavailable`.
 - **Magazine regen** today is a tick counter (MAGAZINE_REGEN_TICKS 2700). For the crew ship it becomes a units clock:
   it gains the table's rate each tick, and at MAGAZINE_REGEN_UNITS (10800) it regains a missile and resets. At 4 per
   tick this is exactly today's 2700 ticks.
@@ -106,6 +123,9 @@ column is the round start, which matches today's undamaged crew ship except wher
     about 7 s with two.
 - **Overheat.** When heat reaches HEAT_MAX (240), the system fails: its bars return to the pool and heat stays at
   HEAT_MAX. One rng.hazards draw at OVERHEAT_FIRE_CHANCE (0.5) ignites its room (§2 table) if that room isn't burning.
+  The draw is always consumed, even when the room is already burning (as in heat.ts). Several systems overheating on
+  one hazard tick draw in ascending system index: Shields, Weapons, Engines, Sensors. Weapons and Sensors share room
+  O, so a second roll there is a no-op if the first lit it.
   A failed system has capacity 0 until its heat is 0, then it clears and takes bars again. Sensors has no repair
   point and recovers the same way.
 - Fire heat (the sector game's FIRE_HEAT_MAX, where a fire heats its room's stations) is out of the spike.
@@ -151,6 +171,10 @@ fixed point in the duel step (§7). It never calls the sector `step`.
   and low-air damage as standing ones do. Today's duel already burns seated characters.
 - **Work precedence.** A worker in reach of more than one job works one per tick, in this order: a fire, then a breach,
   then a damaged Room's repair. Ties go to the lowest room index.
+- **Events.** Today's repair and fire events (keyed by tactical Room) stay for the three point rooms. Fire spread,
+  overheat ignitions, firefighting in non-point rooms, breaches and patching push no events in the spike: the HUD reads
+  the interior state (rooms.fire, breaches.active and their repair fractions) each frame. The one new event is
+  `crewHurt` with cause `'air'`.
 - **Venting.** An open airlock (H, L) empties its room in about 2 s. Opening the doors between a burning room and an
   airlock room vents it: the air falls below 10 %, the fire shrinks out, and anyone inside starts to suffocate.
 
@@ -202,28 +226,33 @@ check, and the last command in player order wins. Reasons are checked in this or
 
 `coolant` never fails on the pool: it wraps (§3).
 
-**A new duel module `power`**, after `helm` and before `interior`, holds per system the powered bars, the heat, the
-coolant and the failed flag, plus the crew ship's magazine-regen units clock. Oxygen, breaches, breach repair,
+**A new duel module `power`**, after `helm` and before `interior`, holds per system the heat, the coolant and the failed
+flag. The bars are in the `ship` module (§2). The crew ship's existing `magazineClock` counts units instead of ticks,
+in the same field. Oxygen, breaches, breach repair,
 airlocks, fire and doors already live in the interior's flattened state and need no new field. The spike measures the
 snapshot growth anyway. `tests/duelModules.test.ts` holds every new member to a field or an exclusion.
 
+**Capacity enforcement** is one function, `clampToCapacity`, which lowers each system's bars to its capacity (the
+overdrive bar first) and returns the excess to the pool. It runs after every change that can lower capacity: after
+the firePhase damage cadence (step 8, which follows stepDuel's hit damage) and inline at each overheat (step 9).
+Repair only raises capacity and needs no clamp.
+
 **Step order** in `stepDuelTick` (new steps in bold; the rest is today's order):
 
-1. stale and decided checks, seats, tactical commands (as today);
+1. stale and decided checks, seats, tactical commands (as today; admission reads start-of-tick bars);
 2. **power, coolant, door and airlock commands, in player order**;
 3. work: repair, fire, breach (precedence §4);
 4. movement;
 5. **doorSystem**;
-6. stepDuel, which reads bars for ship 0;
+6. stepDuel, which reads `systems[0].bars` for ship 0;
 7. applyHitDamage;
-8. **capacity update** (damage rises return excess bars);
-9. per hit in event order: the fire roll, then **the breach roll**;
-10. firePhase's damage cadence;
-11. **on a hazard tick** ((tick − baseTick) % HAZARD_EVERY = 0): duel injection → oxygenStep → fireStep → duel heat
-    (overheat draws);
-12. healthPhase: hits, fire, **then low air**, downed, revived.
+8. firePhase: its damage cadence first, then per hit in event order the fire roll, then **the breach roll** (today's
+   firePhase order with the breach roll added), then **clampToCapacity**;
+9. **on a hazard tick** ((tick − baseTick) % HAZARD_EVERY = 0): duel injection → oxygenStep → fireStep → duel heat
+   (overheat draws, each overheat clamping inline);
+10. healthPhase: hits, fire, **then low air**, downed, revived.
 
-Every rng.hazards draw comes from step 9, fireStep's spread rolls, or the overheat roll, in that order within a tick.
+Within a tick, the rng.hazards draws come in this order: the hit rolls in step 8, then fireStep's spread rolls, then the overheat rolls.
 
 ## 8. Testing
 
@@ -233,6 +262,9 @@ Every rng.hazards draw comes from step 9, fireStep's spread rolls, or the overhe
   - repair restores capacity but not power;
   - every rate table is read by bars for ship 0 and unchanged for ship 1;
   - layers above the cap drop at once;
+  - predictFlight with Engines bars matches the flight it predicts;
+  - a running scan speeds up and slows with Sensors bars, pauses at 0, and contactScan at 0 bars is `unavailable`;
+  - a fire-cadence damage rise clamps bars the same tick;
   - the magazine units clock regains a missile at 2700 ticks at 2 bars;
   - heat rises 2 per hazard tick at 0 coolant, 1 at 1, and holds at 2;
   - an overheat fails the system, returns its bars, may ignite its room, and the system takes bars again at heat 0;
