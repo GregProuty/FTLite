@@ -15,6 +15,7 @@ import { READOUT_COLUMN } from '../../render/duel/interiorModel';
 import { createInteriorView, type InteriorView } from '../../render/duel/interiorView';
 import { readoutHelp, readoutRows, type OtherStatus } from '../../render/duel/readoutModel';
 import { createFx, pushEvents, recordTrails, resetFx, shakeOffset, stepFx, type ViewEvent } from '../../render/tactical/fxModel';
+import { flashesFor, pushHits } from '../../render/tactical/hitModel';
 import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
 import { pickShip, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
 import { combatModel } from '../../render/tactical/weaponsModel';
@@ -132,7 +133,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         : false;
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       const events = source.drainEvents();
-      pushEvents(fx, events);
+      pushEvents(fx, events); pushHits(fx, events, d.tactical);   // duel polish i spec §B: the callouts and the struck-room flashes
       if (sound) {   // Audio-i spec section 4: the same events the effects use; pan from the screen on a map view, crew-relative inside
         const cam = view === 'interior' ? null : source.cameras[view], crew = d.tactical.ships[CREW_SLOT]!;
         sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true,
@@ -147,7 +148,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         // Step 4: the map keeps its arrows and info line clear of the window while it is shown.
         const input = {
           state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport, console: view, axes: source.axes(),
-          ships: [0, 1], paused: overlay.layerPaused, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right } : { reserveRight: READOUT_COLUMN }), spreadArrows: true, missilePrev: source.missilePrev, steer: source.steer(), fx
+          ships: [0, 1], paused: overlay.layerPaused, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right } : { reserveRight: READOUT_COLUMN }), spreadArrows: true, missilePrev: source.missilePrev, steer: source.steer(), fx, t
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting
@@ -158,7 +159,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       // Step 5: the contact view, only while shown.
       const open = contact?.state() ?? null;
       const contactView = shown && open && (station === 'helm' || station === 'weapons')
-        ? contactModel({ state: d.tactical, ship: open.ship, aim: open.aim, station, t, weapons: consoleView?.weapons ?? null })
+        ? contactModel({ state: d.tactical, ship: open.ship, aim: open.aim, station, t, weapons: consoleView?.weapons ?? null, flashes: flashesFor(fx.struck, open.ship) })
         : null;
       options.ui.frame({
         readout: { rows: readoutRows({ duel: d, mode: view, active: source.active(), other: source.otherStatus(), console: onConsole }), help: onConsole ? [] : readoutHelp(view) },
