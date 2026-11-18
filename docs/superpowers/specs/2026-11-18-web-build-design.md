@@ -102,7 +102,11 @@ The session's dependencies on Node and Electron all go behind one injected inter
   - **The Electron trigger:** main keeps pushing `app:suspend`/`app:resume` from `powerMonitor` to the page (§3.3), and the page platform uses that in place of the detector.
   - **Who consumes it:** both triggers feed the session's `suspend()`/`resume()`, which invalidates the lease on suspend as `hostProcess.ts:233-240` does, and the existing `lifecycle.onSuspend`/`onResume` callers in `duelMode.ts:79-80` and `flightMode.ts:54-55`.
 - **Exit save.** This replaces `onlineExit.ts`.
-  - **The browser:** the exit is best effort. On `pagehide`, the session sends the release over the open signalling WebSocket and closes the peers. It does not attempt a new checkpoint capture, because a page cannot wait for async work and a `keepalive` fetch is capped at 64 KiB while a checkpoint can reach 512 KiB. Recovery relies on the latest periodic checkpoint already at the service and in every player's IndexedDB mirror.
+  - **The browser:** the exit is best effort. Each `pagehide` takes exactly one of two paths:
+    - with `persisted: false`, it is the release below;
+    - with `persisted: true` (back-forward cache), it only calls `suspend()`, with no release, and the matching `pageshow` calls `resume()`.
+
+    On the release `pagehide`, the session sends the release over the open signalling WebSocket and closes the peers. It does not attempt a new checkpoint capture, because a page cannot wait for async work and a `keepalive` fetch is capped at 64 KiB while a checkpoint can reach 512 KiB. Recovery relies on the latest periodic checkpoint already at the service and in every player's IndexedDB mirror.
   - **Electron:** a full exit save is kept (§3.3).
 - **Host start.** `new Worker(...)` starts the host's simulation. The session talks to it only through ports.
 - **Online configuration.** One service origin is baked in at build time (§5.1). Loopback keeps `iceMode:'loopback'` for local tests.
@@ -181,7 +185,7 @@ The page main thread also matters, not only the Worker. The session, the RTC rel
 - the lease round-trip gaps;
 - a page-side 100 ms `setInterval` control.
 
-**Valid run.** The run counts only if `document.visibilityState` is `'hidden'` throughout, and the control interval is visibly clamped, to an average period of at least 900 ms. That proves the browser really throttled the page. Headless runs do not count, because they never hide the page.
+**Valid run.** The run counts only if `document.visibilityState` is `'hidden'` throughout. A sibling control tab with no RTC or WebSocket, hidden the same way, must show its 100 ms interval clamped to an average period of at least 900 ms. That proves the browser applied hidden-tab throttling during the run. The test page's own control period is recorded as data, not as a condition: a page exempted from throttling because it holds an open connection is a favourable result, not an invalid run. Headless runs do not count, because they never hide the page.
 
 **Pass**, in both browsers:
 - the Worker holds at least 59 ticks a second over every 10 s window;
@@ -252,11 +256,11 @@ The menu fetches it at start and every 5 minutes while on the menu or in a lobby
 
 ## 6. Cloudflare
 
-**Expose the checkpoint header (code change, Web-i).** `index.ts` adds `Access-Control-Expose-Headers: X-FTL-Checkpoint` to every response for an allowed origin that is not null. A signalling test asserts the header. Without it, rehost and mirror refresh fail from a page (§2.4).
+**Expose the checkpoint header (code change, Web-i).** `index.ts` adds `Access-Control-Expose-Headers: X-FTL-Checkpoint` wherever `index.ts:69` sets `Access-Control-Allow-Origin`: that is, whenever an `Origin` header is present and allowed, including the string `null` sent by Electron's `file://` page. A signalling test asserts the header for both a listed https origin and `Origin: null`. Without it, rehost and mirror refresh fail from a page (§2.4).
 
 **Socket upgrades.** The `index.ts` wrapper already gates socket upgrades by `Origin`. A signalling test is added: an upgrade with a disallowed `Origin` gets 403, and an upgrade with an allowed origin succeeds.
 
-**Allowed origins (Web-iii, the owner's login).** `ALLOWED_ORIGINS` is a secret, so it is set with `wrangler secret put ALLOWED_ORIGINS`. The value is the full comma list, `null,https://<project>.vercel.app`. The `null` entry stays, because Electron's `file://` page sends `Origin: null` once the session runs in the page. Then one `wrangler deploy` ships the Expose-Headers change.
+**Allowed origins (Web-iii, the owner's login).** `ALLOWED_ORIGINS` is a secret, so it is set with `wrangler secret put ALLOWED_ORIGINS`. The value is the full comma list, `null,https://<project>.vercel.app`. A missing origin and the string `null` are allowed in code without consulting the secret (`index.ts:60`), so Electron's `file://` page (which sends `Origin: null`) does not depend on the list. The secret's `null` entry is kept only to match the existing provisioning. Then one `wrangler deploy` ships the Expose-Headers change.
 
 **Local test origins.** For the gates, the local workerd runs with `ALLOWED_ORIGINS` set to `null,http://localhost:<preview port>,http://127.0.0.1:<preview port>`. Electron also has to work in dev: its dev page is served from the electron-vite dev server, so the dev origin is added in local dev runs.
 
@@ -313,7 +317,7 @@ The online session takes the Web Lock `ftlite-online` for as long as it exists. 
 
 While hosting, in a lobby or in a match, `beforeunload` triggers the browser's standard leave prompt. Browsers show their own text. The prompt is skipped in Electron (§3.3).
 
-On `pagehide`, the session does the best-effort release (§3.1). No new checkpoint is captured. If the host's tab is gone, the existing rehost flow lets a player continue the match from the latest periodic checkpoint at the service, or from their IndexedDB mirror, as it does when an Electron host quits today. Up to one checkpoint interval of play can be lost.
+On a `pagehide` with `persisted: false`, the session does the best-effort release (§3.1). A back-forward-cache `pagehide` only suspends. No new checkpoint is captured. If the host's tab is gone, the existing rehost flow lets a player continue the match from the latest periodic checkpoint at the service, or from their IndexedDB mirror, as it does when an Electron host quits today. Up to one checkpoint interval of play can be lost.
 
 ### 7.7 Unsupported browsers
 
