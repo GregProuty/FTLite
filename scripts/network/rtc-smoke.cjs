@@ -35,8 +35,11 @@ async function until(read, predicate, label, ms = 5000) {
   // Do not dump arbitrary reports/signals/native stats, which can contain secrets.
   throw Error(label + ' timeout');
 }
-const js = (window, source) => bounded(window.webContents.executeJavaScript(source), 'renderer call');
-const call = (window, method, ...args) => js(window, `window.rtcPage.${method}(${args.map(a => JSON.stringify(a === undefined ? null : a)).join(', ')})`);
+const js = (window, source, ms = 5000) => bounded(window.webContents.executeJavaScript(source), 'renderer call', ms);
+const source = (method, args) => `window.rtcPage.${method}(${args.map(a => JSON.stringify(a === undefined ? null : a)).join(', ')})`;
+const call = (window, method, ...args) => js(window, source(method, args));
+/** A page call with its own budget (readiness keeps the old 31 s native budget instead of the 5 s renderer-call cap). */
+const callWithin = (ms, window, method, ...args) => js(window, source(method, args), ms);
 const host = (method, ...args) => call(hostPage, method, ...args);
 const nativeStatus = window => js(window, 'window.rtcNative.status()');
 async function request(command) {
@@ -46,9 +49,10 @@ async function request(command) {
 async function checkpoint() { return JSON.parse(Buffer.from((await request({ kind: 'checkpoint' })).checkpointBytes, 'base64').toString('utf8')); }
 /** The first failed readiness of a pair, or its readiness when both succeed (as Promise.all over the old two promises). */
 function firstOutcome(settled) {
-  return new Promise(done => {
-    for (const promise of settled) promise.then(value => { if (!value.ok) done(value); });
-    Promise.all(settled).then(values => done(values.find(value => !value.ok) ?? { ok: true, value: values.map(value => value.value) }));
+  return new Promise((done, reject) => {
+    // A page call that itself rejects (a timed-out js()) rejects the outcome instead of escaping as an unhandled rejection.
+    for (const promise of settled) promise.then(value => { if (!value.ok) done(value); }, reject);
+    Promise.all(settled).then(values => done(values.find(value => !value.ok) ?? { ok: true, value: values.map(value => value.value) }), reject);
   });
 }
 async function status(record) {
@@ -134,7 +138,7 @@ async function pair(options = {}) {
     assert(subscribed.canAllocate === false, 'producer enabled before validated state');
   }
   await host('startAttempt', 'host', { ...base, role: 'offerer' });
-  const readiness = () => [host('readiness', 'host', id), call(guest.window, 'readiness', 'guest', id)];
+  const readiness = (ms = 5000) => [callWithin(ms, hostPage, 'readiness', 'host', id), callWithin(ms, guest.window, 'readiness', 'guest', id)];
   if (options.cancel) {
     await Promise.all([host('closeAttempt', 'host', id), call(guest.window, 'closeAttempt', 'guest', id)]);
     const outcome = await bounded(firstOutcome(readiness()), 'cancelled readiness');
@@ -151,7 +155,7 @@ async function pair(options = {}) {
     assert(!outcome.ok && outcome.error === 'rtc-attempt-failed', 'wrong native rejection');
     return record;
   }
-  const caps = await bounded(Promise.all(readiness()), 'native RTC readiness', 31000);
+  const caps = await bounded(Promise.all(readiness(31000)), 'native RTC readiness', 31000);
   assert(caps.every(cap => cap.ok && cap.value.latestPayloadLimit === 16088), 'negotiated cap missing'); record.ready = true;
   if (options.player !== undefined) {
     assert((await status(record)).publication === null, 'authority attached before readiness');
@@ -202,7 +206,7 @@ async function run() {
     const settled = await host('startHost', identity, mode);
     assert(!settled.ok && settled.error === reason, 'wrong early failure');
   }
-  await until(() => host('counts'), value => value.workers === 2 && value.workerExits === 2, 'early Worker terminations');
+  await until(() => host('counts'), value => value.workers === 2 && value.workerExits === 2 && value.workerErrors === 1, 'early Worker terminations');
   evidence('early-cleanup', 'abort inside the spawn task and a Worker error before readiness both rejected; both Workers terminated');
   assert((await host('startHost', identity)).ok, 'host start failed');
   await request({ kind: 'start', initBytes: bytes(init) });

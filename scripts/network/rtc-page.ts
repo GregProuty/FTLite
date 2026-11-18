@@ -96,7 +96,8 @@ const api = {
   killHostTransport: () => settle(host!.transport.dispose()),
   /** Page MessagePorts created through MessageChannel; `open` counts those neither closed nor transferred. */
   ports: () => trackPagePorts(),
-  counts: () => ({ workers: workers.length, workerExits: workers.filter(w => w.terminated || w.errored).length }),
+  /** workerExits counts only the owner's terminate() (the wrapper); an injected or real `error` event is separate evidence. */
+  counts: () => ({ workers: workers.length, workerExits: workers.filter(w => w.terminated).length, workerErrors: workers.filter(w => w.errored).length }),
   async dispose() {
     await hostStarting;   // a start still in flight finishes first, so its Worker is disposed below as well
     for (const transport of owned.values()) transport.dispose(); owned.clear();

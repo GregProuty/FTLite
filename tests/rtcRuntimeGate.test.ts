@@ -5,7 +5,7 @@ import { requiredRtcChecks, validateRtcReport } from '../scripts/network/rtc-smo
 // These objects are not used as RTC or canonical-state evidence.
 function report() {
   const details: Record<string, any> = {
-    'early-cleanup': 'two real pre-spawn kill=false/retry=true exits',
+    'early-cleanup': 'abort inside the spawn task and a Worker error before readiness both rejected; both Workers terminated',
     'wrong-ticket': 'native rejected/cancelled; survivor canonical; native resources closed',
     'stale-generation': 'native rejected/cancelled; survivor canonical; native resources closed',
     'cancel-attempt': 'native rejected/cancelled; survivor canonical; native resources closed',

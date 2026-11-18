@@ -30,8 +30,12 @@ async function bounded(promise, label, ms = 5000, ignoreFatal = false) {
 async function until(read, predicate, label) {
   return bounded((async () => { for (;;) { if (fatalError) throw fatalError; const value = await read(); if (predicate(value)) return value; await delay(10); } })(), label);
 }
-const js = (window, source) => bounded(window.webContents.executeJavaScript(source), 'page call');
-const call = (window, method, ...args) => js(window, `window.rtcPage.${method}(${args.map(a => JSON.stringify(a === undefined ? null : a)).join(', ')})`);
+const js = (window, source, ms = 5000) => bounded(window.webContents.executeJavaScript(source), 'page call', ms);
+const source = (method, args) => `window.rtcPage.${method}(${args.map(a => JSON.stringify(a === undefined ? null : a)).join(', ')})`;
+const call = (window, method, ...args) => js(window, source(method, args));
+// Readiness had no own bound before Web-i (only the 35 s whole-gate budget); keep that instead of the 5 s page-call cap.
+const READINESS_MS = 35000;
+const callWithin = (ms, window, method, ...args) => js(window, source(method, args), ms);
 const native = peer => js(peer.window, 'window.rtcNative.status()');
 async function closeAttempt(peer) {
   const attempt = peer.attempt; if (!attempt || attempt.closed) return;
@@ -47,7 +51,7 @@ function event(peer, value) {
     peer.attempt = attempt; peer.attempts.push(attempt);
     // Registration and start are issued in order; readiness must NOT block later signal delivery.
     attempt.registered = call(peer.window, 'startAttempt', 'peer', { ...value.link, iceServers: [] });
-    void attempt.registered.then(() => call(peer.window, 'readiness', 'peer', value.link.attemptId)).then(outcome => {
+    void attempt.registered.then(() => callWithin(READINESS_MS, peer.window, 'readiness', 'peer', value.link.attemptId)).then(outcome => {
       if (attempt.closed || stopping) return;
       if (!outcome.ok) throw Error('native attempt failed: ' + outcome.error);
       attempt.cap = outcome.value; attempt.ready = ++sequence;
