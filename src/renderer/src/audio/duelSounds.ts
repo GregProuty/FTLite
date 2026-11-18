@@ -4,6 +4,7 @@ import { hitsCrew, type ViewEvent } from '../render/tactical/fxModel';
 import { HIT_FRESH_TICKS } from '../render/impactModel';
 import type { Cue } from '../events/audioCues';
 import type { SoundRequest } from './soundBank';
+import { CUE_RECIPES } from './cueRecipes';
 
 /** Copies of sim constants (types-only imports from sim/), pinned by tests/audioDuel.test.ts: the crew ship's slot and
  *  the outcomes Running and CrewWins. */
@@ -49,4 +50,50 @@ export function duelStateSounds(w: DuelWatch | null, v: DuelWatchView, pan: Pan)
   v.missiles.forEach((m, k) => { if (m.active && !w.missiles[k]) sounds.push({ key: 'thruster', gain: 0.5, dur: 0.7, pan: pan(m.x, m.y) }); });
   if (w.outcome === OUTCOME_RUNNING && v.outcome !== OUTCOME_RUNNING) cues.push(v.outcome === OUTCOME_CREW_WINS ? 'victory' : 'defeat');
   return { watch, sounds, cues };
+}
+
+// Duel polish i spec §C: sound cues for trouble. The fire alarm, a character going down or being picked up, and the local
+// character's heartbeat, from state diffs (both modes see the same DuelState, so Single player and online alike).
+
+/** A copy of render/duel/readoutModel's HEALTH_LOW (pinned by tests/audioDuel.test.ts): the heartbeat runs below it. */
+export const HEARTBEAT_BELOW = 30;
+/** Seconds between heartbeats, and at most one fire alarm per FIRE_ALARM_GAP_S seconds. */
+export const HEARTBEAT_S = 0.8, FIRE_ALARM_GAP_S = 1;
+/** The heartbeat: the low boom, softened through a 400 Hz low-pass. */
+export const HEARTBEAT: SoundRequest = { key: 'lowBoom', gain: 0.35, pan: 0, filter: { type: 'lowpass', from: 400 } };
+/** The fire alarm: the `alarm` cue's layers at gain 0.5 (a cue plays at its recipe's gain, so the requests are scaled here). */
+export const FIRE_ALARM: readonly SoundRequest[] = (CUE_RECIPES.alarm ?? []).map((r) => ({ ...r, gain: 0.5 }));
+
+/** Each character's health and downed state, in player order (the scene reads them from the interior's components). */
+export interface CrewLife { health: readonly number[]; downed: readonly boolean[] }
+/** What the crew diff reads: the tactical tick, the round, and each character's downed state, in player order. */
+export interface CrewLifeView { tick: number; round: number; downed: readonly boolean[] }
+export interface CrewWatch { tick: number; round: number; downed: boolean[] }
+
+/** `alarm` when a character goes down, `ready` when one is picked up (in player order). The same re-baseline as
+ *  duelStateSounds: no baseline, a new round, a tick backwards or a stale jump plays nothing. */
+export function crewLifeSounds(w: CrewWatch | null, v: CrewLifeView): { watch: CrewWatch; cues: Cue[] } {
+  const watch: CrewWatch = { tick: v.tick, round: v.round, downed: [...v.downed] }, cues: Cue[] = [];
+  if (!w || w.round !== v.round || v.tick < w.tick || v.tick - w.tick > HIT_FRESH_TICKS || w.downed.length !== v.downed.length) return { watch, cues };
+  v.downed.forEach((down, pid) => { if (down !== w.downed[pid]) cues.push(down ? 'alarm' : 'ready'); });
+  return { watch, cues };
+}
+
+/** The heartbeat's clock: `next` is when the next beat is due (null: off). It beats at once when it comes on, then every
+ *  HEARTBEAT_S seconds of `now` while `on`; going off clears it, so coming back on beats at once again. */
+export function heartbeat(next: number | null, on: boolean, now: number): { next: number | null; beat: boolean } {
+  if (!on) return { next: null, beat: false };
+  if (next !== null && now < next) return { next, beat: false };
+  return { next: now + HEARTBEAT_S, beat: true };
+}
+
+/** Whether the local character's heart beats: conscious, below HEARTBEAT_BELOW, the round running and not paused. */
+export function heartbeatOn(v: { health: number; downed: boolean; running: boolean; paused: boolean }): boolean {
+  return !v.downed && v.running && !v.paused && v.health < HEARTBEAT_BELOW;
+}
+
+/** The fire alarm's rate limit: plays when a room caught fire and none played in the last FIRE_ALARM_GAP_S seconds. */
+export function fireAlarm(last: number | null, ignited: number, now: number): { last: number | null; play: boolean } {
+  if (ignited <= 0 || (last !== null && now - last < FIRE_ALARM_GAP_S)) return { last, play: false };
+  return { last: now, play: true };
 }
