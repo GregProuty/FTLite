@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { resolveOnlineConfig } from '../../src/main/network/onlineConfig';
+import { resolveOnlineConfig } from '../../src/shared/onlineConfig';
 import { validateOnlineRecoveryReport } from './online-recovery-report';
 import { isCanonicalServiceOrigin } from './internet-app-manifest';
 import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';

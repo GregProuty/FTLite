@@ -13,7 +13,7 @@ import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import { sitDown, standUp } from '../src/renderer/src/sim/stations';
 import type { OnlinePortDescriptor, OnlineStatus } from '../src/shared/onlineSession';
-import { duelCompatibility } from '../src/main/network/onlineDuel';
+import { duelCompatibility } from '../src/network/online/onlineDuel';
 import { CUTTER } from './helpers/scriptedDuel';
 import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import { createUiStore } from '../src/renderer/src/ui/store';

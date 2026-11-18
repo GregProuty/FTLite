@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { createOnlineSession } from '../src/main/network/onlineSession';
-import { sectorCompatibility, sectorInit } from '../src/main/network/onlineSector';
+import { createOnlineSession } from '../src/network/online/onlineSession';
+import { sectorCompatibility, sectorInit } from '../src/network/online/onlineSector';
 import { initialOnlineCheckpoint } from './helpers/onlineCheckpoint';
 import { createAuthority, type Checkpoint } from '../src/renderer/src/authority/authority';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import hound from '../src/renderer/src/sim/ship/hound.json';
 import type { RoomSnapshot } from '../src/shared/roomSession';
-import type { SessionMirror } from '../src/main/network/mirrorStore';
+import type { SessionMirror } from '../src/network/online/mirrorStore';
 const deferred = <T>() => { let resolve!: (v: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; };
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); vi.useRealTimers(); });

@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { createOnlineIce } from '../src/main/network/onlineIce';
+import { createOnlineIce } from '../src/network/online/onlineIce';
 const owner = { roomId: 'a'.repeat(32), hostGeneration: 1, seatId: 0, seatGeneration: 1, connectionId: 'b'.repeat(32) };
 const credentials = (expiresAtEpochMs = 1000000) => ({ iceServers: [{ urls: ['turn:example.test:3478'], username: 'ephemeral', credential: 'test' }], expiresAtEpochMs });
 function rig(mode: 'loopback' | 'turn' = 'turn') {

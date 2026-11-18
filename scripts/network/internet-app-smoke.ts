@@ -4,7 +4,7 @@ import { copyFileSync,existsSync,mkdtempSync,mkdirSync,readdirSync,readFileSync,
 import { tmpdir } from 'node:os';
 import { basename,dirname,join,resolve,sep } from 'node:path';
 import electron from 'electron';
-import { resolveOnlineConfig } from '../../src/main/network/onlineConfig';
+import { resolveOnlineConfig } from '../../src/shared/onlineConfig';
 import { createLauncherDeadline,removeOwnedDirectory,stopOwnedProcess } from './lease-smoke-lifecycle';
 import { startOnlineAppRuntime,waitForAppRequest } from './online-app-runtime';
 import { INTERNET_ARTIFACTS,validateInternetRun,validateLocalInternetDriverRun } from './internet-app-report';

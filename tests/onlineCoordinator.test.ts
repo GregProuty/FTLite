@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createOnlineSession } from '../src/main/network/onlineSession';
+import { createOnlineSession } from '../src/network/online/onlineSession';
 import { initialOnlineCheckpoint } from './helpers/onlineCheckpoint';
-import { sectorCompatibility } from '../src/main/network/onlineSector';
+import { sectorCompatibility } from '../src/network/online/onlineSector';
 import type { RoomServiceEvent } from '../src/network/session/serviceClient';
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 function harness(capacity = 1, ownSeat = 0, monotonicOrigin = 0, serviceOrigin = 'http://127.0.0.1:8787') {
@@ -44,6 +44,15 @@ function harness(capacity = 1, ownSeat = 0, monotonicOrigin = 0, serviceOrigin =
 }
 afterEach(() => vi.useRealTimers());
 describe('online coordinator ownership', () => {
+  it('releases synchronously on unload, with no exit capture, and stays disposed', async () => {
+    const h = harness(); await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); await h.owner.dispatch({ type: 'start' });
+    h.service.request.mockClear(); h.host.captureCheckpoint.mockClear();
+    h.owner.releaseForUnload();
+    expect(h.service.request.mock.calls.map((c: any) => c[0].type)).toEqual(['host-release']);
+    expect(h.host.captureCheckpoint).not.toHaveBeenCalled(); expect(h.service.close).toHaveBeenCalled();
+    expect(await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 })).toEqual({ ok: false, code: 'online-disabled' });
+    h.owner.releaseForUnload(); await h.owner.dispose();
+  });
   it('reports live receipt age through status reads and preserves it after leaving', async () => {
     vi.useFakeTimers(); const h = harness(); await h.owner.dispatch({ type: 'host', mode: 'sector', capacity: 1 }); await h.owner.dispatch({ type: 'ready', ready: true }); await h.owner.dispatch({ type: 'start' });
     await vi.advanceTimersByTimeAsync(200); expect(h.owner.status().mirror.receivedAgeMs).toBe(200);
