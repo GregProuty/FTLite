@@ -35,3 +35,10 @@ export const BLAST_ROCK_DAMAGE_MIN = 2;
 export const BLAST_ROCK_DAMAGE_MAX = 6;
 export const BLAST_PUSH = 60000;
 export const BLAST_SHIP_PUSH = 120;
+
+/** §5.1: every ship's mass for rock contacts (all classes in this spike). */
+export const SHIP_MASS = 900;
+/** §5.1: a moving rock's hull cost, min(RAM_HULL_MAX, 1 + floor(max(0, impact − RAM_HULL_FREE) / RAM_HULL_STEP)). */
+export const RAM_HULL_FREE = 40;
+export const RAM_HULL_STEP = 40;
+export const RAM_HULL_MAX = 4;

@@ -33,7 +33,7 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTu
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) flySlot(state, i, inputs[i]!.helm ? inputs[i]!.axes : NO_AXES, tuning);
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) flyMissile(state, i);   // homing torpedo spec: it steers itself, attended or not
   stepRocks(state);   // SPIKE (destructible asteroids): fragments fly and meet the planet and the other rocks
-  resolveContacts(state);
+  resolveContacts(state, true);   // spike ii §5.1: rocks are bodies in the duel
   resolveMissiles(state);
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) tickWeapons(state, i, inputs[i]!);
   hostilityStep(state, hunter);
