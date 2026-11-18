@@ -16,8 +16,10 @@ export function isOnlineErrorCode(value: unknown): value is OnlineErrorCode {
 /** The online modes a room can run (H-2 spec §2). The menu offers only the duel; the sector forms are a test-only entry
  *  the main process honours only when it was started for it (unpackaged and FTLITE_SECTOR_ONLINE_TEST=1). */
 export type OnlineMode = 'duel' | 'sector';
+/** A duel room's crew size (Sci-2 spec §2.1): the host picks 2, 3 or 4. */
+export type DuelCrewSize = 2 | 3 | 4;
 export type OnlineAction =
-  | { type: 'host'; mode: 'duel' }
+  | { type: 'host'; mode: 'duel'; capacity: DuelCrewSize }
   | { type: 'host'; mode: 'sector'; capacity: number }
   | { type: 'join'; code: string; mode?: OnlineMode }
   | { type: 'ready'; ready: boolean }
@@ -25,8 +27,8 @@ export type OnlineAction =
   | { type: 'view-state'; epoch: number; phase: 'synced' | 'running' | 'paused' | 'ended' }
   | { type: 'reconnect' }
   | { type: 'rehost' }
-  /** `helmPlayer`: the duel host's seat choice (spec §2), 0 when absent; the sector ignores it. */
-  | { type: 'start'; helmPlayer?: 0 | 1 }
+  /** `helmPlayer`: the duel host's own seat (spec §2; Sci-2: 0..3), 0 when absent; the sector ignores it. */
+  | { type: 'start'; helmPlayer?: number }
   | { type: 'retry' }
   | { type: 'leave' }
   | { type: 'forget-seat' };
@@ -74,12 +76,12 @@ const phases: readonly OnlinePhase[] = ['idle', 'creating', 'joining', 'lobby', 
 export function validateOnlineAction(value: unknown): value is OnlineAction {
   if (!rtcRecord(value)) return false;
   switch (value.type) {
-    case 'host': return value.mode === 'duel' ? rtcKeys(value, ['type', 'mode'])
+    case 'host': return value.mode === 'duel' ? rtcKeys(value, ['type', 'mode', 'capacity']) && (value.capacity === 2 || value.capacity === 3 || value.capacity === 4)
       : value.mode === 'sector' && rtcKeys(value, ['type', 'mode', 'capacity']) && positive(value.capacity) && value.capacity <= 4;
     case 'join': return (rtcKeys(value, ['type', 'code']) || rtcKeys(value, ['type', 'code', 'mode']) && (value.mode === 'duel' || value.mode === 'sector'))
       && typeof value.code === 'string' && value.code.length <= 32
       && /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/.test(value.code.trim().toUpperCase());
-    case 'start': return rtcKeys(value, ['type']) || rtcKeys(value, ['type', 'helmPlayer']) && (value.helmPlayer === 0 || value.helmPlayer === 1);
+    case 'start': return rtcKeys(value, ['type']) || rtcKeys(value, ['type', 'helmPlayer']) && seatId(value.helmPlayer);
     case 'ready': return rtcKeys(value, ['type', 'ready']) && typeof value.ready === 'boolean';
     case 'remove-seat': return rtcKeys(value, ['type', 'seatId']) && seatId(value.seatId);
     case 'view-state': return rtcKeys(value, ['type', 'epoch', 'phase']) && positive(value.epoch)
@@ -146,15 +148,15 @@ export function validateOnlinePortEnvelope(value: unknown): value is { version: 
 }
 /** Ordinary contextBridge API. MessagePorts use the renderer-owned facade instead. */
 export interface OnlinePreloadApi {
-  /** Host a duel room; `{ mode: 'sector', capacity }` is the test-only sector entry (spec §10). */
-  host(sector?: { mode: 'sector'; capacity: number }): Promise<OnlineResult>;
+  /** Host a duel room for a crew of 2, 3 or 4 (Sci-2 spec §4.5); `{ mode: 'sector', capacity }` is the test-only sector entry (spec §10). */
+  host(room: { mode: 'duel'; capacity: DuelCrewSize } | { mode: 'sector'; capacity: number }): Promise<OnlineResult>;
   join(code: string, mode?: OnlineMode): Promise<OnlineResult>;
   ready(ready: boolean): Promise<OnlineResult>;
   removeSeat(seatId: number): Promise<OnlineResult>;
   viewState(epoch: number, phase: Extract<OnlineAction, { type: 'view-state' }>['phase']): Promise<OnlineResult>;
   reconnect(): Promise<OnlineResult>;
   rehost(): Promise<OnlineResult>;
-  start(helmPlayer?: 0 | 1): Promise<OnlineResult>;
+  start(helmPlayer?: number): Promise<OnlineResult>;
   retry(): Promise<OnlineResult>;
   leave(): Promise<OnlineResult>;
   forgetSeat(): Promise<OnlineResult>;

@@ -71,7 +71,7 @@ describe('the forms', () => {
     click('multiplayer'); click('host');
     expect(screen.queryByTestId('capacity')).toBeNull(); expect(screen.getByTestId('host-form').querySelector('select')).toBeNull();
     expect(text('host-note')).toBe('A duel for two: one of you flies the Helm, the other mans Weapons.');
-    fireEvent.submit(screen.getByTestId('host-form')); expect(host).toHaveBeenCalledWith();
+    fireEvent.submit(screen.getByTestId('host-form')); expect(host).toHaveBeenCalledWith({ mode: 'duel', capacity: 3 });
   });
   it('validates the room code on submit', () => {
     const join = vi.fn(() => new Promise<never>(() => {})), { actions } = renderUi({ api: { join } });

@@ -418,7 +418,7 @@ export function createOnlineSession(deps: OnlineSessionDeps): OnlineSessionOwner
     try {
       let seat: SeatSession;
       if (action.type === 'host') {
-        const capacity = action.mode === 'sector' ? action.capacity : 2;   // a duel room is always capacity 2
+        const capacity = action.capacity;   // Sci-2 spec §4.5: a duel room holds the crew the host chose (2, 3 or 4)
         seat = await wait(c, c.service.create(c.mode.compatibility(capacity), capacity));
       } else if (action.type === 'join') {
         // The duel tries its one compatibility: `incompatible` means a different build. The sector tries each layout.

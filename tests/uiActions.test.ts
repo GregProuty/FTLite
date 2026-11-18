@@ -11,12 +11,16 @@ describe('requests', () => {
     actions.rehost(); actions.rehost(); expect(rehost).toHaveBeenCalledOnce();
     await flush(); actions.rehost(); expect(rehost).toHaveBeenCalledTimes(2);
   });
-  it('Host creates the duel room (no capacity) and enters the session; Join trims, upper-cases and deduplicates', async () => {
+  it('Host creates the duel room for the menu\'s crew (default 3, Sci-2 spec §4.5) and enters the session; Join trims, upper-cases and deduplicates', async () => {
     const host = vi.fn(async () => ({ ok: true as const })), join = vi.fn(() => new Promise<never>(() => {}));
     const { store, deps, actions } = makeUi({ api: { host, join } });
     actions.setStatus({ ...idle, actions: ['host', 'join', 'reconnect'] });
+    expect(store.getState().menu.crew).toBe(3);
     actions.openMultiplayer(); actions.openHost(); actions.host();
-    expect(host).toHaveBeenCalledWith(); expect(deps.online).toHaveBeenCalledOnce(); expect(store.getState().menu.page).toBe('session');
+    expect(host).toHaveBeenCalledWith({ mode: 'duel', capacity: 3 }); expect(deps.online).toHaveBeenCalledOnce(); expect(store.getState().menu.page).toBe('session');
+    await flush(); actions.setCrew(2); expect(store.getState().menu.crew).toBe(2);
+    actions.host(); expect(host).toHaveBeenLastCalledWith({ mode: 'duel', capacity: 2 });
+    await flush(); actions.host(4); expect(host).toHaveBeenLastCalledWith({ mode: 'duel', capacity: 4 });
     await flush(); actions.home(); expect(store.getState().menu.page).toBe('home');
     actions.openMultiplayer(); actions.openJoin(); actions.join(' abcdef12 '); actions.join(' abcdef12 ');
     expect(join).toHaveBeenCalledExactlyOnceWith('ABCDEF12');

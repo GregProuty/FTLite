@@ -15,13 +15,13 @@ import { DUEL_RECORD_MAX_BYTES, DUEL_RECORD_MAX_MS, latencyFigure, arrivalJitter
 import type { RoomSnapshot } from '../src/shared/roomSession';
 import { hunterDown, liveDuel } from './helpers/liveDuel';
 
-function room(runId = '0000beef' + 'b'.repeat(24)): RoomSnapshot { return { roomId: 'a'.repeat(32), runId, joinCode: 'ABCDEFGH', capacity: 2, hostSeatId: 0,
-  hostGeneration: 1, rosterRevision: 1, phase: 'lobby', compatibility: duelCompatibility(), seats: [0, 1].map((seatId) => ({ seatId, seatGeneration: 1, occupied: true, connected: true, ready: false })) }; }
+function room(runId = '0000beef' + 'b'.repeat(24), capacity = 2): RoomSnapshot { return { roomId: 'a'.repeat(32), runId, joinCode: 'ABCDEFGH', capacity, hostSeatId: 0,
+  hostGeneration: 1, rosterRevision: 1, phase: 'lobby', compatibility: duelCompatibility(), seats: Array.from({ length: capacity }, (_, seatId) => ({ seatId, seatGeneration: 1, occupied: true, connected: true, ready: false })) }; }
 const commit = (snapshot: RoomSnapshot, value: unknown) => { const bytes = Buffer.from(JSON.stringify(value)); return { initBase64: bytes.toString('base64'), initHash: createHash('sha256').update(bytes).digest('hex'),
   lease: { roomId: snapshot.roomId, hostGeneration: 1, hostSeatId: 0, nonce: 'c'.repeat(32), expiresAtEpochMs: Date.now() + 12000 } }; };
 
 describe('the duel online mode in main (spec §2)', () => {
-  it('a duel room is the Hound at duel schema version 2, capacity 2, round 0 seeded from its runId', () => {
+  it('a duel room is the Hound at duel schema version 2, round 0 seeded from its runId', () => {
     expect(duelCompatibility()).toMatchObject({ protocolVersion: 2, modeId: 'duel', schemaVersion: 2 });
     expect(duelJoinCompatibilities()).toEqual([duelCompatibility()]);
     const snapshot = room();
@@ -29,8 +29,28 @@ describe('the duel online mode in main (spec §2)', () => {
     expect(seedFromRunId(snapshot.runId)).toBe(nextValidSeed(0xbeef));
     expect(duelInit(snapshot, { helmPlayer: 1 }).helmPlayer).toBe(1);
     expect(duelInit(snapshot, undefined, 2277).seed).toBe(2277);   // the test-only seed
-    expect(() => duelInit({ ...snapshot, capacity: 3 })).toThrow();
+    expect(() => duelInit(room(undefined, 1))).toThrow();   // a crew is 2..4
     expect(() => duelInit({ ...snapshot, compatibility: sectorCompatibility(2) })).toThrow();
+  });
+  it('a duel room holds a crew of 2, 3 or 4 (Sci-2 spec §4.5): the init carries it and the Helm player is a seat of it', () => {
+    for (const crew of [2, 3, 4] as const) {
+      const snapshot = room(undefined, crew);
+      expect(duelInit(snapshot)).toMatchObject({ playerCount: crew, helmPlayer: 0 });
+      expect(duelInit(snapshot, { helmPlayer: crew - 1 }).helmPlayer).toBe(crew - 1);
+      expect(() => duelInit(snapshot, { helmPlayer: crew }), `helm ${crew} of ${crew}`).toThrow();
+    }
+  });
+  it('validateDuelMirror refuses a mirror whose init is not the room\'s crew size; the adapter passes the capacity', () => {
+    const snapshot = room(undefined, 3), init = duelInit(snapshot), live = liveDuel(init, hunterDown);
+    live.tick(40);
+    const bytes = new TextEncoder().encode(JSON.stringify(live.core.captureCheckpoint()));
+    const mirror = { bytes, metadata: { version: 1 as const, protocolVersion: 2 as const, roomId: snapshot.roomId, runId: snapshot.runId, compatibility: snapshot.compatibility,
+      hostGeneration: 1, checkpointSequence: 1, capturedTick: live.tickNow(), payloadSha256: createHash('sha256').update(bytes).digest('hex') } };
+    expect(() => validateDuelMirror(mirror)).not.toThrow();
+    expect(() => validateDuelMirror(mirror, 3)).not.toThrow();
+    expect(() => validateDuelMirror(mirror, 2)).toThrow();
+    expect(() => validateModeMirror(mirror, 3)).not.toThrow();
+    expect(() => validateModeMirror(mirror, 4)).toThrow();
   });
   it('the guest accepts either Helm player in a committed init and rejects any other field change', async () => {
     const snapshot = room();
@@ -65,10 +85,11 @@ describe('the session modes and the sector test-only entry (spec §2, §10)', ()
       clock: { nowMs: () => 0, epochMs: () => Date.now() }, scheduler: { setTimeout: (cb, ms) => setTimeout(cb, ms), clearTimeout: (id) => clearTimeout(id as never) }, nonce: () => 'f'.repeat(32), sectorTestEntry });
     return { session, create, join };
   }
-  it('Host creates a two-seat duel room; Join tries the duel compatibility only', async () => {
+  it('Host creates a duel room for the crew size chosen; Join tries the duel compatibility only', async () => {
     const o = owner();
-    expect(await o.session.dispatch({ type: 'host', mode: 'duel' })).toEqual({ ok: false, code: 'unavailable' });
-    expect(o.create.mock.calls).toEqual([[duelCompatibility(), 2]]);
+    expect(await o.session.dispatch({ type: 'host', mode: 'duel' } as never)).toEqual({ ok: false, code: 'invalid-action' });   // a duel host action carries its crew
+    expect(await o.session.dispatch({ type: 'host', mode: 'duel', capacity: 3 })).toEqual({ ok: false, code: 'unavailable' });
+    expect(o.create.mock.calls).toEqual([[duelCompatibility(), 3]]);
     expect(await o.session.dispatch({ type: 'join', code: 'ABCDEFGH' })).toEqual({ ok: false, code: 'not-found' });
     expect(o.join.mock.calls).toEqual([['ABCDEFGH', duelCompatibility()]]);
   });

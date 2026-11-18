@@ -15,7 +15,7 @@ export interface OnlineModeAdapter {
   /** The compatibilities a joiner tries, in order. */
   joinCompatibilities(): readonly RoomCompatibility[];
   /** The init a room implies; throws for a room this mode cannot run. `helmPlayer` is the duel host's seat choice. */
-  init(snapshot: RoomSnapshot, choice?: { helmPlayer: 0 | 1 }): unknown;
+  init(snapshot: RoomSnapshot, choice?: { helmPlayer: number }): unknown;
   validateCommittedStart(snapshot: RoomSnapshot, committed: CommittedStart): Promise<unknown>;
   validateMirror(mirror: SessionMirror, capacity?: number): void;
 }
@@ -30,7 +30,7 @@ export function duelOnlineMode(testSeed?: number): OnlineModeAdapter {
     modeId: 'duel', compatibility: () => duelCompatibility(), joinCompatibilities: duelJoinCompatibilities,
     init: (snapshot, choice) => duelInit(snapshot, choice, testSeed),
     validateCommittedStart: (snapshot, committed) => validateCommittedDuelStart(snapshot, committed, testSeed),
-    validateMirror: (mirror) => validateDuelMirror(mirror)
+    validateMirror: (mirror, capacity) => validateDuelMirror(mirror, capacity)
   };
 }
 /** The adapter for a room's mode id, or undefined for a mode this build does not run online. */
