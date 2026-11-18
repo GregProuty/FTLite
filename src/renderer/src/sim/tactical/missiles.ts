@@ -5,7 +5,8 @@
 // the pool, whatever pool entry they sit in.
 import { hx, hy, wrapHeading } from './direction';
 import { roomAtImpact, sideOf } from './geometry';
-import { damageRock, rockAt, rocksNear, TORPEDO_ROCK_DAMAGE } from './rocks';
+import { rockAt, rocksNear, TORPEDO_ROCK_DAMAGE } from './rocks';
+import { hitRock } from './rockBreak';
 import { gravityAccel } from './physics';
 import { classOf, emptyMissile, missileOf, placeMissile, type DuelEvent, type Missile, type TacticalState } from './state';
 import { DT, MISSILE_CRUISE_SPEED, MISSILE_LEAD_CAP_S, MISSILE_MIN_CLOSING, R_MAP } from './tuning';
@@ -109,7 +110,7 @@ export function resolveMissiles(state: TacticalState): void {
     const rock = rocksNear(state, m.x, m.y, def.radius).find((k) => { const a = rockAt(state, k); return touches(m, def.radius, a.x, a.y, a.r); });
     if (rock !== undefined) {   // SPIKE: the torpedo's blast takes TORPEDO_ROCK_DAMAGE off the rock it touched
       const a = rockAt(state, rock), mvx = m.vx - a.vx, mvy = m.vy - a.vy;
-      damageRock(state, rock, TORPEDO_ROCK_DAMAGE, mvx, mvy, 'torpedo'); end(state, m, 'asteroid'); continue;
+      hitRock(state, rock, TORPEDO_ROCK_DAMAGE, mvx, mvy, 'torpedo', m.owner); end(state, m, 'asteroid'); continue;
     }
     if (m.x * m.x + m.y * m.y > R_MAP * R_MAP) { end(state, m, 'edge'); continue; }
     let landed = false;

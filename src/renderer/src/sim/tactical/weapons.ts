@@ -3,7 +3,8 @@
 // Commands arrive as one ShipInput per ship per tick; the duel step builds these from the authority's admitted commands.
 import { inArc, lineOfSight } from './geometry';
 import { launchMissile } from './missiles';
-import { AUTO_DIG, damageRock, firstBlocker, LASER_ROCK_DAMAGE } from './rocks';
+import { AUTO_DIG, firstBlocker, LASER_ROCK_DAMAGE } from './rocks';
+import { hitRock } from './rockBreak';
 import { hx, hy } from './direction';
 import { classOf, CREW_SLOT, missileOf, Room, type Axes, type TacticalState } from './state';
 
@@ -123,7 +124,7 @@ function shoot(state: TacticalState, i: number): void {
     const r = laserRockTarget(state, i);
     if (r) {
       state.events.push({ kind: 'laser', ship: i, hit: false, stripped: false, room: -1, x1: a.x, y1: a.y, x2: r.x, y2: r.y, rock: r.rock });
-      damageRock(state, r.rock, LASER_ROCK_DAMAGE, r.x - a.x, r.y - a.y, 'laser');
+      hitRock(state, r.rock, LASER_ROCK_DAMAGE, r.x - a.x, r.y - a.y, 'laser', i);
       return;
     }
   }

@@ -16,7 +16,8 @@ import type { DuelSink } from '../../ui/sinks';
 import type { AudioOut } from '../audio';
 import { createDuelScene } from './scene';
 import { soloRecorder } from './soloRecorder';
-import { damageRock, rockAt, rockSlots } from '../../sim/tactical/rocks';
+import { rockAt, rockSlots } from '../../sim/tactical/rocks';
+import { hitRock } from '../../sim/tactical/rockBreak';
 
 export interface DuelModeDeps {
   renderer: Renderer;
@@ -67,7 +68,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     seed: deps.seed, viewport, layout: deps.layout, onRound: (summary) => { void Promise.resolve(deps.recordDuel?.(solo.record(summary))).catch(() => {}); }
   });
   // SPIKE (destructible asteroids): a staging hook for the screenshots, solo only. Never in a shipped build.
-  (globalThis as unknown as { __spikeAsteroids?: unknown }).__spikeAsteroids = { duel: () => runtime.duel, rockAt, damageRock, rockSlots };
+  (globalThis as unknown as { __spikeAsteroids?: unknown }).__spikeAsteroids = { duel: () => runtime.duel, rockAt, hitRock, rockSlots };
   // Feel-ii visual checks: a staging hook, Single player only, set only when the page asked for it before the duel began.
   const stage = window as unknown as { __FTLITE_STAGE__?: boolean; __ftliteDuel?: unknown };
   if (stage.__FTLITE_STAGE__ === true) stage.__ftliteDuel = runtime;

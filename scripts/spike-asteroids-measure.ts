@@ -70,9 +70,9 @@ const sizes = (() => {
   let deltaFragmentsMedianBytes: number | null = null;
   const rk = (d.tactical as unknown as { rocks?: Float64Array }).rocks;
   if (rk) {
-    const mod = require('../src/renderer/src/sim/tactical/rocks') as typeof import('../src/renderer/src/sim/tactical/rocks');
+    const mod = require('../src/renderer/src/sim/tactical/rockBreak') as typeof import('../src/renderer/src/sim/tactical/rockBreak');
     let broken = 0;
-    for (let k = 0; k < d.tactical.map.asteroids.length && broken < 5; k++) if (rk[k * 7] === 1 && rk[k * 7 + 5]! >= 30) { mod.damageRock(d.tactical, k, 99, 1, 0, 'laser'); broken++; }
+    for (let k = 0; k < d.tactical.map.asteroids.length && broken < 5; k++) if (rk[k * 7] === 1 && rk[k * 7 + 5]! >= 30) { mod.hitRock(d.tactical, k, 99, 1, 0, 'laser'); broken++; }
     let prev = duelPublicationToImage(publication(d, 1000), options);
     const fd: number[] = [];
     for (let k = 0; k < 300; k++) { stepDuelTick(d, scriptedInput(pair, d)); if (k % 3 !== 2) continue; const image = duelPublicationToImage(publication(d, 1001 + k), options); fd.push(encodeDelta(prev, image).byteLength); prev = image; }

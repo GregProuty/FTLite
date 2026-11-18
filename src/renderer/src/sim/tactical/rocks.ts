@@ -7,27 +7,20 @@
 // a linear scan. rocksNear merges both, ascending, so every caller still meets rocks in one fixed slot order.
 // Two per-tick transient masks sit beside the pool (§3.1, §3.3): `rockBorn` (slots written with a new piece this tick)
 // and `rockDone` (slots that had their contact turn this tick); not hashed, cleared at the start of every stepDuel tick.
+// Breaking is rockBreak.ts, motion and rock-rock contacts rockContacts.ts, every number rockTuning.ts.
 import { queryGrid } from './grid';
 import type { MapDef } from './map';
-import { gravityAccel } from './physics';
 import { ROCK_HP_PER, ROCK_WAKE_SPEED } from './rockTuning';
-import type { RockCause, TacticalState } from './state';
-import { DT, R_MAP } from './tuning';
+import type { TacticalState } from './state';
 export type { RockCause } from './state';
 
 export const ROCK_STRIDE = 7;
 export const RockKind = { Gone: 0, Static: 1, Moving: 2 } as const;
 /** §3.1: spare slots for pieces. */
 export const ROCK_RESERVE = 96;
-/** Spike i's split rules, kept until Task 2 replaces them. */
+/** Spike i's numbers still in use until their rules are replaced: the laser's and AUTO_DIG (Task 4), the torpedo's (Task 5). */
 export const LASER_ROCK_DAMAGE = 1;
 export const TORPEDO_ROCK_DAMAGE = 4;
-export const FRAGMENT_ROCK_DAMAGE = 1;
-export const ROCK_SPLIT_R = 30;
-export const ROCK_SPLIT_SCALE = 0.55;
-export const ROCK_FLING = 40;
-export const ROCK_MIN_R = 10;
-/** The crew laser fires on its own at a rock that blocks its in-arc, in-range target (it digs). */
 export const AUTO_DIG = true;
 
 /** The pool's capacity for a map: its asteroids plus the reserve. Also the number of rock bodies in a ship's graceUntil. */
@@ -85,82 +78,6 @@ export function rocksNear(s: TacticalState, x: number, y: number, h: number): nu
 /** Write slot k's seven values. */
 export function writeRock(s: TacticalState, k: number, kind: number, x: number, y: number, vx: number, vy: number, r: number, hp: number): void {
   s.rocks.set([kind, x, y, vx, vy, r, hp], k * ROCK_STRIDE);
-}
-function clear(s: TacticalState, k: number): void { s.rocks.fill(0, k * ROCK_STRIDE, (k + 1) * ROCK_STRIDE); }
-/** A reused slot starts with no contact grace: every ship's grace for that body is cleared. */
-function freshGrace(s: TacticalState, k: number): void { for (const ship of s.ships) ship.graceUntil[k + 1] = 0; }
-
-/** Spike i: damage rock k by `dmg` from direction (dx, dy) (need not be unit; zero falls back to north). At 0 hp it breaks. */
-export function damageRock(s: TacticalState, k: number, dmg: number, dx: number, dy: number, by: RockCause): void {
-  if (!rockAlive(s, k)) return;
-  const b = k * ROCK_STRIDE, hp = s.rocks[b + 6]! - dmg;
-  s.rocks[b + 6] = Math.max(0, hp);
-  s.events.push({ kind: 'rock', what: 'hit', by, rock: k, x: s.rocks[b + 1]!, y: s.rocks[b + 2]!, r: s.rocks[b + 5]!, vx: s.rocks[b + 3]!, vy: s.rocks[b + 4]! });
-  s.rockHits++;
-  if (hp <= 0) breakRock(s, k, dx, dy, by);
-}
-
-/** Spike i: radius ≥ ROCK_SPLIT_R splits into two fragments thrown forward along the hit direction at ±45°, else it is dust. */
-export function breakRock(s: TacticalState, k: number, dx: number, dy: number, by: RockCause): void {
-  const a = rockAt(s, k), d = Math.sqrt(dx * dx + dy * dy), ux = d > 0 ? dx / d : 0, uy = d > 0 ? dy / d : -1;
-  const cr = a.r * ROCK_SPLIT_SCALE;
-  if (a.r < ROCK_SPLIT_R || cr < ROCK_MIN_R) {
-    clear(s, k); s.rockDust++;
-    s.events.push({ kind: 'rock', what: 'dust', by, rock: k, x: a.x, y: a.y, r: a.r, vx: a.vx, vy: a.vy });
-    return;
-  }
-  const px = -uy, py = ux, h = 0.7071067811865476, off = a.r * 0.6;
-  const sides = [-1, 1] as const;
-  clear(s, k);
-  let second = -1;
-  for (let j = 0, n = rockSlots(s); j < n; j++) if (j !== k && !rockAlive(s, j)) { second = j; break; }
-  sides.forEach((side, n) => {
-    const slot = n === 0 ? k : second;
-    if (slot < 0) return;
-    const fx = (ux + side * px) * h, fy = (uy + side * py) * h;
-    writeRock(s, slot, RockKind.Moving, a.x + side * px * off, a.y + side * py * off, a.vx + fx * ROCK_FLING, a.vy + fy * ROCK_FLING, cr, rockHp(cr));
-    freshGrace(s, slot);
-  });
-  s.rockSplits++;
-  s.events.push({ kind: 'rock', what: 'split', by, rock: k, x: a.x, y: a.y, r: a.r, vx: a.vx, vy: a.vy, pieces: second >= 0 ? [k, second] : [k] });
-}
-
-function touching(ax: number, ay: number, ar: number, bx: number, by: number, br: number): boolean {
-  const dx = ax - bx, dy = ay - by, rr = ar + br;
-  return dx * dx + dy * dy < rr * rr;
-}
-
-/** Spike i: one tick of the moving fragments, ascending slot order: gravity (no drag), semi-implicit Euler, then contacts. */
-export function stepRocks(s: TacticalState): void {
-  const v = s.rocks, movers: number[] = [];
-  for (let k = 0, n = v.length / ROCK_STRIDE; k < n; k++) if (v[k * ROCK_STRIDE] === RockKind.Moving) movers.push(k);
-  for (const k of movers) {
-    const b = k * ROCK_STRIDE;
-    const [gx, gy] = gravityAccel(v[b + 1]!, v[b + 2]!);
-    v[b + 3]! += gx * DT; v[b + 4]! += gy * DT;
-    v[b + 1]! += v[b + 3]! * DT; v[b + 2]! += v[b + 4]! * DT;
-  }
-  for (const k of movers) {
-    const b = k * ROCK_STRIDE;
-    if (v[b] !== RockKind.Moving) continue;
-    const x = v[b + 1]!, y = v[b + 2]!, r = v[b + 5]!, p = s.map.planet, planet = touching(x, y, r, p.x, p.y, p.r);
-    if (planet || x * x + y * y > R_MAP * R_MAP) {
-      const vx = v[b + 3]!, vy = v[b + 4]!;
-      clear(s, k); s.rockDust++;
-      s.events.push({ kind: 'rock', what: 'dust', by: planet ? 'planet' : 'edge', rock: k, x, y, r, vx, vy });
-      continue;
-    }
-    for (const j of rocksNear(s, x, y, r)) {
-      if (j === k) continue;
-      const o = rockAt(s, j);
-      if (!touching(x, y, r, o.x, o.y, o.r)) continue;
-      const vx = v[b + 3]!, vy = v[b + 4]!;
-      clear(s, k); s.rockDust++;
-      s.events.push({ kind: 'rock', what: 'dust', by: 'collision', rock: k, x, y, r, vx, vy });
-      damageRock(s, j, FRAGMENT_ROCK_DAMAGE, vx - o.vx, vy - o.vy, 'collision');
-      break;
-    }
-  }
 }
 
 /** Where the segment a → b first enters circle (cx, cy, r), as t in [0, 1], or −1 when it never does. Starting inside is 0. */
