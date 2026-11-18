@@ -13,11 +13,11 @@ import { PROBE_SAMPLES } from '../ui/probe/samples';
 function consoleFixture(which: 'helm' | 'weapons'): DuelUiView {
   const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: AMBER } };
   const base: ConsoleView = {
-    station: 'weapons', tabs: { helm: 'open', weapons: 'current', ship: 'open' }, tabActions: { helm: 'switch', weapons: null, ship: 'stand' },
+    station: 'weapons', tabs: { helm: 'open', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: 'switch', weapons: null, science: null, ship: 'stand' },
     helm: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS },
     side: { zoom: '0.90', free: false, snapLabel: 'CAMERA' }
   };
-  const cv: ConsoleView = which === 'weapons' ? base : { ...base, station: 'helm', tabs: { helm: 'current', weapons: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, ship: 'stand' },
+  const cv: ConsoleView = which === 'weapons' ? base : { ...base, station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
     weapons: null, helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 2 }, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } };
   const row = (label: string, value: string, extra: object = {}) => ({ label, value, labelTint: DIM, valueTint: TEXT, ...extra });
   return {

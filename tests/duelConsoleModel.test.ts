@@ -28,7 +28,7 @@ const model = (d: DuelState, over: Partial<ConsoleModelInput> = {}) => consoleMo
 
 describe('console layout (spec §2)', () => {
   it('has the spec numbers', () => {
-    expect(TABS_RIGHT).toBe(308); expect(CONSOLE_RESERVE).toEqual({ left: 228, right: 156 });
+    expect(TABS_RIGHT).toBe(408); expect(CONSOLE_RESERVE).toEqual({ left: 228, right: 156 });
     expect(SIDE.x).toBe(1136); expect(STATUS).toMatchObject({ x: 12, y: 42, w: 204 }); expect(STATION).toMatchObject({ x: 12, w: 300 });
     expect(stationTop('helm')).toBe(508); expect(stationTop('weapons')).toBe(492);
   });
@@ -103,7 +103,7 @@ describe('tabs (spec §6.3)', () => {
     const d = createSeatedDuel(layout, 5);
     step(d, 0, { kind: 'stand' });   // player 1 still at Weapons
     put(d, 0, 0);
-    expect(model(d, { mode: 'online' })!.tabs).toEqual({ helm: 'locked', weapons: 'locked', ship: 'current' });
+    expect(model(d, { mode: 'online' })!.tabs).toEqual({ helm: 'locked', weapons: 'locked', science: 'locked', ship: 'current' });
     expect(model(d)).toMatchObject({ tabs: { helm: 'locked', weapons: 'open', ship: 'current' }, tabActions: { weapons: 'switch' } });
     disposeDuel(d);
   });

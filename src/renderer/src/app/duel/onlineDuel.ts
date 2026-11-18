@@ -162,7 +162,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (!synced && client.commandStatus(descriptor.seatId).state === 'ready') {
       synced = true; hint('synced');
       if (!presenceSent) { presenceSent = true; send({ kind: 'presence', present: true }); }   // the first command after every attach (spec §6)
-      notice = seatOf(d, descriptor.seatId) === 'helm' ? 'YOU: HELM' : seatOf(d, descriptor.seatId) === 'weapons' ? 'YOU: WEAPONS' : 'TAKE A CONSOLE: E TO SIT';   // a round starts aboard, standing (start-aboard spec §1) noticeUntil = deps.now() + NOTICE_MS;
+      notice = seatOf(d, descriptor.seatId) === 'helm' ? 'YOU: HELM' : seatOf(d, descriptor.seatId) === 'weapons' ? 'YOU: WEAPONS' : seatOf(d, descriptor.seatId) === 'science' ? 'YOU: SCIENCE' : 'TAKE A CONSOLE: E TO SIT';   // a round starts aboard, standing (start-aboard spec §1) noticeUntil = deps.now() + NOTICE_MS;
     }
     if (synced && p.phase !== lastPhase) { if (p.phase === 'paused' && lastPhase === 'running') pauses++; lastPhase = p.phase; if (p.phase !== 'error') hint(p.phase); }
     const now = deps.now();
@@ -189,6 +189,10 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       if (p.camera > 0 && source) snapBack(source.cameras.helm);
       const level = throttleRequest(throttleSent ? throttleSent.level : d.throttle, p, k.throttleTo);   // Artemis spec §5.4
       if (level !== null) { const id = send({ kind: 'throttle', level }); if (id) throttleSent = { level, sequence: id.sequence, round: d.round }; }
+      return;
+    }
+    if (seat === 'science') {   // Sci-1 spec §7.3 (the requests arrive in Task 11)
+      if (p.camera > 0 && source) snapBack(source.cameras.science);
       return;
     }
     const steps = p.interact - p.prevLock;

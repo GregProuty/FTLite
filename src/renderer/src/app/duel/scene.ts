@@ -38,7 +38,7 @@ export interface DuelViewSource {
   readonly prev: readonly PrevBody[];
   readonly missilePrev: readonly (PrevBody | null)[];
   readonly crewPrev: readonly { x: number; y: number }[];
-  readonly cameras: { readonly helm: Camera; readonly weapons: Camera };
+  readonly cameras: { readonly helm: Camera; readonly weapons: Camera; readonly science: Camera };
   /** The interior's zoom and follow (interior zoom spec), following `active()`'s character. */
   readonly interiorCamera: InteriorCamera;
   /** Changes when the view's caches must start again (a new round). */

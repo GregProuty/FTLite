@@ -9,7 +9,7 @@ import { canLaunch } from '../../sim/tactical/weapons';
 import type { MapOverlayView } from '../../ui/views';
 import { chargeRow, type ReadoutRow } from './readoutModel';
 
-export type ConsoleStation = 'helm' | 'weapons' | 'ship';
+export type ConsoleStation = 'helm' | 'weapons' | 'science' | 'ship';
 export type TabState = 'current' | 'open' | 'locked';
 export interface HelmPanel { heading: number; speed: number; held: HeldFlags; throttle: number }
 export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: string; canLaunch: boolean; missileFlying: boolean; fireHeld: boolean; held: HeldFlags }
@@ -30,9 +30,9 @@ export interface ConsoleModelInput {
 
 /** The tab rule of spec §6.3 on its inputs alone: `reach` is the console `consoleInReach` gives while standing (null
  *  for none), `repairNear` whether `repairInReach` finds a repair (E would repair, not sit). */
-export function consoleTabs(i: { seat: Seat; reach: 'helm' | 'weapons' | null; repairNear: boolean; otherSeat: Seat; mode: 'single' | 'online' }): Pick<ConsoleView, 'tabs' | 'tabActions'> {
-  const tabs: Record<ConsoleStation, TabState> = { helm: 'locked', weapons: 'locked', ship: 'locked' };
-  const tabActions: Record<ConsoleStation, KeyAction | null> = { helm: null, weapons: null, ship: null };
+export function consoleTabs(i: { seat: Seat; reach: 'helm' | 'weapons' | 'science' | null; repairNear: boolean; otherSeat: Seat; mode: 'single' | 'online' }): Pick<ConsoleView, 'tabs' | 'tabActions'> {
+  const tabs: Record<ConsoleStation, TabState> = { helm: 'locked', weapons: 'locked', science: 'locked', ship: 'locked' };
+  const tabActions: Record<ConsoleStation, KeyAction | null> = { helm: null, weapons: null, science: null, ship: null };
   if (i.seat === 'standing') {
     tabs.ship = 'current';
     if (i.reach && !i.repairNear) { tabs[i.reach] = 'open'; tabActions[i.reach] = 'interact'; }
@@ -52,7 +52,7 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   if (i.hidden) return null;
   const d = i.duel, seat = seatOf(d, i.me), station = consoleStation(d, i.me);
   const c = seat === 'standing' ? consoleInReach(d, i.me) : -1;
-  const { tabs, tabActions } = consoleTabs({ seat, reach: c < 0 ? null : c === d.nav ? 'helm' : 'weapons', repairNear: seat === 'standing' && repairInReach(d, i.me) >= 0,
+  const { tabs, tabActions } = consoleTabs({ seat, reach: c < 0 ? null : c === d.nav ? 'helm' : c === d.weapons ? 'weapons' : 'science', repairNear: seat === 'standing' && repairInReach(d, i.me) >= 0,
     otherSeat: seatOf(d, i.me === 0 ? 1 : 0), mode: i.mode });
   const t = d.tactical, held = i.held ?? NO_HELD_FLAGS;
   const ship = t.ships[0]!;

@@ -3,8 +3,8 @@
 // builds only), the screen-effect strengths, the flicker wave and the bezel geometry. Pure: no Pixi, no DOM.
 import type { FeelStorage } from './feel';
 
-/** The views a CRT can show: the duel's three views and the dev flight view. */
-export type CrtView = 'helm' | 'weapons' | 'interior' | 'flight';
+/** The views a CRT can show: the duel's four views and the dev flight view. */
+export type CrtView = 'helm' | 'weapons' | 'science' | 'interior' | 'flight';
 /** The console views (the Helm map, the Weapons map, the flight view) are amber CRT screens; the interior is not. */
 export function crtActive(view: CrtView): boolean { return view !== 'interior'; }
 

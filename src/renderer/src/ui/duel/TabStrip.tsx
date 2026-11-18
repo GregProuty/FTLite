@@ -1,11 +1,11 @@
-// The console's tab strip (spec 2026-11-17-artemis-consoles §2, §6.3): HELM, WEAPONS, SHIP; current lit, open clickable, locked disabled.
+// The console's tab strip (spec 2026-11-17-artemis-consoles §2, §6.3): HELM, WEAPONS, SCIENCE, SHIP; current lit, open clickable, locked disabled.
 import { memo } from 'react';
 import type { ConsoleView, ConsoleStation } from '../../render/duel/consoleModel';
 import { TABS } from '../../render/duel/consoleLayout';
 import { useActions } from '../context';
 import { Button } from '../stage/Button';
 
-const ORDER: readonly [ConsoleStation, string][] = [['helm', 'HELM'], ['weapons', 'WEAPONS'], ['ship', 'SHIP']];
+const ORDER: readonly [ConsoleStation, string][] = [['helm', 'HELM'], ['weapons', 'WEAPONS'], ['science', 'SCIENCE'], ['ship', 'SHIP']];
 export const TabStrip = memo(function TabStrip({ tabs, tabActions }: Pick<ConsoleView, 'tabs' | 'tabActions'>) {
   const actions = useActions();
   return <>{ORDER.map(([k, label], n) => {

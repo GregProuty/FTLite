@@ -15,8 +15,8 @@ import { CREW_SHIP, ENEMY_SHIP } from '../tactical/shipColours';
 import { bearingDeg } from '../tactical/weaponsModel';
 import { READOUT_COLUMN, ROOM_NAMES } from './interiorModel';
 
-export type ReadoutMode = 'helm' | 'weapons' | 'interior';
-export type OtherStatus = 'AT HELM' | 'AT WEAPONS' | 'WALKING' | 'REPAIRING' | 'DOWNED' | 'STANDING BY';
+export type ReadoutMode = 'helm' | 'weapons' | 'science' | 'interior';
+export type OtherStatus = 'AT HELM' | 'AT WEAPONS' | 'AT SCIENCE' | 'WALKING' | 'REPAIRING' | 'DOWNED' | 'STANDING BY';
 
 /** The HEALTH row turns red under this (duel-health spec §2). */
 export const HEALTH_LOW = 30;
@@ -79,7 +79,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
   const d = input.duel, t = d.tactical, target = targetOf(t, 0), other = input.active === 0 ? 1 : 0;
   const crew = t.ships[0], enemy = t.ships[target]!, crewSys = t.systems[0], enemySys = t.systems[target]!;
   const rows: ReadoutRow[] = [
-    ...(input.console ? [] : [heading(input.mode === 'helm' ? 'HELM' : input.mode === 'weapons' ? 'WEAPONS' : 'ON FOOT', AMBER)]),
+    ...(input.console ? [] : [heading(input.mode === 'helm' ? 'HELM' : input.mode === 'weapons' ? 'WEAPONS' : input.mode === 'science' ? 'SCIENCE' : 'ON FOOT', AMBER)]),
     em(heading(d.interior.layout.id.toUpperCase(), CREW_SHIP), 'crew'),
     em(row('HULL', `${crewSys.hull}/${SHIP_HULL}`, DIM, crewSys.hull <= SHIP_HULL / 4 ? WARN : TEXT), crewSys.hull <= SHIP_HULL / 4 ? 'alert' : null),
     { ...row('SHIELD'), pips: { n: crewSys.shields, max: SHIELD_LAYERS, colour: CREW_SHIP }, emphasis: 'crew' }
@@ -128,6 +128,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
 export function readoutHelp(mode: ReadoutMode): string[] {
   if (mode === 'helm') return ['W/S THROTTLE   A/D TURN', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];
   if (mode === 'weapons') return ['SPACE HOLD: CHARGE, FIRE', 'F MISSILE   A/D STEER', 'E/Q LOCK   C CAMERA', 'X STAND   TAB SWITCH', 'ESC PAUSE'];
+  if (mode === 'science') return ['S SCAN   T NEXT CONTACT', 'CLICK A CONTACT: DESIGNATE', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];
   return ['WASD WALK', 'E SIT   HOLD E REPAIR/EXTINGUISH', 'STAND BY DOWNED TO REVIVE', 'WHEEL ZOOM  DRAG PAN  C FOLLOW', 'TAB SWITCH   ESC PAUSE'];
 }
 

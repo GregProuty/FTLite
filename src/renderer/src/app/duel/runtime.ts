@@ -154,7 +154,7 @@ export function createFlightRuntime(deps: FlightRuntimeDeps): FlightRuntime {
 }
 
 /** What the active character's screen is (spec §1): its console's map view when seated, the interior when standing. */
-export type DuelView = 'helm' | 'weapons' | 'interior';
+export type DuelView = 'helm' | 'weapons' | 'science' | 'interior';
 
 export interface DuelRuntimeDeps extends FlightRuntimeDeps {
   /** The duel ship, the Hound (spec parent §8). */
@@ -182,7 +182,7 @@ export interface DuelRuntime {
   readonly missilePrev: readonly (PrevBody | null)[];
   readonly crewPrev: readonly { x: number; y: number }[];
   /** Each console's own camera, kept for whoever sits there next (spec §6). */
-  readonly cameras: { readonly helm: Camera; readonly weapons: Camera };
+  readonly cameras: { readonly helm: Camera; readonly weapons: Camera; readonly science: Camera };
   /** The interior's zoom and follow (interior zoom spec): kept across pause, re-following on Tab, reset each round. */
   readonly interiorCamera: InteriorCamera;
   /** The Helm's axes the last tick flew: the held turn and the throttle's thrust (Artemis spec §5.3). Zero while the
@@ -236,14 +236,14 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   let activeHeld: HeldInput = NEUTRAL, sentHeld: readonly HeldInput[] = [NEUTRAL, NEUTRAL], sentAxes: Axes = NO_AXES, sentSteer = 0;
   let menuAsked = false;
   let chargeSent = false, events: ViewEvent[] = [], results: DuelResult[] = [], counts = hitCounts(d), lastTickTime: number | null = null, frameAlpha = 1;
-  let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [], cameras = { helm: createCamera(), weapons: createCamera() };
+  let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [], cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() };
   const interiorCamera = createInteriorCamera();
   const capture = (): void => {
     prev = d.tactical.ships.map(shipBody);
     missilePrev = d.tactical.ships.map((_, i) => missileBody(missileOf(d.tactical, i)));   // by owner, as interpolatedMissile reads it
     crewPrev = d.interior.crew.map((eid) => ({ x: Position.x[eid]!, y: Position.y[eid]! }));
   };
-  const freshCameras = (): void => { const s = d.tactical.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y) }; };
+  const freshCameras = (): void => { const s = d.tactical.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y), science: createCamera(s.x, s.y) }; };
   capture(); freshCameras();
   const ended = (): boolean => d.tactical.outcome !== Outcome.Running;
   /** The player seated at station i who is present, or −1 (the sim's attendant rule). */
@@ -347,6 +347,10 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       if (level !== null) queue({ kind: 'throttle', level });
       return k;
     }
+    if (seat === 'science') {   // Sci-1 spec §7.3: the requests arrive in Task 11; C snaps the Science camera back
+      if (p.camera > 0) snapBack(cameras.science);
+      return k;
+    }
     const steps = p.interact - p.prevLock;
     if (p.interact + p.prevLock > 0) {
       const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'laserLock')?.command;
@@ -383,7 +387,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     otherStatus() {
       const other = active === 0 ? 1 : 0, s = seatOf(d, other);
       if (Life.state[d.interior.crew[other]!] === LifeState.Downed) return 'DOWNED';   // duel-health spec §2
-      if (s !== 'standing') return s === 'helm' ? 'AT HELM' : 'AT WEAPONS';
+      if (s !== 'standing') return s === 'helm' ? 'AT HELM' : s === 'weapons' ? 'AT WEAPONS' : 'AT SCIENCE';
       if (!d.present[other]) return 'STANDING BY';   // away and on foot: the solo start's partner (start-aboard spec §1)
       return d.present[other] && sentHeld[other]!.interactHeld && repairInReach(d, other) >= 0 ? 'REPAIRING' : 'WALKING';
     },
@@ -407,10 +411,10 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       pacer.sync();   // an Escape this frame pauses before any due tick runs
       pacer.pump();
       frameAlpha = alphaAt(deps.now(), lastTickTime);
-      const view = seatOf(d, active), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : null;
+      const view = seatOf(d, active), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : view === 'science' ? cameras.science : null;
       if (cam) cameraInput.apply(cam, k, pointer);
       else cameraInput.applyInterior(interiorCamera, k, pointer);
-      for (const c of [cameras.helm, cameras.weapons]) {
+      for (const c of [cameras.helm, cameras.weapons, cameras.science]) {
         if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');   // the followed missile ended
         // A followed missile is tracked at its interpolated (drawn) position, as the ship is (H-1 spec §6).
         const target = c.follow === 'missile' ? interpolatedMissile(d.tactical, missilePrev, frameAlpha, 0) : followTarget(d.tactical, prev, frameAlpha, c.follow);

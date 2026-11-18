@@ -80,7 +80,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [];
   let latest: { bodies: PrevBody[]; missiles: (PrevBody | null)[]; crew: { x: number; y: number }[]; counters: Counters[]; repair: number[] } | null = null;
   let prevRepair: number[] = [0, 0, 0], events: ViewEvent[] = [], sentHeld = { moveX: 0, moveY: 0 };
-  let cameras = { helm: createCamera(), weapons: createCamera() };
+  let cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() };
   let uiHeld: HeldFlags = NO_HELD_FLAGS, shownThrottle: number | null = null;
   const cameraInput = createCameraInput(deps.now, deps.viewport), interiorCamera = createInteriorCamera();
   const gaps: number[] = [];
@@ -92,7 +92,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     const t = d.tactical, now = deps.now();
     if (d.round !== round) {   // the first publication or a new round: no interpolation across it, fresh cameras
       round = d.round; latest = null; lastTick = -1;
-      const s = t.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y) }; cameraInput.reset(); resetInteriorCamera(interiorCamera);
+      const s = t.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y), science: createCamera(s.x, s.y) }; cameraInput.reset(); resetInteriorCamera(interiorCamera);
     }
     if (latest) events.push(...gapEvents(latest.counters, latest.missiles, t));
     prev = latest ? latest.bodies : t.ships.map(body);
@@ -129,7 +129,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     otherStatus(): OtherStatus {
       const d = duel(), other = seat === 0 ? 1 : 0, s = seatOf(d, other);
       if (Life.state[d.interior.crew[other]!] === LifeState.Downed) return 'DOWNED';   // duel-health spec §2
-      if (s !== 'standing') return s === 'helm' ? 'AT HELM' : 'AT WEAPONS';
+      if (s !== 'standing') return s === 'helm' ? 'AT HELM' : s === 'weapons' ? 'AT WEAPONS' : 'AT SCIENCE';
       if (!d.present[other]) return 'STANDING BY';   // away and on foot (start-aboard spec §1)
       const room = repairInReach(d, other);
       return d.present[other] && room >= 0 && workOf(d)[room]! > prevRepair[room]! ? 'REPAIRING' : 'WALKING';
@@ -158,9 +158,9 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       observe();
       const d = client.state(); if (!d) return;
       frameAlpha = Math.max(0, Math.min(1, (deps.now() - receivedAt) * TICK_HZ / (1000 * gap)));
-      const view = seatOf(d, seat), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : null;
+      const view = seatOf(d, seat), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : view === 'science' ? cameras.science : null;
       if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer); else cameraInput.applyInterior(interiorCamera, keys, pointer); }
-      for (const c of [cameras.helm, cameras.weapons]) {
+      for (const c of [cameras.helm, cameras.weapons, cameras.science]) {
         if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');
         const target = c.follow === 'missile' ? interpolatedMissile(d.tactical, missilePrev, frameAlpha, 0) : followTarget(d.tactical, prev, frameAlpha, c.follow);
         updateCamera(c, deps.viewport, dt, target);
