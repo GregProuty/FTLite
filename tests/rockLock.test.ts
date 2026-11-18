@@ -10,7 +10,8 @@ import type { DuelCommand, DuelEnvelope } from '../src/renderer/src/sim/duel/com
 import { disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { shipModule } from '../src/renderer/src/sim/tactical/hash';
-import { rockSlots } from '../src/renderer/src/sim/tactical/rocks';
+import { beginRockTick, rockSlots } from '../src/renderer/src/sim/tactical/rocks';
+import { seeded } from './helpers/rockArena';
 import { createSeatedDuel } from './helpers/duelSeat';
 
 const layout = parseShip(cutter), NONE = { moveX: 0, moveY: 0, interactHeld: false };
@@ -67,13 +68,13 @@ describe('rockLock effects and order (spec §6.1)', () => {
     } finally { disposeDuel(d); }
   });
   it('missileLaunch is admitted with this tick\'s effective torpRock: a same-tick rockLock counts, a same-tick torpLock clears it', () => {
-    const near = (d: DuelState): void => { const a = d.tactical.map.asteroids[0]!; Object.assign(d.tactical.ships[0], { x: a.x, y: a.y - 200, vx: 0, vy: 0 }); };
+    const near = (d: DuelState): void => { d.tactical.rocks.fill(0); seeded(d.tactical, 0); beginRockTick(d.tactical); const a = d.tactical.map.asteroids[0]!; Object.assign(d.tactical.ships[0], { x: a.x, y: a.y - 200, vx: 0, vy: 0 }); };
     const d = createSeatedDuel(layout, 5);
     try {
       near(d);
       expect(why(step(d, [cmd(d, 1, { kind: 'missileLaunch' })]))).toEqual(['unavailable']);
       expect(why(step(d, [cmd(d, 1, { kind: 'missileLaunch' }), cmd(d, 1, { kind: 'rockLock', weapon: 'torpedo', rock: 0 })]))).toEqual(['applied', 'applied']);
-      expect([d.tactical.systems[0].torpRock, d.tactical.systems[0].missilesLaunched]).toEqual([-1, 1]);   // launched and the single shot consumed the rock target (the torpedo may already have ended on a belt rock this tick, so torpRockFlying is not asserted)
+      expect([d.tactical.systems[0].torpRockFlying, d.tactical.systems[0].torpRock, d.tactical.systems[0].missilesLaunched]).toEqual([0, -1, 1]);   // rock 0 is the only rock, so the torpedo has a clear line for the launch tick
     } finally { disposeDuel(d); }
     const e = createSeatedDuel(layout, 5);
     try {

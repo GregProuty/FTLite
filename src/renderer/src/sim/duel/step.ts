@@ -184,7 +184,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   }
 
   // Tactical commands, against the seats as they now stand. Within a tick they take effect in a fixed order, lock, then
-  // the torpedo's target (FTL targeting spec §2), then charge, then launch (the order applyWeaponsInput applies them), whatever their envelope order; admission is checked
+  // the torpedo's target (FTL targeting spec §2), then the rock target (rockLock), then charge, then launch (the order applyWeaponsInput applies them), whatever their envelope order; admission is checked
   // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins.
   const helm = attendant(d, d.nav), gunner = attendant(d, d.weapons);
   const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, scanner: true };
