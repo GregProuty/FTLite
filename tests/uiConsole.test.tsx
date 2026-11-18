@@ -19,7 +19,7 @@ const btn = (name: string) => document.querySelector(`[data-testid="console-${na
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
 const weaponsConsole: ConsoleView = {
   station: 'weapons', tabs: { helm: 'open', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: 'switch', weapons: null, science: null, ship: 'stand' },
-  helm: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS },
+  helm: null, science: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null },
   side: { zoom: '0.90', free: false, snapLabel: 'CAMERA' }
 };
 const helmConsole: ConsoleView = { ...weaponsConsole, station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },

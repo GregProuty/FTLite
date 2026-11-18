@@ -6,6 +6,7 @@ import { extinguishProgress, pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
 import { missileOf, Room, targetOf } from '../../sim/tactical/state';
 import { REPAIR_UNITS } from '../../sim/duel/tuning';
+import { hostilityLine } from './scienceModel';
 import { Health, Life, LifeState } from '../../sim/components';
 import { HEALTH_MAX } from '../../sim/tuning';
 import { LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, SHIELD_LAYERS, SHIP_HULL } from '../../sim/tactical/tuning';
@@ -82,7 +83,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
     ...(input.console ? [] : [heading(input.mode === 'helm' ? 'HELM' : input.mode === 'weapons' ? 'WEAPONS' : input.mode === 'science' ? 'SCIENCE' : 'ON FOOT', AMBER)]),
     em(heading(d.interior.layout.id.toUpperCase(), CREW_SHIP), 'crew'),
     em(row('HULL', `${crewSys.hull}/${SHIP_HULL}`, DIM, crewSys.hull <= SHIP_HULL / 4 ? WARN : TEXT), crewSys.hull <= SHIP_HULL / 4 ? 'alert' : null),
-    { ...row('SHIELD'), pips: { n: crewSys.shields, max: SHIELD_LAYERS, colour: CREW_SHIP }, emphasis: 'crew' }
+    { ...row('SHIELD'), pips: { n: crewSys.shields, max: Math.max(SHIELD_LAYERS, crewSys.shields), colour: CREW_SHIP }, emphasis: 'crew' }   // Shield loot can add a layer (Sci-1 spec §4.5)
   ];
   for (let r = 0; r < 3; r++) {
     const point = d.points.find((p) => p.tacticalRoom === r);
@@ -95,6 +96,8 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
     rows.push(n > 0 && progress > 0 ? { ...out, bar: { fill: progress, colour: GOOD } } : out);
   }
   rows.push(em(heading('HUNTER', ENEMY_SHIP), 'enemy'));
+  const hostile = input.console ? hostilityLine(t) : null;   // Sci-1 spec §7.1: the consoles' hostility line
+  if (hostile) rows.push(em(heading(hostile.text, WARN), hostile.alert ? 'alert' : 'warn'));
   rows.push(em(row('HULL', `${enemySys.hull}/${SHIP_HULL}`, DIM, enemySys.hull <= SHIP_HULL / 4 ? GOOD : TEXT), enemySys.hull <= SHIP_HULL / 4 ? 'good' : null));
   rows.push({ ...row('SHIELD'), pips: { n: enemySys.shields, max: SHIELD_LAYERS, colour: ENEMY_SHIP }, emphasis: 'enemy' });
   rows.push(em(row('ROOMS', enemySys.rooms.map((n, r) => `${ROOM_NAMES[r]!.charAt(0)}${n}`).join(' ')), enemySys.rooms.some((n) => n > 0) ? 'warn' : null));

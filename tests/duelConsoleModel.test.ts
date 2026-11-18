@@ -30,7 +30,7 @@ describe('console layout (spec §2)', () => {
   it('has the spec numbers', () => {
     expect(TABS_RIGHT).toBe(408); expect(CONSOLE_RESERVE).toEqual({ left: 228, right: 156 });
     expect(SIDE.x).toBe(1136); expect(STATUS).toMatchObject({ x: 12, y: 42, w: 204 }); expect(STATION).toMatchObject({ x: 12, w: 300 });
-    expect(stationTop('helm')).toBe(508); expect(stationTop('weapons')).toBe(492);
+    expect(stationTop('helm')).toBe(508); expect(stationTop('weapons')).toBe(460);
   });
   it('the status table ends above the station block at its longest (every crew room damaged)', () => {
     const d = createSeatedDuel(layout, 5); d.tactical.systems[0].rooms = [2, 1, 1];
@@ -42,7 +42,7 @@ describe('console layout (spec §2)', () => {
   });
   it('the contact window (enemy ship window spec §4.1): right edge, below the side column, overlapping nothing', () => {
     expect(SIDE_H).toBe(96);
-    expect(CONTACT).toEqual({ x: 968, y: 150, w: 300, h: 360 });
+    expect(CONTACT).toEqual({ x: 968, y: 150, w: 300, h: 420 });
     expect(CONTACT.x + CONTACT.w).toBe(INTERNAL_W - EDGE);
     expect(CONTACT.y).toBe(SIDE.y + SIDE_H + EDGE);
     expect(CONTACT_RESERVE).toBe(324);
