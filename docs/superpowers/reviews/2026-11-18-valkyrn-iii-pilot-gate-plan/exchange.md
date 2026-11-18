@@ -136,3 +136,37 @@ Reopened only for the regex escape above; the same edit fixes it. The child-proc
 
 ---
 
+# Round 3 (delta, reviewing 21b41758, effort medium, 14 s, 39130 in / 22999 cached / 1088 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F2: resolved — The child-process sweep (plan L751-777) now works with Part i's frozen defs. Its only remaining defect was the regex escape, and that is fixed at L735. The original text is restored in `finally`, and an equality check runs afterwards (L774-777).
+- R2-F1: resolved — Plan L735 builds the pattern with String.raw`^export const ${name} = (\d+);`. String.raw substitutes ${name} but keeps the raw `\d`, so the source is `(\d+)`. Both the exactly-once count (L736, 'gm') and the returned regex (L737, 'm') use this one source. With 'm', `^` anchors each line, so CRLF text still matches. The `;` after `(\d+)` rules out a match against a GUN_HITS_PER_LAYERX decoy.
+
+## Verified
+- plan L735: in String.raw with an interpolation, the substitution is interpolated and the literal segments stay raw, so the RegExp source contains `\d+`
+- plan L739-740: valueOf/withValue call lineOf on the text they operate on, so the exactly-once check guards each rewrite. The replacement string contains no `$` patterns.
+- plan L768: each combination rewrites all four lines, starting from `original` and never from the previous combination's text
+- plan L774-777: the finally block restores the file and checks that it matches `original`. This agrees with the comments at L715-717 about frozen defs and Decision 10.
+
+## Not verified
+- I did not run the regex in node myself. My conclusion comes from JS String.raw semantics plus the responder's report that they ran it in node.
+- I did not re-read Decision 10 (L49-88) or Task 4 (L808-908) for this round, because the diff did not touch them.
+
+---
+
+# Round 3 response (no subject change)
+
+Reviewed `round-3.json` against the subject at `21b41758`. 0 accepted, 0 rejected, 0 deferred; the reviewer confirmed R1-F2 and R2-F1 resolved and raised no new findings (verdict ready).
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
