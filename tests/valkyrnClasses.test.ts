@@ -50,7 +50,7 @@ describe('the Valkyrn classes (spec §6.1)', () => {
   });
   it('the gun\'s numbers are the tuning constants', () => {
     expect(GUN).toEqual({ kind: 'gun', intervalTicks: 6, speed: 700, lifeTicks: 52, muzzleForward: SHIP_RADIUS + 1, muzzleLateral: 12,
-      heatPerShot: 50, cool: 4, coolLocked: 8, heatMax: 1000, hitsPerLayer: 8, hitsPerHull: 3, hitsPerLevel: 6 });
+      heatPerShot: 50, cool: 4, coolLocked: 8, heatMax: 1000, hitsPerLayer: 8, hitsPerHull: 12, hitsPerLevel: 6 });   // hitsPerHull 3 → 12 by the Valkyrn gate (spec §12)
     expect(GUN_POOL).toBe(64);
   });
 });

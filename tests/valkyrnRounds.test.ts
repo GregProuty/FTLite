@@ -1,7 +1,7 @@
 // Valkyrn-i (spec 2026-11-18-valkyrn-solo-ship-design §7.2, §10 Gun): rounds move on their spawn tick and are swept as
 // segments against the other ships' post-move circles, the asteroids and the planet; the first contact ends them, so
 // does their life; never their own ship. A shielded enemy wears a layer away in 8 hits (any strip zeroes the wear); an
-// unshielded one loses a hull point every 3 hits and a Room level every 6, the Room by the closest approach of the
+// unshielded one loses a hull point every GUN.hitsPerHull hits and a Room level every GUN.hitsPerLevel, the Room by the closest approach of the
 // round's line to the post-move centre on the post-move nose axis; repair zeroes a Room's wear; the first round turns
 // the enemy hostile with cause gun.
 import { describe, expect, it } from 'vitest';
@@ -9,7 +9,7 @@ import type { HeldInput } from '../src/renderer/src/net/contracts';
 import { Position } from '../src/renderer/src/sim/components';
 import { disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
-import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
+import { GUN, ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { gunRoomOf, placeRound, stepRounds } from '../src/renderer/src/sim/tactical/gun';
 import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
@@ -135,17 +135,24 @@ describe('hits (spec §7.2)', () => {
     st.events = []; stepRounds(st);
     expect(hitsOf(st)).toMatchObject([{ ship: 1, room: Room.Shields }]);       // after it: about 2 aft
   });
-  it('every 3 hits cost a hull point; every 6 hits on a Room raise it a level; at level 2 only the hull counts', () => {
-    const st = range(0);
-    for (let k = 0; k < 2; k++) across(st, -10);
-    expect([st.systems[1].hull, st.systems[1].gunHull, st.systems[1].gunRoomWear[Room.Weapons]]).toEqual([70, 2, 2]);
-    across(st, -10);
-    expect([st.systems[1].hull, st.systems[1].gunHull]).toEqual([69, 0]);
-    for (let k = 0; k < 3; k++) across(st, -10);
-    expect([st.systems[1].rooms[Room.Weapons], st.systems[1].gunRoomWear[Room.Weapons], st.systems[1].hull]).toEqual([1, 0, 68]);
-    st.systems[1].rooms[Room.Engines] = 2;
-    for (let k = 0; k < 3; k++) across(st, 10);
-    expect([st.systems[1].rooms[Room.Engines], st.systems[1].gunRoomWear[Room.Engines], st.systems[1].hull]).toEqual([2, 0, 67]);
+  it('every GUN.hitsPerHull hits cost a hull point; every GUN.hitsPerLevel hits on a Room raise it a level; at level 2 only the hull counts', () => {
+    // The counters are tuned (Valkyrn spec §12), so the expected state is computed from them after every hit.
+    const st = range(0), s = st.systems[1], perHull = GUN.hitsPerHull, perLevel = GUN.hitsPerLevel;
+    let hits = 0, onWeapons = 0;
+    const expectAfter = (): void => {
+      const level = Math.min(2, Math.floor(onWeapons / perLevel));
+      expect([s.hull, s.gunHull, s.rooms[Room.Weapons], s.gunRoomWear[Room.Weapons]], `after ${hits} hits`)
+        .toEqual([70 - Math.floor(hits / perHull), hits % perHull, level, level < 2 ? onWeapons % perLevel : 0]);
+    };
+    // On Weapons from level 0, past a hull point and past level 2.
+    while (hits < Math.max(perHull + 1, 2 * perLevel + 1)) { expect(across(st, -10)).toHaveLength(1); hits++; onWeapons++; expectAfter(); }
+    // On the Engines at level 2: the level and its wear stay; only the hull counts.
+    s.rooms[Room.Engines] = 2;
+    for (let k = 0; k < perHull; k++) {
+      expect(across(st, 10)).toHaveLength(1); hits++;
+      expect([s.rooms[Room.Engines], s.gunRoomWear[Room.Engines]]).toEqual([2, 0]);
+      expectAfter();
+    }
   });
   it('a Room repaired a level zeroes its wear: the Hunter\'s repair and the crew\'s', () => {
     const st = range(0);
@@ -176,7 +183,7 @@ describe('hostility and the end (spec §7.2)', () => {
   });
   it('a round that takes the last hull point wins the round', () => {
     const st = range(0);
-    st.systems[1].hull = 1; st.systems[1].gunHull = 2;
+    st.systems[1].hull = 1; st.systems[1].gunHull = GUN.hitsPerHull - 1;
     placeRound(st, { x: H.x - 30, y: H.y, vx: 700, vy: 0, age: 0, owner: 0 });
     stepDuel(st, IDLE_INPUT);
     expect([st.systems[1].hull, st.outcome]).toEqual([0, Outcome.CrewWins]);

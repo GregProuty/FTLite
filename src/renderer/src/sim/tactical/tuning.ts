@@ -146,6 +146,10 @@ export const DERELICT_SPAWN_CLEAR = 600, DERELICT_PHASE_DRAWS = 16;
 
 // The Valkyrn (Valkyrn spec 2026-11-18-valkyrn-solo-ship-design §6.1, §7): the solo fighter's class and its minigun.
 // Start values; Part iii's gate tunes them (spec §10).
+/** Valkyrn spec §6.1, §12: the Valkyrn's hull. 30, kept at the start value; the Valkyrn gate (tests/duelGates.test.ts):
+ *  median 229.8 s, 9 crew wins, 1 Hunter win over seeds 1 to 10. At hull 12 the gate does not move from 10 to 30: the
+ *  Hunter takes at most 6 hull in the rounds the crew wins, and its one win (seed 2) is asteroid contacts. 5 gave
+ *  5 Hunter wins and a 162.9 s median. */
 export const VALKYRN_HULL = 30;
 export const VALKYRN_THRUST = 160;                 // u/s²
 export const VALKYRN_TURN_DEG_PER_S = 200;
@@ -166,6 +170,13 @@ export const GUN_HEAT_MAX = 1000;
 /** The round pool's fixed size (spec §7.2). */
 export const GUN_POOL = 64;
 /** Hits (spec §7.2): rounds per shield layer stripped, per hull point, and per Room level. */
+/** Valkyrn spec §7.2, §12: gun hits per shield layer stripped. 8, kept at the start value; the Valkyrn gate
+ *  (tests/duelGates.test.ts): median 229.8 s, 9 crew wins, 1 Hunter win over seeds 1 to 10. */
 export const GUN_HITS_PER_LAYER = 8;
-export const GUN_HITS_PER_HULL = 3;
+/** Valkyrn spec §7.2, §12: gun hits on an unshielded enemy per hull point. 12 (start 3) from the Valkyrn gate
+ *  (tests/duelGates.test.ts): median 229.8 s, 9 crew wins, 1 Hunter win over seeds 1 to 10. At 3 the median was 100.2 s
+ *  with 10 crew wins; 9 gave 186.5 s and 11 gave 217.5 s, both with no Hunter win. */
+export const GUN_HITS_PER_HULL = 12;
+/** Valkyrn spec §7.2, §12: gun hits on a Room per damage level. 6, kept at the start value; the Valkyrn gate
+ *  (tests/duelGates.test.ts): median 229.8 s, 9 crew wins, 1 Hunter win over seeds 1 to 10. */
 export const GUN_HITS_PER_LEVEL = 6;

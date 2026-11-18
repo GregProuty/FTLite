@@ -134,7 +134,7 @@ describe('the gun state in the hash, the snapshot and the validator (spec §7.3)
     const st = createTacticalState(5, 2, ShipClass.Valkyrn), shape = createTacticalState(5);
     placeRound(st, { x: 10, y: 20, vx: 700, vy: 0, age: 12, owner: 0 });
     Object.assign(st.systems[0], { gunHeat: 1000, gunLocked: true, gunCooldown: 6, gunMuzzle: 1, gunShots: 40, gunHits: 9 });
-    Object.assign(st.systems[1], { gunWear: 7, gunHull: 2, gunRoomWear: [5, 5, 5] });
+    Object.assign(st.systems[1], { gunWear: GUN.hitsPerLayer - 1, gunHull: GUN.hitsPerHull - 1, gunRoomWear: [GUN.hitsPerLevel - 1, GUN.hitsPerLevel - 1, GUN.hitsPerLevel - 1] });
     const values = Array.from(flattenTactical(st));
     expect(validateTacticalValues(shape, values)).toBe(values.length);
     const bad = (name: string, k: number, v: number, why: RegExp): void => {
@@ -145,9 +145,9 @@ describe('the gun state in the hash, the snapshot and the validator (spec §7.3)
     bad('systems.0.gunLocked', 0, 2, /out of range/);
     bad('systems.0.gunCooldown', 0, 7, /out of range/);
     bad('systems.0.gunMuzzle', 0, 2, /out of range/);
-    bad('systems.1.gunWear', 0, 8, /out of range/);
-    bad('systems.1.gunHull', 0, 3, /out of range/);
-    bad('systems.1.gunRoomWear', 2, 6, /out of range/);
+    bad('systems.1.gunWear', 0, GUN.hitsPerLayer, /out of range/);
+    bad('systems.1.gunHull', 0, GUN.hitsPerHull, /out of range/);
+    bad('systems.1.gunRoomWear', 2, GUN.hitsPerLevel, /out of range/);
     bad('systems.0.gunShots', 0, -1, /out of range/);
     bad('rounds.0.flight', 4, 53, /age out of range/);
     bad('rounds.0.owner', 0, 2, /owner is not an active ship slot/);

@@ -8,7 +8,7 @@ import { disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { duelEndSummary, TERMINAL_CAUSES } from '../src/renderer/src/sim/duel/summary';
 import { createTelemetry, recordTick } from '../src/renderer/src/sim/duel/telemetry';
-import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
+import { GUN, ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { placeRound } from '../src/renderer/src/sim/tactical/gun';
 import { createTacticalState, Outcome } from '../src/renderer/src/sim/tactical/state';
 import { createSeatedValkyrn, createValkyrnDuel } from './helpers/valkyrnDuel';
@@ -40,7 +40,7 @@ describe('telemetry (spec §7.3)', () => {
     const d = createValkyrnDuel(5), t = createTelemetry(d);
     try {
       const h = d.tactical.ships[1], hs = d.tactical.systems[1];
-      hs.shields = 0; hs.hull = 1; hs.gunHull = 2;
+      hs.shields = 0; hs.hull = 1; hs.gunHull = GUN.hitsPerHull - 1;
       placeRound(d.tactical, { x: h.x - 30, y: h.y, vx: 700 + h.vx, vy: h.vy, age: 0, owner: 0 });
       const input = { held: [NONE], commands: [] };
       stepDuelTick(d, input); recordTick(t, d, input);
