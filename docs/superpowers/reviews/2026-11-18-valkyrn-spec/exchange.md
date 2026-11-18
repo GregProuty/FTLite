@@ -237,3 +237,57 @@ Confirmed: `createTacticalState`'s second parameter is the slot count, and Sci-2
 
 ---
 
+# Round 3 (delta, reviewing 1a5f16ac, effort medium, 42 s, 111556 in / 86439 cached / 3476 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R3-F1 The Room's 'line of relative motion' uses a different frame from the hit sweep, and its anchor positions are not pinned
+§7.2 sweeps the round's absolute segment (old to new position) against the enemy's post-move circle, treated as static. The Room rule instead uses an infinite line 'through the round's position along its velocity minus the enemy's'. The spec does not say which round position (old, new or contact), which enemy position (pre- or post-move), or which enemy velocity (post-move velocity, or this tick's displacement after gravity, drag and collision) to use. The two frames can also disagree. A round the static sweep counts as a hit can have a relative-motion line that misses the circle, so the claim that it 'is the middle of the chord' fails, and p comes from a point outside r. · spec L232-234 (swept segment vs the post-move circle, no enemy motion); spec L238-241 (infinite line of relative motion, 'the round's position', 'velocity minus the enemy's', 'middle of the chord'); spec L242 (thirds at ±r/3 on the nose axis, heading not stated as post-move). · Two implementers will anchor the line differently and get different p values near the ±r/3 boundaries. Because the rule is in the sim, that changes hashes and goldens. The 'middle of the chord' claim, which the §10 Room tests rely on, is not guaranteed under the stated sweep. · Use the sweep's frame. Take the infinite line through the round's old and new positions of this tick, and find its closest point to the enemy's post-move centre. Project the offset on the enemy's post-move heading to get p. This line meets the swept circle by construction, so the chord-middle claim holds. Otherwise, sweep in the relative frame as well, and name the positions and the enemy displacement used. Pin the result in a §10 test with a moving Hunter.
+
+## Prior findings
+- R1-F3: resolved — §6.1 L180-188 makes laser nullable. It pins laserCharge 0 and laserTargeted false, skips charge, hold, lock, auto-fire and burst, and answers the three commands 'unavailable' with the NO LASER flash. It requires every slots.laser reader to guard null, the hash maxima included, and states the weak-frequency parity exception. §10 L292-294 and L308-309 add tests for no laser event, unavailable answers and null-laser validation. The slots.laser readers not named are hunter.ts:L71 (the Hunter's own laser, never null) and contactModel.ts:L180 (the enemy's laser). Both are covered by 'among them' plus the plan's grep, and the type change makes them compile errors anyway.
+- R1-F10: resolved — §7.2 L238-246 pins the closest-approach point of the infinite line, the projection on the nose axis, the thirds at ±r/3 with ties to Shields, and the consequence: shots along the axis hit Shields. §10 L302-304 restates the tests to match. A remaining frame and anchor ambiguity in the new text is raised as a new P2 finding.
+- R2-F1: resolved — §4.4 L105-107 keeps Sci-2's positionals and adds cls as a fifth argument. createTacticalState keeps slots second, with a default, and adds crewClass third, so existing createTacticalState(seed, 3) calls keep their meaning. §6.1 L189-190 and §8 L279 are consistent. A grep finds no 'opts' left in the spec.
+
+## Verified
+- spec L105-107: createDuel's fifth argument and createTacticalState's third, with slots second and defaulted, are consistent with L189-192 and L279; a grep for 'opts' in the spec finds no matches.
+- spec L180-188: the null-laser rules. A grep of src/renderer/src for 'slots.laser' finds 9 files. hash.ts:L195-196 matches the bounds named in the spec. hunter.ts:L71 and contactModel.ts:L180 read the Hunter's laser, which is never null.
+- spec L238-246: the thirds and tie rule are explicit, and the axis-shot consequence follows from a closest-approach projection.
+- spec L289-310: the §10 tests match the revised §4.4, §6.1 and §7.2 wording (the cls argument, the crew argument throw, the null-laser validation, and side, fore, aft and axial Room cases).
+
+## Not verified
+- I did not re-read the Sci-2 spec to confirm its exact createDuel signature; I relied on the R2-F1 evidence (Sci-2 L27, L39).
+- I did not confirm that the duel's startRound and loadDuelSnapshot can get helmPlayer at all five call sites, because they change in Sci-2, which has not merged.
+
+---
+
+# Round 3 response (spec revised)
+
+Reviewed `round-3.json` against the subject at `1a5f16ac`. 1 accepted, 0 rejected, 0 deferred. The reviewer resolved R1-F3, R1-F10 and R2-F1.
+
+## R3-F1 [P2]: The Room line's frame and anchors
+
+Confirmed. §7.2 swept the round's absolute segment, but the Room rule used a relative-motion line with unpinned anchors, so the two frames could disagree.
+
+§7.2 now uses the sweep's own frame:
+- The line is the infinite line through the round's old and new positions on the hit tick.
+- The point is that line's closest point to the enemy's post-move centre.
+- That offset is projected on the enemy's post-move heading.
+- The sweep hit the circle, so this line meets it by construction.
+
+§10 adds the same tests with the Hunter at full thrust.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-18-valkyrn-solo-ship-design.md
+
+<!-- end -->
+
+---
+

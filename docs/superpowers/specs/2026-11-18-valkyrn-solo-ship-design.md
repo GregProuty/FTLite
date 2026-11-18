@@ -235,10 +235,11 @@ New `ShipClassDef` entries in `defs.ts`: `valkyrn` (gun) and `valkyrnLaser` (the
 - **Shielded enemy** (`shields > 0`): the hit adds 1 to the target's `gunWear`; at `GUN_HITS_PER_LAYER` 8 it strips a
   layer (`shields−−`, `shieldClock = 0`, the same `stripped` event a laser strip makes) and zeroes `gunWear`. Any strip
   (laser, missile or gun) zeroes `gunWear`.
-- **Unshielded enemy**: the Room is found from the **closest-approach point** to the enemy centre of the round's line
-  of relative motion (the infinite line through the round's position along its velocity minus the enemy's), which on a
-  hit is the middle of the chord it cuts through the circle: aim decides it, not the tick the round crossed the edge.
-  Project that point's offset from the centre on the enemy's nose axis, `p`;
+- **Unshielded enemy**: the Room is found from the **closest-approach point** to the enemy's post-move centre of the
+  infinite line through the round's old and new positions of the hit tick (the sweep's own frame). The sweep hit the
+  circle, so this line meets it and the point is the middle of the chord it cuts: aim decides it, not the tick the round
+  crossed the edge. Project that point's offset from the centre on the enemy's post-move nose axis (its heading after the
+  tick's flight), `p`;
   `p > r/3` Weapons, `p < −r/3` Engines, else Shields (ties at exactly ±r/3 go to Shields). The hit adds 1 to the
   target's `gunHull` (every `GUN_HITS_PER_HULL` 3: hull −1, `gunHull` back to 0) and 1 to `gunRoomWear[room]` (every
   `GUN_HITS_PER_LEVEL` 6: that Room's level +1, capped at 2, wear back to 0; at level 2 the wear stays 0 and only hull
@@ -300,7 +301,8 @@ the `gunHits` counter, for completeness (the Valkyrn is not online).
 - **Gun**: interval and alternate muzzles; heat, the lockout and its length; Weapons level 1 halves cooling, level 2
   stops fire; rounds hit the ship / an asteroid / the planet and end, and end at their life; the pool overflow rule;
   shield wear strips a layer at 8 and any strip zeroes it; the Room by closest approach (a side-on shot offset forward of the
-  centre hits Weapons, aft hits Engines; a shot along the axis from ahead or astern hits Shields); hull every 3 hits; room level every 6; repair zeroes the wear; the first
+  centre hits Weapons, aft hits Engines; a shot along the axis from ahead or astern hits Shields); the same with the Hunter moving at full
+  thrust (the post-move centre and heading are used); hull every 3 hits; room level every 6; repair zeroes the wear; the first
   gun round turns the enemy hostile with cause `gun`.
 - **Lead pip**: with `DEFAULT_FLIGHT` replaced by `{ gravity: false, edge: false, drag: 0, stabilise: 0 }` and the Hunter
   coasting, a round fired along the pip's bearing passes within the Hunter's radius; with the default flight far from the
