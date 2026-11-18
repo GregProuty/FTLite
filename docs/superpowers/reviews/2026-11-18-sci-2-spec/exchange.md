@@ -118,3 +118,58 @@ Spec 8 reworded per onlineDuel.ts:171 and duelProducers.ts.
 
 ---
 
+# Round 2 (delta, reviewing 3060a671, effort medium, 58 s, 264754 in / 217051 cached / 5201 out)
+
+Verdict: ready
+
+## Findings
+
+### [P3] R2-F1 The helmPlayer widening and the snapshot save header miss the snapshot and init sites
+Spec L33 widens helmPlayer to 0..n−1 but names only DuelChoice, menuState.ts:89-91 and onlineDuel.ts:33. The snapshot still checks `helm !== 0 && helm !== 1` and types `DuelRoundValues.helmPlayer` as `0 | 1`, and `DuelInit.helmPlayer` is `0 | 1`. In §4.2, `saveDuelSnapshot` and the copy that `validateDuelSnapshot` returns both write `playerCount: DUEL_PLAYERS`, and the spec does not say what they should write instead. The §3 grep patterns would not find the literal `helm !== 0 && helm !== 1` check. · spec L33, L37-39; src/renderer/src/sim/duel/snapshot.ts:L93 (`helmPlayer: 0 | 1`), :L101 and :L168 (`playerCount: DUEL_PLAYERS` in the header), :L149 (`helm !== 0 && helm !== 1`); src/renderer/src/authority/duelCheckpoint.ts:L21 (`helmPlayer: 0 | 1`) · These are small and a round-trip test at n = 3 would catch them. Without them, though, a plan worker could miss the snapshot's helm range, and the header n that save writes has to be stated for the round trip at n = 3 to pass. · In §4.2, add: `saveDuelSnapshot` and `validateDuelSnapshot`'s returned header write `playerCount: d.interior.playerCount` (or the validated n). The helm check becomes 0..n−1, and `DuelRoundValues.helmPlayer` becomes a player id. In §4.1/§4.3, add `DuelInit.helmPlayer` (duelCheckpoint.ts:21) to the 0..3 widening.
+
+## Prior findings
+- R1-F1: resolved — Spec L47 names codec.ts:239, duelStream.ts:56,63, duel.ts:15, duelProducers.ts:27-28 and duelClient.ts:17 at playerLimit 4. L51 covers desired, the steward loop and attachHuman (duelProducers.ts:33,101,112). L53 covers duelClient. L43 covers the ledger. L113 adds the test for a human attaching at seat 2.
+- R1-F2: resolved — Spec L28 (all present at creation) and L52 (the steward sends presence false at the first running boundary) no longer contradict each other. They match duelProducers.ts:L65-71 (the steward waits for phase running). The test is at L113.
+- R1-F3: resolved — Spec L31: every health loop runs to playerCount, and the round is lost when all n are downed, away ones included. That is byte-identical at n = 2 and states that an idle character can be hurt. Tests are at L110.
+- R1-F4: resolved — Spec L37-39 covers playerCount being checked first, roundAt = 1+space+n+3 in both validateDuelSnapshot and duelRoundOf, the cache keyed by layout and n, interior[5]/[9] equal to n, and createDuel(layout, seed, 0, n). These match snapshot.ts:L77,95,118,129,140,160,164,183. Spec L29 covers the presence copies. The save header is raised separately as a P3.
+- R1-F5: resolved — Spec L32 widens telemetry's per-player fields. This matches telemetry.ts:L75,77,135,141, where counters, grace and terminal are per ship and rightly stay two. Spec L44 covers mode memory (duelCheckpoint.ts:52,55), L45 the summary tuples and L46 the record seat.
+- R1-F6: resolved — Spec L57-58 covers the host action with capacity, the strict key check, OnlineApi.host(crew), onlineSession.ts:421, the duelInit playerCount, the capacity check and validateDuelMirror. The test is at L113.
+- R1-F7: resolved — Spec L69 names each site and sizes the sit tracker to n. The test is at L114.
+- R1-F8: resolved — Spec L73-75 gives the precedence (including REPAIRING), says a seated away character reads AWAY, sets READOUT_ROWS to 23, and removes OtherStatus, otherStatus() and ReadoutInput.other.
+- R1-F9: resolved — Spec L80 gives duel-only labels EMPTY/JOINED/READY/DISCONNECTED and leaves the sector's labels alone. L59 says the Start rule is unchanged and cites menuState.ts:93 and lifecycle.ts:36.
+- R1-F10: resolved — Spec L84 gives kind 'science' added to the union, normal tint, the order after WEAPONS and before MEDBAY, and the badge omitted when d.science < 0.
+- R1-F11: resolved — Spec L33 says Start keeps the host's seat, widened to 0..3. A leftover helm range at snapshot.ts:149 and duelCheckpoint.ts:21 is raised as a separate P3.
+- R1-F12: resolved — Spec L105 now says the steward is retired and the joiner sends presence true, which matches duelProducers.ts:L91,117-119 and the existing onlineDuel.ts path.
+
+## Verified
+- duelProducers.ts:L27-28,33,101,112 are two-player and L65-71 sends presence false only while running, which matches spec L51-52
+- snapshot.ts:L77,95,118,129,140,160,164,183 are the two-player sites spec L37-39 widens
+- duelCheckpoint.ts:L38,52,55,72-77,99 are the per-player schema sites spec L43-44 covers (pauseOwner and recentResults included)
+- telemetry.ts: counters, grace and terminal are per ship (L68,77,115-119,163-174), so spec L32's 'ships stay two' is correct; players, work, seat and lastConsole are per player (L75,77,135-146)
+- codec.ts:L21-29,190-192: with playerLimit 4 the publication watermark check is tied to header.playerCount, so 'the real n is enforced by the header' (spec L47) holds
+
+## Not verified
+- I did not re-open onlineSession.ts, menuState.ts, readoutModel.ts, sitModel.ts or interiorModel.ts in this round. The round-1 citations were taken as given, and only the spec text was checked against them.
+- Whether READOUT_ROWS 23 is the true worst case across every readout state; I did not recount the rows.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json`. 1 accepted; all 12 round-1 findings resolved.
+
+## R2-F1 [P3]: helmPlayer and the save header
+Confirmed snapshot.ts:93,101,149,168 and duelCheckpoint.ts:21. Spec 4.2 and 4.1 updated.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-18-sci-2-crew-of-four-design.md
+
+<!-- end -->
+
+---
+

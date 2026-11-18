@@ -30,13 +30,14 @@ The duel has a **crew size** `n` ∈ {2, 3, 4}, fixed for the run. **Every value
 - `presence` commands are admitted for players `0..n−1` (`malformed` beyond); every other per-player admission check uses n.
 - **Health** (`health.ts`, `const PLAYERS = 2` today): every loop runs to `d.interior.playerCount`. The round is **lost when every one of the n characters is downed, away ones included** (byte-identical at n = 2). An empty seat's idle character can be hurt and downed like any other; only present characters can revive, as today.
 - **Telemetry** (`telemetry.ts`): the per-player fields (`players`, `prev.work`, `prev.seat`, `prev.lastConsole`, and every `pid < 2` loop) are n long.
-- `helmPlayer` seats nobody since start aboard; its range becomes `0..n−1`. Start keeps sending the host's own seat (`helmPlayerOf`), widened to `0..3` (`DuelChoice`, `menuState.ts:89-91`, `onlineDuel.ts:33`).
+- `helmPlayer` seats nobody since start aboard; its range becomes `0..n−1`. Start keeps sending the host's own seat (`helmPlayerOf`), widened to `0..3` (`DuelChoice`, `menuState.ts:89-91`, `onlineDuel.ts:33`, `DuelInit.helmPlayer` at `duelCheckpoint.ts:21` and its schema at `:39`).
 
 ### 4.2 Snapshot (`sim/duel/snapshot.ts`)
 
 - `DUEL_PLAYERS` stops being the sim's player count. `validateDuelSnapshot` first checks `header.playerCount` is an integer in 2..4 and no more than the layout's spawns, then derives from it the presence span and the round module's offset (`roundAt = 1 + space + n + 3`, was `+ 2 + 3`), in both `validateDuelSnapshot` and `duelRoundOf`.
 - The interior layout cache is keyed by layout **and** n (`canonicalFields(layout, n)`); the interior is validated at n, and `interior[5]` and `interior[9]` must equal n.
 - `loadDuelSnapshot` calls `createDuel(layout, seed, 0, n)` with n from the header.
+- `saveDuelSnapshot` and the header `validateDuelSnapshot` returns write `playerCount: n` (`d.interior.playerCount`, or the validated header value; today `DUEL_PLAYERS`, snapshot.ts:101,168). The round module's helm check (snapshot.ts:149, today `helm !== 0 && helm !== 1`) becomes `0..n−1`, and `DuelRoundValues.helmPlayer` (snapshot.ts:93) is a player id.
 
 ### 4.3 Checkpoint, codec and records
 
