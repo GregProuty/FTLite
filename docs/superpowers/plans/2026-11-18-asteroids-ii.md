@@ -31,9 +31,10 @@
 ## Deviations and clarifications (justified)
 
 1. **Effective `torpRock` for `missileLaunch` admission** (spec §6.1 says "the last accepted `rockLock(torpedo)` of this tick, else the stored value"): when no `rockLock(torpedo)` was accepted but a `torpLock` was, the effective value is −1, because `applyWeaponsInput` applies the `torpLock` first and it clears `torpRock` (spec §6.1 "An accepted `torpLock` sets `torpRock = −1`"). This keeps the spec's stated goal: the admission result matches what `applyWeaponsInput` then does.
-2. **Event fields** (spec §8 lists the shape): `split` carries `pieces: number[]` (the slots written, piece 0 first; the spec says only "carries `pieces`"), and `bump` from a rock-rock contact also carries `other` (the second rock's slot), so the feel proxy of §9.4 can tell whether either body belongs to the blast. A piece lost for want of a slot emits `dust` with `rock: −1`. Eviction dust carries the requesting break's `by` and no `ship` (spec: "`ship` is absent for ... eviction"; it does not name a `by`).
+2. **Event fields** (spec §8 lists the shape): `split` carries `pieces: number[]` (the slots written, piece 0 first; the spec says only "carries `pieces`"), and `bump` from a rock-rock contact also carries `other` (the second rock's slot), so the feel proxy of §9.4 can tell whether either body belongs to the blast. A piece lost for want of a slot emits `dust` with `rock: −1`. Eviction dust carries the requesting break's `by`, no `ship` (spec: "`ship` is absent for ... eviction"; it does not name a `by`) and `evicted: true`, so the break shake, the crunch sound and the feel proxy's break count skip it (spec §8: eviction is not a break); it still gets a dust puff.
 3. **`hit` events** are emitted for laser and blast damage only; collision and ram damage emit one `bump` event per damaging contact instead (spec §8 defines `bump` for those). `rockHits` counts `hit` events.
 4. **`pickRock` hit radius**: the drawn circle `r · zoom`, floored at `ROCK_PICK_MIN_PX = 6` px so a rock drawn as a 2 px dot at map zoom can still be clicked. Ties and nearest-centre as specced.
+5a. **`lineOfSight` skips born slots** like `firstBlocker` (spec §6.2's rule applied to both), so a piece born earlier in the weapon phase cannot block a shot without being the body that takes it.
 5. **A rock-targeted shot that is not on target** follows spike i's miss path (`laserRockTarget`: the blocked enemy line or the nose ray); when that finds nothing, the miss beam is drawn to the nose ray's end, not to the enemy (the shot was not aimed at the enemy).
 6. **The status sentence** at the top of the map names the rock when the laser has a rock target (`ROCK OUT OF RANGE: CLOSE TO 450`, `ROCK OUT OF ARC: TURN RIGHT`); the Weapons card keeps today's words exactly as specced. The FIRING SOLUTION bracket about the enemy is not drawn while the laser has a rock target (it would point at the wrong body).
 7. **Optional UI fields**: `ConsoleInput.rockLock` and the new `WeaponsPanel` fields are optional, so the six existing test fakes and `app/uiProbe.ts` compile untouched.
@@ -108,7 +109,7 @@ Modified:
 - Produces:
   - `rockTuning.ts`: `export const ROCK_HP_PER = 10; export const ROCK_WAKE_SPEED = 40;`
   - `rocks.ts`: `ROCK_RESERVE = 96`, `rockHp(r: number): number`, `rockHpMax(r: number): number`, `rockMass(r: number): number`, `wakesAt(vc: number): boolean`, `wakeRock(s: TacticalState, k: number): void`, `beginRockTick(s: TacticalState): void`, `rockBorn(s: TacticalState, k: number): boolean`, `writeRock(s: TacticalState, k: number, kind: number, x: number, y: number, vx: number, vy: number, r: number, hp: number): void`, `export type { RockCause }`.
-  - `state.ts`: `export type RockCause = 'laser' | 'torpedo' | 'collision' | 'ram' | 'planet' | 'edge';` the `rock` DuelEvent `{ kind: 'rock'; what: 'hit' | 'split' | 'dust' | 'blast' | 'bump'; by: RockCause; rock: number; x: number; y: number; r: number; vx: number; vy: number; ship?: number; pieces?: number[]; other?: number }`; `TacticalState` gains `rockDust, rockBlasts, rockCollisions, rockEvictions: number` (rockShatters renamed rockDust) and `rockBorn, rockDone: Uint8Array`; `ShipSystems` gains `laserRock, torpRock, torpRockFlying, rocksBroken: number`.
+  - `state.ts`: `export type RockCause = 'laser' | 'torpedo' | 'collision' | 'ram' | 'planet' | 'edge';` the `rock` DuelEvent `{ kind: 'rock'; what: 'hit' | 'split' | 'dust' | 'blast' | 'bump'; by: RockCause; rock: number; x: number; y: number; r: number; vx: number; vy: number; ship?: number; pieces?: number[]; other?: number; evicted?: true }`; `TacticalState` gains `rockDust, rockBlasts, rockCollisions, rockEvictions: number` (rockShatters renamed rockDust) and `rockBorn, rockDone: Uint8Array`; `ShipSystems` gains `laserRock, torpRock, torpRockFlying, rocksBroken: number`.
 
 - [ ] **Step 1: Write the failing test** `tests/rockPool.test.ts`:
 
@@ -544,7 +545,7 @@ git commit -m "feat(spike-ii): rock pool 96 reserve, real hp, masks, rock target
 
 **Files:**
 - Create: `src/renderer/src/sim/tactical/rockBreak.ts`, `src/renderer/src/sim/tactical/rockContacts.ts` (spike i's fragment step, ported; Task 3 replaces it), `tests/helpers/rockArena.ts`, `tests/rockBreak.test.ts`
-- Modify: `src/renderer/src/sim/tactical/rockTuning.ts` (append), `src/renderer/src/sim/tactical/rocks.ts` (whole file), `src/renderer/src/sim/tactical/duel.ts:9`, `src/renderer/src/sim/tactical/weapons.ts:6, 126`, `src/renderer/src/sim/tactical/missiles.ts:205, 307-309`, `src/renderer/src/app/duel/duelMode.ts:19, 70`, `scripts/spike-asteroids-measure.ts:73-75`
+- Modify: `src/renderer/src/sim/tactical/rockTuning.ts` (append), `src/renderer/src/sim/tactical/rocks.ts` (whole file), `src/renderer/src/sim/tactical/duel.ts:9`, `src/renderer/src/sim/tactical/weapons.ts:6, 126`, `src/renderer/src/sim/tactical/missiles.ts:8, 109-113`, `src/renderer/src/app/duel/duelMode.ts:19, 70`, `scripts/spike-asteroids-measure.ts:73-75`
 - Delete: `tests/asteroidSpike.test.ts` (its rules are gone; its hash/clone and firstBlocker cases move here, its broad-phase case to Task 3)
 
 **Interfaces:**
@@ -555,7 +556,7 @@ git commit -m "feat(spike-ii): rock pool 96 reserve, real hp, masks, rock target
   - `export function pieceCount(r: number, pattern: BreakPattern): 0 | 2 | 3 | 4 | 6;`
   - `export function pieceRadius(r: number, n: number): number;`
   - `export function vacate(s: TacticalState, k: number): void;`
-  - `export function dustRock(s: TacticalState, k: number, by: RockCause, ship?: number): void;`
+  - `export function dustRock(s: TacticalState, k: number, by: RockCause, ship?: number, evicted?: boolean): void;` (an eviction's dust event carries `evicted: true`)
   - `export function pushRock(s: TacticalState, k: number, dvx: number, dvy: number): void;`
   - `export function wearRock(s: TacticalState, k: number, dmg: number): boolean;`
   - `export function hitRock(s: TacticalState, k: number, dmg: number, ux: number, uy: number, by: RockCause, ship?: number): void;`
@@ -704,7 +705,7 @@ describe('slot use and eviction (spec §3.4)', () => {
       expect(rockEvents(st, 'split')[0]!.pieces).toEqual([0, evicted]);
       expect(st.rockEvictions).toBe(1);
       const dust = rockEvents(st, 'dust');
-      expect(dust).toMatchObject([{ rock: evicted, by: 'collision', r: 8.5 }]);
+      expect(dust).toMatchObject([{ rock: evicted, by: 'collision', r: 8.5, evicted: true }]);
       expect(dust[0]).not.toHaveProperty('ship');
       expect(rockAt(st, evicted).r).toBeCloseTo((0.9 * 30) / Math.SQRT2, 12);
     }
@@ -856,9 +857,9 @@ export function vacate(s: TacticalState, k: number): void {
 const shipField = (ship: number): { ship?: number } => (ship >= 0 ? { ship } : {});
 
 /** §3.5: rock k turns to dust: a dust event with its position, radius and velocity, then the slot is vacated. Not a break. */
-export function dustRock(s: TacticalState, k: number, by: RockCause, ship = -1): void {
+export function dustRock(s: TacticalState, k: number, by: RockCause, ship = -1, evicted = false): void {
   const a = rockAt(s, k);
-  s.events.push({ kind: 'rock', what: 'dust', by, rock: k, x: a.x, y: a.y, r: a.r, vx: a.vx, vy: a.vy, ...shipField(ship) });
+  s.events.push({ kind: 'rock', what: 'dust', by, rock: k, x: a.x, y: a.y, r: a.r, vx: a.vx, vy: a.vy, ...shipField(ship), ...(evicted ? { evicted: true as const } : {}) });
   s.rockDust++;
   vacate(s, k);
 }
@@ -898,7 +899,7 @@ function allocate(s: TacticalState, rp: number, exclude: readonly number[], by: 
   }
   if (best < 0) return -1;
   s.rockEvictions++;
-  dustRock(s, best, by);
+  dustRock(s, best, by, -1, true);   // eviction: not a break (the views and the feel proxy skip `evicted` dust)
   return best;
 }
 
@@ -1096,7 +1097,7 @@ export function stepRocks(s: TacticalState): void {
 
 - `src/renderer/src/sim/tactical/duel.ts` line 9: `import { beginRockTick } from './rocks';` plus a new line `import { stepRocks } from './rockContacts';`.
 - `src/renderer/src/sim/tactical/weapons.ts` line 6: `import { AUTO_DIG, firstBlocker, LASER_ROCK_DAMAGE } from './rocks';` plus a new line `import { hitRock } from './rockBreak';`. Line 126: `damageRock(state, r.rock, LASER_ROCK_DAMAGE, r.x - a.x, r.y - a.y, 'laser');` → `hitRock(state, r.rock, LASER_ROCK_DAMAGE, r.x - a.x, r.y - a.y, 'laser', i);`.
-- `src/renderer/src/sim/tactical/missiles.ts` line 205: `import { rockAt, rocksNear, TORPEDO_ROCK_DAMAGE } from './rocks';` plus `import { hitRock } from './rockBreak';`. Line 309: `damageRock(state, rock, TORPEDO_ROCK_DAMAGE, mvx, mvy, 'torpedo');` → `hitRock(state, rock, TORPEDO_ROCK_DAMAGE, mvx, mvy, 'torpedo', m.owner);`.
+- `src/renderer/src/sim/tactical/missiles.ts` line 8: `import { rockAt, rocksNear, TORPEDO_ROCK_DAMAGE } from './rocks';` plus `import { hitRock } from './rockBreak';`. Line 112 (the torpedo-rock block, L109-113): `damageRock(state, rock, TORPEDO_ROCK_DAMAGE, mvx, mvy, 'torpedo');` → `hitRock(state, rock, TORPEDO_ROCK_DAMAGE, mvx, mvy, 'torpedo', m.owner);`.
 - `src/renderer/src/app/duel/duelMode.ts` line 19: `import { rockAt, rockSlots } from '../../sim/tactical/rocks';` plus `import { hitRock } from '../../sim/tactical/rockBreak';`. Line 70: `... = { duel: () => runtime.duel, rockAt, hitRock, rockSlots };`.
 - `scripts/spike-asteroids-measure.ts` lines 73-75: replace the `require` line and the `damageRock` call with:
 
@@ -1416,7 +1417,7 @@ git commit -m "feat(spike-ii): rock motion and rock-on-rock billiards contacts" 
 
 **Files:**
 - Create: `src/renderer/src/sim/tactical/rockWeapons.ts`, `tests/rockLaser.test.ts`
-- Modify: `src/renderer/src/sim/tactical/rockTuning.ts` (append), `src/renderer/src/sim/tactical/rocks.ts` (remove `LASER_ROCK_DAMAGE` and `AUTO_DIG`; `firstBlocker` skips born), `src/renderer/src/sim/tactical/weapons.ts:4-8, 99-131, 175`, `src/renderer/src/render/duel/situationModel.ts:1-12, 26-50, 57-92`, `src/renderer/src/render/tactical/weaponsModel.ts` (the solution bracket guard), `tests/tacticalWeapons.test.ts:104`
+- Modify: `src/renderer/src/sim/tactical/rockTuning.ts` (append), `src/renderer/src/sim/tactical/rocks.ts` (remove `LASER_ROCK_DAMAGE` and `AUTO_DIG`; `firstBlocker` skips born), `src/renderer/src/sim/tactical/geometry.ts:22-31` (`lineOfSight` skips born), `src/renderer/src/sim/tactical/weapons.ts:4-8, 99-131, 175`, `src/renderer/src/render/duel/situationModel.ts:1-12, 26-50, 57-92`, `src/renderer/src/render/tactical/weaponsModel.ts` (the solution bracket guard), `tests/tacticalWeapons.test.ts:104`
 
 **Interfaces:**
 - Consumes: Task 2's `pushRock`, `hitRock`; `firstBlocker`, `rockMass`, `inArc`.
@@ -1440,6 +1441,7 @@ import { rockOnTarget } from '../src/renderer/src/sim/tactical/rockWeapons';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
 import { laserCardReason, laserSituation, statusSentence } from '../src/renderer/src/render/duel/situationModel';
 import { arena, mover, rockEvents, seeded } from './helpers/rockArena';
+import { lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
 
 /** The arena with the crew facing east (heading 64) at (0, −2500), its laser full and targeted (the round's opener). */
 function east() { const st = arena(); st.ships[0].heading = 64; return st; }
@@ -1481,6 +1483,18 @@ describe('a laser shot on a rock (spec §4.1)', () => {
       else expect(rockEvents(st, 'dust')).toMatchObject([{ rock: 100, by: 'laser', ship: 0 }]);
       expect([st.systems[0].laserRock, st.systems[0].rocksBroken]).toEqual([-1, 1]);
     }
+  });
+});
+
+describe('born pieces and line of sight (spec §6.2)', () => {
+  it('lineOfSight passes through a piece born this tick, as firstBlocker does, and is blocked once it is not born', () => {
+    const st = east();
+    mover(st, 100, 200, -2500, 0, 0, 30);
+    st.rockBorn[100] = 1;
+    expect(lineOfSight(st, 0, -2500, 400, -2500)).toBe(true);
+    expect(firstBlocker(st, 0, -2500, 400, -2500)).toBeNull();
+    st.rockBorn[100] = 0;
+    expect(lineOfSight(st, 0, -2500, 400, -2500)).toBe(false);
   });
 });
 
@@ -1586,6 +1600,8 @@ export const AUTO_DIG = false;
 - [ ] **Step 4: Edit `src/renderer/src/sim/tactical/rocks.ts`**
 
 Delete the lines `export const LASER_ROCK_DAMAGE = 1;` and `export const AUTO_DIG = true;` (keep `TORPEDO_ROCK_DAMAGE` and change the comment above it to `/** Spike i's torpedo damage, still in use until Task 5's blast. */`). In `firstBlocker`'s loop, add as its first statement: `if (s.rockBorn[k] === 1) continue;   // §6.2: a piece made earlier this tick is not in the way`.
+
+Edit `src/renderer/src/sim/tactical/geometry.ts`: in `lineOfSight`'s rock loop, add as its first statement `if (state.rockBorn[k] === 1) continue;   // spike ii §6.2: as firstBlocker, a piece made this tick is not in the way`, so a piece born earlier in this tick's weapon phase never blocks a shot it would not take (clarification of §6.2).
 
 - [ ] **Step 5: Create `src/renderer/src/sim/tactical/rockWeapons.ts`**
 
@@ -1755,7 +1771,7 @@ git commit -m "feat(spike-ii): laser pushes and cracks rocks, rock targets, AUTO
 
 **Files:**
 - Create: `src/renderer/src/sim/tactical/rockBlast.ts`, `tests/rockBlast.test.ts`
-- Modify: `src/renderer/src/sim/tactical/rockTuning.ts` (append), `src/renderer/src/sim/tactical/rocks.ts` (remove `TORPEDO_ROCK_DAMAGE`), `src/renderer/src/sim/tactical/missiles.ts:203-258, 225-229, 299-311`, `src/renderer/src/sim/tactical/weapons.ts:41-54, 180`
+- Modify: `src/renderer/src/sim/tactical/rockTuning.ts` (append), `src/renderer/src/sim/tactical/rocks.ts` (remove `TORPEDO_ROCK_DAMAGE`), `src/renderer/src/sim/tactical/missiles.ts:15-26 (launchMissile), 28-33 (end), 46-61 (homingTurn), 109-113 (the rock contact)`, `src/renderer/src/sim/tactical/weapons.ts:41-54, 180`
 
 **Interfaces:**
 - Consumes: Task 2's `breakRock`, `hitRock`, `pushRock`; `rocksNear`.
@@ -3144,7 +3160,7 @@ export function pushRockShakes(fx: FxState, events: readonly ViewEvent[], crew: 
     if (e.what === 'blast') {
       const px = BLAST_SHAKE.px * Math.max(0, 1 - Math.hypot(e.x - crew.x, e.y - crew.y) / BLAST_SHAKE.fade);
       if (px >= 0.5) startShake(fx, px, BLAST_SHAKE.s);
-    } else if (e.what === 'split' || (e.what === 'dust' && e.rock >= 0 && e.by !== 'planet' && e.by !== 'edge')) startShake(fx, BREAK_SHAKE.px, BREAK_SHAKE.s);
+    } else if (e.what === 'split' || (e.what === 'dust' && e.rock >= 0 && !e.evicted && e.by !== 'planet' && e.by !== 'edge')) startShake(fx, BREAK_SHAKE.px, BREAK_SHAKE.s);
   }
 }
 
@@ -3249,7 +3265,7 @@ export function rockSounds(w: RockSoundWatch | null, events: readonly ViewEvent[
   for (const e of events) {
     if (e.kind !== 'rock') continue;
     if (e.what === 'blast') tiers[0]!.push({ sound: ROCK_BOOM, x: e.x, y: e.y });
-    else if ((e.what === 'split' || e.what === 'dust') && e.by !== 'planet' && e.by !== 'edge') tiers[1]!.push({ sound: ROCK_CRUNCH, x: e.x, y: e.y });
+    else if ((e.what === 'split' || (e.what === 'dust' && !e.evicted)) && e.by !== 'planet' && e.by !== 'edge') tiers[1]!.push({ sound: ROCK_CRUNCH, x: e.x, y: e.y });
     else if (e.what === 'hit' && e.by === 'laser') tiers[2]!.push({ sound: ROCK_CRACK, x: e.x, y: e.y });
     else if (e.what === 'bump' && e.by === 'collision') tiers[3]!.push({ sound: ROCK_KNOCK, x: e.x, y: e.y });
   }
@@ -3341,10 +3357,14 @@ git commit -m "chore(spike-ii): SIM_VERSION 53, goldens re-blessed by the two-st
 // Re-finds tests/duelCheckpoint.test.ts's SPLIT after a gameplay change: per seed 1..10, the scripted duel's outcome and
 // end tick, the first tick from 5000 on that ends with a missile in flight, a damaged crew room and a repair in progress
 // (−1: none), and the end summary the test pins. Usage: npx tsx scripts/spike-asteroids-find-split.ts
+// The duel helpers read the bundler-defined __GAMEPLAY_CONTENT_DIGEST__ at call time; tsx defines nothing, so it is
+// supplied here before any duelInit (as vitest.config.ts does).
+import { computeContentDigest } from '../build/contentDigest';
 import { duelRules } from '../src/renderer/src/authority/duelRules';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import { createDriver, duelCore, duelInit, stepScripted } from '../tests/helpers/duelAuthority';
 
+(globalThis as Record<string, unknown>).__GAMEPLAY_CONTENT_DIGEST__ = computeContentDigest(process.cwd());
 for (let seed = 1; seed <= 10; seed++) {
   const h = duelCore(duelInit(seed)), driver = createDriver(seed);
   let split = -1;
@@ -3365,7 +3385,7 @@ Run: `npx vitest run`
 Expected: everything passes except tests that pin a scripted trajectory (a tick, a count or a summary from a scripted duel). For each such failure:
 - `tests/duelCheckpoint.test.ts`: run `npx tsx scripts/spike-asteroids-find-split.ts`; keep `SEED = 1` if it has a SPLIT, else take the lowest seed that has one; set `SEED`, `SPLIT` and the `toMatchObject` summary to the printed values, and prepend the history comment with `Seed N's scripted duel is a crew win/loss at tick T (SIM_VERSION 53, spike ii billiard asteroids; at SPLIT S).`
 - Any other test that names a pinned tick in its comment (for example `duelModules.test.ts`' `played(6, 2808)` "has a missile in flight"): find the new tick by the rule its comment states (step the same scripted duel and print the first qualifying tick), update the number and add `(SIM_VERSION 53, spike ii)` to its history comment.
-- A failure that is not a pinned trajectory (a real rule break) is a bug in Tasks 1–9: fix it there with a failing test first; do not edit the expectation.
+- A failure that is not a pinned trajectory (a real rule break) is a bug in Tasks 1–9: fix it there with a failing test first; do not edit the expectation. After any such sim fix: re-run `npm run bless` (a same-version bless at 53, which `scripts/golden/blessGuard.ts` allows), re-run Step 1's duelGates, and commit the re-blessed goldens together with the fix.
 
 Re-run `npx vitest run` until it is green. Commit only the test files changed plus the finder:
 
@@ -3520,7 +3540,7 @@ function feelShot(rock: number) {
         const fam = family.has(e.rock);
         for (const p of e.pieces ?? []) { if (fam) family.add(p); else family.delete(p); }
         if (fam) { pieces += (e.pieces ?? []).length; breaks++; }
-      } else if (e.what === 'dust' && e.rock >= 0 && family.has(e.rock)) { family.delete(e.rock); if (e.by !== 'planet' && e.by !== 'edge') breaks++; }
+      } else if (e.what === 'dust' && e.rock >= 0 && family.has(e.rock)) { family.delete(e.rock); if (!e.evicted && e.by !== 'planet' && e.by !== 'edge') breaks++; }
       else if (e.what === 'bump' && e.by === 'collision' && (family.has(e.rock) || family.has(e.other ?? -1))) collisions++;
     }
     if (blastAt >= 0 && now <= blastAt + 300) for (const s of family) if (rockAlive(st, s)) { const a = rockAt(st, s); far = Math.max(far, Math.hypot(a.x - bx, a.y - by)); }
@@ -3604,7 +3624,7 @@ npx tsx scripts/profile-duel-publication.ts --movers 60 --json $SCR/pub-ii-60.js
 
 Expected: `stress.failures` empty, `stress.p99Pass` true, `feel.floorPass` true; both publication runs within budget (host < 1.5 ms, client < 1.0 ms; the script exits non-zero otherwise).
 - If `feel.floorPass` is false: do not tune (no knob is named for it); record the rows for the report and report it to the controller as a failed acceptance item.
-- If `stress.p99Pass` is false: do Steps 4–7 (the moving-rock grid), then re-run this step. Otherwise skip to Step 8.
+- If `stress.p99Pass` is false: do Steps 4–7 (the moving-rock grid), then re-run this step once. If p99 still fails with the grid in place, do not tune: record `stepDuelMs` in the report and stop with BLOCKED (spec §9.5 acceptance failed). Otherwise skip to Step 8.
 
 - [ ] **Step 4 (only if p99 failed): Write the failing grid test** — append to `tests/rockContacts.test.ts` (add `buildMoverGrid, dropMoverGrid, moverAdded, moverMoved, writeRock, wakeRock, beginRockTick` to its `rocks` import):
 
@@ -3714,7 +3734,7 @@ git add src/renderer/src/sim/tactical/rocks.ts src/renderer/src/sim/tactical/sta
 git commit -m "perf(spike-ii): moving-rock grid for rocksNear (spec §9.5 fallback)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
-Then re-run Step 3.
+Then re-run Step 3 once (its BLOCKED rule applies if p99 still fails).
 
 - [ ] **Step 8: Measure master and spike i for the comparison table**
 
