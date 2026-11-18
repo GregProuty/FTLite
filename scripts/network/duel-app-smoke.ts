@@ -19,9 +19,10 @@ import { build } from 'vite';
 import { computeContentDigest } from '../../build/contentDigest';
 import { startOnlineAppRuntime } from './online-app-runtime';
 
-/** The test-only first seed: with no flight or weapon input its first round is decided on tick 1471, about 25 s of play,
- *  whoever is seated or away (found by search, H-2a plan). */
-export const DUEL_TEST_SEED = 2277;
+/** The test-only first seed: with no flight or weapon input its first round is decided on tick 3423, about 57 s of play
+ *  (the Hunter's 30 s grace included), whoever is seated or away (found by search over seeds 1-1500 at SIM_VERSION 45;
+ *  2277, decided on tick 1471, before the grace). */
+export const DUEL_TEST_SEED = 351;
 const delay = (ms: number) => new Promise(done => setTimeout(done, ms));
 const assert = (value: unknown, message: string) => { if (!value) throw Error(message); };
 type Application = { child: ChildProcess; pid: number; profile: string; exited: boolean; exit: Promise<void>; request(command: string, data?: object): Promise<any> };
@@ -119,7 +120,7 @@ async function main() {
     await takeConsoles(h, g);
     step = 'step 3';
     // 3. The round ends; Enter starts round 2 on both; a record with latency samples on both machines.
-    const decided = await until(() => status(h), (r: any) => latest(r)?.outcome !== 0, 'the forced round end', 60000);
+    const decided = await until(() => status(h), (r: any) => latest(r)?.outcome !== 0, 'the forced round end', 90000);
     await until(() => status(g), (r: any) => latest(r)?.outcome !== 0, 'the guest sees the decision');
     await press(h, 'Return');
     await until(async () => [latest(await status(h)), latest(await status(g))], ([a, b]: any) => a.round === 1 && b.round === 1 && a.outcome === 0, 'Enter starts round 2 on both');
