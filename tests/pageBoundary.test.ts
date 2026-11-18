@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { moduleSpecifiers } from './helpers/determinismGuard';
 
 // Web build spec §2.3, §3: page-side online code runs in a browser page or Worker, so it imports no Node or Electron.
-export const PAGE_ROOTS = ['src/network/online', 'src/network/host', 'src/network/transport', 'src/worker'];
+export const PAGE_ROOTS = ['src/network/online', 'src/network/host', 'src/network/transport', 'src/worker', 'src/renderer/src/app/online'];
 function walk(root: string): string[] {
   if (!existsSync(root)) return [];
   return readdirSync(root, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? walk(join(root, entry.name)) : /\.tsx?$/.test(entry.name) ? [join(root, entry.name)] : []);
