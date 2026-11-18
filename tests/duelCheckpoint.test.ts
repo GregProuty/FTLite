@@ -18,8 +18,10 @@ import { LAYOUT } from './helpers/sim';
 import { runReplay } from '../src/renderer/src/authority/replay';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
-/** Seed 2's scripted duel is a crew win at tick 25426 (SIM_VERSION 53, spike ii billiard asteroids; at SPLIT 7195; seeds
- *  1 and 4 to 10 have no qualifying tick, seed 3 does at 9599). Seed 1 was used before: a crew win at tick 5980 (SIM_VERSION 50,
+/** Seed 2's scripted duel is a crew loss at tick 14424 (SIM_VERSION 53, spike ii with the fan split at r 13; at SPLIT 7195;
+ *  seeds 1, 5 and 7 to 9 have no qualifying tick, seeds 3, 4, 6 and 10 do at 5823, 6156, 6055 and 9861). Before the fan
+ *  tuning it was a crew win at tick 25426 (SIM_VERSION 53, spike ii billiard asteroids; at SPLIT 7195; seeds
+ *  1 and 4 to 10 had no qualifying tick, seed 3 did at 9599). Seed 1 was used before: a crew win at tick 5980 (SIM_VERSION 50,
  *  Feel-i's opener and auto-face; at SPLIT 5000; seeds 3 to 8 and 10 had no qualifying tick, seed 2 and 9 did at 10146 and 5125). Seed 5 was used before: a crew win at tick
  *  14986 (SIM_VERSION 49, FTL targeting; at SPLIT 5434). Seed 3 was used before: a crew win at tick 15361 (SIM_VERSION 48, the weapons
  *  update; at SPLIT 5395). Seed 6 was used before: a crew win at tick 11401 (SIM_VERSION 47, Sci-1 merged with the Hunter grace; at SPLIT 6249;
@@ -58,8 +60,8 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
         const end = reference.state.summary;
         expect(resumed.state.summary).toEqual(end);
         expect(resumed.core.captureCheckpoint().modeMemory, 'the final telemetry accumulator of the restored run').toEqual(reference.core.captureCheckpoint().modeMemory);
-        expect(end).toMatchObject({ outcome: Outcome.CrewWins, ticks: referenceHashes.length,
-          terminal: [[], ['planet']], laserReleases: [26, 36], laserHits: [43, 36], missilesLaunched: [12, 12], missileHits: [5, 3], repairsFinished: [0, 12] });   // seed 2 (SIM_VERSION 53, spike ii)
+        expect(end).toMatchObject({ outcome: Outcome.EnemyWins, ticks: referenceHashes.length,
+          terminal: [['laser'], []], laserReleases: [13, 24], laserHits: [22, 24], missilesLaunched: [6, 7], missileHits: [3, 3], repairsFinished: [3, 9] });   // seed 2 (SIM_VERSION 53, spike ii, the fan split at r 13)
         expect(Object.isFrozen(end)).toBe(true);
         expect(referenceHashes.length).toBeGreaterThan(SPLIT);
         console.log(`continuation proof: seed ${SEED}, ${SPLIT} + ${referenceHashes.length - SPLIT} ticks; summary ${JSON.stringify(end)}`);
