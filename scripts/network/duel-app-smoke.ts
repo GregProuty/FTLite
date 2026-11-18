@@ -26,7 +26,7 @@ import { startOnlineAppRuntime } from './online-app-runtime';
 export const DUEL_TEST_SEED = 351;
 const delay = (ms: number) => new Promise(done => setTimeout(done, ms));
 const assert = (value: unknown, message: string) => { if (!value) throw Error(message); };
-type Application = { child: ChildProcess; pid: number; profile: string; exited: boolean; exit: Promise<void>; request(command: string, data?: object): Promise<any> };
+type Application = { child: ChildProcess; pid: number; profile: string; exited: boolean; exitCode?: number | null; exit: Promise<void>; request(command: string, data?: object): Promise<any> };
 
 async function main() {
   const began = performance.now(), directory = mkdtempSync(join(tmpdir(), 'ftlite-duel-app-'));
@@ -57,7 +57,7 @@ async function main() {
     child.stdout!.resume(); child.stderr!.resume();
     // Local debugging only (FTL_DEBUG=1): raw wrapper diagnostics; never set by the npm gate.
     if (process.env.FTL_DEBUG) child.stderr!.pipe(process.stderr);
-    app.exit = new Promise(done => child.once('exit', () => { app.exited = true; for (const item of pending.values()) { clearTimeout(item.timer); item.reject(Error('application exited')); } pending.clear(); done(); }));
+    app.exit = new Promise(done => child.once('exit', code => { app.exited = true; app.exitCode = code; for (const item of pending.values()) { clearTimeout(item.timer); item.reject(Error('application exited')); } pending.clear(); done(); }));
     processes.push(app);
     await until(async () => { try { return await app.request('status'); } catch (error) { if (app.exited) throw error; return null; } }, (v: any) => !!v?.status && v.text.includes('Single player'), `${profile} app ready`, 30000);
     return app;
@@ -167,7 +167,8 @@ async function main() {
     const rate = (tickOf(afterHost) - tickOf(beforeHost)) / elapsed;
     assert(midway.minimized === true, 'host was not minimized');
     assert(rate >= 59, `minimized host ticked at ${rate.toFixed(2)} Hz`);
-    assert(afterHost.recovery.invalidations.length === 0 && ['running', 'syncing', 'paused'].includes(afterHost.status.phase), 'minimized host lost its lease');
+    // Mid round 2 nobody pauses: the live phase is the only lease-kept outcome.
+    assert(afterHost.recovery.invalidations.length === 0 && afterHost.status.phase === 'running', 'minimized host lost its lease');
     assert(tickOf(afterGuest) > tickOf(beforeHost), 'guest stopped receiving the minimized host');
     proof.minimizedHost = { seconds: elapsed, ticksPerSecond: rate, ticks: tickOf(afterHost) - tickOf(beforeHost), minimized: true, leaseKept: true, phase: afterHost.status.phase };
     // F3 shows the latency overlay on either machine (spec §9): a screenshot of each beside the report, then F3 hides it.
@@ -201,8 +202,16 @@ async function main() {
     assert(!!fresh, `no fresh checkpoint within 3 s of close: ${JSON.stringify(closed.puts)}`);
     proof.closeGate = { exitAnsweredMs: closed.exitAnsweredAt - closed.closeAt, putElapsedMs: fresh.elapsedMs, capturedTick: fresh.metadata.capturedTick, lastPeriodic,
       puts: closed.puts.length, exitSnapshot: closed.snapshot };
+    const s = closed.snapshot;
+    assert(!!s && s.ports === 0 && Number.isSafeInteger(s.workers) && s.workers > 0 && s.workers === s.workerExits && s.workerErrors === 0,
+      `close left page resources: ${JSON.stringify(s && { workers: s.workers, workerExits: s.workerExits, workerErrors: s.workerErrors, ports: s.ports })}`);
     await Promise.race([h.exit, delay(5000)]);
-    assert(h.exited, 'the closed host app did not exit');
+    assert(h.exited && h.exitCode === 0, `the closed host app did not exit cleanly (${h.exitCode})`);
+    // Leave -> idle in duel mode: the guest, its host gone mid-match, leaves through the menu and reaches idle.
+    step = 'guest leave';
+    await until(() => status(g), (r: any) => r.status.actions.includes('leave'), 'guest can leave after the host closed');
+    await g.request('click', { id: 'leave' }); await phase(g, 'idle');
+    proof.leave = { guestIdle: true };
     // Both Web-i scenarios are required evidence: a run that skipped either cannot pass.
     assert(!!proof.minimizedHost && !!proof.closeGate, 'missing minimized-host or close-gate evidence');
     console.log('ACTUAL DUEL APP: menu host/join/start, the forced round end and round 2, records on both, Helm thrust and a beam on both, hash agreement, minimized host, peer-lost pause and rejoin, close gate');

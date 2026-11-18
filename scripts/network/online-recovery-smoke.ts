@@ -193,6 +193,7 @@ async function main() {
       // Web-i: the old main stall is now a page main-thread stall, and the Worker's evidence reaches main only through that
       // page (the probe's report port). This scenario needs a Worker-target evidence path that a blocked page cannot gate;
       // until it has one it fails here by name rather than timing out on files no one writes.
+      // Deferred: plan deviation D-9 (what is uncovered and how to restore it).
       assert(false,'stale scenario not ported to the page topology (needs Worker-target evidence)');
       await h.request('block-next-grant');
       const blockPath=join(directory,'host-block.json'), utilityPath=join(directory,'host-utility-0.json');
@@ -312,7 +313,8 @@ async function main() {
   const report={version:1,scenario,source,temporaryName:basename(directory),directoryCleanupAttempted,cleanupFailed,
     preparationProcesses:preparationProcesses.map(({pid,exited,forced,code})=>({kind:'git',pid,exited,forced,code})),nativeAllocated:!!runtime||processes.length>0,runtime:{electron:electronVersion,workerd:runtime?.workerdVersion,workerPid:runtime?.pid,workerExit:runtime?.exited(),temporaryRemoved:!existsSync(directory)},
     processes:processes.map(({pid,profile,exited,exitCode,beforeExit,cleanup,termination,forcedRendererExits})=>({pid,profile,exited,exitCode,termination,resourcesBeforeForcedExit:beforeExit,forcedRendererExits,cleanup})),
-    cleanup:Object.fromEntries(['workers','workerExits','windows','ports','listeners','peers','nativePeersObserved','nativePeerCloses','nativePeersEndedWithPage','observedPagePorts'].map(k=>[k,cleanups.reduce((n,r)=>n+r[k],0)])),
+    // An unobserved counter (e.g. ports: null) stays null so the report cannot pass.
+    cleanup:Object.fromEntries(['workers','workerExits','windows','ports','listeners','peers','nativePeersObserved','nativePeerCloses','nativePeersEndedWithPage','observedPagePorts'].map(k => [k, cleanups.some(r => !Number.isSafeInteger(r[k])) ? null : cleanups.reduce((n,r)=>n+r[k],0)])),
     runtimeHelper:runtime?.observation(),instrumentation,viewports,proof,budgetMs,elapsedMs:Math.ceil(performance.now()-began),failure,assertionFailure,failureCategory,stage,utilityFailure,driverFailure:failure?firstDriverFailure:undefined,waitFailure,limits:['loopback-only','no-TURN','no-WAN','no-two-machine','OS-suspend-NOT-RUN']};
   try {writeFileSync(reportPath,JSON.stringify(report,null,2)+'\n');}
   catch {console.error('RECOVERY_REPORT_WRITE_FAILED');console.log(JSON.stringify(report));failure??='report-write-failed';}

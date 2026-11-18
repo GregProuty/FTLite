@@ -1,5 +1,5 @@
 // TEST ONLY (Web-i Task 11): injected into the app page's main world before any page script by
-// scripts/network/online-app-smoke.cjs (CDP Page.addScriptToEvaluateOnNewDocument). It observes the page's own fetch,
+// scripts/network/online-app-smoke.cjs through its session preload (online-app-probe-preload.cjs). It observes the page's own fetch,
 // Worker, MessagePorts and online status; product code is unchanged. Main drains it with onlineProbe.take().
 type Flags = { holdUploads: boolean; delayExitCommit: boolean; holdRestore: boolean; blockNextGrant: boolean; delayNextFetch: boolean;
   stopping: boolean; recoveryObserve: boolean; countPorts: boolean };

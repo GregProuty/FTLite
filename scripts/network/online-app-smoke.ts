@@ -231,7 +231,8 @@ async function main() {
   const cleanups = processes.flatMap(p => p.cleanup ? [p.cleanup] : []);
   const report = { version: 1, source, runtime: { electron: electronVersion, workerd: runtime?.workerdVersion, workerPid:runtime?.pid, workerExit: runtime?.exited(), temporaryRemoved: !existsSync(directory) },
     processes: processes.map(({pid,profile,exited,exitCode,beforeExit,cleanup,termination}) => ({pid,profile,exited,exitCode,termination,resourcesBeforeForcedExit:beforeExit,cleanup})),
-    cleanup: Object.fromEntries(['workers','workerExits','windows','ports','listeners','peers','nativePeersObserved','nativePeerCloses','nativePeersEndedWithPage','observedPagePorts'].map(k => [k, cleanups.reduce((n,r)=>n+r[k],0)])),
+    // An unobserved counter (e.g. ports: null, no exit snapshot) stays null so the report cannot pass.
+    cleanup: Object.fromEntries(['workers','workerExits','windows','ports','listeners','peers','nativePeersObserved','nativePeerCloses','nativePeersEndedWithPage','observedPagePorts'].map(k => [k, cleanups.some(r => !Number.isSafeInteger(r[k])) ? null : cleanups.reduce((n,r)=>n+r[k],0)])),
     runtimeHelper: runtime?.observation(), viewports, scenarios, checks, elapsedMs: Math.ceil(performance.now()-began), failure, waitFailure,
     limits: ['loopback-only','no-TURN','no-rehost','no-WAN','no-two-machine'] };
   writeFileSync(reportPath, JSON.stringify(report,null,2)+'\n');
