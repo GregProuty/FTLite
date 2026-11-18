@@ -3,6 +3,7 @@
 // Commands arrive as one ShipInput per ship per tick; the duel step builds these from the authority's admitted commands.
 import { inArc, lineOfSight } from './geometry';
 import { launchMissile } from './missiles';
+import { tickGun } from './gun';
 import { classOf, CREW_SLOT, missileOf, Room, type Axes, type TacticalState } from './state';
 
 /** One ship's inputs for one tick. `helm` / `weapons`: a present player is seated at that console ("attended", spec §8). */
@@ -135,6 +136,7 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
   }
   if (input.weapons && crew && input.torpLock !== null && validTarget(input.torpLock)) s.torpLock = input.torpLock;
   stepBurst(state, i);
+  tickGun(state, i, input);   // Valkyrn spec §7.1: before anything moves; its clocks run attended or not (Decision 8)
   if (!input.weapons) { s.fireHeld = false; return; }   // unattended: Fire lets go without firing or discarding
   if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; }   // a hit after its clock ran last tick: no shot
   if (armed && input.laserCharge !== null && canCharge(state, i)) {

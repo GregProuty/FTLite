@@ -80,6 +80,9 @@ export interface Migration {
   readonly derived: readonly { old: RegExp; reads: RegExp; value(old: string, read: (name: string) => ArrayLike<number>, newNames: readonly string[]): number[] }[];
   /** New fields with no old counterpart. */
   readonly added: readonly RegExp[];
+  /** ADDITIONS only (Valkyrn-i): every current field matching `added` must hold its first recorded value at every
+   *  recorded tick, so an additive change that moves a new field in a run that never uses it fails the oracle. */
+  readonly frozen?: boolean;
 }
 /** R-2 (37 → 38): a ship's systems fields move from its body (`space.ships.<i>.*`) to its systems record. */
 const MOVED_TO_SYSTEMS = /^space\.ships\.(\d+)\.(hull|rooms|shields|shieldClock|laserCharge|laserHold|fireHeld|lock|magazine|magazineClock|shots|laserHits|layersStripped|missilesLaunched|missileHits|missilesLost)$/;
@@ -110,6 +113,15 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    *  laser gains freq; no 46 oracle run scans, designates or tunes, step 1's values are neutral and its hostility is
    *  the Hunter grace's, so every run is unchanged per tick. */
   46: { change: 'Sci-1: science scans', rename: () => undefined, derived: [], added: [/^science\./, /^ship\.systems\.\d+\.freq$/] }
+};
+/** Same-version additions, keyed by the current SIM_VERSION (Valkyrn-i plan Decision 1): new fields with no old
+ *  counterpart that a change adds without a bump. `duel-oracle.ts added` maps every baseline field to itself, requires
+ *  every new field to match one of these, and every run identical at every tick (values, results, events, telemetry). */
+export const ADDITIONS: Readonly<Record<number, Migration>> = {
+  /** Valkyrn-i (53): the gun's state on every systems record and the round pool; no oracle run has a gun, so they stay
+   *  at their first recorded value (0), which `frozen` makes recordRun check at every tick. */
+  53: { change: 'Valkyrn-i: the gun state and the round pool', rename: () => undefined, derived: [], frozen: true,
+    added: [/^space\.rounds\.\d+\.(active|owner|flight)$/, /^ship\.systems\.\d+\.gun(Heat|Locked|Cooldown|Muzzle|Wear|Hull|RoomWear|Shots|Hits)$/] }
 };
 
 /** The duel's named canonical fields after SIM_VERSION, in flattenDuel order: `<module id>.<field name>`, with the
@@ -241,6 +253,10 @@ export function recordRun(spec: OracleRunSpec, schema?: { names: readonly string
     }
     const now = schemaOf(d), target = schema ?? now;
     const plan = aliasPlan(target.names, target.counts, now.names, now.counts, schema?.migration);
+    // Frozen additions (Migration.frozen): the offsets, in the current flattened values, of every field declared added.
+    const frozen: { name: string; offset: number; count: number }[] = [], moved = new Set<string>(), added = schema?.migration;
+    let firstValues: Float64Array | undefined;
+    if (added?.frozen) { let o = 0; now.names.forEach((n, k) => { if (added.added.some((p) => p.test(n))) frozen.push({ name: n, offset: o, count: now.counts[k]! }); o += now.counts[k]!; }); }
     const kept = target.names.map((n, k) => ({ n, c: target.counts[k]! })).filter((f) => !VERSION_FIELDS.includes(f.n));
     const versionAt = versionOffset(now.names, now.counts);
     const flatCount = now.counts.reduce((a, b) => a + b, 0), chains = kept.map(() => SEED), perTick: string[] = [];
@@ -250,6 +266,11 @@ export function recordRun(spec: OracleRunSpec, schema?: { names: readonly string
       if (flatCount !== all.length - 1) throw new Error(`${spec.id} tick ${d.interior.tick}: the duel schema names ${flatCount} values, flattenDuel writes ${all.length - 1} after SIM_VERSION`);
       if (all[0] !== SIM_VERSION || all[1 + versionAt] !== SIM_VERSION) throw new Error(`${spec.id} tick ${d.interior.tick}: a version value is not SIM_VERSION`);
       const values = plan.build(all.subarray(1));
+      if (frozen.length > 0) {
+        const flat = all.subarray(1);
+        firstValues ??= Float64Array.from(flat);
+        for (const f of frozen) for (let j = 0; j < f.count; j++) if (flat[f.offset + j] !== firstValues[f.offset + j]) { moved.add(f.name); break; }
+      }
       let h = SEED, i = 0;
       kept.forEach((f, k) => {
         let c = chains[k]!;
@@ -267,7 +288,8 @@ export function recordRun(spec: OracleRunSpec, schema?: { names: readonly string
     }
     const run: OracleRun = { id: spec.id, names: kept.map((f) => f.n), counts: kept.map((f) => f.c), ticks: d.interior.tick, outcome: d.tactical.outcome, perTick, chains: chains.map(hex) };
     if (spec.rematch) run.from = rematchTick;
-    return { problems: plan.problems, hashes, rematch, run };
+    const frozenProblems = [...moved].map((n) => `added field ${n} changed during the run (declared added at the same version, it must hold its first recorded value)`);
+    return { problems: [...plan.problems, ...frozenProblems], hashes, rematch, run };
   } finally { disposeDuel(d); }
 }
 
@@ -332,16 +354,19 @@ export function runDifferences(was: OracleRun, now: OracleRun): string[] {
 }
 
 /** Compare a baseline with the current code (pure apart from `rerun`). `mode` 'bump' requires SIM_VERSION to be the
- *  baseline's plus 1 and applies MIGRATIONS[baseline]; 'same' requires the same version and no migration. */
+ *  baseline's plus 1 and applies MIGRATIONS[baseline]; 'same' requires the same version and no migration; 'added'
+ *  (Valkyrn-i) requires the same version and applies ADDITIONS[version], which only declares new fields. */
 export function judgeDuelOracle(was: OracleTrace | undefined, rerun: (spec: OracleRunSpec, schema: { names: readonly string[]; counts: readonly number[]; migration?: Migration }) => { run: OracleRun; problems: string[] },
-  root: string, mode: 'bump' | 'same', version = SIM_VERSION, migrations: Readonly<Record<number, Migration>> = MIGRATIONS, stored?: DuelGoldenCheckpoints, storedRematch?: RematchGoldenCheckpoints): VersionOnlyResult {
+  root: string, mode: 'bump' | 'same' | 'added', version = SIM_VERSION, migrations: Readonly<Record<number, Migration>> = MIGRATIONS, stored?: DuelGoldenCheckpoints, storedRematch?: RematchGoldenCheckpoints,
+  additions: Readonly<Record<number, Migration>> = ADDITIONS): VersionOnlyResult {
   if (!was) return { ok: false, message: `no duel oracle baseline at ${ORACLE_FILE}: run \`duel-oracle.ts baseline\` before the change` };
   if (was.cwd !== root) return { ok: false, message: `the duel oracle baseline was recorded from ${was.cwd} (HEAD ${was.head}), not from ${root}: record it again here` };
   if (mode === 'bump' && version !== was.simVersion + 1) return { ok: false, message: `the duel oracle baseline is at sim version ${was.simVersion}; a bump must be to ${was.simVersion + 1}, not ${version}` };
-  if (mode === 'same' && version !== was.simVersion) return { ok: false, message: `the duel oracle baseline is at sim version ${was.simVersion}, the code at ${version}: use \`check\` for a bump` };
+  if (mode !== 'bump' && version !== was.simVersion) return { ok: false, message: `the duel oracle baseline is at sim version ${was.simVersion}, the code at ${version}: use \`check\` for a bump` };
+  if (mode === 'added' && !additions[version]) return { ok: false, message: `no same-version additions are declared at sim version ${version} (ADDITIONS in scripts/golden/duelOracle.ts)` };
   // A bump re-blesses duel-1.json and duel-rematch.json, so the baseline must record exactly what the stored goldens pin.
   if (mode === 'bump') { const g = goldenRefusal(was, stored) ?? rematchGoldenRefusal(was, storedRematch); if (g) return { ok: false, message: g }; }
-  const migration = mode === 'bump' ? migrations[was.simVersion] : undefined, problems: string[] = [];
+  const migration = mode === 'bump' ? migrations[was.simVersion] : mode === 'added' ? additions[version] : undefined, problems: string[] = [];
   const specs = new Map(ORACLE_RUNS.map((s) => [s.id, s]));
   if (was.runs.map((r) => r.id).join(',') !== ORACLE_RUNS.map((s) => s.id).join(',')) problems.push('the baseline records other runs than ORACLE_RUNS');
   for (const run of was.runs) {
@@ -353,7 +378,7 @@ export function judgeDuelOracle(was: OracleTrace | undefined, rerun: (spec: Orac
   }
   const ticks = was.runs.reduce((n, r) => n + r.ticks, 0);
   if (problems.length > 0) return { ok: false, message: `duel migration oracle FAILED (baseline HEAD ${was.head}):\n${problems.join('\n')}` };
-  const how = migration ? `through the ${was.simVersion} → ${version} alias table (${migration.change})` : 'field for field';
+  const how = !migration ? 'field for field' : mode === 'added' ? `with the fields declared added at ${version} (${migration.change})` : `through the ${was.simVersion} → ${version} alias table (${migration.change})`;
   return { ok: true, message: `duel oracle: ${was.runs.length} runs, ${ticks} ticks, ${was.runs[0]?.names.length ?? 0} named fields, results, events and telemetry identical at every tick ${how}, sim version ${was.simVersion} → ${version} (baseline HEAD ${was.head})` };
 }
 
@@ -367,3 +392,5 @@ const readStoredRematch = (): RematchGoldenCheckpoints | undefined => existsSync
 export function verifyDuelOracle(): VersionOnlyResult { return judgeDuelOracle(readBaseline(), recordRun, repoRoot(), 'bump', SIM_VERSION, MIGRATIONS, readStoredGolden(), readStoredRematch()); }
 /** The same-version proof for a refactor that must not change the duel at all. */
 export function verifyDuelUnchanged(): VersionOnlyResult { return judgeDuelOracle(readBaseline(), recordRun, repoRoot(), 'same'); }
+/** The same-version proof for an additive change (Valkyrn-i): every old field unchanged per tick, the new ones declared in ADDITIONS. */
+export function verifyDuelAdditive(): VersionOnlyResult { return judgeDuelOracle(readBaseline(), recordRun, repoRoot(), 'added'); }

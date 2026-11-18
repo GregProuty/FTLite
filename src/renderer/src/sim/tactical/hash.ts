@@ -8,8 +8,8 @@
 import { hashF64 } from '../../../../shared/hash';
 import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
 import { SHIP_CLASSES, type ShipClassDef } from './defs';
-import { DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, HEADING_COUNT, HUNTER_TRAIL_TICKS, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
-import { emptyMissile, HunterMode, Outcome, type Missile, type MissileFlight, type Ship, type ShipSystems, type TacticalState } from './state';
+import { DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, GUN_POOL, HEADING_COUNT, HUNTER_TRAIL_TICKS, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
+import { emptyMissile, emptyRound, HunterMode, Outcome, type GunRound, type Missile, type MissileFlight, type Ship, type ShipSystems, type TacticalState } from './state';
 
 /** Values per missile pool entry: active, owner, then the flight x, y, vx, vy, heading, headingAcc, age (zeros when free). */
 export const MISSILE_SLOT = 9;
@@ -19,13 +19,21 @@ const BODY = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'planetHits', 'aste
 /** A systems record's scalar fields in canonical order; `rooms` comes after `hull`. */
 const SYSTEMS_HEAD = ['cls', 'target', 'hull'] as const satisfies readonly (keyof ShipSystems)[];
 const SYSTEMS_TAIL = ['shields', 'shieldClock', 'laserCharge', 'laserHold', 'fireHeld', 'lock', 'freq', 'laserTargeted', 'torpLock', 'torpRoom', 'laserBurst', 'laserBurstClock', 'magazine', 'magazineClock',
-  'shots', 'laserHits', 'layersStripped', 'missilesLaunched', 'missileHits', 'missilesLost'] as const satisfies readonly (keyof ShipSystems)[];
-const FLAGS = new Set<string>(['released', 'fireHeld', 'laserTargeted']);
+  'shots', 'laserHits', 'layersStripped', 'missilesLaunched', 'missileHits', 'missilesLost',
+  'gunHeat', 'gunLocked', 'gunCooldown', 'gunMuzzle', 'gunWear', 'gunHull', 'gunShots', 'gunHits'] as const satisfies readonly (keyof ShipSystems)[];   // the gun's, Valkyrn spec §7.3; gunRoomWear closes the record
+const FLAGS = new Set<string>(['released', 'fireHeld', 'laserTargeted', 'gunLocked']);
 export const MISSILE_KEYS = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'age'] as const satisfies readonly (keyof MissileFlight)[];
 /** Compile-time completeness: a `Missile` member missing from these keys makes this `never` assignment fail typecheck. */
 type MissingMissileKeys = Exclude<keyof Missile, (typeof MISSILE_KEYS)[number] | 'active' | 'owner'>;
 const missileKeysComplete: MissingMissileKeys extends never ? true : never = true;
 void missileKeysComplete;
+/** Values per round pool entry: active, owner, then x, y, vx, vy, age (zeros when free); Valkyrn spec §7.3. */
+export const ROUND_SLOT = 7;
+export const ROUND_KEYS = ['x', 'y', 'vx', 'vy', 'age'] as const satisfies readonly (keyof GunRound)[];
+/** Compile-time completeness: a `GunRound` member missing from these keys makes this `never` assignment fail typecheck. */
+type MissingRoundKeys = Exclude<keyof GunRound, (typeof ROUND_KEYS)[number] | 'active' | 'owner'>;
+const roundKeysComplete: MissingRoundKeys extends never ? true : never = true;
+void roundKeysComplete;
 const HUNTER_HEAD = ['mode', 'room', 'timer', 'working', 'fireAt', 'lastLaunch', 'trailHead'] as const;
 
 type Numeric<T> = { [K in keyof T]: T[K] extends number | boolean ? K : never }[keyof T];
@@ -56,6 +64,22 @@ function missileFields(k: number): ModuleField<TacticalState>[] {
     }
   ];
 }
+/** Round pool entry k (Valkyrn spec §7.3): active, owner, then its flight; a free entry holds only zeros. */
+function roundFields(k: number): ModuleField<TacticalState>[] {
+  return [
+    bit(`rounds.${k}.active`, (s) => s.rounds[k]!.active, (s, v) => { s.rounds[k]!.active = v; }),
+    scalar(`rounds.${k}.owner`, (s) => s.rounds[k]!.owner, (s, v) => { s.rounds[k]!.owner = v; }),
+    {
+      name: `rounds.${k}.flight`, count: ROUND_KEYS.length,
+      read(s, out) { const r = s.rounds[k]!; for (const key of ROUND_KEYS) out.push(r[key]); },
+      write(s, values, offset) {
+        const r = s.rounds[k]!;
+        if (!r.active && (r.owner !== 0 || ROUND_KEYS.some((_, j) => values[offset + j] !== 0))) throw new Error(`rounds.${k}: a free entry holds values`);
+        ROUND_KEYS.forEach((key, j) => { r[key] = values[offset + j]!; });
+      }
+    }
+  ];
+}
 
 const spaceCache = new Map<string, ModuleField<TacticalState>[]>(), shipCache = new Map<number, ModuleField<TacticalState>[]>();
 /** The space field list for `slots` ship slots on a map with `asteroids` asteroids (graceUntil holds asteroids + slots bodies). */
@@ -77,6 +101,7 @@ function spaceFields(asteroids: number, slots: number): ModuleField<TacticalStat
     fields.push(vector(`ships.${i}.graceUntil`, asteroids + slots, (s) => s.ships[i]!.graceUntil));
   }
   for (let k = 0; k < slots; k++) fields.push(...missileFields(k));
+  for (let k = 0; k < GUN_POOL; k++) fields.push(...roundFields(k));   // Valkyrn spec §7.3: the round pool, after the missiles
   for (const key of HUNTER_HEAD) fields.push(key === 'working'
     ? flag('hunter.working', (s) => s.hunter.working, (s, v) => { s.hunter.working = v; })
     : scalar(`hunter.${key}`, (s) => s.hunter[key] as number, (s, v) => { (s.hunter as unknown as Record<string, number>)[key] = v; }));
@@ -93,6 +118,7 @@ function shipFields(slots: number): ModuleField<TacticalState>[] {
     for (const key of SYSTEMS_HEAD) fields.push(systemsField(i, key));
     fields.push(vector(`systems.${i}.rooms`, 3, (s) => s.systems[i]!.rooms));
     for (const key of SYSTEMS_TAIL) fields.push(systemsField(i, key));
+    fields.push(vector(`systems.${i}.gunRoomWear`, 3, (s) => s.systems[i]!.gunRoomWear));   // Valkyrn spec §7.3
   }
   shipCache.set(slots, fields);
   return fields;
@@ -165,8 +191,9 @@ export function hashTactical(s: TacticalState): string { return hashF64(flattenT
 export function cloneTacticalFromModule(s: TacticalState): TacticalState {
   const copy: TacticalState = { ...s, rng: { s: 0 },
     ships: s.ships.map((b) => ({ ...b, graceUntil: new Int32Array(b.graceUntil.length) })) as TacticalState['ships'],
-    systems: s.systems.map((y) => ({ ...y, rooms: [0, 0, 0] })) as TacticalState['systems'],
+    systems: s.systems.map((y) => ({ ...y, rooms: [0, 0, 0], gunRoomWear: [0, 0, 0] })) as TacticalState['systems'],
     missiles: s.missiles.map(emptyMissile) as TacticalState['missiles'],
+    rounds: s.rounds.map(emptyRound),
     hunter: { ...s.hunter, trail: new Float64Array(s.hunter.trail.length) }, events: s.events.map((e) => ({ ...e })),
     known: [0, 0], scan: { ...s.scan }, derelict: { ...s.derelict } };   // fresh science containers; the values are written below
   const values: number[] = [];
@@ -196,7 +223,11 @@ const systemsRules = (slots: number): Readonly<Record<string, (v: number) => boo
   shields: within(0, most((c) => c.shields.layers) + 1), freq: within(0, 2), shieldClock: count, laserCharge: within(0, most((c) => c.slots.laser?.chargeUnits)), laserHold: count,
   fireHeld: flagBit, lock: room, laserTargeted: flagBit, torpLock: within(-1, 2), torpRoom: within(-1, 2), laserBurst: within(0, most((c) => c.slots.laser?.shots) - 1), laserBurstClock: within(0, most((c) => c.slots.laser?.burstGapTicks)),
   magazine: within(0, most((c) => c.slots.missile.magazine)), magazineClock: count,
-  shots: count, laserHits: count, layersStripped: count, missilesLaunched: count, missileHits: count, missilesLost: count
+  shots: count, laserHits: count, layersStripped: count, missilesLaunched: count, missileHits: count, missilesLost: count,
+  // Valkyrn spec §7.3: heat 0..heatMax, cooldown 0..interval, muzzle 0..1, wear below each threshold, counts ≥ 0.
+  gunHeat: within(0, most((c) => c.slots.gun?.heatMax)), gunLocked: flagBit, gunCooldown: within(0, most((c) => c.slots.gun?.intervalTicks)), gunMuzzle: within(0, 1),
+  gunWear: within(0, most((c) => c.slots.gun?.hitsPerLayer) - 1), gunHull: within(0, most((c) => c.slots.gun?.hitsPerHull) - 1),
+  gunRoomWear: within(0, most((c) => c.slots.gun?.hitsPerLevel) - 1), gunShots: count, gunHits: count
 });
 // Built on first use: state.ts imports this file for cloneTactical, so its enums are read lazily.
 const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
@@ -214,7 +245,7 @@ const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
  *  writing them anywhere: heading indices, integer counters, room levels 0..2, shields, the laser and the magazine
  *  against the largest class, the hunter's and the outcome's enums, the map's asteroid count and the slot count; an
  *  inactive ship slot holds only zeros; each missile pool entry: active 0 or 1, a free entry holds only zeros, a missile's
- *  owner is an active slot with no other missile in flight, its heading index and age. `shape` is any tactical state made
+ *  owner is an active slot with no other missile in flight, its heading index and age. Each round pool entry likewise: active 0 or 1, a free entry holds only zeros, an owner that is an active slot, an age within the longest gun life. `shape` is any tactical state made
  *  from the same seed and slot count (only its map and slot count are read). Throws naming the first bad field; returns
  *  the offset after the values. */
 export function validateTacticalValues(shape: TacticalState, values: ArrayLike<number>, offset = 0): number {
@@ -224,7 +255,7 @@ export function validateTacticalValues(shape: TacticalState, values: ArrayLike<n
     const slice = Array.from({ length: f.count }, (_, k) => values[at + k]!);
     const bad = (why: string): never => { throw new Error(`duel snapshot tactical ${f.name}: ${why} (${slice.slice(0, 8).join(', ')})`); };
     if (slice.some((v) => typeof v !== 'number' || !Number.isFinite(v))) bad('not finite');
-    const ship = /^(ships|systems)\.(\d+)\.(.+)$/.exec(f.name), missile = /^missiles\.(\d+)\.(.+)$/.exec(f.name);
+    const ship = /^(ships|systems)\.(\d+)\.(.+)$/.exec(f.name), missile = /^missiles\.(\d+)\.(.+)$/.exec(f.name), round = /^rounds\.(\d+)\.(.+)$/.exec(f.name);
     if (f.name === 'map.asteroids.length') { if (slice[0] !== shape.map.asteroids.length) bad('does not match the map'); }
     else if (f.name === 'ships.length') { if (slice[0] !== slots) bad('does not match the slot count'); }
     else if (ship) {
@@ -243,6 +274,12 @@ export function validateTacticalValues(shape: TacticalState, values: ArrayLike<n
         owners.add(o);
       }
       if (active === 1 && key === 'flight') { const [, , , , head, headAcc, age] = slice as number[]; if (!heading(head!) || !acc(headAcc!) || !count(age!)) bad('heading, headingAcc or age out of range'); }
+    } else if (round) {   // Valkyrn spec §7.3: a round's entry as a missile's, its age within the longest gun life
+      const key = round[2]!, active = values[at - (key === 'active' ? 0 : key === 'owner' ? 1 : 2)]!;
+      if (key === 'active' && !flagBit(slice[0]!)) bad('active is not 0 or 1');
+      if (active === 0 && slice.some((v) => v !== 0)) bad('a free entry holds values');
+      if (active === 1 && key === 'owner' && (!within(0, slots - 1)(slice[0]!) || inactive.has(slice[0]!))) bad('its owner is not an active ship slot');
+      if (active === 1 && key === 'flight' && !within(0, most((c) => c.slots.gun?.lifeTicks))(slice[4]!)) bad('age out of range');
     } else if (f.name === 'known') { if (!within(0, 2)(slice[0]!) || !within(0, 1)(slice[1]!)) bad('out of range'); }   // the enemy 0..2, the derelict 0..1
     else { const rule = top[f.name]; if (rule && !slice.every(rule)) bad('out of range'); }
     at += f.count;
