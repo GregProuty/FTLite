@@ -16,8 +16,9 @@ import type { DuelSink } from '../../ui/sinks';
 import type { AudioOut } from '../audio';
 import { createDuelScene } from './scene';
 import { soloRecorder } from './soloRecorder';
-import { rockAt, rockSlots } from '../../sim/tactical/rocks';
-import { hitRock } from '../../sim/tactical/rockBreak';
+import { beginRockTick, rockAt, RockKind, rockSlots, writeRock } from '../../sim/tactical/rocks';
+import { breakRock, hitRock, pushRock } from '../../sim/tactical/rockBreak';
+import { sitDown } from '../../sim/stations';
 
 export interface DuelModeDeps {
   renderer: Renderer;
@@ -67,8 +68,12 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     clearKeys: () => { keyboard.clear(); pointer.clear(); },
     seed: deps.seed, viewport, layout: deps.layout, onRound: (summary) => { void Promise.resolve(deps.recordDuel?.(solo.record(summary))).catch(() => {}); }
   });
-  // SPIKE (destructible asteroids): a staging hook for the screenshots, solo only. Never in a shipped build.
-  (globalThis as unknown as { __spikeAsteroids?: unknown }).__spikeAsteroids = { duel: () => runtime.duel, rockAt, hitRock, rockSlots };
+  // SPIKE ii (billiard asteroids): a staging hook for the screenshots, solo only. Never in a shipped build. `seatWeapons`
+  // sits the active character at Weapons (the tests' seatDuelCrew way), so the shots need no walking.
+  (globalThis as unknown as { __spikeAsteroids?: unknown }).__spikeAsteroids = {
+    duel: () => runtime.duel, rockAt, rockSlots, writeRock, RockKind, hitRock, breakRock, pushRock, beginRockTick,
+    seatWeapons: () => { const d = runtime.duel; sitDown(d.interior, runtime.active(), d.weapons); }
+  };
   // Feel-ii visual checks: a staging hook, Single player only, set only when the page asked for it before the duel began.
   const stage = window as unknown as { __FTLITE_STAGE__?: boolean; __ftliteDuel?: unknown };
   if (stage.__FTLITE_STAGE__ === true) stage.__ftliteDuel = runtime;
