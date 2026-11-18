@@ -110,15 +110,15 @@ export function combatModel(input: CombatModelInput): CombatDraw {
     const hb = interpolatedShip(state, prev, alpha, ENEMY_SLOT), hs = toS(hb.x, hb.y);
     const r = Math.max(CHARGE_RING_MIN_PX, CHARGE_RING_RADII * SHIP_RADIUS * drawnScale(z)), ec = enemyCharge(state);
     const alphaNow = ec?.full ? chargePulse(input.t ?? 0) : 1, label = ec?.full ? 'FIRING' : 'CHARGING';
-    if (onScreen(hs, r + 16)) {
-      if (ec) charge = { x: hs.x, y: hs.y, r, fill: ec.fill, full: ec.full, alpha: alphaNow, colour: CHARGE_COLOUR, label: { text: label, x: hs.x, y: hs.y - r - 12 } };
-      callouts = calloutDraws(input.fx.callouts, { x: hs.x, y: hs.y - r - 26 });   // above the ring's label
-    } else if (input.enemyArrow) {
+    if (input.enemyArrow) {   // tacticalModel drew the enemy's edge arrow: the same off-screen test, insets and reserves included (review)
       // Off screen: a small ring about the edge arrow, the label and the callouts inward of it, toward the screen's centre.
       const a = input.enemyArrow, dx = vp.w / 2 - a.x, dy = vp.h / 2 - a.y, n = Math.hypot(dx, dy) || 1, ix = dx / n, iy = dy / n;
       const lx = a.x + ix * OFFSCREEN_INSET, ly = a.y + iy * OFFSCREEN_INSET;
       if (ec) charge = { x: a.x, y: a.y, r: CHARGE_RING_MIN_PX, fill: ec.fill, full: ec.full, alpha: alphaNow, colour: CHARGE_COLOUR, label: { text: label, x: lx, y: ly } };
       callouts = calloutDraws(input.fx.callouts, { x: lx, y: ly - 16 });
+    } else if (onScreen(hs, r + 16)) {
+      if (ec) charge = { x: hs.x, y: hs.y, r, fill: ec.fill, full: ec.full, alpha: alphaNow, colour: CHARGE_COLOUR, label: { text: label, x: hs.x, y: hs.y - r - 12 } };
+      callouts = calloutDraws(input.fx.callouts, { x: hs.x, y: hs.y - r - 26 });   // above the ring's label
     }
   }
   return { weapons, lock, missiles, effects, charge, callouts };

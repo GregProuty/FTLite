@@ -59,10 +59,10 @@ describe('the ship HUD (spec §E)', () => {
       .toEqual(['lit', 'lit', 'damaged', 'damaged', 'lit', 'damaged', 'off']);
     expect(document.querySelectorAll('[data-ui-hud-bar] button, [data-ui-hud-sys] button')).toHaveLength(0);   // no clicks
   });
-  it('not on the Helm console view, nor without a console, nor without a HUD in the frame', () => {
+  it('drawn whenever the frame carries a HUD (the scene sends one on the SHIP view only, paused included), never without one', () => {
     const { duel } = mount();
-    act(() => duel.frame(view(helmConsole))); expect(all('data-ui-hud-seg')).toHaveLength(0);
-    act(() => duel.frame(view(null))); expect(all('data-ui-hud-seg')).toHaveLength(0);
+    act(() => duel.frame(view(helmConsole, null))); expect(all('data-ui-hud-seg')).toHaveLength(0);
+    act(() => duel.frame(view(null))); expect(all('data-ui-hud-seg')).toHaveLength(20);   // paused on the SHIP view: no console, the HUD stays
     act(() => duel.frame(view(shipConsole, null))); expect(all('data-ui-hud-seg')).toHaveLength(0);
     act(() => duel.frame(view(shipConsole))); expect(all('data-ui-hud-seg')).toHaveLength(20);
   });

@@ -81,6 +81,11 @@ describe('the charge ring in the combat draw (spec §A)', () => {
     expect(c.charge!.label).toMatchObject({ text: 'CHARGING', x: 128, y: 360 });   // 120 px toward the screen's centre, clear of the arrow's own label
     expect(c.callouts![0]).toMatchObject({ text: 'WEAPONS HIT', x: 128, y: 344 });
   });
+  it('an enemy under a console panel has an edge arrow: the ring follows the arrow, not the hidden marker (review)', () => {
+    const st = createTacticalState(3), e = st.ships[1]!, cam = createCamera(e.x, e.y, 1);
+    st.systems[1].fireHeld = true;
+    expect(combatModel({ ...input(st, cam), enemyArrow: { x: 280, y: 300 } }).charge).toMatchObject({ x: 280, y: 300, r: CHARGE_RING_MIN_PX });
+  });
   it('never below 18 screen px (the chevron zooms)', () => {
     const st = createTacticalState(3), e = st.ships[1]!;
     st.systems[1].fireHeld = true;

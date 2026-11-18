@@ -65,7 +65,7 @@ existing glyphs); the HUD follows FTL's layout idea (hull bar top left, system b
 
 ## E. The ship HUD (the SHIP view)
 
-Shown only on the SHIP view (standing, `console.station === 'ship'`), in Single player and online, as a React component
+Shown on the SHIP view (standing), paused and on the end card too, in Single player and online, as a React component
 in the duel UI, from a pure model `shipHud(d)` added to the duel frame. It sits inside the interior band (left of the
 readout column at x 1060, below the tab strip).
 

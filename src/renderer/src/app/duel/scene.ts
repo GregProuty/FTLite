@@ -141,11 +141,13 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true, me: source.active(), crew: crewLife(d), dt,   // duel polish i spec §C
           pan: (x, y) => (cam ? screenPan(worldToScreen(cam, viewport, x, y).x, viewport.w) : worldPan(x - crew.x)) });
       }
-      stepFx(fx, source.paused() ? 0 : dt);
+      // Paused, or a frozen online copy (a lost link): the callouts, flashes, heal motes and the charge pulse hold (polish i review).
+      const frozen = source.paused() || source.live?.() === false;
+      stepFx(fx, frozen ? 0 : dt);
       recordTrails(fx, d.tactical, source.missilePrev, alpha);
       layer.container.visible = view !== 'interior'; interior.container.visible = view === 'interior';
       let overlayView: MapOverlayView | null = null;
-      if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt, events, source.paused() ? 0 : dt, { camera: source.interiorCamera, active: source.active() });   // Art-i spec section 7: the light and feel hold while paused
+      if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt, events, frozen ? 0 : dt, { camera: source.interiorCamera, active: source.active() });   // Art-i spec section 7: the light and feel hold while paused
       else {
         // Step 4: the map keeps its arrows and info line clear of the window while it is shown.
         const input = {
@@ -154,7 +156,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting
-        layer.draw(model, combatModel({ ...input, enemyArrow: model.arrows.find((a) => a.target === 'enemy') ?? null }), t);   // the blinks run on the presentation clock, paused or not
+        layer.draw(model, combatModel({ ...input, t: frozen ? 0 : t, enemyArrow: model.arrows.find((a) => a.target === 'enemy') ?? null }), t);   // the blinks run on the presentation clock, paused or not
         overlayView = mapOverlayOf(model.overlay);
       }
       const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView, throttle: source.throttle() });
@@ -169,7 +171,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         console: consoleView,
         crt: crtActive(view),
         ...sceneUi(view, overlay, options.pauseText, overlayView),
-        hud: consoleView?.station === 'ship' ? shipHud(d) : null,   // duel polish i spec §E: the SHIP view only
+        hud: view === 'interior' ? shipHud(d) : null,   // duel polish i spec §E: the SHIP view, paused and on the end card too (review)
         ...(contact ? { contact: contactView } : {})
       });
       const shake = view === 'interior' ? { x: 0, y: 0 } : shakeOffset(fx);   // Art-i spec section 7: the interior shakes its own world; the console views keep the fx shake

@@ -37,7 +37,7 @@ export function DuelUi() {
           {duel.console?.helm && <HelmStation helm={duel.console.helm} />}
           {duel.console?.weapons && <WeaponsStation weapons={duel.console.weapons} />}
           {duel.contact && <ContactWindow contact={duel.contact} />}
-          {duel.hud && duel.console?.station === 'ship' && <ShipHud hud={duel.hud} />}
+          {duel.hud && <ShipHud hud={duel.hud} />}
           <Banners banners={duel.banners} cx={duel.console && duel.console.station !== 'ship' ? (CONSOLE_RESERVE.left + INTERNAL_W - CONSOLE_RESERVE.right) / 2 : undefined} />
         </CrtGlow>
         <CrtScreen />
