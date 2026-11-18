@@ -17,9 +17,9 @@ describe('readoutRows emphasis (CRT map spec section 2)', () => {
   it('helm, healthy: the crew heading and pips crew, rooms good, the HUNTER heading, pips and nothing else enemy', () => {
     const d = createDuel(layout, 5);
     d.tactical.known[Contact.Enemy] = 2;   // the full enemy rows are what this test is about
-    expect(marks(readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' }))).toEqual([
+    expect(marks(readoutRows({ duel: d, mode: 'helm', active: 0 }))).toEqual([
       ['HELM', '-'], ['HOUND', 'crew'], ['HULL', '-'], ['SHIELD', 'crew'], ['WEAPONS', 'good'], ['SHIELDS', 'good'], ['ENGINES', 'good'],
-      ['HUNTER', 'enemy'], ['HULL', '-'], ['SHIELD', 'enemy'], ['ROOMS', '-'], ['HEALTH', '-'], ['OTHER', '-'], ['AT WEAPONS', '-']
+      ['HUNTER', 'enemy'], ['HULL', '-'], ['SHIELD', 'enemy'], ['ROOMS', '-'], ['HEALTH', '-'], ['P2', '-']
     ]);
     disposeDuel(d);
   });
@@ -27,10 +27,10 @@ describe('readoutRows emphasis (CRT map spec section 2)', () => {
     const d = createDuel(layout, 5), s = d.tactical.systems;
     d.tactical.known[Contact.Enemy] = 2;
     s[0].hull = SHIP_HULL / 4; s[0].rooms = [1, 2, 0]; d.repair[Room.Shields] = REPAIR_UNITS / 2; s[1].hull = SHIP_HULL / 4; s[1].rooms = [0, 0, 1];
-    const rows = readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' });
+    const rows = readoutRows({ duel: d, mode: 'helm', active: 0 });
     expect(marks(rows)).toEqual([
       ['HELM', '-'], ['HOUND', 'crew'], ['HULL', 'alert'], ['SHIELD', 'crew'], ['WEAPONS', 'warn'], ['SHIELDS', 'warn'], ['ENGINES', 'good'],
-      ['HUNTER', 'enemy'], ['HULL', 'good'], ['SHIELD', 'enemy'], ['ROOMS', 'warn'], ['HEALTH', '-'], ['OTHER', '-'], ['AT WEAPONS', '-']
+      ['HUNTER', 'enemy'], ['HULL', 'good'], ['SHIELD', 'enemy'], ['ROOMS', 'warn'], ['HEALTH', '-'], ['P2', '-']
     ]);
     expect(rows[5]!.value).toBe('DMG 2'); expect(rows[5]!.bar?.fill).toBe(0.5);
     disposeDuel(d);
@@ -38,7 +38,7 @@ describe('readoutRows emphasis (CRT map spec section 2)', () => {
   it('weapons: LASER heading plain, LOCK enemy, CHARGE good only when full and no missile flies, MAG plain', () => {
     const d = createDuel(layout, 5), s = d.tactical.systems[0];
     s.laserCharge = 0;   // the crew laser starts each round full (FTL targeting spec §2)
-    const tail = (): (string | undefined)[][] => marks(readoutRows({ duel: d, mode: 'weapons', active: 1, other: 'AT HELM' })).slice(11, 15);
+    const tail = (): (string | undefined)[][] => marks(readoutRows({ duel: d, mode: 'weapons', active: 1 })).slice(11, 15);
     expect(tail()).toEqual([['LASER', '-'], ['LOCK', 'enemy'], ['CHARGE', '-'], ['MAG', '-']]);
     s.laserCharge = LASER_CHARGE_UNITS; expect(tail()[2]).toEqual(['CHARGE', 'good']);
     placeMissile(d.tactical, 0, { x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 }); expect(tail()[2]).toEqual(['CHARGE', '-']);
@@ -48,8 +48,8 @@ describe('readoutRows emphasis (CRT map spec section 2)', () => {
     const d = createDuel(layout, 5), t = d.tactical, c = t.ships[0];
     d.interior.stations.occupant[d.nav] = -1; d.interior.stations.occupant[d.weapons] = -1;
     placeMissile(t, 1, { x: c.x + 100, y: c.y, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });
-    const rows = readoutRows({ duel: d, mode: 'interior', active: 0, other: 'WALKING' });
-    expect(marks(rows).slice(14)).toEqual([['OUTSIDE', '-'], ['HELM', 'alert'], ['COASTING', 'alert'], ['WEAPONS', 'alert'], ['ENEMY', '-'], ['BEARING', '-'], ['TORPEDO INBOUND', 'alert']]);
+    const rows = readoutRows({ duel: d, mode: 'interior', active: 0 });
+    expect(marks(rows).slice(13)).toEqual([['OUTSIDE', '-'], ['HELM', 'alert'], ['COASTING', 'alert'], ['WEAPONS', 'alert'], ['ENEMY', '-'], ['BEARING', '-'], ['TORPEDO INBOUND', 'alert']]);
     disposeDuel(d);
   });
 });

@@ -3,19 +3,18 @@
 // starts a new interpolation over the actual tick gap. The per-tick tactical events are not in the snapshot, so beams,
 // missile endings and contact sparks are derived from the cumulative counters the snapshot does carry; the sim's own
 // `cue` events still bring the sounds. Cameras belong to this machine and never become commands.
-import { Life, LifeState, Position } from '../../sim/components';
+import { Position } from '../../sim/components';
 import type { DuelState } from '../../sim/duel/state';
 import { throttleThrust } from '../../sim/duel/throttle';
 import { hx, hy } from '../../sim/tactical/direction';
 import { CREW_SLOT, missileOf, NO_AXES, Outcome, type Axes, type DuelEvent, type Missile, type TacticalState } from '../../sim/tactical/state';
 import { LASER_RANGE } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
-import type { OtherStatus } from '../../render/duel/readoutModel';
 import { createCamera, followBody, updateCamera, type Camera, type Viewport } from '../../render/tactical/camera';
 import { createInteriorCamera, resetInteriorCamera } from '../../render/duel/interiorCamera';
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
-import { repairInReach, seatOf } from './controls';
+import { seatOf } from './controls';
 import { NO_HELD_FLAGS, type HeldFlags, type KeySample, type PointerSample } from './input';
 import { createCameraInput, heldTurn, type DuelView } from './runtime';
 import type { HeldInput } from '../../net/contracts';
@@ -38,12 +37,6 @@ export const duelCounters = (t: TacticalState, i: number): Counters => {
 };
 const body = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
 const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null);
-/** Each tactical Room's work so far: its repair progress plus its point room's extinguish progress (duel-fire spec §1.4),
- *  so either one rising reads as REPAIRING. While a room burns only the fire part moves; otherwise only the repair. */
-const workOf = (d: DuelState): number[] => [0, 1, 2].map((r) => {
-  const p = d.points.find((q) => q.tacticalRoom === r);
-  return d.repair[r]! + (p ? d.interior.rooms.fireRepair[p.room]! : 0);
-});
 
 /**
  * The events of one publication gap (spec §3): each `shots` increment is a beam to the target (a hit when `laserHits`
@@ -93,8 +86,8 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   const { client, seat } = deps;
   let seen = 0, lastTick = -1, gap = 3, receivedAt = 0, round = -1, frameAlpha = 1;
   let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [];
-  let latest: { bodies: PrevBody[]; missiles: (PrevBody | null)[]; crew: { x: number; y: number }[]; counters: Counters[]; repair: number[] } | null = null;
-  let prevRepair: number[] = [0, 0, 0], events: ViewEvent[] = [], sentHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
+  let latest: { bodies: PrevBody[]; missiles: (PrevBody | null)[]; crew: { x: number; y: number }[]; counters: Counters[] } | null = null;
+  let events: ViewEvent[] = [], sentHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
   let cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() };
   let uiHeld: HeldFlags = NO_HELD_FLAGS, shownThrottle: number | null = null, refusals: Refusal[] = [];
   const cameraInput = createCameraInput(deps.now, deps.viewport), interiorCamera = createInteriorCamera();
@@ -115,14 +108,13 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     // An ending and a relaunch in one gap: the new missile's trail starts where it is now, not at the old one.
     if (latest) t.ships.forEach((_, i) => { const was = latest!.counters[i]; if (was && duelCounters(t, i).ended > was.ended && missileOf(t, i)) missilePrev[i] = missileBody(missileOf(t, i)); });
     crewPrev = latest ? latest.crew : d.interior.crew.map((eid) => ({ x: Position.x[eid]!, y: Position.y[eid]! }));
-    prevRepair = latest ? latest.repair : workOf(d);
     gap = lastTick >= 0 ? Math.max(1, p.tick - lastTick) : 3;
     // The record's jitter is live inter-arrival only: no gap is timed to or from the frozen copy (the reconnect time).
     const live = client.live?.() ?? true;
     if (lastTick >= 0 && live) { gaps.push(now - receivedAt); if (gaps.length > 4096) gaps.shift(); }
     lastTick = live ? p.tick : -1; receivedAt = now;
     latest = { bodies: t.ships.map(body), missiles: t.ships.map((_, i) => missileBody(missileOf(t, i))), crew: d.interior.crew.map((eid) => ({ x: Position.x[eid]!, y: Position.y[eid]! })),
-      counters: t.ships.map((_, i) => duelCounters(t, i)), repair: workOf(d) };
+      counters: t.ships.map((_, i) => duelCounters(t, i)) };
     return true;
   }
   const duel = (): DuelState => client.state()!;
@@ -142,14 +134,6 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     epoch: () => duel().round,
     active: () => seat,
     view: (): DuelView => { const s = seatOf(duel(), seat); return s === 'standing' ? 'interior' : s; },
-    otherStatus(): OtherStatus {
-      const d = duel(), other = seat === 0 ? 1 : 0, s = seatOf(d, other);
-      if (Life.state[d.interior.crew[other]!] === LifeState.Downed) return 'DOWNED';   // duel-health spec §2
-      if (s !== 'standing') return s === 'helm' ? 'AT HELM' : s === 'weapons' ? 'AT WEAPONS' : 'AT SCIENCE';
-      if (!d.present[other]) return 'STANDING BY';   // away and on foot (start-aboard spec §1)
-      const room = repairInReach(d, other);
-      return d.present[other] && room >= 0 && workOf(d)[room]! > prevRepair[room]! ? 'REPAIRING' : 'WALKING';
-    },
     axes: (): Axes => {   // Artemis spec §5.3: the held turn and the replica's throttle, while this seat flies a running round
       const d = duel();
       return seatOf(d, seat) === 'helm' && d.tactical.outcome === Outcome.Running ? { turn: heldTurn(d, sentHeld), thrust: throttleThrust(d.throttle) } : NO_AXES;

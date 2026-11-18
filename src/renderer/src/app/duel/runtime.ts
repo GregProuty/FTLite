@@ -6,7 +6,7 @@
 // authority does, and hands each decided round's record to `onRound` (Single player's solo playtest records).
 import { createTickDriver } from '../../authority/tickDriver';
 import type { HeldInput, Scheduler } from '../../net/contracts';
-import { Life, LifeState, Position } from '../../sim/components';
+import { Position } from '../../sim/components';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope, type DuelResult } from '../../sim/duel/commands';
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, type DuelState } from '../../sim/duel/state';
@@ -21,7 +21,6 @@ import { TICK_HZ } from '../../sim/tuning';
 import { createCamera, followBody, pan, snapBack, updateCamera, zoomBy, type Camera, type Viewport } from '../../render/tactical/camera';
 import { createFeelTracker, recordFeel, type FeelTracker } from '../../render/tactical/feelModel';
 import { createInteriorCamera, interiorInput, refollowInteriorCamera, resetInteriorCamera, type InteriorCamera } from '../../render/duel/interiorCamera';
-import type { OtherStatus } from '../../render/duel/readoutModel';
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import { consoleInReach, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
@@ -183,8 +182,6 @@ export interface DuelRuntime {
   /** The player the keyboard drives (spec §5): 0 at the start of every duel. */
   active(): 0 | 1;
   view(): DuelView;
-  /** The other character's status for the readouts (spec §7 item 9). */
-  otherStatus(): OtherStatus;
   /** Before the last tick: each ship's position and heading, each ship's missile (or null), each character's position. */
   readonly prev: readonly PrevBody[];
   readonly missilePrev: readonly (PrevBody | null)[];
@@ -429,13 +426,6 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     epoch: () => d.round,
     active: () => active,
     view: () => { const s = seatOf(d, active); return s === 'standing' ? 'interior' : s; },
-    otherStatus() {
-      const other = active === 0 ? 1 : 0, s = seatOf(d, other);
-      if (Life.state[d.interior.crew[other]!] === LifeState.Downed) return 'DOWNED';   // duel-health spec §2
-      if (s !== 'standing') return s === 'helm' ? 'AT HELM' : s === 'weapons' ? 'AT WEAPONS' : 'AT SCIENCE';
-      if (!d.present[other]) return 'STANDING BY';   // away and on foot: the solo start's partner (start-aboard spec §1)
-      return d.present[other] && sentHeld[other]!.interactHeld && repairInReach(d, other) >= 0 ? 'REPAIRING' : 'WALKING';
-    },
     axes: () => sentAxes,
     held: () => sentHeld,
     alpha: () => frameAlpha,

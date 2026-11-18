@@ -13,7 +13,7 @@ import { emptyPresses, NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input'
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import { consoleModel, consoleStation, consoleTabs } from '../src/renderer/src/render/duel/consoleModel';
 import { STATION, stationTop, TABS, TABS_RIGHT } from '../src/renderer/src/render/duel/consoleLayout';
-import { readoutHelp, readoutRows } from '../src/renderer/src/render/duel/readoutModel';
+import { crewStatus, readoutHelp, readoutRows } from '../src/renderer/src/render/duel/readoutModel';
 import { crtActive } from '../src/renderer/src/render/crt';
 
 const CUTTER = parseShip(cutter), HOUND = parseShip(hound);
@@ -65,7 +65,7 @@ describe('the Science console (spec §7.3)', () => {
   it('the readout mode science: a SCIENCE heading off the console, its key help, and the CRT on', () => {
     const d = createDuel(CUTTER, 5);
     try {
-      expect(readoutRows({ duel: d, mode: 'science', active: 0, other: 'AT SCIENCE' })[0]!.label).toBe('SCIENCE');
+      expect(readoutRows({ duel: d, mode: 'science', active: 0 })[0]!.label).toBe('SCIENCE');
       expect(readoutHelp('science')).toEqual(['S SCAN   T NEXT CONTACT', 'CLICK A CONTACT: DESIGNATE', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE']);
       expect(crtActive('science')).toBe(true);
     } finally { disposeDuel(d); }
@@ -85,7 +85,7 @@ describe('the runtime at Science', () => {
       expect(rt.cameras.science).not.toBe(rt.cameras.helm);
       rt.frame(1 / 60);
       standUp(rt.duel.interior, 0); sitDown(rt.duel.interior, 0, rt.duel.nav); sitDown(rt.duel.interior, 1, rt.duel.science);
-      expect(rt.otherStatus()).toBe('AT SCIENCE');
+      expect(crewStatus(rt.duel, 1)).toBe('SCIENCE');
     } finally { rt.dispose(); }
   });
 });

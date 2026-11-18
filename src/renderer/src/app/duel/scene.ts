@@ -16,7 +16,7 @@ import { hoverReadout } from '../../render/duel/scienceModel';
 import { shipHud } from '../../render/duel/shipHudModel';
 import { READOUT_COLUMN } from '../../render/duel/interiorModel';
 import { createInteriorView, type InteriorView } from '../../render/duel/interiorView';
-import { readoutHelp, readoutRows, type OtherStatus } from '../../render/duel/readoutModel';
+import { readoutHelp, readoutRows } from '../../render/duel/readoutModel';
 import { createFx, fxDt, pushEvents, pushKill, recordTrails, resetFx, shakeOffset, stepFx, trackSolution, type ViewEvent } from '../../render/tactical/fxModel';
 import { gunnerPresent, laserSituation, linedUp } from '../../render/duel/situationModel';
 import { countSit, createSitTracker, frameZoom, sitCard, trackSit, type SitSeat } from '../../render/duel/sitModel';
@@ -58,7 +58,6 @@ export interface DuelViewSource {
   epoch(): number;
   active(): number;
   view(): DuelView;
-  otherStatus(): OtherStatus;
   axes(): Axes;
   alpha(): number;
   paused(): boolean;
@@ -268,7 +267,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         ? contactModel({ state: d.tactical, contact: open?.contact ?? null, aim: open?.aim ?? false, weapon: contact?.aimWeapon() ?? 'laser', station, t, weapons: consoleView?.weapons ?? null, flashes: open?.contact === 0 ? flashesFor(fx.struck, targetOf(d.tactical, CREW_SLOT)) : [] })
         : null;
       options.ui.frame({
-        readout: { rows: readoutRows({ duel: d, mode: view, active: source.active(), other: source.otherStatus(), console: onConsole }), help: onConsole ? [] : readoutHelp(view) },
+        readout: { rows: readoutRows({ duel: d, mode: view, active: source.active(), console: onConsole }), help: onConsole ? [] : readoutHelp(view) },
         end: overlay.end,
         console: consoleView,
         crt: crtActive(view),
