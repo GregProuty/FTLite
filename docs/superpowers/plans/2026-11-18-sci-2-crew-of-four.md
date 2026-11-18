@@ -33,7 +33,7 @@
 2. **`DUEL_PLAYERS` is removed.** The sim's bounds are `DUEL_CREW_MIN`/`DUEL_CREW_MAX` in `sim/duel/state.ts`. The codec module uses `MAX_PLAYERS` (`src/shared/intent.ts:2`, already imported by `net/codec.ts`; equal to `ROOM_MAX_PLAYERS`, `src/shared/roomSession.ts:4`) so `net/` does not import the sim's state; Task 3 pins `DUEL_CREW_MAX === MAX_PLAYERS === ROOM_MAX_PLAYERS` in a test.
 3. **The interior layout cache stays one entry per layout object**, holding `Derived` and a small per-crew map of `{ interiorCount, tickOffset }` from `canonicalFields(layout, n)`. That is the spec's "keyed by layout and n" (§4.2) while `LAYOUT_CACHE_MAX` and `duelCacheProbe().layouts` keep their meaning.
 4. **"Crew above the layout's spawn count" (spec §4.1, §9) cannot come from a parsed layout:** `schema.ts:24` requires `spawns: z.array(tile).min(4)`. `createDuel` checks the crew and the spawn count before it allocates anything, so the test uses a hand-made copy of the Cutter with two spawns.
-5. **REPAIRING in the crew list is read from the state alone** (spec §5.2: "the readout derives the list from the duel state and `me`"): a present, conscious, standing character for whom `repairInReach(d, pid) >= 0` (in reach of a repair point that needs work). The old single-player rule (the partner's held E) and the old online rule (repair progress since the last publication) go with `otherStatus()`; their tests are replaced.
+5. **REPAIRING in the crew list is read from the state alone** (spec §5.2: "the readout derives the list from the duel state and `me`"): a present, conscious, standing character for whom `r = repairInReach(d, pid) >= 0` (in reach of a repair point that needs work) **and the work has started**: `d.repair[r] > 0`, or the point's interior room has extinguish progress (`d.interior.rooms.fireRepair[p.room] > 0` for the point `p` with `p.tacticalRoom === r`). Standing at a damaged point without working reads ON FOOT. This is the state-only form of the old online rule (progress, not mere reach; plan review R1-F4); it can read REPAIRING for a crewmate standing at a point someone else has part-repaired, which is accepted. The old single-player rule (the partner's held E) and the old online rule (repair progress since the last publication) go with `otherStatus()`; their tests are replaced.
 6. **A crew row is `{ label: 'P<k>', value: <status> }`**; DOWNED carries `emphasis: 'alert'` and the WARN tint, AWAY the DIM value tint, the rest plain. At n = 2 the readout is one row shorter than today (one crew row replaces OTHER + status). Measured on today's Hound: the interior list is 20 rows fresh and 21 with a torpedo inbound (the file's comment says 22); with the crew list it is 20 at n = 2 and 22 at n = 4. `READOUT_ROWS` goes to 23 as the spec says. The only code that depends on it is `ui/duel/ReadoutPanel.tsx:46` (the row cap, which derives the panel height) and `tests/crtBezel.test.ts:59` (the tallest-panel fit check), which re-run.
 7. **Spec contradiction, §9 "the SCIENCE badge (and none on the Cutter)":** the Cutter has a Science station (`cutter.json`: `science` at tile 20,7; every layout has exactly seven stations, one per kind, `schema.ts:35`), so `d.science >= 0` on both layouts and both get the badge. The test checks the badge on the Hound (tile 9,5) and on the Cutter, and the "omitted when `d.science < 0`" branch by setting `d.science = -1` on a built duel.
 8. **The host action and the preload:** `OnlinePreloadApi.host(room)` takes `{ mode: 'duel'; capacity: DuelCrewSize } | { mode: 'sector'; capacity: number }` (required). `MenuState.crew` (default 3) is the menu store's choice; `actions.setCrew(crew)` sets it and `actions.host(crew = menu().crew)` sends it. Task 5 lands the store and the action, Task 8 the buttons.
@@ -144,6 +144,7 @@ git commit -m "chore(sci-2): SIM_VERSION 51 -> 52 alone, blessed (canonical trac
 **Files:**
 - Modify: `src/renderer/src/sim/duel/state.ts` (constants, `DuelState`, `createDuel`), `src/renderer/src/sim/duel/step.ts` (attendant, repairPhase, startRound, stepDecided, the presence admission, the intents), `src/renderer/src/sim/duel/health.ts`, `src/renderer/src/sim/duel/telemetry.ts`, `src/renderer/src/sim/duel/summary.ts`, `src/renderer/src/sim/duel/modules.ts` (presence fields, round helmPlayer), `src/renderer/src/net/duelRecord.ts`, `src/renderer/src/app/duel/soloRecorder.ts`
 - Modify (test helper): `tests/helpers/duelSeat.ts` (add `standAtStation`)
+- Modify (tsc under `noUncheckedIndexedAccess`, plan review R1-F1): `tests/helpers/scriptedDuel.ts:78` and `tests/duelTelemetry.test.ts:84`
 - Create: `tests/crewOfFour.test.ts`
 
 **Interfaces:**
@@ -478,7 +479,7 @@ Replace `const PLAYERS = 2;` with:
 const crewSize = (d: DuelState): number => d.interior.playerCount;
 ```
 
-Replace every `pid < PLAYERS` and `o < PLAYERS` with `pid < crewSize(d)` and `o < crewSize(d)` (five loops in `applyHitDamage` and `healthPhase`, one in `revivers`). In `revivers` replace `!d.present[o as 0 | 1]` with `!d.present[o]`. Replace the loss line
+Replace every `pid < PLAYERS` and `o < PLAYERS` with `pid < crewSize(d)` and `o < crewSize(d)` (every `pid < PLAYERS`: one in `applyHitDamage` and five in `healthPhase`, plus `o < PLAYERS` in `revivers`). In `revivers` replace `!d.present[o as 0 | 1]` with `!d.present[o]`. Replace the loss line
 
 ```ts
   if (down === PLAYERS && d.tactical.outcome === Outcome.Running) d.tactical.outcome = Outcome.EnemyWins;   // a round already decided this tick stands
@@ -604,6 +605,10 @@ Expected: PASS.
 Run: `npx tsc -b`
 Expected: no errors. If a site still narrows to `0 | 1` (for example a `as 0 | 1` cast on `present`, `players` or `lastConsole` not listed above), widen it to `number` the same way and list it in the commit message.
 
+- [ ] **Step 12b: The two test files that index `players`**
+
+`DuelTelemetry.players` is now `PlayerTelemetry[]`, so a literal index is `possibly undefined` under `noUncheckedIndexedAccess` (`tests/**` is in `tsc -b`). In `tests/helpers/scriptedDuel.ts` L78 (`telemetryLine`) write every `t.players[0].` as `t.players[0]!.` and every `t.players[1].` as `t.players[1]!.` (the line's text is unchanged, so the gate output is too). In `tests/duelTelemetry.test.ts` L84 write `t.players[1]!.repairsStarted`. Run `npx tsc -b` again: no errors.
+
 - [ ] **Step 13: Prove every two-player run unchanged at 52, and the gates**
 
 Run: `npx tsx scripts/golden/duel-oracle.ts same`
@@ -623,7 +628,7 @@ Expected: every test file PASS.
 - [ ] **Step 15: Commit**
 
 ```bash
-git add src/renderer/src/sim/duel/state.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/duel/health.ts src/renderer/src/sim/duel/telemetry.ts src/renderer/src/sim/duel/summary.ts src/renderer/src/sim/duel/modules.ts src/renderer/src/net/duelRecord.ts src/renderer/src/app/duel/soloRecorder.ts tests/helpers/duelSeat.ts tests/crewOfFour.test.ts
+git add src/renderer/src/sim/duel/state.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/duel/health.ts src/renderer/src/sim/duel/telemetry.ts src/renderer/src/sim/duel/summary.ts src/renderer/src/sim/duel/modules.ts src/renderer/src/net/duelRecord.ts src/renderer/src/app/duel/soloRecorder.ts tests/helpers/duelSeat.ts tests/helpers/scriptedDuel.ts tests/duelTelemetry.test.ts tests/crewOfFour.test.ts
 git commit -m "feat(sci-2): the duel sim at a crew of 2, 3 or 4 (createDuel crew, presence, health and the all-down loss, telemetry, summary and record n long; the oracle proves every two-player run unchanged at 52)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -960,6 +965,16 @@ export const duelPublicationSchema = messageSchemaFor(MAX_PLAYERS, duelWire).pub
 
 `src/renderer/src/clientControl/duelClient.ts` (`DUEL_PLAYERS` is gone): replace the snapshot import with `import { DUEL_SNAPSHOT_FORMAT, loadDuelSnapshot, restoreDuelSnapshot, validateDuelSnapshot, type DuelSnapshot } from '../sim/duel/snapshot';`, the state import with `import { disposeDuel, DUEL_CREW_MAX, type DuelState } from '../sim/duel/state';`, `const codec = duelCodec(DUEL_PLAYERS);` with `const codec = duelCodec(DUEL_CREW_MAX);`, and `playerCount: () => DUEL_PLAYERS` with `playerCount: (d) => d.interior.playerCount`.
 
+- [ ] **Step 7b: The duel mode's refused crew size**
+
+`tests/duelMode.test.ts` L134 asserts a `playerCount: 3` init is refused; at Sci-2 it is valid on the Hound (four spawns). Replace `playerCount: 3` there with `playerCount: 5` (still refused), and add after it:
+
+```ts
+    expect(duel.command({ kind: 'start', initBytes: encode({ ...duelInit(1), playerCount: 3 }) }).ok).toBe(true);   // Sci-2: a crew of three starts
+```
+
+(if the test's mode object is not named `duel` or its start command differs, mirror the L134 call exactly with only `playerCount` changed and `.toBe(true)`).
+
 - [ ] **Step 8: Run the tests and the typecheck**
 
 Run: `npx vitest run tests/crewOfFourWire.test.ts tests/crewOfFour.test.ts tests/duelSnapshot.test.ts tests/duelCheckpoint.test.ts tests/duelRounds.test.ts tests/codecModeWire.test.ts tests/duelModules.test.ts tests/duelMode.test.ts tests/duelProducers.test.ts tests/duelOnline.test.ts tests/onlineDuel.test.ts`
@@ -983,7 +998,7 @@ Expected: every test file PASS.
 - [ ] **Step 11: Commit**
 
 ```bash
-git add src/renderer/src/sim/duel/snapshot.ts src/renderer/src/authority/duelCheckpoint.ts src/renderer/src/authority/duelRules.ts src/renderer/src/net/codec.ts src/renderer/src/clientControl/duelClient.ts tests/helpers/liveDuel.ts tests/helpers/duelAuthority.ts tests/crewOfFourWire.test.ts
+git add src/renderer/src/sim/duel/snapshot.ts src/renderer/src/authority/duelCheckpoint.ts src/renderer/src/authority/duelRules.ts src/renderer/src/net/codec.ts src/renderer/src/clientControl/duelClient.ts tests/helpers/liveDuel.ts tests/helpers/duelAuthority.ts tests/duelMode.test.ts tests/crewOfFourWire.test.ts
 git commit -m "feat(sci-2): the duel snapshot, init, checkpoint and codec at a crew of 2, 3 or 4 (header playerCount, per-crew interior shape, n-long ledger and arrays; the oracle proves every two-player run unchanged at 52)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -1293,7 +1308,7 @@ function room(runId = '0000beef' + 'b'.repeat(24), capacity = 2): RoomSnapshot {
 
 (the test's Join lines that follow stay as they are).
 
-`tests/menu.test.tsx` L73: replace `expect(host).toHaveBeenCalledWith();` with `expect(host).toHaveBeenCalledWith({ mode: 'duel', capacity: 3 });`.
+`tests/menu.test.tsx` L74: replace `expect(host).toHaveBeenCalledWith();` with `expect(host).toHaveBeenCalledWith({ mode: 'duel', capacity: 3 });`.
 
 - [ ] **Step 2: Run them to see them fail**
 
@@ -1645,7 +1660,7 @@ git commit -m "feat(sci-2): seats 0..n-1 in the app (console, sit card and auto-
 
 **Files:**
 - Modify: `src/renderer/src/render/duel/readoutModel.ts` (`OtherStatus` and `ReadoutInput.other` removed; `crewStatus`, `crewRows`; `READOUT_ROWS` 23), `src/renderer/src/app/duel/runtime.ts:24,184-187,432-438` (`otherStatus` removed), `src/renderer/src/app/duel/onlineSource.ts:13,97,118,125,145-152` (`otherStatus` removed), `src/renderer/src/app/duel/scene.ts:19,61,271`
-- Test updates: `tests/crtReadout.test.ts`, `tests/duelConsoleModel.test.ts`, `tests/duelFireView.test.ts`, `tests/duelHealthView.test.ts`, `tests/duelReadout.test.ts`, `tests/duelOnlineView.test.ts`
+- Test updates: `tests/crtReadout.test.ts`, `tests/duelConsoleModel.test.ts`, `tests/duelFireView.test.ts`, `tests/duelHealthView.test.ts`, `tests/duelReadout.test.ts`, `tests/duelOnlineView.test.ts`, `tests/duelRuntime.test.ts`, `tests/scienceSeat.test.ts`, `tests/scienceConsole.test.ts`
 - Create: `tests/crewList.test.ts`
 
 **Interfaces:**
@@ -1710,7 +1725,9 @@ describe('the crew list (spec §5.2)', () => {
       Position.x[e3] = (p.tile % w) + 0.5; Position.y[e3] = Math.floor(p.tile / w) + 0.5;
       expect(crewStatus(d, 3)).toBe('ON FOOT');                        // at the point, nothing to repair
       d.tactical.systems[0].rooms[p.tacticalRoom] = 1;
-      expect(crewStatus(d, 3)).toBe('REPAIRING');                      // in reach of a point that needs work
+      expect(crewStatus(d, 3)).toBe('ON FOOT');                        // in reach of a point that needs work, no work yet
+      d.repair[p.tacticalRoom] = 1;
+      expect(crewStatus(d, 3)).toBe('REPAIRING');                      // the repair has started
       expect(crewRows(d, 0).find((r) => r.label === 'P2')).toMatchObject({ value: 'DOWNED', emphasis: 'alert' });
     } finally { disposeDuel(d); }
   });
@@ -1774,14 +1791,17 @@ with
 
 ```ts
 /** Player pid's status (Sci-2 spec §5.2), from the duel state alone: DOWNED; AWAY (a seated away character too); HELM,
- *  WEAPONS or SCIENCE, the console it sits at; REPAIRING, standing in reach of a repair point that needs work
- *  (repairInReach, Sci-2 Decision 5); else ON FOOT. */
+ *  WEAPONS or SCIENCE, the console it sits at; REPAIRING, standing in reach of a repair point whose work has started
+ *  (repairInReach plus progress, Sci-2 Decision 5); else ON FOOT. */
 export function crewStatus(d: DuelState, pid: number): CrewStatus {
   if (Life.state[d.interior.crew[pid]!] === LifeState.Downed) return 'DOWNED';
   if (!d.present[pid]) return 'AWAY';
   const s = seatOf(d, pid);
   if (s !== 'standing') return s === 'helm' ? 'HELM' : s === 'weapons' ? 'WEAPONS' : 'SCIENCE';
-  return repairInReach(d, pid) >= 0 ? 'REPAIRING' : 'ON FOOT';
+  const r = repairInReach(d, pid);
+  if (r < 0) return 'ON FOOT';
+  const p = d.points.find((q) => q.tacticalRoom === r);
+  return d.repair[r]! > 0 || (p !== undefined && d.interior.rooms.fireRepair[p.room]! > 0) ? 'REPAIRING' : 'ON FOOT';
 }
 
 /** The crew list (Sci-2 spec §5.2): one row per other player in player order, `P<k>` (1-based) and its status; DOWNED
@@ -1838,10 +1858,11 @@ export const READOUT_ROWS = 23;
 Remove the `other:` argument from every `readoutRows` call in the tests:
 
 ```bash
-sed -i -E "s/, other: '[A-Z ]+'//g" tests/crtReadout.test.ts tests/duelConsoleModel.test.ts tests/duelFireView.test.ts tests/duelHealthView.test.ts tests/duelReadout.test.ts
+sed -i -E "s/, other: '[A-Z ]+'//g" tests/crtReadout.test.ts tests/duelConsoleModel.test.ts tests/duelFireView.test.ts tests/duelHealthView.test.ts tests/duelReadout.test.ts tests/scienceConsole.test.ts tests/scienceSeat.test.ts
 ```
 
 Then, by hand:
+- `rt.otherStatus()` (plan review R1-F3): in `tests/duelRuntime.test.ts` L79, L107, L120, L175 and `tests/scienceSeat.test.ts` L88 replace `rt.otherStatus()` with `crewStatus(rt.duel, 1)` (the other player; use the pid the test's other character has if it is not 1) and map the expected value: `'STANDING BY'` → `'AWAY'`, `'AT HELM'` → `'HELM'`, `'AT WEAPONS'` → `'WEAPONS'`, `'AT SCIENCE'` → `'SCIENCE'`, `'WALKING'` → `'ON FOOT'`; where the call is an element of an array literal (L107, L120), replace that element. Add `import { crewStatus } from '../src/renderer/src/render/duel/readoutModel';` (or extend the existing import) to both files. Check after the sed that `git grep -n "other:" -- tests/scienceConsole.test.ts tests/scienceSeat.test.ts` shows no `readoutRows` argument left; remove any multi-word one the sed missed by hand.
 - `tests/crtReadout.test.ts` L22 and L33: replace `['OTHER', '-'], ['AT WEAPONS', '-']` with `['P2', '-']`; L51-52: replace `marks(rows).slice(14)` with `marks(rows).slice(13)`.
 - `tests/duelReadout.test.ts`: in the first test replace `['HEALTH', '100/100'], ['OTHER', 'PRESENT'], ['', 'AT WEAPONS']` with `['HEALTH', '100/100'], ['P2', 'ON FOOT']`; in the level test replace `expect(rows.length).toBe(14);` with `expect(rows.length).toBe(13);`; in the standing test replace `['HEALTH', '100/100'], ['OTHER', 'AWAY'], ['', 'AT WEAPONS'], ['OUTSIDE', '']` with `['HEALTH', '100/100'], ['P2', 'AWAY'], ['OUTSIDE', '']`; in `'every row and help line fits the 220-px column'` replace the double loop header and its first line
 
@@ -1878,7 +1899,7 @@ Then, by hand:
 
 - [ ] **Step 6: Run the tests and the typecheck**
 
-Run: `npx vitest run tests/crewList.test.ts tests/crtReadout.test.ts tests/duelConsoleModel.test.ts tests/duelFireView.test.ts tests/duelHealthView.test.ts tests/duelReadout.test.ts tests/duelOnlineView.test.ts tests/crtBezel.test.ts tests/crewSeats.test.ts`
+Run: `npx vitest run tests/crewList.test.ts tests/crtReadout.test.ts tests/duelConsoleModel.test.ts tests/duelFireView.test.ts tests/duelHealthView.test.ts tests/duelReadout.test.ts tests/duelOnlineView.test.ts tests/duelRuntime.test.ts tests/scienceSeat.test.ts tests/scienceConsole.test.ts tests/crtBezel.test.ts tests/crewSeats.test.ts`
 Expected: PASS. If `tests/crtBezel.test.ts` fails on the readout panel's height at 23 rows, stop and report the overflow (the panel's height is derived from the row count; nothing else depends on `READOUT_ROWS`, Decision 6).
 
 Run: `npx tsc -b` — Expected: no errors. Run `git grep -n "OtherStatus\|otherStatus" -- src tests` — Expected: no output.
@@ -1891,7 +1912,7 @@ Expected: every test file PASS.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/renderer/src/render/duel/readoutModel.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/onlineSource.ts src/renderer/src/app/duel/scene.ts tests/crewList.test.ts tests/crtReadout.test.ts tests/duelConsoleModel.test.ts tests/duelFireView.test.ts tests/duelHealthView.test.ts tests/duelReadout.test.ts tests/duelOnlineView.test.ts
+git add src/renderer/src/render/duel/readoutModel.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/onlineSource.ts src/renderer/src/app/duel/scene.ts tests/crewList.test.ts tests/crtReadout.test.ts tests/duelConsoleModel.test.ts tests/duelFireView.test.ts tests/duelHealthView.test.ts tests/duelReadout.test.ts tests/duelOnlineView.test.ts tests/duelRuntime.test.ts tests/scienceSeat.test.ts tests/scienceConsole.test.ts
 git commit -m "feat(sci-2): the crew list (one P<k> row per other player: DOWNED, AWAY, HELM/WEAPONS/SCIENCE, REPAIRING, ON FOOT) replaces OTHER; READOUT_ROWS 23" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
