@@ -5,7 +5,7 @@ import { gravityAccel } from '../../sim/tactical/physics';
 import { predictFlight } from '../../sim/tactical/predict';
 import { derelictPos } from '../../sim/tactical/science';
 import { classOf, Contact, CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
-import { rockAlive, rockAt, rockHp, rockSlots } from '../../sim/tactical/rocks';
+import { rockAlive, rockAt, rockHpMax, RockKind, rockSlots } from '../../sim/tactical/rocks';
 import { HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
@@ -47,8 +47,11 @@ export interface Line { x1: number; y1: number; x2: number; y2: number }
 export interface Label { text: string; x: number; y: number }
 export interface GridDraw { spacing: number; lines: (Line & { major: boolean })[]; columns: Label[]; rows: Label[] }
 export interface CircleDraw { x: number; y: number; r: number }
-/** SPIKE (destructible asteroids): `wear` 0 (whole) .. 1 (one hit from breaking), drawn as cracks and a dimmer fill. */
-export interface AsteroidDraw extends CircleDraw { index: number; dot: boolean; wear?: number }
+/** Spike ii: `wear` 0 (whole) .. 1 from hp / hpMax, drawn as cracks and a dimmer fill; `streak` (§7 item 3) the screen end of
+ *  a moving rock's fading streak behind it, with its alpha. */
+export interface AsteroidDraw extends CircleDraw { index: number; dot: boolean; wear?: number; streak?: { x: number; y: number; alpha: number } }
+/** Spike ii §7 item 3: rocks faster than STREAK_MIN_SPEED (u/s) streak STREAK_S seconds of their motion, at most STREAK_MAX_U. */
+export const STREAK_MIN_SPEED = 20, STREAK_S = 0.25, STREAK_MAX_U = 90;
 export interface ShipDraw {
   index: number; x: number; y: number;
   /** Radians clockwise from north (the screen's up). */
@@ -324,8 +327,10 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     if (!rockAlive(state, index)) continue;
     const a = rockAt(state, index), r = a.r * z;
     if (r < DOT_MIN_PX || !onScreen(a.x, a.y, a.r)) continue;
-    const p = toS(a.x, a.y), full = rockHp(a.r);
-    asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX, wear: full > 1 ? (full - a.hp) / (full - 1) : 0 });
+    const p = toS(a.x, a.y), speed = Math.hypot(a.vx, a.vy);
+    const tail = a.kind === RockKind.Moving && speed > STREAK_MIN_SPEED ? Math.min(STREAK_MAX_U, speed * STREAK_S) / speed : 0;
+    const streak = tail > 0 ? { ...toS(a.x - a.vx * tail, a.y - a.vy * tail), alpha: Math.min(1, (speed - STREAK_MIN_SPEED) / 120) } : null;
+    asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX, wear: Math.max(0, Math.min(1, 1 - a.hp / rockHpMax(a.r))), ...(streak ? { streak } : {}) });
   }
 
   const ships: ShipDraw[] = [];

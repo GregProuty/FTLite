@@ -251,6 +251,11 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         bodies.circle(p.x, p.y, Math.max(1, p.r)).stroke({ width: 1, color: CRT.mid, alpha: 0.6 });
       }
       for (const a of d.asteroids) {
+        if (a.streak) {   // spike ii §7 item 3: a moving rock's fading streak behind it
+          const mx = (a.x + a.streak.x) / 2, my = (a.y + a.streak.y) / 2;
+          bodies.moveTo(a.x, a.y).lineTo(mx, my).stroke({ width: Math.max(1, Math.min(3, a.r * 0.5)), color: CRT.mid, alpha: a.streak.alpha });
+          bodies.moveTo(mx, my).lineTo(a.streak.x, a.streak.y).stroke({ width: 1, color: CRT.dim, alpha: a.streak.alpha * 0.6 });
+        }
         if (a.dot) { bodies.rect(Math.round(a.x) - 1, Math.round(a.y) - 1, 2, 2).fill(CRT.mid); continue; }
         const shape = asteroidShape(a.index), pts: number[] = [];
         shape.forEach((m, k) => { const ang = (k / shape.length) * Math.PI * 2; pts.push(a.x + Math.cos(ang) * a.r * m, a.y + Math.sin(ang) * a.r * m); });
@@ -405,6 +410,10 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
             .circle(e.x1, e.y1, e.r * 0.3).fill({ color: colour, alpha: e.alpha * 0.5 });
         }
         else if (e.kind === 'burst') combat.circle(e.x1, e.y1, e.r).stroke({ width: 3, color: colour, alpha: e.alpha }).circle(e.x1, e.y1, e.r * 0.4).fill({ color: colour, alpha: e.alpha * 0.6 });
+        else if (e.kind === 'chip') combat.moveTo(e.x1, e.y1).lineTo(e.x2, e.y2).stroke({ width: 1.5, color: colour, alpha: e.alpha });   // spike ii §7
+        else if (e.kind === 'speck') combat.circle(e.x1, e.y1, e.r).fill({ color: colour, alpha: e.alpha });
+        else if (e.kind === 'shock') combat.circle(e.x1, e.y1, Math.max(1, e.r)).stroke({ width: e.width ?? 2, color: colour, alpha: e.alpha });
+        else if (e.kind === 'core') combat.circle(e.x1, e.y1, e.r).fill({ color: CRT.hot, alpha: e.alpha });
         else for (let k = 0; k < 4; k++) { const a = (k * Math.PI) / 2 + Math.PI / 4; combat.moveTo(e.x1, e.y1).lineTo(e.x1 + Math.cos(a) * e.r, e.y1 + Math.sin(a) * e.r).stroke({ width: 2, color: colour, alpha: e.alpha }); }
       }
 

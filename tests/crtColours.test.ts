@@ -20,7 +20,7 @@ function fullFrame(console: 'helm' | 'weapons', inRange = true): { d: TacticalDr
   const d: TacticalDraw = {
     grid: { spacing: 250, lines: [{ x1: 100, y1: 0, x2: 100, y2: 720, major: true }, { x1: 0, y1: 200, x2: 1280, y2: 200, major: false }], columns: [{ text: 'H', x: 100, y: 4 }], rows: [{ text: '9', x: 4, y: 200 }] },
     contours: [{ accel: 40, x: 900, y: 500, r: 120 }], edge: { x: 900, y: 500, r: 400 }, planet: { x: 900, y: 500, r: 40 },
-    asteroids: [{ index: 3, x: 300, y: 600, r: 14, dot: false }, { index: 4, x: 320, y: 640, r: 1, dot: true }, { index: 5, x: 360, y: 600, r: 18, dot: false, wear: 0.8 }],   // SPIKE: a worn rock's cracks
+    asteroids: [{ index: 3, x: 300, y: 600, r: 14, dot: false }, { index: 4, x: 320, y: 640, r: 1, dot: true }, { index: 5, x: 360, y: 600, r: 18, dot: false, wear: 0.8 }, { index: 6, x: 400, y: 600, r: 12, dot: false, streak: { x: 380, y: 610, alpha: 0.7 } }],   // SPIKE: a worn rock's cracks
     ships: [ship({}), ship({ index: 1, x: 760, y: 260, crew: false, hull: 'scout', rooms: [2, 1, 0], shields: 1 }), ship({ index: 2, x: 200, y: 200, chevron: true }), ship({ index: 3, x: 220, y: 240, chevron: true, crew: false, hull: 'scout' }), ship({ index: 4, x: 420, y: 520, rooms: [0, 1, 2] }), ship({ index: 5, x: 640, y: 560, crew: false, hull: 'scout', rooms: [0, 1, 2], shields: 0 })],
     helm: console === 'helm' ? { path: [{ x: 520, y: 340 }, { x: 560, y: 300 }, { x: 610, y: 280 }], origin: { x: 500, y: 360 }, velocity: { x: 560, y: 330 }, headingFrom: { x: 510, y: 340 }, headingTo: { x: 530, y: 300 }, thrust: 1, turn: -1, ring,
       // Feel-ii: the collision X and tag, the held heading's chevron and line, SLINGSHOT
@@ -44,7 +44,10 @@ function fullFrame(console: 'helm' | 'weapons', inRange = true): { d: TacticalDr
     effects: [
       { kind: 'beam', x1: 760, y1: 260, x2: 500, y2: 360, r: 0, colour: BEAM_HIT, alpha: 0.9 }, { kind: 'beam', x1: 500, y1: 360, x2: 760, y2: 200, r: 0, colour: BEAM_MISS, alpha: 0.4 },
       { kind: 'burst', x1: 640, y1: 300, x2: 640, y2: 300, r: 20, colour: BURST, alpha: 0.8 }, { kind: 'burst', x1: 660, y1: 300, x2: 660, y2: 300, r: 30, colour: BURST, alpha: 0.2 },
-      { kind: 'spark', x1: 400, y1: 300, x2: 400, y2: 300, r: 10, colour: BURST, alpha: 0.7 }, { kind: 'spark', x1: 420, y1: 300, x2: 420, y2: 300, r: 14, colour: BURST, alpha: 0.3 }
+      { kind: 'spark', x1: 400, y1: 300, x2: 400, y2: 300, r: 10, colour: BURST, alpha: 0.7 }, { kind: 'spark', x1: 420, y1: 300, x2: 420, y2: 300, r: 14, colour: BURST, alpha: 0.3 },
+      { kind: 'chip', x1: 450, y1: 300, x2: 444, y2: 302, r: 0, colour: CRT.hot, alpha: 0.8 }, { kind: 'speck', x1: 460, y1: 300, x2: 460, y2: 300, r: 1.5, colour: CRT.main, alpha: 0.4 },
+      { kind: 'speck', x1: 470, y1: 300, x2: 470, y2: 300, r: 1.5, colour: CRT.mid, alpha: 0.9 }, { kind: 'shock', x1: 500, y1: 300, x2: 500, y2: 300, r: 60, colour: CRT.hot, alpha: 0.5, width: 2.5 },
+      { kind: 'core', x1: 520, y1: 300, x2: 520, y2: 300, r: 12, colour: CRT.hot, alpha: 0.9 }, { kind: 'burst', x1: 540, y1: 300, x2: 540, y2: 300, r: 36, colour: BURST, alpha: 0.6 }
     ],
     // Duel polish i spec §A, §B: the charge ring (part-charged at the Helm, full at Weapons) and a callout of every kind.
     charge: { x: 760, y: 260, r: 30, fill: console === 'helm' ? 0.4 : 1, full: console === 'weapons', alpha: 0.7, colour: CHARGE_COLOUR, label: { text: console === 'helm' ? 'CHARGING' : 'FIRING', x: 760, y: 218 } },

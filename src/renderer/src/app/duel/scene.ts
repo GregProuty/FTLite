@@ -23,6 +23,7 @@ import { countSit, createSitTracker, frameZoom, sitCard, trackSit, type SitSeat 
 import { shakeScale } from '../../render/shake';
 import { flashesFor, pushHits } from '../../render/tactical/hitModel';
 import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
+import { pushRockFx, pushRockShakes } from '../../render/tactical/rockFx';
 import { interpolatedShip, pickContact, pickRock, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
 import { combatModel } from '../../render/tactical/weaponsModel';
 import { screenToWorld, worldToScreen, zoomTo, type Camera } from '../../render/tactical/camera';
@@ -213,6 +214,11 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       const events = source.drainEvents();
       pushEvents(fx, events); pushHits(fx, events, d.tactical);   // duel polish i spec §B: the callouts and the struck-room flashes
+      pushRockFx(fx, events);   // spike ii §7: chips, breaks, blasts, sparks
+      if (view !== 'interior') {   // spike ii §7 item 6: a blast or a break on this screen shakes it
+        const cam = source.cameras[view], crewAt = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT);
+        pushRockShakes(fx, events, crewAt, (x, y) => { const p = worldToScreen(cam, viewport, x, y); return p.x >= 0 && p.x <= viewport.w && p.y >= 0 && p.y <= viewport.h; });
+      }
       // Feel-i §3: the kill, seen as the round's outcome turning with the enemy's hull gone (both modes read the same state).
       const enemySlot = targetOf(d.tactical, CREW_SLOT);
       if (lastOutcome === Outcome.Running && d.tactical.outcome !== Outcome.Running && (d.tactical.systems[enemySlot]?.hull ?? 1) <= 0) {

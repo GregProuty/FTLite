@@ -49,4 +49,8 @@ describe('the Weapons cards with rock targets (spec §6.5)', () => {
     expect(b.input.rockLock).not.toHaveBeenCalled();
     expect([b.input.lock.mock.calls, b.input.torpLock.mock.calls]).toEqual([[[-1]], [[-1]]]);
   });
+  it('shows the ROCKS tally (spec §7 item 9)', () => {
+    mount({ rocks: 3 });
+    expect(texts()).toContain('ROCKS 3');
+  });
 });
