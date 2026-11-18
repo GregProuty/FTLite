@@ -5,7 +5,8 @@
 // to the status table at the left, and the tab strip, side column and the Helm or Weapons block draw over the map.
 // The contact window (enemy ship window spec §6.6) follows the station blocks while the frame carries one (Sci-1 adds the
 // Science block), and the ship HUD (duel polish i spec §E) draws on the SHIP view, under the banners, with the interior's
-// (non-CRT) theme colours.
+// (non-CRT) theme colours. FTL targeting spec §1: the Weapons cards light the weapon picked up, and its targeting line
+// draws over the contact window.
 import { useUi } from '../context';
 import { CrtGlow, CrtProvider } from '../stage/CrtContext';
 import { CrtScreen } from '../stage/CrtScreen';
@@ -23,6 +24,7 @@ import { TabStrip } from './TabStrip';
 import { ScienceStation } from './ScienceStation';
 import { WeaponsStation } from './WeaponsStation';
 import { ContactWindow } from './ContactWindow';
+import { TargetingLine } from './TargetingLine';
 import { ShipHud } from './ShipHud';
 
 export function DuelUi() {
@@ -37,9 +39,10 @@ export function DuelUi() {
           {duel.console && <TabStrip tabs={duel.console.tabs} tabActions={duel.console.tabActions} />}
           {duel.console?.side && <SideColumn side={duel.console.side} />}
           {duel.console?.helm && <HelmStation helm={duel.console.helm} />}
-          {duel.console?.weapons && <WeaponsStation weapons={duel.console.weapons} />}
+          {duel.console?.weapons && <WeaponsStation weapons={duel.console.weapons} aim={duel.contact?.aimWeapon ?? null} />}
           {duel.console?.science && <ScienceStation science={duel.console.science} />}
           {duel.contact && <ContactWindow contact={duel.contact} />}
+          {duel.contact?.aimWeapon && duel.console?.weapons && <TargetingLine contact={duel.contact} seed={duel.pointer ?? null} />}
           {duel.hud && <ShipHud hud={duel.hud} />}
           <Banners banners={duel.banners} cx={duel.console && duel.console.station !== 'ship' ? (CONSOLE_RESERVE.left + INTERNAL_W - CONSOLE_RESERVE.right) / 2 : undefined} />
         </CrtGlow>

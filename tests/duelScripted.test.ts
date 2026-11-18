@@ -79,7 +79,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
       for (const e of input.commands) { kinds.add(e.command.kind); expect(e.requestedTick).toBe(d.interior.tick); }
       expect(stepDuelTick(d, input).every((r) => r.status === 'applied')).toBe(true);
     }
-    expect([...kinds].sort()).toEqual(['laserCharge', 'laserLock', 'missileLaunch', 'sit', 'stand', 'throttle']);
+    expect([...kinds].sort()).toEqual(['laserLock', 'sit', 'stand', 'throttle', 'torpLock']);   // FTL targeting spec §3: the gunner fires by targets
     disposeDuel(d);
   });
 });

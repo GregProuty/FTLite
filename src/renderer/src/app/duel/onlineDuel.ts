@@ -24,7 +24,7 @@ import { createKeyToggle, latencyOverlayLines, type KeyTarget } from '../../rend
 import { snapBack } from '../../render/tactical/camera';
 import type { Renderer } from '../../render/renderer';
 import { CONTACT_MAX_LEVEL, missileOf } from '../../sim/tactical/state';
-import { consoleInReach, cycleLock, repairInReach, seatOf } from './controls';
+import { consoleInReach, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
 import { createDuelKeyboard, createPointerSource, emptyPresses, NO_HELD_FLAGS, throttleRequest, type ConsoleInput, type EventSource, type KeySample } from './input';
 import { consoleChange } from './consoleChange';
 import { createContactController, type ContactActions, type ContactRequests } from './contactController';
@@ -91,7 +91,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   let frozen: DuelState | null = null, frozenPublication: { publicationSequence: number; tick: number; phase: string; pauseReason: string | null; pauseOwner: number | null } | null = null;
   let focused = true, blocked = false, synced = false, linkClosed = false, presenceSent = false, producing = false, disposed = false, leaveConfirm = CLOSED_PROMPT;
   let lastPhase = '', noticeUntil = 0, notice: string | null = null, lastFrame = 0, cameraKeys = keysOnly(sampleIdle());
-  let attaches = 0, pauses = 0, roundAttaches = 1, roundPauses = 0, startedAtIso = new Date().toISOString(), chargePressed = false, releaseSentAt = -1, cancel = () => {}, offClose = () => {};
+  let attaches = 0, pauses = 0, roundAttaches = 1, roundPauses = 0, startedAtIso = new Date().toISOString(), cancel = () => {}, offClose = () => {};
   let lastHeld = { moveX: 0, moveY: 0, interactHeld: false };
   // Artemis spec §5.4: the throttle this seat last asked for, until its result comes back; the base W, S and the console build on.
   let throttleSent: { level: number; sequence: number; round: number } | null = null;
@@ -126,11 +126,9 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   }
   function stopInput(): void {
     if (client && descriptor && producing) {
-      client.neutralize(descriptor.seatId);
-      const d = client.state();
-      if (d && seatOf(d, descriptor.seatId) === 'weapons' && d.tactical.systems[0].fireHeld) send({ kind: 'laserCharge', held: false });   // let go of a held charge
+      client.neutralize(descriptor.seatId);   // FTL targeting spec §2: the crew's Space is a single press, so there is no held charge to let go of
     }
-    producing = false; chargePressed = false; keyboard.clear(); pointer.clear();
+    producing = false; keyboard.clear(); pointer.clear();
   }
   function release(): void {
     stopInput(); offClose(); offClose = () => {};
@@ -185,7 +183,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       if (p.interact > 0 && repairInReach(d, me) < 0) { const c = consoleInReach(d, me); if (c >= 0) { throttleSent = null; send({ kind: 'sit', station: c }); } }
       return;
     }
-    if (p.stand > 0) { if (chargePressed || d.tactical.systems[0].fireHeld) send({ kind: 'laserCharge', held: false }); chargePressed = false; throttleSent = null; send({ kind: 'stand' }); return; }
+    if (p.stand > 0) { throttleSent = null; send({ kind: 'stand' }); return; }
     if (requests.scan !== null && d.tactical.known[requests.scan] < CONTACT_MAX_LEVEL[requests.scan]) send({ kind: 'contactScan', contact: requests.scan });   // Sci-1 spec §5
     if (seat === 'helm') {
       if (p.camera > 0 && source) snapBack(source.cameras.helm);
@@ -198,22 +196,20 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       if (p.camera > 0 && source) snapBack(source.cameras.science);
       return;
     }
-    const steps = p.interact - p.prevLock;
+    // E and Q step the laser's target room from the replica's lock (FTL targeting spec §1: a target, so it auto-fires).
+    const steps = p.interact - p.prevLock, sys = d.tactical.systems[0];
     if (p.interact + p.prevLock > 0 && steps !== 0) {
-      let room = d.tactical.systems[0].lock;
+      let room = sys.lock;
       for (let n = 0; n < Math.abs(steps); n++) room = cycleLock(room, steps > 0 ? 1 : -1);
       send({ kind: 'laserLock', room });
     }
-    if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= 0 && k.lockTo <= 2) send({ kind: 'laserLock', room: k.lockTo });   // a console lock click (Artemis spec §4.1)
+    if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) send({ kind: 'laserLock', room: k.lockTo });   // a room click or a card's clear
+    if (k.torpTo !== undefined && k.torpTo !== null && k.torpTo >= -1 && k.torpTo <= 2) send({ kind: 'torpLock', room: k.torpTo });   // the torpedo's
+    if (requests.torpStep) send({ kind: 'torpLock', room: stepTorpRoom(sys.torpLock, requests.torpStep) });   // E / Q while the torpedo is picked up: its own target
     // Sci-1 spec §7.4: a one-shot edge, sent as it comes (the lagging replica is no base, a quick undo would be dropped); the sim answers noop to an unchanged value
     if (k.freqTo !== undefined && k.freqTo !== null && Number.isInteger(k.freqTo) && k.freqTo >= 0 && k.freqTo <= 2) send({ kind: 'laserFrequency', freq: k.freqTo });
-    // The truth about a held charge is the confirmed replica plus what this seat sent (spec §3): a lost release is re-sent,
-    // a release swallowed by a pause included (Space let go while paused leaves chargePressed set).
-    const held = d.tactical.systems[0].fireHeld, now = deps.now();
-    if (p.fireDown > 0 && canCharge(d.tactical, 0)) { send({ kind: 'laserCharge', held: true }); chargePressed = true; }
-    if ((p.fireUp > 0 && (chargePressed || held)) || (!k.fireHeld && held && now - releaseSentAt > 250)) {
-      send({ kind: 'laserCharge', held: false }); chargePressed = false; releaseSentAt = now;
-    }
+    // FTL targeting spec §2: Space is a single press that fires a full laser; there is no release to send.
+    if (p.fireDown > 0 && canCharge(d.tactical, 0)) send({ kind: 'laserCharge', held: true });
     if (p.launch > 0 && canLaunch(d.tactical, 0)) send({ kind: 'missileLaunch' });
     if (p.camera > 0 && source) { const cam = source.cameras.weapons; snapBack(cam, missileOf(d.tactical, 0) && cam.follow !== 'missile' ? 'missile' : 'ship'); }
   }

@@ -15,14 +15,16 @@ import { makeUi } from './helpers/uiStore';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
-const contactOf = (station: 'helm' | 'weapons', aim: boolean): ContactView => {
+const contactOf = (station: 'helm' | 'weapons', aim: boolean, targets: { laser?: number; torp?: number } = {}): ContactView => {
   const st = createTacticalState(4); st.known[0] = 2;   // Sci-1: the full window is Level 2
+  if (targets.laser !== undefined) { st.systems[0].lock = targets.laser; st.systems[0].laserTargeted = true; }
+  if (targets.torp !== undefined) st.systems[0].torpLock = targets.torp;
   return contactModel({ state: st, contact: 0, aim, station, t: 0, weapons: station === 'weapons' ? { charge } : null })!;
 };
 const view = (contact: ContactView): DuelUiView => ({ readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console: null, contact });
 function mount(contact: ContactView) {
   const ui = makeUi(), duel = createDuelSink(ui.store);
-  const c = { close: vi.fn(), arm: vi.fn(), cancelAim: vi.fn(), pick: vi.fn(), scan: vi.fn() };
+  const c = { close: vi.fn(), arm: vi.fn(), cancelAim: vi.fn(), pick: vi.fn(), scan: vi.fn(), pickUp: vi.fn() };
   ui.actions.setContact(c);
   render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);
   act(() => duel.frame(view(contact)));
@@ -38,13 +40,25 @@ describe('the contact window (spec §4.2, §5)', () => {
     mount(contactOf('weapons', false));
     for (const t of ['ENEMY SHIP', 'WEAP', 'SHLD', 'ENG', 'TORPEDO', 'CHARGE', '40%']) expect(texts(), t).toContain(t);
     for (const t of ['MISSILE', 'STEER A/D']) expect(texts(), t).not.toContain(t);
-    expect(btn('contact-laser')).not.toBeNull();
-    expect(document.querySelector('[data-ui-contact-lock]')).not.toBeNull();   // the scout is the laser's target
+    expect(btn('contact-laser')).not.toBeNull(); expect(btn('contact-torpedo')).not.toBeNull();
+    expect(document.querySelector('[data-ui-contact-lock]')).toBeNull();   // FTL targeting spec §1: no target yet, no mark
+    expect(document.querySelector('[data-ui-contact-torp]')).toBeNull();
   });
-  it('LASER calls arm', () => {
+  it('each weapon target room carries its mark on the CRT ramp: the laser brackets, the torpedo diamond', () => {
+    mount(contactOf('weapons', false, { laser: 0, torp: 2 }));
+    const ramp = new Set([CRT.glass, CRT.faint, CRT.dim, CRT.mid, CRT.main, CRT.hot].map((c) => hex(c)));
+    for (const sel of ['[data-ui-contact-lock]', '[data-ui-contact-torp]']) {
+      const g = document.querySelector(sel) as Element;
+      expect(g, sel).not.toBeNull();
+      for (const e of Array.from(g.children)) expect(ramp.has(e.getAttribute('stroke') ?? ''), sel).toBe(true);
+    }
+  });
+  it('LASER calls arm; TORPEDO picks the torpedo up', () => {
     const c = mount(contactOf('weapons', false));
     fireEvent.pointerDown(btn('contact-laser')!, { button: 0 });
     expect(c.arm).toHaveBeenCalledTimes(1);
+    fireEvent.pointerDown(btn('contact-torpedo')!, { button: 0 });
+    expect(c.pickUp).toHaveBeenCalledWith('torpedo');
   });
   it('while armed, a click inside the SHLD polygon calls pick(1); a click in the box on no room calls nothing', () => {
     const v = contactOf('weapons', true), c = mount(v), shld = v.rooms[1]!.centre;
@@ -53,21 +67,15 @@ describe('the contact window (spec §4.2, §5)', () => {
     fireEvent.pointerDown(box(), { button: 0, clientX: shld.x, clientY: shld.y });
     expect(c.pick).toHaveBeenCalledTimes(1); expect(c.pick.mock.calls[0]![0]).toBe(1);
   });
-  it('while armed, the pointer over the box draws the reticle', () => {
-    const v = contactOf('weapons', true), shld = v.rooms[1]!.centre;
-    mount(v);
-    expect(document.querySelector('[data-ui-contact-reticle]')).toBeNull();
-    fireEvent.pointerMove(box(), { clientX: shld.x, clientY: shld.y });
-    expect(document.querySelector('[data-ui-contact-reticle]')).not.toBeNull();
+  it('while armed, the box hides the cursor (the reticle is the targeting line’s, tests/targetingUi.test.tsx)', () => {
+    mount(contactOf('weapons', true));
     expect(box().getAttribute('style')).toContain('cursor: none');
   });
-  it('draws a glass under-stroke below the hover outline and the reticle, and a backing box behind each room label', () => {
+  it('draws a glass under-stroke below the hover outline, and a backing box behind each room label', () => {
     const v = contactOf('weapons', true), shld = v.rooms[1]!.centre;
     mount(v);
     fireEvent.pointerMove(box(), { clientX: shld.x, clientY: shld.y });
     const glass = hex(CRT.glass);
-    const under = (sel: string) => Array.from(document.querySelectorAll(`${sel} > *`)).some((e) => e.getAttribute('stroke') === glass && e.getAttribute('stroke-width') === '3');
-    expect(under('[data-ui-contact-reticle]')).toBe(true);
     const hov = document.querySelector('[data-ui-contact-hover]') as Element;
     expect(hov).not.toBeNull();
     expect(Array.from(hov.children).some((e) => e.getAttribute('stroke') === glass && e.getAttribute('stroke-width') === '3')).toBe(true);

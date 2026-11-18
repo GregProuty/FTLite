@@ -98,27 +98,24 @@ describe('consoles are roles (spec §8, §13)', () => {
     const results = step(d, [helmPress, gunPress]);
     expect(results.find((r) => r.id === helmPress.id)).toMatchObject({ status: 'rejected', reason: 'not-at-weapons' });
     expect(results.find((r) => r.id === gunPress.id)).toMatchObject({ status: 'applied' });
-    expect(d.tactical.systems[0].fireHeld).toBe(true);
-    for (let t = 0; t < 239; t++) step(d);
-    expect(d.tactical.systems[0].laserCharge).toBe(LASER_CHARGE_UNITS);
-    step(d, [cmd(d, 1, { kind: 'laserCharge', held: false })]);
-    expect(d.tactical.systems[0].shots).toBe(1);
+    expect(d.tactical.systems[0].shots).toBe(1);   // FTL targeting spec §2: the round starts full and one press fires it
+    expect(d.tactical.systems[0].fireHeld).toBe(false);
   });
   it('weapon commands take effect lock, then charge, then launch, whatever their envelope order', () => {
     for (const launchFirst of [true, false]) {
       const d = createSeatedDuel(layout, 5), s = d.tactical.systems[0];
       inTorpedoRange(d.tactical);                                       // weapons update spec §2: a launch needs the target within 360
-      s.fireHeld = true; s.laserCharge = LASER_CHARGE_UNITS;            // a full charge, held
-      const launch = cmd(d, 1, { kind: 'missileLaunch' }), release = cmd(d, 1, { kind: 'laserCharge', held: false });
+      s.laserCharge = LASER_CHARGE_UNITS;                               // a full charge
+      const launch = cmd(d, 1, { kind: 'missileLaunch' }), release = cmd(d, 1, { kind: 'laserCharge', held: true });
       const results = step(d, launchFirst ? [launch, release] : [release, launch]);
       expect(results.map((r) => r.status), String(launchFirst)).toEqual(['applied', 'applied']);
-      expect([s.shots, s.missilesLaunched], String(launchFirst)).toEqual([1, 1]);   // the release fired, then the missile launched
+      expect([s.shots, s.missilesLaunched], String(launchFirst)).toEqual([1, 1]);   // the press fired, then the missile launched
     }
     for (const lockFirst of [true, false]) {
       const d = createSeatedDuel(layout, 5), [s, e] = d.tactical.ships;
       Object.assign(e, { x: s.x + hx(s.heading) * 300, y: s.y + hy(s.heading) * 300 }); d.tactical.systems[1].shields = 0;   // dead ahead, shields down
-      d.tactical.systems[0].fireHeld = true; d.tactical.systems[0].laserCharge = LASER_CHARGE_UNITS;
-      const lock = cmd(d, 1, { kind: 'laserLock', room: Room.Engines }), release = cmd(d, 1, { kind: 'laserCharge', held: false });
+      d.tactical.systems[0].laserCharge = LASER_CHARGE_UNITS;
+      const lock = cmd(d, 1, { kind: 'laserLock', room: Room.Engines }), release = cmd(d, 1, { kind: 'laserCharge', held: true });
       step(d, lockFirst ? [lock, release] : [release, lock]);
       expect(d.tactical.systems[1].rooms, String(lockFirst)).toEqual([0, 0, 1]);           // the new lock applied before the shot
     }
@@ -173,14 +170,15 @@ describe('weapon commands need a present gunner (spec §13)', () => {
 });
 
 describe('present or away (spec §8, §11a)', () => {
-  it('an away player\’s console is empty: Fire lets go without firing and their commands are refused', () => {
+  it('an away player\’s console is empty: the laser freezes and their commands are refused', () => {
     const d = createSeatedDuel(layout, 5), s = d.tactical.systems[0];
-    step(d, [cmd(d, 1, { kind: 'laserCharge', held: true })]);
-    expect(s.fireHeld).toBe(true);
+    s.laserCharge = 0;
+    step(d, [cmd(d, 1, { kind: 'laserCharge', held: true })]);   // below full: a press does nothing (FTL targeting spec §2)
     step(d, [cmd(d, 1, { kind: 'presence', present: false })]);
     expect(d.present).toEqual([true, false]);
-    expect(s.fireHeld).toBe(false);
-    expect(s.shots).toBe(0);
+    const frozen = s.laserCharge;
+    step(d);
+    expect([s.laserCharge, s.shots]).toEqual([frozen, 0]);
     expect(step(d, [cmd(d, 1, { kind: 'laserCharge', held: true })])[0]).toMatchObject({ reason: 'not-at-weapons' });
     step(d, [cmd(d, 1, { kind: 'presence', present: true })]);
     expect(step(d, [cmd(d, 1, { kind: 'laserCharge', held: true })])[0]).toMatchObject({ status: 'applied' });

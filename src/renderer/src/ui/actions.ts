@@ -46,20 +46,23 @@ export function createUiActions(deps: UiActionDeps) {
     press: (action) => consoleInput?.press(action),
     hold: (code, on) => consoleInput?.hold(code, on),
     lock: (room) => consoleInput?.lock(room),
+    torpLock: (room) => consoleInput?.torpLock(room),
     throttle: (level) => consoleInput?.throttle(level),
     frequency: (freq) => consoleInput?.frequency(freq)
   };
 
   // The contact window's clicks (enemy ship window spec §6.6) go to the duel mode's contact controller while one is set;
   // a pick locks through the console input, the same path as the WEAP/SHLD/ENG buttons. SCAN asks the controller for a scan
-  // request (Sci-1 spec §7.2). A no-op otherwise.
+  // request (Sci-1 spec §7.2). FTL targeting spec §1: a Weapons card picks a weapon up, and a pick sets the target of the
+  // weapon picked up (the laser through lock, the torpedo through torpLock). A no-op otherwise.
   let contactInput: ContactActions | null = null;
   const contactActions = {
     close: (): void => contactInput?.close(),
     arm: (): void => contactInput?.arm(),
     cancelAim: (): void => contactInput?.cancelAim(),
-    pick: (room: number): void => contactInput?.pick(room, (r) => consoleActions.lock(r)),
-    scan: (): void => contactInput?.scan()
+    pick: (room: number): void => contactInput?.pick(room, (r, weapon) => (weapon === 'torpedo' ? consoleActions.torpLock(r) : consoleActions.lock(r))),
+    scan: (): void => contactInput?.scan(),
+    pickUp: (weapon: 'laser' | 'torpedo'): void => contactInput?.pickUp(weapon)
   };
 
   return {

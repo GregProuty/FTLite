@@ -113,7 +113,9 @@ export const duelWire: ModeWire<DuelSnapshot> = {
       z.object({ kind: z.literal('sit'), station: index }).strict(),
       z.object({ kind: z.literal('stand') }).strict(),
       z.object({ kind: z.literal('presence'), present: z.boolean() }).strict(),
-      z.object({ kind: z.literal('laserLock'), room: index }).strict(),
+      // FTL targeting spec §2: a weapon's target Room, or −1 to clear it.
+      z.object({ kind: z.literal('laserLock'), room: z.number().int().min(-1).max(MAX_INDEX) }).strict(),
+      z.object({ kind: z.literal('torpLock'), room: z.number().int().min(-1).max(MAX_INDEX) }).strict(),
       z.object({ kind: z.literal('laserCharge'), held: z.boolean() }).strict(),
       z.object({ kind: z.literal('missileLaunch') }).strict(),
       z.object({ kind: z.literal('throttle'), level: z.number().finite() }).strict(),

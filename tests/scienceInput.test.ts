@@ -1,4 +1,4 @@
-// Sci-1 (spec 2026-11-17-science-scans §7.2, §7.3, §7.4): keys 1/2/3 and the console's frequency buttons, the pointer's
+// Sci-1 (spec 2026-11-17-science-scans §7.2, §7.3, §7.4): keys 3/4/5 (FTL targeting moved them from 1/2/3) and the console's frequency buttons, the pointer's
 // position, the local runtime turning the contact controller's requests and the frequency into commands, and the scene
 // at Science (the window always shown, the hover readout, a map click on the wreck designating it).
 import { describe, expect, it } from 'vitest';
@@ -31,15 +31,16 @@ function fakeTarget() {
 const key = (code: string, repeat = false) => ({ code, repeat, preventDefault() {} });
 
 describe('the frequency keys and buttons (spec §7.4)', () => {
-  it('1, 2 and 3 ask for A, B and C once per sample; repeats do not; the console button asks too; clear and clearUi drop it', () => {
+  it('3, 4 and 5 ask for A, B and C once per sample (1 and 2 pick up weapons, FTL targeting spec §1); repeats do not; the console button asks too; clear and clearUi drop it', () => {
     const t = fakeTarget(), kb = createDuelKeyboard(t as unknown as EventSource);
-    t.fire('keydown', key('Digit2'));
+    t.fire('keydown', key('Digit4'));
     expect(kb.sample().freqTo).toBe(1); expect(kb.sample().freqTo).toBeNull();
-    t.fire('keydown', key('Digit3', true)); expect(kb.sample().freqTo).toBeNull();
-    t.fire('keydown', key('Digit1')); t.fire('keydown', key('Digit3')); expect(kb.sample().freqTo).toBe(2);
+    t.fire('keydown', key('Digit5', true)); expect(kb.sample().freqTo).toBeNull();
+    t.fire('keydown', key('Digit3')); t.fire('keydown', key('Digit5')); expect(kb.sample().freqTo).toBe(2);
+    t.fire('keydown', key('Digit1')); t.fire('keydown', key('Digit2')); expect(kb.sample().freqTo).toBeNull();
     kb.ui.frequency(0); expect(kb.sample().freqTo).toBe(0);
     kb.ui.frequency(1); kb.clearUi(); expect(kb.sample().freqTo).toBeNull();
-    t.fire('keydown', key('Digit1')); kb.clear(); expect(kb.sample().freqTo).toBeNull();
+    t.fire('keydown', key('Digit3')); kb.clear(); expect(kb.sample().freqTo).toBeNull();
     kb.destroy();
   });
   it('frequencyRequest: a whole 0..2 that differs from the base, else null', () => {
@@ -118,7 +119,7 @@ describe('the requests to commands (spec §5, §7.2, §7.3)', () => {
       expect(d.tactical.scan).toMatchObject({ contact: 0, level: 1, rate: 2, by: d.nav });
     } finally { r.rt.dispose(); }
   });
-  it('Weapons: 1/2/3 (or a button) send laserFrequency only when it changes the tuned frequency', () => {
+  it('Weapons: 3/4/5 (or a button) send laserFrequency only when it changes the tuned frequency', () => {
     const r = rig(), d = r.rt.duel;
     try {
       sitDown(d.interior, 0, d.weapons);

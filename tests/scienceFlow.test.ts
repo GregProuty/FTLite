@@ -64,19 +64,19 @@ describe('the laser frequency (spec §4.4)', () => {
   it('a release tuned to the weak frequency in the same tick strips 2 layers; 1 when only 1 is up; off it 1', () => {
     const d = gunnery(), t = d.tactical;
     try {
-      step(d, [cmd(d, 1, { kind: 'laserFrequency', freq: t.weakFreq }), cmd(d, 1, { kind: 'laserCharge', held: false })]);
+      step(d, [cmd(d, 1, { kind: 'laserFrequency', freq: t.weakFreq }), cmd(d, 1, { kind: 'laserCharge', held: true })]);
       expect([t.systems[0].freq, t.systems[1].shields, t.systems[0].layersStripped]).toEqual([t.weakFreq, 0, 2]);
     } finally { disposeDuel(d); }
     const one = gunnery();
     try {
       one.tactical.systems[1].shields = 1; one.tactical.systems[0].freq = one.tactical.weakFreq;
-      step(one, [cmd(one, 1, { kind: 'laserCharge', held: false })]);
+      step(one, [cmd(one, 1, { kind: 'laserCharge', held: true })]);
       expect([one.tactical.systems[1].shields, one.tactical.systems[0].layersStripped]).toEqual([0, 1]);
     } finally { disposeDuel(one); }
     const off = gunnery();
     try {
       off.tactical.systems[0].freq = (off.tactical.weakFreq + 1) % 3;
-      step(off, [cmd(off, 1, { kind: 'laserCharge', held: false })]);
+      step(off, [cmd(off, 1, { kind: 'laserCharge', held: true })]);
       expect([off.tactical.systems[1].shields, off.tactical.systems[0].layersStripped]).toEqual([1, 1]);
     } finally { disposeDuel(off); }
   });

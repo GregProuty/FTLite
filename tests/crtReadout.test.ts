@@ -37,6 +37,7 @@ describe('readoutRows emphasis (CRT map spec section 2)', () => {
   });
   it('weapons: LASER heading plain, LOCK enemy, CHARGE good only when full and no missile flies, MAG plain', () => {
     const d = createDuel(layout, 5), s = d.tactical.systems[0];
+    s.laserCharge = 0;   // the crew laser starts each round full (FTL targeting spec §2)
     const tail = (): (string | undefined)[][] => marks(readoutRows({ duel: d, mode: 'weapons', active: 1, other: 'AT HELM' })).slice(11, 15);
     expect(tail()).toEqual([['LASER', '-'], ['LOCK', 'enemy'], ['CHARGE', '-'], ['MAG', '-']]);
     s.laserCharge = LASER_CHARGE_UNITS; expect(tail()[2]).toEqual(['CHARGE', 'good']);

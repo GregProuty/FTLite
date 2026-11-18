@@ -22,8 +22,8 @@ const frame = (console: ConsoleView | null, contact: ContactView | null): DuelUi
   banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console, contact });
 function mount(view: DuelUiView) {
   const ui = makeUi(), duel = createDuelSink(ui.store);
-  const c = { close: vi.fn(), arm: vi.fn(), cancelAim: vi.fn(), pick: vi.fn(), scan: vi.fn() };
-  const input = { press: vi.fn(), hold: vi.fn(), lock: vi.fn(), throttle: vi.fn(), frequency: vi.fn() };
+  const c = { close: vi.fn(), arm: vi.fn(), cancelAim: vi.fn(), pick: vi.fn(), scan: vi.fn(), pickUp: vi.fn() };
+  const input = { press: vi.fn(), hold: vi.fn(), lock: vi.fn(), torpLock: vi.fn(), throttle: vi.fn(), frequency: vi.fn() };
   ui.actions.setContact(c); ui.actions.setConsole(input);
   render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);
   act(() => duel.frame(view));
@@ -31,7 +31,7 @@ function mount(view: DuelUiView) {
 }
 const weapons: ConsoleView = {
   station: 'weapons', tabs: { helm: 'locked', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
-  helm: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 1, weakFreq: 2 }, science: null,
+  helm: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 1, weakFreq: 2, laserTarget: -1, torpTarget: -1, burst: 2 }, science: null,
   side: { zoom: '0.50', free: false, snapLabel: 'CAMERA' }
 };
 

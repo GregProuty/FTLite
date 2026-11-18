@@ -26,9 +26,11 @@ function tick(st: TacticalState, i: number, input: ShipInput = IDLE_INPUT): Extr
   st.tick++;
   return st.events.filter((e): e is Extract<DuelEvent, { kind: 'laser' }> => e.kind === 'laser' && e.ship === i);
 }
-/** Ship i full and held, then released: the burst's first shot. */
+/** Ship i full, then fired: the burst's first shot (the crew by one press, FTL targeting spec §2; the Hunter held and released). */
 function fire(st: TacticalState, i: number): Extract<DuelEvent, { kind: 'laser' }>[] {
-  st.systems[i]!.laserCharge = LASER_CHARGE_UNITS; st.systems[i]!.fireHeld = true;
+  st.systems[i]!.laserCharge = LASER_CHARGE_UNITS;
+  if (i === 0) return tick(st, i, press);
+  st.systems[i]!.fireHeld = true;
   return tick(st, i, release);
 }
 /** The ticks after the first shot on which ship i fired, over `n` ticks. */

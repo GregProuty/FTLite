@@ -9,7 +9,7 @@ import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { REPAIR_RATE_SOLO } from '../src/renderer/src/sim/duel/tuning';
 import { Room } from '../src/renderer/src/sim/tactical/state';
-import { consoleInReach, cycleLock, repairInReach, seatOf } from '../src/renderer/src/app/duel/controls';
+import { consoleInReach, cycleLock, repairInReach, seatOf, stepTorpRoom } from '../src/renderer/src/app/duel/controls';
 
 const layout = parseShip(cutter);
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -80,5 +80,10 @@ describe('duel controls (H-1 spec §5)', () => {
   it('the lock cycles Weapons, Shields, Engines and back, both ways', () => {
     expect([cycleLock(0, 1), cycleLock(1, 1), cycleLock(2, 1)]).toEqual([1, 2, 0]);
     expect([cycleLock(0, -1), cycleLock(1, -1), cycleLock(2, -1)]).toEqual([2, 0, 1]);
+  });
+  it('the torpedo target steps through Rooms 0..2 on its own: from none, E lands on 0 and Q on 2 (FTL targeting fix)', () => {
+    expect([stepTorpRoom(-1, 1), stepTorpRoom(-1, -1), stepTorpRoom(-1, 2), stepTorpRoom(-1, -2)]).toEqual([0, 2, 1, 1]);
+    expect([stepTorpRoom(0, 1), stepTorpRoom(2, 1), stepTorpRoom(0, -1), stepTorpRoom(1, -2)]).toEqual([1, 0, 2, 2]);
+    expect(stepTorpRoom(1, 0)).toBe(1);
   });
 });

@@ -10,7 +10,9 @@ import { createCamera, worldToScreen, type Camera } from '../src/renderer/src/re
 import { BEAM_HIT, BEAM_MISS, createFx, hitsCrew, pushEvents, recordTrails, resetFx, shakeOffset, SHAKE_S, stepFx, TRAIL_POINTS, type ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import { createTacticalLayer, starField } from '../src/renderer/src/render/tactical/tacticalLayer';
 import { ARROW_GAP_SIDE, ARROW_MARGIN, spreadArrows, tacticalModel, type ArrowDraw, type PrevBody } from '../src/renderer/src/render/tactical/tacticalModel';
-import { ARC_HALF, bearingDeg, combatModel, TORPEDO_DOT_PX, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
+import { ARC_HALF, bearingDeg, combatModel, TORPEDO_DOT_PX, weaponsInfoText, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
+import { CONSOLE_RESERVE, CONTACT_RESERVE, SIDE, TABS_RIGHT } from '../src/renderer/src/render/duel/consoleLayout';
+import { FONT_NATIVE, FONT_SIZE, textPx } from '../src/renderer/src/render/theme';
 import { roomCentre } from '../src/renderer/src/render/tactical/hullModel';
 
 const vp = { w: 1280, h: 720 };
@@ -50,7 +52,7 @@ describe('the combat model (H-1 spec §7)', () => {
     expect(w.enemyArc!.r).toBe(LASER_RANGE * 0.5);
     expect(w.ring).not.toBeNull();
     const [a, b] = st.ships, range = Math.round(Math.hypot(b.x - a.x, b.y - a.y));
-    expect(w.info.text).toBe(`ENEMY BRG ${String(bearingDeg(b.x - a.x, b.y - a.y)).padStart(3, '0')}  RNG ${range}  NO SHOT  TORP ${range <= MISSILE_RANGE ? 'IN RANGE' : 'OUT OF RANGE'}`);
+    expect(w.info.text).toBe(`BRG ${String(bearingDeg(b.x - a.x, b.y - a.y)).padStart(3, '0')}  RNG ${range}  NO SHOT  TORP ${range <= MISSILE_RANGE ? 'IN' : 'OUT'}`);
   });
   it('the torpedo range circle (weapons update spec §2): radius 360 · zoom about the own ship on both maps; lit at Weapons only while in range', () => {
     const st = createTacticalState(11);
@@ -59,11 +61,11 @@ describe('the combat model (H-1 spec §7)', () => {
       Object.assign(st.ships[1], { x: st.ships[0].x + 500, y: st.ships[0].y });          // out of range
       const out = combatModel(input(st, cam, 'weapons'));
       expect(out.torpedoRange).toEqual({ x: 640, y: 360, r: MISSILE_RANGE * cam.zoom, lit: false });
-      expect(out.weapons!.torpedoInRange).toBe(false); expect(out.weapons!.info.text).toMatch(/TORP OUT OF RANGE$/);
+      expect(out.weapons!.torpedoInRange).toBe(false); expect(out.weapons!.info.text).toMatch(/TORP OUT$/);
       st.ships[1].x = st.ships[0].x - 300;                                                  // in range, behind
       const inside = combatModel(input(st, cam, 'weapons'));
       expect(inside.torpedoRange).toEqual({ x: 640, y: 360, r: MISSILE_RANGE * cam.zoom, lit: true });
-      expect(inside.weapons!.info.text).toMatch(/TORP IN RANGE$/);
+      expect(inside.weapons!.info.text).toMatch(/TORP IN$/);
       expect(combatModel(input(st, cam, 'helm')).torpedoRange).toEqual({ x: 640, y: 360, r: MISSILE_RANGE * cam.zoom, lit: false });   // the Helm: dim only
     }
   });
@@ -71,6 +73,23 @@ describe('the combat model (H-1 spec §7)', () => {
     const st = createTacticalState(11);
     const w = combatModel({ ...input(st, createCamera(0, 0), 'weapons'), reserveLeft: 228, reserveRight: 156 }).weapons!;
     expect(w.info.x).toBe(676);
+  });
+  it('the info text fits between the tab strip and the side column in a 1280-wide console view, window open or not (FTL targeting fix)', () => {
+    expect(weaponsInfoText(263, 3987, false, false)).toBe('BRG 263  RNG 3987  NO SHOT  TORP OUT');
+    expect(weaponsInfoText(7, 120, true, true)).toBe('BRG 007  RNG 120  IN ARC  TORP IN');
+    const st = createTacticalState(11), band = { left: TABS_RIGHT, right: SIDE.x };
+    expect([TABS_RIGHT, SIDE.x]).toEqual([408, 1136]);
+    for (const far of [300, 3987, 99999]) {
+      Object.assign(st.ships[1], { x: st.ships[0].x + far, y: st.ships[0].y });
+      for (const reserveRight of [CONSOLE_RESERVE.right, CONTACT_RESERVE]) {
+        const w = combatModel({ ...input(st, createCamera(st.ships[0].x, st.ships[0].y), 'weapons'), reserveLeft: CONSOLE_RESERVE.left, reserveRight, infoBand: band }).weapons!;
+        const half = textPx(w.info.text, FONT_SIZE / FONT_NATIVE) / 2;
+        expect(w.info.x - half, `${far} ${reserveRight}`).toBeGreaterThanOrEqual(TABS_RIGHT);
+        expect(w.info.x + half, `${far} ${reserveRight}`).toBeLessThanOrEqual(SIDE.x);
+      }
+    }
+    const centred = combatModel({ ...input(st, createCamera(0, 0), 'weapons'), reserveLeft: 228, reserveRight: 156, infoBand: band }).weapons!;
+    expect(centred.info.x).toBe(676);   // room to spare: still centred between the reserves
   });
   it('the duel views spread crowded off-screen arrows apart so their labels never overlap', () => {
     const st = createTacticalState(11), cam = createCamera(2600, 0);

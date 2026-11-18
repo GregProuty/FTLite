@@ -44,3 +44,11 @@ export function consoleInReach(d: DuelState, pid: number): number {
 
 /** The lock cycle Weapons → Shields → Engines → Weapons (Room order); `dir` +1 next (E), −1 previous (Q). */
 export function cycleLock(room: number, dir: 1 | -1): number { return (((room + dir) % 3) + 3) % 3; }
+/** The torpedo's target stepped `steps` times through Rooms 0..2 (FTL targeting spec §1, E / Q while it is picked up):
+ *  from no target (−1) the first step lands on Room 0 forward (E) or Room 2 backward (Q), then each cycles as cycleLock. */
+export function stepTorpRoom(room: number, steps: number): number {
+  const dir: 1 | -1 = steps > 0 ? 1 : -1;
+  let r = room;
+  for (let n = 0; n < Math.abs(steps); n++) r = r < 0 ? (dir > 0 ? 0 : 2) : cycleLock(r, dir);
+  return r;
+}

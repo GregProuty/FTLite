@@ -37,8 +37,8 @@ describe('the enemy at Level 2 (enemy ship window spec §4.2)', () => {
     expect(Math.max(...xs)).toBeGreaterThan(v.rooms[0]!.centre.x);   // nose right: Weapons (forward) is right of Engines
     expect(v.rooms[0]!.centre.x).toBeGreaterThan(v.rooms[2]!.centre.x);
   });
-  it('each room\'s look is roomLook(false, level, phase) in both blink phases; the lock room is the crew\'s lock', () => {
-    const st = known(2); st.systems[1].rooms = [0, 1, 2]; st.systems[0].lock = 2;
+  it('each room\'s look is roomLook(false, level, phase) in both blink phases; the lock room is the crew laser\'s target', () => {
+    const st = known(2); st.systems[1].rooms = [0, 1, 2]; st.systems[0].lock = 2; st.systems[0].laserTargeted = true;
     expect([0, 0.3].map((t) => blink(t, DAMAGE_BLINK_HZ))).toEqual([0, 1]);
     for (const t of [0, 0.3]) {
       const v = model(st, { t })!, phase = blink(t, DAMAGE_BLINK_HZ);
@@ -52,10 +52,20 @@ describe('the enemy at Level 2 (enemy ship window spec §4.2)', () => {
   });
   it('Weapons: LASER is the station\'s charge row, lit while armed; MISSILE the magazine. The Helm: no weapon list, no aim', () => {
     const st = known(2), v = model(st, { aim: true })!;
-    expect(v.weapons).toEqual({ laser: { label: 'CHARGE', value: '40%', fill: 0.4, lit: true, enabled: true, note: null }, missile: { magazine: st.systems[0].magazine } });
-    expect(v.aim).toBe(true);
+    expect(v.weapons).toEqual({ laser: { label: 'CHARGE', value: '40%', fill: 0.4, lit: true, enabled: true, note: null }, missile: { magazine: st.systems[0].magazine, lit: false } });
+    expect([v.aim, v.aimWeapon]).toEqual([true, 'laser']);
+    const torp = model(st, { aim: true, weapon: 'torpedo' })!;   // FTL targeting spec §1: the torpedo picked up
+    expect([torp.weapons!.laser.lit, torp.weapons!.missile.lit, torp.aimWeapon]).toEqual([false, true, 'torpedo']);
     const h = model(st, { station: 'helm', weapons: null, aim: true })!;
-    expect([h.weapons, h.aim]).toEqual([null, false]);
+    expect([h.weapons, h.aim, h.aimWeapon]).toEqual([null, false, null]);
+  });
+  it('FTL targeting spec §1: the target marks are the laser target (only while it has one) and the torpedo target, at Level 1 too', () => {
+    const st = known(1);
+    expect([model(st)!.lockRoom, model(st)!.torpRoom]).toEqual([null, null]);
+    st.systems[0].lock = 0; st.systems[0].laserTargeted = true; st.systems[0].torpLock = 2;
+    expect([model(st)!.lockRoom, model(st)!.torpRoom]).toEqual([0, 2]);
+    st.systems[0].laserTargeted = false;
+    expect(model(st)!.lockRoom).toBeNull();
   });
   it('the readings: the weak frequency, the enemy laser\'s charge, TORPEDO READY or RELOADING; SCANNED', () => {
     const st = known(2); st.hostileAt = 0; st.tick = 1000;   // hostile long ago: no hostility line

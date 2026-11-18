@@ -54,7 +54,7 @@ describe('the duel remote client (spec §4)', () => {
     r.tick(6);
     expect(notifications).toContain('duel-notification');
     expect(r.client.takeResults()).toEqual([expect.objectContaining({ id: { player: 1, sequence: 1 }, status: 'applied' })]);
-    expect(r.client.state()!.tactical.systems[0].fireHeld).toBe(true);
+    expect(r.client.state()!.tactical.systems[0].shots).toBe(1);   // FTL targeting spec §2: the press fired the full laser
   });
   it('absorbs dropped ordinary publications and still converges', () => {
     const r = rig(6, (k) => k % 5 === 0);

@@ -151,7 +151,7 @@ describe('hunter: firing (spec §9 Firing)', () => {
     me.rooms[Room.Weapons] = 1; me.shields = 0;
     crew.lock = Room.Weapons; crew.fireHeld = true; crew.laserCharge = LASER_CHARGE_UNITS;
     const before = st.hunter.lastLaunch;
-    stepDuel(st, { ...IDLE_INPUT, laserCharge: false });
+    stepDuel(st, { ...IDLE_INPUT, laserCharge: true });
     expect(me.rooms[Room.Weapons]).toBe(2);
     expect(missileOf(st, 1)).toBeNull();
     expect(st.hunter.lastLaunch).toBe(before);

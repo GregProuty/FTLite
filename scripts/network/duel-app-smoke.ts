@@ -142,9 +142,10 @@ async function main() {
     const fast = await until(async () => [latest(await status(h)), latest(await status(g))], ([a, b]: any) => a.speed > speedBefore + 1 && b.speed > speedBefore + 1, 'speed rises on both');
     proof.thrust = { before: speedBefore, host: fast[0].speed, guest: fast[1].speed };
     step = 'step 5';
-    // 5. The Weapons machine (the host) presses Space and releases it: a beam (a laser shot) on both.
+    // 5. The Weapons machine (the host) presses Space: a beam (a laser shot) on both. FTL targeting spec §2: the crew laser
+    //    charges by itself and starts the round full, so one press fires it.
     const shotsBefore = latest(await status(h)).shots;
-    await h.request('key', { key: 'Space', down: true }); await delay(4500); await h.request('key', { key: 'Space', down: false });   // a full charge takes 4 s
+    await h.request('key', { key: 'Space', down: true }); await delay(200); await h.request('key', { key: 'Space', down: false });
     const fired = await until(async () => [latest(await status(h)), latest(await status(g))], ([a, b]: any) => a.shots > shotsBefore && b.shots > shotsBefore, 'beam on both', 10000);
     proof.beam = { before: shotsBefore, host: fired[0].shots, guest: fired[1].shots };
     step = 'step 6';

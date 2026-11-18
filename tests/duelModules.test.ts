@@ -50,7 +50,7 @@ function bothFlying(s: TacticalState): void {
   placeMissile(s, 1, { x: -100, y: 200, vx: -3, vy: -4, heading: 9, headingAcc: -0.25, age: 40 });
 }
 /** A changed first value: flags and 0/1 members flip, everything else moves by one. */
-const changedFirst = (name: string, v: number): number => (/\.(active|released|fireHeld)$/.test(name) || /^derelict\.(trapped|salvaged)$/.test(name) || name.startsWith('present.') || name === 'hunter.working' ? 1 - v : v + 1);
+const changedFirst = (name: string, v: number): number => (/\.(active|released|fireHeld|laserTargeted)$/.test(name) || /^derelict\.(trapped|salvaged)$/.test(name) || name.startsWith('present.') || name === 'hunter.working' ? 1 - v : v + 1);
 const IDENTITY = new Set(['map.asteroids.length', 'ships.length']);
 
 describe('the duel modules (spec §6 module contract)', () => {
@@ -77,9 +77,9 @@ describe('the duel modules (spec §6 module contract)', () => {
     } finally { disposeDuel(d); }
   });
   it('a missile pool entry is walked against its fields, and a member added to it is caught', () => {
-    const d = played(6, 1726);   // the weapons update moved seed 6's from 6249 (Sci-1's merge left seed 9 no qualifying tick; homing torpedoes moved seed 4's, 5193; the hunter grace spec seed 7's, 5156)
+    const d = played(6, 2808);   // FTL targeting (SIM_VERSION 49) moved seed 6's from 1726; the weapons update moved it from 6249 (Sci-1's merge left seed 9 no qualifying tick; homing torpedoes moved seed 4's, 5193; the hunter grace spec seed 7's, 5156)
     try {
-      expect(d.tactical.missiles.some((m) => m.active), 'seed 6 tick 1726 has a missile in flight').toBe(true);
+      expect(d.tactical.missiles.some((m) => m.active), 'seed 6 tick 2808 has a missile in flight').toBe(true);
       expect(uncovered(d.tactical, tacticalNames(d.tactical), tacticalExcluded)).toEqual([]);
       (d.tactical.missiles[1] as unknown as Record<string, unknown>).newMissileThing = 1;
       expect(uncovered(d.tactical, tacticalNames(d.tactical), tacticalExcluded)).toEqual(['missiles.1.newMissileThing']);
@@ -141,7 +141,7 @@ describe('the duel modules (spec §6 module contract)', () => {
   });
   it('the modules own the duel\'s command kinds (setPaused is the core\'s), and their reasons are enum members', () => {
     const kinds = DUEL_MODULES.flatMap(({ module }) => [...module.commands]).sort();
-    expect(kinds).toEqual(['contactScan', 'designate', 'laserCharge', 'laserFrequency', 'laserLock', 'missileLaunch', 'presence', 'rematch', 'sit', 'stand', 'throttle']);
+    expect(kinds).toEqual(['contactScan', 'designate', 'laserCharge', 'laserFrequency', 'laserLock', 'missileLaunch', 'presence', 'rematch', 'sit', 'stand', 'throttle', 'torpLock']);
     for (const { module } of DUEL_MODULES) for (const reason of module.reasons) expect(COMMAND_REASONS, `${module.id}: ${reason}`).toContain(reason);
   });
   it('cloneTactical is derived from the space and ship modules: every field is copied, and changing it on the copy leaves the original', () => {

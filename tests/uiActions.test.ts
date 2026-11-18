@@ -169,8 +169,8 @@ describe('the contact window\'s actions (enemy ship window spec §6.6)', () => {
     const { actions } = makeUi();
     expect(() => { actions.contact.close(); actions.contact.arm(); actions.contact.cancelAim(); actions.contact.pick(1); actions.contact.scan(); }).not.toThrow();
     const lock = vi.fn();
-    actions.setConsole({ press: vi.fn(), hold: vi.fn(), lock, throttle: vi.fn(), frequency: vi.fn() });
-    const c = { close: vi.fn(), arm: vi.fn(), cancelAim: vi.fn(), pick: vi.fn((room: number, l: (r: number) => void) => l(room)), scan: vi.fn() };
+    actions.setConsole({ press: vi.fn(), hold: vi.fn(), lock, torpLock: vi.fn(), throttle: vi.fn(), frequency: vi.fn() });
+    const c = { close: vi.fn(), arm: vi.fn(), cancelAim: vi.fn(), pick: vi.fn((room: number, l: (r: number) => void) => l(room)), scan: vi.fn(), pickUp: vi.fn() };
     actions.setContact(c);
     actions.contact.close(); actions.contact.arm(); actions.contact.cancelAim(); actions.contact.pick(2); actions.contact.scan();
     expect([c.close.mock.calls.length, c.arm.mock.calls.length, c.cancelAim.mock.calls.length, c.pick.mock.calls.length, c.scan.mock.calls.length]).toEqual([1, 1, 1, 1, 1]);

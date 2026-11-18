@@ -36,24 +36,21 @@ describe('Weapons at level 2: the laser is off', () => {
     expect(a.shots).toBe(0);
     expect(laserEvents(st, 0)).toBe(0);
   });
-  it('a full, held charge drops to 0 on the tick Weapons reaches 2, and a release then fires nothing', () => {
+  it('a full charge drops to 0 on the tick Weapons reaches 2, and a press then fires nothing', () => {
     const st = duel(), a = st.systems[0];
-    tick(st, input({ laserCharge: true }));
-    for (let t = 1; t < 240; t++) tick(st, input());
-    expect(a.laserCharge).toBe(LASER_CHARGE_UNITS);
+    expect(a.laserCharge).toBe(LASER_CHARGE_UNITS);   // the crew laser starts full (FTL targeting spec §2)
     a.rooms[Room.Weapons] = 2;
     tick(st, input());
     expect([a.laserCharge, a.laserHold]).toEqual([0, 0]);
-    tick(st, input({ laserCharge: false }));
+    tick(st, input({ laserCharge: true }));
     expect(a.shots).toBe(0);
   });
-  it('a full charge knocked to level 2 mid-tick (after its clock ran) cannot fire on the next release', () => {
+  it('a full charge knocked to level 2 mid-tick (after its clock ran) cannot fire on the next press, nor auto-fire with a target', () => {
     const st = duel(), a = st.systems[0];
-    tick(st, input({ laserCharge: true }));
-    for (let t = 1; t < 240; t++) tick(st, input());
+    expect(a.laserCharge).toBe(LASER_CHARGE_UNITS);
     a.rooms[Room.Weapons] = 2;                            // the hit lands after this ship's tickWeapons
     st.events = [];
-    applyWeaponsInput(st, 0, input({ laserCharge: false }));
+    applyWeaponsInput(st, 0, input({ laserCharge: true, laserLock: Room.Engines }));
     expect(a.shots).toBe(0);
     expect(laserEvents(st, 0)).toBe(0);
     expect(a.laserCharge).toBe(0);
@@ -77,10 +74,10 @@ describe('Weapons at level 2: the laser is off', () => {
     tick(st, input({ laserCharge: true }));
     for (let t = 0; t < 60; t++) tick(st, input());
     expect(a.laserCharge).toBe(0);
-    a.rooms[Room.Weapons] = 1;                            // Fire still held from before
+    a.rooms[Room.Weapons] = 1;                            // it charges by itself again (FTL targeting spec §2)
     for (let t = 0; t < 384; t++) tick(st, input());
     expect(a.laserCharge).toBe(LASER_CHARGE_UNITS);
-    tick(st, input({ laserCharge: false }));
+    tick(st, input({ laserCharge: true }));
     expect(a.shots).toBe(1);
   });
 });

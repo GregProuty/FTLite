@@ -90,7 +90,7 @@ describe('ship slots (spec §5 "arrays, not pairs")', () => {
     const before = { ...st.systems[1] };
     Object.assign(st.ships[2]!, { x: st.ships[0].x + hx(64) * 300, y: st.ships[0].y + hy(64) * 300 });   // 300 dead ahead of the crew
     st.systems[0].target = 2; st.systems[0].fireHeld = true; st.systems[0].laserCharge = LASER_CHARGE_UNITS;
-    applyWeaponsInput(st, 0, { ...IDLE_INPUT, laserCharge: false });
+    applyWeaponsInput(st, 0, { ...IDLE_INPUT, laserCharge: true });
     expect(st.systems[2]!.shields).toBe(SHIELD_LAYERS - 1);
     expect(st.systems[1]).toEqual(before);
     expect(st.events.at(-1)).toMatchObject({ kind: 'laser', ship: 0, hit: true, stripped: true, x2: st.ships[2]!.x, y2: st.ships[2]!.y });
@@ -158,6 +158,6 @@ describe('the declared-added fields (new in the R-2 alias table)', () => {
     } finally { disposeDuel(d); }
     expect(ticks).toBeGreaterThan(0);
     expect(wrong).toBe(0);
-    if (crew === 'scripted') expect(ticks).toBe(16340);   // seed 1's scripted Cutter duel (18793 before the weapons update, SIM_VERSION 48; 9724 before Sci-1's merge, SIM_VERSION 47; 10320 before homing torpedoes, SIM_VERSION 46; 16268 before the Hunter's grace, SIM_VERSION 45; 15772 before duel fire)
+    if (crew === 'scripted') expect(ticks).toBe(5125);   // seed 1's scripted Cutter duel (16340 before FTL targeting, SIM_VERSION 49; 18793 before the weapons update, SIM_VERSION 48; 9724 before Sci-1's merge, SIM_VERSION 47; 10320 before homing torpedoes, SIM_VERSION 46; 16268 before the Hunter's grace, SIM_VERSION 45; 15772 before duel fire)
   }, 60_000);
 });

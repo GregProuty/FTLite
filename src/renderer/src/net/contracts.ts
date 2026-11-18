@@ -71,7 +71,10 @@ export type DuelCommand =
   | { kind: 'sit'; station: StationId }
   | { kind: 'stand' }
   | { kind: 'presence'; present: boolean }
+  /** A Room 0..2, or −1 to clear the crew laser's target (FTL targeting spec §2). */
   | { kind: 'laserLock'; room: number }
+  /** The crew torpedo's target Room 0..2, or −1 to clear it (FTL targeting spec §2). */
+  | { kind: 'torpLock'; room: number }
   | { kind: 'laserCharge'; held: boolean }
   | { kind: 'missileLaunch' }
   /** The Helm's throttle (Artemis spec §5.2): an integer level −1..4. Any finite number passes the codec, and the sim
