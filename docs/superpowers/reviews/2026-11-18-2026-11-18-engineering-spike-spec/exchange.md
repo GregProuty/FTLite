@@ -233,3 +233,61 @@ Confirmed (heat.ts:L40). §3 says the draw is always consumed, in ascending syst
 
 ---
 
+# Round 3 (delta, reviewing 3f4bf7b6, effort medium, 89 s, 263496 in / 223535 cached / 8334 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R3-F1 Missile hits raise ship 0's Room damage inside stepDuel, before its tickWeapons reads bars that step 8 only clamps later
+§7 says clampToCapacity 'runs after every change that can lower capacity' and that step 8 'follows stepDuel's hit damage'. But stepDuel itself raises Room damage, in resolveMissiles, and then runs tickWeapons for ship 0 in the same call. tickWeapons reads bars for laserOffline, charge, shields and the magazine. So for one tick, a Weapons Room just knocked to level 2 still has its bars and can charge or release its laser. Today the level-2 Room makes it offline in that same tick. That breaks §2's 'excess bars return at once' and the clamp sentence's 'every change'. The clamp can't run inside stepDuel either, because capacity also needs `failed`, which lives in the duel `power` module and isn't visible to tactical code. Implementers would either accept the one-tick lag or have the readers use min(bars, damage capacity). · spec L58-L60 ('return to the reactor pool at once'), L235-L238 ('after every change that can lower capacity', 'step 8, which follows stepDuel's hit damage'), L247-L250. tactical/duel.ts:L34-L35 (resolveMissiles, then tickWeapons per ship). missiles.ts:L93 (sys.rooms[room]++ on a missile hit). weapons.ts:L91 (a laser hit raises the target's rooms inside the firing ship's tickWeapons, so ship 1's hit lands after ship 0's tickWeapons, which is harmless). · The two readings differ by one tick on any seed where a missile hits Weapons, Shields or Engines. That changes laser releases, shield layers and goldens. The new sentence also misdescribes where hit damage happens. · Pick one rule and state it. Either (a) accept the lag: 'a hit inside stepDuel lowers capacity; ship 0's readers in that same stepDuel still see the old bars, and the step-8 clamp returns them', with a test. Or (b) have every ship-0 reader use min(bars, damage capacity) so the Room still gates at once, with the step-8 clamp doing the bookkeeping. Then reword L236-L237 to match.
+
+### [P3] R3-F2 'scan.rate only records which row' clashes with the row chosen by `by` and with scanCommand's faster-station takeover
+The Scans rule picks the row from the scan's station `by`, then says `scan.rate` 'only records which row'. Both can't be the source of the row. scanCommand's same-level takeover also compares `rate <= s.rate`. If rate now stores a row tag rather than the base rate (5 or 2), that comparison becomes meaningless, or it flips depending on how the tag is encoded. · spec L102-L105. tactical/science.ts:L12-L19 (takeover when rate > s.rate, then s.by = by). duel/step.ts:L248 (rate passed as SCAN_RATE_SCIENCE or SCAN_RATE_OTHER). · It's a small ambiguity, but it touches the takeover rule, a command result (applied vs noop) and the hashed scan state. · Say that s.rate keeps today's base rate (SCAN_RATE_SCIENCE or SCAN_RATE_OTHER), so takeover compares it as today, and that per-tick progress is the table entry for that row at the current Sensors bars.
+
+## Prior findings
+- R1-F1: resolved — §7 L240-L255 gives a full numbered order, puts doorSystem after movement, and keys the hazard cadence to (tick − baseTick) % HAZARD_EVERY. Step 8 matches today's firePhase (damage cadence, then the per-hit rolls; duel/fire.ts, step.ts:L269-L270) with the breach roll after the fire roll. The rng.hazards order at L255 matches every hazards draw the duel reaches (duel/fire.ts:L38, hazards/fire.ts:L35-L36, plus the new breach and overheat rolls).
+- R2-F1: resolved — Bars are now ShipSystems.bars (tactical/state.ts:L37), a hashed ship field. L68-L75 lists every ship-0 reader, including predictFlight/predictPath; scripted.ts:L87 flies ship 0, so ship-0-only is consistent. L76-L77 and L242 fix step-1 admission to start-of-tick bars.
+- R2-F2: resolved — The firePhase damage cadence (duel/fire.ts:L51) is now clamped the same tick at the end of step 8, overheat clamps inline, and §8 L267 tests it. A related gap inside stepDuel (resolveMissiles before tickWeapons) is raised as a new P2.
+- R2-F3: resolved — L102-L105 reads the table every tick at the current Sensors bars, pauses at 0, and rejects contactScan at 0 bars as `unavailable`. Admission is at step 1 (step.ts:L242-L249), so it reads start-of-tick bars. Test at L266. A minor wording clash about scan.rate is raised as a new P3.
+- R2-F4: resolved — L174-L177 says these cases push no events, the HUD reads interior state, and the only new event is crewHurt 'air'. That is consistent with hazards/fire.ts:L35-L36, which pushes no event on spread.
+- R2-F5: resolved — L126-L128 says the draw is always consumed (as heat.ts:L40 does) and the draws go in ascending system index, with room O's second roll a no-op.
+
+## Verified
+- Today's duel step order is repair → movement → stepDuel → applyHitDamage → firePhase → healthPhase (duel/step.ts:L262-L271). The spec's steps 3-10 keep that order and insert the new phases.
+- rng.hazards draws reachable in the duel: duel/fire.ts:L38 (hit ignition), hazards/fire.ts:L35-L36 (spread), plus the spec's breach and overheat rolls. Sector-only draws (debris, director, boarders, enemy, run) never run in the duel. This is consistent with spec L255.
+- ShipSystems exists (tactical/state.ts:L37) with magazineClock in the hashed SYSTEMS_TAIL (tactical/hash.ts:L21, L197), so 'same field, units instead of ticks' (spec L230-L231) is a sound reuse.
+- The scripted pilot calls predictPath for ship 0 (duel/scripted.ts:L87), and flyShip reads rooms[Engines] today (physics.ts:L63, predict.ts:L34). The spec's switch of these readers to bars for ship 0 covers both.
+- scanCommand stores the rate once and scanStep adds s.rate each tick (science.ts:L12-L20, L49). The new Scans rule addresses this directly.
+- Room damage rises only at duel/fire.ts:L51, missiles.ts:L93 and weapons.ts:L91, so the step-8 clamp covers the fire cadence and laser hits on ship 0 before ship 0 next reads its bars.
+
+## Not verified
+- I didn't read the snapshot or validator code that the new `bars` field must join (hash.ts ranges beyond L197, duelModules.test.ts). Its range bounds are left to the plan.
+- Whether tickWeapons' shield layer-drop runs before or after the laser checks within the same call. That is unchanged material, and I didn't re-read it.
+
+---
+
+# Round 3 response (spec revised)
+
+Reviewed `round-3.json` against the subject at `3f4bf7b6`. 2 accepted, 0 rejected, 0 deferred. Every prior ID is confirmed resolved.
+
+## R3-F1 [P2]: Missile hits raise Room damage inside stepDuel before the clamp
+
+Confirmed (tactical/duel.ts:L34-L35 runs resolveMissiles then tickWeapons; missiles.ts:L93). I took option (b). §2 adds a tactical helper `effectiveBars = min(bars, max(0, slots − rooms × knock))`, which every ship-0 reader uses, so a Room hit inside stepDuel gates at once as today. Failure needs no tactical check because overheat zeroes the bars inline. The §7 clamp wording now says the step-8 clamp is bookkeeping.
+
+## R3-F2 [P3]: scan.rate role
+
+Confirmed (science.ts:L15). §2 says scan.rate keeps today's base rate for the takeover comparison and is no longer added to progress, which comes from the table row chosen by `by`.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-18-engineering-spike-design.md
+
+<!-- end -->
+
+---
+

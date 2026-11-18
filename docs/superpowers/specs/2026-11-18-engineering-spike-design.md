@@ -65,7 +65,11 @@ is where it burns, breaches and overheats:
   snapshotted with the rest of `systems`. The Hunter's `bars` stays all zero and is never read. The duel `power` module
   (§7) holds the rest: heat, coolant, failed. The tactical code therefore reads bars from the TacticalState it already
   takes, and no new argument is needed.
-- **The crew ship's gates read bars, not damage.** For ship 0 only, every one of these reads `systems[0].bars`:
+- **The crew ship's gates read effective bars, not damage.** A tactical helper `effectiveBars(sys, k)` returns
+  `min(sys.bars[k], max(0, slots − rooms × knock))`. It uses only tactical state, so a hit that raises a Room inside
+  stepDuel (resolveMissiles, then tickWeapons) gates ship 0 in the same call, as today, before the step-8 clamp does
+  the bookkeeping. A failed system needs no tactical check, because its bars are zeroed inline at overheat. For ship 0
+  only, every one of these reads `effectiveBars`:
   - `laserOffline`: Weapons bars = 0;
   - `canLaunch`: Weapons bars ≥ 1;
   - `tickWeapons`: the laser charge rate, the shield recharge rate and layer cap, and the magazine clock;
@@ -100,8 +104,9 @@ column is the round start, which matches today's undamaged crew ship except wher
 - **Layers above the cap drop at once.** When the bars fall and the layer cap drops below the current layers, the extra
   layers are lost that tick and the shield clock resets to 0.
 - **Scans.** A running scan's progress per tick is read from the table each tick at the current Sensors bars, using the
-  Science row when the scan's station `by` is Science and the Helm/Weapons row otherwise. `scan.rate` then only
-  records which row. A Sensors change speeds up or slows a running scan at once, and at 0 bars it pauses. A
+  Science row when the scan's station `by` is Science and the Helm/Weapons row otherwise. `scan.rate` keeps today's base
+  rate (SCAN_RATE_SCIENCE or SCAN_RATE_OTHER), so scanCommand's faster-station takeover compares it as today; it is no
+  longer added to progress. A Sensors change speeds up or slows a running scan at once, and at 0 bars it pauses. A
   `contactScan` with Sensors at 0 bars is rejected `unavailable`.
 - **Magazine regen** today is a tick counter (MAGAZINE_REGEN_TICKS 2700). For the crew ship it becomes a units clock:
   it gains the table's rate each tick, and at MAGAZINE_REGEN_UNITS (10800) it regains a missile and resets. At 4 per
@@ -233,8 +238,9 @@ airlocks, fire and doors already live in the interior's flattened state and need
 snapshot growth anyway. `tests/duelModules.test.ts` holds every new member to a field or an exclusion.
 
 **Capacity enforcement** is one function, `clampToCapacity`, which lowers each system's bars to its capacity (the
-overdrive bar first) and returns the excess to the pool. It runs after every change that can lower capacity: after
-the firePhase damage cadence (step 8, which follows stepDuel's hit damage) and inline at each overheat (step 9).
+overdrive bar first) and returns the excess to the pool. It runs at the end of step 8 (after stepDuel's hit damage and
+the firePhase damage cadence) and inline at each overheat (step 9). Between a hit inside stepDuel and that clamp, the
+readers already see the lower capacity through `effectiveBars` (§2).
 Repair only raises capacity and needs no clamp.
 
 **Step order** in `stepDuelTick` (new steps in bold; the rest is today's order):
