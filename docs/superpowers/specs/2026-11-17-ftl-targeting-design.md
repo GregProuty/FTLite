@@ -3,8 +3,8 @@
 Owner, 2026-11-17: "make the weapons work similar to the way that FTL works, you click the weapon and then it gets
 dragged over to its target, the room you are targeting on the enemy ship".
 
-Builds on the weapons update (`2026-11-17-weapons-update-design.md`, SIM 47) and is built after it merges. A sim change:
-SIM_VERSION 47 → 48. Decisions taken under the standing order (take the recommendation).
+Builds on the weapons update (`2026-11-17-weapons-update-design.md`, SIM 48, merged f00d5fda) and is built after it merges. A sim change:
+SIM_VERSION 48 → 49. Decisions taken under the standing order (take the recommendation).
 
 Today: the Weapons console has a hold-to-charge, release-to-fire laser (Space / FIRE), one lock room shared by laser
 and torpedo, set by the keyboard, the console room buttons or the enemy window's LASER → reticle → room; F launches.
@@ -50,4 +50,4 @@ and torpedo, set by the keyboard, the console room buttons or the enemy window's
   card clears; keyboard 1 / 2.
 - Render: the line and markers stay on the CRT amber ramp (`crtColours`).
 - duelGates and the scripted crew: the scripted gunner uses targets (auto-fire); report the round-length gate.
-- Bless procedure 47 → 48 as usual; gates `tsc -b`, full vitest, `test:duel-app-runtime`.
+- Bless procedure 48 → 49 as usual; gates `tsc -b`, full vitest, `test:duel-app-runtime`.
