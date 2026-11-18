@@ -60,8 +60,7 @@ export interface MissileFlight { x: number; y: number; vx: number; vy: number; h
  *  entry holds zeros. */
 export interface Missile extends MissileFlight { active: boolean; owner: number }
 
-/** Patrol (Sci-1 spec §4.2): before it turns hostile the enemy coasts, avoids threats, never fires and regains no shield. */
-export const HunterMode = { Hunt: 0, Repair: 1, Patrol: 2 } as const;
+export const HunterMode = { Hunt: 0, Repair: 1 } as const;
 /** The enemy's brain (spec §9). */
 export interface Hunter {
   mode: number;
@@ -161,41 +160,23 @@ function hunterFor(crew: Spawn): Hunter {
   return { mode: HunterMode.Hunt, room: 0, timer: 0, working: false, fireAt: -1, lastLaunch: -HUNTER_MISSILE_COOLDOWN_TICKS, trail, trailHead: 0 };
 }
 
-/** Sci-1 spec §4.5's draws, in order, from the tactical rng right after the map: the enemy's weak frequency; the
- *  derelict's orbit (u ≤ 300 the near band 700..1000, else the far band 1400..1599); its phase, redrawn while it would
- *  start within DERELICT_SPAWN_CLEAR of either spawn, at most DERELICT_PHASE_DRAWS draws in all (the last stands); its
- *  loot; whether it is trapped (one in three). */
-function scienceDraws(rng: RngState, map: MapDef): { weakFreq: number; derelict: Derelict } {
-  const weakFreq = nextInt(rng, 3), u = nextInt(rng, 501);
-  const orbitR = u <= 300 ? DERELICT_NEAR_MIN + u : DERELICT_FAR_MIN + (u - 301);
-  const near = (phase: number): boolean => map.spawns.some((s) => {
-    const [ux, uy] = dirBetween(phase, 0), dx = ux * orbitR - s.x, dy = uy * orbitR - s.y;   // derelictPos at rt 0
-    return dx * dx + dy * dy < DERELICT_SPAWN_CLEAR * DERELICT_SPAWN_CLEAR;
-  });
-  let phase = nextInt(rng, HEADING_COUNT);
-  for (let draws = 1; draws < DERELICT_PHASE_DRAWS && near(phase); draws++) phase = nextInt(rng, HEADING_COUNT);
-  const loot = nextInt(rng, 3), trapped = nextInt(rng, 3) === 0;
-  return { weakFreq, derelict: { orbitR, phase, loot, trapped, salvage: 0, salvaged: false } };
-}
-
 /** A fill of `slots` ship slots (at least 2): the duel's two at the map's spawns, the crew's Cutter in slot 0 locked on
- *  the hunter in slot 1 and back; any further slot is inactive (R-5's encounters fill them). The round starts in Patrol with the science draws (Sci-1 spec §4.1, §4.5). */
+ *  the hunter in slot 1 and back; any further slot is inactive (R-5's encounters fill them). */
 export function createTacticalState(seed: number, slots = DUEL_CLASSES.length): TacticalState {
   if (!Number.isInteger(slots) || slots < 2) throw new Error(`a tactical state needs at least 2 ship slots, not ${slots}`);
   const rng = createRng(seed);
   const map = generateMap(rng);
-  const science = scienceDraws(rng, map);   // Sci-1 spec §4.5: right after the map, before anything else reads the rng
   const bodies = map.asteroids.length + slots, extra = Array.from({ length: slots - 2 });
-  const enemy = systemsFor(DUEL_CLASSES[1]!, 0);
-  enemy.shields = SHIP_CLASSES[enemy.cls]!.shields.layers - 1;   // Sci-1 spec §4.1: it patrols one layer down
   return {
     tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap),
     ships: [shipAt(map.spawns[0], bodies), shipAt(map.spawns[1], bodies), ...extra.map(() => emptyShip(bodies))],
-    systems: [systemsFor(DUEL_CLASSES[0]!, 1), enemy, ...extra.map(emptySystems)],
+    systems: [systemsFor(DUEL_CLASSES[0]!, 1), systemsFor(DUEL_CLASSES[1]!, 0), ...extra.map(emptySystems)],
     missiles: [emptyMissile(), emptyMissile(), ...extra.map(emptyMissile)],
-    hunter: { ...hunterFor(map.spawns[0]), mode: HunterMode.Patrol }, outcome: Outcome.Running, events: [],
-    // Sci-1 (spec §4): the round starts with the enemy unidentified and in Patrol, the scanner idle.
-    startTick: 0, hostileAt: -1, known: [0, 0], scan: idleScan(), designated: -1, weakFreq: science.weakFreq, derelict: science.derelict
+    hunter: hunterFor(map.spawns[0]), outcome: Outcome.Running, events: [],
+    // Sci-1 step 1 (spec §6.3): neutral values, no draws: hostile from the start (the duel holds its rounds, createDuel),
+    // the scan idle, the derelict salvaged.
+    startTick: 0, hostileAt: 0, known: [0, 0], scan: idleScan(), designated: -1, weakFreq: 0,
+    derelict: { orbitR: DERELICT_NEAR_MIN, phase: 0, loot: Loot.Hull, trapped: false, salvage: 0, salvaged: true }
   };
 }
 

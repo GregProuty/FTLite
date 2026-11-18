@@ -1,6 +1,7 @@
 // Sci-1 (spec 2026-11-17-science-scans §6.2, §6.3 step 1): the science tactical module and each laser's freq, at their
-// step-1 neutral values; their order, validation, clone and snapshot round trip; the 44 → 45 alias table. Since Task 6
-// the creation test checks the drawn values and the Patrol start.
+// step-1 neutral values; their order, validation, clone and snapshot round trip; the 46 → 47 alias table (merged after
+// the Hunter grace). Since Task 6 the creation test checks the drawn values and the holding start (owner decision
+// 2026-11-17: hostileAt −1, full shields, no Patrol mode).
 import { describe, expect, it } from 'vitest';
 import { hashF64 } from '../src/shared/hash';
 import { createRng, nextInt } from '../src/shared/rng';
@@ -31,7 +32,7 @@ describe('the science module (spec §6.2)', () => {
     for (const i of [0, 1]) expect(ship.indexOf(`systems.${i}.freq`)).toBe(ship.indexOf(`systems.${i}.lock`) + 1);
     expect(CONTACT_MAX_LEVEL).toEqual([2, 1]);
   });
-  it('draws the weak frequency and the derelict right after the map, in order (spec §4.5), and starts in Patrol one layer down', () => {
+  it('draws the weak frequency and the derelict right after the map, in order (spec §4.5), and starts holding with full shields', () => {
     const weak = new Set<number>(), loot = new Set<number>(), bands = new Set<string>();
     for (let seed = 1; seed <= 40; seed++) {
       const st = createTacticalState(seed), rng = createRng(seed), map = generateMap(rng);
@@ -48,7 +49,7 @@ describe('the science module (spec §6.2)', () => {
       expect((orbitR >= 700 && orbitR <= 1000) || (orbitR >= 1400 && orbitR <= 1599), `seed ${seed}: orbit ${orbitR} clear of the belt`).toBe(true);
       expect(!near(phase) || draws === 16, `seed ${seed}: 600 clear of both spawns unless all 16 draws were near`).toBe(true);
       expect({ mode: st.hunter.mode, hostileAt: st.hostileAt, startTick: st.startTick, known: st.known, scan: st.scan, designated: st.designated, shields: st.systems.map((y) => y.shields), freq: st.systems.map((y) => y.freq) }, `seed ${seed}`)
-        .toEqual({ mode: HunterMode.Patrol, hostileAt: -1, startTick: 0, known: [0, 0], scan: idleScan(), designated: -1, shields: [classOf(st, 0).shields.layers, classOf(st, 1).shields.layers - 1], freq: [0, 0] });
+        .toEqual({ mode: HunterMode.Hunt, hostileAt: -1, startTick: 0, known: [0, 0], scan: idleScan(), designated: -1, shields: [classOf(st, 0).shields.layers, classOf(st, 1).shields.layers], freq: [0, 0] });
       weak.add(weakFreq); loot.add(lootDrawn); bands.add(orbitR <= 1000 ? 'near' : 'far');
     }
     expect([weak.size, loot.size, bands.size]).toEqual([3, 3, 2]);
@@ -76,7 +77,7 @@ describe('the science fields in the snapshot (spec §6.2)', () => {
       try { expect(hashDuel(r)).toBe(hashDuel(d)); } finally { disposeDuel(r); }
       const edit = (name: string, j: number, value: number) => { const s = structuredClone(snap); s.values[at.get(name)! + j] = value; s.header.hash = hashF64(Float64Array.from(s.values)); return s; };
       const bad: [string, number, number, RegExp][] = [
-        ['hunter.mode', 0, 3, /hunter\.mode/], ['systems.1.shields', 0, 4, /systems\.1\.shields/], ['systems.0.freq', 0, 3, /systems\.0\.freq/], ['systems.1.freq', 0, -1, /systems\.1\.freq/],
+        ['hunter.mode', 0, 2, /hunter\.mode/], ['systems.1.shields', 0, 4, /systems\.1\.shields/], ['systems.0.freq', 0, 3, /systems\.0\.freq/], ['systems.1.freq', 0, -1, /systems\.1\.freq/],
         ['startTick', 0, -1, /startTick/], ['hostileAt', 0, -2, /hostileAt/], ['hostileAt', 0, 0.5, /hostileAt/], ['known', 0, 3, /known/], ['known', 1, 2, /known/],
         ['scan.contact', 0, 2, /scan\.contact/], ['scan.contact', 0, -2, /scan\.contact/], ['scan.level', 0, 3, /scan\.level/], ['scan.progress', 0, 0.5, /scan\.progress/],
         ['scan.rate', 0, 3, /scan\.rate/], ['scan.by', 0, -1, /scan\.by/], ['designated', 0, -2, /designated/], ['designated', 0, 2, /designated/], ['weakFreq', 0, 3, /weakFreq/],
@@ -86,7 +87,7 @@ describe('the science fields in the snapshot (spec §6.2)', () => {
       ];
       for (const [name, j, value, error] of bad) expect(() => validateDuelSnapshot(CUTTER, edit(name, j, value), DIGEST), `${name}[${j}] = ${value}`).toThrow(error);
       const good: [string, number, number][] = [
-        ['hunter.mode', 0, HunterMode.Patrol], ['systems.1.shields', 0, 3], ['systems.0.freq', 0, 2], ['hostileAt', 0, -1], ['known', 0, 2], ['known', 1, 1],
+        ['hunter.mode', 0, HunterMode.Repair], ['systems.1.shields', 0, 3], ['systems.0.freq', 0, 2], ['hostileAt', 0, -1], ['known', 0, 2], ['known', 1, 1],
         ['scan.contact', 0, 1], ['scan.level', 0, 2], ['scan.rate', 0, 2], ['scan.rate', 0, 5], ['designated', 0, 1], ['weakFreq', 0, 2],
         ['derelict.orbitR', 0, 1000], ['derelict.orbitR', 0, 1400], ['derelict.orbitR', 0, 1599], ['derelict.phase', 0, 255], ['derelict.loot', 0, 2], ['derelict.trapped', 0, 1], ['derelict.salvaged', 0, 0]
       ];
@@ -95,9 +96,10 @@ describe('the science fields in the snapshot (spec §6.2)', () => {
   });
 });
 
-describe('the 44 → 45 alias table (spec §6.3)', () => {
+describe('the 46 → 47 alias table (spec §6.3)', () => {
   it('declares the science module and every freq added, and maps every other field to itself', () => {
-    const m = MIGRATIONS[44]!;
+    expect(MIGRATIONS[44]).toBeUndefined();   // the step is keyed by its baseline: 46 since the merge
+    const m = MIGRATIONS[46]!;
     expect(m.change).toBe('Sci-1: science scans');
     const d = createDuel(CUTTER, 1);
     try {

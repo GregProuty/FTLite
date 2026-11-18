@@ -3,7 +3,7 @@
 // code: the heading tables for trig, never Math.sin, Math.cos or Math.PI (the determinism guard).
 import { dirBetween, wrapHeading } from './direction';
 import { circularSpeed } from './map';
-import { classOf, CREW_SLOT, HunterMode, idleScan, Loot, type TacticalState } from './state';
+import { classOf, CREW_SLOT, idleScan, Loot, type TacticalState } from './state';
 import { DT, HEADING_COUNT, HOSTILE_AFTER_TICKS, LOOT_HULL, SALVAGE_RANGE, SALVAGE_SPEED, SALVAGE_TICKS, SCAN_UNITS, TRAP_HULL } from './tuning';
 
 /** A contactScan the duel step admitted (spec §5): scan the next level of `contact` at `rate` from station `by`. On the
@@ -23,17 +23,19 @@ export function scanCommand(t: TacticalState, contact: number, rate: number, by:
 /** The round-relative tick (spec §4.1): ticks since the round began, read before the step's tick++. */
 export function roundTick(t: TacticalState): number { return t.tick - t.startTick; }
 
-/** Spec §4.1's hostility step, after the weapon clocks: while the enemy patrols, the first of the clock (the step of rt
- *  HOSTILE_AFTER_TICKS − 1), a crew laser release that hit, or a crew missile landing on the hunter slot turns it
- *  hostile for the round (Hunt) and pushes a hostile event, cause laser, then missile, then clock. */
+/** Whether the enemy is hostile this round (spec §4.1): the one predicate the hunter's hold, the views and the battle
+ *  music read. */
+export function enemyHostile(t: TacticalState): boolean { return t.hostileAt >= 0; }
+
+/** Spec §4.1's hostility step, after the weapon clocks (owner decision 2026-11-17, the Hunter-grace rule): while the
+ *  enemy holds, the first of the clock (the step of rt HOSTILE_AFTER_TICKS − 1, so it acts from rt 1800) or the crew's
+ *  first shot this round (a laser release, hit or miss, or a missile launch: the round's own counters) turns it hostile
+ *  for the round: hostileAt = rt. */
 export function hostilityStep(t: TacticalState, hunter: number): void {
   if (t.hostileAt >= 0 || hunter < 0) return;
-  const rt = roundTick(t);
-  const laser = t.events.some((e) => e.kind === 'laser' && e.ship === CREW_SLOT && e.hit);
-  const missile = t.events.some((e) => e.kind === 'missileEnd' && e.ship === CREW_SLOT && e.cause === 'ship' && e.target === hunter);
-  if (!laser && !missile && rt < HOSTILE_AFTER_TICKS - 1) return;
-  t.hostileAt = rt; t.hunter.mode = HunterMode.Hunt;
-  t.events.push({ kind: 'hostile', cause: laser ? 'laser' : missile ? 'missile' : 'clock' });
+  const rt = roundTick(t), crew = t.systems[CREW_SLOT];
+  if (crew.shots === 0 && crew.missilesLaunched === 0 && rt < HOSTILE_AFTER_TICKS - 1) return;
+  t.hostileAt = rt;
 }
 
 /** Spec §4.3's progress step, after hostility: a running scan advances by its rate while the station running it is

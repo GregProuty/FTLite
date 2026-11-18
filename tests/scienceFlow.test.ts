@@ -1,5 +1,5 @@
-// Sci-1 (spec 2026-11-17-science-scans §3, §4.4, §10): the round with the behaviour on: Patrol again after a rematch,
-// the frequency strip, snapshots in Patrol and after Shield loot, an online-style replica restored from the authority's
+// Sci-1 (spec 2026-11-17-science-scans §3, §4.4, §10): the round with the behaviour on: the hold again after a rematch,
+// the frequency strip, snapshots while holding and after Shield loot, an online-style replica restored from the authority's
 // snapshots agreeing with it over a run with scans, designation, tuning and salvage, and a scripted enemy that fires
 // nothing before it turns hostile.
 import { describe, expect, it } from 'vitest';
@@ -35,13 +35,13 @@ function gunnery(): DuelState {
 }
 
 describe('the round (spec §3, §4.1)', () => {
-  it('a rematch starts round 2 in Patrol, and Patrol again lasts exactly 1200 steps', () => {
+  it('a rematch starts round 2 holding, and the hold again lasts exactly 1800 steps', () => {
     const d = createSeatedDuel(CUTTER, 3);
     try {
       d.tactical.systems[1].hull = 0; step(d);
       expect(d.tactical.outcome).toBe(Outcome.CrewWins);
       step(d, [cmd(d, 0, { kind: 'rematch' })]);
-      expect([d.round, d.tactical.startTick, d.tactical.hostileAt, d.tactical.hunter.mode]).toEqual([1, d.baseTick, -1, HunterMode.Patrol]);
+      expect([d.round, d.tactical.startTick, d.tactical.hostileAt, d.tactical.hunter.mode]).toEqual([1, d.baseTick, -1, HunterMode.Hunt]);
       let n = 0;
       while (d.tactical.hostileAt < 0 && n <= HOSTILE_AFTER_TICKS) { step(d); n++; }
       expect([n, d.tactical.hostileAt]).toEqual([HOSTILE_AFTER_TICKS, HOSTILE_AFTER_TICKS - 1]);
@@ -91,12 +91,12 @@ describe('the laser frequency (spec §4.4)', () => {
 });
 
 describe('snapshots with the behaviour on (spec §10 Snapshots)', () => {
-  it('a snapshot in Patrol (rt 600) and one after Shield loot both validate and restore to the same hash', () => {
+  it('a snapshot while holding (rt 600) and one after Shield loot both validate and restore to the same hash', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
       for (let k = 0; k < 600; k++) step(d);
       expect(d.tactical.hostileAt).toBe(-1);
-      for (const label of ['patrol', 'shield loot']) {
+      for (const label of ['holding', 'shield loot']) {
         if (label === 'shield loot') { d.tactical.systems[0].shields = classOf(d.tactical, 0).shields.layers + 1; d.tactical.derelict.salvaged = true; }
         const r = loadDuelSnapshot(CUTTER, JSON.parse(JSON.stringify(saveDuelSnapshot(d, DIGEST))), DIGEST);
         try { expect(hashDuel(r), label).toBe(hashDuel(d)); } finally { disposeDuel(r); }

@@ -75,9 +75,7 @@ describe('the per-tick record', () => {
     const same = recordRun(SHORT, { names: was.names, counts: was.counts });
     expect(same.problems).toEqual([]);
     expect(runDifferences(was, same.run)).toEqual([]);
-    // Sci-1: the headings, not the x values: in Patrol the two ships stay exact mirrors (x0 = −x1), and a swap of two
-    // values that differ only in sign does not show in the per-tick digest.
-    const swap: Migration = { ...none, rename: (o) => (o === 'space.ships.0.heading' ? 'space.ships.1.heading' : o === 'space.ships.1.heading' ? 'space.ships.0.heading' : undefined) };
+    const swap: Migration = { ...none, rename: (o) => (o === 'space.ships.0.x' ? 'space.ships.1.x' : o === 'space.ships.1.x' ? 'space.ships.0.x' : undefined) };
     const wrong = recordRun(SHORT, { names: was.names, counts: was.counts, migration: swap });
     expect(wrong.problems).toEqual([]);
     const diff = runDifferences(was, wrong.run);

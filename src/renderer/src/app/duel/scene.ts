@@ -3,8 +3,8 @@
 // banners, the end card and the map overlay are drawn by React through the UI sink (React UI spec §6). It draws from a
 // DuelViewSource: the local runtime (Single player) or the online duel source (Multiplayer), so both modes show exactly
 // the same screens.
-import { hunterHostile } from '../../sim/duel/hostility';
 import { Container } from 'pixi.js';
+import { enemyHostile } from '../../sim/tactical/science';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { Renderer } from '../../render/renderer';
 import { crtActive, crtScale } from '../../render/crt';
@@ -141,7 +141,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       pushEvents(fx, events); pushHits(fx, events, d.tactical);   // duel polish i spec §B: the callouts and the struck-room flashes
       if (sound) {   // Audio-i spec section 4: the same events the effects use; pan from the screen on a map view, crew-relative inside
         const cam = view === 'interior' ? null : source.cameras[view], crew = d.tactical.ships[CREW_SLOT]!;
-        sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true, me: source.active(), crew: crewLife(d), dt, hostile: hunterHostile(d),   // duel polish i spec §C
+        sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true, me: source.active(), crew: crewLife(d), dt, hostile: enemyHostile(d.tactical),   // duel polish i spec §C
           pan: (x, y) => (cam ? screenPan(worldToScreen(cam, viewport, x, y).x, viewport.w) : worldPan(x - crew.x)) });
       }
       // Paused, or a frozen online copy (a lost link): the callouts, flashes, heal motes and the charge pulse hold (polish i review).

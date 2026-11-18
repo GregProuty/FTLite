@@ -10,7 +10,6 @@ import { roomAt } from '../grid';
 import { inReachOfTile } from '../interact';
 import { movementSystem } from '../movement';
 import { stepDuel } from '../tactical/duel';
-import { hunterHostile } from './hostility';
 import { scanCommand } from '../tactical/science';
 import { SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
 import { CONTACT_MAX_LEVEL, Outcome } from '../tactical/state';
@@ -235,7 +234,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     return d.present[pid as 0 | 1] ? { ...NEUTRAL_INTENT, moveX: h.moveX, moveY: h.moveY } : { ...NEUTRAL_INTENT };
   });
   movementSystem(st, intents);   // skips seated and downed crew, and anyone who stood this tick
-  stepDuel(d.tactical, crew, undefined, !hunterHostile(d));   // hunter grace spec: the first 30 s of a round, unless the crew fires
+  stepDuel(d.tactical, crew);
   const hits = applyHitDamage(d, d.tactical.events);   // duel-health spec §1.2: hit damage in tactical event order, before the fire rolls
   firePhase(d, tick);   // duel-fire spec §1: growth and damage, then this tick's hits roll (rng.hazards)
   healthPhase(d, hits);   // duel-health spec §1: fire damage, downed, pick-up, the Medbay; both down loses the round

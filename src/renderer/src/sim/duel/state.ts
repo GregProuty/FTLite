@@ -66,6 +66,7 @@ export interface DuelState {
 export function createDuel(layout: ShipLayout, seed: number, helmPlayer: 0 | 1 = 0): DuelState {
   if (helmPlayer !== 0 && helmPlayer !== 1) throw new Error(`invalid duel helm player ${String(helmPlayer)}`);
   const tactical = createTacticalState(seed);
+  tactical.hostileAt = -1;   // Sci-1 step 1: every duel round opens with the enemy holding (spec §4.1)
   const problems = validateMap(tactical.map);
   if (problems.length > 0) throw new Error(`invalid duel map for seed ${seed}: ${problems[0]}`);
   const interior = createSimState(layout, 2, seed, [RECRUIT, RECRUIT]);

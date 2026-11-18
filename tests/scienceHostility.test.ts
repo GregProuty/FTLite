@@ -1,104 +1,158 @@
-// Sci-1 (spec 2026-11-17-science-scans §4.1, §4.2, §4.6): Patrol and the turn to hostility, through stepDuel, on states
-// put in Patrol by hand (the Patrol start itself is the plan's Task 6).
+// Sci-1 (spec 2026-11-17-science-scans §4.1, §4.2, §4.6) with the owner decision of 2026-11-17 (merge with the Hunter
+// grace): one hostility rule. Each round the enemy holds still for 30 s (HOSTILE_AFTER_TICKS from startTick) unless the
+// crew fires first, a laser release (hit or miss) or a missile launch; the battle music follows the same hostileAt.
+// Merges the Hunter grace's suite (tests/hunterGrace.test.ts) into this one.
 import { describe, expect, it } from 'vitest';
+import hound from '../src/renderer/src/sim/ship/hound.json';
+import { parseShip } from '../src/renderer/src/sim/ship/schema';
+import { createDuelAudio } from '../src/renderer/src/app/duel/duelAudio';
+import type { AudioStatus } from '../src/renderer/src/audio/musicState';
+import type { DuelCommand } from '../src/renderer/src/sim/duel/commands';
+import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { hunterThink } from '../src/renderer/src/sim/tactical/hunter';
-import { hostilityStep, roundTick } from '../src/renderer/src/sim/tactical/science';
-import { classOf, createTacticalState, type DuelEvent, HunterMode, placeMissile, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { enemyHostile, hostilityStep, roundTick } from '../src/renderer/src/sim/tactical/science';
+import { classOf, createTacticalState, HunterMode, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { HOSTILE_AFTER_TICKS, LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
 import { IDLE_INPUT, tickWeapons, UNCREWED_INPUT } from '../src/renderer/src/sim/tactical/weapons';
-import { makeHostile, patrol } from './helpers/hostile';
+import { seatDuelCrew } from './helpers/duelSeat';
+import { holding, makeHostile } from './helpers/hostile';
 
-/** In Patrol: the crew at (−600, −300) facing east at the enemy 300 units east of it (in arc and range), both at rest. */
+/** Holding: the crew at (−600, −300) facing east at the enemy 300 units east of it (in arc and range), both at rest. */
 function facing(): TacticalState {
-  const st = patrol(createTacticalState(5));
+  const st = holding(createTacticalState(5));
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
   return st;
 }
 const hostile = (st: TacticalState) => st.events.filter((e) => e.kind === 'hostile');
-const crewLaserHit: DuelEvent = { kind: 'laser', ship: 0, hit: true, stripped: true, room: -1, x1: 0, y1: 0, x2: 0, y2: 0 };
-const crewMissileOnHunter: DuelEvent = { kind: 'missileEnd', ship: 0, cause: 'ship', target: 1, room: 0, x: 0, y: 0 };
+const speed = (st: TacticalState) => Math.hypot(st.ships[1]!.vx, st.ships[1]!.vy);
+const layout = parseShip(hound);
+let seq = 0;
+const step = (d: DuelState, commands: { player: number; command: DuelCommand }[] = []) =>
+  stepDuelTick(d, { held: [], commands: commands.map((c) => ({ runId: 'duel', id: { player: c.player, sequence: ++seq }, requestedTick: d.interior.tick, command: c.command })) });
 
-describe('the hostility clock (spec §4.1)', () => {
-  it('turns hostile in the step of rt 1199 (cause clock); in Patrol every earlier step, firing nothing and regaining no layer', () => {
-    const st = patrol(createTacticalState(5)), layers = classOf(st, 1).shields.layers;   // both on their spawn orbits
+describe('the 30 s hold (spec §4.1, §4.2; the Hunter grace)', () => {
+  it('holds still and fires nothing for 1799 steps, shields full; in the step of rt 1799 it turns (cause clock), then charges', () => {
+    const st = holding(createTacticalState(5)), layers = classOf(st, 1).shields.layers, h0 = st.ships[1]!.heading;   // both on their spawn orbits
+    expect(HOSTILE_AFTER_TICKS).toBe(1800);
     for (let k = 0; k < HOSTILE_AFTER_TICKS - 1; k++) {
       stepDuel(st, UNCREWED_INPUT);
-      expect([st.hostileAt, st.hunter.mode, hostile(st).length], `step ${k}`).toEqual([-1, HunterMode.Patrol, 0]);
+      expect([st.hostileAt, enemyHostile(st), hostile(st).length], `step ${k}`).toEqual([-1, false, 0]);
     }
     const h = st.systems[1];
-    expect([h.shots, h.missilesLaunched, h.laserCharge, h.fireHeld, h.shields, h.shieldClock]).toEqual([0, 0, 0, false, layers - 1, 0]);
+    expect([h.shots, h.missilesLaunched, h.laserCharge, h.fireHeld, h.shields, st.ships[1]!.heading]).toEqual([0, 0, 0, false, layers, h0]);
     expect(roundTick(st)).toBe(HOSTILE_AFTER_TICKS - 1);
     stepDuel(st, UNCREWED_INPUT);
-    expect([st.hostileAt, st.hunter.mode]).toEqual([HOSTILE_AFTER_TICKS - 1, HunterMode.Hunt]);
+    expect([st.hostileAt, enemyHostile(st), st.hunter.mode]).toEqual([HOSTILE_AFTER_TICKS - 1, true, HunterMode.Hunt]);
     expect(hostile(st)).toEqual([{ kind: 'hostile', cause: 'clock' }]);
-    for (let k = 0; k < 300; k++) stepDuel(st, UNCREWED_INPUT);   // hostile now: Shields at level 0 regain a layer in 300 ticks
-    expect(h.shields).toBe(layers);
+    stepDuel(st, UNCREWED_INPUT);
+    expect(h.fireHeld).toBe(true);   // its first hostile step presses its laser charge
   });
-  it('reads rt from startTick, and a state at the step-1 neutral values never turns', () => {
-    const st = patrol(createTacticalState(5));
+  it('reads rt from startTick, and a state made hostile by hand never pushes the event again', () => {
+    const st = holding(createTacticalState(5));
     st.tick = 5000; st.startTick = 5000 - (HOSTILE_AFTER_TICKS - 1);
     stepDuel(st, UNCREWED_INPUT);
     expect(st.hostileAt).toBe(HOSTILE_AFTER_TICKS - 1);
-    const neutral = makeHostile(createTacticalState(5));
-    for (let k = 0; k < HOSTILE_AFTER_TICKS + 60; k++) { stepDuel(neutral, UNCREWED_INPUT); expect(hostile(neutral)).toEqual([]); }
-    expect(neutral.hostileAt).toBe(0);
+    const done = makeHostile(createTacticalState(5));
+    for (let k = 0; k < HOSTILE_AFTER_TICKS + 60; k++) { stepDuel(done, UNCREWED_INPUT); expect(hostile(done)).toEqual([]); }
+    expect(done.hostileAt).toBe(0);
+  });
+  it('hunterThink while holding: no thrust or turn, no lock, charge or launch, the release unscheduled; the trail still advances', () => {
+    const st = facing(); st.hunter.fireAt = 99;
+    const head = st.hunter.trailHead, input = hunterThink(st, 1);
+    expect([input.axes, input.laserLock, input.laserCharge, input.missileLaunch, st.hunter.fireAt]).toEqual([{ turn: 0, thrust: 0 }, null, null, false, -1]);
+    expect(st.hunter.trailHead).toBe((head + 1) % (st.hunter.trail.length / 2));
+    Object.assign(st.ships[1], { x: 0, y: -300, vx: 0, vy: 300, heading: 128 });   // diving at the planet: it still holds
+    expect(hunterThink(st, 1).axes).toEqual({ turn: 0, thrust: 0 });
+  });
+  it('the hold regains shield layers as usual (no shield hold)', () => {
+    const st = facing(), layers = classOf(st, 1).shields.layers;
+    st.systems[1].shields = layers - 1; st.systems[1].rooms[Room.Shields] = 0;
+    for (let k = 0; k < 400; k++) tickWeapons(st, 1, UNCREWED_INPUT);
+    expect(st.systems[1].shields).toBe(layers);
   });
 });
 
-describe('an ambush turns it hostile at once (spec §2.2, §4.1)', () => {
-  it('a crew laser release that hits turns it that tick (cause laser), shields one below; a miss does not', () => {
+describe('the crew firing first ends the hold at once (spec §2.2, §4.1)', () => {
+  it('a crew laser release that hits turns it that step (cause laser), one layer stripped', () => {
     const st = facing(); st.tick = 300;
     st.systems[0].fireHeld = true; st.systems[0].laserCharge = LASER_CHARGE_UNITS;
     stepDuel(st, { ...IDLE_INPUT, laserCharge: false });
-    expect([st.hostileAt, st.hunter.mode]).toEqual([300, HunterMode.Hunt]);
+    expect(st.hostileAt).toBe(300);
     expect(hostile(st)).toEqual([{ kind: 'hostile', cause: 'laser' }]);
-    expect(st.systems[1].shields).toBe(classOf(st, 1).shields.layers - 2);   // it started one below and lost one
+    expect(st.systems[1].shields).toBe(classOf(st, 1).shields.layers - 1);
+  });
+  it('a crew laser release that misses provokes it too (cause laser)', () => {
     const miss = facing(); miss.ships[0].heading = 192;   // facing away from it
     miss.systems[0].fireHeld = true; miss.systems[0].laserCharge = LASER_CHARGE_UNITS;
     stepDuel(miss, { ...IDLE_INPUT, laserCharge: false });
     expect(miss.events.some((e) => e.kind === 'laser' && e.ship === 0 && !e.hit)).toBe(true);
-    expect(miss.hostileAt).toBe(-1);
+    expect(miss.hostileAt).toBe(0);
+    expect(hostile(miss)).toEqual([{ kind: 'hostile', cause: 'laser' }]);
   });
-  it('a crew missile landing on it turns it hostile (cause missile)', () => {
-    const st = facing();
-    placeMissile(st, 0, { x: -322, y: -300, vx: 0, vy: 0, heading: 64, headingAcc: 0, age: 100 });
-    stepDuel(st, UNCREWED_INPUT);
-    expect(st.events.some((e) => e.kind === 'missileEnd' && e.ship === 0 && e.target === 1)).toBe(true);
+  it('a crew missile launch provokes it at launch (cause missile), before the missile lands', () => {
+    const st = facing(); st.tick = 120;
+    stepDuel(st, { ...IDLE_INPUT, missileLaunch: true });
+    expect(st.systems[0].missilesLaunched).toBe(1);
+    expect(st.events.some((e) => e.kind === 'missileEnd')).toBe(false);
+    expect(st.hostileAt).toBe(120);
     expect(hostile(st)).toEqual([{ kind: 'hostile', cause: 'missile' }]);
   });
-  it('the cause precedence is laser, missile, clock; only the crew\'s hits count; once hostile it stays', () => {
-    const both = facing(); both.events = [crewMissileOnHunter, crewLaserHit]; hostilityStep(both, 1);
+  it('laser before missile in one step; only the crew\'s shots count; once hostile it stays; no hunter slot, nothing turns', () => {
+    const both = facing(); both.systems[0].shots = 1; both.systems[0].missilesLaunched = 1; hostilityStep(both, 1);
     expect(hostile(both)).toEqual([{ kind: 'hostile', cause: 'laser' }]);
-    const late = facing(); late.tick = HOSTILE_AFTER_TICKS - 1; late.events = [crewMissileOnHunter]; hostilityStep(late, 1);
-    expect(hostile(late)).toEqual([{ kind: 'hostile', cause: 'missile' }]);
-    const theirs = facing();
-    theirs.events = [{ ...crewLaserHit, ship: 1 } as DuelEvent, { ...crewMissileOnHunter, ship: 1, target: 0 } as DuelEvent, { ...crewMissileOnHunter, cause: 'planet', target: -1 } as DuelEvent];
-    hostilityStep(theirs, 1);
+    const theirs = facing(); theirs.systems[1].shots = 3; theirs.systems[1].missilesLaunched = 1; hostilityStep(theirs, 1);
     expect([theirs.hostileAt, hostile(theirs)]).toEqual([-1, []]);
-    const done = facing(); done.hostileAt = 50; done.hunter.mode = HunterMode.Hunt; done.events = [crewLaserHit]; hostilityStep(done, 1);
+    const done = facing(); done.hostileAt = 50; done.systems[0].shots = 1; hostilityStep(done, 1);
     expect([done.hostileAt, hostile(done)]).toEqual([50, []]);
-    const none = facing(); none.events = [crewLaserHit]; hostilityStep(none, -1);
-    expect(none.hostileAt).toBe(-1);   // no hunter slot: nothing to turn
+    const none = facing(); none.systems[0].shots = 1; hostilityStep(none, -1);
+    expect(none.hostileAt).toBe(-1);
   });
 });
 
-describe('Patrol behaviour (spec §4.2)', () => {
-  it('hunterThink: weapons off, no lock, charge or launch, no repair; it coasts, and turns and thrusts away from a threat', () => {
-    const st = facing(); st.systems[1].rooms[Room.Engines] = 2;
-    const head = st.hunter.trailHead;
-    expect(hunterThink(st, 1)).toEqual({ helm: true, weapons: false, axes: { turn: 0, thrust: 0 }, steer: 0, laserLock: null, laserCharge: null, missileLaunch: false, scanner: true });
-    expect(st.hunter.mode).toBe(HunterMode.Patrol);   // a level-2 room starts no repair in Patrol
-    expect(st.hunter.trailHead).toBe((head + 1) % (st.hunter.trail.length / 2));   // the trail ring still advances
-    Object.assign(st.ships[1], { x: 0, y: -300, vx: 0, vy: 300, heading: 128 });   // diving at the planet
-    const away = hunterThink(st, 1).axes;
-    expect(away.thrust).toBe(1); expect(away.turn).not.toBe(0);
+describe('in the duel (the Hunter grace suite, merged)', () => {
+  it('a round opens holding: 1800 steps without thrust, turn or fire, hostile from the step of rt 1799, then it charges', () => {
+    const d = createDuel(layout, 1);
+    try {
+      const v0 = speed(d.tactical), h0 = d.tactical.ships[1]!.heading;
+      for (let k = 0; k < HOSTILE_AFTER_TICKS - 1; k++) {
+        expect(enemyHostile(d.tactical)).toBe(false);
+        step(d);
+        expect(speed(d.tactical)).toBeLessThanOrEqual(v0);   // no thrust: its spawn drift only slows (gravity aside)
+        expect(d.tactical.systems[1]!.fireHeld).toBe(false);
+      }
+      step(d);
+      expect([d.tactical.hostileAt, d.tactical.ships[1]!.heading, d.tactical.systems[1]!.missilesLaunched, d.tactical.systems[1]!.fireHeld]).toEqual([HOSTILE_AFTER_TICKS - 1, h0, 0, false]);
+      step(d);
+      expect(d.tactical.systems[1]!.fireHeld).toBe(true);
+    } finally { disposeDuel(d); }
   });
-  it('tickWeapons holds the hunter\'s shield clock at 0 in Patrol and leaves the crew\'s alone', () => {
-    const st = facing(), layers = classOf(st, 1).shields.layers;
-    st.systems[0].shields = 0;
-    for (let k = 0; k < 400; k++) { tickWeapons(st, 0, IDLE_INPUT); tickWeapons(st, 1, UNCREWED_INPUT); }
-    expect([st.systems[0].shields, st.systems[1].shields, st.systems[1].shieldClock]).toEqual([1, layers - 1, 0]);
+  it('the crew launching first provokes it at once', () => {
+    const d = createDuel(layout, 1);
+    try {
+      seatDuelCrew(d);
+      for (let k = 0; k < 60; k++) step(d);
+      expect(enemyHostile(d.tactical)).toBe(false);
+      step(d, [{ player: 1 - d.helmPlayer, command: { kind: 'missileLaunch' } }]);
+      expect([d.tactical.systems[0]!.missilesLaunched, enemyHostile(d.tactical)]).toEqual([1, true]);
+      expect(d.tactical.events).toContainEqual({ kind: 'hostile', cause: 'missile' });
+      step(d);
+      expect(d.tactical.systems[1]!.fireHeld).toBe(true);
+    } finally { disposeDuel(d); }
+  });
+  it('the battle music follows hostileAt: calm through the hold, engaged once hostile', () => {
+    const d = createDuel(layout, 1), status: AudioStatus[] = [];
+    const a = createDuelAudio({ play: () => {}, sounds: () => {}, status: (s) => { status.push(s); } });
+    const frame = () => a.frame({ duel: d, events: [], axes: { turn: 0, thrust: 0 }, paused: false, pan: () => 0, me: 0, crew: { health: [100, 100], downed: [false, false] }, dt: 1 / 60, hostile: enemyHostile(d.tactical) });
+    try {
+      for (let k = 0; k < HOSTILE_AFTER_TICKS - 1; k++) step(d);
+      frame();
+      expect(status.at(-1)!.engaged).toBe(false);
+      step(d);
+      frame();
+      expect(status.at(-1)!.engaged).toBe(true);
+    } finally { disposeDuel(d); }
   });
 });

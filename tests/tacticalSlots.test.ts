@@ -50,7 +50,7 @@ describe('ship classes and weapons as definitions (spec §5)', () => {
     expect([classOf(st, 0), classOf(st, 1)]).toEqual([CUTTER_CLASS, HUNTER_CLASS]);
     expect([targetOf(st, 0), targetOf(st, 1)]).toEqual([1, 0]);
     expect(hunterSlot(st)).toBe(1);
-    expect(st.systems.map((y) => [y.hull, y.shields, y.magazine])).toEqual([[SHIP_HULL, SHIELD_LAYERS, MAGAZINE], [SHIP_HULL, SHIELD_LAYERS - 1, MAGAZINE]]);   // Sci-1: the enemy patrols one layer down
+    expect(st.systems.map((y) => [y.hull, y.shields, y.magazine])).toEqual([[SHIP_HULL, SHIELD_LAYERS, MAGAZINE], [SHIP_HULL, SHIELD_LAYERS, MAGAZINE]]);   // full shields while holding (owner decision 2026-11-17)
   });
 });
 

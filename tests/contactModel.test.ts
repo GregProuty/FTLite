@@ -83,7 +83,7 @@ describe('the enemy below Level 2 (Sci-1 spec §7.2)', () => {
     expect(v.rooms.map((r) => r.label)).toEqual(['?', '?', '?']);
     for (const r of v.rooms) expect({ fill: r.fill, stroke: r.stroke, hatch: r.hatch }).toEqual({ fill: roomLook(false, 0, 0).fill, stroke: roomLook(false, 0, 0).stroke, hatch: null });
     expect([v.lockRoom, v.shields !== null, v.hull !== null]).toEqual([null, true, true]);
-    expect(v.lines).toEqual([{ text: 'HOSTILE IN 10 s', tint: CRT.main, bar: null }]);
+    expect(v.lines).toEqual([{ text: 'HOSTILE IN 20 s', tint: CRT.main, bar: null }]);   // rt 600 of the 1800-tick hold
     expect(v.scan).toEqual({ label: 'SCAN 2', enabled: true, progress: null });
   });
   it('null for an inactive enemy', () => {

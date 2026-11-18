@@ -17,8 +17,8 @@ import { interiorAudioView, interiorSounds, type InteriorWatch } from '../../aud
 export interface DuelAudioFrame {
   duel: DuelState; events: readonly ViewEvent[]; axes: Axes; paused: boolean; pan: Pan; live?: boolean;
   me: number; crew: CrewLife; dt: number;
-  /** The Hunter is hostile (hunter grace spec): the music stays calm until it is; absent means hostile. The scene reads it
-   *  from the sim (sim/duel/hostility.ts), since audio imports nothing from sim at runtime. */
+  /** The enemy is hostile (Sci-1 spec §4.1, the Hunter-grace rule): the music stays calm until it is; absent means
+   *  hostile. The scene reads it from the sim (`hostileAt >= 0`), since audio imports nothing from sim at runtime. */
   hostile?: boolean;
 }
 

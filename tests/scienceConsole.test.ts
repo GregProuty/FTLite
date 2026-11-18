@@ -19,11 +19,12 @@ const OVERLAY = { zoomText: 'ZOOM 0.50', scaleBar: { px: 50, units: 100 }, snapH
 
 describe('the hostility line (spec §7.1)', () => {
   it('INCOMING SCAN (blinking) before Level 1; HOSTILE IN n s after; HOSTILE for 3 s once hostile; then nothing', () => {
-    const t = createTacticalState(5);   // Patrol from rt 0
+    const t = createTacticalState(5);   // holding from rt 0
     expect(hostilityLine(t)).toEqual({ text: 'INCOMING SCAN', alert: true });
-    t.known[0] = 1; t.tick = 600;
-    expect(hostilityLine(t)).toEqual({ text: 'HOSTILE IN 10 s', alert: false });
-    t.tick = 1199;
+    t.known[0] = 1; expect(hostilityLine(t)?.text).toBe('HOSTILE IN 30 s');   // the 30 s hold (owner decision 2026-11-17)
+    t.tick = 600;
+    expect(hostilityLine(t)).toEqual({ text: 'HOSTILE IN 20 s', alert: false });   // ceil((1800 - 600) / 60)
+    t.tick = 1799;
     expect(hostilityLine(t)).toEqual({ text: 'HOSTILE IN 1 s', alert: false });
     t.hostileAt = 300; t.tick = 300;
     expect(hostilityLine(t)).toEqual({ text: 'HOSTILE', alert: true });

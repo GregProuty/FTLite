@@ -65,8 +65,8 @@ function fireLaser(state: TacticalState, i: number): void {
   as.shots++;
   if (hit && bs) {
     as.laserHits++;
-    if (bs.shields > 0) {   // Sci-1 spec §4.4: the crew laser tuned to the weak frequency strips 2 layers (as many as are up)
-      const n = i === CREW_SLOT && as.freq === state.weakFreq ? Math.min(2, bs.shields) : 1;
+    if (bs.shields > 0) {   // Sci-1 step 1 (spec §6.3): one layer a hit; the frequency strip goes on in step 2
+      const n = 1;
       bs.shields -= n; bs.shieldClock = 0; as.layersStripped += n; stripped = true;
     }
     else {
@@ -107,8 +107,7 @@ export function tickWeapons(state: TacticalState, i: number, input: ShipInput): 
     if (s.fireHeld && !laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + laser.chargeRate[s.rooms[Room.Weapons]]!);
     else if (laserFull(state, i) && ++s.laserHold >= laser.holdTicks) { s.laserCharge = 0; s.laserHold = 0; }   // vents; recharges if still held
   }
-  const patrolling = state.hostileAt < 0 && i !== CREW_SLOT && c.ai === 'hunter';   // Sci-1 spec §4.2: no layer regained in Patrol
-  if (s.shields >= c.shields.layers || patrolling) s.shieldClock = 0;
+  if (s.shields >= c.shields.layers) s.shieldClock = 0;
   else if ((s.shieldClock += c.shields.rate[s.rooms[Room.Shields]]!) >= c.shields.rechargeUnits) { s.shields++; s.shieldClock = 0; }   // rate 0: held
   if (s.magazine >= c.slots.missile.magazine) s.magazineClock = 0;
   else if (++s.magazineClock >= c.slots.missile.regenTicks) { s.magazine++; s.magazineClock = 0; }

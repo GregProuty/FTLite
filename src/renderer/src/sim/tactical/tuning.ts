@@ -113,7 +113,7 @@ export const HUNTER_STANDOFF = 320;           // within this it stops pursuing a
 export const HUNTER_BRAKE_SPEED = 40;         // and brakes (reverse thrust) when closing faster than this
 
 // Science (Sci-1 spec 2026-11-17-science-scans §4): the hostility clock, the scans, the derelict and its salvage.
-export const HOSTILE_AFTER_TICKS = 1200;          // the enemy turns hostile on its own in the step of rt 1199 (20 s of Patrol)
+export const HOSTILE_AFTER_TICKS = 1800;          // the enemy turns hostile on its own in the step of rt 1799 (30 s of hold; owner 2026-11-17)
 /** Scan units to reach each level (index = level); Level 1 at 900, Level 2 at 1800. */
 export const SCAN_UNITS: readonly number[] = [0, 900, 1800];
 export const SCAN_RATE_SCIENCE = 5;               // units per tick from the Science console

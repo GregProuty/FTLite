@@ -199,7 +199,7 @@ const systemsRules = (slots: number): Readonly<Record<string, (v: number) => boo
 // Built on first use: state.ts imports this file for cloneTactical, so its enums are read lazily.
 const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
   tick: count, seed: within(0, 0xffffffff), 'rng.s': within(0, 0xffffffff), outcome: within(Outcome.Running, Outcome.Draw),
-  'hunter.mode': within(HunterMode.Hunt, HunterMode.Patrol), 'hunter.room': room, 'hunter.timer': int, 'hunter.working': flagBit,
+  'hunter.mode': within(HunterMode.Hunt, HunterMode.Repair), 'hunter.room': room, 'hunter.timer': int, 'hunter.working': flagBit,
   'hunter.fireAt': (v) => Number.isInteger(v) && v >= -1, 'hunter.lastLaunch': int, 'hunter.trailHead': within(0, HUNTER_TRAIL_TICKS - 1), 'hunter.trail': any,
   // Sci-1 spec §6.2 (known is checked per value in validateTacticalValues).
   startTick: count, hostileAt: (v) => Number.isInteger(v) && v >= -1, 'scan.contact': within(-1, 1), 'scan.level': within(0, 2), 'scan.progress': count,

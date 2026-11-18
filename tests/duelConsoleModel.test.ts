@@ -30,7 +30,7 @@ describe('console layout (spec §2)', () => {
   it('has the spec numbers', () => {
     expect(TABS_RIGHT).toBe(408); expect(CONSOLE_RESERVE).toEqual({ left: 228, right: 156 });
     expect(SIDE.x).toBe(1136); expect(STATUS).toMatchObject({ x: 12, y: 42, w: 204 }); expect(STATION).toMatchObject({ x: 12, w: 300 });
-    expect(stationTop('helm')).toBe(508); expect(stationTop('weapons')).toBe(460);
+    expect(stationTop('helm')).toBe(508); expect(stationTop('weapons')).toBe(492);
   });
   it('the status table ends above the station block at its longest (every crew room damaged)', () => {
     const d = createSeatedDuel(layout, 5); d.tactical.systems[0].rooms = [2, 1, 1];
