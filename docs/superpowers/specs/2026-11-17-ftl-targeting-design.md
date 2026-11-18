@@ -63,8 +63,16 @@ and torpedo, set by the keyboard, the console room buttons or the enemy window's
 - **Order in a tick:** laserLock, torpLock, the charge press, the laser's auto-fire, the manual launch, then the torpedo's
   auto-launch. Both auto weapons need the Weapons console attended; the laser still freezes while a torpedo flies.
 - **Keys:** 1 and 2 pick up the laser and the torpedo, so the laser frequencies moved from 1 / 2 / 3 to 3 / 4 / 5. While
-  the torpedo is picked up, E / Q step its target room; with the laser picked up they drop the pick-up and step the
-  laser's target as before. A full laser reads `READY` (no vent countdown).
+  the torpedo is picked up, E / Q step its own target room (from none: E to Room 0, Q to Room 2) and it stays picked up,
+  never touching the laser; with the laser picked up they drop the pick-up and step the laser's target as before. A full
+  laser reads `READY` (no vent countdown).
+- **Below scan Level 1 (visual-check fix):** a pick-up always works: the card lights and the line and reticle draw. On
+  an enemy below Level 1 it also asks for the Level 1 scan (the SCAN button's request, sent only while the scan rules
+  allow), the window reads `SCANNING: ROOMS AT LEVEL 1` while that scan runs (`ROOMS AT SCAN LEVEL 1` before it starts),
+  and the pick-up stays live until the rooms show. Before the mouse moves the line ends at the app's last pointer
+  position, else the centre of the enemy drawing.
+- **The Weapons map's top line:** `BRG 263  RNG 3987  NO SHOT  TORP OUT` (`TORP IN` in range), kept between the tab
+  strip and the side column (it shifts right of centre when the enemy window narrows the map).
 - **The scripted crew:** the gunner sets the laser's target (Shields while the enemy's are up, else Weapons) and targets
   the torpedo where it used to launch; the Helm lines up on a full, targeted laser. `MISSILE_GAP` 900 → 1500 for the
   round-length gate: at 900 the crew won all ten gate seeds (median 252.5 s); at 1500 the median is 218.3 s with 8 wins

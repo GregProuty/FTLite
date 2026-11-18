@@ -1,4 +1,4 @@
-// Sci-1 (spec 2026-11-17-science-scans §7.2, §7.3, §7.4): keys 1/2/3 and the console's frequency buttons, the pointer's
+// Sci-1 (spec 2026-11-17-science-scans §7.2, §7.3, §7.4): keys 3/4/5 (FTL targeting moved them from 1/2/3) and the console's frequency buttons, the pointer's
 // position, the local runtime turning the contact controller's requests and the frequency into commands, and the scene
 // at Science (the window always shown, the hover readout, a map click on the wreck designating it).
 import { describe, expect, it } from 'vitest';
@@ -119,7 +119,7 @@ describe('the requests to commands (spec §5, §7.2, §7.3)', () => {
       expect(d.tactical.scan).toMatchObject({ contact: 0, level: 1, rate: 2, by: d.nav });
     } finally { r.rt.dispose(); }
   });
-  it('Weapons: 1/2/3 (or a button) send laserFrequency only when it changes the tuned frequency', () => {
+  it('Weapons: 3/4/5 (or a button) send laserFrequency only when it changes the tuned frequency', () => {
     const r = rig(), d = r.rt.duel;
     try {
       sitDown(d.interior, 0, d.weapons);
