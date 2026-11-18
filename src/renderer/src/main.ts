@@ -14,6 +14,7 @@ import { startFlightMode } from './app/duel/flightMode';
 import { startDuelMode } from './app/duel/duelMode';
 import { createOnlineBridge } from './app/onlineBridge';
 import { createPageOnline } from './app/online/pageSession';
+import { watchHostVisibility } from './app/online/hostVisibility';
 import { validatePageOnlineConfig } from '../../shared/onlineConfig';
 import { createOnlineRendererSession } from './app/onlineSession';
 import { createOnlineModeSession } from './app/onlineModeSession';
@@ -81,6 +82,7 @@ async function startApp(): Promise<void> {
   const onlineConfig = window.ftlite?.onlineConfig;
   const pageOnline = onlineConfig && validatePageOnlineConfig(onlineConfig) ? createPageOnline(onlineConfig, { window }) : null;
   const bridge = pageOnline ? createOnlineBridge(pageOnline) : null;
+  const offVisibility = bridge && !window.ftlite ? watchHostVisibility({ document, onStatus: cb => bridge.onStatus(cb) }) : undefined;   // Electron does not throttle its page, so the warning is browser-only
   const offPrepareExit = window.ftlite?.onPrepareExit?.(() => pageOnline ? pageOnline.prepareExit() : Promise.resolve());
   let online: ReturnType<typeof createOnlineModeSession> | null = null, status: OnlineStatus | null = null;
   let blocked = true;
@@ -152,7 +154,7 @@ async function startApp(): Promise<void> {
   renderer.app.ticker.add(() => session.frame());
   renderer.app.ticker.add(() => audio.tick(performance.now() / 1000));   // Audio-i spec section 5: the music, the hum and the fire loop
   window.addEventListener('beforeunload', () => {
-    offPrepareExit?.(); offPort?.(); offStatus?.(); offStrip(); setBlocked(true); offBlocked(); actions.dispose(); unmountUi();
+    offPrepareExit?.(); offVisibility?.(); offPort?.(); offStatus?.(); offStrip(); setBlocked(true); offBlocked(); actions.dispose(); unmountUi();
     session.dispose(); bridge?.dispose(); keyboard.destroy();
   }, { once: true });
 }
