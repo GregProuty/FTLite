@@ -15,6 +15,17 @@ describe('Helm and Weapons (enemy ship window spec §3, Sci-1 spec §7.2)', () =
     c.click(1); expect(c.state()).toBeNull();
     expect(c.takeRequests()).toEqual(none);
   });
+  it('close() closes an open window on Helm and Weapons; arm() while closed is a no-op', () => {
+    for (const station of ['helm', 'weapons'] as const) {
+      const c = createContactController(); c.sync(live({ station }));
+      c.arm(); expect(c.state()).toBeNull();
+      c.click(0); c.close(); expect(c.state()).toBeNull();
+    }
+  });
+  it('click(null) leaves an open window open', () => {
+    const c = createContactController(); c.sync(live());
+    c.click(1); c.click(null); expect(c.state()).toEqual({ contact: 1, aim: false });
+  });
   it('T cycles enemy, derelict, closed', () => {
     const c = createContactController(); c.sync(live({ station: 'helm' }));
     c.toggle(); expect(c.state()).toEqual({ contact: 0, aim: false });
@@ -81,6 +92,7 @@ describe('pick (enemy ship window spec §5)', () => {
     c.arm(); c.pick(2, lock);
     expect(lock).toHaveBeenCalledTimes(1); expect(lock).toHaveBeenCalledWith(2);
     expect(c.state()).toEqual({ contact: 0, aim: false });
+    c.pick(0, lock); expect(lock).toHaveBeenCalledTimes(1);   // disarmed by the pick: a further pick does not lock
   });
 });
 
@@ -142,6 +154,7 @@ describe('the key intercept (enemy ship window spec §6.2, Sci-1 spec §7.2, §7
     expect(c.intercept('Escape')).toBe(true); expect(c.state()).toEqual({ contact: 0, aim: false });
     expect(c.intercept('Escape')).toBe(true); expect(c.state()).toBeNull();
     expect(c.intercept('Escape')).toBe(false);
+    c.click(0); c.sync(live({ shown: false, station: null })); expect(c.intercept('Escape')).toBe(false);   // hidden: declined
     c.click(0); c.sync(live());
     for (const code of ['KeyE', 'KeyQ', 'Space', 'Tab', 'KeyW', 'Enter', 'KeyS', 'Digit1']) expect(c.intercept(code), code).toBe(false);
     expect(c.state()).toEqual({ contact: 0, aim: false });

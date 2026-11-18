@@ -34,13 +34,16 @@ describe('the enemy at Level 2 (enemy ship window spec §4.2)', () => {
     }
     const xs = v.outline.filter((_, k) => k % 2 === 0), ys = v.outline.filter((_, k) => k % 2 === 1);
     expect(Math.max(Math.max(...xs) - Math.min(...xs) - (b.w - 16), Math.max(...ys) - Math.min(...ys) - (b.h - 16))).toBeCloseTo(0, 6);
-    expect(v.rooms[0]!.centre.x).toBeGreaterThan(v.rooms[2]!.centre.x);   // nose right
+    expect(Math.max(...xs)).toBeGreaterThan(v.rooms[0]!.centre.x);   // nose right: Weapons (forward) is right of Engines
+    expect(v.rooms[0]!.centre.x).toBeGreaterThan(v.rooms[2]!.centre.x);
   });
   it('each room\'s look is roomLook(false, level, phase) in both blink phases; the lock room is the crew\'s lock', () => {
     const st = known(2); st.systems[1].rooms = [0, 1, 2]; st.systems[0].lock = 2;
+    expect([0, 0.3].map((t) => blink(t, DAMAGE_BLINK_HZ))).toEqual([0, 1]);
     for (const t of [0, 0.3]) {
       const v = model(st, { t })!, phase = blink(t, DAMAGE_BLINK_HZ);
       v.rooms.forEach((r, k) => {
+        if (r.hatch) { expect(r.hatch.segments.length).toBeGreaterThan(0); expect(r.hatch.segments.length % 4).toBe(0); }
         const look = roomLook(false, k as 0 | 1 | 2, phase);
         expect({ fill: r.fill, stroke: r.stroke, hatch: r.hatch?.colour ?? null }, `room ${k} at ${t}`).toEqual({ fill: look.fill, stroke: look.stroke, hatch: look.hatch });
       });
@@ -69,6 +72,10 @@ describe('the enemy below Level 2 (Sci-1 spec §7.2)', () => {
   it('Level 0: UNKNOWN CONTACT, no drawing, no weapon list, SCAN 1 (SLOW) at Weapons', () => {
     expect(model(known(0))).toMatchObject({ contact: 0, title: 'UNKNOWN CONTACT', shields: null, hull: null, outline: [], rooms: [], lockRoom: null, weapons: null, aim: false,
       scan: { label: 'SCAN 1 (SLOW)', enabled: true, progress: null }, lines: [] });
+  });
+  it('Level 1 on the Weapons station: the weapon block is present and the aim passes through (spec �7.2)', () => {
+    const v = model(known(1), { aim: true })!;
+    expect(v.weapons).not.toBeNull(); expect(v.aim).toBe(true);
   });
   it('Level 1: the outline with ? labels and no damage looks, no lock mark; pips, hull, the hostility line; SCAN 2', () => {
     const st = known(1); st.systems[1].rooms = [2, 2, 2]; st.tick = 600;
