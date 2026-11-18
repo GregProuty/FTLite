@@ -6,28 +6,28 @@
     "restoreTicks": 1000,
     "failures": [],
     "stepDuelMs": {
-      "median": 0.007,
-      "p99": 0.0286,
-      "max": 1.9512
+      "median": 0.0098,
+      "p99": 0.031,
+      "max": 1.3491
     },
     "p99GateMs": 0.5,
     "p99Pass": true,
     "movingEvery10s": {
       "max": [
-        15,
-        19,
-        27,
-        31,
-        34,
-        34
+        20,
+        29,
+        40,
+        49,
+        68,
+        60
       ],
       "median": [
-        8.5,
-        12,
-        16.5,
-        20,
-        24.5,
-        24.5
+        13.5,
+        20.5,
+        25.5,
+        34.5,
+        38.5,
+        39.5
       ]
     }
   },
@@ -39,131 +39,131 @@
         "r": 44.8,
         "blasted": true,
         "blastRock": 21,
-        "pieces": 6,
+        "pieces": 10,
         "breaks": 3,
-        "collisions": 3,
+        "collisions": 5,
         "farthestTravel": 863,
-        "movingAt30s": 5
+        "movingAt30s": 7
       },
       {
         "rock": 16,
         "r": 44.1,
         "blasted": true,
         "blastRock": 16,
-        "pieces": 6,
-        "breaks": 6,
-        "collisions": 2,
-        "farthestTravel": 902,
-        "movingAt30s": 4
+        "pieces": 18,
+        "breaks": 10,
+        "collisions": 7,
+        "farthestTravel": 1050,
+        "movingAt30s": 9
       },
       {
         "rock": 54,
         "r": 43.8,
         "blasted": true,
         "blastRock": 54,
-        "pieces": 10,
-        "breaks": 8,
-        "collisions": 4,
-        "farthestTravel": 1050,
-        "movingAt30s": 10
+        "pieces": 24,
+        "breaks": 16,
+        "collisions": 12,
+        "farthestTravel": 1168,
+        "movingAt30s": 16
       },
       {
         "rock": 18,
         "r": 43.6,
         "blasted": true,
         "blastRock": 18,
-        "pieces": 6,
-        "breaks": 3,
-        "collisions": 1,
+        "pieces": 12,
+        "breaks": 5,
+        "collisions": 2,
         "farthestTravel": 898,
-        "movingAt30s": 5
+        "movingAt30s": 9
       },
       {
         "rock": 59,
         "r": 43.3,
         "blasted": true,
         "blastRock": 59,
-        "pieces": 6,
-        "breaks": 4,
-        "collisions": 2,
-        "farthestTravel": 898,
-        "movingAt30s": 4
+        "pieces": 12,
+        "breaks": 7,
+        "collisions": 5,
+        "farthestTravel": 1106,
+        "movingAt30s": 7
       },
       {
         "rock": 23,
         "r": 43.1,
         "blasted": true,
         "blastRock": 23,
-        "pieces": 6,
-        "breaks": 6,
-        "collisions": 1,
-        "farthestTravel": 911,
-        "movingAt30s": 6
+        "pieces": 16,
+        "breaks": 8,
+        "collisions": 4,
+        "farthestTravel": 982,
+        "movingAt30s": 14
       },
       {
         "rock": 33,
         "r": 43.1,
         "blasted": true,
         "blastRock": 33,
-        "pieces": 6,
-        "breaks": 6,
-        "collisions": 2,
+        "pieces": 16,
+        "breaks": 8,
+        "collisions": 4,
         "farthestTravel": 898,
-        "movingAt30s": 4
+        "movingAt30s": 14
       },
       {
         "rock": 67,
         "r": 42.9,
         "blasted": true,
         "blastRock": 67,
-        "pieces": 6,
-        "breaks": 6,
-        "collisions": 2,
+        "pieces": 16,
+        "breaks": 10,
+        "collisions": 7,
         "farthestTravel": 898,
-        "movingAt30s": 5
+        "movingAt30s": 10
       },
       {
         "rock": 43,
         "r": 41.7,
         "blasted": true,
         "blastRock": 43,
-        "pieces": 6,
-        "breaks": 4,
-        "collisions": 2,
-        "farthestTravel": 896,
-        "movingAt30s": 5
+        "pieces": 12,
+        "breaks": 8,
+        "collisions": 7,
+        "farthestTravel": 1063,
+        "movingAt30s": 12
       },
       {
         "rock": 10,
         "r": 41.1,
         "blasted": true,
         "blastRock": 10,
-        "pieces": 6,
-        "breaks": 3,
-        "collisions": 2,
-        "farthestTravel": 893,
-        "movingAt30s": 5
+        "pieces": 16,
+        "breaks": 10,
+        "collisions": 7,
+        "farthestTravel": 914,
+        "movingAt30s": 8
       }
     ],
-    "passing": 1,
+    "passing": 10,
     "floor": ">= 8 pieces and >= 2 damaging collisions in >= 7 of 10",
-    "floorPass": false
+    "floorPass": true
   },
   "sizes": {
     "seed": 2026,
     "tick": 3000,
     "values": 2454,
-    "jsonBytes": 10738,
+    "jsonBytes": 10906,
     "fullImageBytes": 20231,
     "delta0": {
-      "median": 997,
-      "max": 1153
+      "median": 1093,
+      "max": 1249
     },
     "delta60": {
       "moversAtStart": 60,
-      "moversAtEnd": 62,
-      "median": 3830,
-      "max": 4142
+      "moversAtEnd": 88,
+      "median": 5078,
+      "max": 5354
     }
   }
 }

@@ -4,8 +4,8 @@
   "samples": 600,
   "movers": 60,
   "restore": "restoreDuelSnapshot",
-  "hostMedianMs": 0.909,
-  "clientMedianMs": 0.626,
+  "hostMedianMs": 0.803,
+  "clientMedianMs": 0.541,
   "hostBudgetMs": 1.5,
   "clientBudgetMs": 1
 }

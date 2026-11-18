@@ -2,10 +2,10 @@
   "seed": 2026,
   "tick": 3600,
   "samples": 600,
-  "movers": 1,
+  "movers": 3,
   "restore": "restoreDuelSnapshot",
-  "hostMedianMs": 0.926,
-  "clientMedianMs": 0.618,
+  "hostMedianMs": 0.813,
+  "clientMedianMs": 0.546,
   "hostBudgetMs": 1.5,
   "clientBudgetMs": 1
 }
