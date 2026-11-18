@@ -2,7 +2,10 @@
 // stack happens in the page (page-probe.js, injected before any page script) and is read back here.
 const electron = require('electron');
 const { app, BrowserWindow, ipcMain, powerMonitor, session } = electron;
-process.on('uncaughtException', e => { console.error('APP_DRIVER_UNCAUGHT', process.env.FTL_DEBUG ? e : ''); app.exit(1); });
+// Local debugging only (FTL_DEBUG=1, never set by the gates): raw diagnostics on stderr. Without it every diagnostic is a
+// fixed category with validated context (tests/onlineAppDiagnostics.test.ts).
+const debug = !!process.env?.FTL_DEBUG;
+process.on('uncaughtException', e => { if (debug) console.error('APP_DRIVER_UNCAUGHT', e); else console.error('APP_DRIVER_UNCAUGHT'); app.exit(1); });
 const { resolve, join, sep } = require('node:path');
 const { readFileSync, writeFileSync } = require('node:fs');
 const { createHash } = require('node:crypto');
@@ -77,9 +80,8 @@ app.on('browser-window-created', (_, window) => {
   if (visible) return;   // the production app opens exactly one window
   visible = window;
   const diagnosticContext = { role, page: 'application' };
-  window.webContents.on('preload-error', (_e, p, err) => console.error('APP_PRELOAD_ERROR', diagnosticContext, process.env.FTL_DEBUG ? err : ''));
-  // Local debugging only (FTL_DEBUG=1, never set by the gates): page lifecycle and console lines on stderr.
-  if (process.env.FTL_DEBUG) { window.webContents.on('did-finish-load', () => console.error('DBG loaded', window.webContents.getURL())); window.webContents.on('did-fail-load', (...a) => console.error('DBG fail', a.slice(1,4))); window.webContents.on('console-message', d => console.error('DBG console', d.level, String(d.message).slice(0,300))); window.webContents.on('render-process-gone', (_e,d) => console.error('DBG gone', d)); }
+  window.webContents.on('preload-error', (_e, _path, err) => { if (debug) console.error('APP_PRELOAD_ERROR', diagnosticContext, err); else console.error('APP_PRELOAD_ERROR', diagnosticContext); });
+  if (debug) { window.webContents.on('did-finish-load', () => console.error('DBG loaded', window.webContents.getURL())); window.webContents.on('did-fail-load', (...a) => console.error('DBG fail', a.slice(1,4))); window.webContents.on('console-message', d => console.error('DBG console', d.level, String(d.message).slice(0,300))); window.webContents.on('render-process-gone', (_e,d) => console.error('DBG gone', d)); }
   window.webContents.on('console-message', details => { if (details.level === 'error') console.error('APP_PAGE_ERROR', diagnosticContext); });
 });
 // The close handshake: snapshot the page after its session's exit save and disposal, just before the window closes.
@@ -218,6 +220,6 @@ process.on('message', message => { if (ignoreDriver) return; void command(messag
   // After the close gate the window is gone: reply, then exit as the production app's window-all-closed would have.
   if (message.command === 'close-window') { process.send?.({ id: message.requestId, result }, () => app.exit(0)); return; }
   process.send?.({ id: message.requestId, result }); })
-  .catch(error => { if (process.env.FTL_DEBUG) console.error('CMD_ERR', message?.command, error); return process.send?.({ id: Number.isSafeInteger(message?.requestId) ? message.requestId : 0, error: 'app-driver-command-failed',
+  .catch(error => { if (debug) console.error('CMD_ERR', message?.command, error); return process.send?.({ id: Number.isSafeInteger(message?.requestId) ? message.requestId : 0, error: 'app-driver-command-failed',
     command: diagnosticCommands.has(message?.command) ? message.command : 'unknown', reason: ['native-click-not-delivered', 'native-click-wrong-control'].includes(error?.message) ? error.message : 'command-failed' }); }); });
 require(role === 'incompatible' ? join(directory, 'incompatible-build/main/index.js') : '../../out/main/index.js');
