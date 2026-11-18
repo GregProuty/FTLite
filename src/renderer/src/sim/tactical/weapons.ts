@@ -3,8 +3,9 @@
 // Commands arrive as one ShipInput per ship per tick; the duel step builds these from the authority's admitted commands.
 import { inArc, lineOfSight } from './geometry';
 import { launchMissile } from './missiles';
-import { AUTO_DIG, firstBlocker, LASER_ROCK_DAMAGE } from './rocks';
-import { hitRock } from './rockBreak';
+import { firstBlocker } from './rocks';
+import { AUTO_DIG } from './rockTuning';
+import { laserStrikesRock, rockOnTarget, rockShotLine } from './rockWeapons';
 import { hx, hy } from './direction';
 import { classOf, CREW_SLOT, missileOf, Room, type Axes, type TacticalState } from './state';
 
@@ -105,6 +106,7 @@ export function laserDiggable(state: TacticalState, i: number): boolean {
 /** One laser shot of ship i at its target and lock room as they stand now (spec §7a; weapons update spec §1: every shot of a
  *  burst re-checks eligibility, strips shields or strikes the room, counts and pushes its own `laser` event). */
 function shoot(state: TacticalState, i: number): void {
+  if (state.systems[i]!.laserRock >= 0) { shootRock(state, i); return; }   // spike ii §6.2: a rock target
   const a = state.ships[i]!, as = state.systems[i]!, j = as.target, b = state.ships[j] ?? a, bs = state.systems[j], hit = laserEligible(state, i, j);
   let stripped = false, room = -1;
   as.shots++;
@@ -120,15 +122,31 @@ function shoot(state: TacticalState, i: number): void {
       bs.hull = Math.max(0, bs.hull - classOf(state, i).slots.laser.hull);
     }
   }
-  if (!hit) {   // SPIKE: a blocked or aimless shot strikes the first rock on its line instead
+  if (!hit) {   // spike i, kept (spec §6.3): a blocked or aimless shot strikes the first rock on its line instead
     const r = laserRockTarget(state, i);
     if (r) {
       state.events.push({ kind: 'laser', ship: i, hit: false, stripped: false, room: -1, x1: a.x, y1: a.y, x2: r.x, y2: r.y, rock: r.rock });
-      hitRock(state, r.rock, LASER_ROCK_DAMAGE, r.x - a.x, r.y - a.y, 'laser', i);
+      laserStrikesRock(state, i, r.rock, r.x, r.y);
       return;
     }
   }
   state.events.push({ kind: 'laser', ship: i, hit, stripped, room, x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+}
+
+/** Spike ii §6.2: one shot of ship i with a rock target. On target, the line to the rock's centre decides what it meets
+ *  (the planet: a miss; another rock: that rock); off target, spike i's miss path (the blocked enemy line or the nose ray).
+ *  A shot that meets no rock is a miss beam to the planet's entry point or the nose ray's end. */
+function shootRock(state: TacticalState, i: number): void {
+  const a = state.ships[i]!, as = state.systems[i]!, range = classOf(state, i).slots.laser.range;
+  as.shots++;
+  const line = rockOnTarget(state, i, as.laserRock) ? rockShotLine(state, i, as.laserRock) : laserRockTarget(state, i);
+  if (line && line.rock >= 0) {
+    state.events.push({ kind: 'laser', ship: i, hit: false, stripped: false, room: -1, x1: a.x, y1: a.y, x2: line.x, y2: line.y, rock: line.rock });
+    laserStrikesRock(state, i, line.rock, line.x, line.y);
+    return;
+  }
+  const end = line ?? { x: a.x + hx(a.heading) * range, y: a.y + hy(a.heading) * range };
+  state.events.push({ kind: 'laser', ship: i, hit: false, stripped: false, room: -1, x1: a.x, y1: a.y, x2: end.x, y2: end.y });
 }
 
 /** A full charge's release: the first shot now, the rest of the class's burst queued a burst gap apart. */
@@ -173,7 +191,8 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
       else { s.laserCharge = 0; s.laserHold = 0; }
     }
   }
-  if (crew && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && (laserEligible(state, i, s.target) || laserDiggable(state, i))) fireLaser(state, i);   // auto-fire (SPIKE: or dig)
+  // Auto-fire: on the enemy when eligible; spike ii §6.2: on a rock target when it is on target (AUTO_DIG is false).
+  if (crew && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && (s.laserRock >= 0 ? rockOnTarget(state, i, s.laserRock) : laserEligible(state, i, s.target) || laserDiggable(state, i))) fireLaser(state, i);
   if (input.missileLaunch && canLaunch(state, i)) {
     launchMissile(state, i);
     s.fireHeld = false;

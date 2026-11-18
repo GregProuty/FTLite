@@ -18,10 +18,8 @@ export const ROCK_STRIDE = 7;
 export const RockKind = { Gone: 0, Static: 1, Moving: 2 } as const;
 /** §3.1: spare slots for pieces. */
 export const ROCK_RESERVE = 96;
-/** Spike i's numbers still in use until their rules are replaced: the laser's and AUTO_DIG (Task 4), the torpedo's (Task 5). */
-export const LASER_ROCK_DAMAGE = 1;
+/** Spike i's torpedo damage, still in use until Task 5's blast. */
 export const TORPEDO_ROCK_DAMAGE = 4;
-export const AUTO_DIG = true;
 
 /** The pool's capacity for a map: its asteroids plus the reserve. Also the number of rock bodies in a ship's graceUntil. */
 export function rockCapacity(map: MapDef): number { return map.asteroids.length + ROCK_RESERVE; }
@@ -100,6 +98,7 @@ export function firstBlocker(s: TacticalState, ax: number, ay: number, bx: numbe
   if (tp >= 0) best = { rock: -1, t: tp };
   const half = Math.max(Math.abs(bx - ax), Math.abs(by - ay)) / 2;
   for (const k of rocksNear(s, (ax + bx) / 2, (ay + by) / 2, half)) {
+    if (s.rockBorn[k] === 1) continue;   // §6.2: a piece made earlier this tick is not in the way
     const a = rockAt(s, k), t = segmentEntry(ax, ay, bx, by, a.x, a.y, a.r);
     if (t >= 0 && (!best || t < best.t)) best = { rock: k, t };   // ascending k: a tie keeps the lower slot (the planet wins ties)
   }

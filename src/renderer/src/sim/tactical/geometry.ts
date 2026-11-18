@@ -24,6 +24,7 @@ export function lineOfSight(state: TacticalState, ax: number, ay: number, bx: nu
   if (segmentNear(ax, ay, bx, by, p.x, p.y, p.r)) return false;
   const half = Math.max(Math.abs(bx - ax), Math.abs(by - ay)) / 2;
   for (const k of rocksNear(state, (ax + bx) / 2, (ay + by) / 2, half)) {
+    if (state.rockBorn[k] === 1) continue;   // spike ii §6.2: as firstBlocker, a piece made this tick is not in the way
     const a = rockAt(state, k);
     if (segmentNear(ax, ay, bx, by, a.x, a.y, a.r)) return false;
   }

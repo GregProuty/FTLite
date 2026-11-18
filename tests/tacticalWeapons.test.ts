@@ -101,7 +101,7 @@ describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2
       const shot = st.events.find((e) => e.kind === 'laser');
       expect(shot, name).toMatchObject({ kind: 'laser', ship: 0, hit: false });
       if (name === 'planet') expect((shot as { rock?: number }).rock, name).toBeUndefined();
-      else { expect((shot as { rock?: number }).rock, name).toBe(0); expect(st.rocks[6], name).toBe(Math.ceil(st.map.asteroids[0]!.r / 10) - 1); }
+      else { expect((shot as { rock?: number }).rock, name).toBe(0); expect(st.rocks[6], name).toBe(Math.ceil(st.map.asteroids[0]!.r / 10) - 2); expect(st.rocks[0], name).toBe(2); }
     }
   });
   it('a full crew charge never vents (LASER_HOLD_TICKS is the hunter laser only)', () => {

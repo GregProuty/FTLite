@@ -176,7 +176,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   // The bracket closes about the enemy's drawn marker, or its edge arrow off screen, while the shot is lined up.
   let solution: SolutionDraw | null = null;
   const enemyShown = input.ships.includes(target) && state.ships[target]?.active === true;
-  if (lined && input.fx.solutionAge >= 0 && enemyShown && input.console !== 'science') {
+  if (lined && input.fx.solutionAge >= 0 && enemyShown && input.console !== 'science' && state.systems[0]!.laserRock < 0) {   // spike ii: no enemy bracket while the laser aims at a rock
     const k = Math.min(1, input.fx.solutionAge / SOLUTION_CLOSE_S), ease = 1 - (1 - k) * (1 - k), base = Math.max(18, SHIP_RADIUS * drawnScale(z) * 2.2);
     const at = input.enemyArrow ?? (onScreen(enemyS, base) ? enemyS : null);
     if (at) {
