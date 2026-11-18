@@ -66,13 +66,13 @@ describe('the duel snapshot (spec §6)', () => {
     } finally { disposeDuel(d); }
   });
   it('rejects tactical, presence and repair values the module writers would refuse, even rehashed, before allocating', () => {
-    const { d } = scriptedDuel(4, 5193);   // a missile in flight, a damaged crew room and a repair in progress
+    const { d } = scriptedDuel(9, 5108);   // a missile in flight, a damaged crew room and a repair in progress (seed 4 tick 5193 before homing torpedoes, SIM_VERSION 46)
     try {
       const good = saveDuelSnapshot(d, DIGEST), names = new Map<string, number>();
       let at = 1;
       for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) { names.set(f.name, at); at += f.count; }
       const flying = d.tactical.missiles.findIndex((m) => m.active), slot = `missiles.${flying}`, free = `missiles.${1 - flying}`, owner = d.tactical.missiles[flying]!.owner;
-      expect(flying, 'one missile in flight at seed 4 tick 5193').toBeGreaterThanOrEqual(0);
+      expect(flying, 'one missile in flight at seed 9 tick 5108').toBeGreaterThanOrEqual(0);
       expect(d.tactical.missiles[1 - flying]!.active).toBe(false);
       const cases: [string, number, number, RegExp][] = [
         ['ships.0.heading', 0, 256, /ships\.0\.heading: out of range/], ['ships.1.heading', 0, 1.5, /ships\.1\.heading/],

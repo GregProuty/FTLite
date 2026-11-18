@@ -11,7 +11,6 @@ import { stationOnline } from '../stations';
 import { hx, hy } from '../tactical/direction';
 import { inArc, sideOf } from '../tactical/geometry';
 import { queryGrid } from '../tactical/grid';
-import { pursuitTurn } from '../tactical/hunter';
 import { circularSpeed } from '../tactical/map';
 import { predictPath } from '../tactical/predict';
 import { missileOf, Room, targetOf, type Axes } from '../tactical/state';
@@ -35,6 +34,10 @@ export const ORBIT_MIN = 1500;
 export const ORBIT_MAX = 2200;
 /** Speed band around the circular speed inside which the Helm neither thrusts nor brakes (u/s). */
 export const SPEED_SLACK = 8;
+/** The Helm dodges the enemy's torpedo inside this range with a hard full-thrust turn across its path (homing torpedo
+ *  spec §1: a hard turn can beat it). 350 from the telemetry gate (tests/duelGates.test.ts): without a dodge the
+ *  homing Hunter torpedo cut the median duel to 136 s. */
+export const EVADE_RANGE = 350;
 /** Ticks between two crew missile launches. */
 export const MISSILE_GAP = 900;
 /** A bot below this health with nothing to repair goes to the Medbay and stays until full (duel-health spec §1.9). */
@@ -92,12 +95,22 @@ function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } | null {
   return null;
 }
 
-/** The Helm's axes (spec §3): avoid, then line up, then orbit. The hazard check predicts with the thrust the ship flies
+/** The Helm's axes (spec §3): avoid, then dodge an inbound torpedo, then line up, then orbit. The hazard check predicts with the thrust the ship flies
  *  at this tick before any new command: the throttle's (Artemis spec §5.5). */
 function helmAxes(pair: ScriptedPair, d: DuelState): Axes {
   const t = d.tactical, s = t.ships[0], e = t.ships[targetOf(t, 0)]!;
   const away = hazardAway(d, { turn: pair.axes.turn, thrust: throttleThrust(d.throttle) });
   if (away) return { turn: turnToward(s.heading, away.x, away.y), thrust: 1 };
+  // Dodge (homing torpedo spec): the enemy's torpedo within EVADE_RANGE, turn the nose square across its line of approach,
+  // on the side the ship already moves to, at full thrust.
+  const inbound = missileOf(t, targetOf(t, 0));
+  if (inbound) {
+    const mx = inbound.x - s.x, my = inbound.y - s.y;
+    if (mx * mx + my * my <= EVADE_RANGE * EVADE_RANGE) {
+      const side = s.vx * -my + s.vy * mx >= 0 ? 1 : -1;
+      return { turn: turnToward(s.heading, -my * side, mx * side), thrust: 1 };
+    }
+  }
   const ex = e.x - s.x, ey = e.y - s.y;
   if (laserFull(t, 0) && t.systems[0].fireHeld && ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE && !inArc(s.heading, ex, ey, LASER_ARC_COS))
     return { turn: turnToward(s.heading, ex, ey), thrust: 0 };
@@ -239,21 +252,20 @@ function roomTiles(d: DuelState, room: number): Set<number> {
   return out;
 }
 
-/** The gunner's commands while seated at Weapons (spec §3), and the missile's steer. */
-function gunner(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): number {
+/** The gunner's commands while seated at Weapons (spec §3). Its missile homes by itself (homing torpedo spec), so the
+ *  gunner holds nothing. */
+function gunner(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void {
   const t = d.tactical, target = targetOf(t, 0), s = t.ships[0], e = t.ships[target]!, ex = e.x - s.x, ey = e.y - s.y, sys = t.systems[0];
   const want = t.systems[target]!.shields > 0 ? Room.Shields : Room.Weapons;
   if (sys.lock !== want) out.push({ kind: 'laserLock', room: want });
-  const m = missileOf(t, 0);
-  if (m) return pursuitTurn(m.heading, e.x - m.x, e.y - m.y);
+  if (missileOf(t, 0)) return;
   if (canLaunch(t, 0) && ex * ex + ey * ey > LASER_RANGE * LASER_RANGE && t.tick - pair.lastLaunch >= MISSILE_GAP) {
     out.push({ kind: 'missileLaunch' }); pair.lastLaunch = t.tick;
-    return 0;
+    return;
   }
-  if (!canCharge(t, 0)) return 0;
+  if (!canCharge(t, 0)) return;
   if (!sys.fireHeld) out.push({ kind: 'laserCharge', held: true });
   else if (laserFull(t, 0) && (laserEligible(t, 0, target) || sys.laserHold >= LASER_HOLD_TICKS - 1)) out.push({ kind: 'laserCharge', held: false });   // release on a shot, or before the vent
-  return 0;
 }
 
 /** This tick's input for the duel: both players' held input and commands, stamped with the duel's tick. */
@@ -298,7 +310,7 @@ export function scriptedInput(pair: ScriptedPair, d: DuelState): DuelInput {
       if (level !== d.throttle) cmds[pid]!.push({ kind: 'throttle', level });
       held[pid] = { moveX: axes.turn, moveY: 0, interactHeld: false };
     } else if (seat === d.weapons) {
-      held[pid] = { moveX: gunner(pair, d, cmds[pid]!), moveY: 0, interactHeld: false };
+      gunner(pair, d, cmds[pid]!);
     }
   }
   if (Seated.station[st.crew[0]!]! !== d.nav) pair.axes = { turn: 0, thrust: 0 };

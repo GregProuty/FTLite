@@ -126,9 +126,8 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
           <PixelText text={laser.note ?? laser.label} x={barX} y={laserY + 2} size={FONT_NATIVE} tint={CRT.mid} />
           {laser.note === null && <PixelText text={laser.value} x={right} y={laserY + 2} size={FONT_NATIVE} tint={CRT.main} anchorX={1} />}
           <Bar x={barX} y={laserY + 20} w={right - barX} h={4} fill={laser.fill} colour={CRT.main} />
-          <PixelText text="MISSILE" x={x0} y={missileY} size={FONT_NATIVE} tint={CRT.dim} />
+          <PixelText text="TORPEDO" x={x0} y={missileY} size={FONT_NATIVE} tint={CRT.dim} />
           <PixelText text={`MAG ${contact.weapons.missile.magazine}`} x={barX} y={missileY} size={FONT_NATIVE} tint={CRT.dim} />
-          <PixelText text="STEER A/D" x={right} y={missileY} size={FONT_NATIVE} tint={CRT.dim} anchorX={1} />
         </>
       )}
     </>

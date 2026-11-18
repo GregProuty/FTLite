@@ -1,14 +1,13 @@
-// The duel's combat draw lists for both console map views (H-1 spec §7 items 6 to 8): missiles with trails, the lock
-// marker on the enemy's locked room (both consoles, parent §7a), the Weapons layer (bearing ring, both laser arcs, the
-// enemy's bearing and range, the missile's predicted path) and the event effects. Pure, like tacticalModel, which it
+// The duel's combat draw lists for both console map views (H-1 spec §7 items 6 to 8): torpedoes as dots with trails
+// (homing torpedo spec §3), the lock marker on the enemy's locked room (both consoles, parent §7a), the Weapons layer
+// (bearing ring, both laser arcs, the enemy's bearing and range) and the event effects. Pure, like tacticalModel, which it
 // sits beside: the layer draws TacticalDraw and CombatDraw together.
-import { missileOf, targetOf } from '../../sim/tactical/state';
+import { targetOf } from '../../sim/tactical/state';
 import { laserEligible } from '../../sim/tactical/weapons';
-import { LASER_ARC_COS, LASER_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
+import { LASER_ARC_COS, LASER_RANGE, MISSILE_RADIUS, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { ROOM_NAMES } from '../duel/interiorModel';
 import { worldToScreen, type Point } from './camera';
 import { interpolatedMissile, type FxState } from './fxModel';
-import { predictMissilePath } from './missilePath';
 import {
   BEARING_RING_ZOOM, headingAngle, interpolatedShip, drawnScale, ringDraw, SHIP_CHEVRON_PX, type Label, type PrevBody, type RingDraw,
   type TacticalModelInput
@@ -24,11 +23,13 @@ export interface WeaponsDraw {
   ownArc: ArcDraw; enemyArc: ArcDraw | null; ring: RingDraw | null;
   /** The enemy's bearing and range from the own ship, and whether the laser would hit now (top centre of the view). */
   info: Label; inArc: boolean;
-  /** In missile mode: the missile's predicted path, its first point the drawn glyph position. */
-  missilePath: Point[]; missileOrigin: Point | null;
 }
 export interface LockDraw { x: number; y: number; r: number; room: number; label: Label }
-export interface MissileDraw { x: number; y: number; angle: number; crew: boolean; trail: Point[] }
+/** A torpedo in flight (homing torpedo spec §3): a filled dot of radius `r` screen px (TORPEDO_DOT_PX or more), the
+ *  crew's or the Hunter's, with its short fading trail. */
+export interface MissileDraw { x: number; y: number; r: number; crew: boolean; trail: Point[] }
+/** A torpedo's dot radius in screen px at any zoom, at least (homing torpedo spec §3). */
+export const TORPEDO_DOT_PX = 4;
 export interface EffectDraw { kind: 'beam' | 'burst' | 'spark'; x1: number; y1: number; x2: number; y2: number; r: number; colour: number; alpha: number }
 /** Duel polish i spec §A: the Hunter's held charge as a ring about its drawn marker, the arc from 12 o'clock clockwise
  *  `fill` of the way round; at a full charge the whole ring at the pulse `alpha` and the label FIRING. */
@@ -47,8 +48,6 @@ export interface CombatModelInput extends TacticalModelInput {
   enemyArrow?: Point | null;
   /** Each ship's missile at the previous tick (null when none flew). */
   missilePrev: readonly (PrevBody | null)[];
-  /** The gunner's effective missile steering the runtime last sent (0 when Weapons is empty). */
-  steer: number;
   fx: FxState;
 }
 
@@ -70,7 +69,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
     const m = interpolatedMissile(state, input.missilePrev, alpha, i);
     if (!m) continue;
     const p = toS(m.x, m.y);
-    missiles.push({ x: p.x, y: p.y, angle: headingAngle(m.h), crew: i === 0, trail: input.fx.trails[i as 0 | 1].map((q) => toS(q.x, q.y)) });
+    missiles.push({ x: p.x, y: p.y, r: Math.max(TORPEDO_DOT_PX, MISSILE_RADIUS * z), crew: i === 0, trail: input.fx.trails[i as 0 | 1].map((q) => toS(q.x, q.y)) });
   }
 
   // The lock marker sits on the locked room of the enemy's hull (the scout), or on the chevron when the ship is drawn as one.
@@ -86,16 +85,12 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   let weapons: WeaponsDraw | null = null;
   if (input.console === 'weapons') {
     const dx = enemy.x - own.x, dy = enemy.y - own.y, range = Math.round(Math.sqrt(dx * dx + dy * dy)), inArc = laserEligible(state, 0, target);
-    const flying = missileOf(state, 0), drawn = interpolatedMissile(state, input.missilePrev, alpha, 0);
     weapons = {
       ownArc: { x: ownS.x, y: ownS.y, r: LASER_RANGE * z, angle: headingAngle(own.h), half: ARC_HALF },
       enemyArc: input.ships.includes(target) ? { x: enemyS.x, y: enemyS.y, r: LASER_RANGE * z, angle: headingAngle(enemy.h), half: ARC_HALF } : null,
       ring: z >= BEARING_RING_ZOOM ? ringDraw(ownS.x, ownS.y) : null,
       info: { text: `ENEMY BRG ${String(bearingDeg(dx, dy)).padStart(3, '0')}  RNG ${range}  ${inArc ? 'IN ARC' : 'NO SHOT'}`, x: ((input.reserveLeft ?? 0) + vp.w - input.reserveRight) / 2, y: 12 },
-      inArc,
-      missileOrigin: drawn ? toS(drawn.x, drawn.y) : null,
-      // The path starts at the drawn (interpolated) glyph and continues through the sim's predicted points.
-      missilePath: flying && drawn ? [toS(drawn.x, drawn.y), ...predictMissilePath(state, flying, input.steer).map((q) => toS(q.x, q.y))] : []
+      inArc
     };
   }
 

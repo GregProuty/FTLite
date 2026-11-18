@@ -119,7 +119,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
     rows.push(row('ENEMY', `${Math.round(Math.sqrt(dx * dx + dy * dy))}`));
     rows.push(row('BEARING', String(bearingDeg(dx, dy)).padStart(3, '0')));
     const m = missileOf(t, target);
-    if (m && (m.x - crew.x) ** 2 + (m.y - crew.y) ** 2 <= INCOMING_RANGE * INCOMING_RANGE) rows.push(em(heading('MISSILE INBOUND', WARN), 'alert'));
+    if (m && (m.x - crew.x) ** 2 + (m.y - crew.y) ** 2 <= INCOMING_RANGE * INCOMING_RANGE) rows.push(em(heading('TORPEDO INBOUND', WARN), 'alert'));
   }
   return rows;
 }
@@ -127,7 +127,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
 /** Key help under the rows, per screen (spec §5 table). */
 export function readoutHelp(mode: ReadoutMode): string[] {
   if (mode === 'helm') return ['W/S THROTTLE   A/D TURN', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];
-  if (mode === 'weapons') return ['SPACE HOLD: CHARGE, FIRE', 'F MISSILE   A/D STEER', 'E/Q LOCK   C CAMERA', 'X STAND   TAB SWITCH', 'ESC PAUSE'];
+  if (mode === 'weapons') return ['SPACE HOLD: CHARGE, FIRE', 'F TORPEDO', 'E/Q LOCK   C CAMERA', 'X STAND   TAB SWITCH', 'ESC PAUSE'];
   return ['WASD WALK', 'E SIT   HOLD E REPAIR/EXTINGUISH', 'STAND BY DOWNED TO REVIVE', 'WHEEL ZOOM  DRAG PAN  C FOLLOW', 'TAB SWITCH   ESC PAUSE'];
 }
 

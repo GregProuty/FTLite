@@ -44,10 +44,11 @@ describe('the console screen (spec §2)', () => {
     const { duel } = mount(); act(() => duel.frame(view(weaponsConsole)));
     expect(find('HULL')).toMatchObject({ x: STATUS.x + PAD });
     expect(find('TAB  SWITCH')).toBeUndefined();
-    for (const n of ['tab-helm', 'tab-weapons', 'tab-ship', 'fire', 'lock-0', 'lock-1', 'lock-2', 'launch', 'steer-left', 'steer-right', 'zoom-in', 'zoom-out', 'snap'])
+    for (const n of ['tab-helm', 'tab-weapons', 'tab-ship', 'fire', 'lock-0', 'lock-1', 'lock-2', 'launch', 'zoom-in', 'zoom-out', 'snap'])
       expect([n, btn(n)]).not.toEqual([n, null]);
     expect(btn('tab-weapons').dataset.uiButton).toBe('lit'); expect(btn('lock-1').dataset.uiButton).toBe('lit');
-    expect(btn('steer-left').dataset.uiButton).toBe('disabled');
+    for (const n of ['steer-left', 'steer-right']) expect([n, btn(n)]).toEqual([n, null]);   // homing torpedo spec §3: no STEER
+    expect(find('TORPEDO')).toBeDefined(); expect(find('STEER')).toBeUndefined(); expect(find('MISSILE')).toBeUndefined();
     expect(find('ZOOM 0.90')).toBeUndefined(); expect(find('0.90')).toBeDefined(); expect(find('CAMERA')).toBeDefined();
   });
   it('on the Helm: six throttle notches, the set one lit with the pointer and 25 up to it filled; the turn holds; no THRUST or REV hold', () => {

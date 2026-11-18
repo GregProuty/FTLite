@@ -9,11 +9,11 @@ import { FONT_NATIVE, FONT_SIZE, textPx } from '../theme';
 import { SHIP_RADIUS } from '../../sim/tactical/tuning';
 import type { CrtScale } from '../crt';
 import { createCrtFilters, type CrtFilters } from './crtFilter';
-import { blink, CRT, DAMAGE_BLINK_HZ, DASH, DOT, DOT_GAP, ENEMY_BLINK_HZ, GAP, HATCH_ANGLE, HATCH_SPACING, roomLevel, roomLook } from './crtTheme';
+import { blink, CRT, DAMAGE_BLINK_HZ, DASH, ENEMY_BLINK_HZ, GAP, HATCH_ANGLE, HATCH_SPACING, roomLevel, roomLook } from './crtTheme';
 import { dashCircle, dashLine, hatchSegments } from './dashModel';
 import { asteroidShape, CHEVRON_SIZE, type ArrowTarget, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
 import { ENEMY_RING, HULLS } from './hullModel';
-import type { ArcDraw, CombatDraw } from './weaponsModel';
+import type { ArcDraw, CombatDraw, MissileDraw } from './weaponsModel';
 import type { Viewport } from './camera';
 import { CALLOUT_MAX } from './hitModel';
 
@@ -153,12 +153,8 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
     else segments(g, dashLine(arcOutline(a, from, to), DASH, GAP, seg), 1, CRT.dim);
   }
 
-  function missileGlyph(g: Graphics, x: number, y: number, angle: number, crew: boolean, t: number): void {
-    const fx = Math.sin(angle), fy = -Math.cos(angle), rx = -fy, ry = fx, s = 6;
-    g.poly([x + fx * s, y + fy * s, x - fx * s + rx * s * 0.55, y - fy * s + ry * s * 0.55, x - fx * s - rx * s * 0.55, y - fy * s - ry * s * 0.55]);
-    if (crew) g.fill(CRT.hot);
-    else g.fill(CRT.glass).stroke({ width: 2, color: blink(t, ENEMY_BLINK_HZ) ? CRT.hot : CRT.main });   // in phase with the enemy ring
-  }
+  /** A torpedo (homing torpedo spec §3): a filled dot, the crew's bright `main`, the Hunter's `hot`. */
+  function torpedoDot(g: Graphics, m: MissileDraw): void { g.circle(m.x, m.y, m.r).fill(m.crew ? CRT.main : CRT.hot); }
 
   function arrowGlyph(g: Graphics, x: number, y: number, angle: number, target: ArrowTarget): void {
     const fx = Math.sin(angle), fy = -Math.cos(angle), rx = -fy, ry = fx, s = target === 'missile' ? 7 : 10;
@@ -234,20 +230,10 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       }
       fill(ring, ringLabels);
 
-      // Combat: missile trails and glyphs, the predicted missile path, the lock marker, then the event effects on top.
+      // Combat: torpedo trails (short, fading, faint) and dots, the lock marker, then the event effects on top.
       for (const m of c?.missiles ?? []) {
-        if (m.crew) m.trail.forEach((p, k) => { if (k > 0) { const q = m.trail[k - 1]!; combat.moveTo(q.x, q.y).lineTo(p.x, p.y).stroke({ width: 2, color: CRT.mid, alpha: 0.6 * (k / m.trail.length) }); } });
-        else {
-          line.length = 0; for (const p of m.trail) line.push(p.x, p.y);
-          segments(combat, dashLine(line, DASH, GAP, seg), 2, CRT.dim, 0.9);
-        }
-        missileGlyph(combat, m.x, m.y, m.angle, m.crew, t);
-      }
-      if (wd && wd.missileOrigin && wd.missilePath.length > 0) {
-        line.length = 0; for (const p of wd.missilePath) line.push(p.x, p.y);
-        segments(combat, dashLine(line, DOT, DOT_GAP, seg), 1, CRT.main);
-        const end = wd.missilePath[wd.missilePath.length - 1]!;
-        combat.circle(end.x, end.y, 3).stroke({ width: 1, color: CRT.main });
+        m.trail.forEach((p, k) => { if (k > 0) { const q = m.trail[k - 1]!; combat.moveTo(q.x, q.y).lineTo(p.x, p.y).stroke({ width: 2, color: CRT.dim, alpha: 0.6 * (k / m.trail.length) }); } });
+        torpedoDot(combat, m);
       }
       const lk = c?.lock ?? null;
       if (lk) {

@@ -186,9 +186,8 @@ export interface DuelRuntime {
   /** The interior's zoom and follow (interior zoom spec): kept across pause, re-following on Tab, reset each round. */
   readonly interiorCamera: InteriorCamera;
   /** The Helm's axes the last tick flew: the held turn and the throttle's thrust (Artemis spec §5.3). Zero while the
-   *  Helm is empty or the round is decided. The gunner's steering the last tick sent (zero while Weapons is empty). */
+   *  Helm is empty or the round is decided. */
   axes(): Axes;
-  steer(): number;
   /** The held input the last tick sent, per player. */
   held(): readonly HeldInput[];
   alpha(): number;
@@ -233,7 +232,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   // queued after a Tab waits here until the Tab's presence tick has run, then goes out on the following tick.
   let switching = false, deferred: { player: number; command: DuelCommand }[] = [];
   let lastHeld: HeldFlags = NO_HELD_FLAGS;   // the last frame's merged held flags (Artemis spec §6.1)
-  let activeHeld: HeldInput = NEUTRAL, sentHeld: readonly HeldInput[] = [NEUTRAL, NEUTRAL], sentAxes: Axes = NO_AXES, sentSteer = 0;
+  let activeHeld: HeldInput = NEUTRAL, sentHeld: readonly HeldInput[] = [NEUTRAL, NEUTRAL], sentAxes: Axes = NO_AXES;
   let menuAsked = false;
   let chargeSent = false, events: ViewEvent[] = [], results: DuelResult[] = [], counts = hitCounts(d), lastTickTime: number | null = null, frameAlpha = 1;
   let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [], cameras = { helm: createCamera(), weapons: createCamera() };
@@ -284,9 +283,8 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       if (running && d.tactical.outcome !== Outcome.Running) deps.onRound?.(duelRoundRecord(duelEndSummary(telemetry), d.round, d.tactical.seed, d.baseTick));
     }
     sentHeld = held;
-    const helm = attendant(d.nav), gunner = attendant(d.weapons);
+    const helm = attendant(d.nav);
     sentAxes = helm >= 0 && !ended() ? { turn: Math.sign(held[helm]!.moveX) || 0, thrust: throttleThrust(d.throttle) } : NO_AXES;   // Artemis spec §5.3
-    sentSteer = gunner >= 0 ? Math.sign(held[gunner]!.moveX) || 0 : 0;
     for (const e of d.tactical.events) events.push(e);
     // Contact sparks (spec §7 item 8): the sim emits no contact events, so an increase in a hit counter is one.
     const now = hitCounts(d);
@@ -312,7 +310,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   /** A new round (H-2 spec §7): its seed and presence came with the rematch; the view's state starts again. */
   function newRound(): void {
     round = d.round; pending = []; switching = false; deferred = [];
-    activeHeld = NEUTRAL; sentHeld = [NEUTRAL, NEUTRAL]; sentAxes = NO_AXES; sentSteer = 0;
+    activeHeld = NEUTRAL; sentHeld = [NEUTRAL, NEUTRAL]; sentAxes = NO_AXES;
     chargeSent = false; events = []; counts = hitCounts(d);
     capture(); freshCameras(); cameraInput.reset(); resetInteriorCamera(interiorCamera);
     deps.clearKeys?.();
@@ -388,7 +386,6 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       return d.present[other] && sentHeld[other]!.interactHeld && repairInReach(d, other) >= 0 ? 'REPAIRING' : 'WALKING';
     },
     axes: () => sentAxes,
-    steer: () => sentSteer,
     held: () => sentHeld,
     alpha: () => frameAlpha,
     frame(dt) {

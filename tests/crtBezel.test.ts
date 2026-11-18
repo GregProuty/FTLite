@@ -42,7 +42,7 @@ describe('every edge-anchored placement lies inside the bezel (CRT map spec sect
     state.ships[1].x = s.x + 600; state.ships[1].y = s.y - 300;
     let checked = 0;
     for (const camera of cameras(s.x, s.y)) for (const console of ['helm', 'weapons'] as const) {
-      const input = { state, prev: [], alpha: 1, camera, viewport: vp, console, axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: READOUT_COLUMN, spreadArrows: true, missilePrev: [], steer: 0, fx: createFx() };
+      const input = { state, prev: [], alpha: 1, camera, viewport: vp, console, axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: READOUT_COLUMN, spreadArrows: true, missilePrev: [], fx: createFx() };
       const d = tacticalModel(input), c = combatModel(input), rects: Rect[] = [];
       for (const l of d.grid.columns) rects.push(ink('column', l.text, Math.round(l.x), Math.round(l.y), 0.5, 0));
       for (const l of d.grid.rows) rects.push(ink('row', l.text, Math.round(l.x), Math.round(l.y), 0, 0.5));

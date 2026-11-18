@@ -11,8 +11,6 @@ export interface ShipInput {
   weapons: boolean;
   /** Turn and thrust, read only while `helm`. */
   axes: Axes;
-  /** Missile steering turn axis, read only while `weapons` and a missile flies. */
-  steer: number;
   /** `laserLock {room}`: the target Room to lock, or null for no command this tick. */
   laserLock: number | null;
   /** `laserCharge {held}`: true = press, false = release, null = no command this tick. */
@@ -22,9 +20,9 @@ export interface ShipInput {
 }
 
 /** A crew that sits at both consoles and does nothing. */
-export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, steer: 0, laserLock: null, laserCharge: null, missileLaunch: false };
+export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, laserCharge: null, missileLaunch: false };
 /** Nobody at either console: a ship nobody flies. */
-export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, steer: 0, laserLock: null, laserCharge: null, missileLaunch: false };
+export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, laserCharge: null, missileLaunch: false };
 
 /** Whether ship i's laser is fully charged. */
 export function laserFull(state: TacticalState, i: number): boolean { return state.systems[i]!.laserCharge >= classOf(state, i).slots.laser.chargeUnits; }

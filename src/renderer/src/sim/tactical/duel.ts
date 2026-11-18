@@ -29,7 +29,7 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTu
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) applyWeaponsInput(state, i, inputs[i]!);
   if (hunter >= 0 && state.systems[hunter]!.missilesLaunched > hunterLaunches) state.hunter.lastLaunch = state.tick;   // a refused launch costs no cooldown
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) flySlot(state, i, inputs[i]!.helm ? inputs[i]!.axes : NO_AXES, tuning);
-  for (let i = 0; i < n; i++) if (state.ships[i]!.active) flyMissile(state, i, inputs[i]!.weapons ? inputs[i]!.steer : 0);
+  for (let i = 0; i < n; i++) if (state.ships[i]!.active) flyMissile(state, i);   // homing torpedo spec: it steers itself, attended or not
   resolveContacts(state);
   resolveMissiles(state);
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) tickWeapons(state, i, inputs[i]!);

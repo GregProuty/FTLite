@@ -30,11 +30,10 @@ function fullFrame(console: 'helm' | 'weapons'): { d: TacticalDraw; c: CombatDra
   const c: CombatDraw = {
     weapons: console === 'weapons' ? {
       ownArc: { x: 500, y: 360, r: 300, angle: 0.4, half: Math.PI / 3 }, enemyArc: { x: 760, y: 260, r: 300, angle: 3, half: Math.PI / 3 }, ring,
-      info: { text: 'ENEMY BRG 055  RNG 294  IN ARC', x: 507, y: 12 }, inArc: true,
-      missilePath: [{ x: 560, y: 320 }, { x: 600, y: 300 }, { x: 650, y: 290 }], missileOrigin: { x: 560, y: 320 }
+      info: { text: 'ENEMY BRG 055  RNG 294  IN ARC', x: 507, y: 12 }, inArc: true
     } : null,
     lock: { x: 770, y: 262, r: 12, room: 1, label: { text: 'LOCK SHIELDS', x: 800, y: 252 } },
-    missiles: [{ x: 560, y: 320, angle: 1, crew: true, trail: trail(560, 320) }, { x: 700, y: 330, angle: 4, crew: false, trail: trail(700, 330) }],
+    missiles: [{ x: 560, y: 320, r: 4, crew: true, trail: trail(560, 320) }, { x: 700, y: 330, r: 4, crew: false, trail: trail(700, 330) }],
     effects: [
       { kind: 'beam', x1: 760, y1: 260, x2: 500, y2: 360, r: 0, colour: BEAM_HIT, alpha: 0.9 }, { kind: 'beam', x1: 500, y1: 360, x2: 760, y2: 200, r: 0, colour: BEAM_MISS, alpha: 0.4 },
       { kind: 'burst', x1: 640, y1: 300, x2: 640, y2: 300, r: 20, colour: BURST, alpha: 0.8 }, { kind: 'burst', x1: 660, y1: 300, x2: 660, y2: 300, r: 30, colour: BURST, alpha: 0.2 },
