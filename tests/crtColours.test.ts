@@ -29,7 +29,8 @@ function fullFrame(console: 'helm' | 'weapons', inRange = true): { d: TacticalDr
     gravity: console === 'helm' ? [{ x: 900, y: 500, r: 90, g: 1, label: { text: 'G 1', x: 904, y: 396 } }, { x: 900, y: 500, r: 140, g: 0.5, label: { text: 'G 0.5', x: 904, y: 346 } }] : undefined,
     arrows: (['ship', 'enemy', 'planet', 'missile'] as const).map((target, k) => ({ target, x: 28, y: 100 + 120 * k, angle: -Math.PI / 2, distance: 900, label: `${target.toUpperCase()} 900` })),
     overlay: { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: true, paused: false },
-    stars: { x: 10, y: 20 }
+    stars: { x: 10, y: 20 },
+    rockMarks: [{ x: 300, y: 600, r: 20, weapon: 'laser', hover: false }, { x: 360, y: 600, r: 24, weapon: 'torpedo', hover: false }, { x: 300, y: 640, r: 12, weapon: 'laser', hover: true }, { x: 340, y: 640, r: 12, weapon: 'torpedo', hover: true }],
   };
   const c: CombatDraw = {
     weapons: console === 'weapons' ? {

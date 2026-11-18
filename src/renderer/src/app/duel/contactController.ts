@@ -21,7 +21,7 @@ export interface ContactSync { shown: boolean; station: ConsoleStation | null; t
 /** What the clicks and keys asked the duel mode to send since the last take: a designation (−1, 0 or 1) and a scan.
  *  `torpStep` (present only when non-zero, FTL targeting spec §1): E and Q while the torpedo is picked up step its own
  *  target room this many times (+ next, − previous; see stepTorpRoom). */
-export interface ContactRequests { designate: number | null; scan: ContactId | null; torpStep?: number }
+export interface ContactRequests { designate: number | null; scan: ContactId | null; torpStep?: number; rockLock?: { weapon: Weapon; rock: number } }
 export interface ContactController {
   state(): ContactState | null;
   /** A map click: on Helm or Weapons open on the contact, switch to it (disarmed), or close when it is the shown one; on
@@ -34,6 +34,9 @@ export interface ContactController {
   /** LASER: toggles the aim while the enemy is shown (Feel-i: at any scan level, the "?" silhouette's rooms), never on
    *  Science; a no-op on the derelict. */
   arm(): void;
+  /** Spike ii §6.5: a rock click while a weapon is picked up: request rockLock { weapon, rock: slot }, then disarm the
+   *  pick-up and close the window. A no-op with no weapon picked up. */
+  pickRock(slot: number): void;
   /** FTL targeting spec §1, a Weapons card or 1 / 2 (on Helm or Weapons, never Science): pick `weapon` up, opening the
    *  window on the enemy armed, at any scan level. Below Level 1 it also requests a scan of the enemy (the SCAN button's
    *  request; the duel mode sends it only while the scan rules allow), and the aim stays armed until the rooms arrive.
@@ -67,7 +70,7 @@ export interface ContactController {
 export type ContactActions = Pick<ContactController, 'close' | 'arm' | 'cancelAim' | 'pick' | 'scan' | 'pickUp'>;
 
 export function createContactController(): ContactController {
-  let st: ContactState | null = null, designate: number | null = null, scanned: ContactId | null = null, weapon: Weapon = 'laser', torpStep = 0;
+  let st: ContactState | null = null, designate: number | null = null, scanned: ContactId | null = null, weapon: Weapon = 'laser', torpStep = 0, rockLock: { weapon: Weapon; rock: number } | null = null;
   // What the last sync recorded (the last drawn frame).
   let allowed = false, station: ConsoleStation | null = null, epoch: number | null = null, enemyKnown = 2;
   const science = (): boolean => station === 'science';
@@ -117,6 +120,11 @@ export function createContactController(): ContactController {
       lock(room, weapon);
       st = { ...st, aim: false };
     },
+    pickRock(slot) {
+      if (!st?.aim) return;
+      rockLock = { weapon, rock: slot };
+      st = null;
+    },
     intercept(code) {
       if (code === 'Escape') return allowed && st !== null ? c.escape() : false;
       if (!allowed) return false;
@@ -132,8 +140,8 @@ export function createContactController(): ContactController {
       return false;
     },
     takeRequests() {
-      const out: ContactRequests = { designate, scan: scanned, ...(torpStep !== 0 ? { torpStep } : {}) };
-      designate = null; scanned = null; torpStep = 0;
+      const out: ContactRequests = { designate, scan: scanned, ...(torpStep !== 0 ? { torpStep } : {}), ...(rockLock ? { rockLock } : {}) };
+      designate = null; scanned = null; torpStep = 0; rockLock = null;
       return out;
     }
   };

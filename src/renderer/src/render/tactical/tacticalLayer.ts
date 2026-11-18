@@ -265,6 +265,16 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         }
       }
 
+      // Spike ii §6.5: rock brackets: the laser's four hot corners, the torpedo's dashed main ring; a hover mark in mid.
+      for (const m of d.rockMarks ?? []) {
+        const colour = m.hover ? CRT.mid : m.weapon === 'laser' ? CRT.hot : CRT.main;
+        if (m.weapon === 'laser') {
+          const k = Math.max(4, m.r * 0.45);
+          for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const)
+            marks.moveTo(m.x + sx * m.r, m.y + sy * (m.r - k)).lineTo(m.x + sx * m.r, m.y + sy * m.r).lineTo(m.x + sx * (m.r - k), m.y + sy * m.r).stroke({ width: 2, color: colour });
+        } else segments(marks, dashCircle(m.x, m.y, m.r, DASH, GAP, seg), 2, colour);
+      }
+
       // Weapons update spec §2: the torpedo's range circle, dashed, mid while the target is in range at Weapons, else dim.
       const tr = c?.torpedoRange ?? null;
       if (tr) segments(arcs, dashCircle(tr.x, tr.y, Math.max(1, tr.r), DASH, GAP, seg), 1, tr.lit ? CRT.mid : CRT.dim);

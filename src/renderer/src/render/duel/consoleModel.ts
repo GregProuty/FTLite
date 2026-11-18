@@ -23,8 +23,10 @@ export interface HelmPanel { heading: number; speed: number; held: HeldFlags; th
 /** Feel-i (console feel spec §3): `laserReason` the LASER card's why-not (`OUT OF ARC: HELM TURN RIGHT`, `OUT OF RANGE
  *  612/450`, `WEAPONS OFFLINE`) or FIRING, null while it simply charges; `goal` the card's goal glow (§1: untargeted, and
  *  not yet picked up this sit). */
+/** Spike ii §6.5: whether the laser's rock target, the torpedo's next rock target and the flying torpedo's rock are set. */
 export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: string; canLaunch: boolean; torpedoInRange: boolean; missileFlying: boolean; fireHeld: boolean; held: HeldFlags; freq: number; weakFreq: number | null;
-  laserTarget: number; torpTarget: number; burst: number; laserReason?: string | null; goal?: boolean; refused?: RefusedView | null }
+  laserTarget: number; torpTarget: number; burst: number; laserReason?: string | null; goal?: boolean; refused?: RefusedView | null;
+  laserRock?: boolean; torpRock?: boolean; torpRockFlying?: boolean }
 /** The Science block (Sci-1 spec §7.3): the hover readout, or null with no cursor over the map. */
 export interface SciencePanel { hover: string | null }
 export interface ConsoleView {
@@ -87,7 +89,7 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   const flying = missileOf(t, 0) !== null, sys = t.systems[0];
   const weapons: WeaponsPanel | null = station === 'weapons'
     ? { lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null,
-      laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock, burst: classOf(t, 0).slots.laser.shots,
+      laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock, burst: classOf(t, 0).slots.laser.shots, laserRock: sys.laserRock >= 0, torpRock: sys.torpRock >= 0, torpRockFlying: sys.torpRockFlying >= 0,
       laserReason: laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), laserOffline(t, 0)), goal: (i.goal ?? false) && !sys.laserTargeted,
       refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null }
     : null;

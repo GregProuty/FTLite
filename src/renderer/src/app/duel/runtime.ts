@@ -226,7 +226,7 @@ export interface DuelRuntime {
   dispose(): void;
 }
 
-const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'laserCharge' || c.kind === 'missileLaunch';
+const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'rockLock' || c.kind === 'laserCharge' || c.kind === 'missileLaunch';
 /** The commands only a seated console's player sends (Weapons, the Helm's throttle, Sci-1's three): a Tab or a stand drops them. */
 const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'heading' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';
 const NO_REQUESTS: ContactRequests = { designate: null, scan: null };
@@ -407,6 +407,9 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });   // a room click or a card's clear
     // The torpedo's target (FTL targeting spec §1): a room click or a card's clear, then E / Q while it is picked up.
     if (k.torpTo !== undefined && k.torpTo !== null && k.torpTo >= -1 && k.torpTo <= 2) queue({ kind: 'torpLock', room: k.torpTo });
+    // Spike ii §6.5: a rock drop (the contact controller) or a card's clear (a right-click) sends rockLock.
+    if (requests.rockLock) queue({ kind: 'rockLock', weapon: requests.rockLock.weapon, rock: requests.rockLock.rock });
+    if (k.rockTo) queue({ kind: 'rockLock', weapon: k.rockTo.weapon, rock: k.rockTo.rock });
     if (requests.torpStep) {
       // From the torpedo's own target (the latest queued one, else the sim's), never the laser's.
       const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'torpLock')?.command;

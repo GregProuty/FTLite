@@ -8,6 +8,7 @@ import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
 import { REPAIR_RATE_SOLO } from '../src/renderer/src/sim/duel/tuning';
 import { emptyPresses, NO_HELD_FLAGS, type KeyAction, type KeySample, type PointerSample } from '../src/renderer/src/app/duel/input';
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
+import type { ContactRequests } from '../src/renderer/src/app/duel/contactController';
 import { createContactController } from '../src/renderer/src/app/duel/contactController';
 import { followingSeed } from '../src/renderer/src/sim/duel/seeds';
 import { ZOOM_DEFAULT, ZOOM_STEP } from '../src/renderer/src/render/tactical/camera';
@@ -45,11 +46,11 @@ const idle = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHe
 /** Scripted keys: the test sets held keys and presses, `frame()` samples them once and runs due ticks. */
 function rig(seed = 5, onRound?: (record: DuelRoundRecord) => void, seated = true) {
   const time = fakeTime();
-  let keys = idle(), cleared = 0, requests: { designate: number | null; scan: 0 | 1 | null; torpStep?: number } = { designate: null, scan: null };
+  let keys = idle(), cleared = 0, requests: ContactRequests = { designate: null, scan: null };
   const pointer: PointerSample = { x: null, y: null, wheel: 0, dragX: 0, dragY: 0 };
   const rt = createDuelRuntime({
     now: time.now, scheduler: time.scheduler, seed, viewport: { w: 1280, h: 720 }, layout,
-    sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses(), lockTo: null, torpTo: null }; return k; },
+    sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses(), lockTo: null, torpTo: null, rockTo: null }; return k; },
     takeContactRequests: () => { const r = requests; requests = { designate: null, scan: null }; return r; },
     samplePointer: () => ({ ...pointer }),
     clearKeys: () => { keys = idle(); cleared++; }, onRound
@@ -441,6 +442,21 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     expect(rt.held()[0]).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
     expect(rt.axes()).toEqual({ turn: 0, thrust: 0 });
     rt.dispose();
+  });
+  it("spike ii §6.5: a rock drop and a card's clear send rockLock from Weapons only; the sim's targets follow", () => {
+    const { rt, ask, tick } = rig();
+    rt.frame(1 / 60); tick();
+    ask({ rockLock: { weapon: 'laser', rock: 0 } }); tick();
+    expect(rt.duel.tactical.systems[0].laserRock).toBe(-1);   // at the Helm: no weapons commands
+    rt.dispose();
+    const g = rig(); g.press('switch'); g.tick();
+    const s = g.rt.duel.tactical.systems[0];
+    g.ask({ rockLock: { weapon: 'laser', rock: 0 } }); g.tick(); expect([s.laserRock, s.laserTargeted]).toEqual([0, true]);
+    g.ask({ rockLock: { weapon: 'torpedo', rock: 0 } }); g.tick(); expect([s.torpRock, s.torpLock]).toEqual([0, -1]);
+    g.hold({ rockTo: { weapon: 'laser', rock: -1 } }); g.tick(); expect([s.laserRock, s.laserTargeted]).toEqual([-1, false]);
+    g.hold({ rockTo: { weapon: 'torpedo', rock: -1 } }); g.tick(); expect(s.torpRock).toBe(-1);
+    expect(g.rt.lastResults().filter((r) => r.status === 'rejected')).toEqual([]);
+    g.rt.dispose();
   });
 });
 

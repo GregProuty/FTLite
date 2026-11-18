@@ -23,7 +23,7 @@ import { countSit, createSitTracker, frameZoom, sitCard, trackSit, type SitSeat 
 import { shakeScale } from '../../render/shake';
 import { flashesFor, pushHits } from '../../render/tactical/hitModel';
 import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
-import { interpolatedShip, pickContact, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
+import { interpolatedShip, pickContact, pickRock, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
 import { combatModel } from '../../render/tactical/weaponsModel';
 import { screenToWorld, worldToScreen, zoomTo, type Camera } from '../../render/tactical/camera';
 import { screenPan, worldPan } from '../../audio/voices';
@@ -175,8 +175,12 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const station = hidden ? null : consoleStation(d, source.active());
       const onMap = view !== 'interior' && (station === 'helm' || station === 'weapons' || station === 'science');   // Sci-1 spec §7.2: the window on all three
       const click = options.takeClick?.() ?? null;   // drained every frame, so a click never waits for a later frame
-      if (contact && click && onMap)
-        contact.click(pickContact({ state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport }, click));
+      if (contact && click && onMap) {
+        // Spike ii §6.5: a ship contact under the pointer wins; else, with a weapon picked up, a rock under it takes the drop.
+        const at = { state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport }, ship = pickContact(at, click);
+        const rock = ship === null && contact.aimWeapon() !== null ? pickRock(at, click) : null;
+        if (rock !== null) contact.pickRock(rock); else contact.click(ship);
+      }
       // Feel-ii §1.1: the Helm's right button aims the held heading. A press or a release on the map asks for the bearing from
       // the own ship's drawn marker to the pointer (on the ship itself: clear); while it is held, a preview marker follows.
       const aim = options.takeAim?.() ?? null, running = d.tactical.outcome === Outcome.Running;
@@ -245,11 +249,15 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       let overlayView: MapOverlayView | null = null;
       if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt, events, frozen ? 0 : dt, { camera: source.interiorCamera, active: source.active() });   // Art-i spec section 7: the light and feel hold while paused
       else {
+        // Spike ii §6.5: with a weapon picked up, the rock under the pointer (no ship contact there) wears a hover bracket.
+        const point = aimed !== null ? options.pointer?.() ?? null : null, pickAt = { state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport };
+        const hoverRock = point && pickContact(pickAt, point) === null ? pickRock(pickAt, point) : null;
         // Step 4: the map keeps its arrows and info line clear of the window while it is shown.
         const input = {
           state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport, console: view, axes: source.axes(),
           ships: fx.kill ? [0] : [0, 1], paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: { left: TABS_RIGHT, right: SIDE.x } } : { reserveRight: READOUT_COLUMN }), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
-          holdHeading: preview ?? d.holdHeading, holdPreview: preview !== null, gravity: view === 'helm', alert, pings   // Feel-ii
+          holdHeading: preview ?? d.holdHeading, holdPreview: preview !== null, gravity: view === 'helm', alert, pings,   // Feel-ii
+          rockHover: hoverRock !== null && aimed !== null ? { rock: hoverRock, weapon: aimed } : null
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting
