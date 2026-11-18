@@ -93,17 +93,17 @@ export const sectorWire: ModeWire<Snapshot> = {
   endRecord: (_p, { telemetry }) => z.object({ mode: z.literal('sector'), record: telemetry }).strict(),
   events: () => []
 };
-/** The duel's summary and round record (sim/duel/summary.ts), the fields of each in order. */
+/** The duel's summary and round record (sim/duel/summary.ts), the fields of each in order. Per-ship values are pairs; per-player values one per player (Sci-2). */
 function duelSummaryShape({ uint }: Primitives) {
-  const pair = z.tuple([uint, uint]);
+  const pair = z.tuple([uint, uint]), crew = z.array(uint).min(2).max(MAX_PLAYERS);   // Sci-2 spec §4.3: per-player values n long, ship pairs two
   const causes = z.array(z.enum(TERMINAL_CAUSES)).max(TERMINAL_CAUSES.length)
     .refine((list) => list.every((c, k) => k === 0 || TERMINAL_CAUSES.indexOf(list[k - 1]!) < TERMINAL_CAUSES.indexOf(c)), 'terminal causes out of order or repeated');
   const losses = z.object(Object.fromEntries(MISSILE_LOSSES.map((k) => [k, uint])) as Record<(typeof MISSILE_LOSSES)[number], typeof uint>).strict();
   return { outcome: z.number().int().min(0).max(3), ticks: uint, terminal: z.tuple([causes, causes]),
-    laserReleases: pair, laserHits: pair, missilesLaunched: pair, missileHits: pair, repairsFinished: pair,
+    laserReleases: pair, laserHits: pair, missilesLaunched: pair, missileHits: pair, repairsFinished: crew,
     laserMisses: pair, layersStripped: pair, missileLosses: z.tuple([losses, losses]), planetContacts: pair, asteroidContacts: pair,
     baits: uint, consoleSwaps: uint, helmEmptyTicks: uint, weaponsEmptyTicks: uint, enemyInArcTicks: uint, weaponsIdleTicks: uint,
-    repairsStarted: pair, walkingTicks: pair, repairingTicks: pair };
+    repairsStarted: crew, walkingTicks: crew, repairingTicks: crew };
 }
 /** The duel's wire (engine refactor spec §6): its own command kinds plus the core's setPaused, and the duel snapshot
  *  header (sim/duel/snapshot.ts). H-2 adds `rematch` and the `round` event; Artemis-ii adds `throttle`; Feel-ii adds `heading`. */
@@ -235,8 +235,9 @@ export const sectorCodec: CommandCodec<Snapshot> = codecFor<Snapshot>(sectorWire
 export function createMessageCodec(playerLimit = MAX_PLAYERS): MessageCodec<Snapshot> { return sectorCodec(playerLimit); }
 /** The duel's codec: duel command kinds only, the duel snapshot header, and the same results and events. */
 export const duelCodec: CommandCodec<DuelSnapshot> = codecFor<DuelSnapshot>(duelWire);
-/** Object validation of a duel publication, as validatePublication is for the sector. */
-export const duelPublicationSchema = messageSchemaFor(2, duelWire).publicationSchema;
+/** Object validation of a duel publication, as validatePublication is for the sector; built at the room limit, the crew
+ *  size is the snapshot header's (Sci-2 spec §4.3). */
+export const duelPublicationSchema = messageSchemaFor(MAX_PLAYERS, duelWire).publicationSchema;
 export const commandSchema = messageSchemaFor(MAX_PLAYERS, sectorWire).commandSchema;
 /** Object transport validation, independent of the unchanged local byte ceiling. */
 export const publicationSchema = messageSchemaFor(MAX_PLAYERS, sectorWire).publicationSchema;

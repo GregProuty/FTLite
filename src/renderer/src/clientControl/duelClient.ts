@@ -5,8 +5,8 @@
 import type { CommandId, DuelCommand, HeldInput, Link, PlayerId, PublishedState } from '../net/contracts';
 import { duelCodec, duelPublicationSchema } from '../net/codec';
 import type { ResolveLayout } from '../authority/rules';
-import { DUEL_PLAYERS, DUEL_SNAPSHOT_FORMAT, loadDuelSnapshot, restoreDuelSnapshot, validateDuelSnapshot, type DuelSnapshot } from '../sim/duel/snapshot';
-import { disposeDuel, type DuelState } from '../sim/duel/state';
+import { DUEL_SNAPSHOT_FORMAT, loadDuelSnapshot, restoreDuelSnapshot, validateDuelSnapshot, type DuelSnapshot } from '../sim/duel/snapshot';
+import { disposeDuel, DUEL_CREW_MAX, type DuelState } from '../sim/duel/state';
 import { SIM_VERSION } from '../sim/tuning';
 import { hashF64 } from '../../../shared/hash';
 import { createStreamClient } from './streamClient';
@@ -14,7 +14,7 @@ import type { AdmissionPolicy } from '../net/receivePolicy';
 
 export type DuelPublication = PublishedState<DuelSnapshot>;
 export interface DuelClientOptions { runId: string; contentDigest: string; resolveLayout: ResolveLayout; admissionPolicy?: AdmissionPolicy; remoteStreaming?: boolean }
-const codec = duelCodec(DUEL_PLAYERS);
+const codec = duelCodec(DUEL_CREW_MAX);
 
 /** Object validation of a duel publication: the shared schema, its tick and hash against the snapshot (as
  *  checkedPublication does), and the duel snapshot validator. */
@@ -42,7 +42,7 @@ export function createDuelStreamClient(link: Link, owned: readonly PlayerId[], o
         restoreDuelSnapshot(d, checked, options.contentDigest);
       },
       dispose: disposeDuel,
-      playerCount: () => DUEL_PLAYERS
+      playerCount: (d) => d.interior.playerCount
     },
     heldSequences: { has: (p) => p === 0 || p === 1, get: (p) => held[p]!, set: (p, v) => { held[p] = v; } },
     onAccepted(_replica, publication) { for (const p of [0, 1]) next[p] = Math.max(next[p]!, publication.commandHighWater[p]! + 1); }

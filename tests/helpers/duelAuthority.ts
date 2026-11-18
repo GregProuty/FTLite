@@ -13,11 +13,12 @@ import type { ReplayAction, ReplayFrame } from '../../src/renderer/src/sim/repla
 import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
 import { CUTTER } from './scriptedDuel';
 import { DUEL_LAYOUT } from '../../src/renderer/src/sim/duel/layout';
+import type { DuelCrew } from '../../src/renderer/src/sim/duel/state';
 
 /** The layouts a test duel may fly: the Cutter (the scripted scenes are tuned to it) and the Hound (the app's duel ship). */
 export const resolveCutter = (id: string) => { if (id === CUTTER.id) return CUTTER; if (id === DUEL_LAYOUT.id) return DUEL_LAYOUT; throw Error('unknown duel layout'); };
-export function duelInit(seed: number, runId = `duel-${seed}`, helmPlayer: 0 | 1 = 0, layout = CUTTER): DuelInit {
-  return { runId, layoutId: layout.id, layoutHash: deriveLayout(layout).layoutHash, simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, seed, playerCount: 2, helmPlayer };
+export function duelInit(seed: number, runId = `duel-${seed}`, helmPlayer = 0, layout = CUTTER, playerCount: DuelCrew = 2): DuelInit {
+  return { runId, layoutId: layout.id, layoutHash: deriveLayout(layout).layoutHash, simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, seed, playerCount, helmPlayer };
 }
 const deps = (init: DuelInit) => ({ init, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout: resolveCutter,
   clock: { nowMs: () => 0 }, scheduler: { schedule: () => () => {} }, onCrash(record: { error: string }) { throw Error(record.error); } });
@@ -60,4 +61,4 @@ export function throughBytes(cp: unknown): DuelCheckpoint {
   return duelRules.validateCheckpoint(JSON.parse(JSON.stringify(cp)), __GAMEPLAY_CONTENT_DIGEST__, resolveCutter) as DuelCheckpoint;
 }
 /** An init for the duel mode as the app registers it (the Hound): the real mode resolves no other layout. */
-export const modeDuelInit = (seed: number, runId = `duel-${seed}`, helmPlayer: 0 | 1 = 0): DuelInit => duelInit(seed, runId, helmPlayer, DUEL_LAYOUT);
+export const modeDuelInit = (seed: number, runId = `duel-${seed}`, helmPlayer = 0): DuelInit => duelInit(seed, runId, helmPlayer, DUEL_LAYOUT);

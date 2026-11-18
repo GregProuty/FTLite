@@ -9,7 +9,8 @@ import type { Checkpoint } from '../net/contracts';
 import { duelCodec } from '../net/codec';
 import { deriveLayout } from '../sim/ship/derived';
 import type { ShipLayout } from '../sim/ship/schema';
-import { DUEL_PLAYERS, duelRoundOf, duelSeedFacts, validateDuelSnapshot, type DuelSnapshot } from '../sim/duel/snapshot';
+import { duelRoundOf, duelSeedFacts, validateDuelSnapshot, type DuelSnapshot } from '../sim/duel/snapshot';
+import { DUEL_CREW_MAX, DUEL_CREW_MIN, type DuelCrew } from '../sim/duel/state';
 import { roundSeed } from '../sim/duel/seeds';
 import type { DuelTelemetry, MissileLoss } from '../sim/duel/telemetry';
 import { TERMINAL_CAUSES } from '../sim/duel/summary';
@@ -17,8 +18,8 @@ import { SIM_VERSION } from '../sim/tuning';
 import { createLedger } from './ledger';
 import type { ResolveLayout } from './rules';
 
-/** `seed` is round 0's; `helmPlayer` is seated at Navigation in every round (H-2 spec §2). */
-export interface DuelInit { runId: string; layoutId: string; layoutHash: string; simVersion: number; contentDigest: string; seed: number; playerCount: number; helmPlayer: 0 | 1 }
+/** `seed` is round 0's; `playerCount` the crew size (Sci-2 spec §4.3); `helmPlayer` a seat of the crew (since start aboard it seats nobody). */
+export interface DuelInit { runId: string; layoutId: string; layoutHash: string; simVersion: number; contentDigest: string; seed: number; playerCount: DuelCrew; helmPlayer: number }
 /** The duel has no bot producers in R-1, so its controller memory is always empty. */
 export type DuelControllers = readonly never[];
 /** The telemetry accumulator as JSON: its typed arrays as number arrays. */
@@ -33,10 +34,12 @@ const num = z.number().finite();
 const stamp = z.number().int().min(-1).max(Number.MAX_SAFE_INTEGER);
 const text = z.string().min(1).max(128);
 const two = <T extends z.ZodTypeAny>(item: T) => z.tuple([item, item]);
+/** A per-player list (Sci-2 spec §4.3): 2..4 long here, exactly the init's crew in validateDuelCheckpoint. */
+const crewList = <T extends z.ZodTypeAny>(item: T) => z.array(item).min(DUEL_CREW_MIN).max(DUEL_CREW_MAX);
 export const duelInitSchema = z.object({
   runId: text, layoutId: text, layoutHash: text, simVersion: z.literal(SIM_VERSION),
-  contentDigest: z.string().regex(/^[0-9a-f]{64}$/), seed: uint.max(0xffffffff), playerCount: z.literal(DUEL_PLAYERS),
-  helmPlayer: z.union([z.literal(0), z.literal(1)])
+  contentDigest: z.string().regex(/^[0-9a-f]{64}$/), seed: uint.max(0xffffffff), playerCount: z.union([z.literal(2), z.literal(3), z.literal(4)]),
+  helmPlayer: z.number().int().min(0).max(DUEL_CREW_MAX - 1)
 }).strict();
 const causes = z.array(z.enum(TERMINAL_CAUSES)).max(TERMINAL_CAUSES.length)
   .refine((list) => list.every((c, k) => k === 0 || TERMINAL_CAUSES.indexOf(list[k - 1]!) < TERMINAL_CAUSES.indexOf(c)), 'causes out of order or repeated');
@@ -49,10 +52,10 @@ const playerTelemetry = z.object({ repairsStarted: uint, repairsFinished: uint, 
 export const duelMemorySchema = z.object({
   version: z.literal(1),
   telemetry: z.object({
-    ticks: uint, outcome: z.number().int().min(0).max(3), ships: two(shipTelemetry), players: two(playerTelemetry),
+    ticks: uint, outcome: z.number().int().min(0).max(3), ships: two(shipTelemetry), players: crewList(playerTelemetry),
     baits: uint, consoleSwaps: uint, helmEmptyTicks: uint, weaponsEmptyTicks: uint, enemyInArcTicks: uint, weaponsIdleTicks: uint,
     terminal: two(causes),
-    prev: z.object({ counters: two(z.tuple([uint, uint, uint, uint])), grace: two(z.array(int32).max(65_536)), work: two(int), seat: two(int), lastConsole: two(int) }).strict(),
+    prev: z.object({ counters: two(z.tuple([uint, uint, uint, uint])), grace: two(z.array(int32).max(65_536)), work: crewList(int), seat: crewList(int), lastConsole: crewList(int) }).strict(),
     manoeuvre: z.object({ tick: int, x: num, y: num }).strict()
   }).strict()
 }).strict();
@@ -69,17 +72,19 @@ export function decodeDuelMemory(memory: DuelMemory): DuelTelemetry {
 const held = z.object({ moveX: z.number().finite().min(-1).max(1), moveY: z.number().finite().min(-1).max(1), interactHeld: z.boolean(), face: z.boolean().optional() }).strict();
 const checkpointSchema = z.object({
   checkpointVersion: z.literal(2), init: z.unknown(), snapshot: z.unknown(),
-  commandHighWater: z.array(uint).length(DUEL_PLAYERS), recentResults: z.array(z.unknown()).max(DUEL_PLAYERS * 256),
-  admissionTick: stamp, admissionCounts: z.array(uint.max(16)).length(DUEL_PLAYERS),
+  commandHighWater: crewList(uint), recentResults: z.array(z.unknown()).max(DUEL_CREW_MAX * 256),
+  admissionTick: stamp, admissionCounts: crewList(uint.max(16)),
   eventSequence: uint, publicationSequence: uint, controlRevision: uint, receiveOrder: uint, lifecycleOrdinal: uint,
   botControllers: z.array(z.never()).max(0), paused: z.boolean(), phase: z.enum(['running', 'paused', 'ended']),
-  pauseOwner: uint.max(DUEL_PLAYERS - 1).nullable(), pauseReason: text.nullable(), heldHighWater: z.array(uint).length(DUEL_PLAYERS),
-  held: z.array(held).length(DUEL_PLAYERS), modeMemory: duelMemorySchema
+  pauseOwner: uint.max(DUEL_CREW_MAX - 1).nullable(), pauseReason: text.nullable(), heldHighWater: crewList(uint),
+  held: crewList(held), modeMemory: duelMemorySchema
 }).strict();
 
 export function validateDuelInit(layout: ShipLayout, value: unknown, contentDigest: string): DuelInit {
   const init = duelInitSchema.parse(value);
   if (init.contentDigest !== contentDigest || init.layoutId !== layout.id || init.layoutHash !== deriveLayout(layout).layoutHash) throw new Error('incompatible duel');
+  if (init.playerCount > layout.spawns.length) throw new Error('incompatible duel');   // Sci-2 spec §4.1: a spawn per player
+  if (init.helmPlayer >= init.playerCount) throw new Error(`invalid duel helm player ${init.helmPlayer} for a crew of ${init.playerCount}`);
   if (!duelSeedFacts(init.seed).valid) throw new Error('invalid duel map for this seed');   // from the seed cache (H-2 spec §5)
   return init;
 }
@@ -96,7 +101,12 @@ export function validateDuelCheckpoint(value: unknown, contentDigest: string, re
   if (r.helmPlayer !== cp.init.helmPlayer) throw new Error('inconsistent duel checkpoint helm player');
   if (cp.phase === 'ended' && !decided) throw new Error('inconsistent checkpoint terminal phase');   // a decided round may be running or paused
   if (cp.admissionTick > tick || cp.paused !== (cp.phase === 'paused')) throw new Error('inconsistent checkpoint');
-  const ledger = createLedger([0, 1], DUEL_PLAYERS, duelCodec);
+  // Sci-2 spec §4.3: the snapshot's crew is the init's, and every per-player array is that long.
+  const n = cp.init.playerCount, memory = cp.modeMemory.telemetry;
+  if (cp.snapshot.header.playerCount !== n
+    || [cp.commandHighWater, cp.admissionCounts, cp.heldHighWater, cp.held, memory.players, memory.prev.work, memory.prev.seat, memory.prev.lastConsole].some((a) => a.length !== n)
+    || cp.recentResults.length > n * 256 || (cp.pauseOwner !== null && cp.pauseOwner >= n)) throw new Error('inconsistent duel checkpoint player count');
+  const ledger = createLedger(Array.from({ length: n }, (_, p) => p), n, duelCodec);
   ledger.restore({ commandHighWater: cp.commandHighWater, recentResults: cp.recentResults, admissionTick: cp.admissionTick, admissionCounts: cp.admissionCounts });
   for (const { envelope, result } of cp.recentResults) if (envelope.runId !== cp.init.runId || result.tick > tick) throw new Error('inconsistent checkpoint cache');
   const t = cp.modeMemory.telemetry, bodies = duelSeedFacts(cp.snapshot.header.seed).graceLength;   // the round map's bodies plus the other ship slots
