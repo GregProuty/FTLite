@@ -63,8 +63,8 @@ merging to master.
   skipped by ship contacts this tick (§5.1), is not hit by the blast that made it (§4.2), and is never chosen for
   eviction (§3.4).
 - **Single-ship flight paths.** `stepFlight` and `stepSoloFlight` (`physics.ts`; the flight-only modes that call the
-  contacts but not `stepRocks`) never wake a rock: in those paths every rock contact uses the kind-1 infinite-mass rule
-  of §5.1, as today.
+  contacts but not `stepRocks`) keep today's contact exactly: a rock contact there is today's `hitStatic` (infinite
+  mass, hull cost 1), with no wake, no ram damage, no break and no use of the born mask.
 
 ### 3.2 Motion (`stepRocks` part 1: every kind-2, not-born rock in ascending slot order)
 
@@ -211,6 +211,9 @@ A torpedo meets moving rocks exactly as static ones (spike i): it touches, it de
   - **Wire**: added to the duel command kinds (`DUEL_KINDS` in `sim/duel/step.ts`), the command union and its codec
     (`src/renderer/src/net/codec.ts`), and `WEAPON_ORDER` right after `torpLock`
     (`laserLock, torpLock, rockLock, laserCharge, missileLaunch`).
+  - **Admission of `missileLaunch`** in the same tick evaluates `canLaunch` with the effective `torpRock`: the last
+    accepted `rockLock(torpedo)` of this tick, else the stored value, so its result matches what applyWeaponsInput
+    then does.
   - **Validation**, in step.ts with the other weapon commands: stale first, then the same seat rule as `laserLock`
     (`not-at-weapons` unless sent by the Weapons seat's player), then `malformed` unless `weapon` is one of the two and
     `rock` is an integer from −1 to `rockSlots − 1`, then `noop` when `rock ≥ 0` and the slot holds no live rock. Within
@@ -233,6 +236,9 @@ A torpedo meets moving rocks exactly as static ones (spike i): it touches, it de
   the laser's arc and the rock's surface within the laser's range (`dist − r ≤ range`). The shot's line runs from the
   ship to the rock's centre; spike i's `firstBlocker` on that line decides what it meets: the planet (the shot misses),
   another rock (that rock takes the hit, an accident) or the target rock.
+- `firstBlocker` skips born slots (the line passes through a piece made earlier this tick).
+- A manual shot while `laserRock ≥ 0` and the rock is not on target follows today's miss path (the blocked enemy line or
+  the nose ray, spike i).
 - The laser's fire rules are today's (charge, manual fire, the crew auto-fire, the burst), with `laserEligible` replaced
   by "on target" while `laserRock ≥ 0`. Auto-fire therefore needs `laserTargeted`, which `rockLock(laser, k)` sets. The
   Weapons card's FIRING flash and reason row use the same test, with today's words (`LASER: OUT OF ARC: HELM TURN
@@ -315,9 +321,10 @@ All view-owned, never hashed, driven by the tick's `rock` events and the live po
   hit and every break its blast causes) or ram caused it; `ship` is absent for breaks caused by rock-rock collisions,
   the planet, the edge and eviction. Spike i's `'shatter'` is renamed `'dust'` and `'fragment'` becomes `'collision'`.
 - Counters (in the space module, hashed): `rockHits`, `rockSplits`, `rockDust`, `rockBlasts`, `rockCollisions`
-  (damaging rock-rock contacts), `rockEvictions`. Per ship system: `rocksBroken`, + 1 for every `split` or `dust` event
-  of a rock's break (not dust from eviction, the planet or the edge) whose `ship` is that ship. Chain breaks from
-  collisions do not count.
+  (damaging rock-rock contacts), `rockEvictions`. Per ship system: `rocksBroken`, + 1 per rock break whose cause is that
+  ship (its laser hit, its torpedo's direct hit or blast, its ram), counted once at the break however many events the
+  break emits. Overflow-piece dust, eviction, the planet and the edge are not breaks. Chain breaks from collisions do
+  not count.
 
 ## 9. Measurement and acceptance
 
@@ -340,7 +347,8 @@ The spike is accepted for the owner's play when all of these hold:
    on seed 2026, the Hunter inactive, the crew ship placed at the rock's centre plus 300 u along the outward radial
    (away from the planet), at rest, facing the rock, with `rockLock(torpedo, rock)`; the test ends 5 s after the blast.
    For each of the 10 largest belt rocks: count the pieces made (the direct hit plus every secondary break) and the
-   damaging collisions among rocks that are either pieces of this blast or were hit by it. Floor: at least 6 pieces
+   damaging collisions among rocks that are either pieces of this blast or were hit by it. Floor: at least 8 pieces
+   (the direct hit gives 6, so at least one secondary break is needed)
    and at least 2 damaging collisions in at least 7 of the 10. The report also logs breaks, the farthest piece travel
    and the moving-rock count 30 s after the blast.
 5. **Cost**: a pass gate: tactical `stepDuel` p99 under 0.5 ms over the stress script on the dev PC. If it fails,

@@ -124,3 +124,89 @@ Confirmed (determinismGuard.ts allows floor). Fixed the guard list, the r 15 exa
 
 ---
 
+# Round 2 (delta, reviewing 723831e8, effort medium, 161 s, 463790 in / 393722 cached / 15046 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R2-F1 Ram damage still runs in the single-ship flight paths, which have no stepRocks and no born-mask reset
+§3.1 says stepFlight and stepSoloFlight never wake a rock and use the kind-1 rule of §5.1. But §5.1 applies ram damage in 'any of the three cases', so a ram at 30 < vc ≤ 40 still damages a static rock in those paths and can break it if it is cracked. The break writes kind-2 pieces that never move there, because neither path calls stepRocks. It also sets born flags that are never cleared, because the mask is cleared only at the start of stepDuel. Every later ship contact then skips those slots for good. · spec L60-L64 (born mask cleared per stepDuel tick), L65-L67 (flight paths: no wake), L192-L195 (ram damage in any of the three cases); physics.ts:L67-L71 (stepFlight: resolveContacts only), L75-L79 (stepSoloFlight: hitStatics only) · It changes rock state in the dev flight view and the §4 flight tests, which the change was meant to leave as today. It also leaves pieces frozen in place and permanently uncollidable. · State that in stepFlight and stepSoloFlight a rock contact is exactly today's hitStatic: no ram damage, no break and no born-mask use. Or say that those paths clear the born mask at their start and also run stepRocks.
+
+### [P2] R2-F2 missileLaunch admission no longer matches what happens when a rockLock(torpedo) arrives in the same tick
+step.ts admits missileLaunch with canLaunch against the state before folding (step.ts:L187). §6.4 makes canLaunch test the rock's distance while torpRock ≥ 0, and a same-tick rockLock(torpedo, k) sets torpRock only later, in applyWeaponsInput. Admission therefore uses the old target (the ship, or the old rock) while applyWeaponsInput's canLaunch uses the new rock. The result can say 'applied' when nothing launches, or 'unavailable' when the auto-launch fires that same tick. The step's own comment requires every result to match what happens (step.ts:L174-L176). · spec L214-L220 (rockLock validated, then folded later), L254-L258 (range and launch by torpRock); step.ts:L174-L176, L179-L189; weapons.ts:L43-L54, L176-L180 · Command results go to clients. A mismatched result breaks the existing admission-equals-effect contract and gives the UI wrong feedback. Two implementers could also 'fix' it differently: by pre-applying the torpRock for admission, or not. · Specify that missileLaunch admission evaluates canLaunch with this tick's accepted rockLock(torpedo) already applied (the effective torpRock: the last accepted rockLock(torpedo) this tick, else the stored value). Alternatively, say that the result may differ and why.
+
+### [P2] R2-F3 rocksBroken can count one break twice when an overflow piece turns to dust
+§8 adds 1 to rocksBroken for every split or dust event of a rock's break whose ship is that ship. A crew-caused break where the pool is full and no eviction victim exists gives a split event plus a dust event for each piece that had no slot (§3.4 'otherwise the new piece is dust'). The spec does not say whether those overflow dusts carry ship, or whether they count. One break could therefore add 1, 2 or 3. · spec L129-L132 (overflow piece becomes dust, every dust emits an event), L314-L320 (ship field; rocksBroken +1 per split or dust event) · rocksBroken is hashed. A near-full pool is the expected stress state, so twin implementations would diverge. · Define rocksBroken as +1 per break, whatever the number of events. Or state that overflow-piece dust events carry no ship and do not count, as eviction dust does not.
+
+### [P3] R2-F4 §9.4 piece floor is met by the direct hit alone
+The 10 largest belt rocks are close to r 45, so all of them are above the new burst threshold of 35. The direct hit alone gives 6 pieces (rp about 16, above ROCK_MIN_R). The 'at least 6 pieces' floor therefore says nothing about secondary breaks; only the collision floor tests anything. · spec L110-L111 (belt r 15 to 45), L118-L120 (r ≥ 35: 6 pieces), L343-L347 (floor: at least 6 pieces) · The proxy was revised so that it would no longer be trivially true, and the piece floor still is. · Raise the piece floor above 6 (for example at least 8, so that one secondary break is needed). Or say plainly that the piece floor only checks the burst and the collision floor carries the chain test.
+
+### [P3] R2-F5 A laser shot whose first blocker is a born slot, and a manual shot with an off-target rock lock, are not described
+§3.4 skips damage on born slots, but it does not say whether firstBlocker skips a born slot or stops on it. An earlier ship's shot this tick can make a born piece on the later ship's line, and the answer decides whether the shot continues to the enemy line or another rock. Separately, with laserRock ≥ 0 and the rock off target, the spec does not say what a manual press hits: today's laserRockTarget uses the enemy line or the nose ray. · spec L133-L135, L232-L237; weapons.ts:L90-L97, L106-L131 · Both cases are rare and resolve to some deterministic code path, but the two rules leave room for different readings. · Say that firstBlocker skips born slots (the line passes through them). Say that a manual shot with an off-target rock lock follows today's miss path (the enemy line or the nose ray).
+
+## Prior findings
+- R1-F1: resolved — spec L81-L102: the outer loop is live, there is a processed mask, born and processed slots are skipped, the planet/edge test comes first, the turn ends on a break, and all separation goes to a when b stays kind 1. I traced b woken at a lower slot and pieces born at a higher slot: each pair is resolved exactly once.
+- R1-F2: resolved — Damages are computed, then applied, then the breaks run (L100-L102). Eviction excludes born slots and both bodies of the pair (L129-L132). Born slots are skipped by every damage, push and contact (L133-L135). The blast list is taken before the pieces are written and skips born or dead slots (L163-L165).
+- R1-F3: resolved — §5.1 L180-L195: wake test first, a non-woken kind 1 is today's infinite-mass contact with hull 1, two-body otherwise, and a ram break uses u = −n. L53-L55 now names the 40 u/s rule, and L65-L67 covers the flight paths. The ram-damage gap in those paths is raised as a new P2.
+- R1-F4: resolved — L205-L209 and L254-L263: torpRockFlying uses −1 and −2. Launch copies and clears torpRock. Auto-launch mirrors torpLock. Range is the rock's centre distance against the class range. Homing returns 0 at −2. The missile's end resets the field, and a lock sent in flight sets the next shot only. All of this matches missiles.ts:L25, L31, L46-L48.
+- R1-F5: resolved — L210-L225: WEAPON_ORDER slot, DUEL_KINDS, union and codec, validation order and malformed bounds (rockSlots exists, rocks.ts:L55), ShipInput folding after the room locks, laserTargeted set and cleared, cross-clearing with laserLock and torpLock. Right-click is at L278-L279. The admission side effect on missileLaunch is raised as a new P2.
+- R1-F6: resolved — ROCK_WAKE_SPEED now applies to rock-rock contacts (L53-L55, L93). §11.1 names wake cascades and asks for the moving count every 10 s.
+- R1-F7: resolved — Thresholds are lowered (L113-L122), and I checked the piece radii (12.9, 11.25, 15.9, 20.8). The §9.4 setup is fixed and counts secondary breaks. The piece floor is still met by the direct hit alone (new P3).
+- R1-F8: resolved — §9.5 now makes p99 < 0.5 ms a pass gate, with the grid as the remedy and a re-measure. 'No threshold' now covers only the size and publication measures, and §11.3 is aligned.
+- R1-F9: resolved — §6.3 L249-L250 keeps hostility as today. §8 L314-L320 defines ship and rocksBroken. The overflow-dust double count is raised as a new P2.
+- R1-F10: resolved — §6.5 L267-L283: controller pickRock(slot), a pure pickRock hit test with a tie rule, contact priority, the scan request stands, and the seat rule.
+- R1-F11: resolved — The guard list now matches determinismGuard. The r 15 figure is about 267 u/s, with the cap applied at the next motion step. The rock count is 82 to 91. The north fallback is named at L91, L121 and L158.
+
+## Verified
+- Hull-cost examples in §5.1 L188-L191 recomputed with SHIP_MASS 900: r 15 at 200 gives impact 40 and cost 1; r 30 at 200 gives 100 and cost 2; r 45 at 250 gives about 173 and cost 4; r 45 at 200 gives about 138 and cost 3.
+- Fan and burst angles (±30°; −40°, 0°, +40°; 90° and 60° steps) are multiples of 15°, 20°, 30° or 60°, as L125 says.
+- §9.3 piece-count tests (r 50 and r 35 give 6, r 30 gives 4, r 20 dust; laser break r 42 gives 3, r 30 gives 2, r 20 dust) agree with the thresholds at L113-L122.
+- Tick order in duel.ts:L30-L36 (weapons, fly, missiles, stepRocks, resolveContacts, resolveMissiles) agrees with the born-mask and skip rules: pieces born in any phase are skipped by the later phases of the same tick.
+- Today's contact (contacts.ts:L9-L21) is full push-out, a (1+e)·vn reflection and a hull cost of ASTEROID_CONTACT_HULL under the pair's grace, matching §5.1 case 2's 'exactly as today'.
+- launchMissile and end in missiles.ts:L25 and L31 give the torpRoom pattern that §6.4 mirrors for torpRockFlying.
+- WEAPON_ORDER and DUEL_KINDS at step.ts:L29 and L31, and the seat and stale checks at L182-L183, are the places §6.1 names.
+
+## Not verified
+- Did not open codec.ts, WeaponsStation.tsx, contactController.ts or tacticalModel.ts again in this round; I relied on round 1's citations for the UI and codec wiring.
+- Did not check map.ts for the exact belt radius distribution; the claim that the 10 largest belt rocks are above r 35 rests on uniform 15 + u·30 over 70 rocks.
+- Did not check the solo-seat handling for laserLock that §6.5 L281-L282 refers to.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json` against the subject at HEAD. 5 accepted, 0 rejected, 0 deferred; all 11 round-1 IDs confirmed resolved.
+
+## R2-F1 [P2]: Ram damage still runs in the single-ship flight paths
+
+Confirmed (physics.ts:L67-L79 call contacts but never stepRocks). §3.1 now says those paths keep today's hitStatic exactly: no wake, no ram damage, no break, no born mask.
+
+## R2-F2 [P2]: missileLaunch admission vs a same-tick rockLock(torpedo)
+
+Confirmed (step.ts:L187 admits before folding). §6.1 now has admission use the effective torpRock (the last accepted rockLock(torpedo) this tick, else the stored value).
+
+## R2-F3 [P2]: rocksBroken can count one break twice
+
+Confirmed. §8 counts +1 per break once, at the break; overflow-piece dust is not a break.
+
+## R2-F4 [P3]: §9.4 piece floor is met by the direct hit alone
+
+Confirmed (the largest belt rocks are above 35). The floor is now 8 pieces.
+
+## R2-F5 [P3]: born-slot blocker and off-target manual shot
+
+Confirmed. §6.2: firstBlocker skips born slots, and a manual shot with an off-target rock lock follows today's miss path.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-18-asteroids-ii-design.md
+
+<!-- end -->
+
+---
+
