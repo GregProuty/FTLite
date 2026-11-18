@@ -1,26 +1,26 @@
-// Native loopback gate: production owners/utility/hidden bridge/peer/streams.
-// The only broker is a trusted, bounded local test provider; no service/WAN claim.
-const { app, BrowserWindow, MessageChannelMain, utilityProcess, ipcMain, powerMonitor } = require('electron');
+// Native loopback gate (Web-i): production page transports, the page-owned production Worker host, native peers and
+// streams. The only broker is a trusted, bounded local test relay in main; no service/WAN claim.
+const { app, BrowserWindow, ipcMain } = require('electron');
 const { join, resolve } = require('node:path');
+const { pathToFileURL } = require('node:url');
 const { readFileSync, writeFileSync } = require('node:fs');
 const { randomBytes } = require('node:crypto');
-const { startHostProcess } = require('../../out/main/hostProcess.js');
-const { createHostPlatform } = require('../../out/main/transportWindow.js');
-const { startGuestTransport } = require('../../out/main/rtcTransport.js');
 const observeNative = require('./rtc-smoke-native.cjs');
 const directory = app.commandLine.getSwitchValue('rtc-smoke-dir'), profile = app.commandLine.getSwitchValue('user-data-dir');
 if (!directory || resolve(profile) !== resolve(directory, 'profile')) throw Error('isolated profile required');
 app.setPath('userData', profile); app.disableHardwareAcceleration(); app.on('window-all-closed', () => {});
-const { init, createObserver, createProbe } = require(join(directory, 'client/rtc-smoke-client.cjs'));
+const { init } = require(join(directory, 'client/rtc-smoke-client.cjs'));
 const { checkpoint: fixture, offsets } = JSON.parse(readFileSync(join(directory, 'fixture.json'), 'utf8'));
+const workerUrl = pathToFileURL(resolve(__dirname, '../../out/renderer/assets/authorityWorker.js')).href;
 const crewX = checkpoint => checkpoint.snapshot.values[offsets['crew.0.x']];
 const vote = checkpoint => checkpoint.snapshot.values[offsets['run.vote']];
 const identity = { modeId: 'sector', schemaVersion: 1, simVersion: init.simVersion, contentDigest: init.contentDigest, hostGeneration: 1 };
 const assert = (value, message) => { if (!value) throw Error(message); };
 const delay = ms => new Promise(done => setTimeout(done, ms));
 const bytes = value => new TextEncoder().encode(JSON.stringify(value));
-const natives = [], pairs = [], visibles = [], checks = [], details = {}, ports = new Set(), removers = [];
-let host, hostWindow, stopping = false, fatalError, rejectFatal;
+const b64 = value => Buffer.from(value).toString('base64');
+const pairs = [], checks = [], details = {}, guestPorts = { created: 0, open: 0 };
+let hostPage, router, pumping = false, stopping = false, fatalError, rejectFatal;
 const fatal = new Promise((_, reject) => { rejectFatal = reject; }); void fatal.catch(() => {});
 function fail(error) { if (!stopping && !fatalError) { fatalError = error; rejectFatal(error); } }
 function evidence(name, value) { checks.push(name); details[name] = value; console.log(`ACTUAL RTC ${name}: ${JSON.stringify(value)}`); }
@@ -35,22 +35,30 @@ async function until(read, predicate, label, ms = 5000) {
   // Do not dump arbitrary reports/signals/native stats, which can contain secrets.
   throw Error(label + ' timeout');
 }
-const originalFork = utilityProcess.fork;
-utilityProcess.fork = (...args) => {
-  const child = originalFork(...args), kill = child.kill.bind(child), record = { child, exited: false, kills: [], spawned: false };
-  child.kill = () => { record.killRequested = true; const pid = child.pid, result = kill(); record.kills.push({ pid, result }); return result; };
-  child.once('spawn', () => { record.spawned = true; record.pid = child.pid; });
-  record.exit = new Promise(done => child.once('exit', () => { record.exited = true; done(); if (!record.killRequested) fail(Error('unexpected authority utility exit')); }));
-  natives.push(record); return child;
-};
-const baseline = () => [powerMonitor.listenerCount('suspend'), ipcMain.listenerCount('net:rtc-response'), ipcMain.listenerCount('net:transport-ready')];
-let listenerBaseline;
 const js = (window, source) => bounded(window.webContents.executeJavaScript(source), 'renderer call');
-async function status(pair) {
-  const value = await js(pair.visible, 'window.rtcSmoke.status()');
-  for (const delivery of value.deliveries) {
-    const actual = pair.observer.notifications().find(note => note.key === delivery.key && note.floor === delivery.floor && note.tick === delivery.tick);
-    assert(actual && delivery.confirmedSequence >= actual.floor && delivery.confirmedTick >= actual.tick, 'actual notification floor violated at dequeue');
+const call = (window, method, ...args) => js(window, `window.rtcPage.${method}(${args.map(a => JSON.stringify(a === undefined ? null : a)).join(', ')})`);
+const host = (method, ...args) => call(hostPage, method, ...args);
+const nativeStatus = window => js(window, 'window.rtcNative.status()');
+async function request(command) {
+  const wire = command.kind === 'start' ? { ...command, initBytes: b64(command.initBytes) } : command.kind === 'restore' ? { ...command, checkpointBytes: b64(command.checkpointBytes) } : command;
+  const result = await host('hostRequest', wire); assert(result.ok && result.value.ok, 'authority request failed'); return result.value;
+}
+async function checkpoint() { return JSON.parse(Buffer.from((await request({ kind: 'checkpoint' })).checkpointBytes, 'base64').toString('utf8')); }
+/** The first failed readiness of a pair, or its readiness when both succeed (as Promise.all over the old two promises). */
+function firstOutcome(settled) {
+  return new Promise(done => {
+    for (const promise of settled) promise.then(value => { if (!value.ok) done(value); });
+    Promise.all(settled).then(values => done(values.find(value => !value.ok) ?? { ok: true, value: values.map(value => value.value) }));
+  });
+}
+async function status(record) {
+  const value = await js(record.guest, 'window.rtcSmoke.status()');
+  if (record.observed) {
+    const notifications = await host('observerCall', 'host', record.id, 'notifications');
+    for (const delivery of value.deliveries) {
+      const actual = notifications.find(note => note.key === delivery.key && note.floor === delivery.floor && note.tick === delivery.tick);
+      assert(actual && delivery.confirmedSequence >= actual.floor && delivery.confirmedTick >= actual.tick, 'actual notification floor violated at dequeue');
+    }
   }
   return value;
 }
@@ -65,89 +73,90 @@ function canonicalPositions(value) {
   return Array.from({ length: value.snapshot.header.playerCount }, (_, player) => ({ id: `crew:${player}`,
     x: value.snapshot.values[offsets[`crew.${player}.x`]], y: value.snapshot.values[offsets[`crew.${player}.y`]] }));
 }
-const nativeStatus = window => js(window, 'window.rtcNative.status()');
-async function request(command) { const result = await host.request(command); assert(result.ok, 'authority request failed'); return result; }
-async function checkpoint() { return JSON.parse(new TextDecoder().decode((await request({ kind: 'checkpoint' })).checkpointBytes)); }
-async function instrument(window) { await js(window, `(${observeNative.toString()})()`); }
-function channel() { const pair = new MessageChannelMain(); ports.add(pair.port1); ports.add(pair.port2); return pair; }
-function relay(from, to, observer, incoming) {
-  const receive = event => { try { if (event.data?.type === 'data') observer.observe(new Uint8Array(event.data.bytes), incoming); to.postMessage(event.data); } catch { fail(Error('passive relay failed')); } };
-  from.on('message', receive); from.start(); removers.push(() => from.off('message', receive));
-}
-async function visible(player) {
-  const window = new BrowserWindow({ show: true, width: 640, height: 240, webPreferences: { nodeIntegration: false, contextIsolation: true,
-    sandbox: true, backgroundThrottling: false, preload: join(__dirname, 'rtc-smoke-preload.cjs') } });
-  visibles.push(window); const events = [];
+async function page(guest) {
+  const window = new BrowserWindow({ show: guest, width: 640, height: 240, webPreferences: { nodeIntegration: false, contextIsolation: true,
+    sandbox: true, backgroundThrottling: false, webSecurity: true, preload: join(__dirname, 'rtc-smoke-preload.cjs') } });
+  const events = [];
   const receive = (event, value) => {
     if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return;
-    if (value?.kind === 'page-error') fail(Error('visible RTC producer page exception'));
+    if (value?.kind === 'page-error') fail(Error('RTC page exception'));
     else { if (events.length >= 128) fail(Error('page event budget')); events.push(value); }
   };
-  ipcMain.on('rtc-smoke-event', receive); removers.push(() => ipcMain.off('rtc-smoke-event', receive));
-  window.webContents.on('render-process-gone', () => { if (!stopping) fail(Error('visible renderer exited')); });
-  await window.loadFile(join(directory, 'client/index.html')); window.show();
-  assert(await js(window, 'typeof process === "undefined" && typeof require === "undefined"'), 'visible has Node');
-  return { window, events, player };
+  ipcMain.on('rtc-smoke-event', receive); window.once('closed', () => ipcMain.off('rtc-smoke-event', receive));
+  window.webContents.on('render-process-gone', () => { if (!stopping) fail(Error('RTC page renderer exited')); });
+  await window.loadFile(join(directory, 'page/rtc-page.html'), { query: { worker: workerUrl } });
+  await js(window, `(${observeNative.toString()})()`);   // installed before the page's first RTCPeerConnection
+  assert(await js(window, 'typeof process === "undefined" && typeof require === "undefined"'), 'RTC page has Node');
+  if (guest) window.show();
+  return { window, events };
+}
+// The bounded local broker: exact route and identity validation, then delivery in issue order.
+function deliver(record, destination, name, signal, from, to) {
+  if (stopping || record.closed || record.cancel) return;
+  if (++record.signals > 512 || signal.attemptId !== record.id || signal.roomId !== record.rtcIdentity.roomId || signal.hostGeneration !== 1
+    || signal.seatGeneration !== 1 || signal.from !== from || signal.to !== to) { fail(Error('local broker identity rejected')); return; }
+  void call(destination, 'receiveSignal', name, signal).then(applied => {
+    if (applied.ok || stopping || record.closed) return;
+    if (!(record.wrongTicket || record.staleGeneration) || applied.error !== 'rtc-attempt-failed') fail(Error('local broker application failed'));
+  }, error => { if (!stopping && !record.closed) fail(error); });
+}
+async function pump() {
+  if (pumping || stopping || !hostPage) return; pumping = true;
+  try {
+    for (const { signal } of await host('takeSignals')) {
+      const record = pairs.find(r => r.id === signal.attemptId && !r.guest.isDestroyed());
+      if (record) deliver(record, record.guest, 'guest', signal, 'host', record.rtcIdentity.remoteConnectionId);
+    }
+    for (const record of pairs) {
+      if (record.guest.isDestroyed()) continue;
+      for (const { signal } of await call(record.guest, 'takeSignals')) deliver(record, hostPage, 'host', signal, record.rtcIdentity.remoteConnectionId, 'host');
+    }
+  } catch (error) { fail(error); } finally { pumping = false; }
 }
 let nextAttempt = 0;
 async function pair(options = {}) {
-  const before = new Set(BrowserWindow.getAllWindows()), controller = await startGuestTransport(identity);
-  const hidden = BrowserWindow.getAllWindows().find(window => !before.has(window)); await instrument(hidden);
-  assert(natives.length === 3, 'guest created authority');
+  const guest = await page(options.player !== undefined);
+  await call(guest.window, 'createTransport', 'guest', identity);
+  assert((await call(guest.window, 'counts')).workers === 0 && (await host('counts')).workers === 3, 'guest created authority');
   const id = `loopback-${++nextAttempt}`, localTicket = randomBytes(32).toString('hex'), remoteTicket = randomBytes(32).toString('hex');
-  const hostPorts = channel(), guestPorts = channel(), observer = createObserver();
-  const record = { id, controller, hidden, observer, hostPorts, guestPorts, signals: 0, ready: false, routes: [], ...options };
-  pairs.push(record);
-  if (options.player !== undefined) {
-    const page = await visible(options.player); record.visible = page.window; record.events = page.events;
-    record.visible.webContents.postMessage('rtc-smoke-port', { player: options.player }, [guestPorts.port2]); ports.delete(guestPorts.port2);
-    await until(async () => record.events.find(event => event.kind === 'subscribed'), Boolean, 'visible subscription');
-    assert(record.events[0].canAllocate === false, 'producer enabled before validated state');
-  }
   const rtcIdentity = { ...identity, protocolVersion: 2, runId: init.runId, roomId: 'local-test-room', layoutHash: init.layoutHash,
     seatGeneration: 1, localConnectionId: 'host', remoteConnectionId: `guest-${nextAttempt}` };
-  // Provider validates exact route/identity and bounds lifetime signal work.
-  const route = (destination, from, to) => signal => {
-    if (stopping || record.closed || options.cancel) return;
-    if (++record.signals > 512 || signal.attemptId !== id || signal.roomId !== rtcIdentity.roomId || signal.hostGeneration !== 1
-      || signal.seatGeneration !== 1 || signal.from !== from || signal.to !== to) { fail(Error('local broker identity rejected')); return; }
-    void destination.receiveSignal(signal).catch(error => {
-      if (stopping || record.closed) return;
-      if (!(options.wrongTicket || options.staleGeneration) || error.message !== 'rtc-attempt-failed') fail(Error('local broker application failed'));
-    });
-  };
-  record.routes.push(host.transport.onSignal(signal => { if (signal.attemptId === id) route(controller, 'host', rtcIdentity.remoteConnectionId)(signal); }));
-  record.routes.push(controller.onSignal(route(host.transport, rtcIdentity.remoteConnectionId, 'host')));
+  const record = { id, guest: guest.window, events: guest.events, rtcIdentity, signals: 0, ready: false, closed: false, observed: false, ...options };
+  pairs.push(record);
   const base = { attemptId: id, identity: rtcIdentity, ticketExpiresAtEpochMs: Date.now() + 30000, iceServers: [], localTicket, expectedRemoteTicket: remoteTicket };
-  const guestReady = controller.startAttempt({ ...base, role: 'answerer', localTicket: remoteTicket,
+  await call(guest.window, 'startAttempt', 'guest', { ...base, role: 'answerer', localTicket: remoteTicket,
     expectedRemoteTicket: options.wrongTicket ? randomBytes(32).toString('hex') : localTicket,
-    identity: { ...rtcIdentity, localConnectionId: rtcIdentity.remoteConnectionId, remoteConnectionId: 'host' } }, guestPorts.port1);
-  ports.delete(guestPorts.port1);
-  const hostReady = host.transport.startAttempt({ ...base, role: 'offerer' }, hostPorts.port1); ports.delete(hostPorts.port1);
-  record.readiness = Promise.all([hostReady, guestReady]); void record.readiness.catch(() => {});
+    identity: { ...rtcIdentity, localConnectionId: rtcIdentity.remoteConnectionId, remoteConnectionId: 'host' } });
+  if (options.player !== undefined) {
+    // The production client on the guest's own attempt port, in the same page as its transport (the app's topology).
+    await call(guest.window, 'attachClient', 'guest', id, options.player);
+    const subscribed = await until(async () => record.events.find(event => event.kind === 'subscribed'), Boolean, 'visible subscription');
+    assert(subscribed.canAllocate === false, 'producer enabled before validated state');
+  }
+  await host('startAttempt', 'host', { ...base, role: 'offerer' });
+  const readiness = () => [host('readiness', 'host', id), call(guest.window, 'readiness', 'guest', id)];
   if (options.cancel) {
-    await Promise.all([host.transport.closeAttempt(id), controller.closeAttempt(id)]);
-    await record.readiness.then(() => { throw Error('cancelled pair became ready'); }, error => assert(error.message === 'rtc-cancelled', 'wrong cancellation rejection'));
+    await Promise.all([host('closeAttempt', 'host', id), call(guest.window, 'closeAttempt', 'guest', id)]);
+    const outcome = await bounded(firstOutcome(readiness()), 'cancelled readiness');
+    assert(!outcome.ok && outcome.error === 'rtc-cancelled', 'wrong cancellation rejection');
     record.closed = true; return record;
   }
   if (options.staleGeneration) {
-    await controller.receiveSignal({ attemptId: id, roomId: rtcIdentity.roomId, seatGeneration: 1, from: 'host', to: rtcIdentity.remoteConnectionId,
-      hostGeneration: 2, kind: 'candidate', candidate: null }).catch(error => assert(error.message === 'rtc-attempt-failed', 'wrong stale rejection'));
+    const stale = await call(guest.window, 'receiveSignal', 'guest', { attemptId: id, roomId: rtcIdentity.roomId, seatGeneration: 1, from: 'host', to: rtcIdentity.remoteConnectionId,
+      hostGeneration: 2, kind: 'candidate', candidate: null });
+    assert(stale.ok || stale.error === 'rtc-attempt-failed', 'wrong stale rejection');
   }
   if (options.wrongTicket || options.staleGeneration) {
-    await bounded(record.readiness.then(() => { throw Error('invalid pair became ready'); }, error => assert(error.message === 'rtc-attempt-failed', 'wrong native rejection')), 'invalid native admission');
+    const outcome = await bounded(firstOutcome(readiness()), 'invalid native admission');
+    assert(!outcome.ok && outcome.error === 'rtc-attempt-failed', 'wrong native rejection');
     return record;
   }
-  const caps = await bounded(record.readiness, 'native RTC readiness', 31000);
-  assert(caps.every(cap => cap.latestPayloadLimit === 16088), 'negotiated cap missing'); record.ready = true;
-  if (record.visible) {
+  const caps = await bounded(Promise.all(readiness()), 'native RTC readiness', 31000);
+  assert(caps.every(cap => cap.ok && cap.value.latestPayloadLimit === 16088), 'negotiated cap missing'); record.ready = true;
+  if (options.player !== undefined) {
     assert((await status(record)).publication === null, 'authority attached before readiness');
-    const authorityPorts = channel(); record.authorityPorts = authorityPorts;
-    // Raw, unmodified forward of data, storage ACK and close frames. Inspection
-    // receives copies and cannot satisfy readiness or any ACK itself.
-    relay(authorityPorts.port1, hostPorts.port2, observer, true); relay(hostPorts.port2, authorityPorts.port1, observer, false);
-    await host.attachPeer(`native-${record.player}`, [record.player], authorityPorts.port2, { streamed: true, latestPayloadLimit: caps[0].latestPayloadLimit });
-    ports.delete(authorityPorts.port2);
+    const attached = await host('relayToHost', 'host', id, `native-${record.player}`, [record.player], caps[0].value.latestPayloadLimit);
+    assert(attached.ok, 'authority attachment failed'); record.observed = true;
     const first = await until(() => status(record), value => value.canAllocate && value.publication?.publicationSequence > 0, 'first validated full/ACK');
     assert(first.controls['full-received'] > 0 && first.controls.ack > 0, 'receipt and validated ACK not independent');
   }
@@ -155,22 +164,28 @@ async function pair(options = {}) {
 }
 async function closePair(record) {
   record.closed = true;
-  for (const off of record.routes.splice(0)) off();
-  await Promise.all([host.transport.closeAttempt(record.id), record.controller.closeAttempt(record.id)]);
-  if (record.visible && !record.visible.isDestroyed()) await js(record.visible, 'window.rtcSmoke.dispose()');
-  record.probe?.close('disposed');
-  await until(() => nativeStatus(record.hidden), value => value.connections.every(pc => pc.state === 'closed' && pc.listeners === 0
+  await Promise.all([host('closeAttempt', 'host', record.id), call(record.guest, 'closeAttempt', 'guest', record.id)]);
+  if (record.player !== undefined) await js(record.guest, 'window.rtcSmoke.dispose()');
+  await host('release', 'host', record.id);
+  await until(() => nativeStatus(record.guest), value => value.connections.every(pc => pc.state === 'closed' && pc.listeners === 0
     && pc.channels.every(dc => dc.state === 'closed' && dc.listeners === 0)) && value.timers === 0 && !value.held, 'closed guest native resources');
-  await record.controller.dispose(); record.observer.dispose();
+  await call(record.guest, 'release', 'guest', record.id); await call(record.guest, 'disposeTransport', 'guest');
+  // Shared gate rule (Tasks 9-11): the disposed page transport left no page MessagePort open.
+  const ports = await call(record.guest, 'ports');
+  assert(ports.created > 0 && ports.open === 0, 'guest page port left open');
+  guestPorts.created += ports.created; guestPorts.open += ports.open;
+  record.guest.destroy();
 }
 async function match(record) {
-  const value = await status(record), remote = value.publication, authoritative = record.observer.publication(remote?.publicationSequence);
+  const value = await status(record), remote = value.publication;
+  const authoritative = await host('observerCall', 'host', record.id, 'publication', remote?.publicationSequence ?? 0);
   assert(remote && authoritative && remote.tick === authoritative.tick && remote.hash === authoritative.hash, 'matched authority identity missing');
   assert(JSON.stringify(remote.snapshot) === JSON.stringify(authoritative.snapshot), 'matched canonical image differs');
   assert(JSON.stringify(remote.commandHighWater) === JSON.stringify(authoritative.commandHighWater), 'matched input watermarks differ');
   assert(JSON.stringify(remote) === JSON.stringify(authoritative), 'matched complete publication differs');
   return remote;
 }
+const stats = record => host('observerCall', 'host', record.id, 'stats');
 async function applied(record, command) {
   assert(command, 'producer did not allocate command');
   const value = await until(() => status(record), state => state.results.some(result => result.id.player === command.id.player && result.id.sequence === command.id.sequence), 'real command result');
@@ -179,56 +194,51 @@ async function applied(record, command) {
   assert(result.status === 'applied' && result.admission?.disposition === 'terminal' && delivery, 'production command was not applied/dequeued'); return { value, result, delivery };
 }
 async function run() {
-  assert(process.versions.electron === '37.10.3', 'wrong Electron'); listenerBaseline = baseline();
-  // Same pre-spawn cancellation/kill=false regression as the host gate, using
-  // the real native platform and child. No substituted spawn/kill outcomes.
-  for (const label of ['cancel', 'construction-failure']) {
-    const platform = createHostPlatform();
-    if (label === 'construction-failure') platform.createTransport = () => { throw Error('early construction failure'); };
-    const abort = new AbortController(), starting = startHostProcess({ ...identity, signal: abort.signal }, platform);
-    if (label === 'cancel') abort.abort();
-    await starting.then(() => { throw Error('early host became ready'); }, error => assert(error.message === (label === 'cancel' ? 'cancelled' : 'early construction failure'), 'wrong early failure'));
-    const record = natives.at(-1); await bounded(record.exit, 'early actual utility exit');
-    assert(record.spawned && record.kills.length === 2 && record.kills[0].pid === undefined && record.kills[0].result === false
-      && record.kills[1].result === true && BrowserWindow.getAllWindows().length === 0, 'pre-spawn cancellation regression');
-    assert(JSON.stringify(baseline()) === JSON.stringify(listenerBaseline), 'early listeners leaked');
+  assert(process.versions.electron === '37.10.3', 'wrong Electron');
+  hostPage = (await page(false)).window;
+  router = setInterval(() => { void pump(); }, 5);
+  // Early startup failures, each injected inside the spawn task (Web-i rewrite of the pre-spawn kill=false checks).
+  for (const [mode, reason] of [['abort-after-spawn', 'cancelled'], ['crash-on-spawn', 'worker-exit']]) {
+    const settled = await host('startHost', identity, mode);
+    assert(!settled.ok && settled.error === reason, 'wrong early failure');
   }
-  evidence('early-cleanup', 'two real pre-spawn kill=false/retry=true exits');
-  host = await startHostProcess(identity); hostWindow = BrowserWindow.getAllWindows()[0]; await instrument(hostWindow);
+  await until(() => host('counts'), value => value.workers === 2 && value.workerExits === 2, 'early Worker terminations');
+  evidence('early-cleanup', 'abort inside the spawn task and a Worker error before readiness both rejected; both Workers terminated');
+  assert((await host('startHost', identity)).ok, 'host start failed');
   await request({ kind: 'start', initBytes: bytes(init) });
   await request({ kind: 'restore', checkpointBytes: bytes(fixture) });
   const first = await pair({ player: 0 }), second = await pair({ player: 1 });
-  const windows = [hostWindow, first.hidden, first.visible, second.hidden, second.visible], pids = windows.map(window => window.webContents.getOSProcessId());
-  assert(new Set([...pids, natives.at(-1).pid]).size === 6 && natives.length === 3, 'renderers/utility not separate');
+  const windows = [hostPage, first.guest, second.guest], pids = windows.map(window => window.webContents.getOSProcessId());
+  assert(new Set(pids).size === 3 && (await host('counts')).workers === 3, 'renderers not separate');
   for (const window of windows) {
     const preferences = window.webContents.getLastWebPreferences();
     assert(preferences.sandbox && preferences.contextIsolation && !preferences.nodeIntegration && preferences.webSecurity
       && !window.webContents.getBackgroundThrottling(), 'unsafe topology');
   }
-  assert(!hostWindow.isVisible() && !first.hidden.isVisible() && !second.hidden.isVisible() && first.visible.isVisible() && second.visible.isVisible(), 'wrong visible topology');
-  evidence('topology', { distinctProcesses: 6, hiddenRenderers: 3, visibleGuests: 2, liveUtilities: 1, guestAuthorities: 0 });
-  if (process.argv.includes('--inject-page-failure')) { await js(first.visible, 'window.rtcSmoke.injectPageFailure()'); await bounded(new Promise(() => {}), 'page failure'); }
+  assert(!hostPage.isVisible() && first.guest.isVisible() && second.guest.isVisible(), 'wrong visible topology');
+  evidence('topology', { pages: 3, distinctRenderers: 3, liveWorkers: 1, guestAuthorities: 0 });
+  if (process.argv.includes('--inject-page-failure')) { await js(first.guest, 'window.rtcSmoke.injectPageFailure()'); await bounded(new Promise(() => {}), 'page failure'); }
   if (process.argv.includes('--inject-child-failure')) throw Error('injected Electron child failure');
   if (process.argv.includes('--inject-timeout')) await new Promise(() => {});
   evidence('first-full-ack', { first: (await status(first)).controls, second: (await status(second)).controls });
-  assert(first.observer.stats().maxInputBytes === 0 && second.observer.stats().maxInputBytes === 0, 'input preceded first full/ACK');
+  assert((await stats(first)).maxInputBytes === 0 && (await stats(second)).maxInputBytes === 0, 'input preceded first full/ACK');
   // Initial authority is paused; real player control opens the run.
-  await applied(first, await js(first.visible, 'window.rtcSmoke.pause(false)'));
-  await js(first.visible, 'window.rtcSmoke.produce(0)'); await js(second.visible, 'window.rtcSmoke.produce(0)');
+  await applied(first, await js(first.guest, 'window.rtcSmoke.pause(false)'));
+  await js(first.guest, 'window.rtcSmoke.produce(0)'); await js(second.guest, 'window.rtcSmoke.produce(0)');
   await until(checkpoint, cp => cp.snapshot.header.tick >= 9, 'authority running');
-  const held = await js(first.visible, 'window.rtcSmoke.primeHeld()');
+  const held = await js(first.guest, 'window.rtcSmoke.primeHeld()');
   const before = await until(checkpoint, cp => cp.held[0].moveX === 1 && cp.heldHighWater[0] >= held.sequence, 'held admission');
-  const nativeBefore = (await nativeStatus(first.hidden)).connections[0].channels.reduce((sum, dc) => sum + dc.received, 0);
-  const stall = js(first.visible, 'window.rtcSmoke.stall()'); void stall.catch(fail);
+  // The first guest's page (its client AND its transport) stalls; the host page and the other guest keep running.
+  const otherBefore = (await nativeStatus(second.guest)).connections[0].channels.reduce((sum, dc) => sum + dc.received, 0);
+  const stall = js(first.guest, 'window.rtcSmoke.stall()'); void stall.catch(fail);
   const start = await until(async () => first.events.find(event => event.kind === 'stall-start'), Boolean, 'stall start');
   await delay(300); const duringA = await checkpoint();
-  await delay(90); const duringB = await checkpoint(), nativeDuring = await nativeStatus(first.hidden);
+  await delay(90); const duringB = await checkpoint(), otherDuring = await nativeStatus(second.guest);
   assert(!first.events.some(event => event.kind === 'stall-end'), 'watchdog observation occurred after stall');
-  assert(duringA.snapshot.header.tick > before.snapshot.header.tick && duringB.snapshot.header.tick > duringA.snapshot.header.tick, 'utility blocked by guest');
+  assert(duringA.snapshot.header.tick > before.snapshot.header.tick && duringB.snapshot.header.tick > duringA.snapshot.header.tick, 'Worker blocked by guest');
   assert(duringA.held[0].moveX === 0 && duringB.held[0].moveX === 0, 'receipt watchdog did not neutralize');
-  // Snapshot field offset is obtained from validated layout metadata in fixture helper.
   assert(crewX(duringA) === crewX(duringB) && crewX(duringA) > crewX(before), 'watchdog position was not stable');
-  assert(nativeDuring.connections[0].channels.reduce((sum, dc) => sum + dc.received, 0) > nativeBefore, 'hidden RTC blocked with visible guest');
+  assert(otherDuring.connections[0].channels.reduce((sum, dc) => sum + dc.received, 0) > otherBefore, 'the other guest RTC blocked with the stalled guest');
   const delayed = await stall, end = first.events.find(event => event.kind === 'stall-end');
   assert(end.milliseconds >= 500 && end.observedTick === start.tick, 'visible stall missing');
   const command = await applied(first, delayed), after = await checkpoint();
@@ -237,56 +247,49 @@ async function run() {
   await until(checkpoint, value => value.held[0].moveX === -1 && crewX(value) < crewX(duringB), 'delayed held movement');
   assert(after.heldHighWater[1] > 0 && after.commandHighWater[1] === 0, 'peer input ownership crossed');
   evidence('stall-watchdog-command', { busyMs: end.milliseconds, ticks: [before.snapshot.header.tick, duringA.snapshot.header.tick, duringB.snapshot.header.tick],
-    commandRequestedTick: delayed.requestedTick, commandAppliedTick: command.result.tick, hiddenRtcContinued: true, watchdogStable: true });
-  // Sustained ordinary traffic, matched canonical image and presentation separation.
-  await js(first.visible, 'window.rtcSmoke.produce(-1)');
+    commandRequestedTick: delayed.requestedTick, commandAppliedTick: command.result.tick, hostContinued: true, otherGuestRtcContinued: true, watchdogStable: true });
+  await js(first.guest, 'window.rtcSmoke.produce(-1)');
   let matches = 0;
   for (let i = 0; i < 16; i++) { await delay(35); await match(first); await match(second); matches += 2; }
   assert((await status(first)).sawInterpolation, 'presentation never differed from confirmed position');
   evidence('canonical-presentation', { matchedPublications: matches, interpolationSeparate: true });
-  await js(hostWindow, 'window.rtcNative.fault("drop")');
-  await until(() => nativeStatus(hostWindow), value => value.faults.dropped === 1, 'harness latest drop');
-  await js(hostWindow, 'window.rtcNative.fault("reorder")');
-  await until(() => nativeStatus(hostWindow), value => value.faults.reordered === 1, 'harness latest reorder');
+  await js(hostPage, 'window.rtcNative.fault("drop")');
+  await until(() => nativeStatus(hostPage), value => value.faults.dropped === 1, 'harness latest drop');
+  await js(hostPage, 'window.rtcNative.fault("reorder")');
+  await until(() => nativeStatus(hostPage), value => value.faults.reordered === 1, 'harness latest reorder');
   await delay(100); await match(first); await match(second);
   evidence('harness-latest-loss-reorder', { boundary: 'native RTCDataChannel.send, state latest only', dropped: 1, reversedPairs: 1, canonicalRecovered: true, measuredWanLoss: false });
-  // Pin sender's last validated baseline while receiver accepts >64 fresh
-  // images, evicts it, requests reliable refresh, then resumes actual ACKs.
-  const recoveryBefore = first.observer.stats();
-  await js(first.visible, 'window.rtcSmoke.suppressAcks(true); window.rtcSmoke.produce(0)');
+  const recoveryBefore = await stats(first);
+  await js(first.guest, 'window.rtcSmoke.suppressAcks(true); window.rtcSmoke.produce(0)');
   const evicted = await until(() => status(first), value => value.stream.resyncs > 0 && value.suppressedAcks >= 64 && value.controls.refresh > 0, 'real baseline eviction/full refresh', 8000);
-  await js(first.visible, 'window.rtcSmoke.suppressAcks(false)');
+  await js(first.guest, 'window.rtcSmoke.suppressAcks(false)');
   await until(() => status(first), value => value.controls.ack > evicted.controls.ack + 2 && value.canAllocate, 'post-refresh validated ACK');
-  const recoveryAfter = first.observer.stats();
+  const recoveryAfter = await stats(first);
   assert(recoveryAfter.refreshes > recoveryBefore.refreshes && recoveryAfter.fullReceipts > recoveryBefore.fullReceipts, 'refresh/receipt missing on authority path');
   await match(first); evidence('harness-base-eviction-refresh', { boundary: 'guest client Link validated ACK suppression', suppressed: evicted.suppressedAcks,
     receiverResyncs: evicted.stream.resyncs, reliableFullReceipts: recoveryAfter.fullReceipts, canonicalRecovered: true });
-  const stats = first.observer.stats(), ordinary = stats.packets.filter(packet => packet.kind === 'delta');
+  const cadence = await stats(first), ordinary = cadence.packets.filter(packet => packet.kind === 'delta');
   assert(ordinary.length >= 80 && ordinary.every(packet => packet.tick % 3 === 0), 'ordinary stream did not obey 20Hz tick cadence');
   assert(ordinary.every((packet, index) => index === 0 || packet.tick - ordinary[index - 1].tick >= 3), 'ordinary cadence exceeded 20Hz');
   assert(ordinary.every(packet => packet.bytes < packet.fullBytes && packet.bytes <= 16088), 'delta was not smaller/capped');
-  assert(stats.maxImageBytes > 0 && stats.maxImageBytes <= 131072 && stats.maxInputBytes > 0 && stats.maxInputBytes <= 4096, 'actual framed byte caps');
-  evidence('cadence-byte-caps', { deltas: ordinary.length, tickModulo: 3, maxImageBytes: stats.maxImageBytes, maxInputBytes: stats.maxInputBytes });
-  // A real same-tick pause must publish full immediately and release the
-  // result/event only with the covering publication sequence.
-  await js(first.visible, 'window.rtcSmoke.produce(1)');
-  const pauseAction = await js(first.visible, 'window.rtcSmoke.pauseDuringInterpolation()');
+  assert(cadence.maxImageBytes > 0 && cadence.maxImageBytes <= 131072 && cadence.maxInputBytes > 0 && cadence.maxInputBytes <= 4096, 'actual framed byte caps');
+  evidence('cadence-byte-caps', { deltas: ordinary.length, tickModulo: 3, maxImageBytes: cadence.maxImageBytes, maxInputBytes: cadence.maxInputBytes });
+  await js(first.guest, 'window.rtcSmoke.produce(1)');
+  const pauseAction = await js(first.guest, 'window.rtcSmoke.pauseDuringInterpolation()');
   assert(pauseAction.before.publication.phase === 'running' && pauseAction.before.interpolationLag > 1e-4, 'pause did not begin during active interpolation');
   const paused = await applied(first, pauseAction.command);
   const cp = await checkpoint(), matched = await match(first);
   assert(cp.paused && matched.phase === 'paused' && matched.tick === cp.snapshot.header.tick && JSON.stringify(matched.snapshot) === JSON.stringify(cp.snapshot), 'paused checkpoint differs');
   assert(paused.value.events.some(event => event.payload.kind === 'pause' && event.payload.paused && event.tick === matched.tick), 'covering pause event missing');
-  const pausePacket = first.observer.stats().packets.find(packet => packet.sequence === matched.publicationSequence);
+  const pausePacket = (await stats(first)).packets.find(packet => packet.sequence === matched.publicationSequence);
   assert(pausePacket?.kind === 'full' && pausePacket.tick === paused.result.tick, 'pause was not immediate full');
   const snapped = await status(first), pausedCanonicalPositions = canonicalPositions(cp);
   exactPositions(snapped.confirmedPositions, pausedCanonicalPositions, 'paused replica');
   exactPositions(snapped.presentation, pausedCanonicalPositions, 'pause snap');
   await delay(80); exactPositions((await status(first)).presentation, pausedCanonicalPositions, 'paused future sample');
-  // LABELLED INJECTION: hold the actual covering state at the guest client Link
-  // boundary after real RTC/PortLink receipt, while letting original notifications
-  // enter the production client. Same-tick notifications must remain withheld.
-  await js(first.visible, 'window.rtcSmoke.holdStates()');
-  const heldCommand = await js(first.visible, 'window.rtcSmoke.pause(true)');
+  // LABELLED INJECTION: hold the actual covering state at the guest client Link boundary after real RTC/PortLink receipt.
+  await js(first.guest, 'window.rtcSmoke.holdStates()');
+  const heldCommand = await js(first.guest, 'window.rtcSmoke.pause(true)');
   const heldKey = `result:${heldCommand.id.player}:${heldCommand.id.sequence}`;
   const heldView = await until(() => status(first), value => value.heldPublications.length === 1
     && value.notifications.some(note => note.key === heldKey)
@@ -302,11 +305,11 @@ async function run() {
       && !withheld.deliveries.some(note => heldNotifications.some(expected => expected.key === note.key)), 'same-tick notification escaped before covering full');
     await delay(20);
   }
-  assert(await js(first.visible, 'window.rtcSmoke.releaseStates()') === 1, 'covering full release missing');
+  assert(await js(first.guest, 'window.rtcSmoke.releaseStates()') === 1, 'covering full release missing');
   const covered = await applied(first, heldCommand);
   const sameTick = await until(() => status(first), value => value.publication?.controlRevision > matched.controlRevision
     && heldNotifications.every(note => value.deliveries.some(delivery => delivery.key === note.key && delivery.floor === heldSequence)), 'covering full result/event dequeue');
-  const sameTickPacket = first.observer.stats().packets.find(packet => packet.sequence === sameTick.publication.publicationSequence);
+  const sameTickPacket = (await stats(first)).packets.find(packet => packet.sequence === sameTick.publication.publicationSequence);
   assert(sameTick.publication.tick === matched.tick && sameTickPacket?.kind === 'full' && sameTick.publication.publicationSequence > matched.publicationSequence,
     'same-tick control did not publish immediate full');
   await match(first);
@@ -315,7 +318,7 @@ async function run() {
     pauseFromInterpolation: true, pauseLag: pauseAction.before.interpolationLag, sameTickNotificationWithheld: true, withheldPolls: 5,
     notificationFloorsChecked: true, heldFloor: heldSequence, resultDequeuedAtSequence: covered.delivery.confirmedSequence,
     heldDeliveries: sameTick.deliveries.filter(note => note.floor === heldSequence) });
-  const selected = await Promise.all([nativeStatus(hostWindow), nativeStatus(first.hidden), nativeStatus(second.hidden)]);
+  const selected = await Promise.all([nativeStatus(hostPage), nativeStatus(first.guest), nativeStatus(second.guest)]);
   for (const report of selected) for (const pc of report.connections) {
     assert(pc.state === 'connected' && pc.selected && pc.direct && pc.channels.length === 2, 'selected direct native route missing');
     assert(pc.channels.some(dc => dc.label === 'ftl-reliable-v1' && dc.ordered && dc.maxRetransmits === null)
@@ -323,12 +326,11 @@ async function run() {
       && pc.channels.every(dc => dc.maxPacketLifeTime === null && dc.maxBytes <= 16384), 'native channel policy wrong');
   }
   evidence('native-channels-route', { nativePcs: 4, channelsPerPc: 2, selectedRoute: 'direct', addresses: 'redacted', lossZeroMeans: 'unavailable' });
-  // Closing one peer must leave the other's actual stream/commands usable.
-  const resume = await js(second.visible, 'window.rtcSmoke.pause(false)'); await applied(second, resume);
-  await js(first.visible, 'window.rtcSmoke.produce(-1)');
-  const disconnect = await js(first.visible, 'window.rtcSmoke.disconnectDuringInterpolation()');
+  const resume = await js(second.guest, 'window.rtcSmoke.pause(false)'); await applied(second, resume);
+  await js(first.guest, 'window.rtcSmoke.produce(-1)');
+  const disconnect = await js(first.guest, 'window.rtcSmoke.disconnectDuringInterpolation()');
   assert(disconnect.before.publication.phase === 'running' && disconnect.before.interpolationLag > 1e-4, 'disconnect did not begin during active interpolation');
-  const lastConfirmed = first.observer.publication(disconnect.before.publication.publicationSequence);
+  const lastConfirmed = await host('observerCall', 'host', first.id, 'publication', disconnect.before.publication.publicationSequence);
   assert(lastConfirmed && JSON.stringify(lastConfirmed) === JSON.stringify(disconnect.before.publication), 'disconnect confirmed state differs from authority');
   const frozenCanonicalPositions = canonicalPositions(lastConfirmed);
   exactPositions(disconnect.before.confirmedPositions, frozenCanonicalPositions, 'disconnect replica');
@@ -345,26 +347,26 @@ async function run() {
     const invalid = await pair(flags); await closePair(invalid); await match(second); evidence(label, 'native rejected/cancelled; survivor canonical; native resources closed');
   }
   const transfer = await pair();
-  await js(hostWindow, 'window.rtcNative.fault("mid-transfer")');
-  transfer.probe = createProbe(transfer.hostPorts.port2); transfer.probe.send();
-  await until(() => nativeStatus(hostWindow), value => value.faults.closedMidTransfer === 1, 'actual fragmented send close');
+  await js(hostPage, 'window.rtcNative.fault("mid-transfer")');
+  await host('probe', 'host', transfer.id);
+  await until(() => nativeStatus(hostPage), value => value.faults.closedMidTransfer === 1, 'actual fragmented send close');
   await closePair(transfer); await match(second);
   evidence('mid-transfer-close', 'actual production framing, first fragment sent, native PC closed, survivor canonical');
   await closePair(second);
-  const closed = await until(() => nativeStatus(hostWindow), value => value.connections.every(pc => pc.state === 'closed' && pc.listeners === 0
+  const closed = await until(() => nativeStatus(hostPage), value => value.connections.every(pc => pc.state === 'closed' && pc.listeners === 0
     && pc.channels.every(dc => dc.state === 'closed' && dc.listeners === 0)) && value.timers === 0, 'all host native PCs/listeners/timers closed');
   assert(closed.connections.length === 6, 'native attempts missing');
   assert(closed.connections.every(pc => pc.channels.every(dc => dc.maxBytes <= 16384)), 'native fragment exceeded packet cap');
   evidence('native-resource-cleanup', { hostPcsClosed: closed.connections.length, productionListeners: 0, productionTimers: 0 });
-  stopping = true;
-  const reason = new Promise(done => host.onExit(done)); await host.transport.dispose(); assert(await reason === 'transport-exit', 'host controller did not stop utility');
-  await host.dispose(); await bounded(Promise.all(natives.map(record => record.exit)), 'actual utility exits', 5000, true);
-  for (const window of visibles) window.destroy();
-  for (const off of removers.splice(0)) off(); for (const port of ports) port.close(); ports.clear();
-  assert(natives.every(record => record.exited) && BrowserWindow.getAllWindows().length === 0, 'native owner leak');
-  assert(JSON.stringify(baseline()) === JSON.stringify(listenerBaseline) && ipcMain.listenerCount('rtc-smoke-event') === 0, 'owner listeners leaked');
-  assert(natives.every(record => record.child.listenerCount('message') === 0 && record.child.listenerCount('spawn') === 0 && record.child.listenerCount('exit') === 0), 'native lifecycle listeners leaked');
-  evidence('owner-cleanup', { utilities: natives.length, actualExits: natives.filter(record => record.exited).length, windows: 0, listeners: 0, relayPorts: ports.size });
+  stopping = true; clearInterval(router);
+  assert((await host('killHostTransport')).ok, 'host transport disposal failed');
+  assert(await until(() => host('hostExit'), value => value !== null, 'host exit') === 'transport-exit', 'host controller did not stop the Worker');
+  const final = await host('dispose'); hostPage.destroy();
+  assert(final.workers === 3 && final.workerExits === 3 && BrowserWindow.getAllWindows().length === 0, 'owner leak');
+  assert(final.ports.created > 0 && final.ports.open === 0, 'host page port left open');
+  assert(ipcMain.listenerCount('rtc-smoke-event') === 0, 'owner listeners leaked');
+  evidence('owner-cleanup', { workers: final.workers, workerExits: final.workerExits, windows: 0, listeners: 0, relayPorts: 0,
+    ports: final.ports.open + guestPorts.open, portsCreated: final.ports.created + guestPorts.created });
   if (process.argv.includes('--inject-missing-evidence')) checks.splice(checks.indexOf('cadence-byte-caps'), 1);
   writeFileSync(join(directory, 'report.json'), JSON.stringify({ electron: process.versions.electron, checks, details }));
 }
@@ -372,12 +374,11 @@ app.whenReady().then(async () => {
   let code = 0; const watchdog = setTimeout(() => fail(Error('fixed native RTC gate timeout')), process.argv.includes('--inject-timeout') ? 2500 : 35000);
   try { await bounded(run(), 'whole native RTC gate', 36000); } catch (error) { code = 1; console.error(error.stack ?? error); }
   finally {
-    stopping = true; clearTimeout(watchdog);
-    for (const off of removers.splice(0)) off();
-    await Promise.allSettled(pairs.map(record => record.controller.dispose())); await host?.dispose().catch(() => {});
-    for (const port of ports) { try { port.close(); } catch {} } ports.clear();
-    for (const record of natives) if (!record.exited) record.child.kill();
-    try { await bounded(Promise.all(natives.map(record => record.exit)), 'failure cleanup actual exits', 5000, true); } catch (error) { code = 1; console.error(error.message); }
-    for (const window of BrowserWindow.getAllWindows()) window.destroy(); utilityProcess.fork = originalFork; app.exit(code);
+    stopping = true; clearTimeout(watchdog); clearInterval(router);
+    for (const window of BrowserWindow.getAllWindows()) {
+      try { await bounded(js(window, 'window.rtcPage?.dispose()'), 'failure page dispose', 3000, true); } catch (error) { code = 1; console.error(error.message); }
+      window.destroy();
+    }
+    app.exit(code);
   }
 });
