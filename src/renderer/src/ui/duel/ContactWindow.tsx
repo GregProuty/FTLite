@@ -96,7 +96,7 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
           style={{ ...boxStyle, pointerEvents: 'auto', cursor: aiming ? 'none' : 'default' }}
           onPointerMove={(e) => setPointer(toInternal(e))} onPointerLeave={() => setPointer(null)} onPointerDown={boxDown}
           onContextMenu={stop} onMouseDown={stop} onAuxClick={stop} onWheel={swallow}>
-          <polygon points={polyPoints(contact.outline)} fill={hex(CRT.glass)} stroke={hex(CRT.main)} strokeWidth={1} />
+          <polygon points={polyPoints(contact.outline)} fill={hex(CRT.glass)} stroke={hex(contact.unknown ? CRT.mid : CRT.main)} strokeWidth={1} strokeDasharray={contact.unknown ? '6 4' : undefined} />
           {contact.rooms.map((r, k) => (
             <g key={k} data-ui-contact-room={r.label}>
               <polygon points={polyPoints(r.points)} fill={r.fill === null ? 'none' : hex(r.fill)} stroke={hex(r.stroke)} strokeWidth={1} />

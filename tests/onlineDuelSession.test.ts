@@ -177,6 +177,19 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
     expect(c.helds().at(-1)).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
     r.dispose();
   });
+  it('Feel-i: Space held at the Helm rides the held frame as face; seat 1 at Weapons never sends it', () => {
+    const r = rig(0), c = r.attach();   // seat 0 sits at the Helm
+    r.key('keydown', 'Space'); r.pump();
+    expect(c.helds().at(-1)).toEqual({ moveX: 0, moveY: 0, interactHeld: false, face: true });
+    expect(c.commands().some((x) => x.kind === 'laserCharge')).toBe(false);
+    r.key('keyup', 'Space'); r.pump();
+    expect(c.helds().at(-1)).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
+    r.dispose();
+    const w = rig(1), cw = w.attach();
+    w.key('keydown', 'Space'); w.pump();
+    expect(cw.helds().at(-1)).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
+    w.dispose();
+  });
   it('focus loss neutralises without pausing and sends no release (Space is a single press, FTL targeting spec §2); nothing is sent until focus returns', () => {
     const r = rig(1), c = r.attach();   // seat 1 sits at Weapons
     r.key('keydown', 'Space'); r.pump();

@@ -29,7 +29,9 @@ export interface Session {
   onLinkLost(cb: (peer: PeerId) => void): Unsubscribe;
   close(reason: string): void;
 }
-export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean }
+/** `face` (Feel-i, console feel spec §2): the Helm's auto-face, Space held at the Helm; absent means false. Only the duel
+ *  reads it, from the Helm's attendant, and A/D (moveX) overrides it. */
+export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean }
 export interface HeldFrame { runId: RunId; player: PlayerId; tick: number; sequence: number; held: HeldInput }
 export interface LifecyclePause { paused: boolean; reason: string }
 export interface CommandId { player: PlayerId; sequence: number }

@@ -52,7 +52,7 @@ describe('the combat model (H-1 spec §7)', () => {
     expect(w.enemyArc!.r).toBe(LASER_RANGE * 0.5);
     expect(w.ring).not.toBeNull();
     const [a, b] = st.ships, range = Math.round(Math.hypot(b.x - a.x, b.y - a.y));
-    expect(w.info.text).toBe(`BRG ${String(bearingDeg(b.x - a.x, b.y - a.y)).padStart(3, '0')}  RNG ${range}  NO SHOT  TORP ${range <= MISSILE_RANGE ? 'IN' : 'OUT'}`);
+    expect(w.info.text).toBe(`BRG ${String(bearingDeg(b.x - a.x, b.y - a.y)).padStart(3, '0')}  RNG ${range}  TORP ${range <= MISSILE_RANGE ? 'IN' : 'OUT'}`);   // Feel-i: the arc's words are the status sentence's
   });
   it('the torpedo range circle (weapons update spec §2): radius 360 · zoom about the own ship on both maps; lit at Weapons only while in range', () => {
     const st = createTacticalState(11);
@@ -75,17 +75,23 @@ describe('the combat model (H-1 spec §7)', () => {
     expect(w.info.x).toBe(676);
   });
   it('the info text fits between the tab strip and the side column in a 1280-wide console view, window open or not (FTL targeting fix)', () => {
-    expect(weaponsInfoText(263, 3987, false, false)).toBe('BRG 263  RNG 3987  NO SHOT  TORP OUT');
-    expect(weaponsInfoText(7, 120, true, true)).toBe('BRG 007  RNG 120  IN ARC  TORP IN');
+    // Feel-i: the arc's words moved into the status sentence; the info line is bearing, range and the torpedo, under it.
+    expect(weaponsInfoText(263, 3987, false)).toBe('BRG 263  RNG 3987  TORP OUT');
+    expect(weaponsInfoText(7, 120, true)).toBe('BRG 007  RNG 120  TORP IN');
     const st = createTacticalState(11), band = { left: TABS_RIGHT, right: SIDE.x };
     expect([TABS_RIGHT, SIDE.x]).toEqual([408, 1136]);
     for (const far of [300, 3987, 99999]) {
       Object.assign(st.ships[1], { x: st.ships[0].x + far, y: st.ships[0].y });
       for (const reserveRight of [CONSOLE_RESERVE.right, CONTACT_RESERVE]) {
         const w = combatModel({ ...input(st, createCamera(st.ships[0].x, st.ships[0].y), 'weapons'), reserveLeft: CONSOLE_RESERVE.left, reserveRight, infoBand: band }).weapons!;
-        const half = textPx(w.info.text, FONT_SIZE / FONT_NATIVE) / 2;
+        const half = textPx(w.info.text, 1) / 2;   // Feel-i: FONT_NATIVE, stacked under the status sentence
         expect(w.info.x - half, `${far} ${reserveRight}`).toBeGreaterThanOrEqual(TABS_RIGHT);
         expect(w.info.x + half, `${far} ${reserveRight}`).toBeLessThanOrEqual(SIDE.x);
+        const status = combatModel({ ...input(st, createCamera(st.ships[0].x, st.ships[0].y), 'weapons'), reserveLeft: CONSOLE_RESERVE.left, reserveRight, infoBand: band }).status!;
+        const sh = textPx(status.label.text, FONT_SIZE / FONT_NATIVE) / 2;
+        expect(status.label.x - sh, `status ${far} ${reserveRight}`).toBeGreaterThanOrEqual(TABS_RIGHT);
+        expect(status.label.x + sh, `status ${far} ${reserveRight}`).toBeLessThanOrEqual(SIDE.x);
+        expect(status.label.y + 26, 'the sentence clears the info line').toBeLessThanOrEqual(w.info.y);
       }
     }
     const centred = combatModel({ ...input(st, createCamera(0, 0), 'weapons'), reserveLeft: 228, reserveRight: 156, infoBand: band }).weapons!;
@@ -186,10 +192,14 @@ describe('the view effects (H-1 spec §7 item 8, §8 shake)', () => {
     const fx = createFx();
     const events: ViewEvent[] = [laser(0, true), laser(0, false), { kind: 'missileEnd', ship: 1, cause: 'planet', target: -1, room: -1, x: 5, y: 5 }, { kind: 'contact', ship: 0, body: 'planet', x: 1, y: 2 }];
     pushEvents(fx, events);
-    expect(fx.items.map((i) => [i.kind, i.life])).toEqual([['beam', 0.15], ['beam', 0.15], ['burst', 0.3], ['spark', 0.3]]);
+    // Feel-i: a crew beam lives CREW_BEAM_S, and a crew hit adds its impact flare (and, stripping a layer, the shield pop).
+    expect(fx.items.map((i) => [i.kind, i.life])).toEqual([['beam', 0.22], ['flare', 0.35], ['pop', 0.45], ['beam', 0.22], ['burst', 0.3], ['spark', 0.3]]);
+    fx.items.splice(1, 2);
     expect([fx.items[0]!.colour, fx.items[1]!.colour]).toEqual([BEAM_HIT, BEAM_MISS]);
     expect(fx.shake).toBe(0);
     stepFx(fx, 0.2);
+    expect(fx.items.map((i) => i.kind)).toEqual(['beam', 'beam', 'burst', 'spark']);   // the crew beams last 0.22 s
+    stepFx(fx, 0.05);
     expect(fx.items.map((i) => i.kind)).toEqual(['burst', 'spark']);
     stepFx(fx, 0.2);
     expect(fx.items).toEqual([]);

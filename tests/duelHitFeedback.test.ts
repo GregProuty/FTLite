@@ -125,7 +125,7 @@ describe('hitCallouts (spec §B)', () => {
 });
 
 describe('the callouts\' ageing and stacking (spec §B)', () => {
-  it('same-frame callouts stack 14 px apart and rise 24 px over 1.5 s, fading', () => {
+  it('same-frame callouts stack 18 px apart and rise 24 px over 1.5 s, fading', () => {
     const st = createTacticalState(3), fx = createFx();
     pushHits(fx, [laser({ stripped: true }), laser({ hit: false })], st);
     let d = calloutDraws(fx.callouts, { x: 100, y: 200 });
@@ -144,6 +144,19 @@ describe('the callouts\' ageing and stacking (spec §B)', () => {
     pushHits(fx, [laser({ stripped: true }), laser({ stripped: true })], st);
     expect(fx.callouts).toHaveLength(CALLOUT_MAX);
     expect(fx.callouts.map((c) => [c.text, c.stack])).toEqual([['MISS', 1], ['MISS', 2], ['SHIELD DOWN', 0], ['SHIELD DOWN', 1]]);
+  });
+  it('callouts from successive frames never overlap: the newest lowest, each older one at least a step above', () => {
+    const st = createTacticalState(3), fx = createFx();
+    pushHits(fx, [laser({ stripped: true })], st); stepFx(fx, 0.9);
+    pushHits(fx, [laser({ hit: false })], st); stepFx(fx, 0.1);
+    pushHits(fx, [laser({ room: 0 }), laser({ hit: false })], st);
+    const d = calloutDraws(fx.callouts, { x: 100, y: 200 });
+    expect(d.map((c) => c.text)).toEqual(['SHIELD DOWN', 'MISS', hitCallouts([laser({ room: 0 })], st)[0]!.text, 'MISS']);
+    const ys = d.map((c) => c.y);
+    expect(ys[2]).toBe(200);                                                  // the newest frame's first, at the anchor
+    expect(ys[3]! - ys[2]!).toBeLessThanOrEqual(-CALLOUT_STACK_PX);
+    expect(ys[1]! - ys[3]!).toBeLessThanOrEqual(-CALLOUT_STACK_PX);
+    expect(ys[0]! - ys[1]!).toBeLessThanOrEqual(-CALLOUT_STACK_PX);
   });
   it('a pause (dt 0) holds them; a restart clears them', () => {
     const st = createTacticalState(3), fx = createFx();

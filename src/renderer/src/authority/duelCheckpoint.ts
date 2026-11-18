@@ -66,7 +66,7 @@ export function decodeDuelMemory(memory: DuelMemory): DuelTelemetry {
   return { ...t, prev: { ...t.prev, grace: [Int32Array.from(t.prev.grace[0]), Int32Array.from(t.prev.grace[1])] } } as DuelTelemetry;
 }
 
-const held = z.object({ moveX: z.number().finite().min(-1).max(1), moveY: z.number().finite().min(-1).max(1), interactHeld: z.boolean() }).strict();
+const held = z.object({ moveX: z.number().finite().min(-1).max(1), moveY: z.number().finite().min(-1).max(1), interactHeld: z.boolean(), face: z.boolean().optional() }).strict();
 const checkpointSchema = z.object({
   checkpointVersion: z.literal(2), init: z.unknown(), snapshot: z.unknown(),
   commandHighWater: z.array(uint).length(DUEL_PLAYERS), recentResults: z.array(z.unknown()).max(DUEL_PLAYERS * 256),

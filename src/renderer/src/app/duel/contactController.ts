@@ -31,7 +31,8 @@ export interface ContactController {
   toggle(): void;
   /** The window's X: closes it (on Science deselects and requests designate −1). */
   close(): void;
-  /** LASER: toggles the aim while the enemy is shown at Level 1 or more, never on Science; a no-op on the derelict. */
+  /** LASER: toggles the aim while the enemy is shown (Feel-i: at any scan level, the "?" silhouette's rooms), never on
+   *  Science; a no-op on the derelict. */
   arm(): void;
   /** FTL targeting spec §1, a Weapons card or 1 / 2 (on Helm or Weapons, never Science): pick `weapon` up, opening the
    *  window on the enemy armed, at any scan level. Below Level 1 it also requests a scan of the enemy (the SCAN button's
@@ -83,7 +84,7 @@ export function createContactController(): ContactController {
       if (science()) select(next); else st = next === null ? null : { contact: next, aim: false };
     },
     close() { if (science()) select(null); else st = null; },
-    arm() { if (st && st.contact === 0 && enemyKnown >= 1 && !science()) { st = { ...st, aim: !(st.aim && weapon === 'laser') }; weapon = 'laser'; } },
+    arm() { if (st && st.contact === 0 && !science()) { st = { ...st, aim: !(st.aim && weapon === 'laser') }; weapon = 'laser'; } },   // Feel-i: at any scan level (the "?" rooms)
     pickUp(w) {
       if (science()) return;
       if (st?.aim && st.contact === 0 && weapon === w) { st = { ...st, aim: false }; return; }   // the card again: cancel

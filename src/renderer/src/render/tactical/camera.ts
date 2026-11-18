@@ -57,6 +57,13 @@ export function zoomBy(cam: Camera, vp: Viewport, notches: number, at: Point | n
   else cam.anchor = null;
 }
 
+/** Ease the zoom to `z` (clamped) about the screen centre, as a key zoom does (Feel-i's auto-frame on sitting down). */
+export function zoomTo(cam: Camera, z: number): void {
+  const target = clampZoom(z);
+  if (target === cam.targetZoom) return;
+  cam.zoomFrom = cam.zoom; cam.zoomT = 0; cam.targetZoom = target; cam.anchor = null;
+}
+
 /** Drag by a screen-pixel delta: the world moves with the pointer, and the camera stops following. */
 export function pan(cam: Camera, dx: number, dy: number): void {
   if (dx === 0 && dy === 0) return;

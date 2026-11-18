@@ -1,6 +1,7 @@
 // The Helm station block (spec 2026-11-17-artemis-consoles §4.2, Artemis-ii): the set-and-forget throttle (six press
 // notches; the set one lit with a `<` pointer, and the notches from 25 up to it filled), heading and speed, and the turn
-// buttons that hold A and D. W and S step the throttle a notch (§5.4); a notch click asks for its level.
+// buttons that hold A and D. W and S step the throttle a notch (§5.4); a notch click asks for its level. Feel-i (console
+// feel spec §2): AUTO-FACE holds Space, turning the nose onto the enemy's lead point while held.
 import { Fragment, memo } from 'react';
 import type { HelmPanel } from '../../render/duel/consoleModel';
 import { STATION, stationTop } from '../../render/duel/consoleLayout';
@@ -44,7 +45,9 @@ export const HelmStation = memo(function HelmStation({ helm }: { helm: HelmPanel
       <PixelText text={`SPD ${helm.speed}`} x={rx} y={y0 + 18} size={FONT_SIZE} tint={main} />
       <Button name="turn-left" label="<" hint="A" x={rx} y={y0 + 52} w={70} h={24} lit={h.left} onHold={(on) => actions.console.hold('KeyA', on)} />
       <Button name="turn-right" label=">" hint="D" x={rx + 78} y={y0 + 52} w={70} h={24} lit={h.right} onHold={(on) => actions.console.hold('KeyD', on)} />
-      <PixelText text="HOLD TO TURN" x={rx} y={y0 + 86} size={FONT_NATIVE} tint={dim} />
+      <PixelText text="HOLD TO TURN" x={rx} y={y0 + 80} size={FONT_NATIVE} tint={dim} />
+      <Button name="auto-face" label="AUTO-FACE" hint="SPC" x={rx} y={y0 + 100} w={148} h={24} lit={h.fire} onHold={(on) => actions.console.hold('Space', on)} />
+      <PixelText text="HOLD: NOSE ON ENEMY" x={rx} y={y0 + 128} size={FONT_NATIVE} tint={dim} />
       <PixelText text="W/S  THROTTLE" x={rx} y={y0 + 156} size={FONT_NATIVE} tint={dim} />
     </>
   );

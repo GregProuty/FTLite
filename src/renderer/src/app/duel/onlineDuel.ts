@@ -10,7 +10,7 @@ import { createPortLink } from '../../../../network/portLink';
 import { browserPortEndpoint } from '../../../../network/transport/bridge';
 import { classifyStreamPacket } from '../../../../network/state/imageCodec';
 import { createDuelRemoteClient } from '../../../../network/modes/duelStream';
-import type { CommandId, DuelCommand, Link, Scheduler, Cue } from '../../net/contracts';
+import type { CommandId, DuelCommand, HeldInput, Link, Scheduler, Cue } from '../../net/contracts';
 import { arrivalJitter, latencyFigure, type DuelPlaytestRecord } from '../../net/duelRecord';
 import type { ShipLayout } from '../../sim/ship/schema';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../../sim/duel/snapshot';
@@ -92,7 +92,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   let focused = true, blocked = false, synced = false, linkClosed = false, presenceSent = false, producing = false, disposed = false, leaveConfirm = CLOSED_PROMPT;
   let lastPhase = '', noticeUntil = 0, notice: string | null = null, lastFrame = 0, cameraKeys = keysOnly(sampleIdle());
   let attaches = 0, pauses = 0, roundAttaches = 1, roundPauses = 0, startedAtIso = new Date().toISOString(), cancel = () => {}, offClose = () => {};
-  let lastHeld = { moveX: 0, moveY: 0, interactHeld: false };
+  let lastHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
   // Artemis spec §5.4: the throttle this seat last asked for, until its result comes back; the base W, S and the console build on.
   let throttleSent: { level: number; sequence: number; round: number } | null = null;
   const heldStamps: { sequence: number; at: number }[] = [], commandStamps = new Map<number, number>(), heldSamples: number[] = [], commandSamples: number[] = [], roundGaps: number[] = [];
@@ -234,9 +234,10 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (decided) { if (k.presses.confirm > 0) send({ kind: 'rematch' }); }
     else play(k, d, me, requests);
     // Held input every pump, quantised to −1, 0 and 1 (spec §3); a change is stamped for the held delay.
-    const held = { moveX: Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld };
+    // Feel-i (console feel spec §2): Space held at the Helm is auto-face, sent only from the Helm, as the sim admits it.
+    const held: HeldInput = { moveX: Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld, ...(k.fireHeld && seatOf(d, me) === 'helm' ? { face: true } : {}) };
     const sequence = client.held(me, decided ? { moveX: 0, moveY: 0, interactHeld: false } : held);
-    if (sequence !== null && !decided && (held.moveX !== lastHeld.moveX || held.moveY !== lastHeld.moveY || held.interactHeld !== lastHeld.interactHeld)) {
+    if (sequence !== null && !decided && (held.moveX !== lastHeld.moveX || held.moveY !== lastHeld.moveY || held.interactHeld !== lastHeld.interactHeld || held.face !== lastHeld.face)) {
       heldStamps.push({ sequence, at: deps.now() }); if (heldStamps.length > 64) heldStamps.shift();
     }
     if (!decided) { lastHeld = held; source?.sent(held); }

@@ -17,12 +17,15 @@ import { shipHud } from '../../render/duel/shipHudModel';
 import { READOUT_COLUMN } from '../../render/duel/interiorModel';
 import { createInteriorView, type InteriorView } from '../../render/duel/interiorView';
 import { readoutHelp, readoutRows, type OtherStatus } from '../../render/duel/readoutModel';
-import { createFx, pushEvents, recordTrails, resetFx, shakeOffset, stepFx, type ViewEvent } from '../../render/tactical/fxModel';
+import { createFx, fxDt, pushEvents, pushKill, recordTrails, resetFx, shakeOffset, stepFx, trackSolution, type ViewEvent } from '../../render/tactical/fxModel';
+import { gunnerPresent, laserSituation, linedUp } from '../../render/duel/situationModel';
+import { countSit, createSitTracker, frameZoom, sitCard, trackSit, type SitSeat } from '../../render/duel/sitModel';
+import { shakeScale } from '../../render/shake';
 import { flashesFor, pushHits } from '../../render/tactical/hitModel';
 import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
 import { interpolatedShip, pickContact, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
 import { combatModel } from '../../render/tactical/weaponsModel';
-import { worldToScreen, type Camera } from '../../render/tactical/camera';
+import { worldToScreen, zoomTo, type Camera } from '../../render/tactical/camera';
 import { screenPan, worldPan } from '../../audio/voices';
 import type { AudioOut } from '../audio';
 import { createDuelAudio } from './duelAudio';
@@ -113,14 +116,19 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
   const fx = createFx();
   const sound = options.audio ? createDuelAudio(options.audio) : null;   // Audio-i spec section 4b: both modes, so Single player is no longer silent
   let epoch: number | null = null;
+  // Feel-i (console feel spec §1, §3): the seat the local character sat at and when (presentation seconds), whether it has
+  // acted since (the card goes, the goal glow stops), whether this sit shows the card, and the round's outcome last frame.
+  let seat: SitSeat | null = null, sitAt = 0, sitThrottle = 0, acted = false, carded = false, goalUsed = false, lastOutcome: number = Outcome.Running;
+  const sits = createSitTracker();   // each character's seat last frame: a Tab is not a sit
   return {
     /** One frame from `source`; `dt` in seconds. Returns the station of the console drawn, or null when none (Artemis
      *  spec §6.2: the mode clears the console's holds when it changes). */
     draw(source: DuelViewSource, dt: number, overlay: SceneOverlay): ConsoleStation | null {
-      if (epoch === null) { epoch = source.epoch(); if (source.seed !== options.seed) layer.reseed(source.seed); }   // the online duel learns its seed from the first publication
+      if (epoch === null) { epoch = source.epoch(); lastOutcome = source.duel.tactical.outcome; if (source.seed !== options.seed) layer.reseed(source.seed); }   // the online duel learns its seed from the first publication; a round already decided on attach is no kill to show
       if (source.epoch() !== epoch) {   // a new round (a restart before H-2): every view-owned cache starts again
         epoch = source.epoch();
         resetFx(fx); layer.reset(); layer.reseed(source.seed); sound?.reset();   // the next round's star field; a fresh audio baseline
+        lastOutcome = Outcome.Running;
         interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel); scene.addChildAt(interior.container, 1);
       }
       const d = source.duel, view = source.view(), alpha = source.alpha(), contact = options.contact;
@@ -139,6 +147,26 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       const events = source.drainEvents();
       pushEvents(fx, events); pushHits(fx, events, d.tactical);   // duel polish i spec §B: the callouts and the struck-room flashes
+      // Feel-i §3: the kill, seen as the round's outcome turning with the enemy's hull gone (both modes read the same state).
+      const enemySlot = targetOf(d.tactical, CREW_SLOT);
+      if (lastOutcome === Outcome.Running && d.tactical.outcome !== Outcome.Running && (d.tactical.systems[enemySlot]?.hull ?? 1) <= 0) {
+        const e = interpolatedShip(d.tactical, source.prev, alpha, enemySlot);
+        pushKill(fx, e.x, e.y, e.h);
+      }
+      lastOutcome = d.tactical.outcome;
+      // Feel-i §1: sitting down. A new sit at the Helm or Weapons frames both ships, may show the card, and lights the goal.
+      // Only a character's own sit counts (Feel-i review): a Tab to a seated character keeps its zoom and shows no card.
+      const sitOf = (pid: 0 | 1): SitSeat | null => { const s = consoleStation(d, pid); return s === 'helm' || s === 'weapons' ? s : null; };
+      const me = source.active(), sitSeat = sitOf(me), sat = trackSit(sits, me, [sitOf(0), sitOf(1)]);
+      if (sat && sitSeat) {
+        seat = sitSeat; sitAt = t; sitThrottle = source.throttle(); acted = false; goalUsed = false; carded = countSit(sitSeat);
+        const own = d.tactical.ships[CREW_SLOT], e = d.tactical.ships[enemySlot];
+        if (e?.active) zoomTo(source.cameras[sitSeat], frameZoom(e.x - own.x, e.y - own.y, viewport, CONSOLE_RESERVE.left, CONSOLE_RESERVE.right));
+      } else if (sitSeat !== seat) { seat = sitSeat; carded = false; }   // a Tab, a stand or Science: no new sit
+      const held = source.uiHeld(), aimed = contact?.aimWeapon() ?? null;
+      if (seat === 'helm' && (held.left || held.right || held.fire)) goalUsed = true;
+      if (seat === 'weapons' && aimed === 'laser') goalUsed = true;
+      if (seat !== null && (held.left || held.right || held.fire || held.up || held.down || aimed !== null || source.throttle() !== sitThrottle)) acted = true;
       if (sound) {   // Audio-i spec section 4: the same events the effects use; pan from the screen on a map view, crew-relative inside
         const cam = view === 'interior' ? null : source.cameras[view], crew = d.tactical.ships[CREW_SLOT]!;
         sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true, me: source.active(), crew: crewLife(d), dt, hostile: enemyHostile(d.tactical),   // duel polish i spec §C
@@ -146,7 +174,8 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       }
       // Paused, or a frozen online copy (a lost link): the callouts, flashes, heal motes and the charge pulse hold (polish i review).
       const frozen = source.paused() || source.live?.() === false;
-      stepFx(fx, frozen ? 0 : dt);
+      stepFx(fx, frozen ? 0 : fxDt(fx, dt));   // Feel-i: the kill's slow motion is render time only
+      trackSolution(fx, linedUp(laserSituation(d.tactical, fx.sinceShot, gunnerPresent(d))), frozen ? 0 : dt);
       recordTrails(fx, d.tactical, source.missilePrev, alpha);
       layer.container.visible = view !== 'interior'; interior.container.visible = view === 'interior';
       let overlayView: MapOverlayView | null = null;
@@ -155,18 +184,19 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         // Step 4: the map keeps its arrows and info line clear of the window while it is shown.
         const input = {
           state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport, console: view, axes: source.axes(),
-          ships: [0, 1], paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, infoBand: { left: TABS_RIGHT, right: SIDE.x } } : { reserveRight: READOUT_COLUMN }), spreadArrows: true, missilePrev: source.missilePrev, fx, t
+          ships: fx.kill ? [0] : [0, 1], paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, infoBand: { left: TABS_RIGHT, right: SIDE.x } } : { reserveRight: READOUT_COLUMN }), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d)
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting
-        layer.draw(model, combatModel({ ...input, t: frozen ? 0 : t, enemyArrow: model.arrows.find((a) => a.target === 'enemy') ?? null }), t);   // the blinks run on the presentation clock, paused or not
+        layer.draw(model, combatModel({ ...input, t: frozen ? 0 : t, enemyArrow: model.arrows.find((a) => a.target === 'enemy') ?? null, goal: onConsole && seat === 'helm' && !goalUsed }), t);   // the blinks run on the presentation clock, paused or not
         overlayView = mapOverlayOf(model.overlay);
       }
       // Sci-1 spec §7.3: Science's hover readout, from the crew ship's drawn position to the cursor.
       const hover = station === 'science' && view !== 'interior'
         ? hoverReadout(source.cameras[view], viewport, interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), options.pointer?.() ?? null)
         : null;
-      const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView, throttle: source.throttle(), hover });
+      const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView, throttle: source.throttle(), hover,
+        sinceShot: fx.sinceShot, goal: seat === 'weapons' && !goalUsed, t });
       // Step 5: the contact view, only while shown.
       const open = contact?.state() ?? null;
       const contactView = shown && station !== null && station !== 'ship'   // Science's window shows with nothing selected
@@ -180,9 +210,11 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         ...sceneUi(view, overlay, options.pauseText, overlayView),
         hud: view === 'interior' ? shipHud(d) : null,   // duel polish i spec §E: the SHIP view, paused and on the end card too (review)
         ...(contact ? { contact: contactView } : {}),
-        ...(contactView?.aimWeapon ? { pointer: options.pointer?.() ?? null } : {})   // FTL targeting spec §1: seeds the targeting line
+        ...(contactView?.aimWeapon ? { pointer: options.pointer?.() ?? null } : {}),   // FTL targeting spec §1: seeds the targeting line
+        sitCard: onConsole && seat !== null && carded ? sitCard(seat, t - sitAt, acted, (d.tactical.ships[enemySlot]?.y ?? 0) > d.tactical.ships[CREW_SLOT].y) : null   // Feel-i §1
       });
-      const shake = view === 'interior' ? { x: 0, y: 0 } : shakeOffset(fx);   // Art-i spec section 7: the interior shakes its own world; the console views keep the fx shake
+      // Art-i spec section 7: the interior shakes its own world; the console views keep the fx shake (Feel-i: scaled by Settings).
+      const shake = view === 'interior' ? { x: 0, y: 0 } : shakeOffset(fx, shakeScale(renderer.shake?.() ?? 'full'));
       scene.position.set(shake.x, shake.y);
       return consoleView?.station ?? null;
     },

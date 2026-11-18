@@ -15,7 +15,7 @@ export const ENEMY_SLOT = 1;
 /** §A: the ring's radius in ship radii, its screen-px floor, and the full charge's pulse (alpha 0.45 to 1 at 4 Hz). */
 export const CHARGE_RING_RADII = 2.2, CHARGE_RING_MIN_PX = 18, CHARGE_PULSE_HZ = 4, CHARGE_PULSE_MIN = 0.45;
 /** §B: a callout's life and rise, the same-frame stacking step, and the most shown at once. */
-export const CALLOUT_S = 1.5, CALLOUT_RISE_PX = 24, CALLOUT_STACK_PX = 14, CALLOUT_MAX = 4;
+export const CALLOUT_S = 1.5, CALLOUT_RISE_PX = 24, CALLOUT_STACK_PX = 18, CALLOUT_MAX = 4;
 /** §B: the contact window's struck-room flash, alpha FLASH_ALPHA to 0 over FLASH_S. */
 export const FLASH_S = 0.6, FLASH_ALPHA = 0.6;
 /** §B colours on the ramp (see the header). */
@@ -86,12 +86,17 @@ export function stepHits(fx: FxState, dt: number): void {
 
 export interface CalloutDraw { text: string; x: number; y: number; colour: number; alpha: number }
 /** §B: the callouts over an anchor (the screen point above the enemy marker): each rises CALLOUT_RISE_PX over its life
- *  and fades, a frame's later ones CALLOUT_STACK_PX higher. */
+ *  and fades. Feel-i review: never on top of one another; the newest is lowest (a frame's own in event order) and each
+ *  older one sits at least CALLOUT_STACK_PX above the one below it. */
 export function calloutDraws(items: readonly CalloutItem[], anchor: Point): CalloutDraw[] {
-  return items.map((c) => {
-    const k = Math.min(1, c.age / CALLOUT_S);
-    return { text: c.text, x: anchor.x, y: anchor.y - CALLOUT_RISE_PX * k - CALLOUT_STACK_PX * c.stack, colour: c.colour, alpha: 1 - k };
-  });
+  const ys: number[] = new Array(items.length);
+  const order = items.map((_, k) => k).sort((a, b) => items[a]!.age - items[b]!.age || items[a]!.stack - items[b]!.stack || a - b);
+  let above = Infinity;
+  for (const k of order) {
+    const y = Math.min(anchor.y - CALLOUT_RISE_PX * Math.min(1, items[k]!.age / CALLOUT_S), above - CALLOUT_STACK_PX);
+    ys[k] = y; above = y;
+  }
+  return items.map((c, k) => ({ text: c.text, x: anchor.x, y: ys[k]!, colour: c.colour, alpha: 1 - Math.min(1, c.age / CALLOUT_S) }));
 }
 /** §B: the flashes for one ship: each struck room and its alpha now. */
 export function flashesFor(struck: readonly StruckItem[], ship: number): { room: number; alpha: number }[] {

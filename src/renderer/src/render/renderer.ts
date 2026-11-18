@@ -28,6 +28,7 @@ import { createInteriorFeel } from './interiorFeel';
 import { backdropOption } from './twinkleLayer';
 import { DEFAULT_FEEL, type FeelSetting } from './feel';
 import { DEFAULT_CRT, type CrtSetting } from './crt';
+import { DEFAULT_SHAKE, type ShakeSetting } from './shake';
 import { sectorGradeInput } from './gradeModel';
 import { sectorHits } from './impactModel';
 import { failedStationPoints, sectorWorking, watchRepair } from './particles/sources';
@@ -45,6 +46,9 @@ export interface Renderer {
   /** The CRT strength setting (CRT map spec section 4), set at boot from storage (app/crtBoot.ts); the console views read it each frame. */
   crt(): CrtSetting;
   setCrt(setting: CrtSetting): void;
+  /** Feel-i: the console maps' screen shake setting (Settings), read by the duel scene each frame; absent reads 'full'. */
+  shake?(): ShakeSetting;
+  setShake?(setting: ShakeSetting): void;
   reset(): void;
   recordPrev(state: SimState): void;
   /** `paused`: the session is paused (Art-i spec section 7): the light and feel get a presentation dt of 0, so the particles,
@@ -71,7 +75,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const consoleDesks = createConsoleLayer(assets);   // spec Demo-xii section 1: a desk at every station, under the crew (Art-ii: the bought consoles)
   const magazine = createMagazineLayer();   // spec Coop-ii section 2: the magazine tile, under the crew
   const props = createPropLayer(assets);    // Art-iii spec section 4: the set dressing, directly over the tiles
-  let feelSetting: FeelSetting = DEFAULT_FEEL, crtSetting: CrtSetting = DEFAULT_CRT;
+  let feelSetting: FeelSetting = DEFAULT_FEEL, crtSetting: CrtSetting = DEFAULT_CRT, shakeSetting: ShakeSetting = DEFAULT_SHAKE;
   const missing = new Set(assets.missing);
   const feel = createInteriorFeel({   // Art-i spec sections 5-8; Art-ii: the bought consoles and blasts
     world, band: WORLD_BAND, feel: () => feelSetting, consoleArt: featureReady(missing, 'consoleArt'), backdrop: backdropOption(assets),   // Art-v: the painted backdrop
@@ -98,6 +102,8 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
     setFeel(setting) { feelSetting = setting; },
     crt: () => crtSetting,
     setCrt(setting) { crtSetting = setting; },
+    shake: () => shakeSetting,
+    setShake(setting) { shakeSetting = setting; },
     reset() { memory.reset(); projectiles.reset(); enemyWindow.reset(); feel.reset(); anim = freshWindowAnim(); lastDraw = null; seenImpact = null; },   // session.start (a new run); the app has no runtime snapshot load
     recordPrev(state) {
       for (const eid of state.crew) memory.prev.set(Stable.id[eid]!, { x: Position.x[eid]!, y: Position.y[eid]! });

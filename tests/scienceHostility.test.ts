@@ -96,6 +96,7 @@ describe('the crew firing first ends the hold at once (spec §2.2, §4.1)', () =
   });
   it('a crew missile launch provokes it at launch (cause missile), before the missile lands', () => {
     const st = facing(); st.tick = 120;
+    st.systems[0].laserTargeted = false;   // Feel-i's SHIELDS opener would fire the laser first (cause laser)
     stepDuel(st, { ...IDLE_INPUT, missileLaunch: true });
     expect(st.systems[0].missilesLaunched).toBe(1);
     expect(st.events.some((e) => e.kind === 'missileEnd')).toBe(false);

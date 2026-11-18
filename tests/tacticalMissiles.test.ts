@@ -125,6 +125,7 @@ describe('missile contacts (spec §4 collision matrix)', () => {
     const st = duel(), b = st.ships[1];
     Object.assign(b, { x: -400, y: -300, heading: 192 });             // facing the crew: its nose (Weapons) faces the missile
     st.systems[0].lock = Room.Engines;                                 // the stern, away from the impact point
+    st.systems[0].laserTargeted = false;                               // Feel-i's opener would auto-fire the laser at the shields
     tick(st, input({ missileLaunch: true }));
     for (let t = 0; t < 120 && missileOf(st, 0); t++) tick(st, input());
     expect(missileOf(st, 0)).toBeNull();

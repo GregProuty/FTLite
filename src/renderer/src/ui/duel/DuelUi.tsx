@@ -26,6 +26,7 @@ import { WeaponsStation } from './WeaponsStation';
 import { ContactWindow } from './ContactWindow';
 import { TargetingLine } from './TargetingLine';
 import { ShipHud } from './ShipHud';
+import { SitCard } from './SitCard';
 
 export function DuelUi() {
   const duel = useUi((s) => s.duel), latency = useUi((s) => s.latency);
@@ -44,6 +45,7 @@ export function DuelUi() {
           {duel.contact && <ContactWindow contact={duel.contact} />}
           {duel.contact?.aimWeapon && duel.console?.weapons && <TargetingLine contact={duel.contact} seed={duel.pointer ?? null} />}
           {duel.hud && <ShipHud hud={duel.hud} />}
+          {duel.sitCard && <SitCard card={duel.sitCard} />}
           <Banners banners={duel.banners} cx={duel.console && duel.console.station !== 'ship' ? (CONSOLE_RESERVE.left + INTERNAL_W - CONSOLE_RESERVE.right) / 2 : undefined} />
         </CrtGlow>
         <CrtScreen />

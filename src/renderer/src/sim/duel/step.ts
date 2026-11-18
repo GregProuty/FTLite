@@ -10,6 +10,7 @@ import { roomAt } from '../grid';
 import { inReachOfTile } from '../interact';
 import { movementSystem } from '../movement';
 import { stepDuel } from '../tactical/duel';
+import { autoFaceTurn } from '../tactical/hunter';
 import { scanCommand } from '../tactical/science';
 import { SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
 import { CONTACT_MAX_LEVEL, Outcome } from '../tactical/state';
@@ -227,7 +228,12 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   crew.scanner = t.scan.contact < 0 || attendant(d, t.scan.by) >= 0;   // spec §4.6: after admission, so a same-tick takeover keeps it
   for (const e of input.commands) if (e.command.kind === 'rematch') result(e, 'duel-running');
   for (const e of input.commands) if (!DUEL_KINDS.includes(e.command.kind)) result(e, 'not-in-duel');
-  if (helm >= 0) crew.axes = { turn: (input.held[helm] ?? NO_HELD).moveX, thrust: throttleThrust(d.throttle) };   // Artemis spec §5.3: held moveX turns, the throttle thrusts; held moveY no longer does
+  // Artemis spec §5.3: held moveX turns, the throttle thrusts; held moveY no longer does. Feel-i (console feel spec §2):
+  // the Helm's held `face` turns the nose onto the enemy's lead point instead, unless A/D turns.
+  if (helm >= 0) {
+    const h = input.held[helm] ?? NO_HELD, turn = (Math.sign(h.moveX) || 0) !== 0 ? h.moveX : h.face === true ? autoFaceTurn(d.tactical, 0) : 0;
+    crew.axes = { turn, thrust: throttleThrust(d.throttle) };
+  }
 
   repairPhase(d, input.held);
   const intents: Intent[] = [0, 1].map((pid) => {
