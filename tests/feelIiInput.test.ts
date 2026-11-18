@@ -109,6 +109,24 @@ describe('the Single player runtime (Feel-ii §1.1, §2.8)', () => {
     r.requests.heading(12); r.tick(); r.tick();
     expect(r.rt.duel.holdHeading).toBe(77);
   });
+  it('A/D or auto-face held at the Helm clears the heading base: a heading asked for then still goes (the sim clears the hold)', () => {
+    const r = rig();
+    for (let k = 0; k < 3; k++) r.tick();
+    r.requests.heading(77); r.tick(); r.tick();
+    expect(r.rt.duel.holdHeading).toBe(77);
+    const asked = (h: Partial<KeySample>): number => {
+      r.hold(h); r.requests.heading(77);
+      let n = 0;
+      for (let k = 0; k < 2; k++) { r.tick(); n += r.rt.lastResults().length; }
+      r.hold({ moveX: 0, fireHeld: false });
+      return n;
+    };
+    expect(asked({ moveX: 1 })).toBeGreaterThan(0);   // A held: the request is sent against −1, not the held 77
+    expect(r.rt.duel.holdHeading).toBe(-1);
+    r.requests.heading(77); r.tick(); r.tick();
+    expect(r.rt.duel.holdHeading).toBe(77);
+    expect(asked({ fireHeld: true })).toBeGreaterThan(0);   // auto-face held the same
+  });
   it('a Tab back to the Helm during a right-drag does not pan the Helm camera backwards by it', () => {
     const run = (drag: boolean): number[] => {
       const r = rig();

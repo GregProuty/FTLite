@@ -327,8 +327,9 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   };
   /** The active player's latest queued designation and laser frequency, else the sim's (as throttleBase). */
   const designateBase = (): number => { const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'designate')?.command; return c && c.kind === 'designate' ? c.contact : d.tactical.designated; };
-  /** Feel-ii §1.1: the active player's latest queued heading, else the sim's held one. */
-  const headingBase = (): number => { const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'heading')?.command; return c && c.kind === 'heading' ? c.heading : d.holdHeading; };
+  /** Feel-ii §1.1: the active player's latest queued heading, else the sim's held one; −1 while A/D or auto-face is held at
+   *  the Helm (`turning`), since the sim clears the hold after the tick's commands. */
+  const headingBase = (turning: boolean): number => { if (turning) return -1; const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'heading')?.command; return c && c.kind === 'heading' ? c.heading : d.holdHeading; };
   const freqBase = (): number => { const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'laserFrequency')?.command; return c && c.kind === 'laserFrequency' ? c.freq : d.tactical.systems[0].freq; };
 
   /** A new round (H-2 spec §7): its seed and presence came with the rematch; the view's state starts again. */
@@ -369,7 +370,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       if (p.camera > 0) snapBack(cameras.helm);
       const level = throttleRequest(throttleBase(), p, k.throttleTo);   // W/S a notch, or a notch click (Artemis spec §5.4)
       if (level !== null) queue({ kind: 'throttle', level });
-      if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== headingBase()) queue({ kind: 'heading', heading });   // Feel-ii §1.1
+      if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== headingBase((Math.sign(k.moveX) || 0) !== 0 || k.fireHeld)) queue({ kind: 'heading', heading });   // Feel-ii §1.1
       // Feel-ii §2.8: with Engines off the Helm's controls fly nothing (the commands still go: they apply once repaired).
       const off = refusal(d, 'turn'), held = k.held ?? NO_HELD_FLAGS;
       if (off) {

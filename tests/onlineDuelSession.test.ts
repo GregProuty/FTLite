@@ -435,6 +435,32 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
   });
 });
 
+describe('the online Helm heading (Feel-ii §1.1)', () => {
+  const headings = (c: Stub) => c.commands().filter((x) => x.kind === 'heading');
+  const ask = (r: ReturnType<typeof rig>, heading: number): void => { (h.sceneOpts.at(-1) as unknown as { requests: { heading(n: number): void } }).requests.heading(heading); r.pump(); };
+  it('a clear asked for while a heading is in flight is sent, not deduped against the lagging replica', () => {
+    const r = rig(0), c = r.attach();   // the replica holds no heading (−1)
+    ask(r, 77); ask(r, -1);
+    expect(headings(c)).toEqual([{ kind: 'heading', heading: 77 }, { kind: 'heading', heading: -1 }]);
+    ask(r, -1);   // the clear is in flight now: deduped against it
+    expect(headings(c)).toHaveLength(2);
+    c.results.push({ id: c.ids[c.commands().map((x) => x.kind).lastIndexOf('heading')]!, tick: 3, status: 'applied' }); r.pump();
+    ask(r, -1);   // the result hands the base back to the replica (−1)
+    expect(headings(c)).toHaveLength(2);
+    r.dispose();
+  });
+  it('A held at the Helm clears the base: the same heading asked for again is sent while the replica still shows the old hold', () => {
+    const r = rig(0), c = r.attach();
+    r.d.holdHeading = 77; c.publish(r.d); r.pump();
+    ask(r, 77);
+    expect(headings(c)).toEqual([]);   // the replica holds it already
+    r.key('keydown', 'KeyA'); r.pump(); r.key('keyup', 'KeyA'); r.pump();   // the sim clears the hold; the replica lags
+    ask(r, 77);
+    expect(headings(c)).toEqual([{ kind: 'heading', heading: 77 }]);
+    r.dispose();
+  });
+});
+
 describe('the contact window online (enemy ship window spec §3, §6.2)', () => {
   const contactOf = (): ContactController => (h.sceneOpts.at(-1) as unknown as { contact: ContactController }).contact;
   const frame: ContactSync = { shown: true, station: 'weapons', target: 1, active: () => true, epoch: 0 };
