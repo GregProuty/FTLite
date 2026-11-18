@@ -46,13 +46,13 @@
 3. **`battlemapFor` stops reading the `'battlemap'` feature** (`render/battlemapModel.ts:17` on master). `featureReady(missing, 'battlemap')` needs every name in the feature, so a missing Valkyrn painting would hide the Hound's. The function now checks only `!missing.has(def.name)`. For the Hound the two checks are the same test (the feature held only `ship.hound.map`). `FEATURE_NAMES.battlemap` lists both names, so a "missing everything" fixture still covers both.
 4. **The hull silhouette** (spec §4.5) follows the hull silhouettes spec's trace exactly: downscale by 8, alpha ≥ 50 %, a 3 px max then min filter, a Moore boundary trace, Douglas–Peucker at 2.5 px, centred on the opaque bounding box (62, 55)–(2173, 2177) and scaled so the length is 2.4 units. The result has 53 vertices and a maximum radius of 1.361 (≤ 1.55). The fuselage is only 0.38 units wide at Ops, so a room the size of the painted Ops would cover 0.044 square units, under the 0.2 floor. The three room polygons are therefore widened over the wing roots and the quarters: Weapons spans f 0.08..0.68 (its centre, f 0.38, sits over Ops), Shields f −0.28..−0.02 (the rack half) and Engines f −0.70..−0.30 (the ramp half). Their areas are 0.216, 0.208 and 0.210. All three are convex, inside the outline, and cross no outline edge (checked with the hull test's own predicates in planning).
 5. **`hudModel.ts:345`** (`shipForCrew(...) !== 'cutter'`) reads a layout field instead. The helm line is about a tube that loads itself, so the field is the layout's `magazine` (`cutter.json:581` has one; the Skiff and the Hound do not). `fleet.ts` gains `tubeLoadsItself(id)`. Its output is identical for every crew size.
-6. **The hull and class ids in `schema.ts`.** If Part i typed the layout's `hull` or `shipClass` as a quoted-literal union or a `z.enum([...])` of ids in `sim/ship/schema.ts`, the no-id-literal test flags it, because `schema.ts` is not on the spec's allowed list. Task 3 Step 5 then makes both `z.string().min(1).optional()`. The view validates the hull with `isHullId` (`hullModel.ts`), and `classIndexById` already throws on an unknown class.
+6. **The hull ids live in `sim/ship/fleet.ts`** (Part i Decision 6). Part i appends `export const HULL_IDS = ['hound', 'scout', 'valkyrn'] as const;` to `fleet.ts`, and `schema.ts` types the layout's `hull` as `z.enum(HULL_IDS).optional()` and `shipClass` as `z.string().min(1).optional()`, so `schema.ts` carries no id literal. Task 3 Step 5 keeps that export when it extends `fleet.ts`, and `hullModel.ts` derives `HullId` from it (`(typeof HULL_IDS)[number]`), so the view's hull list and the schema's cannot drift.
 7. **The picker reaches React through the settings slice** (Global Constraints, UI boundary). `SettingsSlice` gains `ships: { id, name, line }[]` (from `SOLO_SHIPS` in `main.ts`), `soloShip` and `valkyrnLaserFit`. The fleet's solo list lives in `sim/ship/fleet.ts`, an allowed id file. `SoloShipId` is derived from it, so `settingsStore.ts` never spells an id.
 8. **Home's Single player opens the picker** (page `'ship'`, `actions.openShips`). `actions.single(ship?)` keeps its meaning: it starts Single player on `ship`, or on the remembered choice. So `tests/uiActions.test.ts:112` stands. `tests/menu.test.tsx:51-52,93` and `scripts/network/online-app-smoke.ts:199` click `ship-hound` after `single-player`.
 9. **The Flight seat is a fifth seat value, `'flight'`.** `seatOf` returns it when the character occupies both Navigation and Weapons, which only happens when they share a console group (`flightSeat(d)`; `sitDown` seats every member, `sim/stations.ts:31-38`). The view uses the Helm camera (`viewCamera`), and the map model draws it as `console: 'helm'`, so it gets the predicted path, gravity rings, EVADE, the collision words and the torpedo circle, plus `flight: true`. The Flight view passes `holdHeading: -1`, so there is no HDG marker (spec §5.1).
 10. **Tabs.** `ConsoleView.tabs` keeps exactly four keys on the Hound: `tests/duelConsoleModel.test.ts:106` uses `toEqual`. The `flight` key is present only on a layout with the Flight seat, and the tab strip then reads FLIGHT, SCIENCE, SHIP. `TABS_RIGHT` (408) is unchanged.
-11. **Tab at n = 1** (spec §4.4) toggles a runtime-local `shipView` while seated. `view()` reads `'interior'` while it is set, and the seat stays attended. On foot, Tab does nothing. In ship view the console shows SHIP lit and the seat's tab open with the Tab action (`consoleTabs`' `shipView`).
-12. **Input plumbing.** The scene turns the pointer into a bearing from the own ship's drawn marker every frame on the Flight map (`MapRequests.steer`), as the Helm's heading request does (`app/duel/mapRequests.ts`). Over the DOM side tools the canvas gets no pointer moves, so the last bearing stands. The left button is `PointerSource.leftHeld()`. A right-button press on the Flight map is `MapRequests.launch()`. The runtime drains both every frame.
+11. **Tab at n = 1** (spec §4.4) toggles a runtime-local `shipView` while seated. `view()` reads `'interior'` while it is set, and the seat stays attended. On foot, Tab does nothing. The ship view is a look, not a seat change: the ship keeps its course. The gun, the pointer bearing, and the turn keys (A/D's `moveX` and Space's `face`, which would turn the ship and clear the held bearing, Part i) are dropped while it is set. Throttle (W/S), launch (F, right button) and the torpedo's room (Q/E) still work, since none of them turns the ship. In ship view the console shows SHIP lit and the seat's tab open with the Tab action (`consoleTabs`' `shipView`).
+12. **Input plumbing.** The scene turns the pointer into a bearing from the own ship's drawn marker every frame on the Flight map (`MapRequests.steer`), as the Helm's heading request does (`app/duel/mapRequests.ts`). Over the DOM side tools the canvas gets no pointer moves, so the last bearing stands. The left button is `PointerSource.leftHeld()`: pressed on the canvas, released by a button-0 `pointerup` on the canvas or the window, a canvas move with the button bit clear, or the window's `blur`, so a release over the DOM side tools or an alt-tab stops the gun. A right-button press on the Flight map is `MapRequests.launch()`. The runtime drains both every frame.
 13. **No contact-window click on the Flight map.** The left button is the gun, so a map click never routes to `contact.click` on the Flight seat (`scene.ts:178`). The TORPEDO card, 2 and T open the window.
 14. **Q/E on the Flight seat always step the torpedo's room** (spec §5.1), with or without the laser fit. While the torpedo is picked up, the contact controller's `torpStep` takes them (the Weapons rule). Otherwise the runtime steps the torpedo from its latest queued or held room.
 15. **Rounds are drawn as short tracers** (CRT.main, 1 px, 0.02 s of flight). This is presentation only. Spec §7.4's hit feedback assumes the pilot can see the stream.
@@ -61,7 +61,7 @@
 18. **Gun state on the console.** The GUN card's state is OFFLINE (Weapons at 2) before OVERHEAT (`gunLocked`) before READY. The status sentence and the FIRE refusal use the same order (`gunReason`). The readout's CHARGE row becomes a HEAT row on a gun class (`chargeRow`).
 19. **The Flight block** sits beside the Helm block at the bottom: `FLIGHT = { x: 324, y: 542, w: 300, h: 166 }`, with two 138 px cards like the Weapons block's (`consoleLayout.ts:15-19`). The targeting line starts at the picked card (`TargetingLine` gains `from`).
 20. **Settings stay at version 2.** A record without the new fields reads `soloShip` = the first solo ship (the Hound) and `valkyrnLaserFit` = false. The full-object `toEqual`s in `tests/settingsAndControls.test.ts:14,15,18,27` gain the two fields.
-21. **The solo record at n = 1.** If `validateDuelRecord` rejects a one-character record because Sci-2 bounded the per-player arrays at `.min(2)` (Sci-2 plan Decision 13), Task 4 widens those arrays in `src/renderer/src/net/duelRecord.ts` only, to `.min(1)`. Records are not hashed, and online records (n ≥ 2) stay valid.
+21. **The solo record at n = 1.** Sci-2 bounds the per-player record arrays at `const crew = z.array(uint).min(2).max(4);` (`net/duelRecord.ts`, Sci-2 plan Decision 13), which rejects a one-character record. Task 4 Step 13 widens it to `.min(1)` in that file only. Records are not hashed, and online records (n ≥ 2) stay valid.
 
 ## File structure
 
@@ -79,7 +79,7 @@
 | `src/renderer/src/render/duel/consoleModel.ts`, `sitModel.ts`, `ui/duel/TabStrip.tsx` | modify (T4, T8) | `'flight'` station, tabs, the sit card |
 | `src/renderer/src/app/settingsStore.ts`, `ui/menuState.ts`, `ui/store.ts`, `ui/actions.ts`, `ui/menu/{Home,Menu,Settings}.tsx`, `ui/menu/ShipPicker.tsx` (create), `src/renderer/src/main.ts`, `tests/helpers/uiStore.ts` | modify (T5) | the picker and the laser-fit switch |
 | `src/renderer/src/render/duel/leadModel.ts` | create (T6, T7) | `leadPip`, `onTarget`, `gunSightDraw`, `roundDraws` |
-| `src/renderer/src/render/tactical/weaponsModel.ts`, `tacticalLayer.ts`, `fxModel.ts`, `hitModel.ts`, `render/duel/situationModel.ts`, `readoutModel.ts`, `contactModel.ts`, `audio/duelSounds.ts` | modify (T7) | the sight, tracers, null-laser guards, gun reasons, hit feedback |
+| `src/renderer/src/render/tactical/weaponsModel.ts`, `tacticalLayer.ts`, `fxModel.ts`, `render/duel/situationModel.ts`, `readoutModel.ts`, `audio/duelSounds.ts` | modify (T7) | the sight, tracers, gun reasons, the HEAT row, hit feedback (Part i's Task 2 already guards the other laser readers) |
 | `src/renderer/src/render/duel/consoleLayout.ts`, `ui/duel/{FlightStation (create),HelmStation,DuelUi,TargetingLine}.tsx`, `app/controlsList.ts` | modify (T8) | the Flight block, the controls list |
 | `tests/valkyrnArt.test.ts`, `tests/valkyrn.test.ts`, `tests/valkyrnRuntime.test.ts`, `tests/shipPicker.test.tsx`, `tests/leadModel.test.ts`, `tests/valkyrnViews.test.ts`, `tests/flightConsole.test.tsx` | create | one file per task |
 
@@ -617,11 +617,11 @@ and add `isHullId` to its import.
 - [ ] **Step 2: Run them to verify they fail**
 
 Run: `npx vitest run tests/noShipIdLiterals.test.ts tests/shipParity.test.ts tests/hullModel.test.ts tests/crtColours.test.ts`
-Expected: FAIL. The literal test lists `render/hudModel.ts:345` (and possibly `sim/ship/schema.ts`, Decision 6). `SOLO_SHIPS` does not exist yet. `HULLS.valkyrn` is undefined.
+Expected: FAIL. The literal test lists `render/hudModel.ts:345`. `SOLO_SHIPS` does not exist yet. `HULLS.valkyrn` is undefined.
 
 - [ ] **Step 3: The hull** in `src/renderer/src/render/tactical/hullModel.ts`
 
-Line 5 becomes `export type HullId = 'hound' | 'scout' | 'valkyrn';`. After `SCOUT` add:
+Line 5 becomes `export type HullId = (typeof HULL_IDS)[number];   // Valkyrn spec §4.5: 'hound' | 'scout' | 'valkyrn', Part i's list (Decision 6)`, and add `import type { HULL_IDS } from '../../sim/ship/fleet';` to the imports (a type-only import: `typeof` of a value imported with `import type` is allowed, and nothing reaches the bundle). After `SCOUT` add:
 ```ts
 /** Valkyrn spec §4.5: traced from the bought 2-Minute Tabletop painting, rotated so the nose is +f, by the Hound's steps
  *  (downscale 8, alpha 50 %, 3 px close, Moore trace, Douglas-Peucker 2.5 px, length 2.4 units). The rooms are widened over
@@ -647,7 +647,7 @@ Then replace the `HULLS` and `hullFor` lines with:
 ```ts
 export const HULLS: Readonly<Record<HullId, Hull>> = Object.freeze({ hound: freeze(HOUND), scout: freeze(SCOUT), valkyrn: freeze(VALKYRN) });
 
-/** Whether `v` names a hull (a layout's `hull` field is a plain string in the schema). */
+/** Whether `v` names a hull: the view's guard on a layout's `hull` (the schema already limits it to HULL_IDS, Decision 6). */
 export function isHullId(v: unknown): v is HullId { return typeof v === 'string' && Object.prototype.hasOwnProperty.call(HULLS, v); }
 /** Valkyrn spec §3.2, §4.5: the crew's ship flies its layout's hull (the Hound's when the layout has none); the enemy is the scout. */
 export function hullFor(crew: boolean, layoutHull?: string): HullId { return !crew ? 'scout' : isHullId(layoutHull) ? layoutHull : 'hound'; }
@@ -666,7 +666,7 @@ At line 328, replace `hull: hullFor(i === 0)` with `hull: i === 0 ? input.crewHu
 
 - [ ] **Step 5: The fleet's solo list and the lobby line**
 
-`src/renderer/src/sim/ship/fleet.ts` becomes:
+`src/renderer/src/sim/ship/fleet.ts` becomes the following. Its last line is Part i's `HULL_IDS` export (Part i Task 3 Step 4), kept as it is: `schema.ts` imports it.
 ```ts
 import cutter from './cutter.json';
 import hound from './hound.json';
@@ -696,12 +696,16 @@ export const DEFAULT_SOLO_SHIP: SoloShipId = SOLO_SHIPS[0].id;
 export function isSoloShipId(v: unknown): v is SoloShipId { return SOLO_SHIPS.some((s) => s.id === v); }
 /** The solo ship `id` (the first when unknown). */
 export function soloShip(id: string): (typeof SOLO_SHIPS)[number] { return SOLO_SHIPS.find((s) => s.id === id) ?? SOLO_SHIPS[0]; }
+
+/** The console-map silhouettes a layout's `hull` field may name (Valkyrn spec §3.1, §4.5); render/tactical/hullModel.ts
+ *  draws one per id. Kept here, a file allowed ship id literals (spec §3.2), so the schema carries none. */
+export const HULL_IDS = ['hound', 'scout', 'valkyrn'] as const;
 ```
 `render/hudModel.ts:345` becomes (import `tubeLoadsItself` beside `shipForCrew`):
 ```ts
 export function lobbyLines(players: number): string[] { return tubeLoadsItself(shipForCrew(Math.max(1, players))) ? LOBBY_LINES.map((l, k) => (k === 8 ? SKIFF_HELM_LINE : l)) : [...LOBBY_LINES]; }
 ```
-Decision 6: if the literal test also lists `sim/ship/schema.ts`, make the layout's `shipClass` and `hull` fields `z.string().min(1).optional()` there. Keep `crew` and `helmHoldsUnattended` as Part i wrote them. Any other offender under `src/renderer/src` is a site that branches on an id: change it to read a layout or class field instead, and record the site in the commit message.
+Leave `sim/ship/schema.ts` as Part i wrote it (Decision 6). Any other offender the literal test lists under `src/renderer/src` is a site that branches on an id: change it to read a layout or class field instead, and record the site in the commit message.
 
 - [ ] **Step 6: Run the tests**
 
@@ -722,14 +726,13 @@ Expected: both exit 0.
 git add src/renderer/src/render/tactical/hullModel.ts src/renderer/src/render/tactical/tacticalModel.ts src/renderer/src/app/duel/scene.ts src/renderer/src/sim/ship/fleet.ts src/renderer/src/render/hudModel.ts tests/noShipIdLiterals.test.ts tests/shipParity.test.ts tests/hullModel.test.ts tests/crtColours.test.ts
 git commit -m "feat(valkyrn): the Valkyrn silhouette, hullFor from the layout, the solo ship list; no id literals and ship parity tests" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
-(Add `src/renderer/src/sim/ship/schema.ts` to the `git add` if Step 5 changed it.)
 
 ---
 
 ### Task 4: The Flight seat and the runtime at a crew of one
 
 **Files:**
-- Modify: `src/renderer/src/app/duel/controls.ts:10-16`, `app/duel/input.ts` (`PointerSource`, `createPointerSource`), `app/duel/mapRequests.ts`, `app/duel/runtime.ts`, `app/duel/duelMode.ts`, `app/duel/contactController.ts`, `app/duel/scene.ts`, `render/duel/consoleModel.ts`, `render/duel/sitModel.ts`, `render/duel/contactModel.ts` and `render/duel/scienceModel.ts` (the station unions), `ui/duel/TabStrip.tsx`, `src/renderer/src/render/duel/readoutModel.ts` (Sci-2's `crewStatus`, one line)
+- Modify: `src/renderer/src/app/duel/controls.ts:10-16`, `app/duel/input.ts` (`PointerSource`, `createPointerSource`), `app/duel/mapRequests.ts`, `app/duel/runtime.ts`, `app/duel/duelMode.ts`, `app/duel/contactController.ts`, `app/duel/scene.ts`, `render/duel/consoleModel.ts`, `render/duel/sitModel.ts`, `render/duel/contactModel.ts` and `render/duel/scienceModel.ts` (the station unions), `ui/duel/TabStrip.tsx`, `tests/duelInput.test.ts` (the left button), `src/renderer/src/render/duel/readoutModel.ts` (Sci-2's `crewStatus`, one line), `src/renderer/src/net/duelRecord.ts` (the per-player array bound)
 - Create: `tests/valkyrnRuntime.test.ts`
 
 **Interfaces:**
@@ -862,13 +865,14 @@ describe('the Flight seat (Valkyrn spec §5, §5.1)', () => {
     expect(rt.held()[0]!.aim).toBeUndefined();
     rt.dispose();
   });
-  it('the ship view sends no gun and no new bearing', () => {
-    const { rt, tick, sit, steerTo, holdGun, press } = rig();
+  it('the ship view sends no gun, no new bearing and no turn keys (Decision 11)', () => {
+    const { rt, tick, sit, steerTo, holdGun, press, hold } = rig();
     sit(); tick(); steerTo(32); tick();
     press('switch'); tick();
-    steerTo(96); holdGun(true); tick();
-    expect(rt.held()[0]).toMatchObject({ aim: 32 });
+    steerTo(96); holdGun(true); hold({ moveX: -1, fireHeld: true }); tick();
+    expect(rt.held()[0]).toMatchObject({ aim: 32, moveX: 0 });
     expect(rt.held()[0]!.gunHeld).toBeUndefined();
+    expect(rt.held()[0]!.face).toBeUndefined();
     rt.dispose();
   });
   it('the right button launches a torpedo in range', () => {
@@ -977,13 +981,37 @@ export function seatOf(d: DuelState, pid: number): Seat {
   /** Valkyrn spec §5.1: whether the left button is held on the canvas now (the Flight seat's gun). */
   leftHeld(): boolean;
 ```
-In `createPointerSource`:
+`createPointerSource`'s signature gains a third parameter, `release?: EventSource`: the window, whose `pointerup` and `blur` end a left-button hold that left the canvas (Decision 12). In `createPointerSource`:
 - add `left = false` to the `let` list;
 - in `move`, after `else if ((e.buttons & DRAG_BUTTONS) === 0) dragging = false;` add `if ((e.buttons & 1) === 0) left = false;`;
 - in `downFn`, replace `else if (e.button === 0) click = { x: p.x, y: p.y };   // the contact window's map click (spec §6.2)` with `else if (e.button === 0) { click = { x: p.x, y: p.y }; left = true; }   // the contact window's map click (spec §6.2); Valkyrn: the gun`;
 - in `upFn` add `if (e.button === 0) left = false;`;
 - in `clear` add `left = false;`;
+- after the `for (const [type, fn] of on) target.addEventListener(…)` line add:
+```ts
+  // Valkyrn spec §5.1: a left-button hold ends wherever it is released, or when the window loses focus (Decision 12).
+  const releaseUp = (e: PointerEventLike): void => { if (e.button === 0) left = false; }, releaseBlur = (): void => { left = false; };
+  release?.addEventListener('pointerup', releaseUp as (e: never) => void);
+  release?.addEventListener('blur', releaseBlur as (e: never) => void);
+```
+- in `destroy`, after the `removeEventListener` loop, add `release?.removeEventListener('pointerup', releaseUp as (e: never) => void); release?.removeEventListener('blur', releaseBlur as (e: never) => void);`;
 - in the returned object add `leftHeld: () => left,`.
+
+`app/duel/duelMode.ts`: the `createPointerSource(canvas as unknown as EventSource, (cx, cy) => { … })` call gains `window as unknown as EventSource` as its third argument.
+
+`tests/duelInput.test.ts`, add to the pointer source's `describe` (it has `fakeTarget` and `half`):
+```ts
+  it('Valkyrn spec §5.1: the left button is held from a canvas press until a release anywhere or a blur', () => {
+    const t = fakeTarget(), w = fakeTarget(), p = createPointerSource(t, half, w);
+    const ev = (button: number, buttons: number) => ({ clientX: 10, clientY: 10, button, buttons, preventDefault: vi.fn() });
+    expect(p.leftHeld()).toBe(false);
+    t.fire('pointerdown', ev(0, 1)); expect(p.leftHeld()).toBe(true);
+    w.fire('pointerup', ev(0, 0)); expect(p.leftHeld()).toBe(false);          // released over the side tools
+    t.fire('pointerdown', ev(0, 1)); w.fire('blur', {}); expect(p.leftHeld()).toBe(false);   // alt-tab
+    t.fire('pointerdown', ev(0, 1)); t.fire('pointerup', ev(0, 0)); expect(p.leftHeld()).toBe(false);
+    p.destroy(); expect(w.count()).toBe(0);
+  });
+```
 
 Any test object typed `PointerSource` gains `leftHeld: () => false`.
 
@@ -1116,8 +1144,9 @@ with
       if (seatNow === 'standing') shipView = false;
       if (seatNow !== 'flight') steer = -1; else if (steerNow !== null && !shipView) steer = steerNow;   // the last bearing holds over the side tools
       const gunNow = seatNow === 'flight' && !shipView && hasGun() && (deps.gunHeld?.() ?? false);
-      activeHeld = ended() ? NEUTRAL : { moveX: Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld,
-        ...(k.fireHeld && (seatNow === 'helm' || seatNow === 'flight') ? { face: true } : {}),
+      const look = seatNow === 'flight' && shipView;   // Decision 11: the ship view keeps the course (no turn keys, no face)
+      activeHeld = ended() ? NEUTRAL : { moveX: look ? 0 : Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld,
+        ...(k.fireHeld && !look && (seatNow === 'helm' || seatNow === 'flight') ? { face: true } : {}),
         ...(steer >= 0 ? { aim: steer } : {}), ...(gunNow ? { gunHeld: true } : {}) };   // Valkyrn spec §5.1
 ```
    Replace the camera lines
@@ -1252,8 +1281,10 @@ In `render/duel/readoutModel.ts`, `crewStatus` maps the seat to a word. Make `'f
 
 - [ ] **Step 13: The solo record at n = 1** (Decision 21)
 
+In `src/renderer/src/net/duelRecord.ts`, replace `const crew = z.array(uint).min(2).max(4);` with `const crew = z.array(uint).min(1).max(4);   // Valkyrn spec §4.4: Single player's crew of one; Sci-2 spec §4.3: one per player, n long`.
+
 Run: `npx vitest run tests/valkyrnRuntime.test.ts -t "valid solo record"`
-If it fails with a zod issue on a per-player array (`repairsFinished`, `repairsStarted`, `walkingTicks` or `repairingTicks`: "Array must contain at least 2 element(s)"), change those arrays' `.min(2)` to `.min(1)` in `src/renderer/src/net/duelRecord.ts` only, and add the comment `// Valkyrn spec §4.4: Single player's crew of one`.
+Expected: PASS.
 
 - [ ] **Step 14: Run the tests**
 
@@ -1271,7 +1302,7 @@ Expected: both exit 0.
 - [ ] **Step 16: Commit**
 
 ```bash
-git add src/renderer/src/app/duel/controls.ts src/renderer/src/app/duel/input.ts src/renderer/src/app/duel/mapRequests.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/duelMode.ts src/renderer/src/app/duel/contactController.ts src/renderer/src/app/duel/scene.ts src/renderer/src/render/duel/consoleModel.ts src/renderer/src/render/duel/sitModel.ts src/renderer/src/render/duel/readoutModel.ts src/renderer/src/render/duel/contactModel.ts src/renderer/src/render/duel/scienceModel.ts src/renderer/src/ui/duel/TabStrip.tsx tests/valkyrnRuntime.test.ts
+git add src/renderer/src/app/duel/controls.ts src/renderer/src/app/duel/input.ts src/renderer/src/app/duel/mapRequests.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/duelMode.ts src/renderer/src/app/duel/contactController.ts src/renderer/src/app/duel/scene.ts src/renderer/src/render/duel/consoleModel.ts src/renderer/src/render/duel/sitModel.ts src/renderer/src/render/duel/readoutModel.ts src/renderer/src/render/duel/contactModel.ts src/renderer/src/render/duel/scienceModel.ts src/renderer/src/ui/duel/TabStrip.tsx src/renderer/src/net/duelRecord.ts tests/valkyrnRuntime.test.ts tests/duelInput.test.ts
 git commit -m "feat(valkyrn): the Flight seat and the runtime at a crew of one (aim from the pointer, gun on the left button, torpedo on the right, Tab ship view)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 (Add `src/renderer/src/net/duelRecord.ts` and any fake-pointer test file if Steps 4 or 13 changed them.)
@@ -1481,7 +1512,11 @@ git commit -m "feat(valkyrn): the Single player ship picker (Hound, Valkyrn) and
 
 **Interfaces:**
 - Consumes: Part i's `GUN`, `tickGun`, `GunRound`, `ShipClass.Valkyrn`, `createTacticalState(seed, slots, crewClass)`, `ShipInput.gunHeld`.
-- Produces: `interface Lead { x; y; t }`; `leadPip(sx, sy, svx, svy, tx, ty, tvx, tvy, speed): Lead | null`; `onTarget(x, y, h, px, py, r): boolean`.
+- Produces (the signatures are the contract Part iii's `tests/valkyrnLead.test.ts` adapter calls):
+  - `interface Lead { x; y; t }`;
+  - `leadPip(sx, sy, svx, svy, tx, ty, tvx, tvy, speed): Lead | null`, nine numbers, the pip as a world point;
+  - `leadPipFor(state: TacticalState, i: number): Lead | null`, ship `i`'s pip on its target from the sim's bodies (`leadPip(s.x, s.y, s.vx, s.vy, t.x, t.y, t.vx, t.vy, gun.speed)`), null for a class without a gun or with no other active target. Part iii's `viewOffset` calls `leadPipFor(st, 0)` and subtracts ship 0's position;
+  - `onTarget(x, y, h, px, py, r): boolean`.
 
 - [ ] **Step 1: Write the failing test** `tests/leadModel.test.ts`
 
@@ -1490,7 +1525,7 @@ git commit -m "feat(valkyrn): the Single player ship picker (Hound, Valkyrn) and
 // sim fly-out: a round fired by tickGun along the pip's bearing, flying straight as stepRounds flies it, while the Hunter
 // flies under the sim's flySlot, with flight forces off, then with the default flight far from the planet.
 import { describe, expect, it } from 'vitest';
-import { leadPip, onTarget } from '../src/renderer/src/render/duel/leadModel';
+import { leadPip, leadPipFor, onTarget } from '../src/renderer/src/render/duel/leadModel';
 import { createTacticalState, NO_AXES, classOf, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { GUN, ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { tickGun } from '../src/renderer/src/sim/tactical/gun';
@@ -1519,6 +1554,12 @@ describe('leadPip (pure)', () => {
   it('no pip when the target outruns the round or sits on the shooter', () => {
     expect(leadPip(0, 0, 0, 0, 100, 0, 800, 0, 700)).toBeNull();
     expect(leadPip(0, 0, 0, 0, 0, 0, 10, 0, 700)).toBeNull();
+  });
+  it('leadPipFor reads ship i and its target from the state: the nine-number pip on the gun class, null without a gun', () => {
+    const st = createTacticalState(7, 2, ShipClass.Valkyrn), s = st.ships[0]!, t = st.ships[1]!;
+    s.x = 100; s.y = -40; s.vx = 20; s.vy = 0; t.x = 400; t.y = 60; t.vx = -30; t.vy = 50;
+    expect(leadPipFor(st, 0)).toEqual(leadPip(100, -40, 20, 0, 400, 60, -30, 50, GUN.speed));
+    expect(leadPipFor(createTacticalState(7, 2), 0)).toBeNull();   // the Cutter has no gun
   });
   it('onTarget: forward along the heading only, within the radius', () => {
     expect(onTarget(0, 0, 64, 300, 15, 20)).toBe(true);     // heading 64 points +x (east)
@@ -1591,8 +1632,10 @@ Expected: FAIL (cannot resolve `render/duel/leadModel`).
 
 ```ts
 // Valkyrn spec §7.4: the minigun's lead pip, Elite Dangerous style. A fixed gun hits a target moving at constant velocity
-// when the nose points where the target will be, in the shooter's frame, after the round's flight. Pure: no Pixi, no state.
+// when the nose points where the target will be, in the shooter's frame, after the round's flight. Pure: no Pixi; only
+// leadPipFor reads a state.
 import { HEADING_COUNT } from '../../sim/tactical/tuning';
+import { classOf, targetOf, type TacticalState } from '../../sim/tactical/state';
 
 /** The aim point (x, y) in world units and the round's flight time t in seconds. */
 export interface Lead { x: number; y: number; t: number }
@@ -1617,6 +1660,14 @@ export function leadPip(sx: number, sy: number, svx: number, svy: number, tx: nu
   }
   if (!(t > 0) || !Number.isFinite(t)) return null;
   return { x: tx + vx * t, y: ty + vy * t, t };
+}
+
+/** Ship `i`'s lead pip on its target from the state's bodies (no interpolation): the form the scripted pilot's agreement
+ *  test reads (Valkyrn Part iii). Null when the class has no gun, or the target is itself or inactive. */
+export function leadPipFor(state: TacticalState, i: number): Lead | null {
+  const gun = classOf(state, i).slots.gun, j = targetOf(state, i), s = state.ships[i], t = state.ships[j];
+  if (!gun || j === i || !s || !t?.active) return null;
+  return leadPip(s.x, s.y, s.vx, s.vy, t.x, t.y, t.vx, t.vy, gun.speed);
 }
 
 /** Whether the nose line from (x, y) along heading `h` (a heading index, continuous allowed; 0 north, clockwise) passes
@@ -1645,14 +1696,14 @@ git commit -m "feat(valkyrn): the lead pip, pure, checked against a sim fly-out 
 
 ---
 
-### Task 7: The gun on the map: crosshair, pip, heat bar, tracers, null-laser guards, hit feedback
+### Task 7: The gun on the map: crosshair, pip, heat bar, tracers, the gun's words and readout, hit feedback
 
 **Files:**
-- Modify: `src/renderer/src/render/duel/leadModel.ts` (append), `render/tactical/weaponsModel.ts` (`CombatDraw`, `CombatModelInput`, `combatModel`), `render/tactical/tacticalLayer.ts` (`NOTES`, the combat section), `render/duel/situationModel.ts` (`laserSituation`, `stateAxes`, `refusal`, new `gunReason` and `gunSentence`), `render/tactical/hitModel.ts` (`enemyCharge`), `render/duel/readoutModel.ts` (`chargeRow`), `render/duel/contactModel.ts:180`, `render/duel/consoleModel.ts` (the `burst` guard), `render/tactical/fxModel.ts` (`pushGunHits`), `audio/duelSounds.ts`, `app/duel/scene.ts`, `tests/crtColours.test.ts`
+- Modify: `src/renderer/src/render/duel/leadModel.ts` (append), `render/tactical/weaponsModel.ts` (`CombatDraw`, `CombatModelInput`, `combatModel`), `render/tactical/tacticalLayer.ts` (`NOTES`, the combat section), `render/duel/situationModel.ts` (`stateAxes`, `refusal`, new `gunReason` and `gunSentence`), `render/duel/readoutModel.ts` (`chargeRow`), `render/tactical/fxModel.ts` (`pushGunHits`), `audio/duelSounds.ts`, `app/duel/scene.ts`, `tests/crtColours.test.ts`
 - Create: `tests/valkyrnViews.test.ts`
 
 **Interfaces:**
-- Consumes: Part i's `ShipSystems.gunHeat`, `gunLocked`, `gunWear` and `gunHull`, `TacticalState.rounds`, the `gunHit` event `{ kind, ship, room, x, y }`, and `classOf(...).slots.gun: GunDef | null`.
+- Consumes: Part i's `ShipSystems.gunHeat`, `gunLocked` and `gunHull`, `TacticalState.rounds`, the `gunHit` event `{ kind, ship, room, stripped, x, y }` (Part i Decision 2), and `classOf(...).slots.gun: GunDef | null`.
 - Produces:
   - `GunSightDraw`; `gunSightDraw(i)`; `roundDraws(state, toS)`;
   - `CROSS_PX`, `PIP_PX`, `OVERHEAT_BLINK_HZ`, `TRACER_S`;
@@ -1681,6 +1732,7 @@ import { combatModel, type CombatModelInput } from '../src/renderer/src/render/t
 import { gunSightDraw } from '../src/renderer/src/render/duel/leadModel';
 import { gunReason, laserSituation, refusal } from '../src/renderer/src/render/duel/situationModel';
 import { enemyCharge } from '../src/renderer/src/render/tactical/hitModel';
+import type { ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import { chargeRow } from '../src/renderer/src/render/duel/readoutModel';
 import { SIDE, TABS_RIGHT } from '../src/renderer/src/render/duel/consoleLayout';
 
@@ -1770,9 +1822,14 @@ describe('the Flight frame on a gun class (Valkyrn spec §6.1, §8)', () => {
       sys.gunHeat = GUN.heatMax / 4;
       expect([chargeRow(d).label, chargeRow(d).value]).toEqual(['HEAT', '25%']);
       const fx = createFx(), e = d.tactical.systems[0].target, es = d.tactical.systems[e]!;
-      es.gunWear = 0; es.gunHull = 0;
-      pushGunHits(fx, [{ kind: 'gunHit', ship: e, room: -1, x: 10, y: 20 }, { kind: 'gunHit', ship: e, room: 1, x: 12, y: 22 }] as never, d.tactical);
-      expect(fx.items.map((it) => it.kind)).toEqual(['spark', 'pop', 'spark']);
+      es.gunHull = 0;
+      const hits: ViewEvent[] = [
+        { kind: 'gunHit', ship: e, room: -1, stripped: false, x: 8, y: 18 },    // a shield hit that strips nothing: spark only
+        { kind: 'gunHit', ship: e, room: -1, stripped: true, x: 10, y: 20 },    // the strip: spark and pop
+        { kind: 'gunHit', ship: e, room: 1, stripped: false, x: 12, y: 22 }     // a room hit with the hull count back to 0: spark and -1
+      ];
+      pushGunHits(fx, hits, d.tactical);
+      expect(fx.items.map((it) => it.kind)).toEqual(['spark', 'spark', 'pop', 'spark']);
       expect(fx.floats.map((f) => f.text)).toEqual(['-1']);
     } finally { disposeDuel(d); }
   });
@@ -1846,16 +1903,10 @@ export function roundDraws(state: TacticalState, toS: (x: number, y: number) => 
   return out;
 }
 ```
-If Part i typed `gunLocked` as a 0/1 number, `sys.gunLocked === true` becomes `sys.gunLocked !== 0` (and the same in the next steps).
 
 - [ ] **Step 4: The gun's words** (`render/duel/situationModel.ts`)
 
-- In `laserSituation`, split the long `const laser = …, dx = …` line so the class's laser is read first:
-```ts
-  const laser = classOf(t, CREW_SLOT).slots.laser;
-  if (!laser) return { kind: 'none' };   // Valkyrn spec §6.1: a gun class has no laser sentence, bracket or bright arc
-  const dx = e.x - me.x, dy = e.y - me.y, range = Math.round(Math.sqrt(dx * dx + dy * dy));
-```
+- `laserSituation` already returns `{ kind: 'none' }` for a class without a laser (Part i Task 2 Step 9's guard after the `const laser = …, dx = …` line). That is the Flight rule too (spec §6.1: a gun class has no laser sentence, bracket or bright arc), so leave it.
 - Add, after `alertSentence`:
 ```ts
 /** Valkyrn spec §6.1: why the crew's gun cannot fire, or null: WEAPONS OFFLINE (Weapons at 2), then GUN OVERHEAT (locked).
@@ -1885,14 +1936,8 @@ export function stateAxes(d: DuelState): Axes {
 
 - [ ] **Step 5: The other laser readers**
 
-- `render/tactical/hitModel.ts`, `enemyCharge`: replace `const units = classOf(state, ship).slots.laser.chargeUnits;` with
-```ts
-  const laser = classOf(state, ship).slots.laser;
-  if (!laser) return null;   // Valkyrn spec §6.1: a gun class holds no charge
-  const units = laser.chargeUnits;
-```
-- `render/duel/contactModel.ts:180`: `lines.push(line('ENEMY LASER', …));` becomes `if (cls.slots.laser) lines.push(line('ENEMY LASER', CRT.main, Math.min(1, sys.laserCharge / cls.slots.laser.chargeUnits)));`.
-- `render/duel/consoleModel.ts`: `burst: classOf(t, 0).slots.laser.shots,` becomes `burst: classOf(t, 0).slots.laser?.shots ?? 0,`.
+Part i Task 2 Step 9 already gave `hitModel.ts`'s `enemyCharge` its `if (!laser) return null;`, `consoleModel.ts`'s `burst` its `?.shots ?? 0`, and `contactModel.ts:180` its `cls.slots.laser ? … : 0` ternary. They stay as Part i wrote them (the enemy is always the Hunter, which has a laser, so the contact line is unchanged). The one reader left is the readout:
+
 - `render/duel/readoutModel.ts`, `chargeRow`: insert at its top, after the `const t = d.tactical, crewSys = …` line:
 ```ts
   const gun = classOf(t, 0).slots.gun;
@@ -1958,15 +2003,17 @@ export function stateAxes(d: DuelState): Axes {
 `render/tactical/fxModel.ts`: import `type TacticalState` from `../../sim/tactical/state` if it is not imported yet. After `pushEvents`, add:
 ```ts
 /** Valkyrn spec §7.4: the gun's hits on the enemy: a tick flash at the hit point; the shield pop when the hit stripped a
- *  layer (a shield hit whose target's gun wear is back to 0); `-1` when it stepped the hull (a room hit whose target's gun
- *  hull count is back to 0). Read from the state the events arrived with. */
+ *  layer (the event's `stripped`, Part i Decision 2); `-1` when it stepped the hull (a room hit whose target's gun hull
+ *  count is back to 0 in the state the events arrived with). The hull test is a frame-end heuristic: the event carries no
+ *  hull flag, so when two room hits land in one frame and the first steps the hull, no `-1` floats (the pop, which reads
+ *  the event, is exact). Rounds leave 6 ticks apart, so that takes a frame hitch. */
 export function pushGunHits(fx: FxState, events: readonly ViewEvent[], state: TacticalState): void {
   for (const e of events) {
     if (e.kind !== 'gunHit') continue;
     fx.items.push({ kind: 'spark', age: 0, life: SPARK_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.hot });
     const s = state.systems[e.ship];
     if (!s) continue;
-    if (e.room < 0 && s.gunWear === 0) fx.items.push({ kind: 'pop', age: 0, life: POP_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.hot });
+    if (e.room < 0 && e.stripped) fx.items.push({ kind: 'pop', age: 0, life: POP_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.hot });
     if (e.room >= 0 && s.gunHull === 0) float(fx, '-1', e.x, e.y);
   }
 }
@@ -1996,8 +2043,8 @@ Expected: both exit 0.
 - [ ] **Step 11: Commit**
 
 ```bash
-git add src/renderer/src/render/duel/leadModel.ts src/renderer/src/render/tactical/weaponsModel.ts src/renderer/src/render/tactical/tacticalLayer.ts src/renderer/src/render/duel/situationModel.ts src/renderer/src/render/tactical/hitModel.ts src/renderer/src/render/duel/readoutModel.ts src/renderer/src/render/duel/contactModel.ts src/renderer/src/render/duel/consoleModel.ts src/renderer/src/render/tactical/fxModel.ts src/renderer/src/audio/duelSounds.ts src/renderer/src/app/duel/scene.ts tests/valkyrnViews.test.ts tests/crtColours.test.ts
-git commit -m "feat(valkyrn): crosshair, lead pip, heat bar and tracers on the Flight map; the gun's words; null-laser guards; hit feedback" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add src/renderer/src/render/duel/leadModel.ts src/renderer/src/render/tactical/weaponsModel.ts src/renderer/src/render/tactical/tacticalLayer.ts src/renderer/src/render/duel/situationModel.ts src/renderer/src/render/duel/readoutModel.ts src/renderer/src/render/tactical/fxModel.ts src/renderer/src/audio/duelSounds.ts src/renderer/src/app/duel/scene.ts tests/valkyrnViews.test.ts tests/crtColours.test.ts
+git commit -m "feat(valkyrn): crosshair, lead pip, heat bar and tracers on the Flight map; the gun's words and HEAT row; hit feedback" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2005,7 +2052,7 @@ git commit -m "feat(valkyrn): crosshair, lead pip, heat bar and tracers on the F
 ### Task 8: The Flight console block and the controls list
 
 **Files:**
-- Modify: `src/renderer/src/render/duel/consoleModel.ts` (`GunPanel`, `FlightPanel`, the flight panel), `render/duel/consoleLayout.ts`, `render/duel/contactModel.ts` (`weaponRows`), `ui/duel/HelmStation.tsx:71`, `ui/duel/DuelUi.tsx`, `ui/duel/TargetingLine.tsx:35,49`, `app/duel/scene.ts` (`contactModel`'s weapons), `app/controlsList.ts`, `tests/settingsAndControls.test.ts:36`
+- Modify: `src/renderer/src/render/duel/consoleModel.ts` (`GunPanel`, `FlightPanel`, the flight panel), `render/duel/consoleLayout.ts`, `render/duel/contactModel.ts` (`weaponRows`), `ui/duel/HelmStation.tsx:71`, `ui/duel/DuelUi.tsx`, `ui/duel/TargetingLine.tsx:35,49`, `app/duel/scene.ts` (`contactModel`'s weapons), `app/controlsList.ts`, `tests/settingsAndControls.test.ts:36,39`
 - Create: `src/renderer/src/ui/duel/FlightStation.tsx`, `tests/flightConsole.test.tsx`
 
 **Interfaces:**
@@ -2279,7 +2326,7 @@ Import `WEAPON_CODES` and `FREQ_CODES` beside the other input tables. Before the
     { keys: keyLabel('Tab'), action: 'Switch between the Flight console and the ship view' }
   ];
 ```
-and make the return `[{ title: 'Single player', rows: duel }, { title: 'Single player: Valkyrn', rows: flight }, { title: 'Multiplayer', rows: sector }, { title: 'Anywhere', rows: [...] }]`, keeping the Anywhere rows as they are. `tests/settingsAndControls.test.ts:36` expects `['Single player', 'Single player: Valkyrn', 'Multiplayer', 'Anywhere']`.
+and make the return `[{ title: 'Single player', rows: duel }, { title: 'Single player: Valkyrn', rows: flight }, { title: 'Multiplayer', rows: sector }, { title: 'Anywhere', rows: [...] }]`, keeping the Anywhere rows as they are. In `tests/settingsAndControls.test.ts`, line 36 expects `['Single player', 'Single player: Valkyrn', 'Multiplayer', 'Anywhere']`, and line 39's `const sector = sections[1]!.rows.map(r => r.keys).join(' ');` becomes `const sector = sections.find(s => s.title === 'Multiplayer')!.rows.map(r => r.keys).join(' ');` (the sector keys sit in the Multiplayer section, now third).
 
 - [ ] **Step 9: Run the tests**
 
@@ -2413,4 +2460,4 @@ The final report lists:
   - Task 6's `leadPip` and `onTarget` are used by Task 7's `gunSightDraw`.
   - Task 3's `SOLO_SHIPS` is used by Task 5.
   - `FlightPanel.weapons` (Task 8) feeds `contactModel` and `FlightStation`.
-- **Placeholders.** None. The conditional steps (Decision 6's schema fields, Decision 21's record arrays, the `gunLocked` number form) state the exact change to make for each outcome.
+- **Placeholders.** None. Every step names one change; none depends on how a sibling plan turned out (Part i's `HULL_IDS`, its `gunLocked: boolean` and its Task 2 view guards, and Sci-2's record bound are stated as facts).
