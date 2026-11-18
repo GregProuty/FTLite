@@ -5,7 +5,7 @@
 // broken rock's slot, the others take the lowest empty slots, else evict the smallest moving rock smaller than the
 // piece that is not born this tick and not a body of the contact being resolved, else the piece is dust. Every slot
 // cleared or rewritten clears the rock targets that named it. A slot born this tick takes no damage, push or break.
-import { ROCK_BLAST_FLING, ROCK_FLING, ROCK_MIN_R } from './rockTuning';
+import { ROCK_BLAST_FLING, ROCK_CRUSH_SPEED, ROCK_CRUSH_STEP, ROCK_FLING, ROCK_MIN_R } from './rockTuning';
 import { rockAlive, rockAt, rockHp, RockKind, rockSlots, ROCK_STRIDE, wakeRock, writeRock } from './rocks';
 import type { RockCause, TacticalState } from './state';
 
@@ -121,4 +121,10 @@ export function breakRock(s: TacticalState, k: number, ux: number, uy: number, b
   });
   s.rockSplits++;
   s.events.push({ kind: 'rock', what: 'split', by, rock: k, x: a.x, y: a.y, r: a.r, vx: a.vx, vy: a.vy, pieces, ...shipField(ship) });
+}
+
+/** §3.3, §5.1: the damage a body of mass `own` takes from a contact closing at vc against a body of mass `other`:
+ *  (vc − ROCK_CRUSH_SPEED) / ROCK_CRUSH_STEP · 2·other / (own + other) above the crush speed, else 0. */
+export function crushDamage(vc: number, own: number, other: number): number {
+  return vc > ROCK_CRUSH_SPEED ? (((vc - ROCK_CRUSH_SPEED) / ROCK_CRUSH_STEP) * 2 * other) / (own + other) : 0;
 }

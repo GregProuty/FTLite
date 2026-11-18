@@ -12,3 +12,12 @@ export const ROCK_MIN_R = 8;
 export const ROCK_FLING = 150;
 /** §3.4: the burst pattern's piece speed (a torpedo's direct hit), u/s, on top of the parent's velocity. */
 export const ROCK_BLAST_FLING = 200;
+
+/** §3.2: rock gravity as a share of the ships', drag per second, and the speed cap applied at each motion step (u/s). */
+export const ROCK_GRAVITY = 1.0;
+export const ROCK_DRAG = 0.1;
+export const ROCK_MAX_SPEED = 300;
+/** §3.3: rock-rock restitution, and the crush rule: damage only above ROCK_CRUSH_SPEED, (vc − 30) / ROCK_CRUSH_STEP. */
+export const ROCK_RESTITUTION = 0.8;
+export const ROCK_CRUSH_SPEED = 30;
+export const ROCK_CRUSH_STEP = 40;
