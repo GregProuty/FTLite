@@ -18,8 +18,6 @@ export const ROCK_STRIDE = 7;
 export const RockKind = { Gone: 0, Static: 1, Moving: 2 } as const;
 /** §3.1: spare slots for pieces. */
 export const ROCK_RESERVE = 96;
-/** Spike i's torpedo damage, still in use until Task 5's blast. */
-export const TORPEDO_ROCK_DAMAGE = 4;
 
 /** The pool's capacity for a map: its asteroids plus the reserve. Also the number of rock bodies in a ship's graceUntil. */
 export function rockCapacity(map: MapDef): number { return map.asteroids.length + ROCK_RESERVE; }

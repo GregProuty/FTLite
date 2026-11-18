@@ -27,3 +27,11 @@ export const LASER_ROCK_DAMAGE = 2;
 export const LASER_ROCK_PUSH = 4000;
 /** §6.3: the crew laser never fires on its own because a rock is in the way; digging is a rock target. */
 export const AUTO_DIG = false;
+
+/** §4.2: the torpedo's area blast: radius; rock damage from MIN at the edge to MAX at the centre; the push J on rocks
+ *  (Δv = J · fall / m) and the speed given to ships (u/s, · fall). Ships take no hull from the blast. */
+export const BLAST_RADIUS = 120;
+export const BLAST_ROCK_DAMAGE_MIN = 2;
+export const BLAST_ROCK_DAMAGE_MAX = 6;
+export const BLAST_PUSH = 60000;
+export const BLAST_SHIP_PUSH = 120;

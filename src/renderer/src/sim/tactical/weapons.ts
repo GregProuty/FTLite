@@ -3,7 +3,7 @@
 // Commands arrive as one ShipInput per ship per tick; the duel step builds these from the authority's admitted commands.
 import { inArc, lineOfSight } from './geometry';
 import { launchMissile } from './missiles';
-import { firstBlocker } from './rocks';
+import { firstBlocker, rockAlive, rockAt } from './rocks';
 import { AUTO_DIG } from './rockTuning';
 import { laserStrikesRock, rockOnTarget, rockShotLine } from './rockWeapons';
 import { hx, hy } from './direction';
@@ -41,18 +41,25 @@ export function laserFull(state: TacticalState, i: number): boolean { return sta
 /** Admission (spec §7 table; the duel step uses these to give reject reasons): laserCharge is accepted only with no missile in flight. */
 export function canCharge(state: TacticalState, i: number): boolean { return missileOf(state, i) === null; }
 /** Weapons update spec §2: whether ship i's target ship is active and its centre within the class's torpedo range of
- *  ship i's, from any bearing. */
-export function torpedoInRange(state: TacticalState, i: number): boolean {
-  const a = state.ships[i]!, j = state.systems[i]!.target, b = state.ships[j], range = classOf(state, i).slots.missile.range;
+ *  ship i's, from any bearing. Spike ii §6.4: with a rock target (`torpRock` ≥ 0, default the stored one) the rock's
+ *  centre is tested instead. */
+export function torpedoInRange(state: TacticalState, i: number, torpRock = state.systems[i]!.torpRock): boolean {
+  const a = state.ships[i]!, range = classOf(state, i).slots.missile.range;
+  if (torpRock >= 0) {
+    if (!rockAlive(state, torpRock)) return false;
+    const r = rockAt(state, torpRock), dx = r.x - a.x, dy = r.y - a.y;
+    return dx * dx + dy * dy <= range * range;
+  }
+  const j = state.systems[i]!.target, b = state.ships[j];
   if (!b || !b.active || j === i) return false;
   const dx = b.x - a.x, dy = b.y - a.y;
   return dx * dx + dy * dy <= range * range;
 }
 /** missileLaunch is accepted only with no missile in flight, a missile in the magazine, Weapons below level 2 and the
- *  target within torpedo range (weapons update spec §2). */
-export function canLaunch(state: TacticalState, i: number): boolean {
+ *  target (spike ii: the rock target, `torpRock`) within torpedo range (weapons update spec §2). */
+export function canLaunch(state: TacticalState, i: number, torpRock = state.systems[i]!.torpRock): boolean {
   const s = state.systems[i]!;
-  return missileOf(state, i) === null && s.magazine > 0 && s.rooms[Room.Weapons] < 2 && torpedoInRange(state, i);
+  return missileOf(state, i) === null && s.magazine > 0 && s.rooms[Room.Weapons] < 2 && torpedoInRange(state, i, torpRock);
 }
 /** A lock target must be a Room index. */
 export function validLock(room: number): boolean { return Number.isInteger(room) && room >= 0 && room <= 2; }
@@ -197,7 +204,7 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
     launchMissile(state, i);
     s.fireHeld = false;
   }
-  if (crew && s.torpLock >= 0 && canLaunch(state, i)) launchMissile(state, i);   // auto-launch, once
+  if (crew && (s.torpLock >= 0 || s.torpRock >= 0) && canLaunch(state, i)) launchMissile(state, i);   // auto-launch, once (spike ii: or on a rock target)
 }
 
 /** Advance ship i's laser charge and hold timer, shields and magazine by one tick (spec §5, §7). */
