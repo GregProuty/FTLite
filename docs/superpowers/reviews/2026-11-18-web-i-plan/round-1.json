@@ -1,0 +1,126 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Task 1: the tick Worker posts its result on the Worker global, but the page waits for it on the relay port, so result() never resolves",
+      "claim": "tickWorker.ts sends the final measurement with `scope.postMessage({ kind: 'result', ... })`, which goes to the Worker object in the page. page.ts never listens on the Worker for 'message'. It resolves `workerResult` only from `relay.port1`. So `window.bgTab.result()` hangs, and with it the Step 11 smoke and the Step 12 run.",
+      "evidence": "plan L199 (`scope.postMessage({ kind: 'result', ...})`) vs plan L266-267 (the only Worker listener is 'error') and L281-286 (`relay.port1.addEventListener('message', ... else resolveResult(message))`); L297 `await workerResult`; L551-553 and L560 `page.evaluate(() => window.bgTab.result())` has no timeout.",
+      "why": "Task 1 is the spec \u00a73.5 gate that everything else waits on. As written it can never produce a ledger entry, and the Playwright evaluate waits forever.",
+      "fix": "In tickWorker.ts post the result on the relay: `relay!.postMessage({ kind: 'result', ... } satisfies WorkerOut)`. Alternatively, add `worker.addEventListener('message', e => { if (e.data?.kind === 'result') resolveResult(e.data); })` in page.ts. Also give the driver's `result()` evaluate a bounded timeout."
+    },
+    {
+      "severity": "P1",
+      "title": "Task 1: the catch-up tick driver plus send-time relay stamps let a throttled Worker pass",
+      "claim": "The production tick driver accrues debt and, after a late wakeup, catches up with bursts of up to 120 ticks rescheduled at 0 ms. A Worker whose timers fire once a second still runs about 600 ticks per 10 s window. Each relayed tick is stamped `sentAt: wall()` when it is sent, not at its deadline, so burst ticks show small relay delays. The one figure that would expose throttling, maxTickLatenessMs, is recorded as data only. A Worker throttled to 1 Hz therefore passes 'worker-ticks', 'relay-delay' and 'tick-windows-missing'.",
+      "evidence": "src/renderer/src/authority/tickDriver.ts:18-23 (debt accrual), :30 (0 ms reschedule while in debt), :37 (up to 120 ticks per pump); plan L208-213 (every onTick counted, `sentAt: wall()`); L139 and L473 (lateness is 'data, not a pass rule'); spec \u00a73.5 L175-176 (the risk is the 60 Hz tick and prompt relay), L191-192.",
+      "why": "This is the false pass the measurement exists to rule out. Path A would be chosen even when hidden-tab timers stutter, and the 'Keep this tab visible' fallback would never ship.",
+      "fix": "Measure relay delay from each tick's deadline: post `deadlineWall = performance.timeOrigin + deadline` and compute delay at receipt against it. Or count a tick toward its window only when `now - deadline <= 2 * 1000 / TICK_HZ`. Keep the spec thresholds (590 per window, p99 growth \u2264 20 ms). Add a report.ts case where on-time windows are full but lateness is 1000 ms, and assert that it fails."
+    },
+    {
+      "severity": "P1",
+      "title": "Task 5: spawnHostWorker.kill() is not idempotent, so its own test fails",
+      "claim": "`kill()` checks only `exited`, which is set later in a microtask. Two synchronous kill() calls therefore call `worker.terminate()` twice. The spawn-adapter test calls `worker.kill(); worker.kill();` and then expects `native.terminated` to be 1.",
+      "evidence": "plan L2213 (`kill() { if (exited) return; try { worker.terminate(); } ... queueMicrotask(exit); }`) vs plan L2136-2137 (`worker.kill(); worker.kill(); ... expect(native.terminated).toBe(1)`).",
+      "why": "Task 5 Step 5 fails as written. A real owner can also call kill twice: stop() runs on several exit paths.",
+      "fix": "Add a `killed` flag: `kill() { if (exited || killed) return; killed = true; try { worker.terminate(); } catch {} queueMicrotask(exit); }`."
+    },
+    {
+      "severity": "P1",
+      "title": "Task 10: changing createProbe's parameter type is not enough, because it calls the MessagePortMain `.on/.off` API",
+      "claim": "The plan says to change `createProbe(port: MessagePortMain)` to `MessagePort` and that 'the probe already speaks PortFrames through createPortLink'. But its endpoint adapter calls `port.on('message', \u2026)`, `port.off(...)` and `port.on('close', \u2026)`, which are EventEmitter methods of Electron's MessagePortMain. A DOM MessagePort has none of them. The changed file fails tsc under tsconfig.web (DOM lib) and throws a TypeError at `attachProbe` in rtc-page.",
+      "evidence": "scripts/network/rtc-smoke-client.ts:36-39 (`port.on('message', receive)`, `port.off`, `port.on('close', cb)`); plan L4237 (type-only change), L4223 (`createProbe(gamePorts.get(...))` with a DOM MessagePort).",
+      "why": "The RTC runtime gate and the room-service gate cannot run their fragmentation probe, and `npm run typecheck` fails in Task 10.",
+      "fix": "Rewrite createProbe to `const link = createPortLink(browserPortEndpoint(port), 'probe', { latestStreamKey: ... })`, using the file's existing `browserPortEndpoint` import, and drop the electron import."
+    },
+    {
+      "severity": "P1",
+      "title": "Task 11: the page probe counts every page MessageChannel, including React's never-closed one, so cleanup `ports === 0` can never hold",
+      "claim": "page-probe.ts replaces `window.MessageChannel` before any page script runs and counts every port that is neither closed nor transferred. React DOM's scheduler creates a module-level MessageChannel in browsers, which have no setImmediate, and never closes it. The page probe sees those ports, so `openPorts()` is at least 2 at shutdown. The rewritten report then rejects every run through `ports !== 0` and `shutdownComplete`.",
+      "evidence": "plan L4429-4430 (subclass counts all channels), L4403-4404 (`openPorts`, `counts().ports`), L4553 and L4583 (shutdown result from the snapshot; `shutdownComplete = \u2026 && ports === 0`), L4602 (`['windows', 'ports', 'listeners', 'peers'].some(k => c[k] !== 0)` fails); the app is React 19 (plan L9).",
+      "why": "test:online-app-runtime, test:online-recovery-runtime and test:duel-app-runtime fail on every run, for a reason unrelated to the online stack.",
+      "fix": "Count only online-owned ports: arm the probe from the driver just before Host/Join (`onlineProbe.set({ countPorts: true })`) and record channels only while armed. Alternatively, record only ports that pass through `worker.postMessage` transfers, `ftlite:online:test-port` events, or the page transport. Then assert those are closed or transferred."
+    },
+    {
+      "severity": "P1",
+      "title": "Tasks 9-11: the large gate rewrites are mapping tables, not code, and the tables contain concrete defects",
+      "claim": "host-smoke.cjs (327 lines), rtc-smoke.cjs (383), room-service-smoke.cjs (256) and the online-app-smoke.cjs command bodies (258) are specified only as old-to-new tables. A fresh implementer has to reinvent the riskiest code, and the tables have bugs. (a) rtc `early-cleanup` says 'start then immediately rtcPage.dispose()', but rtcPage.dispose only disposes `host` after `startWorkerHost` resolves, so the in-flight Worker is never terminated. (b) `stale-generation` says to intercept 'the generation-1 reply id' while posting the raw command to the generation-2 Worker; the interception has to be armed on the gen-2 host, or the gen-2 owner hits protocol-failure. (c) `early-worker-failure` calls crashWorker in a separate executeJavaScript, which can arrive after the Worker is ready. (d) `status` builds `recovery` from `onlineProbe.take()`, which drains bodies, captures and evidence, but the table never says where main accumulates them.",
+      "evidence": "plan L3836 and L3866-3881 (host-smoke table), L4312-4325 (rtc-smoke table; early-cleanup L4325), L4334-4349 (room-service prose), L4540-4553 (command table); rtc-page L4205-4210 and L4227-4229 (`await host?.dispose()` with `host` unset until resolve); L3871 and L3877; L4402 (`take()` splices); the plan's own placeholder scan L4892.",
+      "why": "By the review rules, a step a fresh subagent cannot follow verbatim is a placeholder (P1). These gates are the proof that Electron still works after the switch-over.",
+      "fix": "Give full replacement files for host-smoke.cjs, rtc-smoke.cjs, room-service-smoke.cjs and the online-app-smoke.cjs command switch. Add in-page helpers for the early cases, such as `startHost(options, { abortAfterSpawn: true })` and `crashOnSpawn`, so the abort or crash happens in the same task as spawn. Track the in-flight start promise in rtcPage.dispose. Name the host index that `intercept` binds to. Accumulate `take()` results in main per Worker."
+    },
+    {
+      "severity": "P1",
+      "title": "Task 8: setting CORS headers on Durable Object stub responses will probably throw, because fetched responses have immutable headers",
+      "claim": "The checkpoint, turn and socket routes return `room.fetch(...)` directly. In Workers, a Response obtained through fetch, including a DO stub's fetch, has an immutable header guard. The existing wrapper's `response.headers.set` has only ever run on mutable `Response.json` responses: Electron main's Node fetch and WebSocket send no Origin, and the only Origin test hits POST /v2/rooms. Task 8's new test is the first to send an Origin to `/checkpoint` and to the socket upgrade (a 101 with webSocket). The plan's code sets three headers on those responses with no copy.",
+      "evidence": "services/signalling/src/index.ts:52-54 (`return room.fetch(...)`), :69 (`response.headers.set(...)` outside the try); services/signalling/tests/http.test.ts:42-44 (Origin tested only on POST /v2/rooms); plan L3678-3682 (adds Expose-Headers on the same object), L3637-3651 (new checkpoint-GET and socket tests with Origin).",
+      "why": "If the headers are immutable, every page request to checkpoint, turn or socket returns a 500 or a failed upgrade. That breaks Electron online entirely after Web-i, and Task 8 Step 3 fails with no fix in the plan.",
+      "fix": "Before setting headers, copy the response: `if (response.status === 101 && response.webSocket) response = new Response(null, { status: 101, webSocket: response.webSocket, headers: response.headers }); else response = new Response(response.body, response);`. This is harmless if the headers turn out to be mutable. Keep the new tests, which then also cover this path."
+    },
+    {
+      "severity": "P2",
+      "title": "Task 11: the internet-app report validator and its fixtures keep the old cleanup field names",
+      "claim": "Task 11 changes only `INTERNET_ARTIFACTS` (internet-app-report.ts:6) and test lines 80 and 91. The validator at internet-app-report.ts:45-46 still requires `utilities`, `utilityExits`, `utilityPids`, `nativeWindows`, `nativeWindowExits` and `nativePeersEndedWithWindow`. The rewritten wrapper emits `workers`/`workerExits`/`nativePeersEndedWithPage` and no window fields, so the Web-iii live run would be rejected.",
+      "evidence": "scripts/network/internet-app-report.ts:45-46; tests/internetAppReport.test.ts:13-14, 39, 55 (old-name fixtures); plan L4374 ('field renames' named only for internet-app-smoke.ts), L4608-4614; rename table L3733-3745.",
+      "why": "Spec \u00a78 says the internet-app manifests are updated in Web-i. Leaving the validator on the old shape moves a failure into Web-iii's live check.",
+      "fix": "Apply the shared rename table to internet-app-report.ts:45-46 (`c.workers !== c.workerExits`, `workerIds`, drop the window checks, `nativePeersEndedWithPage`). Update tests/internetAppReport.test.ts:13-14, 39 and 55 to match."
+    },
+    {
+      "severity": "P2",
+      "title": "The classic-Worker fallback covers only the product Worker, not the gate harnesses that hard-code module Workers",
+      "claim": "If the file:// module Worker fails, Step 7 switches to `format: 'iife'` without `{ type: 'module' }`. Every gate harness still builds `new Worker(url, { type: 'module' })`. The lease smoke loads the chunk through an ES `import` wrapper, and the recovery prelude is concatenated onto an ES chunk. None of these is adjusted. The fallback also contradicts the 'exactly' wording of Global Constraint L28, and spec \u00a73.2, without stating which deviation entry to add.",
+      "evidence": "plan L3576 (fallback), L28; harness Workers at L3561, L3780, L3931, L4207; `import` wrapper at L4137; prelude plus ES source at L4533.",
+      "why": "If the fallback is taken, Tasks 9-11 fail in ways the plan does not anticipate.",
+      "fix": "Spell out the fallback: drop `{ type: 'module' }` in each harness; make the lease wrapper `importScripts('lease-observer.js', '<worker url>')`, with the observer built as iife; keep the prelude concatenation, which is valid for classic scripts; add a D-6 entry with its justification."
+    },
+    {
+      "severity": "P2",
+      "title": "Task 5: the duelMode.test edit points at the wrong line, so the old source read survives until Task 7 deletes the file",
+      "claim": "The plan says to change tests/duelMode.test.ts 'line 142' to read src/worker/authorityWorkerMain.ts. Line 142 is a comment. The `readFileSync('src/utility/authorityHost.ts')` assertion is on line 143. Followed literally, the old assertion stays and fails with ENOENT once Task 7 runs `git rm src/utility/authorityHost.ts`.",
+      "evidence": "tests/duelMode.test.ts:141-143; plan L1946 (`line 142 to expect(readFileSync('src/worker/authorityWorkerMain.ts' ...`); plan L3488 (deletes src/utility/authorityHost.ts).",
+      "why": "The suite breaks late, in Task 7, far from its cause.",
+      "fix": "Quote the target text: replace `expect(readFileSync('src/utility/authorityHost.ts', 'utf8'))` (currently line 143), and update the comment on lines 141-142."
+    },
+    {
+      "severity": "P3",
+      "title": "Task 1 adds pass and validity rules beyond spec \u00a73.5 without recording them as deviations",
+      "claim": "report.ts adds failures 'tick-windows-missing' (at least 60 windows) and 'lease-starved' (at least 100 completions), and invalid reasons 'page-errors' and 'baseline-hidden'. They are reasonable and stricter than the spec, but the D-1 to D-5 list does not mention them.",
+      "evidence": "plan L437-438 (RULES), L460-469; spec \u00a73.5 L188-193; deviations L33-39.",
+      "why": "The fixed decisions require plan deviations to be stated and justified.",
+      "fix": "Add a short D-6 entry listing the extra rules and why each is safe (they only tighten the rule or reject broken runs)."
+    },
+    {
+      "severity": "P3",
+      "title": "The digest note names only onlineSession.ts, but Task 7 also edits rtcSession.ts and hostProcessProtocol.ts, which are in the same manifest",
+      "claim": "The claim is correct: the digest changes, nothing hashes it as a golden value, and the runner restamps it. But the note understates the change. Task 7 deletes constants from src/shared/rtcSession.ts and src/shared/hostProcessProtocol.ts, both listed in the digest manifest.",
+      "evidence": "plan L16; build/contentDigest.ts:14,16; plan L3163.",
+      "why": "A reviewer checking 'no gameplay change' should see every digest input that changes.",
+      "fix": "List all three files in L16."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "releaseForUnload (plan L1516-1521) calls `stop(undefined, true)`. For an active host that issues `old.service.request({ type: 'host-release' })` (src/main/network/onlineSession.ts:122-125) before `cleanup` closes the socket (:115). serviceClient.request sends the frame synchronously inside the Promise executor (src/network/session/serviceClient.ts:467-478), and 'host-release' is a real request type (:59). The coordinator harness has `service.close: vi.fn()` and flips the phase to active on start-commit (tests/onlineCoordinator.test.ts:13,18).",
+    "Chromium: plan L542 drops exactly Playwright's three throttling-off switches. The validity core matches spec \u00a73.5 L188: hidden throughout (samples plus events), the sibling control's average period \u2265 900 ms, headless invalid, and the test page's own control period recorded as data (L399-402).",
+    "Task 3 copies: Task 7 deletes all eight copied originals plus seatStore/mirrorStore/onlineConfig (plan L2943, L3484-3489). The only Node uses in src/main/network/online*.ts are the sites the plan rewrites (onlineSession.ts:1,261,496-497; onlineDuel.ts:44-45; onlineSector.ts:51-52; onlineMirrors.ts:20,128). src/network has no node:, require, Buffer or process uses.",
+    "Task 3's sed import rewrites resolve correctly from src/network/online ('../session/serviceClient', '../rtc/contracts', '../../shared/*', '../../renderer/src/*').",
+    "Task 4's sed ranges match src/main/network/rtcTransport.ts: lines 1-18 are the Electron import and the contracts, lines 134-155 are startGuestTransport.",
+    "Consumed interfaces exist with the assumed shapes: createUtilityHost(registry, deps, post) and receive(raw, ports) (src/network/utilityHost.ts:13,70); RoomServiceClientOptions (serviceClient.ts:27-33); validateModeMirror (src/main/network/onlineModes.ts:41); validStreamAttachmentOptions accepts `origin` (src/shared/hostProcessProtocol.ts:25-32); copyOnlineStatus, copyOnlinePortDescriptor, validateOnlineResult, OnlineStatusEnvelope and DuelCrewSize (src/shared/onlineSession.ts:20,112-141); moduleSpecifiers (tests/helpers/determinismGuard.ts:4).",
+    "D-1: testProbe is forced false when packaged (plan L1348), refused by validatePageOnlineConfig when packaged (L1360) and gated again in createPageOnline (L2829). The facade exposed on window omits prepareExit and dispose (L2912-2914).",
+    "D-2 is safe either way: the wrapper allows null, 'null' and 'file://' (plan L3668), so Electron works whichever Origin Chromium sends from a file:// page. CORS preflight is already handled (services/signalling/src/index.ts:24-27).",
+    "Worker chunk name: `worker.rollupOptions.output.entryFileNames: 'assets/[name].js'` (plan L3456) yields authorityWorker.js. It is checked by build-output (L3531) and by worker-boot (L3561-3567), which also proves the digest define reached the Worker. The renderer bundle is currently unminified (out/renderer/assets/bridge-g9Q9V1l6.js:1446 keeps named functions), so the recovery needles are plausible.",
+    "Preload: the plan freezes the object before exposing it (L3322) and rejects malformed config to DISABLED (L3324). ipcRenderer.sendSync is part of the sandboxed-preload ipcRenderer surface.",
+    "Determinism: build/contentDigest.ts:14 includes src/shared/onlineSession.ts. scripts/determinism/run.ts:13,17 recompute the digest and fixture.ts:49 restamps it. tests/contentDigest.test.ts:66 compares the define to the computed value, with no hard-coded hash. SIM_VERSION is untouched.",
+    "Task ordering: every task consumes only earlier outputs (3\u21924\u21925\u21926\u21927). Task 8 precedes Task 10's file:// pages. Task 12 depends only on Task 7's bridge.",
+    "Electron main: the rewrite keeps the `packaged ? __FTLITE_PACKAGED_SERVICE_ORIGIN__ : undefined` expression (plan L3248 vs src/main/index.ts:38), and all existing jobs (fullscreen, duel:record, navigation lock). No CSP exists in src/renderer/index.html that would block the page's fetch, WebSocket or Worker."
+  ],
+  "not_verified": [
+    "Whether workerd gives Durable Object stub fetch responses immutable headers. This is the basis of the Task 8 finding; I did not run the signalling tests.",
+    "Whether a module Worker loads from Electron 37's sandboxed file:// page. That depends on the GrantFileProtocolExtraPrivileges fuse, and the plan's worker-boot gate checks it. I also did not check IndexedDB availability for that origin.",
+    "Whether Playwright 1.48's Firefox build (Juggler and its cfg prefs, for example forcing background tabs active) overrides firefoxUserPrefs (plan L544) or keeps hidden tabs 'visible'. If it does, every Firefox run would be invalid and Task 1 would be BLOCKED.",
+    "Whether Electron's contextBridge keeps the preload's frozen onlineConfig frozen in the main world (spec \u00a73.3).",
+    "Whether `protocol.handle('file')` intercepts the Worker script fetch, and whether `request.url === pathToFileURL(...).href` matches on Windows (drive-letter case and encoding) (plan L4532-4534).",
+    "I did not run `npx tsc --noEmit` or any test. The checks are by reading source.",
+    "I read out/renderer/assets (outside the manifest) to check renderer minification for the instrumentation-needle question."
+  ]
+}

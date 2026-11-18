@@ -895,3 +895,12 @@ Spec `docs/superpowers/specs/2026-11-17-ftl-targeting-design.md`.
   - [ ] Master, Music and Effects each work and persist across a restart; an old single volume carried over as Master.
   - [ ] Loop seams: the battle loop (`BATTLE_LOOP_START_S`/`BATTLE_LOOP_END_S` in `src/renderer/src/audio/musicState.ts`) and the hum loop. Tune those constants, and any sample choice in `SFX` (`src/renderer/src/audio/soundBank.ts`), by ear.
   - Date and notes: pending owner.
+
+## Menu CRT (2026-11-18): the main menu in amber CRT
+
+The main menu takes the console screens' amber phosphor look: every colour is a `CRT` tone (`render/tactical/crtTheme.ts`), and the overlay panel is a small CRT screen with glow, scanlines and a vignette at the CRT setting's strength (`menuCss` in `src/renderer/src/ui/menu/styles.ts`; off keeps the amber and drops the effects; no flicker). The in-game strip takes the colours only.
+
+- [x] `tests/menuCrt.test.tsx`: colours from the ramp, hover and chosen-option inverse bar, effects scaled by setting and absent when off, the stylesheet follows the setting.
+- [x] Screenshots in `C:\Users\djuar\FTLite-shots\menu-crt\` (Home at full, subtle and off; hover; Settings top and scrolled; Multiplayer).
+- [ ] Owner look check, including the in-game strip during an online duel (not screenshotted: it needs a live room).
+  - Date and notes: pending owner.
