@@ -9,12 +9,13 @@ import { FONT_NATIVE, FONT_SIZE, textPx } from '../theme';
 import { SHIP_RADIUS } from '../../sim/tactical/tuning';
 import type { CrtScale } from '../crt';
 import { createCrtFilters, type CrtFilters } from './crtFilter';
-import { ALERT_BLINK_HZ, blink, CRT, DAMAGE_BLINK_HZ, DASH, DOT, DOT_GAP, ENEMY_BLINK_HZ, GAP, HATCH_ANGLE, HATCH_SPACING, roomLevel, roomLook } from './crtTheme';
+import { ALERT_BLINK_HZ, blink, CRT, DAMAGE_BLINK_HZ, DASH, ENEMY_BLINK_HZ, GAP, HATCH_ANGLE, HATCH_SPACING, roomLevel, roomLook } from './crtTheme';
 import { dashCircle, dashLine, hatchSegments } from './dashModel';
 import { asteroidShape, CHEVRON_SIZE, type ArrowTarget, type ContactMarkDraw, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
 import { ENEMY_RING, HULLS } from './hullModel';
-import type { ArcDraw, CombatDraw } from './weaponsModel';
+import type { ArcDraw, CombatDraw, MissileDraw } from './weaponsModel';
 import type { Viewport } from './camera';
+import { CALLOUT_MAX } from './hitModel';
 
 export { CREW_SHIP, ENEMY_SHIP, SHIELD_RING } from './shipColours';
 
@@ -76,7 +77,9 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
   const markQ = Array.from({ length: MARKS }, () => mk(FONT_SIZE, CRT.dim, 0.5, 0.5));
   const markLabel = Array.from({ length: MARKS }, () => mk(FONT_NATIVE, CRT.mid, 0, 0.5));
   const markAlert = Array.from({ length: MARKS }, () => mk(FONT_NATIVE, CRT.hot, 0, 0.5));
-  const texts = [...cols, ...rows, ...ring, ...arrowText, ...markQ, ...markLabel, ...markAlert, lockText, info];
+  // Duel polish i spec §A, §B: the charge ring's CHARGING / FIRING label and the hit callouts, centred over the enemy.
+  const chargeText = mk(FONT_NATIVE, CRT.hot, 0.5, 0.5), calloutText = Array.from({ length: CALLOUT_MAX }, () => mk(FONT_NATIVE, CRT.main, 0.5, 0.5));
+  const texts = [...cols, ...rows, ...ring, ...arrowText, ...markQ, ...markLabel, ...markAlert, lockText, info, chargeText, ...calloutText];
   // Reused buffers for lists that are consumed at once (dash and hatch segments, polylines fed to dashLine). A list passed
   // to Graphics.poly is kept by reference until the frame renders, so every poly gets a fresh array.
   const pts: number[] = [], seg: number[] = [], line: number[] = [];
@@ -156,12 +159,8 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
     else segments(g, dashLine(arcOutline(a, from, to), DASH, GAP, seg), 1, CRT.dim);
   }
 
-  function missileGlyph(g: Graphics, x: number, y: number, angle: number, crew: boolean, t: number): void {
-    const fx = Math.sin(angle), fy = -Math.cos(angle), rx = -fy, ry = fx, s = 6;
-    g.poly([x + fx * s, y + fy * s, x - fx * s + rx * s * 0.55, y - fy * s + ry * s * 0.55, x - fx * s - rx * s * 0.55, y - fy * s - ry * s * 0.55]);
-    if (crew) g.fill(CRT.hot);
-    else g.fill(CRT.glass).stroke({ width: 2, color: blink(t, ENEMY_BLINK_HZ) ? CRT.hot : CRT.main });   // in phase with the enemy ring
-  }
+  /** A torpedo (homing torpedo spec §3): a filled dot, the crew's bright `main`, the Hunter's `hot`. */
+  function torpedoDot(g: Graphics, m: MissileDraw): void { g.circle(m.x, m.y, m.r).fill(m.crew ? CRT.main : CRT.hot); }
 
   function arrowGlyph(g: Graphics, x: number, y: number, angle: number, target: ArrowTarget): void {
     const fx = Math.sin(angle), fy = -Math.cos(angle), rx = -fy, ry = fx, s = target === 'missile' ? 7 : 10;
@@ -277,20 +276,10 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       }
       fill(ring, ringLabels);
 
-      // Combat: missile trails and glyphs, the predicted missile path, the lock marker, then the event effects on top.
+      // Combat: torpedo trails (short, fading, faint) and dots, the lock marker, then the event effects on top.
       for (const m of c?.missiles ?? []) {
-        if (m.crew) m.trail.forEach((p, k) => { if (k > 0) { const q = m.trail[k - 1]!; combat.moveTo(q.x, q.y).lineTo(p.x, p.y).stroke({ width: 2, color: CRT.mid, alpha: 0.6 * (k / m.trail.length) }); } });
-        else {
-          line.length = 0; for (const p of m.trail) line.push(p.x, p.y);
-          segments(combat, dashLine(line, DASH, GAP, seg), 2, CRT.dim, 0.9);
-        }
-        missileGlyph(combat, m.x, m.y, m.angle, m.crew, t);
-      }
-      if (wd && wd.missileOrigin && wd.missilePath.length > 0) {
-        line.length = 0; for (const p of wd.missilePath) line.push(p.x, p.y);
-        segments(combat, dashLine(line, DOT, DOT_GAP, seg), 1, CRT.main);
-        const end = wd.missilePath[wd.missilePath.length - 1]!;
-        combat.circle(end.x, end.y, 3).stroke({ width: 1, color: CRT.main });
+        m.trail.forEach((p, k) => { if (k > 0) { const q = m.trail[k - 1]!; combat.moveTo(q.x, q.y).lineTo(p.x, p.y).stroke({ width: 2, color: CRT.dim, alpha: 0.6 * (k / m.trail.length) }); } });
+        torpedoDot(combat, m);
       }
       const lk = c?.lock ?? null;
       if (lk) {
@@ -311,6 +300,23 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         else if (e.kind === 'burst') combat.circle(e.x1, e.y1, e.r).stroke({ width: 3, color: colour, alpha: e.alpha }).circle(e.x1, e.y1, e.r * 0.4).fill({ color: colour, alpha: e.alpha * 0.6 });
         else for (let k = 0; k < 4; k++) { const a = (k * Math.PI) / 2 + Math.PI / 4; combat.moveTo(e.x1, e.y1).lineTo(e.x1 + Math.cos(a) * e.r, e.y1 + Math.sin(a) * e.r).stroke({ width: 2, color: colour, alpha: e.alpha }); }
       }
+
+      // Duel polish i spec §A: the Hunter's charge, a faint full track under an arc from 12 o'clock clockwise; at a full
+      // charge the whole ring pulses. §B: the callouts float up over it, each in its ramp tone, fading.
+      const ch = c?.charge ?? null;
+      if (ch) {
+        combat.circle(ch.x, ch.y, ch.r).stroke({ width: 1, color: CRT.faint });
+        if (ch.full) combat.circle(ch.x, ch.y, ch.r).stroke({ width: 3, color: ch.colour, alpha: ch.alpha });
+        else if (ch.fill > 0) combat.moveTo(ch.x, ch.y - ch.r).arc(ch.x, ch.y, ch.r, -Math.PI / 2, -Math.PI / 2 + ch.fill * Math.PI * 2).stroke({ width: 3, color: ch.colour });
+      }
+      chargeText.visible = ch !== null;
+      if (ch) { setText(chargeText, ch.label.text); chargeText.alpha = ch.alpha; chargeText.position.set(Math.round(ch.label.x), Math.round(ch.label.y)); }
+      const cs = c?.callouts ?? [];
+      calloutText.forEach((tx, k) => {
+        const co = cs[k];
+        tx.visible = co !== undefined;
+        if (co) { setText(tx, co.text); tx.tint = co.colour; tx.alpha = co.alpha; tx.position.set(Math.round(co.x), Math.round(co.y)); }
+      });
 
       d.arrows.forEach((a) => arrowGlyph(overlay, a.x, a.y, a.angle, a.target));
       // Each label sits inward of its arrow, far enough along the arrow's axis to clear the glyph (half its width, plus 14 px).

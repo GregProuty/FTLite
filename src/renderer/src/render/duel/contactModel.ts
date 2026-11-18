@@ -53,6 +53,8 @@ export interface ContactView {
   /** The SCAN button; null with nothing selected. */
   scan: ScanButton | null;
   lines: ContactLine[];
+  /** Duel polish i spec §B: each struck room's flash, its polygon and fill alpha (a hot fill fading 0.6 to 0). */
+  flash: { room: number; points: number[]; alpha: number }[];
 }
 export interface ContactModelInput {
   state: TacticalState;
@@ -64,6 +66,8 @@ export interface ContactModelInput {
   t: number;
   /** The Weapons station block's panel (its charge row), or null elsewhere. */
   weapons: Pick<WeaponsPanel, 'charge'> | null;
+  /** Duel polish i spec §B: the shown ship's struck rooms and their flash alphas now (hitModel flashesFor); default none. */
+  flashes?: readonly { room: number; alpha: number }[];
 }
 
 /** Ship units (f, s) to the box: one uniform scale fitting the outline's bounds with CONTACT_PAD on every side, the
@@ -85,7 +89,7 @@ export function contactModel(i: ContactModelInput): ContactView | null {
   const { state } = i, box = { x: CONTACT_BOX.x, y: CONTACT_BOX.y, w: CONTACT_BOX.w, h: CONTACT_BOX.h };
   const alert = blink(i.t, ALERT_BLINK_HZ) ? CRT.hot : CRT.main;
   const bare = (contact: 0 | 1 | null, title: string, lines: ContactLine[] = []): ContactView => ({
-    contact, title, shields: null, hull: null, box, outline: [], rooms: [], lockRoom: null, weapons: null, aim: false,
+    contact, title, shields: null, hull: null, box, outline: [], rooms: [], lockRoom: null, weapons: null, aim: false, flash: [],
     scan: contact === null ? null : scanButton(state, contact, i.station), lines
   });
   if (i.contact === null) return i.station === 'science' ? bare(null, 'NO CONTACT SELECTED') : null;
@@ -134,6 +138,7 @@ export function contactModel(i: ContactModelInput): ContactView | null {
     shields: { up: sys.shields, of: cls.shields.layers },
     hull: { value: sys.hull, fill: Math.max(0, Math.min(1, sys.hull / cls.hull)) },
     box, outline: place(shape.outline), rooms, lockRoom: full ? crewSys.lock : null, weapons, aim: i.aim && weapons !== null,
-    scan: scanButton(state, Contact.Enemy, i.station), lines
+    scan: scanButton(state, Contact.Enemy, i.station), lines,
+    flash: (i.flashes ?? []).flatMap((f) => { const r = rooms[f.room]; return r && f.alpha > 0 ? [{ room: f.room, points: r.points, alpha: f.alpha }] : []; })
   };
 }

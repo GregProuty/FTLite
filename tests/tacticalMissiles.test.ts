@@ -14,9 +14,9 @@ function duel(): TacticalState {
 }
 const input = (over: Partial<ShipInput> = {}): ShipInput => ({ ...IDLE_INPUT, ...over });
 /** One tick of commands, missile flight, missile contacts and weapon clocks; ships do not move. */
-function tick(st: TacticalState, crew: ShipInput, steer = 0): void {
+function tick(st: TacticalState, crew: ShipInput): void {
   applyWeaponsInput(st, 0, crew); applyWeaponsInput(st, 1, IDLE_INPUT);
-  flyMissile(st, 0, crew.weapons ? steer : 0); flyMissile(st, 1, 0);
+  flyMissile(st, 0); flyMissile(st, 1);
   resolveMissiles(st);
   tickWeapons(st, 0, crew); tickWeapons(st, 1, IDLE_INPUT);
   st.tick++;
@@ -61,23 +61,24 @@ describe('launch (spec §7b)', () => {
 });
 
 describe('flight (spec §7b)', () => {
-  it('turns at 120°/s under the gunner', () => {
+  it('homes at 120°/s by itself (homing torpedo spec §1)', () => {
     const st = duel();
-    Object.assign(st.ships[0], { x: -600, y: -300, heading: 0 });       // aim north, away from everything
+    Object.assign(st.ships[0], { x: -600, y: -300, heading: 0 });       // aim north, the enemy dead astern: it turns clockwise
     tick(st, input({ missileLaunch: true }));
-    for (let t = 1; t < 60; t++) tick(st, input(), 1);
-    expect(missileOf(st, 0)!.heading).toBe(Math.floor(MISSILE_TURN_STEPS_PER_TICK * 59));
+    for (let t = 1; t < 60; t++) tick(st, input());
+    expect(missileOf(st, 0)!.heading).toBe(Math.floor(MISSILE_TURN_STEPS_PER_TICK * 60));   // the launch tick's flight turns too
   });
   it('thrusts on its first 360 ticks and coasts after', () => {
     const st = duel();
     applyWeaponsInput(st, 0, input({ missileLaunch: true }));
     const m = missileOf(st, 0)!;
+    st.ships[1].active = false;                                          // no target: it flies straight
     Object.assign(m, { x: -600, y: -300, vx: 0, vy: 0, heading: 64, age: 359 });
-    flyMissile(st, 0, 0);
+    flyMissile(st, 0);
     expect(m.age).toBe(360);
     expect(m.vx).toBeGreaterThan(MISSILE_THRUST * DT);                  // thrust east plus a little gravity
     const vx = m.vx;
-    flyMissile(st, 0, 0);
+    flyMissile(st, 0);
     expect(m.vx - vx).toBeLessThan(0.2);                                 // tick 361: gravity only
   });
   it('self-destructs at the end of its 480th tick, after that tick\'s move and contacts, unfreezing the laser that tick', () => {
@@ -100,34 +101,47 @@ describe('flight (spec §7b)', () => {
     expect(s.missilesLost).toBe(1);
     expect(s.laserHold).toBe(51);                                          // unfrozen on tick 480 itself
   });
-  it('flies on unsteered when nobody is at Weapons, and keeps its thrust', () => {
-    const st = duel();
-    tick(st, input({ missileLaunch: true }));
-    const v0 = missileOf(st, 0)!.vx;
-    for (let t = 0; t < 30; t++) tick(st, input({ weapons: false }), 1);
-    expect(missileOf(st, 0)!.heading).toBe(64);
-    expect(missileOf(st, 0)!.vx).toBeGreaterThan(v0 + 70);
+  it('homes the same when nobody is at Weapons, and keeps its thrust', () => {
+    const attended = duel(), alone = duel();
+    tick(attended, input({ missileLaunch: true })); tick(alone, input({ missileLaunch: true }));
+    const v0 = Math.hypot(missileOf(alone, 0)!.vx, missileOf(alone, 0)!.vy);
+    for (let t = 0; t < 30; t++) { tick(attended, input()); tick(alone, input({ weapons: false })); }
+    const m = missileOf(alone, 0)!;
+    expect(m.heading).toBeGreaterThan(64);                               // launched east, it turned toward the enemy to the south
+    expect(Math.hypot(m.vx, m.vy)).toBeGreaterThan(v0 + 70);
+    expect({ ...m }).toEqual({ ...missileOf(attended, 0)! });
   });
 });
 
 describe('missile contacts (spec §4 collision matrix)', () => {
-  it('bypasses shields: lands on the room at the impact point, +1 damage and 3 hull', () => {
+  it('bypasses shields: strikes the lock room of its owner, not the room at the impact point, +1 damage and 3 hull', () => {
     const st = duel(), b = st.ships[1];
-    Object.assign(b, { x: -400, y: -300, heading: 192 });             // facing the crew: its nose faces the missile
+    Object.assign(b, { x: -400, y: -300, heading: 192 });             // facing the crew: its nose (Weapons) faces the missile
+    st.systems[0].lock = Room.Engines;                                 // the stern, away from the impact point
     tick(st, input({ missileLaunch: true }));
     for (let t = 0; t < 120 && missileOf(st, 0); t++) tick(st, input());
     expect(missileOf(st, 0)).toBeNull();
     expect(st.systems[1].shields).toBe(2);
-    expect(st.systems[1].rooms).toEqual([1, 0, 0]);
+    expect(st.systems[1].rooms).toEqual([0, 0, 1]);
     expect(st.systems[1].hull).toBe(SHIP_HULL - 3);
     expect(st.systems[0].missileHits).toBe(1);
-    expect(st.events).toContainEqual(expect.objectContaining({ kind: 'missileEnd', ship: 0, cause: 'ship', target: 1, room: Room.Weapons }));
+    expect(st.events).toContainEqual(expect.objectContaining({ kind: 'missileEnd', ship: 0, cause: 'ship', target: 1, room: Room.Engines }));
+  });
+  it('the lock room is read at impact: a lock changed in flight is the room struck', () => {
+    const st = duel(), b = st.ships[1];
+    Object.assign(b, { x: -400, y: -300, heading: 192 });
+    st.systems[0].lock = Room.Engines;
+    tick(st, input({ missileLaunch: true }));
+    tick(st, input({ laserLock: Room.Shields }));
+    for (let t = 0; t < 120 && missileOf(st, 0); t++) tick(st, input());
+    expect(st.systems[1].rooms).toEqual([0, 1, 0]);
   });
   it('ignores its own ship for the first second, then can hit it', () => {
     const st = duel(), s = st.ships[0];
     tick(st, input({ missileLaunch: true }));
     const m = missileOf(st, 0)!;
-    Object.assign(m, { x: s.x, y: s.y, vx: 0, vy: 0 });                 // sitting on its own ship at age 1
+    st.systems[0].lock = Room.Engines;                                  // a lock names a room on the target, never its own ship
+    Object.assign(m, { x: s.x + 5, y: s.y, vx: 0, vy: 0 });             // sitting on its own ship's nose (heading east) at age 1
     resolveMissiles(st);
     expect(missileOf(st, 0)).not.toBeNull();
     m.age = 61;
@@ -135,7 +149,8 @@ describe('missile contacts (spec §4 collision matrix)', () => {
     expect(missileOf(st, 0)).toBeNull();
     expect(st.systems[0].hull).toBe(SHIP_HULL - 3);
     expect(st.systems[0].missileHits).toBe(0);                                      // a self-hit is not a hit
-    expect(st.events.at(-1)).toMatchObject({ kind: 'missileEnd', cause: 'ship', target: 0 });
+    expect(st.events.at(-1)).toMatchObject({ kind: 'missileEnd', cause: 'ship', target: 0, room: Room.Weapons });   // the impact room
+    expect(st.systems[0].rooms).toEqual([1, 0, 0]);
   });
   it('is destroyed by the planet, an asteroid or the map edge, and two missiles destroy each other', () => {
     const cases: [string, (st: TacticalState) => void][] = [

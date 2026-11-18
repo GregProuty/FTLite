@@ -91,6 +91,12 @@ export const MISSILE_FUEL_TICKS = 360;        // 6 s of thrust
 export const MISSILE_LIFE_TICKS = 480;        // then 2 s of coasting, then it self-destructs
 export const MISSILE_ARM_TICKS = 60;          // its own ship is ignored for the first 1 s
 export const MISSILE_HULL = 3;
+// Homing guidance (homing torpedo spec §1): velocity-correcting lead pursuit on the owner's locked target.
+// Tuned on tests/torpedoGuidance.test.ts (start 200 / 50 / 3 hit 85% of the coasting gate): 100% of the gate's 20
+// seeds (99% of 200), and 95% (83% of 200) against a hard full-thrust turn.
+export const MISSILE_CRUISE_SPEED = 300;      // the desired velocity's floor, u/s
+export const MISSILE_MIN_CLOSING = 450;       // the closing speed's floor in the time to go, u/s
+export const MISSILE_LEAD_CAP_S = 2;          // the time to go's cap, s
 
 // The hunter (§9)
 export const HUNTER_LEAD_S = 0.5;

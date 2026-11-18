@@ -34,9 +34,10 @@ const root = () => document.querySelector('[data-ui-contact]') as Element;
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((e) => e.dataset.text);
 
 describe('the contact window (spec §4.2, §5)', () => {
-  it('draws the title, the room labels and, at Weapons, LASER and MISSILE', () => {
+  it('draws the title, the room labels and, at Weapons, LASER and TORPEDO, with nothing to steer (homing torpedo spec §3)', () => {
     mount(contactOf('weapons', false));
-    for (const t of ['ENEMY SHIP', 'WEAP', 'SHLD', 'ENG', 'MISSILE', 'STEER A/D', 'CHARGE', '40%']) expect(texts(), t).toContain(t);
+    for (const t of ['ENEMY SHIP', 'WEAP', 'SHLD', 'ENG', 'TORPEDO', 'CHARGE', '40%']) expect(texts(), t).toContain(t);
+    for (const t of ['MISSILE', 'STEER A/D']) expect(texts(), t).not.toContain(t);
     expect(btn('contact-laser')).not.toBeNull();
     expect(document.querySelector('[data-ui-contact-lock]')).not.toBeNull();   // the scout is the laser's target
   });
@@ -87,11 +88,20 @@ describe('the contact window (spec §4.2, §5)', () => {
   });
   it('the Helm: no weapon list, no reticle, and a room click calls nothing', () => {
     const v = contactOf('helm', true), c = mount(v), shld = v.rooms[1]!.centre;
-    expect(btn('contact-laser')).toBeNull(); expect(texts()).not.toContain('MISSILE');
+    expect(btn('contact-laser')).toBeNull(); expect(texts()).not.toContain('TORPEDO');
     fireEvent.pointerMove(box(), { clientX: shld.x, clientY: shld.y });
     fireEvent.pointerDown(box(), { button: 0, clientX: shld.x, clientY: shld.y });
     expect(c.pick).not.toHaveBeenCalled();
     expect(document.querySelector('[data-ui-contact-reticle]')).toBeNull();
+  });
+  it('a struck room flashes: a hot fill over its polygon at the flash alpha (duel polish i spec §B)', () => {
+    const c = contactOf('helm', false);
+    mount({ ...c, flash: [{ room: 1, points: c.rooms[1]!.points, alpha: 0.4 }] });
+    const f = document.querySelectorAll('[data-ui-contact-flash]');
+    expect(f).toHaveLength(1);
+    expect(f[0]!.getAttribute('data-ui-contact-flash')).toBe('SHLD');
+    expect(f[0]!.getAttribute('fill')).toBe(hex(CRT.hot));
+    expect(Number(f[0]!.getAttribute('fill-opacity'))).toBeCloseTo(0.4, 9);
   });
   it('without a contact view no window is drawn', () => {
     const ui = makeUi(), duel = createDuelSink(ui.store);

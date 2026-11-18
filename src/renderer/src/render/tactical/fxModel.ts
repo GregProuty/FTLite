@@ -6,6 +6,7 @@ import { HEADING_COUNT } from '../../sim/tactical/tuning';
 import type { Point } from './camera';
 import type { PrevBody } from './tacticalModel';
 import { CRT } from './crtTheme';
+import { stepHits, type CalloutItem, type StruckItem } from './hitModel';
 
 /** A contact the runtime detects from a ship's hit counters (the sim emits no contact events). */
 export interface ContactEvent { kind: 'contact'; ship: number; body: 'planet' | 'asteroid' | 'ship'; x: number; y: number }
@@ -26,10 +27,13 @@ export interface FxState {
   shake: number; shakeT: number;
   /** Per ship's missile: its last TRAIL_POINTS drawn world positions, oldest first; empty while none flies. */
   trails: [Point[], Point[]];
+  /** Duel polish i spec §B: the hit callouts over the enemy on the maps, and the struck rooms flashing in the contact
+   *  window (hitModel.ts pushes them; stepFx ages them). */
+  callouts: CalloutItem[]; struck: StruckItem[];
 }
 
-export function createFx(): FxState { return { items: [], shake: 0, shakeT: 0, trails: [[], []] }; }
-export function resetFx(fx: FxState): void { fx.items.length = 0; fx.shake = 0; fx.shakeT = 0; fx.trails[0].length = 0; fx.trails[1].length = 0; }
+export function createFx(): FxState { return { items: [], shake: 0, shakeT: 0, trails: [[], []], callouts: [], struck: [] }; }
+export function resetFx(fx: FxState): void { fx.items.length = 0; fx.shake = 0; fx.shakeT = 0; fx.trails[0].length = 0; fx.trails[1].length = 0; fx.callouts.length = 0; fx.struck.length = 0; }
 
 /** Whether an event is a hit on the crew ship (CREW_SLOT): a laser hit from another ship, or any missile landing on it.
  *  Laser events carry no target until R-3/R-5 (adding one changes the duel oracle's event digest), so a laser hit from
@@ -48,8 +52,9 @@ export function pushEvents(fx: FxState, events: readonly ViewEvent[]): void {
   }
 }
 
-/** Age every effect by dt and drop the finished ones; run the shake down. */
+/** Age every effect (the callouts and flashes too) by dt and drop the finished ones; run the shake down. */
 export function stepFx(fx: FxState, dt: number): void {
+  stepHits(fx, dt);
   for (const it of fx.items) it.age += dt;
   for (let k = fx.items.length - 1; k >= 0; k--) if (fx.items[k]!.age >= fx.items[k]!.life) fx.items.splice(k, 1);
   if (fx.shake > 0) { fx.shake = Math.max(0, fx.shake - dt); fx.shakeT += dt; }

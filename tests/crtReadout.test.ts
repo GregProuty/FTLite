@@ -43,12 +43,12 @@ describe('readoutRows emphasis (CRT map spec section 2)', () => {
     placeMissile(d.tactical, 0, { x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 }); expect(tail()[2]).toEqual(['CHARGE', '-']);
     disposeDuel(d);
   });
-  it('interior: EMPTY, COASTING and MISSILE INBOUND are alert (they keep their tints: the interior has no CRT)', () => {
+  it('interior: EMPTY, COASTING and TORPEDO INBOUND are alert (they keep their tints: the interior has no CRT)', () => {
     const d = createDuel(layout, 5), t = d.tactical, c = t.ships[0];
     d.interior.stations.occupant[d.nav] = -1; d.interior.stations.occupant[d.weapons] = -1;
     placeMissile(t, 1, { x: c.x + 100, y: c.y, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });
     const rows = readoutRows({ duel: d, mode: 'interior', active: 0, other: 'WALKING' });
-    expect(marks(rows).slice(14)).toEqual([['OUTSIDE', '-'], ['HELM', 'alert'], ['COASTING', 'alert'], ['WEAPONS', 'alert'], ['ENEMY', '-'], ['BEARING', '-'], ['MISSILE INBOUND', 'alert']]);
+    expect(marks(rows).slice(14)).toEqual([['OUTSIDE', '-'], ['HELM', 'alert'], ['COASTING', 'alert'], ['WEAPONS', 'alert'], ['ENEMY', '-'], ['BEARING', '-'], ['TORPEDO INBOUND', 'alert']]);
     disposeDuel(d);
   });
 });
@@ -65,7 +65,7 @@ describe('the CRT row look (CRT map spec section 2)', () => {
   it('alert: the value on an inverse bar (glass text) alternating main and hot at 2 Hz; an alert heading inverts its label', () => {
     expect(crtRowLook(r({ emphasis: 'alert' }), 0)).toMatchObject({ inverse: 'value', value: CRT.glass, block: CRT.main });
     expect(crtRowLook(r({ emphasis: 'alert' }), 0.3)).toMatchObject({ inverse: 'value', value: CRT.glass, block: CRT.hot });
-    expect(crtRowLook(r({ label: 'MISSILE INBOUND', value: '', emphasis: 'alert' }), 0)).toMatchObject({ inverse: 'label', label: CRT.glass });
+    expect(crtRowLook(r({ label: 'TORPEDO INBOUND', value: '', emphasis: 'alert' }), 0)).toMatchObject({ inverse: 'label', label: CRT.glass });
   });
   it('enemy: the HUNTER heading and the LOCK value on a main inverse bar; enemy pips stay text-free (hollow pips)', () => {
     expect(crtRowLook(r({ label: 'HUNTER', value: '', emphasis: 'enemy' }), 0)).toMatchObject({ inverse: 'label', label: CRT.glass, block: CRT.main });

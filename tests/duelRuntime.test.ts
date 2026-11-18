@@ -3,6 +3,7 @@ import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { Position } from '../src/renderer/src/sim/components';
 import { missileOf, Outcome, removeMissile, Room } from '../src/renderer/src/sim/tactical/state';
+import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
 import { REPAIR_RATE_SOLO } from '../src/renderer/src/sim/duel/tuning';
 import { emptyPresses, NO_HELD_FLAGS, type KeyAction, type KeySample, type PointerSample } from '../src/renderer/src/app/duel/input';
@@ -212,15 +213,16 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     expect(rt.duel.tactical.systems[0].fireHeld).toBe(false);
     rt.dispose();
   });
-  it('F launches a missile, A/D steer it, C toggles the Weapons camera to the missile and back', () => {
+  it('F launches a torpedo, held A/D at Weapons changes nothing (homing torpedo spec §1), C toggles the Weapons camera to the torpedo and back', () => {
     const { rt, hold, press, tick, ticks } = rig();
-    press('switch'); tick();
-    press('launch'); tick();
+    const still = rig();
+    for (const r of [{ press, tick }, { press: still.press, tick: still.tick }]) { r.press('switch'); r.tick(); r.press('launch'); r.tick(); }
     expect(missileOf(rt.duel.tactical, 0)).not.toBeNull();
-    const h0 = missileOf(rt.duel.tactical, 0)!.heading;
-    hold({ moveX: 1 }); ticks(10);
-    expect(rt.steer()).toBe(1);
-    expect(missileOf(rt.duel.tactical, 0)!.heading).not.toBe(h0);
+    hold({ moveX: 1 }); ticks(10); still.ticks(10);
+    expect(rt.held()[rt.active()]!.moveX).toBe(1);                                      // sent on the wire, and ignored
+    expect({ ...missileOf(rt.duel.tactical, 0)! }).toEqual({ ...missileOf(still.rt.duel.tactical, 0)! });
+    expect(hashDuel(rt.duel)).toBe(hashDuel(still.rt.duel));
+    still.rt.dispose();
     press('camera'); tick();
     expect(rt.cameras.weapons.follow).toBe('missile');
     expect(rt.cameras.helm.follow).toBe('ship');   // each console keeps its own camera
@@ -371,7 +373,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     expect(rt.ended()).toBe(true);
     tick(); tick();
     expect(rt.held()[0]).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
-    expect([rt.axes(), rt.steer()]).toEqual([{ turn: 0, thrust: 0 }, 0]);
+    expect(rt.axes()).toEqual({ turn: 0, thrust: 0 });
     rt.dispose();
   });
 });

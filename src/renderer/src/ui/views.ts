@@ -3,6 +3,7 @@ import type { EndView } from '../render/duel/endModel';
 import type { ReadoutRow } from '../render/duel/readoutModel';
 import type { ConsoleView } from '../render/duel/consoleModel';
 import type { ContactView } from '../render/duel/contactModel';
+import type { ShipHudView } from '../render/duel/shipHudModel';
 import type { OverlayDraw } from '../render/tactical/tacticalModel';
 
 /** The three banner lines; null hides one (spec §6 placements). */
@@ -13,7 +14,9 @@ export interface DuelUiView { readout: { rows: readonly ReadoutRow[]; help: read
   /** The Artemis console (spec 2026-11-17-artemis-consoles §6.1); absent or null draws today's screen. */
   console?: ConsoleView | null;
   /** The contact window (enemy ship window spec §6.5): set while it is shown; absent or null draws no window. */
-  contact?: ContactView | null }
+  contact?: ContactView | null;
+  /** The ship HUD (duel polish i spec §E): set on the SHIP view only (standing, console.station 'ship'); absent or null draws none. */
+  hud?: ShipHudView | null }
 export interface FlightUiView { feel: readonly (readonly [string, string])[]; banners: Banners; overlay: MapOverlayView | null; crt: boolean }
 
 export function mapOverlayOf(o: OverlayDraw): MapOverlayView { return { zoomText: o.zoomText, scaleBar: o.scaleBar, snapHint: o.snapHint }; }

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Container } from 'pixi.js';
 import { flyMissile, launchMissile } from '../src/renderer/src/sim/tactical/missiles';
@@ -7,50 +8,35 @@ import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { LASER_RANGE, MISSILE_LIFE_TICKS, MISSILE_RADIUS, PLANET_RADIUS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
 import { createCamera, worldToScreen, type Camera } from '../src/renderer/src/render/tactical/camera';
 import { BEAM_HIT, BEAM_MISS, createFx, hitsCrew, pushEvents, recordTrails, resetFx, shakeOffset, SHAKE_S, stepFx, TRAIL_POINTS, type ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
-import { MISSILE_PATH_MAX_TICKS, predictMissilePath } from '../src/renderer/src/render/tactical/missilePath';
 import { createTacticalLayer, starField } from '../src/renderer/src/render/tactical/tacticalLayer';
 import { ARROW_GAP_SIDE, ARROW_MARGIN, spreadArrows, tacticalModel, type ArrowDraw, type PrevBody } from '../src/renderer/src/render/tactical/tacticalModel';
-import { ARC_HALF, bearingDeg, combatModel, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
+import { ARC_HALF, bearingDeg, combatModel, TORPEDO_DOT_PX, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
 import { roomCentre } from '../src/renderer/src/render/tactical/hullModel';
 
 const vp = { w: 1280, h: 720 };
 const count = (c: Container): number => c.children.reduce((n, k) => n + 1 + count(k as Container), 0);
 const prevOf = (st: TacticalState): PrevBody[] => st.ships.map((s) => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc }));
 function input(st: TacticalState, cam: Camera, console: 'helm' | 'weapons', fx = createFx()): CombatModelInput {
-  return { state: st, prev: prevOf(st), alpha: 1, camera: cam, viewport: vp, console, axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: 236, missilePrev: [null, null], steer: 0, fx };
+  return { state: st, prev: prevOf(st), alpha: 1, camera: cam, viewport: vp, console, axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: 236, missilePrev: [null, null], fx };
 }
 
-describe('the missile-path predictor (H-1 spec §7)', () => {
-  for (const steer of [0, 1, -1]) {
-    it(`matches flyMissile tick for tick over 120 ticks of free flight (steer ${steer})`, () => {
-      const st = createTacticalState(11);
-      launchMissile(st, 0);
-      const m0 = { ...missileOf(st, 0)! };
-      const path = predictMissilePath(st, missileOf(st, 0)!, steer, 1);
-      expect(missileOf(st, 0)).toEqual(m0);   // the state's missile is never touched
-      expect(path.length).toBeGreaterThanOrEqual(120);
-      for (let t = 0; t < 120; t++) {
-        flyMissile(st, 0, steer);
-        expect(path[t]).toEqual({ x: missileOf(st, 0)!.x, y: missileOf(st, 0)!.y });
-      }
-    });
-  }
-  it('ends at the planet when aimed at it, keeping the contact point', () => {
+describe('the torpedo dot (homing torpedo spec §3)', () => {
+  it('every torpedo in flight draws as a dot of radius at least 4 screen px at any zoom, both the crew and the Hunter', () => {
     const st = createTacticalState(11);
-    const m = { x: 0, y: -500, vx: 0, vy: 120, heading: 128, headingAcc: 0, age: 0 };   // heading 128 is south: straight down the well
-    const path = predictMissilePath(st, m, 0);
-    const end = path[path.length - 1]!;
-    expect(Math.hypot(end.x, end.y)).toBeLessThan(PLANET_RADIUS + MISSILE_RADIUS);
-    expect(path.length).toBeLessThan(MISSILE_PATH_MAX_TICKS / 4);
-    for (const p of path.slice(0, -1)) expect(Math.hypot(p.x, p.y)).toBeGreaterThanOrEqual(PLANET_RADIUS + MISSILE_RADIUS);
+    launchMissile(st, 0); launchMissile(st, 1);
+    for (const z of [0.05, 0.2, 0.5, 1, 2, 4]) {
+      const cam = createCamera(st.ships[0].x, st.ships[0].y, z), c = combatModel(input(st, cam, 'helm'));
+      expect(c.missiles.map((m) => m.crew)).toEqual([true, false]);
+      for (const m of c.missiles) { expect(m.r).toBeGreaterThanOrEqual(TORPEDO_DOT_PX); expect(m.r).toBe(Math.max(4, MISSILE_RADIUS * cam.zoom)); }
+    }
   });
-  it('the horizon is the remaining life, capped at 240 ticks, a point every 4 ticks', () => {
+  it('nothing draws the old shape or the predicted path: no heading on the draw, no path on the Weapons layer, no predictor module', () => {
     const st = createTacticalState(11);
     launchMissile(st, 0);
-    expect(predictMissilePath(st, missileOf(st, 0)!, 0)).toHaveLength(MISSILE_PATH_MAX_TICKS / 4);
-    const old = { ...missileOf(st, 0)!, age: MISSILE_LIFE_TICKS - 30 };
-    const short = predictMissilePath(st, old, 0, 1);
-    expect(short).toHaveLength(30);
+    const c = combatModel(input(st, createCamera(st.ships[0].x, st.ships[0].y), 'weapons'));
+    expect(Object.keys(c.missiles[0]!).sort()).toEqual(['crew', 'r', 'trail', 'x', 'y']);
+    expect('missilePath' in c.weapons! || 'missileOrigin' in c.weapons!).toBe(false);
+    expect(existsSync(new URL('../src/renderer/src/render/tactical/missilePath.ts', import.meta.url))).toBe(false);
   });
 });
 
@@ -65,7 +51,6 @@ describe('the combat model (H-1 spec §7)', () => {
     expect(w.ring).not.toBeNull();
     const [a, b] = st.ships, range = Math.round(Math.hypot(b.x - a.x, b.y - a.y));
     expect(w.info.text).toBe(`ENEMY BRG ${String(bearingDeg(b.x - a.x, b.y - a.y)).padStart(3, '0')}  RNG ${range}  NO SHOT`);
-    expect(w.missilePath).toEqual([]);
   });
   it('the info text centres between a left and a right reserve (the Artemis console)', () => {
     const st = createTacticalState(11);
@@ -138,27 +123,25 @@ describe('the combat model (H-1 spec §7)', () => {
     expect(at(0.2).x).toBeCloseTo(640, 9);                                      // the chevron's centre
     expect(at(0.2).label.x).toBeCloseTo(640 + 14 + 6, 9);                      // max(14, 20 × 0.2 × 1.6) + 6
   });
-  it('missile mode: the missile, its trail and its predicted path from its drawn position', () => {
+  it('torpedo mode: the torpedo dot and its trail', () => {
     const st = createTacticalState(11), cam = createCamera(st.ships[0].x, st.ships[0].y), fx = createFx();
     launchMissile(st, 0);
-    for (let k = 0; k < 40; k++) { const p = { ...missileOf(st, 0)! }; flyMissile(st, 0, 1); recordTrails(fx, st, [{ x: p.x, y: p.y, h: p.heading + p.headingAcc }, null], 1); }
-    const c = combatModel({ ...input(st, cam, 'weapons', fx), steer: 1 });
+    for (let k = 0; k < 40; k++) { const p = { ...missileOf(st, 0)! }; flyMissile(st, 0); recordTrails(fx, st, [{ x: p.x, y: p.y, h: p.heading + p.headingAcc }, null], 1); }
+    const c = combatModel(input(st, cam, 'weapons', fx));
     expect(c.missiles).toHaveLength(1);
     expect(c.missiles[0]!.trail).toHaveLength(TRAIL_POINTS);
-    expect(c.weapons!.missilePath.length).toBeGreaterThan(10);
-    expect(c.weapons!.missileOrigin).toEqual({ x: c.missiles[0]!.x, y: c.missiles[0]!.y });
+    expect(c.missiles[0]!).toMatchObject(worldToScreen(cam, vp, missileOf(st, 0)!.x, missileOf(st, 0)!.y));
   });
-  it('the predicted path starts at the interpolated glyph, not the tick position (alpha < 1)', () => {
+  it('the dot sits at the interpolated position, not the tick position (alpha < 1)', () => {
     const st = createTacticalState(11), cam = createCamera(st.ships[0].x, st.ships[0].y), fx = createFx();
     launchMissile(st, 0);
     const p0 = { ...missileOf(st, 0)! };
-    for (let k = 0; k < 10; k++) flyMissile(st, 0, 0);
+    for (let k = 0; k < 10; k++) flyMissile(st, 0);
     const before = { ...missileOf(st, 0)! };
     const missilePrev: (PrevBody | null)[] = [{ x: p0.x, y: p0.y, h: p0.heading + p0.headingAcc }, null];
-    const c = combatModel({ ...input(st, cam, 'weapons', fx), alpha: 0.4, missilePrev, steer: 0 });
-    expect(c.weapons!.missilePath[0]).toEqual({ x: c.missiles[0]!.x, y: c.missiles[0]!.y });
+    const c = combatModel({ ...input(st, cam, 'weapons', fx), alpha: 0.4, missilePrev });
     const raw = worldToScreen(cam, vp, before.x, before.y);
-    expect(Math.hypot(c.missiles[0]!.x - raw.x, c.missiles[0]!.y - raw.y)).toBeGreaterThan(1);   // the glyph is not at the tick position
+    expect(Math.hypot(c.missiles[0]!.x - raw.x, c.missiles[0]!.y - raw.y)).toBeGreaterThan(1);   // the dot is not at the tick position
     expect(missileOf(st, 0)).toEqual(before);
   });
 });
@@ -194,7 +177,7 @@ describe('the view effects (H-1 spec §7 item 8, §8 shake)', () => {
   it('trails keep the last 30 drawn positions and clear when the missile ends', () => {
     const st = createTacticalState(11), fx = createFx();
     launchMissile(st, 0);
-    for (let k = 0; k < 45; k++) { flyMissile(st, 0, 0); recordTrails(fx, st, [null, null], 1); }
+    for (let k = 0; k < 45; k++) { flyMissile(st, 0); recordTrails(fx, st, [null, null], 1); }
     expect(fx.trails[0]).toHaveLength(TRAIL_POINTS);
     expect(fx.trails[0][TRAIL_POINTS - 1]).toEqual({ x: missileOf(st, 0)!.x, y: missileOf(st, 0)!.y });
     recordTrails(fx, st, [null, null], 1);
@@ -211,7 +194,7 @@ describe('the tactical layer with the combat lists (H-1 spec §10)', () => {
     const frame = (k: number): void => {
       const prev = prevOf(st);
       if (k === 5) { launchMissile(st, 0); launchMissile(st, 1); }
-      stepDuel(st, { ...IDLE_INPUT, laserCharge: k % 30 === 0 ? false : k % 30 === 1 ? true : null, steer: 1 });
+      stepDuel(st, { ...IDLE_INPUT, laserCharge: k % 30 === 0 ? false : k % 30 === 1 ? true : null });
       pushEvents(fx, st.events);
       if (k % 17 === 0) pushEvents(fx, [{ kind: 'laser', ship: 1, hit: true, stripped: true, room: -1, x1: st.ships[1].x, y1: st.ships[1].y, x2: st.ships[0].x, y2: st.ships[0].y }, { kind: 'contact', ship: 0, body: 'asteroid', x: st.ships[0].x, y: st.ships[0].y }]);
       stepFx(fx, 1 / 60); recordTrails(fx, st, [null, null], 1);

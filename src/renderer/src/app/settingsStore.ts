@@ -12,7 +12,7 @@ export type VolumeChannel = (typeof VOLUME_CHANNELS)[number];
 export const VOLUME_LABELS: Readonly<Record<VolumeChannel, string>> = { master: 'Master volume', music: 'Music', effects: 'Effects' };
 
 export interface Settings extends Volumes { version: 2 }
-export const DEFAULT_SETTINGS: Settings = { version: 2, master: 1, music: 1, effects: 1 };
+export const DEFAULT_SETTINGS: Settings = { version: 2, master: 1, music: 0.5, effects: 1 };   // music at half (owner 2026-11-17)
 
 const step = (v: unknown, fallback: number): number => (typeof v === 'number' && VOLUME_STEPS.includes(v) ? v : fallback);
 

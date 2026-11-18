@@ -1,5 +1,5 @@
-// The Weapons station block (spec 2026-11-17-artemis-consoles §4.1): laser charge and FIRE, the lock room, the missile
-// magazine and LAUNCH, and the steer buttons that hold A and D while a missile flies.
+// The Weapons station block (spec 2026-11-17-artemis-consoles §4.1): laser charge and FIRE, the lock room, the torpedo
+// magazine and LAUNCH. The torpedo homes by itself (homing torpedo spec §3), so there is nothing to steer.
 // Sci-1 spec §7.4: the frequency row, A B C with the tuned one lit and the weak one marked after a Level 2 scan.
 import { memo } from 'react';
 import type { WeaponsPanel } from '../../render/duel/consoleModel';
@@ -36,21 +36,16 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons }: { weapon
         lit={weapons.lock === r} onPress={() => actions.console.lock(r)} />)}
       <PixelText text="E/Q" x={right} y={y0 + 80} size={FONT_NATIVE} tint={dim} anchorX={1} />
       <Box x={x0} y={y0 + 112} w={right - x0} h={1} style={{ background: hex(crt ? CRT.dim : BAR_OFF) }} />
-      <PixelText text="MISSILE" x={x0} y={y0 + 118} size={FONT_NATIVE} tint={dim} />
+      <PixelText text="TORPEDO" x={x0} y={y0 + 118} size={FONT_NATIVE} tint={dim} />
       <PixelText text={`MAG ${weapons.magazine}`} x={x0} y={y0 + 134} size={FONT_SIZE} tint={main} />
       {weapons.missileFlying && <PixelText text="FLYING" x={x0 + textPx(`MAG ${weapons.magazine}`) + 8} y={y0 + 138} size={FONT_NATIVE} tint={crt ? CRT.hot : AMBER} />}
       <Button name="launch" label="LAUNCH" hint="F" x={right - 120} y={y0 + 134} w={120} h={24} disabled={!weapons.canLaunch} onPress={() => actions.console.press('launch')} />
-      <PixelText text="STEER" x={x0} y={y0 + 170} size={FONT_NATIVE} tint={main} />
-      <Button name="steer-left" label="<" hint="A" x={x0 + 52} y={y0 + 170} w={64} h={24} disabled={!weapons.missileFlying} lit={weapons.held.left}
-        onHold={(on) => actions.console.hold('KeyA', on)} />
-      <Button name="steer-right" label=">" hint="D" x={x0 + 120} y={y0 + 170} w={64} h={24} disabled={!weapons.missileFlying} lit={weapons.held.right}
-        onHold={(on) => actions.console.hold('KeyD', on)} />
-      <PixelText text="FREQ" x={x0} y={y0 + 206} size={FONT_NATIVE} tint={main} />
-      {FREQ_NAMES.map((label, f) => <Button key={f} name={`freq-${f}`} label={label} x={x0 + 52 + f * 56} y={y0 + 202} w={52} h={24}
+      <PixelText text="FREQ" x={x0} y={y0 + 174} size={FONT_NATIVE} tint={main} />
+      {FREQ_NAMES.map((label, f) => <Button key={f} name={`freq-${f}`} label={label} x={x0 + 52 + f * 56} y={y0 + 170} w={52} h={24}
         lit={weapons.freq === f} onPress={() => actions.console.frequency(f)} />)}
-      {weapons.weakFreq !== null && <Box x={x0 + 52 + weapons.weakFreq * 56 + 41} y={y0 + 196} w={7} h={7} attrs={{ 'data-ui-weak-freq': FREQ_NAMES[weapons.weakFreq] ?? '' }}
+      {weapons.weakFreq !== null && <Box x={x0 + 52 + weapons.weakFreq * 56 + 41} y={y0 + 164} w={7} h={7} attrs={{ 'data-ui-weak-freq': FREQ_NAMES[weapons.weakFreq] ?? '' }}
         style={{ background: hex(crt ? CRT.hot : AMBER), transform: 'rotate(45deg)' }} />}
-      <PixelText text="1/2/3" x={right} y={y0 + 206} size={FONT_NATIVE} tint={dim} anchorX={1} />
+      <PixelText text="1/2/3" x={right} y={y0 + 174} size={FONT_NATIVE} tint={dim} anchorX={1} />
     </>
   );
 });

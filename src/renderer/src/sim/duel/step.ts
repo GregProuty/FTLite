@@ -10,6 +10,7 @@ import { roomAt } from '../grid';
 import { inReachOfTile } from '../interact';
 import { movementSystem } from '../movement';
 import { stepDuel } from '../tactical/duel';
+import { hunterHostile } from './hostility';
 import { scanCommand } from '../tactical/science';
 import { SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
 import { CONTACT_MAX_LEVEL, Outcome } from '../tactical/state';
@@ -175,7 +176,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   // charge, then launch (the order applyWeaponsInput applies them), whatever their envelope order; admission is checked
   // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins.
   const helm = attendant(d, d.nav), gunner = attendant(d, d.weapons);
-  const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, steer: 0, laserLock: null, laserCharge: null, missileLaunch: false, scanner: true };
+  const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, laserLock: null, laserCharge: null, missileLaunch: false, scanner: true };
   for (const e of WEAPON_ORDER.flatMap((kind) => input.commands.filter((x) => x.command.kind === kind))) {
     const c = e.command;
     if (c.kind !== 'laserLock' && c.kind !== 'laserCharge' && c.kind !== 'missileLaunch') continue;
@@ -227,7 +228,6 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   for (const e of input.commands) if (e.command.kind === 'rematch') result(e, 'duel-running');
   for (const e of input.commands) if (!DUEL_KINDS.includes(e.command.kind)) result(e, 'not-in-duel');
   if (helm >= 0) crew.axes = { turn: (input.held[helm] ?? NO_HELD).moveX, thrust: throttleThrust(d.throttle) };   // Artemis spec §5.3: held moveX turns, the throttle thrusts; held moveY no longer does
-  if (gunner >= 0) crew.steer = (input.held[gunner] ?? NO_HELD).moveX;
 
   repairPhase(d, input.held);
   const intents: Intent[] = [0, 1].map((pid) => {
@@ -235,7 +235,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     return d.present[pid as 0 | 1] ? { ...NEUTRAL_INTENT, moveX: h.moveX, moveY: h.moveY } : { ...NEUTRAL_INTENT };
   });
   movementSystem(st, intents);   // skips seated and downed crew, and anyone who stood this tick
-  stepDuel(d.tactical, crew);
+  stepDuel(d.tactical, crew, undefined, !hunterHostile(d));   // hunter grace spec: the first 30 s of a round, unless the crew fires
   const hits = applyHitDamage(d, d.tactical.events);   // duel-health spec §1.2: hit damage in tactical event order, before the fire rolls
   firePhase(d, tick);   // duel-fire spec §1: growth and damage, then this tick's hits roll (rng.hazards)
   healthPhase(d, hits);   // duel-health spec §1: fire damage, downed, pick-up, the Medbay; both down loses the round

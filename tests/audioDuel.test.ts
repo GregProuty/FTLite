@@ -1,6 +1,11 @@
 // Audio-i spec section 4a: the duel's sounds from its view events and tactical state.
 import { describe, it, expect } from 'vitest';
-import { CREW, IMPACT_DELAY_S, OUTCOME_CREW_WINS, OUTCOME_RUNNING, duelEventSounds, duelStateSounds, type DuelWatchView } from '../src/renderer/src/audio/duelSounds';
+import {
+  CREW, FIRE_ALARM, HEARTBEAT, HEARTBEAT_BELOW, HEARTBEAT_S, IMPACT_DELAY_S, OUTCOME_CREW_WINS, OUTCOME_RUNNING, crewLifeSounds, duelEventSounds, duelStateSounds,
+  fireAlarm, heartbeat, heartbeatOn, type DuelWatchView
+} from '../src/renderer/src/audio/duelSounds';
+import { CUE_RECIPES } from '../src/renderer/src/audio/cueRecipes';
+import { HEALTH_LOW } from '../src/renderer/src/render/duel/readoutModel';
 import { CREW_SLOT, Outcome } from '../src/renderer/src/sim/tactical/state';
 import { HIT_FRESH_TICKS } from '../src/renderer/src/render/impactModel';
 import type { ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
@@ -63,5 +68,39 @@ describe('duel state sounds (Audio-i spec section 4a)', () => {
       expect([r.sounds, r.cues]).toEqual([[], []]);
     }
     expect(duelStateSounds(a, view({ tick: 10 + HIT_FRESH_TICKS, ...launched }), pan).sounds).toHaveLength(1);
+  });
+});
+
+describe('sound cues for trouble (duel polish i spec §C)', () => {
+  it('pins the heartbeat threshold to HEALTH_LOW and the cue shapes', () => {
+    expect(HEARTBEAT_BELOW).toBe(HEALTH_LOW);
+    expect(HEARTBEAT).toEqual({ key: 'lowBoom', gain: 0.35, pan: 0, filter: { type: 'lowpass', from: 400 } });
+    expect(FIRE_ALARM.map((r) => [r.key, r.gain])).toEqual([['alarm', 0.5], ['alarm', 0.5]]);
+    expect(FIRE_ALARM.map((r) => r.variant)).toEqual(CUE_RECIPES.alarm!.map((r) => r.variant));
+  });
+  it('the fire alarm plays when a room catches fire, at most once a second', () => {
+    let a = fireAlarm(null, 0, 0); expect(a.play).toBe(false);
+    a = fireAlarm(a.last, 1, 0.5); expect(a).toEqual({ last: 0.5, play: true });
+    a = fireAlarm(a.last, 2, 1.4); expect(a).toEqual({ last: 0.5, play: false });
+    a = fireAlarm(a.last, 1, 1.5); expect(a).toEqual({ last: 1.5, play: true });
+  });
+  it('a character going down plays alarm, a revive plays ready; nothing on a re-baseline', () => {
+    const v = (tick: number, downed: boolean[], round = 0) => ({ tick, round, downed });
+    let r = crewLifeSounds(null, v(5, [false, false])); expect(r.cues).toEqual([]);
+    r = crewLifeSounds(r.watch, v(6, [false, true])); expect(r.cues).toEqual(['alarm']);
+    r = crewLifeSounds(r.watch, v(7, [false, true])); expect(r.cues).toEqual([]);
+    r = crewLifeSounds(r.watch, v(8, [false, false])); expect(r.cues).toEqual(['ready']);
+    const w = r.watch;
+    for (const o of [v(7, [true, true]), v(8 + HIT_FRESH_TICKS + 1, [true, true]), v(9, [true, true], 1)]) expect(crewLifeSounds(w, o).cues).toEqual([]);
+  });
+  it('the heartbeat beats at once below 30, then every 0.8 s, and stops at 30, downed or paused', () => {
+    const on = { health: 29.5, downed: false, running: true, paused: false };
+    expect(heartbeatOn(on)).toBe(true);
+    for (const off of [{ health: 30 }, { downed: true }, { paused: true }, { running: false }]) expect(heartbeatOn({ ...on, ...off })).toBe(false);
+    let b = heartbeat(null, true, 1); expect(b).toEqual({ next: 1 + HEARTBEAT_S, beat: true });
+    b = heartbeat(b.next, true, 1.5); expect(b.beat).toBe(false);
+    b = heartbeat(b.next, true, 1.8); expect(b).toEqual({ next: 1.8 + HEARTBEAT_S, beat: true });
+    b = heartbeat(b.next, false, 1.9); expect(b).toEqual({ next: null, beat: false });
+    expect(heartbeat(b.next, true, 2).beat).toBe(true);   // back on: at once
   });
 });

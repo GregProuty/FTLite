@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { Container } from 'pixi.js';
+import type { BitmapText, Container } from 'pixi.js';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { Position, Stable } from '../src/renderer/src/sim/components';
+import { Life, LifeState, Position, Stable } from '../src/renderer/src/sim/components';
 import type { HeldInput } from '../src/renderer/src/net/contracts';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { createSeatedDuel } from './helpers/duelSeat';
@@ -85,7 +85,7 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
     expect((kids[3] as Container).blendMode).toBe('multiply');                                // the battlemap, tiles, the props (Art-iii), then the grade
     const lights = kids.findIndex((k) => k.blendMode === 'add');
     expect(lights).toBe(12);                                                                   // after effects.above (the station badges, start-aboard spec §2, sit after the desks)
-    expect(kids.length - lights - 1).toBe(7);                                                  // the marks, the three marker labels, the two downed labels (duel-health) and the badge labels above the lights
+    expect(kids.length - lights - 1).toBe(10);                                                 // the marks, the three marker labels, the two downed labels (duel-health), the healing marks and two REVIVED labels (duel polish i spec §D) and the badge labels above the lights
     view.draw(d, crewAt(d), 1, 1 / 60);
     expect([view.world.x, view.world.y]).toEqual([66, 173]);
     const hit = { kind: 'laser', ship: 1, hit: true, x1: 0, y1: 0, x2: 1, y2: 1 } as unknown as ViewEvent;
@@ -112,5 +112,25 @@ describe('the interior view places its world from the zoom camera (interior zoom
     view.draw(d, crewAt(d), 1, 1 / 60, [hit], 1 / 60, { camera, active: 0 });
     expect(Math.abs(view.world.x - at.x) + Math.abs(view.world.y - at.y)).toBe(18);   // 6 art pixels at 3 screen px each
     view.destroy(); disposeDuel(d);
+  });
+});
+
+describe('healing and revive feedback in the interior (duel polish i spec §D)', () => {
+  it('a revive shows its pooled REVIVED label over the character, with no display-object growth', () => {
+    const d = createSeatedDuel(layout, 5), view = createInteriorView(assets), e1 = d.interior.crew[1]!;
+    const revived = () => view.world.children.filter((k) => (k as BitmapText).text === 'REVIVED');
+    try {
+      Life.state[e1] = LifeState.Downed;
+      view.draw(d, crewAt(d), 1, 1 / 60);
+      const n0 = count(view.container);
+      expect(revived()).toHaveLength(2); expect(revived().every((t) => !t.visible)).toBe(true);
+      Life.state[e1] = LifeState.Conscious; d.tactical.tick += 1;
+      view.draw(d, crewAt(d), 1, 1 / 60);
+      const shown = revived().filter((t) => t.visible);
+      expect(shown).toHaveLength(1);
+      expect(shown[0]!.x).toBe(Math.round(Position.x[e1]! * TILE_PX));
+      for (let k = 0; k < 30; k++) { d.tactical.tick += 1; view.draw(d, crewAt(d), 1, 1 / 60); }
+      expect(count(view.container)).toBe(n0);
+    } finally { view.destroy(); disposeDuel(d); }
   });
 });

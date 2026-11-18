@@ -75,7 +75,7 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     expect(w[13]).toEqual(['CHARGE', 'HOLD 2.0']);
     disposeDuel(d);
   });
-  it('standing, the strip tells about the ship outside: empty consoles, the enemy, an inbound missile', () => {
+  it('standing, the strip tells about the ship outside: empty consoles, the enemy, an inbound torpedo', () => {
     const d = createDuel(layout, 5);
     stepDuelTick(d, { held: [], commands: [{ runId: 'duel', id: { player: 1, sequence: 0 }, requestedTick: 0, command: { kind: 'presence', present: false } }, { runId: 'duel', id: { player: 0, sequence: 0 }, requestedTick: 0, command: { kind: 'stand' } }] });
     const [crew, enemy] = d.tactical.ships;
@@ -86,8 +86,13 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     ]);
     placeMissile(d.tactical, 1, { x: crew.x + 500, y: crew.y, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });
     out = pairs({ duel: d, mode: 'interior', active: 0, other: 'AT WEAPONS' });
-    expect(out.at(-1)).toEqual(['MISSILE INBOUND', '']);
+    expect(out.at(-1)).toEqual(['TORPEDO INBOUND', '']);   // homing torpedo spec §3: on screen it is a torpedo
     disposeDuel(d);
+  });
+  it('the Weapons help names the torpedo and has nothing to steer (homing torpedo spec §3)', () => {
+    const help = readoutHelp('weapons').join(' ');
+    expect(help).toContain('F TORPEDO');
+    expect(help).not.toMatch(/STEER|MISSILE/);
   });
   it('the interior help names the zoom, the drag and C (interior zoom spec rule 6)', () => {
     expect(readoutHelp('interior')).toContain('WHEEL ZOOM  DRAG PAN  C FOLLOW');

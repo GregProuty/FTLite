@@ -18,17 +18,19 @@ describe('interior sounds (Audio-i spec section 4c)', () => {
     expect(interiorSounds(open, view({ tick: 7, doors: [0, DoorState.HeldOpen] })).sounds).toEqual([]);
     expect(interiorSounds(w, view({ tick: 6, doors: [DoorState.Sealed, 0] })).sounds).toEqual([]);
   });
-  it('sitting at a console blips at its column; standing is silent', () => {
+  it('sitting at a console blips at its column; standing up blips softer (duel polish i spec §C)', () => {
     const w = interiorSounds(null, view()).watch;
     const sat = interiorSounds(w, view({ tick: 6, occupant: [1, -1] }));
     expect(sat.sounds).toEqual([{ key: 'console', gain: 0.5, pan: 0.2 }]);
-    expect(interiorSounds(sat.watch, view({ tick: 7, occupant: [-1, -1] })).sounds).toEqual([]);
+    expect(interiorSounds(sat.watch, view({ tick: 7, occupant: [-1, -1] })).sounds).toEqual([{ key: 'console', gain: 0.35, pan: 0.2 }]);
+    expect(interiorSounds(sat.watch, view({ tick: 7, occupant: [0, -1] })).sounds).toEqual([]);   // another sitter in the same frame: no change
   });
   it('a room catching fire whooshes once, and the burning rooms are counted every frame', () => {
     const w = interiorSounds(null, view({ fire: [0, 2, 0] }));
     expect(w.fires).toBe(1);
     const lit = interiorSounds(w.watch, view({ tick: 6, fire: [0.1, 2, 0] }));
     expect(lit.sounds).toEqual([{ key: 'thruster', gain: 0.45, dur: 0.5, filter: { type: 'lowpass', from: 1200 } }]); expect(lit.fires).toBe(2);
+    expect(lit.ignited).toBe(1); expect(w.ignited).toBe(0);   // the rooms that caught fire this frame, for the duel's fire alarm (duel polish i spec §C)
     expect(interiorSounds(lit.watch, view({ tick: 7, fire: [0.3, 2, 0] })).sounds).toEqual([]);
   });
   it('re-baselines silently on no baseline, a tick backwards, a stale jump or a new layout, still counting fires', () => {

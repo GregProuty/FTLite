@@ -47,7 +47,7 @@ describe('the enemy on the map (spec §7.1)', () => {
     expect(mark(st, 0)).toMatchObject({ scan: null, designated: false });
   });
   it('the map lock marker is hidden while the enemy is unknown (duel flag), shown at Level 1', () => {
-    const st = createTacticalState(4), combat = (s: TacticalState) => combatModel({ ...input(s), missilePrev: [null, null], steer: 0, fx: createFx() });
+    const st = createTacticalState(4), combat = (s: TacticalState) => combatModel({ ...input(s), missilePrev: [null, null], fx: createFx() });
     expect(combat(st).lock).toBeNull();
     st.known[0] = 1;
     expect(combat(st).lock).not.toBeNull();

@@ -7,7 +7,7 @@ export const EDGE = 12;
 export const TABS = { x: 12, y: 8, w: 96, gap: 4, h: 26 } as const;
 export const TABS_RIGHT = TABS.x + 4 * TABS.w + 3 * TABS.gap;   // HELM, WEAPONS, SCIENCE, SHIP (Sci-1)
 export const STATUS = { x: 12, y: 42, w: READOUT_W } as const;
-export const STATION = { x: 12, w: 300, h: { helm: 200, weapons: 248, science: 96 } } as const;   // Weapons gains the frequency row (Sci-1 spec §7.4)
+export const STATION = { x: 12, w: 300, h: { helm: 200, weapons: 216, science: 96 } } as const;   // the frequency row takes the old steer row's place (Sci-1 spec §7.4)
 export function stationTop(s: 'helm' | 'weapons' | 'science'): number { return INTERNAL_H - EDGE - STATION.h[s]; }
 export const SIDE = { x: INTERNAL_W - EDGE - 132, y: 42, w: 132 } as const;
 /** The side column panel's height (SideColumn). */

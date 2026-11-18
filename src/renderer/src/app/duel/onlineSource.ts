@@ -27,11 +27,11 @@ export interface ConfirmedDuel {
    *  across it. Absent means always live. */
   live?(): boolean;
 }
-interface Counters { shots: number; laserHits: number; launched: number; ended: number; missileHits: number; contacts: [number, number, number] }
+interface Counters { shots: number; laserHits: number; stripped: number; launched: number; ended: number; missileHits: number; contacts: [number, number, number]; rooms: [number, number, number] }
 /** Ship i's cumulative counters, which the snapshot carries. */
 export const duelCounters = (t: TacticalState, i: number): Counters => {
   const s = t.systems[i]!, b = t.ships[i]!;
-  return { shots: s.shots, laserHits: s.laserHits, launched: s.missilesLaunched, ended: s.missileHits + s.missilesLost, missileHits: s.missileHits, contacts: [b.planetHits, b.asteroidHits, b.shipHits] };
+  return { shots: s.shots, laserHits: s.laserHits, stripped: s.layersStripped, launched: s.missilesLaunched, ended: s.missileHits + s.missilesLost, missileHits: s.missileHits, contacts: [b.planetHits, b.asteroidHits, b.shipHits], rooms: [s.rooms[0], s.rooms[1], s.rooms[2]] };
 };
 const body = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
 const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null);
@@ -55,16 +55,24 @@ export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: r
     if (!ship.active) return;
     const was = beforeCounters[i], now = duelCounters(t, i);
     if (!was) return;
-    const target = t.systems[i]!.target, tgt = t.ships[target];
+    const target = t.systems[i]!.target, tgt = t.ships[target], lock = t.systems[i]!.lock;
+    // What each hit did (duel polish i spec §B, online): the first `stripped` hits took a shield layer; the rest struck the
+    // laser's lock room. A missile hit struck a room whose level rose beyond what those laser hits explain, else unknown (−1).
+    const tw = beforeCounters[target], tn = tgt ? duelCounters(t, target) : null;
+    const rose = tw && tn ? tn.rooms.map((r, k) => r - tw.rooms[k]!) : [0, 0, 0];
+    const hits = now.laserHits - was.laserHits, strips = Math.min(hits, now.stripped - was.stripped);
     for (let k = 0; k < now.shots - was.shots; k++) {
-      const hit = k < now.laserHits - was.laserHits && !!tgt;
+      const hit = k < hits && !!tgt, stripped = hit && k < strips, room = hit && !stripped ? lock : -1;
+      if (room >= 0 && rose[room]! > 0) rose[room]!--;
       const x2 = hit ? tgt!.x : ship.x + hx(ship.heading) * LASER_RANGE, y2 = hit ? tgt!.y : ship.y + hy(ship.heading) * LASER_RANGE;
-      out.push({ kind: 'laser', ship: i, hit, stripped: false, room: -1, x1: ship.x, y1: ship.y, x2, y2 } satisfies DuelEvent);
+      out.push({ kind: 'laser', ship: i, hit, stripped, room, x1: ship.x, y1: ship.y, x2, y2 } satisfies DuelEvent);
     }
     const old = beforeMissiles[i];
     for (let k = 0; k < now.ended - was.ended; k++) {
       const hit = k < now.missileHits - was.missileHits, at = old ?? body(ship);
-      out.push({ kind: 'missileEnd', ship: i, cause: hit ? 'ship' : 'expired', target: hit ? target : -1, room: -1, x: at.x, y: at.y } satisfies DuelEvent);
+      const room = hit ? rose.findIndex((r) => r > 0) : -1;
+      if (room >= 0) rose[room]!--;
+      out.push({ kind: 'missileEnd', ship: i, cause: hit ? 'ship' : 'expired', target: hit ? target : -1, room, x: at.x, y: at.y } satisfies DuelEvent);
     }
     (['planet', 'asteroid', 'ship'] as const).forEach((kind, k) => {
       for (let n = 0; n < now.contacts[k]! - was.contacts[k]!; n++) out.push({ kind: 'contact', ship: i, body: kind, x: ship.x, y: ship.y });
@@ -138,7 +146,6 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const d = duel();
       return seatOf(d, seat) === 'helm' && d.tactical.outcome === Outcome.Running ? { turn: Math.sign(sentHeld.moveX) || 0, thrust: throttleThrust(d.throttle) } : NO_AXES;
     },
-    steer: () => (seatOf(duel(), seat) === 'weapons' ? Math.sign(sentHeld.moveX) || 0 : 0),
     alpha: () => frameAlpha,
     paused: () => client.publication()?.phase === 'paused',
     live: () => client.live?.() ?? true,

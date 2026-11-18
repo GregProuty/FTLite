@@ -116,6 +116,9 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
       ))}
       {drawn && (
         <svg data-ui-contact-marks="" viewBox={`${b.x} ${b.y} ${b.w} ${b.h}`} preserveAspectRatio="none" style={{ ...boxStyle, pointerEvents: 'none' }}>
+          {contact.flash.map((f) => (   // duel polish i spec §B: the struck room flashes, the ramp's hot as the spec's white
+            <polygon key={`f${f.room}`} data-ui-contact-flash={contact.rooms[f.room]?.label ?? ''} points={polyPoints(f.points)} fill={hex(CRT.hot)} fillOpacity={f.alpha} stroke="none" />
+          ))}
           {hover >= 0 && (
             <g data-ui-contact-hover="">
               <polygon points={polyPoints(contact.rooms[hover]!.points)} fill="none" stroke={hex(CRT.glass)} strokeWidth={3} />
@@ -144,9 +147,8 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
           <PixelText text={laser.note ?? laser.label} x={barX} y={laserY + 2} size={FONT_NATIVE} tint={CRT.mid} />
           {laser.note === null && <PixelText text={laser.value} x={right} y={laserY + 2} size={FONT_NATIVE} tint={CRT.main} anchorX={1} />}
           <Bar x={barX} y={laserY + 20} w={right - barX} h={4} fill={laser.fill} colour={CRT.main} />
-          <PixelText text="MISSILE" x={x0} y={missileY} size={FONT_NATIVE} tint={CRT.dim} />
+          <PixelText text="TORPEDO" x={x0} y={missileY} size={FONT_NATIVE} tint={CRT.dim} />
           <PixelText text={`MAG ${contact.weapons.missile.magazine}`} x={barX} y={missileY} size={FONT_NATIVE} tint={CRT.dim} />
-          <PixelText text="STEER A/D" x={right} y={missileY} size={FONT_NATIVE} tint={CRT.dim} anchorX={1} />
         </>
       )}
       {contact.lines.map((ln, k) => (
