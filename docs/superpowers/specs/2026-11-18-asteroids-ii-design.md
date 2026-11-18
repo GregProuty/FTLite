@@ -111,7 +111,9 @@ Belt rocks have r 15 to 45 (never 45: `map.ts` draws 15 + u · 30, u < 1) and cl
 thresholds below are set so that belt rocks split too.
 
 - **Laser, blast-secondary, collision or ram break** (the fan pattern):
-  - `r ≥ 40`: 3 pieces; `25 ≤ r < 40`: 2 pieces; `r < 25`: dust.
+  - `r ≥ 40`: 3 pieces; `13 ≤ r < 40`: 2 pieces; `r < 13`: dust (`FAN_TRIPLE_MIN_R`, `FAN_SPLIT_MIN_R`; at r 13 each
+    piece is about 8.27).
+  - Tuned 2026-11-18 from 25 after the §9.4 feel proxy (1/10) so chain breaks keep making pieces.
   - Piece radius `rp = 0.9 · r / √n`. Pieces with `rp < ROCK_MIN_R = 8` are dust instead.
   - Directions: fanned across the 120° in front of `u`, piece k of n at `θk = −60° + 120° · (k + 0.5) / n` from `u`
     (2 pieces: ±30°; 3 pieces: −40°, 0°, +40°). Speed `ROCK_FLING = 150` u/s plus the parent's velocity.
@@ -339,7 +341,7 @@ The spike is accepted for the owner's play when all of these hold:
 3. **Physics unit tests**: a rock-rock collision conserves momentum along n (within 1e-9 relative); no damage at
    `vc ≤ 30`; the lighter rock takes more; a laser push gives `Δv = J/m`; a torpedo direct hit on r 50 and on r 35 gives
    6 pieces, on r 30 gives 4, on r 20 dust, each `0.9 · r / √n`, total piece area ≤ the parent's; a laser break on
-   r 42 gives 3, on r 30 gives 2, on r 20 dust; a kind-1 rock touched at `vc ≤ 40` stays kind 1 and does not move;
+   r 42 gives 3, on r 30, r 20 and r 13 gives 2 (r 13: about 8.27 each), on r 12.9 and r 12 dust; a kind-1 rock touched at `vc ≤ 40` stays kind 1 and does not move;
    the born mask keeps a reused slot from taking the old rock's pending damage; a pair is resolved once per tick; blast damage and push fall off linearly to
    zero at the radius; the ship hull-cost examples of §5.1; eviction picks the smallest moving rock; a rock target clears
    when its rock breaks and when its slot is reused; a rock-targeted torpedo homes on a moving rock and hits it.

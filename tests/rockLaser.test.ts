@@ -41,8 +41,8 @@ describe('a laser shot on a rock (spec §4.1)', () => {
     expect(rockAt(st, 0).vx).toBeCloseTo(4000 / (a.r * a.r), 12);
     expect(rockAt(st, 0).hp).toBe(Math.ceil(a.r / 10) - 2);
   });
-  it('a laser break on r 42 gives 3 pieces, on r 30 gives 2, on r 20 dust; the target clears and the tally counts', () => {
-    for (const [r, n] of [[42, 3], [30, 2], [20, 0]] as const) {
+  it('a laser break on r 42 gives 3 pieces, on r 30 and r 20 and r 13 gives 2, on r 12 dust; the target clears and the tally counts', () => {
+    for (const [r, n] of [[42, 3], [30, 2], [20, 2], [13, 2], [12, 0]] as const) {
       const st = east();
       mover(st, 100, 200, -2500, 0, 0, r, 2);
       st.systems[0].laserRock = 100;

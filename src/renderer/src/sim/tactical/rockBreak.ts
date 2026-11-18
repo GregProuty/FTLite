@@ -5,7 +5,7 @@
 // broken rock's slot, the others take the lowest empty slots, else evict the smallest moving rock smaller than the
 // piece that is not born this tick and not a body of the contact being resolved, else the piece is dust. Every slot
 // cleared or rewritten clears the rock targets that named it. A slot born this tick takes no damage, push or break.
-import { ROCK_BLAST_FLING, ROCK_CRUSH_SPEED, ROCK_CRUSH_STEP, ROCK_FLING, ROCK_MIN_R } from './rockTuning';
+import { FAN_SPLIT_MIN_R, FAN_TRIPLE_MIN_R, ROCK_BLAST_FLING, ROCK_CRUSH_SPEED, ROCK_CRUSH_STEP, ROCK_FLING, ROCK_MIN_R } from './rockTuning';
 import { rockAlive, rockAt, rockHp, RockKind, rockSlots, ROCK_STRIDE, wakeRock, writeRock } from './rocks';
 import type { RockCause, TacticalState } from './state';
 
@@ -25,7 +25,7 @@ export const BURST_DIRS: Readonly<Record<4 | 6, readonly (readonly [number, numb
 
 /** §3.4: the pieces a break of a rock of radius r makes (0: dust). */
 export function pieceCount(r: number, pattern: BreakPattern): 0 | 2 | 3 | 4 | 6 {
-  if (pattern === 'fan') return r >= 40 ? 3 : r >= 25 ? 2 : 0;
+  if (pattern === 'fan') return r >= FAN_TRIPLE_MIN_R ? 3 : r >= FAN_SPLIT_MIN_R ? 2 : 0;
   return r >= 35 ? 6 : r >= 25 ? 4 : 0;
 }
 /** §3.4: a piece's radius, 0.9 r / √n. */

@@ -8,6 +8,11 @@ export const ROCK_WAKE_SPEED = 40;
 
 /** §3.4: a piece under this radius is dust instead. */
 export const ROCK_MIN_R = 8;
+/** §3.4: the fan pattern's piece counts: 3 pieces at r ≥ FAN_TRIPLE_MIN_R, 2 at r ≥ FAN_SPLIT_MIN_R, else dust. The 2-piece
+ *  threshold was tuned 2026-11-18 from 25 to 13 after the §9.4 feel proxy (1/10) so chain breaks keep making pieces
+ *  (at r 13 each piece is 0.9 · 13 / √2 ≈ 8.27, just over ROCK_MIN_R). */
+export const FAN_TRIPLE_MIN_R = 40;
+export const FAN_SPLIT_MIN_R = 13;
 /** §3.4: the fan pattern's piece speed (laser, blast-secondary, collision or ram break), u/s, on top of the parent's velocity. */
 export const ROCK_FLING = 150;
 /** §3.4: the burst pattern's piece speed (a torpedo's direct hit), u/s, on top of the parent's velocity. */

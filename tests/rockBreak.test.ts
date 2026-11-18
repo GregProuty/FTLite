@@ -12,12 +12,13 @@ import { arena, fillPool, mover, rockEvents, seeded } from './helpers/rockArena'
 const deg = (a: number): number => (a * Math.PI) / 180;
 
 describe('the fan (laser, blast-secondary, collision, ram; spec §3.4)', () => {
-  it('r 42 gives 3 pieces, r 30 gives 2, r 20 dust; each 0.9 r / √n at hp ceil(rp / 10), fanned across the 120° ahead at 150 u/s plus the parent', () => {
-    for (const [r, n] of [[42, 3], [30, 2], [20, 0]] as const) {
+  it('r 42 gives 3 pieces, r 30, r 20 and r 13 give 2 (r 13: ≈8.27 each), r 12.9 and r 12 dust; each 0.9 r / √n at hp ceil(rp / 10), fanned across the 120° ahead at 150 u/s plus the parent', () => {
+    for (const [r, n] of [[42, 3], [30, 2], [20, 2], [13, 2], [12.9, 0], [12, 0]] as const) {
       const st = arena();
       mover(st, 100, 0, 2000, 10, 0, r);
       breakRock(st, 100, 1, 0, 'laser', 0, 'fan');
       expect(pieceCount(r, 'fan')).toBe(n);
+      if (r === 13) expect((0.9 * 13) / Math.sqrt(2)).toBeCloseTo(8.27, 2);
       expect(st.systems[0].rocksBroken, `r ${r}`).toBe(1);
       if (n === 0) {
         expect(rockEvents(st, 'split')).toEqual([]);

@@ -34,8 +34,13 @@ describe('a moving rock is a second body (spec §5.1 case 3)', () => {
     expect(rockAt(st, 100).hp).toBeCloseTo(99 - (170 / 40) * 1800 / 1125, 12);
     const small = incoming(15, 200, 2);
     resolveContacts(small, true);
-    expect(rockEvents(small).map((e) => [e.what, e.by, e.ship])).toEqual([['bump', 'ram', 0], ['dust', 'ram', 0]]);
-    expect([rockAlive(small, 100), small.systems[0].rocksBroken]).toEqual([false, 1]);
+    // r 15 is over the fan's 2-piece threshold (13), so the break splits it: piece 0 keeps slot 100
+    expect(rockEvents(small).map((e) => [e.what, e.by, e.ship])).toEqual([['bump', 'ram', 0], ['split', 'ram', 0]]);
+    expect([rockAlive(small, 100), rockAt(small, 100).r, small.systems[0].rocksBroken]).toEqual([true, (0.9 * 15) / Math.sqrt(2), 1]);
+    const tiny = incoming(12, 200, 1);
+    resolveContacts(tiny, true);
+    expect(rockEvents(tiny).map((e) => [e.what, e.by, e.ship])).toEqual([['bump', 'ram', 0], ['dust', 'ram', 0]]);
+    expect([rockAlive(tiny, 100), tiny.systems[0].rocksBroken]).toEqual([false, 1]);
   });
   it('inside the pair\'s grace there is no hull cost and no ram damage', () => {
     const st = incoming(30, 200);
