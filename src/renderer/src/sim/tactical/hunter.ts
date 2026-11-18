@@ -64,7 +64,7 @@ function updateRepair(state: TacticalState, i: number): void {
   if (h.mode === HunterMode.Repair) {
     if (--h.timer > 0) return;
     if (!h.working) { h.working = true; h.timer = REPAIR_WORK_TICKS; return; }
-    me.rooms[h.room as 0 | 1 | 2] = Math.max(0, me.rooms[h.room]! - 1);
+    me.rooms[h.room as 0 | 1 | 2] = Math.max(0, me.rooms[h.room]! - 1); me.gunRoomWear[h.room as 0 | 1 | 2] = 0;   // Valkyrn spec §7.2: a repaired Room's wear goes
     h.mode = HunterMode.Hunt;
     return;
   }

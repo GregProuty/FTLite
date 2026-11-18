@@ -84,7 +84,7 @@ function repairPhase(d: DuelState, held: readonly HeldInput[]): void {
     if (crewShip.rooms[r] === 0) { d.repair[r] = 0; continue; }
     if (n === 0) continue;
     d.repair[r] += n === 1 ? REPAIR_RATE_SOLO : n * REPAIR_RATE_TEAM;
-    if (d.repair[r] >= REPAIR_UNITS) { crewShip.rooms[r]--; d.repair[r] = 0; d.events.push({ kind: 'repairDone', room: r, players: workers[r]! }); }
+    if (d.repair[r] >= REPAIR_UNITS) { crewShip.rooms[r]--; crewShip.gunRoomWear[r] = 0; d.repair[r] = 0;   /* Valkyrn spec §7.2 */ d.events.push({ kind: 'repairDone', room: r, players: workers[r]! }); }
   }
 }
 

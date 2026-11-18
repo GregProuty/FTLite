@@ -93,7 +93,7 @@ function shoot(state: TacticalState, i: number): void {
     as.laserHits++;
     if (bs.shields > 0) {   // Sci-1 spec §4.4: the crew laser tuned to the weak frequency strips 2 layers (as many as are up)
       const n = i === CREW_SLOT && as.freq === state.weakFreq ? Math.min(2, bs.shields) : 1;
-      bs.shields -= n; bs.shieldClock = 0; as.layersStripped += n; stripped = true;
+      bs.shields -= n; bs.shieldClock = 0; bs.gunWear = 0; as.layersStripped += n; stripped = true;   // Valkyrn spec §7.2: any strip zeroes the gun wear
     }
     else {
       room = as.lock;
