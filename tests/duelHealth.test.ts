@@ -96,6 +96,7 @@ describe('duel health: damage (spec §1.2)', () => {
           step(d);
           const expected: [number, number] = [0, 0];
           for (const t of d.tactical.events) {
+            if (t.kind !== 'laser' && t.kind !== 'missileEnd') continue;
             const dmg = t.kind === 'laser' ? (t.ship === 1 && t.hit && t.room >= 0 ? 12 : 0) : t.cause === 'ship' && t.target === 0 && t.room >= 0 ? 20 : 0;
             if (dmg && t.room === Room.Shields && up[0]) expected[0] += dmg;
             if (dmg && t.room === Room.Weapons && up[1]) expected[1] += dmg;

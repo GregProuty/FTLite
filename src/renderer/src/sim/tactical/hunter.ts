@@ -59,6 +59,11 @@ export function hunterThink(state: TacticalState, i = 1): ShipInput {
   const h = state.hunter, me = state.ships[i]!, mine = state.systems[i]!, target = mine.target, crew = state.ships[target]!, crewSys = state.systems[target]!;
   const oldX = h.trail[2 * h.trailHead]!, oldY = h.trail[2 * h.trailHead + 1]!;   // where the crew was HUNTER_TRAIL_TICKS ago
   h.trail[2 * h.trailHead] = crew.x; h.trail[2 * h.trailHead + 1] = crew.y; h.trailHead = (h.trailHead + 1) % HUNTER_TRAIL_TICKS;
+  if (h.mode === HunterMode.Patrol) {   // Sci-1 spec §4.2: coast on its orbit, avoid threats; no repair, no weapons
+    const threat = threatAhead(state, i);
+    return { helm: true, weapons: false, axes: threat ? { turn: -sideOf(me.heading, threat.x - me.x, threat.y - me.y) || 1, thrust: 1 } : { turn: 0, thrust: 0 },
+      steer: 0, laserLock: null, laserCharge: null, missileLaunch: false, scanner: true };
+  }
   updateRepair(state, i);
   const repairing = h.mode === HunterMode.Repair;
   const helm = !(repairing && h.room === Room.Engines), weapons = !(repairing && h.room !== Room.Engines);

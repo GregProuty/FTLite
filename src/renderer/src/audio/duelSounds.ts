@@ -28,7 +28,7 @@ export function duelEventSounds(events: readonly ViewEvent[], pan: Pan): EventSo
       if (e.cause === 'edge' || e.cause === 'expired') continue;
       combat = true;
       sounds.push({ key: 'explosionCrunch', gain: e.cause === 'ship' ? 1 : 0.6, pan: pan(e.x, e.y) });
-    } else {
+    } else if (e.kind === 'contact') {
       sounds.push({ key: 'impactMetal', gain: e.ship === CREW ? 0.6 : 0.3, rate: 0.8, pan: pan(e.x, e.y) });
     }
     if (hitsCrew(e)) { duck = true; sounds.push({ key: 'lowBoom', gain: 0.8, pan: 0 }); }

@@ -20,6 +20,7 @@ export function extinguishProgress(d: DuelState, p: RepairPoint): number { retur
 /** The fire chance of a tactical event that is an enemy hit on the crew ship's Room `room`, or 0: a laser that hit,
  *  fired by ship 1, or a missile that ended on ship 0. */
 function hitChance(e: DuelEvent): number {
+  if (e.kind !== 'laser' && e.kind !== 'missileEnd') return 0;   // Sci-1's hostile, scanDone and salvage are no hits
   if (e.room < 0) return 0;
   if (e.kind === 'laser') return e.ship === 1 && e.hit ? DUEL_FIRE_CHANCE_LASER : 0;
   return e.cause === 'ship' && e.target === 0 ? DUEL_FIRE_CHANCE_MISSILE : 0;
@@ -29,6 +30,7 @@ function hitChance(e: DuelEvent): number {
  *  room that is already burning makes no roll. Pushes fireStart per ignition. */
 export function igniteFromHits(d: DuelState, events: readonly DuelEvent[]): void {
   for (const e of events) {
+    if (e.kind !== 'laser' && e.kind !== 'missileEnd') continue;
     const p = hitChance(e);
     if (p === 0) continue;
     const point = d.points.find((q) => q.tacticalRoom === e.room);

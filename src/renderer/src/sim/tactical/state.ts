@@ -96,7 +96,13 @@ export type DuelEvent =
   /** A laser release. `stripped`: it took a shield layer; `room`: the Room it struck (its level may already have been 2), or −1 (a miss or a stripped layer). */
   | { kind: 'laser'; ship: number; hit: boolean; stripped: boolean; room: number; x1: number; y1: number; x2: number; y2: number }
   /** A missile ended. `target`: the ship it landed on (its own ship for a self-hit), or −1; `room`: the Room it struck, or −1. */
-  | { kind: 'missileEnd'; ship: number; cause: 'ship' | 'planet' | 'asteroid' | 'edge' | 'expired' | 'missile'; target: number; room: number; x: number; y: number };
+  | { kind: 'missileEnd'; ship: number; cause: 'ship' | 'planet' | 'asteroid' | 'edge' | 'expired' | 'missile'; target: number; room: number; x: number; y: number }
+  /** Sci-1 spec §4.6: the enemy turned hostile this tick, and why (laser before missile before clock). */
+  | { kind: 'hostile'; cause: 'clock' | 'laser' | 'missile' }
+  /** A scan finished: `contact` is now known to `level`. */
+  | { kind: 'scanDone'; contact: number; level: number }
+  /** The derelict was salvaged: its loot, and whether it was trapped. */
+  | { kind: 'salvage'; loot: number; trapped: boolean };
 
 export interface TacticalState {
   tick: number; seed: number; rng: RngState; map: MapDef; grid: BroadPhase;

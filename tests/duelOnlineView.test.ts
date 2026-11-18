@@ -72,7 +72,7 @@ describe('the online duel view source (spec §3)', () => {
       }
       c.publish(d); source.frame(1 / 60, null, null); online.push(...source.drainEvents());
       const count = (events: ViewEvent[], kind: string, ship: number, hit?: boolean) =>
-        events.filter((e) => e.kind === kind && e.ship === ship && (hit === undefined || (e as { hit?: boolean; cause?: string }).hit === hit || (kind === 'missileEnd' && ((e as { cause: string }).cause === 'ship') === hit))).length;
+        events.filter((e) => (e.kind === 'laser' || e.kind === 'missileEnd') && e.kind === kind && e.ship === ship && (hit === undefined || (e as { hit?: boolean; cause?: string }).hit === hit || (kind === 'missileEnd' && ((e as { cause: string }).cause === 'ship') === hit))).length;
       for (const ship of [0, 1]) {
         expect(count(online, 'laser', ship), `ship ${ship} beams`).toBe(count(local, 'laser', ship));
         expect(count(online, 'laser', ship, true), `ship ${ship} beam hits`).toBe(count(local, 'laser', ship, true));

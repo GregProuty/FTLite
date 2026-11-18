@@ -98,6 +98,7 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
   // Weapons and missiles, from the tick's events.
   const laserOn = [false, false], missileOn = [false, false];
   for (const e of tac.events) {
+    if (e.kind !== 'laser' && e.kind !== 'missileEnd') continue;   // Sci-1's events are not weapons
     const s = t.ships[e.ship as 0 | 1]!;
     if (e.kind === 'laser') {
       s.laserReleases++;

@@ -3,7 +3,7 @@
 // Commands arrive as one ShipInput per ship per tick; the duel step builds these from the authority's admitted commands.
 import { inArc, lineOfSight } from './geometry';
 import { launchMissile } from './missiles';
-import { classOf, missileOf, Room, type Axes, type TacticalState } from './state';
+import { classOf, CREW_SLOT, missileOf, Room, type Axes, type TacticalState } from './state';
 
 /** One ship's inputs for one tick. `helm` / `weapons`: a present player is seated at that console ("attended", spec §8). */
 export interface ShipInput {
@@ -106,7 +106,8 @@ export function tickWeapons(state: TacticalState, i: number, input: ShipInput): 
     if (s.fireHeld && !laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + laser.chargeRate[s.rooms[Room.Weapons]]!);
     else if (laserFull(state, i) && ++s.laserHold >= laser.holdTicks) { s.laserCharge = 0; s.laserHold = 0; }   // vents; recharges if still held
   }
-  if (s.shields >= c.shields.layers) s.shieldClock = 0;
+  const patrolling = state.hostileAt < 0 && i !== CREW_SLOT && c.ai === 'hunter';   // Sci-1 spec §4.2: no layer regained in Patrol
+  if (s.shields >= c.shields.layers || patrolling) s.shieldClock = 0;
   else if ((s.shieldClock += c.shields.rate[s.rooms[Room.Shields]]!) >= c.shields.rechargeUnits) { s.shields++; s.shieldClock = 0; }   // rate 0: held
   if (s.magazine >= c.slots.missile.magazine) s.magazineClock = 0;
   else if (++s.magazineClock >= c.slots.missile.regenTicks) { s.magazine++; s.magazineClock = 0; }
