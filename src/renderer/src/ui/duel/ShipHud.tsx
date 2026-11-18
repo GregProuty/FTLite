@@ -3,7 +3,7 @@
 // working capacity and take no clicks (power cannot be moved in the duel). The icons are original inline SVG.
 import { memo, type ReactElement } from 'react';
 import { HUD, hullSegX, sysBarY, sysColumnX, sysIconY, type HudSystem, type HudSystemKey, type HullTone, type ShipHudView } from '../../render/duel/shipHudModel';
-import { AMBER, BAR_FAIL, BAR_OFF, BAR_ON, BLUE, CELL_EDGE, DIM, FONT_NATIVE, GOOD, TEXT, WARN, textPx } from '../../render/theme';
+import { AMBER, BAR_FAIL, BAR_OFF, BAR_ON, BLUE, CELL_EDGE, DIM, FONT_SIZE, GOOD, TEXT, WARN, textPx } from '../../render/theme';
 import { Box } from '../stage/Box';
 import { hex } from '../stage/color';
 import { PixelText } from '../stage/PixelText';
@@ -36,22 +36,22 @@ function SystemColumn({ s, n }: { s: HudSystem; n: number }) {
       <Box x={x + (S.colW - S.icon) / 2} y={sysIconY()} w={S.icon} h={S.icon} attrs={{ 'data-ui-hud-sys': s.key, 'data-ui-hud-look': s.look }}>
         <svg width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke={hex(tint)} strokeWidth={2} strokeLinejoin="miter" style={{ display: 'block' }}>{ICONS[s.key]}</svg>
       </Box>
-      <PixelText text={s.name} x={x + S.colW / 2} y={S.bottom - S.nameH} size={FONT_NATIVE} tint={name} anchorX={0.5} />
+      <PixelText text={s.name} x={x + S.colW / 2} y={S.bottom - S.nameH} size={FONT_SIZE} tint={name} anchorX={0.5} />
     </>
   );
 }
 
 export const ShipHud = memo(function ShipHud({ hud }: { hud: ShipHudView }) {
-  const H = HUD.hull, SH = HUD.shields, tone = TONE[hud.hull.tone], pipX = HUD.x + textPx('SHIELDS', 1) + 8;
+  const H = HUD.hull, SH = HUD.shields, tone = TONE[hud.hull.tone], pipX = HUD.x + textPx('SHIELDS', 2) + 8;
   return (
     <>
-      <PixelText text="HULL" x={HUD.x} y={H.labelY} size={FONT_NATIVE} tint={DIM} />
+      <PixelText text="HULL" x={HUD.x} y={H.labelY} size={FONT_SIZE} tint={DIM} />
       {Array.from({ length: hud.hull.segments }, (_, k) => {
         const lit = k < hud.hull.lit;
         return <Box key={k} x={hullSegX(k)} y={H.barY} w={H.segW} h={H.segH} attrs={{ 'data-ui-hud-seg': lit ? 'lit' : 'off', 'data-ui-hud-tone': hud.hull.tone }}
           style={lit ? { background: hex(tone), border: `1px solid ${hex(tone)}` } : { background: hex(BAR_OFF, 0.6), border: OUTLINE }} />;
       })}
-      <PixelText text="SHIELDS" x={HUD.x} y={SH.y - 2} size={FONT_NATIVE} tint={DIM} />
+      <PixelText text="SHIELDS" x={HUD.x} y={SH.y - 2} size={FONT_SIZE} tint={DIM} />
       {Array.from({ length: hud.shields.layers }, (_, k) => {
         const up = k < hud.shields.up;
         return <Box key={k} x={pipX + k * (SH.pip + SH.gap)} y={SH.y} w={SH.pip} h={SH.pip} attrs={{ 'data-ui-hud-shield': up ? 'up' : 'down' }}

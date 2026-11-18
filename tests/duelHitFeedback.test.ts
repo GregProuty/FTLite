@@ -70,6 +70,17 @@ describe('the charge ring in the combat draw (spec §A)', () => {
     expect(f.full).toBe(true);
     expect(f.alpha).toBeCloseTo(0.45, 9);
   });
+  it('off screen: a small ring about the enemy edge arrow, with the label and the callouts inward of it; none without an arrow', () => {
+    const st = createTacticalState(3), e = st.ships[1]!, cam = createCamera(e.x + 100000, e.y, 1), fx = createFx();
+    st.systems[1].fireHeld = true; st.systems[1].laserCharge = units(st) / 4;
+    pushHits(fx, [laser({ room: 0 })], st);
+    expect(combatModel(input(st, cam, fx)).charge).toBeNull();
+    expect(combatModel(input(st, cam, fx)).callouts).toEqual([]);
+    const arrow = { x: 8, y: 360 }, c = combatModel({ ...input(st, cam, fx), enemyArrow: arrow });
+    expect(c.charge).toMatchObject({ x: 8, y: 360, r: CHARGE_RING_MIN_PX, fill: 0.25 });
+    expect(c.charge!.label).toMatchObject({ text: 'CHARGING', x: 78, y: 360 });   // 70 px toward the screen's centre
+    expect(c.callouts![0]).toMatchObject({ text: 'WEAPONS HIT', x: 78, y: 344 });
+  });
   it('never below 18 screen px (the chevron zooms)', () => {
     const st = createTacticalState(3), e = st.ships[1]!;
     st.systems[1].fireHeld = true;

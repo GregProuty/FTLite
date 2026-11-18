@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   CREW, FIRE_ALARM, HEARTBEAT, HEARTBEAT_BELOW, HEARTBEAT_S, IMPACT_DELAY_S, OUTCOME_CREW_WINS, OUTCOME_RUNNING, crewLifeSounds, duelEventSounds, duelStateSounds,
-  fireAlarm, heartbeat, heartbeatOn, type DuelWatchView
+  fireAlarm, heartbeat, heartbeatOn, hostileWatch, HOSTILE_RANGE, type DuelWatchView
 } from '../src/renderer/src/audio/duelSounds';
 import { CUE_RECIPES } from '../src/renderer/src/audio/cueRecipes';
 import { HEALTH_LOW } from '../src/renderer/src/render/duel/readoutModel';
@@ -104,3 +104,20 @@ describe('sound cues for trouble (duel polish i spec §C)', () => {
     expect(heartbeat(b.next, true, 2).beat).toBe(true);   // back on: at once
   });
 });
+
+describe('the music hostile latch (owner 2026-11-17: calm first, battle once the enemy is hostile)', () => {
+  const far = { round: 0, distance: 3900, shot: false, missile: false };
+  it('calm while far and quiet; hostile within HOSTILE_RANGE, on any shot, or with a missile flying', () => {
+    expect(hostileWatch(null, far).hostile).toBe(false);
+    expect(hostileWatch(null, { ...far, distance: HOSTILE_RANGE }).hostile).toBe(true);
+    expect(hostileWatch(null, { ...far, distance: HOSTILE_RANGE + 1 }).hostile).toBe(false);
+    expect(hostileWatch(null, { ...far, shot: true }).hostile).toBe(true);
+    expect(hostileWatch(null, { ...far, missile: true }).hostile).toBe(true);
+  });
+  it('latches for the round, and a new round starts calm', () => {
+    const w = hostileWatch(null, { ...far, shot: true });
+    expect(hostileWatch(w, far).hostile).toBe(true);
+    expect(hostileWatch(w, { ...far, round: 1 }).hostile).toBe(false);
+  });
+});
+

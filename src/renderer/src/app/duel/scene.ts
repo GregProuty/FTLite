@@ -154,7 +154,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting
-        layer.draw(model, combatModel(input), t);   // the blinks run on the presentation clock, paused or not
+        layer.draw(model, combatModel({ ...input, enemyArrow: model.arrows.find((a) => a.target === 'enemy') ?? null }), t);   // the blinks run on the presentation clock, paused or not
         overlayView = mapOverlayOf(model.overlay);
       }
       const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView, throttle: source.throttle() });

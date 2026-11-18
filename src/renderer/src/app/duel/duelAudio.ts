@@ -7,7 +7,7 @@ import type { Axes } from '../../sim/tactical/state';
 import type { ViewEvent } from '../../render/tactical/fxModel';
 import {
   CREW, FIRE_ALARM, HEARTBEAT, OUTCOME_RUNNING, crewLifeSounds, duelEventSounds, duelStateSounds, fireAlarm, heartbeat, heartbeatOn,
-  type CrewLife, type CrewWatch, type DuelWatch, type Pan
+  hostileWatch, type CrewLife, type CrewWatch, type DuelWatch, type HostileWatch, type Pan
 } from '../../audio/duelSounds';
 import { interiorAudioView, interiorSounds, type InteriorWatch } from '../../audio/interiorSounds';
 
@@ -21,7 +21,7 @@ export interface DuelAudioFrame {
 
 export function createDuelAudio(out: AudioOut) {
   let duelWatch: DuelWatch | null = null, inside: InteriorWatch | null = null, crewWatch: CrewWatch | null = null;
-  let clock = 0, nextBeat: number | null = null, lastAlarm: number | null = null;
+  let clock = 0, nextBeat: number | null = null, lastAlarm: number | null = null, hostile: HostileWatch | null = null;
   return {
     frame(f: DuelAudioFrame): void {
       const t = f.duel.tactical, ev = duelEventSounds(f.events, f.pan);
@@ -40,14 +40,17 @@ export function createDuelAudio(out: AudioOut) {
       if (list.length) out.sounds(list);
       for (const cue of [...st.cues, ...life.cues]) out.play(cue);
       const ship = t.ships[CREW]!;
-      // Engaged: the round is running (spec section 5). The hum: thrust as the Helm holds it (a non-Helm online seat sees no
+      // Engaged: the round is running and the enemy has turned hostile (spec section 5; owner 2026-11-17: calm first). The hum: thrust as the Helm holds it (a non-Helm online seat sees no
       // axes, so only the speed part), and the crew ship's speed. A frozen view (not live) holds no battle, hum or crackle.
       if (f.live === false) { out.status({ engaged: false, paused: f.paused, duck: ev.duck, fires: 0, hum: null }); return; }
-      out.status({ engaged: t.outcome === OUTCOME_RUNNING, paused: f.paused, duck: ev.duck, fires: ins.fires,
+      const [a, b] = t.ships;
+      hostile = hostileWatch(hostile, { round: f.duel.round, distance: a && b && b.active ? Math.hypot(b.x - a.x, b.y - a.y) : Infinity,
+        shot: f.events.some((e) => e.kind === 'laser' || e.kind === 'missileEnd'), missile: t.missiles.some((m) => m.active) });
+      out.status({ engaged: t.outcome === OUTCOME_RUNNING && hostile.hostile, paused: f.paused, duck: ev.duck, fires: ins.fires,
         hum: { thrust: Number.isFinite(f.axes.thrust) ? Math.min(1, Math.abs(f.axes.thrust)) : 0, speed: Math.hypot(ship.vx, ship.vy), charge: 0 } });
     },
     /** A new round or a rebuilt scene: the next frame is a fresh baseline. */
-    reset(): void { duelWatch = null; inside = null; crewWatch = null; nextBeat = null; lastAlarm = null; }
+    reset(): void { duelWatch = null; inside = null; crewWatch = null; nextBeat = null; lastAlarm = null; hostile = null; }
   };
 }
 export type DuelAudio = ReturnType<typeof createDuelAudio>;

@@ -21,6 +21,13 @@ existing glyphs); the HUD follows FTL's layout idea (hull bar top left, system b
   map layer draws it in screen space at the enemy's drawn (interpolated) position, ring radius about 2.2 ship radii,
   never scaled below 18 screen px.
 
+- **Off screen** (the enemy is usually off screen at the default zoom): the ring, at its 18 px floor, goes about the
+  enemy's edge arrow, and its label 70 px inward of the arrow, toward the screen's centre. Section B's callouts follow
+  the same anchor.
+- **The maps' colours.** The maps and the contact window draw only in the CRT amber ramp, which a test enforces, so
+  each colour named in A and B maps to a brightness: red is `CRT.hot`, blue is `CRT.mid`, amber is `CRT.main`, dim is
+  `CRT.dim`.
+
 ## B. What your hits did (maps and the contact window)
 
 - For each crew shot that ends this frame (the view events: `laser` with `ship` 0, `missileEnd` with `ship` 0 and
@@ -63,12 +70,12 @@ in the duel UI, from a pure model `shipHud(d)` added to the duel frame. It sits 
 readout column at x 1060, below the tab strip).
 
 - **Hull, top left** at x 12, y 48: a `HULL` label and a segmented bar, one segment per 2 hull (`SHIP_HULL` 40: 20
-  segments), each 14 × 18 px with 2 px gaps, lit segments `ceil(hull / 2)`. Lit colour: green above half, amber from a
+  segments), each 14 × 18 px with 2 px gaps (labels at the readout's font size), lit segments `ceil(hull / 2)`. Lit colour: green above half, amber from a
   quarter to half, red below a quarter; unlit segments a dark outline. Under it, the shield layers as small squares
   (cyan lit, outline when down) labelled `SHIELDS`.
 - **Systems, bottom left** from x 12 up from y 708: one column per system, left to right Helm (Engines),
-  Weapons, Shields, Medbay. Each column is an icon (original inline SVG, 24 px) over its short name
-  (`HELM`, `WEAP`, `SHLD`, `MED`), with its bars stacked above the icon, bottom up, each 22 × 8 px with 2 px gaps:
+  Weapons, Shields, Medbay. Each column, 56 px apart, is an icon (original inline SVG, 32 px) over its short name
+  (`HELM`, `WEAP`, `SHLD`, `MED`), with its bars stacked above the icon, bottom up, each 34 × 11 px with 3 px gaps:
   - Helm, Weapons, Shields: 2 bars, the tactical room's capacity (`2 − damage level`) lit green, the damaged bars red.
     At level 2 the icon and name turn red (OFFLINE).
   - Medbay: 1 bar, lit green while `medbayOnline(d)`, else dark; the icon dims.
@@ -76,6 +83,13 @@ readout column at x 1060, below the tab strip).
   take clicks.
 - The HUD never covers the readout column, the tab strip or the banners, and does not render on the Helm or Weapons
   console views (they have their own status table).
+
+## F. Music (owner, 2026-11-17, added mid-build)
+
+- The default music volume is 50% (`DEFAULT_SETTINGS.music` 0.5). A saved setting keeps its own value.
+- Each round starts on the calm track and crossfades to battle when the enemy turns hostile. That is the first moment the
+  two ships are within 900 units (twice the laser's reach), or any laser or missile has been fired this round. Battle
+  then holds until the round ends, and the next round starts calm. Pure latch `hostileWatch` in audio/duelSounds.ts.
 
 ## Tests and gates
 

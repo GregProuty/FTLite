@@ -13,10 +13,10 @@ export const HULL_PER_SEGMENT = 2;
 /** The layout in internal px (§E): inside the interior band, left of the readout column, below the tab strip. */
 export const HUD = {
   x: 12,
-  hull: { labelY: 48, barY: 66, segW: 14, segH: 18, gap: 2 },
-  shields: { y: 90, pip: 12, gap: 4 },
+  hull: { labelY: 46, barY: 72, segW: 14, segH: 18, gap: 2 },
+  shields: { y: 100, pip: 14, gap: 4 },
   /** The system columns rest on `bottom`: name, then the 24 px icon, then the bars stacked bottom up. */
-  sys: { bottom: 708, pitch: 36, colW: 28, icon: 24, barW: 22, barH: 8, gap: 2, nameH: 16 }
+  sys: { bottom: 708, pitch: 56, colW: 44, icon: 32, barW: 34, barH: 11, gap: 3, nameH: 24 }
 } as const;
 
 export type HullTone = 'good' | 'warn' | 'alert';

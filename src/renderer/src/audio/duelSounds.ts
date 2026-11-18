@@ -97,3 +97,15 @@ export function fireAlarm(last: number | null, ignited: number, now: number): { 
   if (ignited <= 0 || (last !== null && now - last < FIRE_ALARM_GAP_S)) return { last, play: false };
   return { last: now, play: true };
 }
+
+/** The music's hostile latch (owner 2026-11-17): calm at a round's start, battle from the first moment the enemy is
+ *  hostile (the ships within HOSTILE_RANGE, twice the laser's reach, or any laser or missile fired this round) to the
+ *  round's end. A new round starts calm again. */
+export const HOSTILE_RANGE = 900;
+export interface HostileWatch { round: number; hostile: boolean }
+export interface HostileView { round: number; distance: number; shot: boolean; missile: boolean }
+export function hostileWatch(w: HostileWatch | null, v: HostileView): HostileWatch {
+  const was = w && w.round === v.round ? w.hostile : false;
+  return { round: v.round, hostile: was || v.distance <= HOSTILE_RANGE || v.shot || v.missile };
+}
+
