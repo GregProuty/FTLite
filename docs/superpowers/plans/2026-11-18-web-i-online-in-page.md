@@ -60,7 +60,8 @@ New:
 |---|---|
 | `scripts/web/bg-tab/*` | Task 1's background-tab measurement (pages, tick Worker, echo runtime, driver, pure verdict) |
 | `src/shared/sha256.ts` | Synchronous SHA-256 (spec §3.1) |
-| `src/shared/bytes.ts` | Base64, hex, random hex, byte equality |
+| `src/shared/bytes.ts` | Base64, hex, byte equality |
+| `src/network/random.ts` | `randomHex` (platform random source; kept out of the deterministic `src/shared` graph) |
 | `src/network/online/recordStore.ts` | `OnlineRecordStore`, IndexedDB and in-memory implementations |
 | `src/network/online/seatStore.ts`, `mirrorStore.ts` | The seat and mirror stores on `OnlineRecordStore` |
 | `src/network/online/onlineSession.ts` + `onlinePeers.ts`, `onlineDuel.ts`, `onlineSector.ts`, `onlineMirrors.ts`, `onlineModes.ts`, `onlineIce.ts`, `onlineRetry.ts` | The session stack, Node-free |
@@ -647,7 +648,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 2: Portable primitives: SHA-256, bytes and the IndexedDB record stores (spec §3.1)
 
 **Files:**
-- Create: `src/shared/sha256.ts`, `src/shared/bytes.ts`, `src/network/online/recordStore.ts`, `src/network/online/seatStore.ts`, `src/network/online/mirrorStore.ts`
+- Create: `src/shared/sha256.ts`, `src/shared/bytes.ts`, `src/network/random.ts`, `src/network/online/recordStore.ts`, `src/network/online/seatStore.ts`, `src/network/online/mirrorStore.ts`
 - Create: `tests/sha256.test.ts`, `tests/bytes.test.ts`, `tests/recordStore.test.ts`
 - Modify (rewrite): `tests/seatStore.test.ts`, `tests/mirrorStore.test.ts` (they now test the new stores; the old `src/main/network/seatStore.ts` and `mirrorStore.ts` stay, untested, until Task 7 deletes them)
 - Modify: `package.json` (devDependency `fake-indexeddb`)
@@ -655,7 +656,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Interfaces:**
 - Produces:
   - `sha256(input: Uint8Array | string): Uint8Array` and `sha256Hex(input: Uint8Array | string): string` (`src/shared/sha256.ts`)
-  - `bytesToBase64(bytes: Uint8Array): string`, `base64ToBytes(text: string): Uint8Array`, `bytesToHex(bytes: Uint8Array): string`, `randomHex(byteLength: number): string`, `bytesEqual(a: Uint8Array, b: Uint8Array): boolean` (`src/shared/bytes.ts`)
+  - `bytesToBase64(bytes: Uint8Array): string`, `base64ToBytes(text: string): Uint8Array`, `bytesToHex(bytes: Uint8Array): string`, `bytesEqual(a: Uint8Array, b: Uint8Array): boolean` (`src/shared/bytes.ts`)
+  - `randomHex(byteLength: number): string` (`src/network/random.ts`; not in `src/shared`, which `tests/boundary.test.ts` holds to the deterministic rules)
   - `type OnlineRecordKey = 'seat-v1' | 'mirror-v1'`; `interface OnlineRecordStore { get(key): Promise<Uint8Array | null>; put(key, bytes): Promise<void>; delete(key): Promise<void> }`; `createIndexedDbRecordStore(factory?: IDBFactory): OnlineRecordStore`; `createMemoryRecordStore(): OnlineRecordStore & { records: Map<OnlineRecordKey, Uint8Array> }`; constants `ONLINE_RECORD_DATABASE = 'ftlite'`, `ONLINE_RECORD_VERSION = 1`, `ONLINE_RECORD_STORE = 'records'`
   - `createSeatStore(records: OnlineRecordStore)` returning `{ load(): Promise<SavedSeatV1 | null>; save(record): Promise<void>; clear(): Promise<void> }`; `SavedSeatV1`, `validateSavedSeat`, `SeatStore`, `SeatStoreError` (same names as today)
   - `createMirrorStore(records: OnlineRecordStore, validatePayload: (m: SessionMirror) => void): MirrorStore`; `validateMirror`, `SessionMirror`, `MirrorFileV1`, `MirrorStore`, `MirrorStoreError` (same names as today)
@@ -701,7 +703,7 @@ describe('synchronous SHA-256 (web build spec §3.1)', () => {
   });
   it('returns 32 raw bytes and never mutates its input', () => {
     const input = randomBytes(77), copy = Uint8Array.from(input), digest = sha256(input);
-    expect(digest).toBeInstanceOf(Uint8Array); expect(digest.length).toBe(32); expect(input).toEqual(copy);
+    expect(digest).toBeInstanceOf(Uint8Array); expect(digest.length).toBe(32); expect(Uint8Array.from(input)).toEqual(copy);
     expect(Buffer.from(digest).toString('hex')).toBe(node(input));
   });
 });
@@ -713,7 +715,8 @@ describe('synchronous SHA-256 (web build spec §3.1)', () => {
 import { randomBytes } from 'node:crypto';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { base64ToBytes, bytesEqual, bytesToBase64, bytesToHex, randomHex } from '../src/shared/bytes';
+import { base64ToBytes, bytesEqual, bytesToBase64, bytesToHex } from '../src/shared/bytes';
+import { randomHex } from '../src/network/random';
 
 describe('portable byte helpers (web build spec §3.1)', () => {
   it('base64 matches Buffer in both directions, including a 512 KiB input', () => {
@@ -814,14 +817,20 @@ export function base64ToBytes(text: string): Uint8Array {
 export function bytesToHex(bytes: Uint8Array): string {
   let hex = ''; for (const byte of bytes) hex += byte.toString(16).padStart(2, '0'); return hex;
 }
-/** `byteLength` random bytes from crypto.getRandomValues, as lowercase hex (today's randomBytes(n).toString('hex')). */
-export function randomHex(byteLength: number): string {
-  return bytesToHex(crypto.getRandomValues(new Uint8Array(byteLength)));
-}
 export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
+}
+```
+
+`src/network/random.ts` (outside `src/shared`: `tests/boundary.test.ts` holds that directory to the deterministic rules, which ban `crypto`):
+
+```ts
+import { bytesToHex } from '../shared/bytes';
+/** `byteLength` random bytes from crypto.getRandomValues, as lowercase hex (today's randomBytes(n).toString('hex')). */
+export function randomHex(byteLength: number): string {
+  return bytesToHex(crypto.getRandomValues(new Uint8Array(byteLength)));
 }
 ```
 
@@ -1240,7 +1249,7 @@ Expected: PASS; typecheck clean.
 - [ ] **Step 12: Commit**
 
 ```bash
-git add package.json package-lock.json src/shared/sha256.ts src/shared/bytes.ts src/network/online/recordStore.ts src/network/online/seatStore.ts src/network/online/mirrorStore.ts \
+git add package.json package-lock.json src/shared/sha256.ts src/shared/bytes.ts src/network/random.ts src/network/online/recordStore.ts src/network/online/seatStore.ts src/network/online/mirrorStore.ts \
   tests/sha256.test.ts tests/bytes.test.ts tests/recordStore.test.ts tests/seatStore.test.ts tests/mirrorStore.test.ts
 git commit -m "feat(web-i): synchronous SHA-256, byte helpers and the IndexedDB record seam under the seat and mirror stores
 
@@ -1468,7 +1477,8 @@ In `src/network/online/onlineSession.ts`:
 
 ```ts
 import { sha256Hex } from '../../shared/sha256';
-import { bytesToBase64, randomHex } from '../../shared/bytes';
+import { bytesToBase64 } from '../../shared/bytes';
+import { randomHex } from '../random';
 ```
 
 - Replace `utilityEpoch: randomBytes(16).toString('hex')` with `utilityEpoch: randomHex(16)`.
@@ -1936,7 +1946,7 @@ In `src/worker/authorityModes.ts`, replace the first two comment lines with:
 // ran, over browser MessagePorts. The page terminates the Worker; nothing here exits a process.
 import { createUtilityHost } from '../network/utilityHost';
 import { webPortEndpoint } from '../network/platformPort';
-import { randomHex } from '../shared/bytes';
+import { randomHex } from '../network/random';
 import { authorityModes } from './authorityModes';
 
 export interface AuthorityWorkerScope {
@@ -2809,7 +2819,7 @@ import { createPagePlatform } from '../../../../network/online/pagePlatform';
 import { createClockJumpLifecycle, createElectronLifecycle, type OnlineLifecycle } from '../../../../network/online/lifecycle';
 import { createWorkerHostPlatform, type HostPlatform } from '../../../../network/host/workerHost';
 import { createRoomServiceClient } from '../../../../network/session/serviceClient';
-import { randomHex } from '../../../../shared/bytes';
+import { randomHex } from '../../../../network/random';
 import { sessionConfigOf, validatePageOnlineConfig, type PageOnlineConfig } from '../../../../shared/onlineConfig';
 import { copyOnlineStatus, validateOnlineAction, validateOnlineLinkStats, validateOnlineResult, type DuelCrewSize, type FtlitePreloadApi, type OnlineAction,
   type OnlinePortDescriptor, type OnlinePreloadApi, type OnlineResult, type OnlineStatus, type OnlineStatusEnvelope, type Unsubscribe } from '../../../../shared/onlineSession';
