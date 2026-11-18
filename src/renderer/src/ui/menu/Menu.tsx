@@ -10,6 +10,7 @@ import { JoinForm } from './JoinForm';
 import { Multiplayer } from './Multiplayer';
 import { SessionPage } from './SessionPage';
 import { Settings } from './Settings';
+import { ShipPicker } from './ShipPicker';
 import { BUTTON, PANEL_OVERLAY, PANEL_STRIP, ROOT_OVERLAY, ROOT_STRIP, VERSION } from './styles';
 import { versionText } from '../version';
 
@@ -31,9 +32,9 @@ export function Menu() {
     <div ref={ref} data-testid="session-menu" aria-label="FTLite session menu" data-layout={playing ? 'strip' : 'overlay'} style={playing ? ROOT_STRIP : ROOT_OVERLAY}>
       <section style={playing ? PANEL_STRIP : PANEL_OVERLAY}>
         {!playing && <><h1>FTLite</h1><p>Crew together. Keep the ship flying.</p></>}
-        {(page === 'multiplayer' || page === 'settings') && <h2 data-testid="page-title">{page === 'multiplayer' ? 'Multiplayer' : 'Settings'}</h2>}
+        {(page === 'multiplayer' || page === 'settings' || page === 'ship') && <h2 data-testid="page-title">{page === 'multiplayer' ? 'Multiplayer' : page === 'ship' ? 'Single player' : 'Settings'}</h2>}
         <p data-testid="status" role="status" aria-live="polite">{menuMessage({ menu, online })}</p>
-        {page === 'home' ? <Home /> : page === 'multiplayer' ? <Multiplayer /> : page === 'settings' ? <Settings />
+        {page === 'home' ? <Home /> : page === 'multiplayer' ? <Multiplayer /> : page === 'settings' ? <Settings /> : page === 'ship' ? <ShipPicker />
           : page === 'host' ? <HostForm /> : page === 'join' ? <JoinForm /> : <SessionPage playing={playing} />}
         {!playing && <p data-testid="version" style={VERSION}>{versionText()}</p>}
       </section>

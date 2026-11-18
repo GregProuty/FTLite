@@ -2,6 +2,8 @@ import cutter from './sim/ship/cutter.json';
 import hound from './sim/ship/hound.json';
 import skiff from './sim/ship/skiff.json';
 import { parseShip } from './sim/ship/schema';
+import { isSoloShipId, SOLO_SHIPS, soloShip } from './sim/ship/fleet';
+import { classIndexById } from './sim/tactical/defs';
 import { loadAssets, loadBytes } from './render/assets';
 import { createRenderer } from './render/renderer';
 import { createKeyboardSources } from './input/sources';
@@ -64,6 +66,7 @@ function bootCrt(renderer: Renderer, store: UiStore): void {
  *  owns at most one of them at a time. */
 async function startApp(): Promise<void> {
   const ships = { cutter: parseShip(cutter), skiff: parseShip(skiff), hound: parseShip(hound) };   // throws with a clear message on invalid ship data (spec §9)
+  const soloLayouts = new Map(SOLO_SHIPS.map((s) => [s.id as string, parseShip(s.layout)]));   // Valkyrn spec §9: throws on invalid ship data
   const assets = await loadAssets('./assets/manifest.json');
   const renderer = await createRenderer(assets);
   bootFeel(renderer);
@@ -79,12 +82,15 @@ async function startApp(): Promise<void> {
   let online: ReturnType<typeof createOnlineModeSession> | null = null, status: OnlineStatus | null = null;
   let blocked = true;
   const win = window.ftlite?.window;
-  const store = createUiStore({ onlineAvailable: !!bridge, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, fullscreenAvailable: !!win, controls: controlSections() } });
+  const store = createUiStore({ onlineAvailable: !!bridge, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, fullscreenAvailable: !!win, controls: controlSections(),
+    ships: SOLO_SHIPS.map(({ id, name, line }) => ({ id, name, line })), soloShip: settings.soloShip, valkyrnLaserFit: settings.valkyrnLaserFit } });   // Valkyrn spec §9
   bootCrt(renderer, store);
   const hud = createHudSink(store, perf), duelSink = createDuelSink(store, perf), latencySink = createLatencySink(store, perf);
   const session = createSessionRouter({ resetInput: keyboard.reset,
     single: () => {
-      const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout: ships.hound, lifecycle: window.ftlite, ui: duelSink, audio,   // Audio-i: Single player was silent
+      const pick = soloShip(settings.soloShip), layout = soloLayouts.get(pick.id)!;   // Valkyrn spec §9: the picked ship
+      const cls = settings.valkyrnLaserFit && pick.laserFit !== null ? classIndexById(pick.laserFit) : undefined;   // §8: the developer laser fit
+      const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout, cls, lifecycle: window.ftlite, ui: duelSink, audio,   // Audio-i: Single player was silent
         onExit: () => { session.home(); actions.leaveSingle(); }, recordDuel: record => window.ftlite?.recordDuel?.(record), setConsole: (input) => actions.setConsole(input),
         setContact: (contact) => actions.setContact(contact) });
       return { frame() { /* the duel runs on its own ticker callback */ }, dispose };
@@ -108,7 +114,12 @@ async function startApp(): Promise<void> {
     session.selectOnline().attach(descriptor, port);
   });
   const actions = createUiActions({ store, api: bridge ?? undefined,
-    single() { online = null; session.selectSingle(); }, online() { session.selectOnline(); },
+    single(ship) {
+      if (isSoloShipId(ship) && ship !== settings.soloShip) { settings = { ...settings, soloShip: ship }; try { saveSettings(localStorage, settings); } catch { /* storage denied */ } }
+      online = null; session.selectSingle();
+    },
+    online() { session.selectOnline(); },
+    setLaserFit(on) { settings = { ...settings, valkyrnLaserFit: on }; try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     home() { session.home(); online = null; }, pause() { online?.pause(); },
     setVolume(channel, volume) { settings = { ...settings, [channel]: volume }; audio.setVolumes(settings); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     setShake(shake) { settings = { ...settings, shake }; renderer.setShake?.(shake); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },

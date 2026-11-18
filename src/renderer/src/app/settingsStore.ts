@@ -4,6 +4,7 @@
 import type { RecordStorage } from './telemetryStore';
 import type { Volumes } from './audio';
 import { DEFAULT_SHAKE, validShake, type ShakeSetting } from '../render/shake';
+import { DEFAULT_SOLO_SHIP, isSoloShipId, type SoloShipId } from '../sim/ship/fleet';
 
 export const SETTINGS_KEY = 'ftlite-settings';
 /** The volume choices Settings offers: Off, then quarters up to full. */
@@ -12,9 +13,11 @@ export const VOLUME_CHANNELS = ['master', 'music', 'effects'] as const;
 export type VolumeChannel = (typeof VOLUME_CHANNELS)[number];
 export const VOLUME_LABELS: Readonly<Record<VolumeChannel, string>> = { master: 'Master volume', music: 'Music', effects: 'Effects' };
 
-/** Feel-i: `shake`, the console maps' screen shake (off, low, full); a version 2 record without it reads full. */
-export interface Settings extends Volumes { version: 2; shake: ShakeSetting }
-export const DEFAULT_SETTINGS: Settings = { version: 2, master: 1, music: 0.5, effects: 1, shake: DEFAULT_SHAKE };   // music at half (owner 2026-11-17)
+/** Feel-i: `shake`, the console maps' screen shake (off, low, full); a version 2 record without it reads full. Valkyrn spec
+ *  §8, §9: `soloShip`, the Single player ship last picked, and `valkyrnLaserFit`, the developer laser fit; a record without
+ *  them reads the first solo ship and the gun. */
+export interface Settings extends Volumes { version: 2; shake: ShakeSetting; soloShip: SoloShipId; valkyrnLaserFit: boolean }
+export const DEFAULT_SETTINGS: Settings = { version: 2, master: 1, music: 0.5, effects: 1, shake: DEFAULT_SHAKE, soloShip: DEFAULT_SOLO_SHIP, valkyrnLaserFit: false };   // music at half (owner 2026-11-17)
 
 const step = (v: unknown, fallback: number): number => (typeof v === 'number' && VOLUME_STEPS.includes(v) ? v : fallback);
 
@@ -26,7 +29,8 @@ export function loadSettings(storage: RecordStorage): Settings {
     if (r.version === 1) return { ...DEFAULT_SETTINGS, master: step(r.volume, DEFAULT_SETTINGS.master) };
     if (r.version !== 2) return { ...DEFAULT_SETTINGS };
     return { version: 2, master: step(r.master, DEFAULT_SETTINGS.master), music: step(r.music, DEFAULT_SETTINGS.music), effects: step(r.effects, DEFAULT_SETTINGS.effects),
-      shake: validShake(r.shake) ? r.shake : DEFAULT_SETTINGS.shake };
+      shake: validShake(r.shake) ? r.shake : DEFAULT_SETTINGS.shake,
+      soloShip: isSoloShipId(r.soloShip) ? r.soloShip : DEFAULT_SETTINGS.soloShip, valkyrnLaserFit: r.valkyrnLaserFit === true };
   } catch { return { ...DEFAULT_SETTINGS }; }
 }
 

@@ -12,7 +12,9 @@ export interface UiActionDeps {
   store: UiStore;
   /** The online bridge; absent when the app has none (the buttons that need it are disabled). */
   api?: MenuApi;
-  single(): void; online(): void; pause(): void; home?(): void;
+  single(ship?: string): void; online(): void; pause(): void; home?(): void;
+  /** Valkyrn spec §8: the laser-fit switch changed (main saves it). */
+  setLaserFit?(on: boolean): void;
   /** Quit the app (owner 2026-11-17: Quit on the main menu): closes the window, as its close button does. */
   quit?(): void;
   setVolume?(channel: VolumeChannel, volume: number): void;
@@ -77,7 +79,14 @@ export function createUiActions(deps: UiActionDeps) {
       if (goHome) deps.home?.();   // as sessionMenu did: the router goes home before the menu shows it
       store.setState((s) => ({ menu: nextMenu, online: { ...s.online, status: next, receivedAt: perfNow() } }));
     },
-    single(): void { setMenu({ localError: '', page: 'single' }); deps.single(); },
+    /** Valkyrn spec §9: Home's Single player opens the ship choice. */
+    openShips(): void { setMenu({ localError: '', page: 'ship' }); },
+    /** Start Single player on `ship` (a picker button, remembered), or on the remembered choice. */
+    single(ship?: string): void {
+      if (ship !== undefined) store.setState((s) => ({ settings: { ...s.settings, soloShip: ship } }));
+      setMenu({ localError: '', page: 'single' }); deps.single(ship);
+    },
+    setLaserFit(on: boolean): void { store.setState((s) => ({ settings: { ...s.settings, valkyrnLaserFit: on } })); deps.setLaserFit?.(on); },
     openMultiplayer(): void { setMenu({ localError: '', page: 'multiplayer' }); },
     quit(): void { deps.quit?.(); },
     openSettings(): void { setMenu({ localError: '', page: 'settings' }); readFullscreen(); },
@@ -88,6 +97,7 @@ export function createUiActions(deps: UiActionDeps) {
       const page = menu().page;
       if (page === 'multiplayer') setMenu({ page: 'home', localError: '' });
       else if (page === 'settings') setMenu({ page: 'home' });
+      else if (page === 'ship') setMenu({ page: 'home' });   // Valkyrn spec §9: the ship choice's Back
       else if (page === 'host' || page === 'join') setMenu({ page: 'multiplayer', localError: '' });
     },
     /** The host form's crew choice (Sci-2 spec §5.3). */
