@@ -18,6 +18,7 @@ import type { ClientMessage } from '../src/renderer/src/net/contracts';
 import { createLoopbackHarness } from '../src/renderer/src/net/loopback';
 import { createClientRun } from '../src/renderer/src/clientControl/clientRun';
 import { createFixtureAuthority } from './helpers/authorityFixture';
+import { runReplay } from '../src/renderer/src/authority/replay';
 import { LAYOUT, makeState } from './helpers/sim';
 import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
 import { seatDuelCrew } from './helpers/duelSeat';
@@ -186,6 +187,27 @@ describe('the ping on the wire (Feel-ii §2.7)', () => {
       send(4, 50); pump(1000); expect(client.takeEvents().map((e) => e.payload)).toEqual([{ kind: 'ping', player: 0, x: 50, y: 5, target: false }]);
       send(4, 60); pump(5000); expect(client.takeEvents()).toEqual([]);   // a stale sequence
       expect(decodeMessage(encodeMessage({ kind: 'ping', runId, player: 0, sequence: 9, x: 1, y: 2, target: true }))).toMatchObject({ kind: 'ping', target: true });
+    } finally { authority.dispose(); client.dispose(); pair.host.close('done'); pair.client.close('done'); }
+  });
+  it('a ping in the same batch as a journalled held frame stays out of that admission frame, so a gateless replay agrees', () => {
+    const state = makeState(2), runId = 'ping-replay', contentDigest = __GAMEPLAY_CONTENT_DIGEST__;
+    const transport = createLoopbackHarness({ protocolVersion: 1, simVersion: SIM_VERSION, contentDigest });
+    const pair = transport.connectLocal(), client = createClientRun(pair.clientLink, [0], { runId, resolveLayout: () => LAYOUT });
+    let now = 0;
+    const authority = createFixtureAuthority({ clock: { nowMs: () => now }, scheduler: { schedule: () => () => {} }, contentDigest, resolveLayout: () => LAYOUT, onCrash(r) { throw Error(r.error); },
+      init: { runId, layoutId: LAYOUT.id, layoutHash: state.derived.layoutHash, simVersion: SIM_VERSION, contentDigest, seed: 1, playerCount: 2, characters: [], unlocked: [] } }, state);
+    authority.attach(pair.authorityLink, [0]); transport.drain();
+    const pump = (at: number) => { now = at; transport.drain(); authority.pump(); transport.drain(); };
+    try {
+      pump(0);
+      pair.clientLink.send('reliable-ordered', encodeMessage({ kind: 'held', frame: { runId, player: 0, tick: state.tick, sequence: 1, held: { moveX: 1, moveY: 0, interactHeld: false } } }));
+      pair.clientLink.send('reliable-ordered', encodeMessage({ kind: 'ping', runId, player: 0, sequence: 1, x: 10, y: 5, target: false }));
+      pump(20);
+      expect(client.takeEvents().map((e) => e.payload)).toContainEqual({ kind: 'ping', player: 0, x: 10, y: 5, target: false });
+      for (let k = 2; k <= 10; k++) pump(k * 20);
+      const replay = authority.replay();
+      expect(replay.frames.some((f) => f.action.kind === 'admission')).toBe(true);
+      expect(() => runReplay(LAYOUT, replay, contentDigest)).not.toThrow();
     } finally { authority.dispose(); client.dispose(); pair.host.close('done'); pair.client.close('done'); }
   });
 });

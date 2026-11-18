@@ -346,6 +346,7 @@ function createLiveCore<T extends EncounterTypes>(rules: EncounterRules<T>, deps
     const recorded = incoming.filter(entry => entry.message.kind !== 'callout' && entry.message.kind !== 'ping');
     if (recorded.length) begin({ kind: 'admission', entries: recorded.map(({ binding, message, order }) => ({ binding: binding.id, players: [...binding.players], message: message as Exclude<ClientMessage, { kind: 'callout' | 'ping' }>, order,
       ...(binding.admissionPolicy === 'receive-time' ? { admissionPolicy: binding.admissionPolicy, effectiveTick: tickOf() } : {}) })) });
+    const pings: Extract<AuthorityEvent['payload'], { kind: 'ping' }>[] = [];   // emitted after complete(): a ping's eventSequence never lands in an admission frame
     for (const { binding, message, order, receivedAt } of incoming) {
       if (message.kind === 'held') { acceptHeld(binding, message.frame, receivedAt); continue; }
       if (message.kind === 'callout') {
@@ -359,7 +360,7 @@ function createLiveCore<T extends EncounterTypes>(rules: EncounterRules<T>, deps
         if (message.runId === deps.init.runId && binding.players.includes(message.player) && message.sequence > auxiliarySequences[message.player]!) {
           auxiliarySequences[message.player] = message.sequence;
           const now = deps.clock.nowMs(), last = lastPings[message.player];
-          if (!replaying && phase === 'running' && (last === undefined || now - last >= PING_GAP_MS)) { lastPings[message.player] = now; emit({ kind: 'ping', player: message.player, x: message.x, y: message.y, target: message.target }); }
+          if (!replaying && phase === 'running' && (last === undefined || now - last >= PING_GAP_MS)) { lastPings[message.player] = now; pings.push({ kind: 'ping', player: message.player, x: message.x, y: message.y, target: message.target }); }
         }
         continue;
       }
@@ -380,6 +381,7 @@ function createLiveCore<T extends EncounterTypes>(rules: EncounterRules<T>, deps
       else pending.push({ binding, envelope });
     }
     if (recorded.length) complete();
+    for (const ping of pings) emit(ping);
     if (incoming.some(entry => entry.message.kind === 'callout' || entry.message.kind === 'ping')) { begin({ kind: 'cursor', receiveOrder }); complete(); }
   }
   function applyControls(replayCutoff?: number): void {
