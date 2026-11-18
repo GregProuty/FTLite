@@ -88,7 +88,7 @@ export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: r
   return out;
 }
 
-export interface OnlineDuelSourceDeps { client: ConfirmedDuel; seat: 0 | 1; now(): number; viewport: Viewport }
+export interface OnlineDuelSourceDeps { client: ConfirmedDuel; seat: number; now(): number; viewport: Viewport }
 export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   const { client, seat } = deps;
   let seen = 0, lastTick = -1, gap = 3, receivedAt = 0, round = -1, frameAlpha = 1;

@@ -69,10 +69,11 @@ export function interiorOverlay(d: DuelState): InteriorOverlay {
 
 /** A working station's badge (start-aboard spec §2): the glyph kind, its label, the console tile's centre in ship pixels, and
  *  its tint: `offline` (red) when its system is off, `faint` when it does not work now, else `normal`. */
-export interface StationBadge { station: number; kind: 'navigation' | 'weapons' | 'medbay'; label: string; x: number; y: number; tint: 'normal' | 'offline' | 'faint' }
+export interface StationBadge { station: number; kind: 'navigation' | 'weapons' | 'science' | 'medbay'; label: string; x: number; y: number; tint: 'normal' | 'offline' | 'faint' }
 
-/** The Helm, Weapons and Medbay badges, in that order (start-aboard spec §2): Helm red at Engines 2, Weapons red at Weapons 2,
- *  the Medbay faint while it is not online. A layout without a Medbay console has two badges. */
+/** The Helm, Weapons, Science and Medbay badges, in that order (start-aboard spec §2; Sci-2 spec §5.4): Helm red at
+ *  Engines 2, Weapons red at Weapons 2, Science always normal, the Medbay faint while it is not online. A layout without a
+ *  Science or Medbay console has no badge for it. */
 export function stationBadges(d: DuelState): StationBadge[] {
   const st = d.interior, w = st.derived.width, rooms = d.tactical.systems[0].rooms;
   const at = (station: number): { x: number; y: number } => { const t = st.derived.stationTile[station]!, tx = t % w; return { x: (tx + 0.5) * TILE_PX, y: ((t - tx) / w + 0.5) * TILE_PX }; };
@@ -80,6 +81,7 @@ export function stationBadges(d: DuelState): StationBadge[] {
     { station: d.nav, kind: 'navigation', label: 'HELM', ...at(d.nav), tint: rooms[Room.Engines] >= 2 ? 'offline' : 'normal' },
     { station: d.weapons, kind: 'weapons', label: 'WEAPONS', ...at(d.weapons), tint: rooms[Room.Weapons] >= 2 ? 'offline' : 'normal' }
   ];
+  if (d.science >= 0) out.push({ station: d.science, kind: 'science', label: 'SCIENCE', ...at(d.science), tint: 'normal' });
   const mb = st.derived.stationOfKind[StationKind.Medbay]!;
   if (mb >= 0) out.push({ station: mb, kind: 'medbay', label: 'MEDBAY', ...at(mb), tint: medbayOnline(d) ? 'normal' : 'faint' });
   return out;

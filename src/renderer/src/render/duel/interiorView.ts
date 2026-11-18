@@ -4,7 +4,7 @@
 import { BitmapText, Container, Graphics } from 'pixi.js';
 import { TILE_PX } from '../../../../shared/resolution';
 import { Position, Stable } from '../../sim/components';
-import type { DuelState } from '../../sim/duel/state';
+import { DUEL_CREW_MAX, type DuelState } from '../../sim/duel/state';
 import type { GameAssets } from '../assets';
 import { createBoarderLayer } from '../boarderLayer';
 import { createConsoleLayer } from '../consoleLayer';
@@ -68,7 +68,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   const props = createPropLayer(assets);   // Art-iii spec section 4: the set dressing, directly over the tiles
   const desks = createConsoleLayer(assets), crew = createCrewLayer(assets, memory), boarders = createBoarderLayer(assets);
   const damage = new Graphics(), marks = new Graphics();
-  const crewLabels = Array.from({ length: 2 }, () => {   // duel-health spec §2: DOWNED under a downed character
+  const crewLabels = Array.from({ length: DUEL_CREW_MAX }, () => {   // duel-health spec §2: DOWNED under a downed character; one per player of the largest crew (Sci-2 spec §7)
     const t = new BitmapText({ text: '', style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE } });
     t.anchor.set(0.5, 0); t.roundPixels = true; t.visible = false; return t;
   });
@@ -80,7 +80,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   // Duel polish i spec §D: the healing motes and revive rings in one Graphics redrawn each frame, and a pooled REVIVED label
   // per character, over the crew and the other labels. The motes' x jitter is a view-side random (never the sim's).
   const heal = createHealFx(), healRandom = createRandom(hashString('duel-heal-motes')), healMarks = new Graphics();
-  const revivedLabels = Array.from({ length: 2 }, () => {
+  const revivedLabels = Array.from({ length: DUEL_CREW_MAX }, () => {   // one per player of the largest crew (Sci-2 spec §7)
     const t = new BitmapText({ text: 'REVIVED', style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE } });
     t.anchor.set(0.5, 1); t.roundPixels = true; t.visible = false; t.tint = GOOD; return t;
   });

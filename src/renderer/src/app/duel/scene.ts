@@ -56,7 +56,7 @@ export interface DuelViewSource {
   readonly interiorCamera: InteriorCamera;
   /** Changes when the view's caches must start again (a new round). */
   epoch(): number;
-  active(): 0 | 1;
+  active(): number;
   view(): DuelView;
   otherStatus(): OtherStatus;
   axes(): Axes;
@@ -218,8 +218,8 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       lastOutcome = d.tactical.outcome;
       // Feel-i §1: sitting down. A new sit at the Helm or Weapons frames both ships, may show the card, and lights the goal.
       // Only a character's own sit counts (Feel-i review): a Tab to a seated character keeps its zoom and shows no card.
-      const sitOf = (pid: 0 | 1): SitSeat | null => { const s = consoleStation(d, pid); return s === 'helm' || s === 'weapons' ? s : null; };
-      const me = source.active(), sitSeat = sitOf(me), sat = trackSit(sits, me, [sitOf(0), sitOf(1)]);
+      const sitOf = (pid: number): SitSeat | null => { const s = consoleStation(d, pid); return s === 'helm' || s === 'weapons' ? s : null; };
+      const me = source.active(), sitSeat = sitOf(me), sat = trackSit(sits, me, Array.from({ length: d.interior.playerCount }, (_, pid) => sitOf(pid)));   // Sci-2 spec §5.1: every seat of the crew
       if (sat && sitSeat) {
         seat = sitSeat; sitAt = t; sitThrottle = source.throttle(); acted = false; goalUsed = false; carded = countSit(sitSeat);
         const own = d.tactical.ships[CREW_SLOT], e = d.tactical.ships[enemySlot];

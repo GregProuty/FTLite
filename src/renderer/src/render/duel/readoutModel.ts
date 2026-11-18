@@ -52,7 +52,7 @@ export interface ReadoutInput {
   duel: DuelState;
   mode: ReadoutMode;
   /** The player the keyboard drives; the other's status is shown. */
-  active: 0 | 1;
+  active: number;
   other: OtherStatus;
   /** On an Artemis console (spec §2): no view heading (the tab strip says it) and no LASER block (the station block shows it). */
   console?: boolean;
