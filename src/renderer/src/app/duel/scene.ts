@@ -11,12 +11,13 @@ import type { EndView } from '../../render/duel/endModel';
 import { CONSOLE_RESERVE, CONTACT_RESERVE } from '../../render/duel/consoleLayout';
 import { consoleModel, consoleStation, type ConsoleStation } from '../../render/duel/consoleModel';
 import { contactModel } from '../../render/duel/contactModel';
+import { hoverReadout } from '../../render/duel/scienceModel';
 import { READOUT_COLUMN } from '../../render/duel/interiorModel';
 import { createInteriorView, type InteriorView } from '../../render/duel/interiorView';
 import { readoutHelp, readoutRows, type OtherStatus } from '../../render/duel/readoutModel';
 import { createFx, pushEvents, recordTrails, resetFx, shakeOffset, stepFx, type ViewEvent } from '../../render/tactical/fxModel';
 import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
-import { pickContact, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
+import { interpolatedShip, pickContact, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
 import { combatModel } from '../../render/tactical/weaponsModel';
 import { worldToScreen, type Camera } from '../../render/tactical/camera';
 import { screenPan, worldPan } from '../../audio/voices';
@@ -92,6 +93,8 @@ export interface DuelSceneOptions {
   contact?: ContactController;
   /** The last left-button press on the canvas since the previous frame, in internal px (spec §6.2); drained every frame. */
   takeClick?: () => { x: number; y: number } | null;
+  /** The pointer's last position in internal px, or null (Sci-1 spec §7.3: Science's hover readout). */
+  pointer?: () => { x: number; y: number } | null;
 }
 
 export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
@@ -123,12 +126,12 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const hidden = consoleHidden(d, overlay, source.running()), onConsole = !hidden && view !== 'interior';
       // Enemy ship window spec §6.5 steps 1 to 3: the station from the seat, this frame's map click, then the closing rules.
       const station = hidden ? null : consoleStation(d, source.active());
-      const aimable = view !== 'interior' && (station === 'helm' || station === 'weapons');
+      const onMap = view !== 'interior' && (station === 'helm' || station === 'weapons' || station === 'science');   // Sci-1 spec §7.2: the window on all three
       const click = options.takeClick?.() ?? null;   // drained every frame, so a click never waits for a later frame
-      if (contact && click && aimable)
+      if (contact && click && onMap)
         contact.click(pickContact({ state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport }, click));
       const shown = contact
-        ? contact.sync({ shown: aimable, station, target: d.tactical.systems[CREW_SLOT]!.target, active: (slot) => d.tactical.ships[slot]?.active === true, epoch: source.epoch(), enemyKnown: d.tactical.known[Contact.Enemy] })
+        ? contact.sync({ shown: onMap, station, target: d.tactical.systems[CREW_SLOT]!.target, active: (slot) => d.tactical.ships[slot]?.active === true, epoch: source.epoch(), enemyKnown: d.tactical.known[Contact.Enemy] })
         : false;
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       const events = source.drainEvents();
@@ -154,11 +157,15 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         layer.draw(model, combatModel(input), t);   // the blinks run on the presentation clock, paused or not
         overlayView = mapOverlayOf(model.overlay);
       }
-      const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView, throttle: source.throttle() });
+      // Sci-1 spec §7.3: Science's hover readout, from the crew ship's drawn position to the cursor.
+      const hover = station === 'science' && view !== 'interior'
+        ? hoverReadout(source.cameras[view], viewport, interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), options.pointer?.() ?? null)
+        : null;
+      const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView, throttle: source.throttle(), hover });
       // Step 5: the contact view, only while shown.
       const open = contact?.state() ?? null;
-      const contactView = shown && open && (station === 'helm' || station === 'weapons')
-        ? contactModel({ state: d.tactical, contact: open.contact, aim: open.aim, station, t, weapons: consoleView?.weapons ?? null })
+      const contactView = shown && station !== null && station !== 'ship'   // Science's window shows with nothing selected
+        ? contactModel({ state: d.tactical, contact: open?.contact ?? null, aim: open?.aim ?? false, station, t, weapons: consoleView?.weapons ?? null })
         : null;
       options.ui.frame({
         readout: { rows: readoutRows({ duel: d, mode: view, active: source.active(), other: source.otherStatus(), console: onConsole }), help: onConsole ? [] : readoutHelp(view) },

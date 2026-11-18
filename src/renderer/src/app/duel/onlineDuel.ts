@@ -23,11 +23,11 @@ import { endModel } from '../../render/duel/endModel';
 import { createKeyToggle, latencyOverlayLines, type KeyTarget } from '../../render/duel/latencyOverlay';
 import { snapBack } from '../../render/tactical/camera';
 import type { Renderer } from '../../render/renderer';
-import { missileOf } from '../../sim/tactical/state';
+import { CONTACT_MAX_LEVEL, missileOf } from '../../sim/tactical/state';
 import { consoleInReach, cycleLock, repairInReach, seatOf } from './controls';
-import { createDuelKeyboard, createPointerSource, emptyPresses, NO_HELD_FLAGS, throttleRequest, type ConsoleInput, type EventSource, type KeySample } from './input';
+import { createDuelKeyboard, createPointerSource, emptyPresses, frequencyRequest, NO_HELD_FLAGS, throttleRequest, type ConsoleInput, type EventSource, type KeySample } from './input';
 import { consoleChange } from './consoleChange';
-import { createContactController, type ContactActions } from './contactController';
+import { createContactController, type ContactActions, type ContactRequests } from './contactController';
 import { createOnlineDuelSource, type OnlineDuelSource } from './onlineSource';
 import type { DuelSink, LatencySink } from '../../ui/sinks';
 import { createDuelScene, type DuelScene } from './scene';
@@ -179,20 +179,22 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     }
   }
   /** One frame's press edges for this seat, by where its character is (H-1 spec §5 table, without Tab). */
-  function play(k: KeySample, d: DuelState, me: number): void {
+  function play(k: KeySample, d: DuelState, me: number, requests: ContactRequests): void {
     const seat = seatOf(d, me), p = k.presses;
     if (seat === 'standing') {
       if (p.interact > 0 && repairInReach(d, me) < 0) { const c = consoleInReach(d, me); if (c >= 0) { throttleSent = null; send({ kind: 'sit', station: c }); } }
       return;
     }
     if (p.stand > 0) { if (chargePressed || d.tactical.systems[0].fireHeld) send({ kind: 'laserCharge', held: false }); chargePressed = false; throttleSent = null; send({ kind: 'stand' }); return; }
+    if (requests.scan !== null && d.tactical.known[requests.scan] < CONTACT_MAX_LEVEL[requests.scan]) send({ kind: 'contactScan', contact: requests.scan });   // Sci-1 spec §5
     if (seat === 'helm') {
       if (p.camera > 0 && source) snapBack(source.cameras.helm);
       const level = throttleRequest(throttleSent ? throttleSent.level : d.throttle, p, k.throttleTo);   // Artemis spec §5.4
       if (level !== null) { const id = send({ kind: 'throttle', level }); if (id) throttleSent = { level, sequence: id.sequence, round: d.round }; }
       return;
     }
-    if (seat === 'science') {   // Sci-1 spec §7.3 (the requests arrive in Task 11)
+    if (seat === 'science') {   // Sci-1 spec §7.3
+      if (requests.designate !== null && requests.designate !== d.tactical.designated) send({ kind: 'designate', contact: requests.designate });
       if (p.camera > 0 && source) snapBack(source.cameras.science);
       return;
     }
@@ -203,6 +205,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       send({ kind: 'laserLock', room });
     }
     if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= 0 && k.lockTo <= 2) send({ kind: 'laserLock', room: k.lockTo });   // a console lock click (Artemis spec §4.1)
+    const freq = frequencyRequest(d.tactical.systems[0].freq, k.freqTo);   // Sci-1 spec §7.4
+    if (freq !== null) send({ kind: 'laserFrequency', freq });
     // The truth about a held charge is the confirmed replica plus what this seat sent (spec §3): a lost release is re-sent,
     // a release swallowed by a pause included (Space let go while paused leaves chargePressed set).
     const held = d.tactical.systems[0].fireHeld, now = deps.now();
@@ -216,7 +220,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   function pump(): void {
     if (disposed) return;
     observe(); pollLink();
-    const k = keyboard.sample();
+    const k = keyboard.sample(), requests = contact.takeRequests();
     source?.heldFlags(k.held ?? NO_HELD_FLAGS);
     cameraKeys = { ...cameraKeys, presses: { ...cameraKeys.presses, zoomIn: cameraKeys.presses.zoomIn + k.presses.zoomIn, zoomOut: cameraKeys.presses.zoomOut + k.presses.zoomOut, camera: cameraKeys.presses.camera + k.presses.camera } };
     const d = client?.state(), p = client?.publication();
@@ -232,7 +236,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (leaveConfirm.open || keys.leave) { producing = true; client.held(me, { moveX: 0, moveY: 0, interactHeld: false }); return; }
     if (p.phase !== 'running') return;
     if (decided) { if (k.presses.confirm > 0) send({ kind: 'rematch' }); }
-    else play(k, d, me);
+    else play(k, d, me, requests);
     // Held input every pump, quantised to −1, 0 and 1 (spec §3); a change is stamped for the held delay.
     const held = { moveX: Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld };
     const sequence = client.held(me, decided ? { moveX: 0, moveY: 0, interactHeld: false } : held);
@@ -265,7 +269,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       heldStamps.length = 0; commandStamps.clear();   // the new client restarts its sequences: an old stamp would match a new frame
       // Spec §6.2: a map click counts only while this window has focus and input is not blocked; otherwise it is drained and dropped.
       scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED', ui: deps.ui, audio: deps.audio, contact,
-        takeClick: () => { const click = pointer.takeClick(); return focused && !blocked ? click : null; } });
+        takeClick: () => { const click = pointer.takeClick(); return focused && !blocked ? click : null; },
+        pointer: () => (focused && !blocked ? pointer.position() : null) });
       link = createPortLink(browserPortEndpoint(port), `online:${next.seatId}`, { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });
       // Subscribe before the client, which releases its replica on close: keep the last view frozen.
       offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; });

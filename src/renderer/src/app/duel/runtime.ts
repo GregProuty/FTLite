@@ -16,7 +16,7 @@ import { duelEndSummary, duelRoundRecord, type DuelRoundRecord } from '../../sim
 import { createTelemetry, recordTick } from '../../sim/duel/telemetry';
 import type { ShipLayout } from '../../sim/ship/schema';
 import { stepSoloFlight } from '../../sim/tactical/physics';
-import { createTacticalState, missileOf, NO_AXES, Outcome, type Axes, type Missile, type TacticalState } from '../../sim/tactical/state';
+import { CONTACT_MAX_LEVEL, createTacticalState, missileOf, NO_AXES, Outcome, type Axes, type Missile, type TacticalState } from '../../sim/tactical/state';
 import { TICK_HZ } from '../../sim/tuning';
 import { createCamera, followBody, pan, snapBack, updateCamera, zoomBy, type Camera, type Viewport } from '../../render/tactical/camera';
 import { createFeelTracker, recordFeel, type FeelTracker } from '../../render/tactical/feelModel';
@@ -25,7 +25,8 @@ import type { OtherStatus } from '../../render/duel/readoutModel';
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import { consoleInReach, cycleLock, repairInReach, seatOf } from './controls';
-import { accumulateWheel, emptyPresses, helmAxes, NO_HELD_FLAGS, throttleRequest, WHEEL_IDLE_MS, type HeldFlags, type KeySample, type PointerSample } from './input';
+import type { ContactRequests } from './contactController';
+import { accumulateWheel, emptyPresses, frequencyRequest, helmAxes, NO_HELD_FLAGS, throttleRequest, WHEEL_IDLE_MS, type HeldFlags, type KeySample, type PointerSample } from './input';
 
 export type PauseReason = 'user' | 'blur' | 'hidden' | 'suspend';
 
@@ -163,6 +164,8 @@ export interface DuelRuntimeDeps extends FlightRuntimeDeps {
   clearKeys?(): void;
   /** Each decided round's record, once, on the tick it is decided (H-2 spec §8: Single player's solo records). */
   onRound?(record: DuelRoundRecord): void;
+  /** The contact window's requests since the last frame (Sci-1 spec §7.2, §7.3): designate and scan, sent by seat. */
+  takeContactRequests?(): ContactRequests;
 }
 
 export interface DuelRuntime {
@@ -217,8 +220,9 @@ export interface DuelRuntime {
 }
 
 const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserLock' || c.kind === 'laserCharge' || c.kind === 'missileLaunch';
-/** The commands only a seated console's player sends (Weapons and the Helm's throttle): a Tab or a stand drops them. */
-const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle';
+/** The commands only a seated console's player sends (Weapons, the Helm's throttle, Sci-1's three): a Tab or a stand drops them. */
+const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';
+const NO_REQUESTS: ContactRequests = { designate: null, scan: null };
 const NEUTRAL: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 const IDLE_KEYS = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() });
 const shipBody = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
@@ -308,6 +312,9 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'throttle')?.command;
     return last && last.kind === 'throttle' ? last.level : d.throttle;
   };
+  /** The active player's latest queued designation and laser frequency, else the sim's (as throttleBase). */
+  const designateBase = (): number => { const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'designate')?.command; return c && c.kind === 'designate' ? c.contact : d.tactical.designated; };
+  const freqBase = (): number => { const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'laserFrequency')?.command; return c && c.kind === 'laserFrequency' ? c.freq : d.tactical.systems[0].freq; };
 
   /** A new round (H-2 spec §7): its seed and presence came with the rematch; the view's state starts again. */
   function newRound(): void {
@@ -319,7 +326,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   }
 
   /** One frame's press edges for the active character, by where it is (spec §5 table). */
-  function play(k: KeySample): KeySample {
+  function play(k: KeySample, requests: ContactRequests): KeySample {
     if (k.presses.switch > 0) {   // Tab: presence false for the character left, true for the one taken, same tick; nothing carries over
       // The left character's queued weapons commands would reach the sim after it has gone (not-at-weapons): drop them. A
       // charge already sent needs no release: the sim lets go of Fire when the seat empties, so chargeSent just resets.
@@ -341,13 +348,16 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       return k;
     }
     if (p.stand > 0) { pending = pending.filter((c) => !isConsoleCommand(c.command)); queue({ kind: 'stand' }); chargeSent = false; return k; }   // the stand empties the seat first, as a Tab does
+    // Sci-1 spec §5: a scan from any of the three consoles, unless that contact is fully known.
+    if (requests.scan !== null && d.tactical.known[requests.scan] < CONTACT_MAX_LEVEL[requests.scan]) queue({ kind: 'contactScan', contact: requests.scan });
     if (seat === 'helm') {
       if (p.camera > 0) snapBack(cameras.helm);
       const level = throttleRequest(throttleBase(), p, k.throttleTo);   // W/S a notch, or a notch click (Artemis spec §5.4)
       if (level !== null) queue({ kind: 'throttle', level });
       return k;
     }
-    if (seat === 'science') {   // Sci-1 spec §7.3: the requests arrive in Task 11; C snaps the Science camera back
+    if (seat === 'science') {   // Sci-1 spec §7.3: the window's selection designates; C snaps the Science camera back
+      if (requests.designate !== null && requests.designate !== designateBase()) queue({ kind: 'designate', contact: requests.designate });
       if (p.camera > 0) snapBack(cameras.science);
       return k;
     }
@@ -359,6 +369,8 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       queue({ kind: 'laserLock', room });
     }
     if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= 0 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });   // a console lock click (Artemis spec §4.1)
+    const freq = frequencyRequest(freqBase(), k.freqTo);   // 1/2/3 or a console button (Sci-1 spec §7.4)
+    if (freq !== null) queue({ kind: 'laserFrequency', freq });
     const down = (): void => queue({ kind: 'laserCharge', held: true });
     const up = (): void => queue({ kind: 'laserCharge', held: false });   // onTick drops it when no press was sent
     if (p.fireDown > 0 && p.fireUp > 0) { if (k.fireHeld) { up(); down(); } else { down(); up(); } }
@@ -398,6 +410,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     frame(dt) {
       let k = deps.sampleKeys();
       lastHeld = k.held ?? NO_HELD_FLAGS;
+      const requests = deps.takeContactRequests?.() ?? NO_REQUESTS;   // drained every frame; dropped while paused or ended
       const sampled = deps.samplePointer();
       let pointer = sampled;
       pacer.toggleUser(k.presses.pause);
@@ -405,7 +418,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       // A Tab or a rematch changes which camera the pointer would move: this frame's sampled drag and wheel belong to the old one.
       const moved = (): void => { pointer = { ...sampled, wheel: 0, dragX: 0, dragY: 0 }; };
       if (ended()) { if (k.presses.confirm > 0 && !pending.some((c) => c.command.kind === 'rematch')) { pending.push({ player: active, command: { kind: 'rematch' } }); k = IDLE_KEYS(); moved(); } }
-      else if (pacer.reasons.size === 0) { if (k.presses.switch > 0) moved(); k = play(k); }   // while paused, gameplay presses are dropped; the camera still moves
+      else if (pacer.reasons.size === 0) { if (k.presses.switch > 0) moved(); k = play(k, requests); }   // while paused, gameplay presses are dropped; the camera still moves
       // Quantised as online (H-2 spec §3), and neutral on the end card as online sends it.
       activeHeld = ended() ? NEUTRAL : { moveX: Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld };
       pacer.sync();   // an Escape this frame pauses before any due tick runs

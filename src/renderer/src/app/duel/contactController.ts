@@ -32,6 +32,8 @@ export interface ContactController {
   scan(): void;
   /** The closing rules, once per frame: clears when not shown, on a new epoch, and the enemy contact when its slot is
    *  inactive; disarms on a station change and when the enemy is below Level 1. Records the frame for `intercept`.
+   *  Science's selection stays the designation: the enemy cleared as inactive there requests designate −1, and a contact
+   *  still open on arriving at Science requests designate on it (a hidden frame's clear requests nothing).
    *  Returns whether the window is shown (always on Science while shown, even with nothing selected). */
   sync(s: ContactSync): boolean;
   /** A room click while armed: `lock(room)` (the console lock path), then disarm; the window stays open. */
@@ -76,7 +78,9 @@ export function createContactController(): ContactController {
     sync(s) {
       if (epoch !== null && s.epoch !== epoch) st = null;                        // a new round
       enemyKnown = s.enemyKnown ?? 2;
+      if (st && s.shown && s.station === 'science' && st.contact === 0 && !s.active(s.target)) { st = null; designate = -1; }   // Science's enemy is gone: undesignate it
       if (st && (!s.shown || (st.contact === 0 && !s.active(s.target)))) st = null;   // hidden, SHIP, paused, decided, or the enemy is gone
+      if (st && s.station === 'science' && station !== 'science') designate = st.contact;   // a contact carried to Science is its selection: designate it
       if (st?.aim && station !== null && s.station !== station) st = { ...st, aim: false };   // a station change disarms
       if (st?.aim && enemyKnown < 1) st = { ...st, aim: false };
       allowed = s.shown; station = s.station; epoch = s.epoch;

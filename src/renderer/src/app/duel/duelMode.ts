@@ -42,7 +42,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
   const exitHint = deps.onExit ? '   M: MAIN MENU' : '', pauseText = `PAUSED   ESC: RESUME${exitHint}`;
   // Enemy ship window spec §6.1: the contact window's state, local to this screen; its intercept takes Esc and T first.
   const contact = createContactController();
-  const scene = createDuelScene(renderer, { seed: deps.seed, pauseText, ui: deps.ui, audio: deps.audio, contact, takeClick: () => pointer.takeClick() });
+  const scene = createDuelScene(renderer, { seed: deps.seed, pauseText, ui: deps.ui, audio: deps.audio, contact, takeClick: () => pointer.takeClick(), pointer: () => pointer.position() });
   const canvas = renderer.app.canvas;
   const keyboard = createDuelKeyboard(window as unknown as EventSource, { intercept: (code) => contact.intercept(code) });
   deps.setConsole?.(keyboard.ui);
@@ -56,6 +56,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     now: () => performance.now(),
     scheduler: { schedule(delay, cb) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } },
     sampleKeys: () => keyboard.sample(), samplePointer: () => pointer.sample(),
+    takeContactRequests: () => contact.takeRequests(),
     clearKeys: () => { keyboard.clear(); pointer.clear(); },
     seed: deps.seed, viewport, layout: deps.layout, onRound: (summary) => { void Promise.resolve(deps.recordDuel?.(solo.record(summary))).catch(() => {}); }
   });

@@ -11,7 +11,7 @@ import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
-import { sitDown } from '../src/renderer/src/sim/stations';
+import { sitDown, standUp } from '../src/renderer/src/sim/stations';
 import type { OnlinePortDescriptor, OnlineStatus } from '../src/shared/onlineSession';
 import { duelCompatibility } from '../src/main/network/onlineDuel';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -462,5 +462,24 @@ describe('the online seat notice (start-aboard spec §1)', () => {
     r.advance(200); r.session.frame();
     expect(h.draws.at(-1)!.notice).toBeNull();
     r.dispose();
+  });
+});
+
+describe('Science and the frequency online (Sci-1 spec §5, §7.3, §7.4)', () => {
+  const contactOf = (): ContactController => (h.sceneOpts.at(-1) as unknown as { contact: ContactController }).contact;
+  it('at Science a selection sends designate, S sends contactScan; at Weapons Digit2 sends laserFrequency 1', () => {
+    const r = rig(1);
+    standUp(r.d.interior, 1); sitDown(r.d.interior, 1, r.d.science);
+    const c = r.attach(), contact = contactOf();
+    contact.sync({ shown: true, station: 'science', target: 1, active: () => true, epoch: 0 });
+    contact.click(1); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'designate')).toEqual([{ kind: 'designate', contact: 1 }]);
+    r.key('keydown', 'KeyS'); r.key('keyup', 'KeyS'); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'contactScan')).toEqual([{ kind: 'contactScan', contact: 1 }]);
+    r.dispose();
+    const w = rig(1), cw = w.attach();   // the seated start: player 1 at Weapons
+    w.key('keydown', 'Digit2'); w.key('keyup', 'Digit2'); w.pump();
+    expect(cw.commands().filter((x) => x.kind === 'laserFrequency')).toEqual([{ kind: 'laserFrequency', freq: 1 }]);
+    w.dispose();
   });
 });

@@ -46,7 +46,8 @@ export function createUiActions(deps: UiActionDeps) {
     press: (action) => consoleInput?.press(action),
     hold: (code, on) => consoleInput?.hold(code, on),
     lock: (room) => consoleInput?.lock(room),
-    throttle: (level) => consoleInput?.throttle(level)
+    throttle: (level) => consoleInput?.throttle(level),
+    frequency: (freq) => consoleInput?.frequency(freq)
   };
 
   // The contact window's clicks (enemy ship window spec §6.6) go to the duel mode's contact controller while one is set;
