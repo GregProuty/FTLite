@@ -4,16 +4,15 @@ import { runInNewContext } from 'node:vm';
 import { expect, it } from 'vitest';
 
 const instrument = createRequire(import.meta.url)('../scripts/network/online-recovery-instrument.cjs');
-const source = readFileSync('out/main/authorityHost.js', 'utf8');
+// Web-i: the host runs in the page's Worker, one ES module built by the renderer pipeline (needs `npm run build`).
+const source = readFileSync('out/renderer/assets/authorityWorker.js', 'utf8');
 function exercise(observed: boolean, serviceDuration: number) {
   const code = observed ? instrument(source) : source;
   const gateSource = code.slice(code.indexOf('const LOCAL_LEASE_MS'), code.indexOf('function createUtilityHost('));
   const events: any[] = [];
-  const create = runInNewContext(gateSource + '\ncreateLeaseGate', {
-    hostProcessProtocol: { validateSessionLeaseIdentity: () => true, isRoomId: () => true,
-      validateLeaseRenewalRequest: () => true, validateLeaseGrant: () => true },
-    __recoveryLease: (event: any) => events.push(event),
-  });
+  // The Worker bundle calls its validators as plain functions; the old main build called them through a chunk namespace.
+  const validators = { validateSessionLeaseIdentity: () => true, isRoomId: () => true, validateLeaseRenewalRequest: () => true, validateLeaseGrant: () => true };
+  const create = runInNewContext(gateSource + '\ncreateLeaseGate', { hostProcessProtocol: validators, ...validators, __recoveryLease: (event: any) => events.push(event) });
   let mono = 100, request: any, outgoingMs = 0;
   const gate = create({ identity: { roomId: 'room', runId: 'run', hostGeneration: 1, hostSeatId: 0, utilityEpoch: 'utility' },
     clock: { nowMs: () => mono, epochMs: () => 100000 + mono }, scheduler: { schedule: () => () => {} },
@@ -43,3 +42,4 @@ it('fails closed when a lease observation anchor changes or is duplicated', () =
   expect(() => instrument(source.replace(anchor, 'pending = undefined;'))).toThrow('instrumentation-source-mismatch');
   expect(() => instrument(source + '\n' + anchor)).toThrow('instrumentation-source-mismatch');
 });
+it('instruments the built Worker chunk at exactly one site per needle', () => { expect(() => instrument(source)).not.toThrow(); });

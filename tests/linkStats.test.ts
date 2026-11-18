@@ -1,6 +1,7 @@
-// The link figures (H-2 spec §8, §9): the hidden window labels the selected candidate pair's route and reports it with
-// the RTT once a second; main keeps the newest for a ready attempt and answers the renderer's one named channel. Only
-// the label and the RTT cross any boundary, never a candidate or address.
+// The link figures (H-2 spec §8, §9): the page's RTC controller labels the selected candidate pair's route and reports it
+// with the RTT once a second; the page transport owner keeps the newest for a ready attempt and the page session answers
+// linkStats() from it (Web-i: no hidden window, no main channel). Only the label and the RTT cross any boundary, never a
+// candidate or address.
 import { describe, expect, it, vi } from 'vitest';
 import { localAddress, rtcRoute } from '../src/network/rtc/route';
 import { createTransportController, STATS_MS } from '../src/network/transport/controller';

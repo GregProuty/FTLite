@@ -50,6 +50,7 @@ module.exports = function observeNativeRtc(options = {}) {
     return pc;
   } });
   window.rtcNative = {
+    closeAll() { for (const record of pcs) record.pc.close(); return true; },
     fault(kind) {
       faultPc = kind === 'mid-transfer' ? pcs.at(-1)?.pc : pcs[0]?.pc;
       if (kind === 'drop') drop = true; else if (kind === 'reorder') reorder = true; else if (kind === 'mid-transfer') closeFragment = true;

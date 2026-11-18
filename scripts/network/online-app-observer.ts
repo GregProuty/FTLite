@@ -15,10 +15,11 @@ for (const type of ['keydown','keyup','focus','blur']) window.addEventListener(t
   target.onlineAppKeys.push({type,code:event.code,key:event.key,target:event.target?.tagName,hidden:document.hidden,focused:document.hasFocus()});
   if(target.onlineAppKeys.length>32) target.onlineAppKeys.shift();
 });
-window.addEventListener('message', event => {
-  if (event.source !== window || event.data?.source !== 'ftlite:online:main' || event.ports.length !== 1) return;
-  const port = event.ports[0]!, images = new ImageStore();
-  const record: any = { descriptor: event.data.descriptor, publications: [], inputs: [], results: [], acks: 0, fullReceipts: 0,
+// Web-i (deviation D-1): the page dispatches each game port to this test event before the game's own listener receives it.
+window.addEventListener('ftlite:online:test-port', (event: Event) => {
+  const { descriptor, port } = (event as CustomEvent<{ descriptor: unknown; port: MessagePort }>).detail;
+  const images = new ImageStore();
+  const record: any = { descriptor, publications: [], inputs: [], results: [], acks: 0, fullReceipts: 0,
     firstAckOrder: 0, firstInputOrder: 0, closed: false, errors: 0, order: 0 };
   sessions.push(record);
   function observe(data: any, incoming: boolean) {

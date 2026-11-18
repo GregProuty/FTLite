@@ -59,7 +59,7 @@ async function main() {
   async function launch(kind:'host'|'guest'|'duel-host'|'duel-guest',dir=directory) {
     if(typeof electron!=='string')throw Error('native-failed');
     const role=kind.replace('duel-',''),duel=kind!==role;
-    const env={...process.env,FTLITE_SERVICE_URL:config.enabled?config.baseUrl:'',NODE_PATH:resolve('node_modules'),...(duel?{FTLITE_DUEL_TEST_SEED:String(DUEL_TEST_SEED)}:{FTLITE_SECTOR_ONLINE_TEST:'1'})};
+    const env={...process.env,FTLITE_SERVICE_URL:config.enabled?config.baseUrl:'',FTLITE_ONLINE_TEST_PROBE:'1',NODE_PATH:resolve('node_modules'),...(duel?{FTLITE_DUEL_TEST_SEED:String(DUEL_TEST_SEED)}:{FTLITE_SECTOR_ONLINE_TEST:'1'})};
     for(const key of ['FTLITE_LOCAL_SERVICE_URL','FTLITE_PACKAGED_SERVICE_ORIGIN','ELECTRON_RUN_AS_NODE','ELECTRON_RENDERER_URL','CHROME_CRASHPAD_PIPE_NAME',duel?'FTLITE_SECTOR_ONLINE_TEST':'FTLITE_DUEL_TEST_SEED'])delete (env as NodeJS.ProcessEnv)[key];
     if(local){delete (env as NodeJS.ProcessEnv).FTLITE_SERVICE_URL;(env as NodeJS.ProcessEnv).FTLITE_LOCAL_SERVICE_URL=runtime!.baseUrl;}
     const p=own(electron,[resolve('scripts/network/online-app-smoke.cjs'),`--online-app-dir=${dir}`,`--online-app-role=${role}`,`--user-data-dir=${join(dir,role)}`,...(args.has('--force-relay')?['--internet-force-relay']:[])],kind,env);p.child.stdout?.resume();

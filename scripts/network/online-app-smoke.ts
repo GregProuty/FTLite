@@ -35,7 +35,7 @@ async function main() {
   async function launch(profile: string) {
     if (typeof electron !== 'string') throw Error('Electron executable missing');
     // The sector runs through the test-only entry (H-2 spec §10): the menu's Multiplayer is the duel.
-    const env: NodeJS.ProcessEnv = { ...process.env, FTLITE_LOCAL_SERVICE_URL: runtime!.baseUrl, FTLITE_SECTOR_ONLINE_TEST: '1', NODE_PATH:resolve('node_modules') };
+    const env: NodeJS.ProcessEnv = { ...process.env, FTLITE_LOCAL_SERVICE_URL: runtime!.baseUrl, FTLITE_SECTOR_ONLINE_TEST: '1', FTLITE_ONLINE_TEST_PROBE: '1', NODE_PATH:resolve('node_modules') };
     delete env.ELECTRON_RUN_AS_NODE; delete env.CHROME_CRASHPAD_PIPE_NAME; delete env.ELECTRON_RENDERER_URL;
     const child = spawn(electron, [resolve('scripts/network/online-app-smoke.cjs'), `--online-app-dir=${directory}`, `--online-app-role=${profile}`,
       `--user-data-dir=${join(directory, profile)}`], { env, windowsHide: false, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
@@ -55,6 +55,8 @@ async function main() {
     // Consume every chunk, but report only one fixed category and validated role.
     let stderrReported=false;
     child.stderr!.on('data', () => { if(!stderrReported){stderrReported=true;console.error(onlineAppStderrDiagnostic(profile));} });
+    // Local debugging only (FTL_DEBUG=1): raw wrapper diagnostics; never set by the npm gates.
+    if(process.env.FTL_DEBUG) child.stderr!.pipe(process.stderr);
     record.exit = new Promise(done => child.once('exit', code => { record.exited = true; record.exitCode=code; for (const item of pending.values()) { clearTimeout(item.timer); item.reject(Error('application exited')); } pending.clear(); done(); }));
     processes.push(record);
     const initial=await until(async () => { try { return await record.request('status'); } catch (error) { if (record.exited) throw error; return null; } }, value => !!value?.status && value.text.includes('Single player'), profile + ' app ready');
@@ -103,10 +105,10 @@ async function main() {
     await h.request('click',{id:'start'}); await phase(h,'running'); const first = await phase(g,'running');
     const runId = first.status.snapshot.runId;
     const initialMirror = (await status(h)).mirrorProof;
-    const initialUtility = initialMirror.utilities.find((u: any) => u.runId === runId);
+    const initialUtility = initialMirror.workers.find((u: any) => u.runId === runId);
     assert(initialUtility?.initialCaptureTick === 0 && initialUtility?.bootstrapAfterCommit === true, 'initial mirror barrier');
     const mirrored = await until(async () => ({ host: await status(h), guest: await status(g) }), r => {
-      const utility = r.host.mirrorProof.utilities.find((u: any) => u.runId === runId);
+      const utility = r.host.mirrorProof.workers.find((u: any) => u.runId === runId);
       const receipt = r.host.mirrorProof.receipts.find((m: any) => m.runId === runId && m.capturedTick === 300);
       return utility?.periodicCapturedTick === 300 && receipt && r.guest.mirrorProof.receipts.some((m: any) => m.runId === runId && m.checkpointSequence === receipt.checkpointSequence && m.payloadSha256 === receipt.payloadSha256);
     }, 'periodic mirrored capture', 12000);
@@ -176,7 +178,7 @@ async function main() {
     await h.request('screenshot', { path: join(artifactDirectory, 'online-menu.png') });
     await g.request('open-multiplayer'); await g.request('click',{id:'join'}); await g.request('type',{id:'join-code',text:'00000000'}); await g.request('click',{id:'join-room'});
     const invalid = await phase(g,'error'), invalidResources = await g.request('resources');
-    assert(invalid.status.error==='not-found'&&invalid.status.snapshot===null&&invalidResources.utilities.length===0&&invalidResources.windows===1,'bad code allocated native resources');
+    assert(invalid.status.error==='not-found'&&invalid.status.snapshot===null&&invalidResources.workers.length===0&&invalidResources.windows===1,'bad code allocated native resources');
     checks.push('bad-code'); await g.request('click',{id:'home'});
     const lobby = await host(h, 2);
     // A labelled incompatible compiled copy changes only the compiled digest. It
@@ -188,16 +190,17 @@ async function main() {
       const path=join(variant,String(file)), text=readFileSync(path,'utf8');
       if(text.includes(source.digest)){writeFileSync(path,text.replaceAll(source.digest,'0'.repeat(64)));changed++;}
     }
-    assert(changed>=3,'incompatible compiled variant missing');
+    // Web-i: the digest is compiled into the page bundle and the host Worker chunk (main no longer carries it).
+    assert(changed>=2,'incompatible compiled variant missing');
     const incompatible=await launch('incompatible'); await incompatible.request('join-sector',{code:lobby.status.snapshot.joinCode});
     const mismatch=await phase(incompatible,'error'), mismatchResources=await incompatible.request('resources');
-    assert(mismatch.status.error==='incompatible'&&mismatch.status.snapshot===null&&mismatchResources.utilities.length===0&&mismatchResources.windows===1,'incompatible build allocated resources');
+    assert(mismatch.status.error==='incompatible'&&mismatch.status.snapshot===null&&mismatchResources.workers.length===0&&mismatchResources.windows===1,'incompatible build allocated resources');
     assert((await status(h)).status.snapshot.seats.filter((s:any)=>s.occupied).length===1,'incompatible build occupied seat');
     checks.push('incompatible'); await shutdown(incompatible);
     await g.request('delay-next-transport'); await g.request('join-sector',{code:lobby.status.snapshot.joinCode});
     await phase(g,'joining'); await g.request('click',{id:'leave'}); await phase(g,'idle');
     await g.request('click',{id:'single-player'}); await delay(1300);
-    const cancelled=await g.request('resources'); assert(cancelled.utilities.length===0&&cancelled.windows===1&&cancelled.listeners===0,'cancel retained transport resources');
+    const cancelled=await g.request('resources'); assert(cancelled.workers.length===0&&cancelled.windows===1&&cancelled.listeners===1&&cancelled.ports===0,'cancel retained transport resources');
     await viewportProof(g, 'single');
     await key(g, 'Escape'); await delay(100); await key(g, 'M');
     await until(() => g.request('status'), r => r.text.includes('Single player'), 'single returns to menu'); checks.push('cancel-single');
@@ -212,7 +215,7 @@ async function main() {
     const sparse=(await status(h)).status.snapshot;
     assert(sparse.capacity===4&&sparse.seats[0].occupied&&!sparse.seats[1].occupied&&sparse.seats[2].occupied&&!sparse.seats[3].occupied,'sparse 0/2 roster');
     g=await play(h,g,4);
-  } catch (error) { failure = onlineAppFailureCode(error); }
+  } catch (error) { failure = onlineAppFailureCode(error); if(process.env.FTL_DEBUG) console.error('GATE_ERROR', error); }
   finally {
     clearTimeout(watchdog); clearTimeout(injectedDeadline);
     for (const app of processes) if (!app.exited) {
@@ -228,7 +231,7 @@ async function main() {
   const cleanups = processes.flatMap(p => p.cleanup ? [p.cleanup] : []);
   const report = { version: 1, source, runtime: { electron: electronVersion, workerd: runtime?.workerdVersion, workerPid:runtime?.pid, workerExit: runtime?.exited(), temporaryRemoved: !existsSync(directory) },
     processes: processes.map(({pid,profile,exited,exitCode,beforeExit,cleanup,termination}) => ({pid,profile,exited,exitCode,termination,resourcesBeforeForcedExit:beforeExit,cleanup})),
-    cleanup: Object.fromEntries(['utilities','utilityExits','windows','ports','listeners','peers','nativeWindows','nativeWindowExits','nativePeersObserved','nativePeerCloses','nativePeersEndedWithWindow','observedMainPorts'].map(k => [k, cleanups.reduce((n,r)=>n+r[k],0)])),
+    cleanup: Object.fromEntries(['workers','workerExits','windows','ports','listeners','peers','nativePeersObserved','nativePeerCloses','nativePeersEndedWithPage','observedPagePorts'].map(k => [k, cleanups.reduce((n,r)=>n+r[k],0)])),
     runtimeHelper: runtime?.observation(), viewports, scenarios, checks, elapsedMs: Math.ceil(performance.now()-began), failure, waitFailure,
     limits: ['loopback-only','no-TURN','no-rehost','no-WAN','no-two-machine'] };
   writeFileSync(reportPath, JSON.stringify(report,null,2)+'\n');

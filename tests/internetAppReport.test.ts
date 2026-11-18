@@ -3,15 +3,17 @@ import { readFileSync } from 'node:fs';
 import { validateInternetAppReport, validateInternetRun, validateLocalInternetDriverRun, INTERNET_ARTIFACTS } from '../scripts/network/internet-app-report';
 import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
 const sha = 'a'.repeat(64), runId = 'b'.repeat(32);
-const recovery = JSON.parse(readFileSync('.superpowers/sdd/2026-11-15-net-3e-recovery-internet/task-7-evidence/recovery-skiff.json','utf8'));
+// Web-i: a real hound-2 report of the page-topology recovery gate (`npm run test:online-recovery-runtime`), since the
+// validator now requires the Worker-era cleanup fields and the authorityWorker.js chunk the Net-3e archive predates.
+const recovery = JSON.parse(readFileSync('tests/fixtures/web-i-recovery-hound-2.json','utf8'));
 const identity = () => ({ serviceOrigin:'https://service.example', revision:'c'.repeat(40), digest:recovery.source.digest, packageSha256:sha,workerBundleSha256:sha,workerConfigSha256:sha, artifacts:Object.fromEntries(Object.entries(recovery.source.artifactHashes).filter(([k])=>k.startsWith('out/'))), versions:{electron:'37.10.3',wrangler:'4.156.0',workerd:'1.20261023.1',protocol:2,sim:SIM_VERSION,checkpoint:2,replay:[2,3,4]} });
 const ref = () => ({path:'evidence/run.json',sha256:sha});
 const publication = () => ({runId,sequence:10,tick:320,hash:'f'.repeat(8),phase:'paused',commandHighWater:[2,3],heldHighWater:[4,5]});
 const peer = (seat:number) => ({role:seat===0?'host':'guest',seat,runId,hostGeneration:1,checkpoint:{runId,hostGeneration:1,checkpointSequence:3,capturedTick:320,payloadSha256:sha},errors:0,fullReceipts:1,firstAckOrder:1,firstInputOrder:2,
   inputs:[{player:seat,sequence:seat?3:2,order:2,command:'pause'}],results:[{id:{player:seat,sequence:seat?3:2},status:'applied'}],publications:[publication()],
   routes:[{state:'connected',selected:true,localType:'relay',remoteType:'relay',policy:'relay',sent:10,received:10}],
-  cleanup:{pid:100+seat,exited:true,exitCode:0,utilities:seat?0:1,utilityExits:seat?0:1,utilityPids:seat?[]:[150],windows:0,ports:0,listeners:0,peers:0,nativeWindows:1,nativeWindowExits:1,nativePeersObserved:1,nativePeerCloses:1,nativePeersEndedWithWindow:0,observedMainPorts:4}});
-const duelCleanup = (pid:number,host:boolean) => ({pid,exited:true,exitCode:0,utilities:host?1:0,utilityExits:host?1:0,utilityPids:host?[pid+50]:[],windows:0,ports:0,listeners:0,peers:0,nativeWindows:1,nativeWindowExits:1,nativePeersObserved:1,nativePeerCloses:1,nativePeersEndedWithWindow:0,observedMainPorts:3});
+  cleanup:{pid:100+seat,exited:true,exitCode:0,workers:seat?0:1,workerExits:seat?0:1,workerIds:seat?[]:[0],windows:0,ports:0,listeners:0,peers:0,nativePeersObserved:1,nativePeerCloses:1,nativePeersEndedWithPage:0,observedPagePorts:4}});
+const duelCleanup = (pid:number,host:boolean) => ({pid,exited:true,exitCode:0,workers:host?1:0,workerExits:host?1:0,workerIds:host?[0]:[],windows:0,ports:0,listeners:0,peers:0,nativePeersObserved:1,nativePeerCloses:1,nativePeersEndedWithPage:0,observedPagePorts:3});
 const duel = () => ({seed:2277,decidedTick:1471,thrust:{before:0,host:12.5,guest:12.5},beam:{before:0,host:1,guest:1},agreement:{tick:1800,sequence:600,hash:'abcdef01'},
   records:[{role:'host',round:0,transport:'loopback',rttMs:1,held:2,command:2},{role:'guest',round:0,transport:'internet',rttMs:38,held:2,command:2}],cleanup:[duelCleanup(200,true),duelCleanup(201,false)]});
 const deviceDuel = (seat:number) => ({seed:2277,decidedTick:1471,thrust:{before:0,peak:12.5},beam:{before:0,after:1},
@@ -36,7 +38,7 @@ it.each([
   ['wrong checkpoint',(r:any)=>r.twoMachineGameplay.reports[1].peers[0].checkpoint.checkpointSequence++],
   ['hidden failure',(r:any)=>r.deployedService.report.failure='driver-failed'],
   ['missing cleanup',(r:any)=>delete r.forcedRelayGameplay.report.peers[0].cleanup],
-  ['unbalanced cleanup',(r:any)=>r.forcedRelayGameplay.report.peers[0].cleanup.utilityExits=0],
+  ['unbalanced cleanup',(r:any)=>r.forcedRelayGameplay.report.peers[0].cleanup.workerExits=0],
   ['temporary leak',(r:any)=>r.forcedRelayGameplay.report.temporaryRemoved=false],
   ['observer error',(r:any)=>r.forcedRelayGameplay.report.peers[0].errors=1],
   ['input before ACK',(r:any)=>r.forcedRelayGameplay.report.peers[0].inputs[0].order=1],
@@ -52,7 +54,7 @@ it.each([
   ['a duel host record off loopback',(r:any)=>r.deployedService.report.duel.records[0].transport='lan'],
   ['no beam in the duel',(r:any)=>{const b=r.deployedService.report.duel.beam;b.before=1;b.host=2;b.guest=1;}],
   ['no thrust rise on the duel guest',(r:any)=>{const t=r.deployedService.report.duel.thrust;t.guest=t.before+1;}],
-  ['unbalanced duel cleanup',(r:any)=>r.deployedService.report.duel.cleanup[0].utilityExits=0],
+  ['unbalanced duel cleanup',(r:any)=>r.deployedService.report.duel.cleanup[0].workerExits=0],
   ['a duel pid reused',(r:any)=>r.deployedService.report.duel.cleanup[1].pid=100],
   ['a duel run on a single device',(r:any)=>r.twoMachineGameplay.reports[0].duel=duel()],
   ['an extra duel record field',(r:any)=>r.deployedService.report.duel.records[1].extra='host'],
@@ -77,7 +79,7 @@ it('requires command watermarks in a common advancing publication',()=>{const r=
 it('requires deployed artifact identity, not only successful app requests',()=>{const r=fixture();delete r.deployedService.deployment;expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
 const localCandidate=()=>{const r=fixture();r.internetReady=false;for(const key of ['deployedService','forcedRelayGameplay','twoMachineGameplay'])r[key]={status:'NOT_RUN',evidence:[]};return r;};
 const rendererArtifact=Object.keys(recovery.source.artifactHashes).find(k=>/^out\/renderer\/assets\/index-.*\.js$/.test(k))!;
-it.each(['out/main/hostProcess.js','out/main/transportWindow.js',rendererArtifact])('rejects changed recovery executable %s',path=>{const r=localCandidate();r.localRecovery.report.source.artifactHashes[path]=sha;expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
+it.each(['out/renderer/assets/authorityWorker.js','out/preload/index.js',rendererArtifact])('rejects changed recovery executable %s',path=>{const r=localCandidate();r.localRecovery.report.source.artifactHashes[path]=sha;expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
 it.each(['candidate','recovery'])('rejects missing executable in %s',side=>{const r=localCandidate();if(side==='candidate')delete r.identity.artifacts[rendererArtifact];else delete r.localRecovery.report.source.artifactHashes[rendererArtifact];expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
 it.each(['candidate','recovery'])('rejects extra executable in %s',side=>{const r=localCandidate();(side==='candidate'?r.identity.artifacts:r.localRecovery.report.source.artifactHashes)['out/main/extra-chunk.js']=sha;expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
 it('requires explicit byte-equality provenance for historical recovery revisions',()=>{const r=localCandidate();delete r.localRecovery.runtimeProvenance;expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
@@ -88,7 +90,7 @@ it.each(['deployedService','forcedRelayGameplay','twoMachineGameplay','actualOsS
   expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');
 });
 it('requires the intended origin in candidate identity',()=>{const r=localCandidate();delete r.identity.serviceOrigin;expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
-it.each(['reportRevision','candidateRevision','executableArtifacts'])('rejects incorrect historical provenance %s',field=>{const r=localCandidate();if(field==='executableArtifacts')r.localRecovery.runtimeProvenance[field]['out/main/hostProcess.js']=sha;else r.localRecovery.runtimeProvenance[field]='d'.repeat(40);expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
+it.each(['reportRevision','candidateRevision','executableArtifacts'])('rejects incorrect historical provenance %s',field=>{const r=localCandidate();if(field==='executableArtifacts')r.localRecovery.runtimeProvenance[field]['out/renderer/assets/authorityWorker.js']=sha;else r.localRecovery.runtimeProvenance[field]='d'.repeat(40);expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
 it('accepts current-revision recovery without a historical provenance record',()=>{const r=localCandidate();r.localRecovery.report.source.revision=r.identity.revision;delete r.localRecovery.runtimeProvenance;expect(()=>validateInternetAppReport(r)).not.toThrow();});
 it('does not confuse provenance map field ordering with byte inequality',()=>{const r=localCandidate();r.localRecovery.runtimeProvenance.executableArtifacts=Object.fromEntries(Object.entries(r.localRecovery.runtimeProvenance.executableArtifacts).reverse());expect(()=>validateInternetAppReport(r)).not.toThrow();});
 it.each(['https://SERVICE.example','https://service.example/','https://service.example:443'])('rejects noncanonical identity origin %s',origin=>{const r=localCandidate();r.identity.serviceOrigin=origin;expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
