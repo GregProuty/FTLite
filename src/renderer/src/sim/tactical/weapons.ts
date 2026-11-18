@@ -111,9 +111,9 @@ function stepBurst(state: TacticalState, i: number): void {
 /** Apply ship i's weapon commands for this tick, before anything moves (spec §7 table). */
 export function applyWeaponsInput(state: TacticalState, i: number, input: ShipInput): void {
   const s = state.systems[i]!;
+  if (input.weapons && input.laserLock !== null && validLock(input.laserLock)) s.lock = input.laserLock;   // first: a burst shot reads this tick's lock
   stepBurst(state, i);
   if (!input.weapons) { s.fireHeld = false; return; }   // unattended: Fire lets go without firing or discarding
-  if (input.laserLock !== null && validLock(input.laserLock)) s.lock = input.laserLock;
   if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; }   // a hit after its clock ran last tick: no shot
   if (input.laserCharge !== null && canCharge(state, i)) {
     if (input.laserCharge) s.fireHeld = true;

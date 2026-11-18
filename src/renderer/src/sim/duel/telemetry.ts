@@ -5,7 +5,7 @@
 // freezes once the round is decided, so the end card's ticks add nothing and the terminal causes are never recomputed.
 import { Life, LifeState, Seated } from '../components';
 import { inArc } from '../tactical/geometry';
-import { missileOf, Outcome, targetOf } from '../tactical/state';
+import { classOf, missileOf, Outcome, targetOf } from '../tactical/state';
 import { CONTACT_GRACE_TICKS, LASER_ARC_COS, LASER_RANGE } from '../tactical/tuning';
 import { canLaunch, laserFull } from '../tactical/weapons';
 import type { DuelState } from './state';
@@ -101,7 +101,7 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
     if (e.kind !== 'laser' && e.kind !== 'missileEnd') continue;   // Sci-1's events are not weapons
     const s = t.ships[e.ship as 0 | 1]!;
     if (e.kind === 'laser') {
-      s.laserReleases++;
+      if (tac.systems[e.ship]!.laserBurst > 0 || classOf(tac, e.ship).slots.laser.shots === 1) s.laserReleases++;   // a burst's first shot (its rest still pending) is the release
       if (e.hit) { s.laserHits++; if (e.stripped) s.layersStripped++; else laserOn[targetOf(tac, e.ship)] = true; } else s.laserMisses++;
     } else if (e.cause === 'ship') {
       missileOn[e.target] = true;

@@ -109,6 +109,24 @@ describe('the double laser (weapons update spec §1)', () => {
     const beams = gapEvents(before, [null, null], st).filter((e) => e.kind === 'laser' && e.ship === 0);
     expect(beams.map((e) => e.kind === 'laser' && [e.hit, e.stripped])).toEqual([[true, true], [true, true]]);
   });
+  it("online: a weak-frequency burst strips both layers with shot 1 and shot 2 strikes the lock room", () => {
+    const st = facing();
+    st.weakFreq = st.systems[0]!.freq; st.systems[0]!.lock = Room.Engines;
+    const before = [duelCounters(st, 0), duelCounters(st, 1)];
+    fire(st, 0); shotTicks(st, 0, LASER_BURST_GAP_TICKS);
+    expect(st.systems[1]!.rooms[Room.Engines]).toBe(1);
+    const beams = gapEvents(before, [null, null], st).filter((e) => e.kind === 'laser' && e.ship === 0);
+    expect(beams.map((e) => e.kind === 'laser' && [e.hit, e.stripped, e.room])).toEqual([[true, true, -1], [true, false, Room.Engines]]);
+  });
+  it("shot 2 strikes the lock commanded on its own tick", () => {
+    const st = facing();
+    st.systems[0]!.lock = Room.Shields;
+    fire(st, 0);
+    st.systems[1]!.shields = 0;
+    for (let k = 1; k < LASER_BURST_GAP_TICKS; k++) tick(st, 0);
+    const shot = tick(st, 0, { ...IDLE_INPUT, laserLock: Room.Engines });
+    expect(shot.map((e) => e.room)).toEqual([Room.Engines]);
+  });
 });
 
 describe('the torpedo range (weapons update spec §2)', () => {
