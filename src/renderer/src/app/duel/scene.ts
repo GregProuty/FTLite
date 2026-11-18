@@ -22,6 +22,7 @@ import { worldToScreen, type Camera } from '../../render/tactical/camera';
 import { screenPan, worldPan } from '../../audio/voices';
 import type { AudioOut } from '../audio';
 import { createDuelAudio } from './duelAudio';
+import { crewLife } from '../../render/duel/healFxModel';
 import type { DuelSink } from '../../ui/sinks';
 import { mapOverlayOf, type Banners, type MapOverlayView } from '../../ui/views';
 import type { DuelState } from '../../sim/duel/state';
@@ -135,7 +136,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       pushEvents(fx, events);
       if (sound) {   // Audio-i spec section 4: the same events the effects use; pan from the screen on a map view, crew-relative inside
         const cam = view === 'interior' ? null : source.cameras[view], crew = d.tactical.ships[CREW_SLOT]!;
-        sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true,
+        sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true, me: source.active(), crew: crewLife(d), dt,   // duel polish i spec §C
           pan: (x, y) => (cam ? screenPan(worldToScreen(cam, viewport, x, y).x, viewport.w) : worldPan(x - crew.x)) });
       }
       stepFx(fx, source.paused() ? 0 : dt);
