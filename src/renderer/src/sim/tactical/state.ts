@@ -8,6 +8,7 @@ import { dirBetween } from './direction';
 import { buildGrid, type BroadPhase } from './grid';
 import { generateMap, type MapDef, type Spawn } from './map';
 import { cloneTacticalFromModule } from './hash';
+import { initRocks, rockCapacity } from './rocks';
 import { DERELICT_FAR_MIN, DERELICT_NEAR_MIN, DERELICT_PHASE_DRAWS, DERELICT_SPAWN_CLEAR, HEADING_COUNT, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_TRAIL_TICKS } from './tuning';
 
 /** Tactical rooms (spec §5); the index into ShipSystems.rooms. */
@@ -99,8 +100,9 @@ export function idleScan(): Scan { return { contact: -1, level: 0, progress: 0, 
 
 /** Per-tick events for the views (shots and missile endings). Reset every tick and not hashed. */
 export type DuelEvent =
-  /** A laser release. `stripped`: it took a shield layer; `room`: the Room it struck (its level may already have been 2), or −1 (a miss or a stripped layer). */
-  | { kind: 'laser'; ship: number; hit: boolean; stripped: boolean; room: number; x1: number; y1: number; x2: number; y2: number }
+  /** A laser release. `stripped`: it took a shield layer; `room`: the Room it struck (its level may already have been 2), or −1 (a miss or a stripped layer).
+   *  SPIKE: `rock`, the rock slot the shot struck instead (x2, y2 the impact point), when present and ≥ 0. */
+  | { kind: 'laser'; ship: number; hit: boolean; stripped: boolean; room: number; x1: number; y1: number; x2: number; y2: number; rock?: number }
   /** A missile ended. `target`: the ship it landed on (its own ship for a self-hit), or −1; `room`: the Room it struck, or −1. */
   | { kind: 'missileEnd'; ship: number; cause: 'ship' | 'planet' | 'asteroid' | 'edge' | 'expired' | 'missile'; target: number; room: number; x: number; y: number }
   /** Sci-1 spec §4.6: the enemy turned hostile this tick, and why (laser before missile before clock). */
@@ -108,10 +110,14 @@ export type DuelEvent =
   /** A scan finished: `contact` is now known to `level`. */
   | { kind: 'scanDone'; contact: number; level: number }
   /** The derelict was salvaged: its loot, and whether it was trapped. */
-  | { kind: 'salvage'; loot: number; trapped: boolean };
+  | { kind: 'salvage'; loot: number; trapped: boolean }
+  /** SPIKE (destructible asteroids): rock slot `rock` was hit, split or shattered, by what, where, at what radius. */
+  | { kind: 'rock'; what: 'hit' | 'split' | 'shatter'; by: 'laser' | 'torpedo' | 'fragment'; rock: number; x: number; y: number; r: number };
 
 export interface TacticalState {
   tick: number; seed: number; rng: RngState; map: MapDef; grid: BroadPhase;
+  /** SPIKE (destructible asteroids, rocks.ts): the mutable rock pool, and the rock hit / split / shatter counters. */
+  rocks: Float64Array; rockHits: number; rockSplits: number; rockShatters: number;
   /** Each slot's body in space. */
   ships: Slots<Ship>;
   /** Each slot's systems record (the ship module's, sim/tactical/hash.ts). */
@@ -136,7 +142,7 @@ export const NO_AXES: Axes = { turn: 0, thrust: 0 };
 export const CREW_SLOT = 0;
 
 /** Body id of ship slot k in ship i's graceUntil: after the planet and the asteroids, the other slots in slot order. */
-export function shipBody(map: MapDef, i: number, k: number): number { return map.asteroids.length + 1 + (k < i ? k : k - 1); }
+export function shipBody(map: MapDef, i: number, k: number): number { return rockCapacity(map) + 1 + (k < i ? k : k - 1); }
 
 function shipAt(s: Spawn, bodies: number): Ship {
   return { active: true, x: s.x, y: s.y, vx: s.vx, vy: s.vy, heading: s.heading, headingAcc: 0, graceUntil: new Int32Array(bodies),
@@ -193,9 +199,9 @@ export function createTacticalState(seed: number, slots = DUEL_CLASSES.length): 
   const rng = createRng(seed);
   const map = generateMap(rng);
   const science = scienceDraws(rng, map);   // Sci-1 spec §4.5: right after the map, before anything else reads the rng
-  const bodies = map.asteroids.length + slots, extra = Array.from({ length: slots - 2 });
+  const bodies = rockCapacity(map) + slots, extra = Array.from({ length: slots - 2 });
   return {
-    tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap),
+    tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap), rocks: initRocks(map), rockHits: 0, rockSplits: 0, rockShatters: 0,
     ships: [shipAt(map.spawns[0], bodies), shipAt(map.spawns[1], bodies), ...extra.map(() => emptyShip(bodies))],
     systems: [systemsFor(DUEL_CLASSES[0]!, 1, true), systemsFor(DUEL_CLASSES[1]!, 0), ...extra.map(emptySystems)],
     missiles: [emptyMissile(), emptyMissile(), ...extra.map(emptyMissile)],

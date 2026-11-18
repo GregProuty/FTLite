@@ -1,18 +1,18 @@
 // Contacts (spec §4 collision matrix, ship rows; missiles are resolved in missiles.ts). Each active ship, in slot order,
 // meets the planet, then asteroids in ascending index, then every later active ship. Push out, bounce keeping
 // RESTITUTION of the normal speed, and cost hull only once per CONTACT_GRACE_TICKS per pair.
-import { queryGrid } from './grid';
+import { rockAt, rocksNear } from './rocks';
 import { classOf, shipBody, type TacticalState } from './state';
 import { ASTEROID_CONTACT_HULL, CONTACT_GRACE_TICKS, PLANET_CONTACT_HULL, RESTITUTION, SHIP_CONTACT_HULL } from './tuning';
 
 /** True when this contact cost ship i hull (outside the pair's grace window). */
-function hitStatic(state: TacticalState, i: number, cx: number, cy: number, cr: number, body: number, hull: number): boolean {
+function hitStatic(state: TacticalState, i: number, cx: number, cy: number, cr: number, body: number, hull: number, bvx = 0, bvy = 0): boolean {
   const s = state.ships[i]!, sys = state.systems[i]!;
   const dx = s.x - cx, dy = s.y - cy, rr = classOf(state, i).radius + cr, d2 = dx * dx + dy * dy;
   if (d2 >= rr * rr) return false;
   const d = Math.sqrt(d2), nx = d > 0 ? dx / d : 0, ny = d > 0 ? dy / d : -1;
   s.x = cx + nx * rr; s.y = cy + ny * rr;
-  const vn = s.vx * nx + s.vy * ny;
+  const vn = (s.vx - bvx) * nx + (s.vy - bvy) * ny;   // SPIKE: against a moving fragment, the speed relative to it
   if (vn < 0) { s.vx -= (1 + RESTITUTION) * vn * nx; s.vy -= (1 + RESTITUTION) * vn * ny; }
   if (state.tick < s.graceUntil[body]!) return false;
   sys.hull = Math.max(0, sys.hull - hull);
@@ -43,11 +43,11 @@ function shipShip(state: TacticalState, i: number, j: number): void {
 /** Ship slot i's static contacts (spec §4 order): the planet, then asteroids in ascending index. Exported for the
  *  single-ship flight step (H-1 spec §9). */
 export function hitStatics(state: TacticalState, i: number): void {
-  const { map, grid } = state, s = state.ships[i]!;
+  const { map } = state, s = state.ships[i]!;
   if (hitStatic(state, i, map.planet.x, map.planet.y, map.planet.r, 0, PLANET_CONTACT_HULL)) s.planetHits++;
-  for (const k of queryGrid(grid, s.x, s.y, classOf(state, i).radius)) {
-    const a = map.asteroids[k]!;
-    if (hitStatic(state, i, a.x, a.y, a.r, k + 1, ASTEROID_CONTACT_HULL)) s.asteroidHits++;
+  for (const k of rocksNear(state, s.x, s.y, classOf(state, i).radius)) {
+    const a = rockAt(state, k);
+    if (hitStatic(state, i, a.x, a.y, a.r, k + 1, ASTEROID_CONTACT_HULL, a.vx, a.vy)) s.asteroidHits++;
   }
 }
 

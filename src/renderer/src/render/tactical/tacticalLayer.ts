@@ -238,7 +238,15 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         if (a.dot) { bodies.rect(Math.round(a.x) - 1, Math.round(a.y) - 1, 2, 2).fill(CRT.mid); continue; }
         const shape = asteroidShape(a.index), pts: number[] = [];
         shape.forEach((m, k) => { const ang = (k / shape.length) * Math.PI * 2; pts.push(a.x + Math.cos(ang) * a.r * m, a.y + Math.sin(ang) * a.r * m); });
-        bodies.poly(pts).fill(CRT.dim).stroke({ width: 1, color: CRT.mid });
+        const wear = a.wear ?? 0;   // SPIKE: cracks and a dimmer fill as the rock wears down
+        bodies.poly(pts).fill(wear >= 0.5 ? CRT.faint : CRT.dim).stroke({ width: 1, color: wear > 0 ? CRT.main : CRT.mid });
+        const cracks = wear > 0 ? Math.min(5, 1 + Math.floor(wear * 4)) : 0;
+        for (let k = 0; k < cracks; k++) {
+          const ang = k * 2.39996 + shape[k]! * 3, r1 = a.r * 0.15, r2 = a.r * shape[(k + 3) % shape.length]! * 0.95;
+          const bend = ang + 0.35 * (k % 2 ? 1 : -1), mid = (r1 + r2) / 2;
+          bodies.moveTo(a.x + Math.cos(ang) * r1, a.y + Math.sin(ang) * r1).lineTo(a.x + Math.cos(bend) * mid, a.y + Math.sin(bend) * mid).lineTo(a.x + Math.cos(ang) * r2, a.y + Math.sin(ang) * r2)
+            .stroke({ width: 1.5, color: CRT.hot, alpha: 0.9 });
+        }
       }
 
       // Weapons update spec §2: the torpedo's range circle, dashed, mid while the target is in range at Weapons, else dim.

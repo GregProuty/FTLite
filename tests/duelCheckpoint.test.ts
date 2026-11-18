@@ -25,7 +25,7 @@ const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
  *  torpedoes; at SPLIT 5108). Seed 4 before that: a crew loss at tick 8859 with SPLIT 5193 (SIM_VERSION 45, the Hunter's grace; now a crew win at 9346); seed 7 before that: a crew loss at tick 8069 (8311 before Artemis-ii, SIM_VERSION 43; 7282 before duel health, SIM_VERSION 41; 8832 before duel fire), short enough to run to its end twice.
  *  SPLIT is the first tick from 5000 on that ends with a missile in flight, a damaged crew room and a repair in
  *  progress (found by stepping the scripted duel; the test asserts all three). */
-const SEED = 5, SPLIT = 5434;
+const SEED = 5, SPLIT = 7011;   // SPIKE (SIM_VERSION 50, destructible asteroids): seed 5 is a crew loss at tick 10882, SPLIT 7011
 function runToEnd(h: DuelCore, driver: ReturnType<typeof createDriver>, hashes: string[], frames: ReplayFrame[] = [], until = Infinity) {
   while (h.state.duel.tactical.outcome === Outcome.Running && duelRules.tick(h.state) < until) {   // to the round's decision (H-2: the run itself never ends)
     for (const frame of stepScripted(h, driver)) { frames.push(frame); if (frame.action.kind === 'tick') hashes.push(frame.after!.hash); }
@@ -56,8 +56,8 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
         const end = reference.state.summary;
         expect(resumed.state.summary).toEqual(end);
         expect(resumed.core.captureCheckpoint().modeMemory, 'the final telemetry accumulator of the restored run').toEqual(reference.core.captureCheckpoint().modeMemory);
-        expect(end).toMatchObject({ outcome: Outcome.CrewWins, ticks: referenceHashes.length,
-          terminal: [[], ['planet']], laserReleases: [17, 15], laserHits: [22, 15], missilesLaunched: [8, 6], missileHits: [3, 2], repairsFinished: [1, 8] });   // seed 5 (SIM_VERSION 49, FTL targeting)
+        expect(end).toMatchObject({ outcome: Outcome.EnemyWins, ticks: referenceHashes.length,
+          terminal: [['missile'], []], laserReleases: [1, 25], laserHits: [1, 25], missilesLaunched: [3, 5], missileHits: [1, 3], repairsFinished: [4, 14] });   // seed 5 (SIM_VERSION 50, the destructible-asteroids spike)
         expect(Object.isFrozen(end)).toBe(true);
         expect(referenceHashes.length).toBeGreaterThan(SPLIT);
         console.log(`continuation proof: seed ${SEED}, ${SPLIT} + ${referenceHashes.length - SPLIT} ticks; summary ${JSON.stringify(end)}`);

@@ -45,7 +45,11 @@ export function hitsCrew(e: ViewEvent): boolean {
 /** Queue one tick's events as effects; a hit on the crew ship (re)starts the shake. */
 export function pushEvents(fx: FxState, events: readonly ViewEvent[]): void {
   for (const e of events) {
-    if (e.kind === 'laser') fx.items.push({ kind: 'beam', age: 0, life: BEAM_S, x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, colour: e.hit ? BEAM_HIT : BEAM_MISS });
+    if (e.kind === 'laser') {
+      fx.items.push({ kind: 'beam', age: 0, life: BEAM_S, x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, colour: e.hit || (e.rock ?? -1) >= 0 ? BEAM_HIT : BEAM_MISS });
+      if ((e.rock ?? -1) >= 0) fx.items.push({ kind: 'spark', age: 0, life: SPARK_S, x1: e.x2, y1: e.y2, x2: e.x2, y2: e.y2, colour: BURST });   // SPIKE: the impact flare
+    }
+    else if (e.kind === 'rock' && e.what !== 'hit') fx.items.push({ kind: 'burst', age: 0, life: BURST_S * 2, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: BURST });   // SPIKE: a split or shatter
     else if (e.kind === 'missileEnd') fx.items.push({ kind: 'burst', age: 0, life: BURST_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: BURST });
     else if (e.kind === 'contact') fx.items.push({ kind: 'spark', age: 0, life: SPARK_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: SPARK[e.body] });
     if (hitsCrew(e)) { fx.shake = SHAKE_S; fx.shakeT = 0; }

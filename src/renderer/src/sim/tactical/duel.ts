@@ -6,6 +6,7 @@ import { flyMissile, resolveMissiles } from './missiles';
 import { flySlot } from './physics';
 import { hostilityStep, salvageStep, scanStep } from './science';
 import { resolveContacts } from './contacts';
+import { stepRocks } from './rocks';
 import { classOf, CREW_SLOT, NO_AXES, Outcome, type TacticalState } from './state';
 import { DEFAULT_FLIGHT, type FlightTuning } from './tuning';
 import { applyWeaponsInput, tickWeapons, UNCREWED_INPUT, type ShipInput } from './weapons';
@@ -30,6 +31,7 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTu
   if (hunter >= 0 && state.systems[hunter]!.missilesLaunched > hunterLaunches) state.hunter.lastLaunch = state.tick;   // a refused launch costs no cooldown
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) flySlot(state, i, inputs[i]!.helm ? inputs[i]!.axes : NO_AXES, tuning);
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) flyMissile(state, i);   // homing torpedo spec: it steers itself, attended or not
+  stepRocks(state);   // SPIKE (destructible asteroids): fragments fly and meet the planet and the other rocks
   resolveContacts(state);
   resolveMissiles(state);
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) tickWeapons(state, i, inputs[i]!);

@@ -5,6 +5,7 @@ import { gravityAccel } from '../../sim/tactical/physics';
 import { predictPath } from '../../sim/tactical/predict';
 import { derelictPos } from '../../sim/tactical/science';
 import { Contact, CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
+import { rockAlive, rockAt, rockHp, rockSlots } from '../../sim/tactical/rocks';
 import { HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
 import { hullFor, type HullId } from './hullModel';
@@ -45,7 +46,8 @@ export interface Line { x1: number; y1: number; x2: number; y2: number }
 export interface Label { text: string; x: number; y: number }
 export interface GridDraw { spacing: number; lines: (Line & { major: boolean })[]; columns: Label[]; rows: Label[] }
 export interface CircleDraw { x: number; y: number; r: number }
-export interface AsteroidDraw extends CircleDraw { index: number; dot: boolean }
+/** SPIKE (destructible asteroids): `wear` 0 (whole) .. 1 (one hit from breaking), drawn as cracks and a dimmer fill. */
+export interface AsteroidDraw extends CircleDraw { index: number; dot: boolean; wear?: number }
 export interface ShipDraw {
   index: number; x: number; y: number;
   /** Radians clockwise from north (the screen's up). */
@@ -274,12 +276,13 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   const planet = onScreen(map.planet.x, map.planet.y, map.planet.r) ? { x: pc.x, y: pc.y, r: map.planet.r * z } : null;
 
   const asteroids: AsteroidDraw[] = [];
-  map.asteroids.forEach((a, index) => {
-    const r = a.r * z;
-    if (r < DOT_MIN_PX || !onScreen(a.x, a.y, a.r)) return;
-    const p = toS(a.x, a.y);
-    asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX });
-  });
+  for (let index = 0, n = rockSlots(state); index < n; index++) {   // SPIKE: the live rock pool, not the seeded map
+    if (!rockAlive(state, index)) continue;
+    const a = rockAt(state, index), r = a.r * z;
+    if (r < DOT_MIN_PX || !onScreen(a.x, a.y, a.r)) continue;
+    const p = toS(a.x, a.y), full = rockHp(a.r);
+    asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX, wear: full > 1 ? (full - a.hp) / (full - 1) : 0 });
+  }
 
   const ships: ShipDraw[] = [];
   for (const i of input.ships) {

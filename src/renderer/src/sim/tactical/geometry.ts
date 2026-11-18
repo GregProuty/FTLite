@@ -1,7 +1,7 @@
 // Combat geometry without angles (spec §4): arcs by dot product, sides by cross product, line of sight by segment
 // against circle, and the room a missile strikes by its impact point (spec §5).
 import { hx, hy } from './direction';
-import { queryGrid } from './grid';
+import { rockAt, rocksNear } from './rocks';
 import { Room, type Ship, type TacticalState } from './state';
 
 /** Whether direction (dx, dy) lies inside the ±arc around heading h, given cos(arc) as a literal. A zero vector counts as inside. */
@@ -23,8 +23,8 @@ export function lineOfSight(state: TacticalState, ax: number, ay: number, bx: nu
   const p = state.map.planet;
   if (segmentNear(ax, ay, bx, by, p.x, p.y, p.r)) return false;
   const half = Math.max(Math.abs(bx - ax), Math.abs(by - ay)) / 2;
-  for (const k of queryGrid(state.grid, (ax + bx) / 2, (ay + by) / 2, half)) {
-    const a = state.map.asteroids[k]!;
+  for (const k of rocksNear(state, (ax + bx) / 2, (ay + by) / 2, half)) {
+    const a = rockAt(state, k);
     if (segmentNear(ax, ay, bx, by, a.x, a.y, a.r)) return false;
   }
   return true;

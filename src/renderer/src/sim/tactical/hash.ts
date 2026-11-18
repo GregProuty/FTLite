@@ -9,6 +9,7 @@ import { hashF64 } from '../../../../shared/hash';
 import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
 import { SHIP_CLASSES } from './defs';
 import { DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, HEADING_COUNT, HUNTER_TRAIL_TICKS, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
+import { ROCK_RESERVE, ROCK_STRIDE } from './rocks';
 import { emptyMissile, HunterMode, Outcome, type Missile, type MissileFlight, type Ship, type ShipSystems, type TacticalState } from './state';
 
 /** Values per missile pool entry: active, owner, then the flight x, y, vx, vy, heading, headingAcc, age (zeros when free). */
@@ -74,13 +75,18 @@ function spaceFields(asteroids: number, slots: number): ModuleField<TacticalStat
   for (let i = 0; i < slots; i++) {
     fields.push(bit(`ships.${i}.active`, (s) => s.ships[i]!.active, (s, v) => { s.ships[i]!.active = v; }));
     for (const key of BODY) fields.push(bodyField(i, key));
-    fields.push(vector(`ships.${i}.graceUntil`, asteroids + slots, (s) => s.ships[i]!.graceUntil));
+    fields.push(vector(`ships.${i}.graceUntil`, asteroids + ROCK_RESERVE + slots, (s) => s.ships[i]!.graceUntil));
   }
   for (let k = 0; k < slots; k++) fields.push(...missileFields(k));
   for (const key of HUNTER_HEAD) fields.push(key === 'working'
     ? flag('hunter.working', (s) => s.hunter.working, (s, v) => { s.hunter.working = v; })
     : scalar(`hunter.${key}`, (s) => s.hunter[key] as number, (s, v) => { (s.hunter as unknown as Record<string, number>)[key] = v; }));
   fields.push(vector('hunter.trail', 2 * HUNTER_TRAIL_TICKS, (s) => s.hunter.trail));
+  // SPIKE (destructible asteroids): the rock pool and its counters, last in the space module.
+  fields.push(vector('rocks', (asteroids + ROCK_RESERVE) * ROCK_STRIDE, (s) => s.rocks),
+    scalar('rockHits', (s) => s.rockHits, (s, v) => { s.rockHits = v; }),
+    scalar('rockSplits', (s) => s.rockSplits, (s, v) => { s.rockSplits = v; }),
+    scalar('rockShatters', (s) => s.rockShatters, (s, v) => { s.rockShatters = v; }));
   spaceCache.set(key, fields);
   return fields;
 }
@@ -163,7 +169,7 @@ export function hashTactical(s: TacticalState): string { return hashF64(flattenT
  *  modules' fields): the copy gets fresh containers of the state's shape, then every field's values are written into it.
  *  The map and the broad-phase grid are immutable after creation and are shared; the per-tick events are copied. −0 is kept. */
 export function cloneTacticalFromModule(s: TacticalState): TacticalState {
-  const copy: TacticalState = { ...s, rng: { s: 0 },
+  const copy: TacticalState = { ...s, rng: { s: 0 }, rocks: new Float64Array(s.rocks.length),
     ships: s.ships.map((b) => ({ ...b, graceUntil: new Int32Array(b.graceUntil.length) })) as TacticalState['ships'],
     systems: s.systems.map((y) => ({ ...y, rooms: [0, 0, 0] })) as TacticalState['systems'],
     missiles: s.missiles.map(emptyMissile) as TacticalState['missiles'],
@@ -199,6 +205,7 @@ const systemsRules = (slots: number): Readonly<Record<string, (v: number) => boo
 });
 // Built on first use: state.ts imports this file for cloneTactical, so its enums are read lazily.
 const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
+  rockHits: count, rockSplits: count, rockShatters: count,
   tick: count, seed: within(0, 0xffffffff), 'rng.s': within(0, 0xffffffff), outcome: within(Outcome.Running, Outcome.Draw),
   'hunter.mode': within(HunterMode.Hunt, HunterMode.Repair), 'hunter.room': room, 'hunter.timer': int, 'hunter.working': flagBit,
   'hunter.fireAt': (v) => Number.isInteger(v) && v >= -1, 'hunter.lastLaunch': int, 'hunter.trailHead': within(0, HUNTER_TRAIL_TICKS - 1), 'hunter.trail': any,

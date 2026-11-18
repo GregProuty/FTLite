@@ -5,6 +5,7 @@ import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { type Axes, cloneTactical, createTacticalState, missileOf, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { stepFlight } from '../src/renderer/src/sim/tactical/physics';
 import { flattenTactical, hashTactical, MISSILE_SLOT } from '../src/renderer/src/sim/tactical/hash';
+import { ROCK_RESERVE, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { predictPath } from '../src/renderer/src/sim/tactical/predict';
 import { PLANET_RADIUS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
 
@@ -113,13 +114,14 @@ describe('flatten key guard', () => {
     const st = createTacticalState(1);
     expect(Object.keys(st.ships[0]).sort()).toEqual(['active', 'asteroidHits', 'graceUntil', 'heading', 'headingAcc', 'planetHits', 'released', 'shipHits', 'skidBudget', 'skidSign', 'vx', 'vy', 'x', 'y']);
     expect(Object.keys(st.systems[0]).sort()).toEqual(['cls', 'fireHeld', 'freq', 'hull', 'laserBurst', 'laserBurstClock', 'laserCharge', 'laserHits', 'laserHold', 'laserTargeted', 'layersStripped', 'lock', 'magazine', 'magazineClock', 'missileHits', 'missilesLaunched', 'missilesLost', 'rooms', 'shieldClock', 'shields', 'shots', 'target', 'torpLock', 'torpRoom']);
-    expect(Object.keys(st).sort()).toEqual(['derelict', 'designated', 'events', 'grid', 'hostileAt', 'hunter', 'known', 'map', 'missiles', 'outcome', 'rng', 'scan', 'seed', 'ships', 'startTick', 'systems', 'tick', 'weakFreq']);
+    expect(Object.keys(st).sort()).toEqual(['derelict', 'designated', 'events', 'grid', 'hostileAt', 'hunter', 'known', 'map', 'missiles', 'outcome', 'rng', 'rockHits', 'rockShatters', 'rockSplits', 'rocks', 'scan', 'seed', 'ships', 'startTick', 'systems', 'tick', 'weakFreq']);
     expect(Object.keys(st.hunter).sort()).toEqual(['fireAt', 'lastLaunch', 'mode', 'room', 'timer', 'trail', 'trailHead', 'working']);
     const launched = createTacticalState(1);
     launchMissile(launched, 0);                                          // a missile as the launcher makes it
     expect(Object.keys(missileOf(launched, 0)!).sort()).toEqual(['active', 'age', 'heading', 'headingAcc', 'owner', 'vx', 'vy', 'x', 'y']);   // MISSILE_SLOT covers these
     // Space: 6 header values; per slot active, 12 body scalars and one per graceUntil body; a pool entry of MISSILE_SLOT
     // per slot; hunter 7 scalars + its trail. Ship: per slot 23 scalars (the burst pair, weapons update spec §1; laserTargeted, torpLock and torpRoom, FTL targeting spec §2) and the 3 rooms. Science (Sci-1): 17 values.
-    expect(flattenTactical(st).length).toBe(6 + 2 * (13 + st.map.asteroids.length + 2) + 2 * MISSILE_SLOT + 7 + st.hunter.trail.length + 2 * 26 + 17);
+    // SPIKE: the graceUntil bodies cover the rock pool (asteroids + ROCK_RESERVE), and the pool plus 3 counters close the space module.
+    expect(flattenTactical(st).length).toBe(6 + 2 * (13 + st.map.asteroids.length + ROCK_RESERVE + 2) + 2 * MISSILE_SLOT + 7 + st.hunter.trail.length + (st.map.asteroids.length + ROCK_RESERVE) * ROCK_STRIDE + 3 + 2 * 26 + 17);
   });
 });
