@@ -77,8 +77,10 @@ async function checkpoint(host) { return decode((await request(host, { kind: 'ch
 function tick(cp) { return cp.snapshot.header.tick; }
 function x(cp) { return cp.snapshot.values[offsets['crew.0.x']]; }
 async function released(host, label) {
-  const state = await until(counts, value => value.byHost[host.id]?.created === false || value.byHost[host.id]?.terminated, `${label} Worker termination`);
-  assert(state.byHost[host.id], `${label} host unknown`);
+  // Every caller's host spawned a Worker (the already-aborted start is asserted created === false on its own), and with no
+  // other host live, every page MessagePort the owners and page transports created must be closed or transferred.
+  const state = await until(counts, value => !!value.byHost[host.id]?.terminated && value.ports.open === 0, `${label} Worker termination and page port closure`);
+  assert(state.byHost[host.id].created, `${label} host spawned no Worker`);
   assert(BrowserWindow.getAllWindows().length === (visible && !visible.isDestroyed() ? 2 : 1), `${label} extra window leaked`);
 }
 async function dispose(host, label) {
@@ -138,7 +140,7 @@ async function run() {
     const host = await startHost(overrides);
     const settled = await host.settled();
     assert(!settled.ready && settled.exit === 'worker-protocol-failure', `${label}: ${settled.exit}`);
-    await released(host, label); evidence(label, 'actual Worker rejected initialization; owner stopped and terminated it; page transport disposed');
+    await released(host, label); evidence(label, 'actual Worker rejected initialization; owner stopped and terminated it; page transport disposed, zero page ports open');
   }
 
   visible = await page('producer', preload);
@@ -234,23 +236,23 @@ async function run() {
   await released(crashedHost, 'worker crash');
   const late = await ownerJs(`window.hostSmoke.owner.request(${crashedHost.id}, { kind: 'checkpoint' }).then(() => 'accepted', error => String(error.message))`);
   assert(late === 'disposed', `dead Worker request outcome: ${late}`);
-  evidence('worker-crash', 'Worker error event; worker-exit; page transport disposed; new requests rejected');
+  evidence('worker-crash', 'Worker error event; worker-exit; page transport disposed, zero page ports open; new requests rejected');
   const killedTransport = await ready(4); await request(killedTransport, { kind: 'start', initBytes: bytes(init) });
   await killedTransport.killTransport();
   const reason = await killedTransport.reason();
   assert(reason === 'transport-exit', `wrong transport loss reason ${reason}`);
   await released(killedTransport, 'transport kill');
-  evidence('transport-kill', `page transport controller disposed; ${reason}; Worker terminated by its owner`);
+  evidence('transport-kill', `page transport controller disposed; ${reason}; Worker terminated by its owner; zero page ports open`);
 
   const final = await counts();
   ipcMain.off('host-smoke-event', observePage); ipcMain.off('host-smoke-port-out', forward);
   visible.destroy(); owner.destroy();
-  assert(final.workers === final.terminated && BrowserWindow.getAllWindows().length === 0, 'owned Workers/windows survived');
+  assert(final.workers === final.terminated && final.ports.open === 0 && BrowserWindow.getAllWindows().length === 0, 'owned Workers/page ports/windows survived');
   assert(ipcMain.listenerCount('host-smoke-event') === 0 && ipcMain.listenerCount('host-smoke-port-out') === 0, 'owned listeners survived');
-  evidence('cleanup', `${final.terminated}/${final.workers} host Workers terminated; zero windows/harness listeners; exact profile cleanup checked by launcher`);
+  evidence('cleanup', `${final.terminated}/${final.workers} host Workers terminated; ${final.ports.created} page ports (${final.ports.closed} closed, ${final.ports.transferred} transferred, ${final.ports.open} open); zero windows/harness listeners; exact profile cleanup checked by launcher`);
   if (process.argv.includes('--inject-missing-evidence')) checks.splice(checks.indexOf('watchdog'), 1);
   writeFileSync(join(directory, 'report.json'), JSON.stringify({ electron: process.versions.electron, checks, details,
-    workers: final.workers, workerExits: final.terminated, windows: BrowserWindow.getAllWindows().length, osSuspend: 'NOT RUN' }));
+    workers: final.workers, workerExits: final.terminated, ports: final.ports.open, portsCreated: final.ports.created, windows: BrowserWindow.getAllWindows().length, osSuspend: 'NOT RUN' }));
 }
 
 app.on('web-contents-created', (_, contents) => {

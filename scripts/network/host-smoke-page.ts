@@ -71,6 +71,7 @@ window.addEventListener('message', event => {
 
 import { createWorkerHostPlatform, startWorkerHost, type HostProcessHandle, type WorkerLike } from '../../src/network/host/workerHost';
 import { base64ToBytes, bytesToBase64 } from '../../src/shared/bytes';
+import { trackPagePorts } from './page-port-tracker';
 
 // The owner role (Web-i): production Worker owners over the built production Worker, driven by main through
 // executeJavaScript. Bytes cross the executeJavaScript boundary as base64.
@@ -80,6 +81,8 @@ interface HostEntry { handle?: HostProcessHandle; exit?: string; starting: Promi
 const params = new URLSearchParams(location.search);
 if (params.get('role') === 'owner') {
   const workerUrl = params.get('worker')!;
+  // Before any host exists: every page MessagePort (transport, Worker and game channels) is observed from creation.
+  trackPagePorts();
   const suspends = new Set<() => void>(), resumes = new Set<() => void>();
   const lifecycle = { onSuspend(cb: () => void) { suspends.add(cb); return () => { suspends.delete(cb); }; }, onResume(cb: () => void) { resumes.add(cb); return () => { resumes.delete(cb); }; } };
   const hosts = new Map<number, HostEntry>();
@@ -151,7 +154,7 @@ if (params.get('role') === 'owner') {
       const byHost: Record<number, { created: boolean; terminated: boolean; errored: boolean }> = {};
       for (const [id, value] of hosts) byHost[id] = { created: !!value.worker, terminated: value.terminated, errored: value.errored };
       const created = [...hosts.values()].filter(v => v.worker);
-      return { workers: created.length, terminated: created.filter(v => v.terminated).length, byHost };
+      return { workers: created.length, terminated: created.filter(v => v.terminated).length, byHost, ports: trackPagePorts() };
     }
   };
   (window as any).hostSmoke = { owner };

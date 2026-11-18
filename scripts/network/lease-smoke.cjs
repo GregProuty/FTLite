@@ -70,7 +70,7 @@ async function run() {
   finally {
     const counts = page && !page.isDestroyed() ? await js('window.leaseSmoke.dispose()', 5000).catch(() => null) : null;
     if (page && !page.isDestroyed()) page.destroy();
-    report.workers = counts?.workers ?? 0; report.workerExits = counts?.terminated ?? 0; report.windows = BrowserWindow.getAllWindows().length;
+    report.workers = counts?.workers ?? 0; report.workerExits = counts?.terminated ?? 0; report.ports = counts?.ports ?? null; report.portsCreated = counts?.portsCreated ?? 0; report.windows = BrowserWindow.getAllWindows().length;
     writeFileSync(join(directory, 'native-report.json'), JSON.stringify(report, null, 2));
     app.exit(report.status === 'PASS' ? 0 : 1);
   }

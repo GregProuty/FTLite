@@ -77,8 +77,8 @@ async function main(): Promise<void> {
     const report = JSON.parse(readFileSync(join(temporary, 'report.json'), 'utf8'));
     if (!report || report.electron !== '37.10.3' || !Array.isArray(report.checks)
       || required.some(check => !report.checks.includes(check)) || report.osSuspend !== 'NOT RUN'
-      || report.workers !== report.workerExits || report.windows !== 0) throw Error('missing/invalid actual-process evidence');
-    console.log(`ACTUAL host runtime PASS: Electron ${report.electron}; ${report.checks.length} checks; ${report.workerExits}/${report.workers} Worker exits; ${(performance.now() - started).toFixed(0)}ms`);
+      || report.workers !== report.workerExits || report.ports !== 0 || !(report.portsCreated > 0) || report.windows !== 0) throw Error('missing/invalid actual-process evidence');
+    console.log(`ACTUAL host runtime PASS: Electron ${report.electron}; ${report.checks.length} checks; ${report.workerExits}/${report.workers} Worker exits; ${report.ports}/${report.portsCreated} page ports open; ${(performance.now() - started).toFixed(0)}ms`);
     console.log('Actual OS suspension: NOT RUN (trusted suspend hook exercised). WebRTC/internet: NOT RUN.');
   } finally {
     if (child) await stopTree(child);

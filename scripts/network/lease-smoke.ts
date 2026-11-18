@@ -21,7 +21,7 @@ const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catc
 function association() {
   const source = ['src/worker/authorityWorker.ts', 'src/worker/authorityWorkerMain.ts', 'src/network/utilityHost.ts', 'src/network/hostRuntime.ts', 'src/network/session/leaseGate.ts',
     'src/network/modes/sector.ts', 'src/network/modes/contracts.ts', 'src/shared/sessionLease.ts', 'src/shared/hostProcessProtocol.ts',
-    'src/network/host/workerHost.ts', 'src/network/transport/pageTransport.ts', 'scripts/network/lease-smoke-page.ts', 'scripts/network/lease-smoke-observer.ts', 'scripts/network/lease-smoke.html',
+    'src/network/host/workerHost.ts', 'src/network/transport/pageTransport.ts', 'scripts/network/lease-smoke-page.ts', 'scripts/network/lease-smoke-observer.ts', 'scripts/network/lease-smoke.html', 'scripts/network/page-port-tracker.ts',
     'src/renderer/src/authority/core.ts', 'src/renderer/src/authority/tickDriver.ts', 'src/renderer/src/authority/authority.ts',
     'src/renderer/src/authority/replay.ts', 'src/renderer/src/sim/replay.ts', 'electron.vite.config.ts', 'build/contentDigest.ts',
     'scripts/network/lease-smoke.ts', 'scripts/network/lease-smoke.cjs', 'scripts/network/lease-smoke-lifecycle.ts'];
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
       child!.once('exit', (code, signal) => { clearTimeout(timer); code === 0 && !signal ? done() : reject(Error('native-probe-failed')); });
     });
     details = JSON.parse(readFileSync(join(directory, 'native-report.json'), 'utf8'));
-    if (probe !== 'normal' || details.status !== 'PASS' || details.workers !== 2 || details.workerExits !== 2 || details.windows !== 0
+    if (probe !== 'normal' || details.status !== 'PASS' || details.workers !== 2 || details.workerExits !== 2 || details.ports !== 0 || !(details.portsCreated > 0) || details.windows !== 0
       || details.stallMs < 16000 || !details.delayedMatchingRejected || !details.freshPaused || !details.explicitResume) throw Error('missing-native-evidence');
     status = 'PASS'; diagnostic = 'controlled-grant-proof';
   } catch (error) {

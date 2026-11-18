@@ -1,10 +1,14 @@
 // TEST ONLY (Web-i Task 9): the lease smoke's owner page. Production Worker owners over the built production Worker,
 // each wrapped by a generated module that imports lease-smoke-observer first. Main drives it through executeJavaScript.
 import { createWorkerHostPlatform, startWorkerHost, type HostProcessHandle } from '../../src/network/host/workerHost';
+import { trackPagePorts } from './page-port-tracker';
+
+// Before any host exists: every page MessagePort is observed from creation.
+trackPagePorts();
 
 declare global { interface Window { leaseSmoke: typeof api } }
 const wrapper = new URLSearchParams(location.search).get('wrapper')!;
-const evidence = new Map<string, unknown>(), ports: MessagePort[] = [];
+const evidence = new Map<string, unknown>(), ports: MessagePort[] = [], evidencePorts: MessagePort[] = [];
 const hosts: { label: string; handle: HostProcessHandle; current: unknown }[] = [], workers: { label: string; terminated: boolean }[] = [];
 const lifecycle = { onSuspend: () => () => {}, onResume: () => () => {} };
 const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
@@ -14,7 +18,7 @@ function createWorker(label: string) {
     const worker = new Worker(wrapper, { type: 'module', name: label }), record = { label, terminated: false }; workers.push(record);
     const terminate = worker.terminate.bind(worker); worker.terminate = () => { record.terminated = true; terminate(); };
     // The first message the Worker sees, before the owner's initialize: its evidence port (consumed by the observer).
-    const channel = new MessageChannel();
+    const channel = new MessageChannel(); evidencePorts.push(channel.port1);
     channel.port1.addEventListener('message', event => { evidence.set(label, event.data); }); channel.port1.start();
     worker.postMessage({ kind: 'lease-smoke-evidence' }, [channel.port2]);
     return worker;
@@ -54,7 +58,10 @@ const api = {
   async dispose() {
     for (const host of hosts) await host.handle.dispose();
     for (const port of ports) port.close();
-    return { workers: workers.length, terminated: workers.filter(w => w.terminated).length };
+    for (const port of evidencePorts) port.close();
+    // Every page MessagePort, the owners' and page transports' included, must now be closed or transferred.
+    const pagePorts = trackPagePorts();
+    return { workers: workers.length, terminated: workers.filter(w => w.terminated).length, ports: pagePorts.open, portsCreated: pagePorts.created };
   }
 };
 window.leaseSmoke = api;
