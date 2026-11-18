@@ -16,7 +16,7 @@ import { createFx, pushGunHits } from '../src/renderer/src/render/tactical/fxMod
 import { combatModel, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
 import { gunSightDraw } from '../src/renderer/src/render/duel/leadModel';
 import { gunReason, laserSituation, refusal } from '../src/renderer/src/render/duel/situationModel';
-import { enemyCharge } from '../src/renderer/src/render/tactical/hitModel';
+import { enemyCharge, flashesFor, hitCallouts, pushHits } from '../src/renderer/src/render/tactical/hitModel';
 import type { ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import { chargeRow } from '../src/renderer/src/render/duel/readoutModel';
 import { SIDE, TABS_RIGHT } from '../src/renderer/src/render/duel/consoleLayout';
@@ -108,14 +108,30 @@ describe('the Flight frame on a gun class (Valkyrn spec §6.1, §8)', () => {
       expect([chargeRow(d).label, chargeRow(d).value]).toEqual(['HEAT', '25%']);
       const fx = createFx(), e = d.tactical.systems[0].target;
       const hits: ViewEvent[] = [
-        { kind: 'gunHit', ship: e, room: -1, stripped: false, hull: false, x: 8, y: 18 },    // a shield hit that strips nothing: spark only
-        { kind: 'gunHit', ship: e, room: -1, stripped: true, hull: false, x: 10, y: 20 },    // the strip: spark and pop
-        { kind: 'gunHit', ship: e, room: 1, stripped: false, hull: false, x: 11, y: 21 },    // a room hit that only wears: spark only
-        { kind: 'gunHit', ship: e, room: 1, stripped: false, hull: true, x: 12, y: 22 }      // the room hit that took a hull point: spark and -1
+        { kind: 'gunHit', ship: e, room: -1, stripped: false, hull: false, level: false, x: 8, y: 18 },    // a shield hit that strips nothing: spark only
+        { kind: 'gunHit', ship: e, room: -1, stripped: true, hull: false, level: false, x: 10, y: 20 },    // the strip: spark and pop
+        { kind: 'gunHit', ship: e, room: 1, stripped: false, hull: false, level: false, x: 11, y: 21 },    // a room hit that only wears: spark only
+        { kind: 'gunHit', ship: e, room: 1, stripped: false, hull: true, level: false, x: 12, y: 22 }      // the room hit that took a hull point: spark and -1
       ];
       pushGunHits(fx, hits);
       expect(fx.items.map((it) => it.kind)).toEqual(['spark', 'spark', 'pop', 'spark', 'spark']);
       expect(fx.floats.map((f) => f.text)).toEqual(['-1']);
+    } finally { disposeDuel(d); }
+  });
+  it('a gun round on an enemy Room flashes it; only the round that raised its level calls it out (review R1-F4)', () => {
+    const d = flying();
+    try {
+      const fx = createFx(), e = d.tactical.systems[0].target, rooms = d.tactical.systems[e]!.rooms;
+      const wear: ViewEvent = { kind: 'gunHit', ship: e, room: Room.Engines, stripped: false, hull: false, level: false, x: 0, y: 0 };
+      const shield: ViewEvent = { kind: 'gunHit', ship: e, room: -1, stripped: true, hull: false, level: false, x: 0, y: 0 };
+      expect(hitCallouts([wear, shield], d.tactical)).toEqual([]);
+      pushHits(fx, [wear, shield], d.tactical);
+      expect(flashesFor(fx.struck, e).map((f) => f.room)).toEqual([Room.Engines]);
+      expect(fx.callouts).toEqual([]);
+      rooms[Room.Engines] = 1;
+      expect(hitCallouts([{ ...wear, level: true }], d.tactical).map((c) => c.text)).toEqual(['GUN: ENGINES HIT']);
+      rooms[Room.Engines] = 2;
+      expect(hitCallouts([{ ...wear, level: true }], d.tactical).map((c) => [c.text, c.kind])).toEqual([['GUN: ENGINES OFFLINE', 'offline']]);
     } finally { disposeDuel(d); }
   });
 });

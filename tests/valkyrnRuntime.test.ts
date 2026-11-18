@@ -9,7 +9,7 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { emptyPresses, NO_HELD_FLAGS, type KeyAction, type KeySample } from '../src/renderer/src/app/duel/input';
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import { flightSeat, seatOf } from '../src/renderer/src/app/duel/controls';
-import { createContactController } from '../src/renderer/src/app/duel/contactController';
+import { createContactController, type ContactRequests } from '../src/renderer/src/app/duel/contactController';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { throttleThrust } from '../src/renderer/src/sim/duel/throttle';
@@ -37,7 +37,7 @@ function fakeTime() {
   };
 }
 const idle = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() });
-function rig(o: { cls?: number; onRound?: (r: DuelRoundRecord) => void } = {}) {
+function rig(o: { cls?: number; onRound?: (r: DuelRoundRecord) => void; takeContactRequests?: () => ContactRequests } = {}) {
   const time = fakeTime();
   let keys = idle(), steer: number | null = null, launches = 0, gun = false;
   const rt = createDuelRuntime({
@@ -45,7 +45,7 @@ function rig(o: { cls?: number; onRound?: (r: DuelRoundRecord) => void } = {}) {
     sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses() }; return k; },
     samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }),
     takeSteer: () => { const s = steer; steer = null; return s; }, takeLaunches: () => { const n = launches; launches = 0; return n; }, gunHeld: () => gun,
-    clearKeys: () => { keys = idle(); }
+    clearKeys: () => { keys = idle(); }, takeContactRequests: o.takeContactRequests
   });
   const press = (...actions: KeyAction[]): void => { const p = { ...keys.presses }; for (const a of actions) p[a]++; keys = { ...keys, presses: p }; };
   const hold = (h: Partial<Omit<KeySample, 'presses'>>): void => { keys = { ...keys, ...h }; };
@@ -123,6 +123,24 @@ describe('the Flight seat (Valkyrn spec §5, §5.1)', () => {
     expect(rt.held()[0]!.face).toBeUndefined();
     rt.dispose();
   });
+  it('1 and 3/4/5 on the gun fit flash NO LASER; the laser fit takes them (spec §6.1, review R1-F2)', () => {
+    let noLaser = false;
+    const { rt, tick, sit, hold } = rig({ takeContactRequests: () => { const out: ContactRequests = { designate: null, scan: null, ...(noLaser ? { noLaser: true as const } : {}) }; noLaser = false; return out; } });
+    sit(); tick(); rt.takeRefusals();
+    noLaser = true; tick();
+    expect(rt.takeRefusals()).toEqual([{ control: 'laser', reason: 'NO LASER' }]);
+    hold({ freqTo: 1 }); tick(); hold({ freqTo: null });
+    expect(rt.takeRefusals()).toContainEqual({ control: 'laser', reason: 'NO LASER' });
+    tick();
+    expect(rt.takeRefusals()).toEqual([]);
+    rt.dispose();
+    const fit = rig({ cls: classIndexById(VALKYRN_LASER_CLASS.id) });
+    fit.sit(); fit.tick(); fit.rt.takeRefusals();
+    fit.hold({ freqTo: 1 }); fit.tick(); fit.hold({ freqTo: null }); fit.tick();
+    expect(fit.rt.takeRefusals().some((r) => r.reason === 'NO LASER')).toBe(false);
+    expect(fit.rt.duel.tactical.systems[0].freq).toBe(1);
+    fit.rt.dispose();
+  });
   it('the right button launches a torpedo in range', () => {
     const { rt, tick, sit, launch } = rig();
     sit(); tick();
@@ -181,12 +199,16 @@ describe('the Flight console tabs, the sit card and the contact keys (Valkyrn sp
   it('on the Flight seat 2 picks the torpedo up; 1 only with a laser; T opens the window', () => {
     const sync = (c: ReturnType<typeof createContactController>, laser: boolean) => c.sync({ shown: true, station: 'flight', target: 1, active: () => true, epoch: 0, enemyKnown: 2, laser });
     const gun = createContactController(); sync(gun, false);
-    expect(gun.intercept('Digit1')).toBe(false);
+    expect(gun.intercept('Digit1')).toBe(true);   // taken for the NO LASER flash (spec §6.1), no pick-up
+    expect(gun.aimWeapon()).toBeNull();
+    expect(gun.takeRequests().noLaser).toBe(true);
+    expect(gun.takeRequests().noLaser).toBeUndefined();
     expect(gun.intercept('Digit2')).toBe(true);
     expect(gun.aimWeapon()).toBe('torpedo');
     const fit = createContactController(); sync(fit, true);
     expect(fit.intercept('Digit1')).toBe(true);
     expect(fit.aimWeapon()).toBe('laser');
+    expect(fit.takeRequests().noLaser).toBeUndefined();
     const t = createContactController(); sync(t, false);
     expect(t.intercept('KeyT')).toBe(true);
     expect(t.state()).toMatchObject({ contact: 0 });

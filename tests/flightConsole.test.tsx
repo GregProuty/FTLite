@@ -42,6 +42,15 @@ describe('the Flight panel (Valkyrn spec §5, §8)', () => {
     expect(FLIGHT).toEqual({ x: STATION.x + STATION.w + 12, y: 720 - 12 - 166, w: 300, h: 166 });
     expect(flightCard(1).x).toBe(flightCard(0).x + 138 + 8);
   });
+  it('a laser key on the gun fit reads NO LASER on the reason line (spec §6.1, review R1-F2)', () => {
+    const d = seated(), ui = makeUi();
+    try {
+      const flight = consoleModel({ duel: d, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null, refused: { control: 'laser', reason: 'NO LASER', flash: true } })!.flight!;
+      expect(flight.weapons.refused).toMatchObject({ control: 'laser', reason: 'NO LASER' });
+      render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><FlightStation flight={flight} /></UiContext.Provider>);
+      expect(document.querySelector('[data-text="NO LASER"]')).not.toBeNull();
+    } finally { disposeDuel(d); }
+  });
   it('renders GUN and TORPEDO; a TORPEDO click picks it up, a right-click clears its room', () => {
     const d = seated(), ui = makeUi(), pickUp = vi.spyOn(ui.actions.contact, 'pickUp'), torpLock = vi.spyOn(ui.actions.console, 'torpLock');
     try {

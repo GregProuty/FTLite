@@ -160,6 +160,8 @@ Allowed differences: Navigation and Weapons are one combined seat (§5); rooms w
 
 There is no click-to-heading on the Flight seat: the right button is the torpedo, so the Flight seat never sends
 `heading`, and the view has no HDG marker (the aim bearing is the cursor).
+While a weapon is picked up (2, or the card), the right button only cancels the pick-up, as FTL's right-click does, and
+launches nothing.
 
 ## 6. Flight (sim)
 

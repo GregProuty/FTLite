@@ -46,7 +46,8 @@ export const FlightStation = memo(function FlightStation({ flight, aim = null }:
       </>
     );
   };
-  const reason = refused !== null ? `${refused.control === 'launch' ? 'TORPEDO' : gun ? 'GUN' : 'LASER'}: ${refused.reason}`
+  const reason = refused?.control === 'laser' ? refused.reason   // Valkyrn spec §6.1: NO LASER
+    : refused !== null ? `${refused.control === 'launch' ? 'TORPEDO' : gun ? 'GUN' : 'LASER'}: ${refused.reason}`
     : !gun && w.laserReason && w.laserReason !== 'FIRING' ? `LASER: ${w.laserReason}` : null;
   return (
     <>

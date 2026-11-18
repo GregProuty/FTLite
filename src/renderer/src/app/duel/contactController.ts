@@ -25,7 +25,9 @@ export interface ContactSync {
 /** What the clicks and keys asked the duel mode to send since the last take: a designation (−1, 0 or 1) and a scan.
  *  `torpStep` (present only when non-zero, FTL targeting spec §1): E and Q while the torpedo is picked up step its own
  *  target room this many times (+ next, − previous; see stepTorpRoom). */
-export interface ContactRequests { designate: number | null; scan: ContactId | null; torpStep?: number }
+export interface ContactRequests { designate: number | null; scan: ContactId | null; torpStep?: number;
+  /** Valkyrn spec §6.1 (present only when true): 1 was pressed on the Flight seat of a class without a laser. */
+  noLaser?: true }
 export interface ContactController {
   state(): ContactState | null;
   /** A map click: on Helm or Weapons open on the contact, switch to it (disarmed), or close when it is the shown one; on
@@ -71,7 +73,7 @@ export interface ContactController {
 export type ContactActions = Pick<ContactController, 'close' | 'arm' | 'cancelAim' | 'pick' | 'scan' | 'pickUp'>;
 
 export function createContactController(): ContactController {
-  let st: ContactState | null = null, designate: number | null = null, scanned: ContactId | null = null, weapon: Weapon = 'laser', torpStep = 0;
+  let st: ContactState | null = null, designate: number | null = null, scanned: ContactId | null = null, weapon: Weapon = 'laser', torpStep = 0, noLaser = false;
   // What the last sync recorded (the last drawn frame).
   let allowed = false, station: ConsoleStation | null = null, epoch: number | null = null, enemyKnown = 2, laserFit = true;
   const science = (): boolean => station === 'science';
@@ -129,6 +131,7 @@ export function createContactController(): ContactController {
       if (code === 'KeyS' && science()) { c.scan(); return true; }
       const w = WEAPON_CODES[code];
       if (w && (station === 'weapons' || (station === 'flight' && (w === 'torpedo' || laserFit)))) { c.pickUp(w); return true; }   // Valkyrn spec §5.1: 1 only with the laser fit
+      if (w === 'laser' && station === 'flight') { noLaser = true; return true; }   // §6.1: without it, the refusal flash reads NO LASER
       if ((code === 'KeyE' || code === 'KeyQ') && st?.aim && (station === 'weapons' || station === 'flight')) {
         if (weapon === 'torpedo') { torpStep += code === 'KeyE' ? 1 : -1; return true; }   // the torpedo stays picked up
         st = { ...st, aim: false };   // the laser's pick-up drops; the key steps the laser's target
@@ -137,8 +140,8 @@ export function createContactController(): ContactController {
       return false;
     },
     takeRequests() {
-      const out: ContactRequests = { designate, scan: scanned, ...(torpStep !== 0 ? { torpStep } : {}) };
-      designate = null; scanned = null; torpStep = 0;
+      const out: ContactRequests = { designate, scan: scanned, ...(torpStep !== 0 ? { torpStep } : {}), ...(noLaser ? { noLaser: true as const } : {}) };
+      designate = null; scanned = null; torpStep = 0; noLaser = false;
       return out;
     }
   };

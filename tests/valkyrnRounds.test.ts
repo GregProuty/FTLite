@@ -145,11 +145,17 @@ describe('hits (spec §7.2)', () => {
         .toEqual([70 - Math.floor(hits / perHull), hits % perHull, level, level < 2 ? onWeapons % perLevel : 0]);
     };
     // On Weapons from level 0, past a hull point and past level 2.
-    while (hits < Math.max(perHull + 1, 2 * perLevel + 1)) { expect(across(st, -10)).toHaveLength(1); hits++; onWeapons++; expectAfter(); }
+    while (hits < Math.max(perHull + 1, 2 * perLevel + 1)) {
+      const before = s.rooms[Room.Weapons], ev = across(st, -10);
+      expect(ev).toHaveLength(1); hits++; onWeapons++; expectAfter();
+      expect(ev[0]!.level, `level flag after ${hits} hits`).toBe(s.rooms[Room.Weapons] !== before);   // the view's callout: only a level change
+    }
     // On the Engines at level 2: the level and its wear stay; only the hull counts.
     s.rooms[Room.Engines] = 2;
     for (let k = 0; k < perHull; k++) {
-      expect(across(st, 10)).toHaveLength(1); hits++;
+      const ev = across(st, 10);
+      expect(ev).toHaveLength(1); hits++;
+      expect(ev[0]!.level).toBe(false);
       expect([s.rooms[Room.Engines], s.gunRoomWear[Room.Engines]]).toEqual([2, 0]);
       expectAfter();
     }

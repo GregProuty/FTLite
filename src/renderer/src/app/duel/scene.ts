@@ -40,6 +40,7 @@ import type { AimSample, HeldFlags } from './input';
 import type { ContactController } from './contactController';
 import type { MapRequests } from './mapRequests';
 import { headingOf, pickRadius } from '../../render/tactical/tacticalModel';
+import { flightPointer } from './flightPointer';
 import { flightAlert, type RefusedControl } from '../../render/duel/situationModel';
 import { pingAllowed, pushPing, stepPings, type Ping, type PingRequest } from '../../render/duel/pingModel';
 import type { TorpedoTone } from './duelAudio';
@@ -156,6 +157,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
   // Feel-ii: the pings on show (§2.7) and this screen's last own ping (ms, Single player's one-a-second), the latest refusal (§2.8).
   const pings: Ping[] = [];
   let lastPing: number | null = null, refused: (Refusal & { at: number }) | null = null;
+  let lastAimed: string | null = null;   // the weapon picked up on the last drawn frame (Valkyrn spec §5.1: right button)
   return {
     /** One frame from `source`; `dt` in seconds. Returns the station of the console drawn, or null when none (Artemis
      *  spec §6.2: the mode clears the console's holds when it changes). */
@@ -188,13 +190,6 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         if (aim.held && !onShip) preview = h;
         if (aim.press || aim.release) options.requests?.heading(h);
       }
-      // Valkyrn spec §5.1: on the Flight map the nose follows the pointer (its bearing from the own ship's drawn marker, every
-      // frame; on the ship itself the last bearing stands), and the right button launches the torpedo.
-      if (onMap && station === 'flight' && view === 'flight' && running && !overlay.layerPaused) {
-        const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), s = worldToScreen(cam!, viewport, b.x, b.y), p = options.pointer?.() ?? null;
-        if (p && Math.hypot(p.x - s.x, p.y - s.y) > pickRadius(cam!.zoom)) options.requests?.steer(headingOf(p.x - s.x, p.y - s.y));
-        if (aim?.press) options.requests?.launch();
-      }
       // Feel-ii §2.7: a ping (a middle click, or G at the pointer) on a console map: on the enemy when it is under the
       // pointer, else the map point. Single player shows it at once (one a second); online it goes out and comes back.
       const pingAt = options.takePingAt?.() ?? null, nowS = performance.now() / 1000;
@@ -214,6 +209,17 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const shown = contact
         ? contact.sync({ shown: onMap, station, target: d.tactical.systems[CREW_SLOT]!.target, active: (slot) => d.tactical.ships[slot]?.active === true, epoch: source.epoch(), enemyKnown: d.tactical.known[Contact.Enemy], designated: d.tactical.designated, laser: classOf(d.tactical, CREW_SLOT).slots.laser !== null })
         : false;
+      // Valkyrn spec §5.1, §6.2: on the Flight map the nose follows the pointer (its bearing from the own ship's drawn marker,
+      // every frame) while it is over the open map; on the ship itself or over a console block the last bearing stands. The
+      // right button launches the torpedo, except while a weapon is picked up: then it only cancels the pick-up (the
+      // targeting line's own listener has already dropped it, so the last frame's pick-up counts too).
+      if (onMap && station === 'flight' && view === 'flight' && running && !overlay.layerPaused) {
+        const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT);
+        const f = flightPointer({ pointer: options.pointer?.() ?? null, ship: worldToScreen(cam!, viewport, b.x, b.y), zoom: cam!.zoom, contactShown: shown,
+          press: aim?.press === true, aimed: lastAimed !== null || (contact?.aimWeapon() ?? null) !== null });
+        if (f.steer !== null) options.requests?.steer(f.steer);
+        if (f.launch) options.requests?.launch();
+      }
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       const events = source.drainEvents();
       pushEvents(fx, events); pushHits(fx, events, d.tactical); pushGunHits(fx, events);   // Valkyrn spec §7.4: the gun's sparks, pops and -1   // duel polish i spec §B: the callouts and the struck-room flashes
@@ -234,6 +240,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         if (e?.active) zoomTo(source.cameras[viewCamera(sitSeat)], frameZoom(e.x - own.x, e.y - own.y, viewport, CONSOLE_RESERVE.left, CONSOLE_RESERVE.right));
       } else if (sitSeat !== seat) { seat = sitSeat; carded = false; }   // a Tab, a stand or Science: no new sit
       const held = source.uiHeld(), aimed = contact?.aimWeapon() ?? null;
+      lastAimed = aimed;
       if (seat === 'helm' && (held.left || held.right || held.fire)) goalUsed = true;
       if (seat === 'weapons' && aimed === 'laser') goalUsed = true;
       if (seat !== null && (held.left || held.right || held.fire || held.up || held.down || aimed !== null || source.throttle() !== sitThrottle)) acted = true;

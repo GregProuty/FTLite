@@ -171,7 +171,9 @@ export function evadeDir(t: TacticalState): { x: number; y: number } | null {
 }
 
 /** The console controls a refusal can name (the buttons, and their keys). */
-export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading';
+export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser';
+/** Valkyrn spec §6.1: the reason a laser key (1, 3/4/5) gives on a class without a laser (the `laser` control, Flight only). */
+export const NO_LASER = 'NO LASER';
 /** Feel-ii §2.8: why the sim would refuse a control's command (or do nothing with it), or null when it would act. FIRE is
  *  laserCharge (the gunner, then canCharge: no torpedo flying, then Weapons offline, where it is admitted to no effect);
  *  LAUNCH is missileLaunch (the gunner, then canLaunch's checks in its order: flying, the magazine, Weapons, range); the

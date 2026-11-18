@@ -21,7 +21,7 @@ describe('the online view (spec §7.3)', () => {
     expect(before[0]!.gunHits).toBe(0);
     st.systems[0].gunHits += 3;
     const hits = gapEvents(before, [null, null], st).filter((e) => e.kind === 'gunHit');
-    expect(hits).toEqual(Array.from({ length: 3 }, () => ({ kind: 'gunHit', ship: 1, room: -1, stripped: false, hull: false, x: st.ships[1].x, y: st.ships[1].y })));
+    expect(hits).toEqual(Array.from({ length: 3 }, () => ({ kind: 'gunHit', ship: 1, room: -1, stripped: false, hull: false, level: false, x: st.ships[1].x, y: st.ships[1].y })));
     expect(gapEvents([duelCounters(createTacticalState(5), 0), duelCounters(createTacticalState(5), 1)], [null, null], createTacticalState(5)).some((e) => e.kind === 'gunHit')).toBe(false);
   });
 });

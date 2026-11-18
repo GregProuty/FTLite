@@ -26,7 +26,7 @@ import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel
 import { consoleInReach, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
 import type { ContactRequests } from './contactController';
 import type { Refusal } from './scene';
-import { refusal } from '../../render/duel/situationModel';
+import { NO_LASER, refusal } from '../../render/duel/situationModel';
 import { accumulateWheel, emptyPresses, frequencyRequest, helmAxes, NO_HELD_FLAGS, throttleRequest, WHEEL_IDLE_MS, type HeldFlags, type KeySample, type PointerSample } from './input';
 
 export type PauseReason = 'user' | 'blur' | 'hidden' | 'suspend';
@@ -404,7 +404,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
         if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });
         const freq = frequencyRequest(freqBase(), k.freqTo);
         if (freq !== null) queue({ kind: 'laserFrequency', freq });
-      }
+      } else if (requests.noLaser || (k.freqTo !== undefined && k.freqTo !== null) || (k.lockTo !== undefined && k.lockTo !== null)) refuse('laser', NO_LASER);   // §6.1: 1 or 3/4/5 on the gun fit
       if (p.launch + launches > 0) { queue({ kind: 'missileLaunch' }); const why = refusal(d, 'launch'); if (why) refuse('launch', why); }   // F or the right button
       const gun = !shipView && hasGun() && (deps.gunHeld?.() ?? false);
       if (gun && !gunPrev) { const why = refusal(d, 'fire'); if (why) refuse('fire', why); }   // a dead trigger says why (Feel-ii §2.8)

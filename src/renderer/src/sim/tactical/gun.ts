@@ -87,7 +87,7 @@ export function gunRoomOf(state: TacticalState, target: number, ox: number, oy: 
 /** Owner's round on (ox, oy) → (nx, ny) hit ship k (spec §7.2). Shielded: one wear toward a layer; at hitsPerLayer the
  *  layer goes (shieldClock 0) and the wear is 0. Unshielded: one hull wear (every hitsPerHull, hull −1) and one wear on
  *  the struck Room (every hitsPerLevel, its level +1 to 2; at level 2 its wear stays 0). The owner counts the hit; a
- *  gunHit event marks the closest-approach point. */
+ *  gunHit event marks the closest-approach point, and `level` says whether it raised the struck Room's level. */
 function gunHit(state: TacticalState, owner: number, k: number, ox: number, oy: number, nx: number, ny: number): void {
   const g = classOf(state, owner).slots.gun, t = state.systems[k]!, b = state.ships[k]!;
   if (!g) return;
@@ -96,15 +96,16 @@ function gunHit(state: TacticalState, owner: number, k: number, ox: number, oy: 
   if (t.shields > 0) {
     const stripped = ++t.gunWear >= g.hitsPerLayer;
     if (stripped) { t.shields--; t.shieldClock = 0; t.gunWear = 0; }
-    state.events.push({ kind: 'gunHit', ship: k, room: -1, stripped, hull: false, x, y });
+    state.events.push({ kind: 'gunHit', ship: k, room: -1, stripped, hull: false, level: false, x, y });
     return;
   }
   const room = gunRoomOf(state, k, ox, oy, nx, ny);
   const hull = ++t.gunHull >= g.hitsPerHull;   // this hit takes a hull point (spec §7.3: only it is the terminal cause gun)
   if (hull) { t.hull = Math.max(0, t.hull - 1); t.gunHull = 0; }
-  if (t.rooms[room] < 2) { if (++t.gunRoomWear[room] >= g.hitsPerLevel) { t.rooms[room]++; t.gunRoomWear[room] = 0; } }
+  let level = false;   // this hit raised the Room's level (the view's ROOM HIT / OFFLINE callout)
+  if (t.rooms[room] < 2) { if (++t.gunRoomWear[room] >= g.hitsPerLevel) { t.rooms[room]++; t.gunRoomWear[room] = 0; level = true; } }
   else t.gunRoomWear[room] = 0;
-  state.events.push({ kind: 'gunHit', ship: k, room, stripped: false, hull, x, y });
+  state.events.push({ kind: 'gunHit', ship: k, room, stripped: false, hull, level, x, y });
 }
 
 /**
