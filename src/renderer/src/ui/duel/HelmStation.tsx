@@ -38,14 +38,14 @@ export const HelmStation = memo(function HelmStation({ helm }: { helm: HelmPanel
     <>
       <Panel x={STATION.x} y={top} w={STATION.w} h={STATION.h.helm} />
       <PixelText text="THROTTLE" x={x0} y={y0} size={FONT_NATIVE} tint={dim} />
-      {/* Feel-ii §1.4: the wheel over the throttle steps its presets (up is more), a notch per THROTTLE_WHEEL_PX. */}
+      {/* Feel-ii §1.4: the wheel over the throttle steps its presets (up is more), a notch per THROTTLE_WHEEL_PX; the
+          wrapper holds the notch buttons too, so wheeling over a notch steps it as well. */}
       <div data-testid="console-throttle-wheel" onWheel={(e) => {
         wheel.current += e.deltaMode === 1 ? e.deltaY * 100 / 3 : e.deltaY;
         const n = Math.trunc(wheel.current / THROTTLE_WHEEL_PX);
         if (n !== 0) { wheel.current -= n * THROTTLE_WHEEL_PX; actions.console.throttle(Math.max(-1, Math.min(4, set - n))); }
       }}>
         <Box x={x0} y={y0} w={124} h={186} style={{ pointerEvents: 'auto' }} />
-      </div>
       {NOTCHES.map((n, k) => {
         const y = y0 + 18 + k * 26, filled = n.level >= 1 && n.level <= set;
         return (
@@ -57,6 +57,7 @@ export const HelmStation = memo(function HelmStation({ helm }: { helm: HelmPanel
           </Fragment>
         );
       })}
+      </div>
       <Box x={STATION.x + 130} y={y0} w={1} h={186} style={{ background: hex(crt ? CRT.dim : BAR_OFF) }} />
       <PixelText text={`HDG ${String(helm.heading).padStart(3, '0')}${holdDeg >= 0 ? ` TO ${String(holdDeg).padStart(3, '0')}` : ''}`} x={rx} y={y0} size={FONT_NATIVE} tint={holdDeg >= 0 ? main : dim} />
       <PixelText text={`SPD ${helm.speed}`} x={rx} y={y0 + 18} size={FONT_SIZE} tint={main} />

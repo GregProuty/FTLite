@@ -73,11 +73,12 @@ describe('the Helm block (Feel-ii §1.1, §1.4)', () => {
     act(() => duel.frame(view(helm({ holdHeading: -1 }))));
     expect(texts()).toContain('HDG 055');
   });
-  it('the wheel over the throttle steps a preset a notch (up is more), clamped to REV..100', () => {
+  it('the wheel over the throttle (its notch buttons too) steps a preset a notch (up is more), clamped to REV..100', () => {
     const { duel, input } = mount();
     expect(THROTTLE_WHEEL_PX).toBe(WHEEL_NOTCH_PX);
     act(() => duel.frame(view(helm({ throttle: 2 }))));
-    const wheel = document.querySelector('[data-testid="console-throttle-wheel"]') as HTMLElement;
+    const wheel = btn('throttle-50');   // a notch button, not the backing box: the wheel works over the notches
+    expect(wheel).not.toBeNull();
     fireEvent.wheel(wheel, { deltaY: -100, deltaMode: 0 });
     fireEvent.wheel(wheel, { deltaY: 60, deltaMode: 0 });
     expect(input.throttle.mock.calls).toEqual([[3]]);
