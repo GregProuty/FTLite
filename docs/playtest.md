@@ -4,6 +4,8 @@
 
 Replaces the Demo-i script (2026-11-13). Claude's own playtest and its findings: `docs/playtest-report-2026-11-13.md`.
 
+For the online duel with three or four players (Helm, Weapons, Science, and a fourth on foot), use `docs/playtest-duel.md`.
+
 Date:
 Players (who sat where):
 Build (commit):
