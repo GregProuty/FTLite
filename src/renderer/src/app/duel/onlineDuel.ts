@@ -24,7 +24,7 @@ import { createKeyToggle, latencyOverlayLines, type KeyTarget } from '../../rend
 import { snapBack } from '../../render/tactical/camera';
 import type { Renderer } from '../../render/renderer';
 import { CONTACT_MAX_LEVEL, missileOf } from '../../sim/tactical/state';
-import { consoleInReach, cycleLock, repairInReach, seatOf } from './controls';
+import { consoleInReach, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
 import { createDuelKeyboard, createPointerSource, emptyPresses, NO_HELD_FLAGS, throttleRequest, type ConsoleInput, type EventSource, type KeySample } from './input';
 import { consoleChange } from './consoleChange';
 import { createContactController, type ContactActions, type ContactRequests } from './contactController';
@@ -126,9 +126,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   }
   function stopInput(): void {
     if (client && descriptor && producing) {
-      client.neutralize(descriptor.seatId);
-      const d = client.state();
-      if (d && seatOf(d, descriptor.seatId) === 'weapons' && d.tactical.systems[0].fireHeld) send({ kind: 'laserCharge', held: false });   // let go of a held charge
+      client.neutralize(descriptor.seatId);   // FTL targeting spec §2: the crew's Space is a single press, so there is no held charge to let go of
     }
     producing = false; keyboard.clear(); pointer.clear();
   }
@@ -207,11 +205,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     }
     if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) send({ kind: 'laserLock', room: k.lockTo });   // a room click or a card's clear
     if (k.torpTo !== undefined && k.torpTo !== null && k.torpTo >= -1 && k.torpTo <= 2) send({ kind: 'torpLock', room: k.torpTo });   // the torpedo's
-    if (requests.torpStep) {   // E / Q while the torpedo is picked up
-      let room = sys.torpLock >= 0 ? sys.torpLock : sys.lock;
-      for (let n = 0; n < Math.abs(requests.torpStep); n++) room = cycleLock(room, requests.torpStep > 0 ? 1 : -1);
-      send({ kind: 'torpLock', room });
-    }
+    if (requests.torpStep) send({ kind: 'torpLock', room: stepTorpRoom(sys.torpLock, requests.torpStep) });   // E / Q while the torpedo is picked up: its own target
     // Sci-1 spec §7.4: a one-shot edge, sent as it comes (the lagging replica is no base, a quick undo would be dropped); the sim answers noop to an unchanged value
     if (k.freqTo !== undefined && k.freqTo !== null && Number.isInteger(k.freqTo) && k.freqTo >= 0 && k.freqTo <= 2) send({ kind: 'laserFrequency', freq: k.freqTo });
     // FTL targeting spec §2: Space is a single press that fires a full laser; there is no release to send.

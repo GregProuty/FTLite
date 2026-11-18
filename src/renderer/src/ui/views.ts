@@ -15,6 +15,9 @@ export interface DuelUiView { readout: { rows: readonly ReadoutRow[]; help: read
   console?: ConsoleView | null;
   /** The contact window (enemy ship window spec §6.5): set while it is shown; absent or null draws no window. */
   contact?: ContactView | null;
+  /** FTL targeting spec §1: the map pointer's last position in internal px (the app's pointer source), set only while a
+   *  weapon is picked up, so the targeting line can draw before the mouse next moves; absent or null when unknown. */
+  pointer?: { x: number; y: number } | null;
   /** The ship HUD (duel polish i spec §E): set on the SHIP view only (standing, console.station 'ship'); absent or null draws none. */
   hud?: ShipHudView | null }
 export interface FlightUiView { feel: readonly (readonly [string, string])[]; banners: Banners; overlay: MapOverlayView | null; crt: boolean }

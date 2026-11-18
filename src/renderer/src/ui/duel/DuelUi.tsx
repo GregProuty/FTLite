@@ -42,7 +42,7 @@ export function DuelUi() {
           {duel.console?.weapons && <WeaponsStation weapons={duel.console.weapons} aim={duel.contact?.aimWeapon ?? null} />}
           {duel.console?.science && <ScienceStation science={duel.console.science} />}
           {duel.contact && <ContactWindow contact={duel.contact} />}
-          {duel.contact?.aimWeapon && duel.console?.weapons && <TargetingLine contact={duel.contact} />}
+          {duel.contact?.aimWeapon && duel.console?.weapons && <TargetingLine contact={duel.contact} seed={duel.pointer ?? null} />}
           {duel.hud && <ShipHud hud={duel.hud} />}
           <Banners banners={duel.banners} cx={duel.console && duel.console.station !== 'ship' ? (CONSOLE_RESERVE.left + INTERNAL_W - CONSOLE_RESERVE.right) / 2 : undefined} />
         </CrtGlow>

@@ -2,11 +2,11 @@
 // and scan level, as screen-ready data in internal px: the title and the SCAN button; for the enemy at Level 1 or more
 // its shields, hull, outline and rooms fitted to the drawing box (labels and damage looks only at Level 2), the laser's
 // lock room (Level 2) and the Weapons station's weapon list; and the info lines (the hostility line, Level 2's readings,
-// the derelict's loot, trap, range and salvage hint). `t` is the scene's presentation clock, so the window blinks with
+// the derelict's loot, trap, range and salvage hint; the unknown enemy's Level 1 scan line). `t` is the scene's presentation clock, so the window blinks with
 // the map frame for frame; React draws only what this returns.
 import { derelictPos } from '../../sim/tactical/science';
 import { classOf, Contact, CREW_SLOT, missileOf, targetOf, type TacticalState } from '../../sim/tactical/state';
-import { HUNTER_MISSILE_COOLDOWN_TICKS, SALVAGE_TICKS } from '../../sim/tactical/tuning';
+import { HUNTER_MISSILE_COOLDOWN_TICKS, SALVAGE_TICKS, SCAN_UNITS } from '../../sim/tactical/tuning';
 import { ALERT_BLINK_HZ, blink, CRT, DAMAGE_BLINK_HZ, HATCH_ANGLE, HATCH_SPACING, roomLevel, roomLook } from '../tactical/crtTheme';
 import { hatchSegments } from '../tactical/dashModel';
 import { HULLS, hullFor, roomCentre } from '../tactical/hullModel';
@@ -16,6 +16,10 @@ import { FREQ_NAMES, hostilityLine, LOOT_NAMES, scanButton, type ScanButton } fr
 
 /** The room labels, rooms[0] Weapons, rooms[1] Shields, rooms[2] Engines (the lock buttons' words). */
 export const ROOM_LABELS = ['WEAP', 'SHLD', 'ENG'] as const;
+/** The unknown enemy's line while its Level 1 scan runs (FTL targeting spec §1: a pick-up below Level 1 starts it). */
+export const SCANNING_ROOMS = 'SCANNING: ROOMS AT LEVEL 1';
+/** The unknown enemy's line with a weapon picked up and no scan running (the scan not sent, or not arrived yet). */
+export const ROOMS_NEED_SCAN = 'ROOMS AT SCAN LEVEL 1';
 /** Internal px kept clear between the outline and the drawing box's edges. */
 export const CONTACT_PAD = 8;
 
@@ -112,7 +116,13 @@ export function contactModel(i: ContactModelInput): ContactView | null {
   const slot = targetOf(state, CREW_SLOT), body = state.ships[slot];   // the enemy is drawn through the hunter's slot
   if (!body || !body.active) return null;
   const level = state.known[Contact.Enemy];
-  if (level < 1) return bare(Contact.Enemy, 'UNKNOWN CONTACT');
+  if (level < 1) {   // FTL targeting spec §1: a weapon picked up here waits for the rooms, and the window says the scan is coming
+    const picked = i.aim && i.station === 'weapons' && i.weapons !== null, s = state.scan;
+    const lines = s.contact === Contact.Enemy && s.level === 1
+      ? [line(SCANNING_ROOMS, CRT.main, Math.min(1, s.progress / SCAN_UNITS[1]!))]
+      : picked ? [line(ROOMS_NEED_SCAN, CRT.mid)] : [];
+    return { ...bare(Contact.Enemy, 'UNKNOWN CONTACT', lines), aim: picked, aimWeapon: picked ? i.weapon ?? 'laser' : null };
+  }
   const sys = state.systems[slot]!, cls = classOf(state, slot), crewSys = state.systems[CREW_SLOT], full = level >= 2;
   const hull = hullFor(false), shape = HULLS[hull], at = contactFit(shape.outline, box);
   const place = (poly: readonly number[]): number[] => {

@@ -8,6 +8,7 @@ import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
 import { REPAIR_RATE_SOLO } from '../src/renderer/src/sim/duel/tuning';
 import { emptyPresses, NO_HELD_FLAGS, type KeyAction, type KeySample, type PointerSample } from '../src/renderer/src/app/duel/input';
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
+import { createContactController } from '../src/renderer/src/app/duel/contactController';
 import { followingSeed } from '../src/renderer/src/sim/duel/seeds';
 import { ZOOM_DEFAULT, ZOOM_STEP } from '../src/renderer/src/render/tactical/camera';
 import { interpolatedMissile } from '../src/renderer/src/render/tactical/fxModel';
@@ -205,7 +206,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     expect(rt.lastResults()).toEqual([]);
     rt.dispose();
   });
-  it('the targets (FTL targeting spec §1): a room click sets a target, a card clear sends −1, a torpStep steps the torpedo target from the laser lock', () => {
+  it('the targets (FTL targeting spec §1): a room click sets a target, a card clear sends −1, a torpStep steps the torpedo target alone (from none: E to 0, Q to 2)', () => {
     const { rt, hold, ask, tick } = rig();
     rt.frame(1 / 60); tick();
     const ship = rt.duel.tactical.systems[0];
@@ -217,8 +218,22 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     g.hold({ lockTo: -1 }); g.tick(); expect([s.lock, s.laserTargeted]).toEqual([0, false]);
     g.hold({ torpTo: 2 }); g.tick(); expect(s.torpLock).toBe(2);
     g.hold({ torpTo: -1 }); g.tick(); expect(s.torpLock).toBe(-1);
-    g.ask({ torpStep: 1 }); g.tick(); expect(s.torpLock).toBe(1);   // from the lock (0): the next room
+    g.ask({ torpStep: 1 }); g.tick(); expect(s.torpLock).toBe(0);   // from no target: E starts at Room 0, not the laser's lock
+    g.ask({ torpStep: 1 }); g.tick(); expect(s.torpLock).toBe(1);   // from its own target (0): the next room
     g.ask({ torpStep: -2 }); g.tick(); expect(s.torpLock).toBe(2);  // from its own target (1): two back
+    g.hold({ torpTo: -1 }); g.tick(); g.ask({ torpStep: -1 }); g.tick(); expect(s.torpLock).toBe(2);   // from no target: Q starts at Room 2
+    expect([s.lock, s.laserTargeted]).toEqual([0, false]);         // the laser is never touched
+    expect(g.rt.lastResults().filter((r) => r.status === 'rejected')).toEqual([]);
+    g.rt.dispose();
+  });
+  it('a pick-up on an unknown enemy (FTL targeting fix): the contact controller asks for the scan and the runtime starts the Level 1 scan from Weapons', () => {
+    const g = rig(); g.press('switch'); g.tick();
+    const t = g.rt.duel.tactical, c = createContactController();
+    t.known[0] = 0;
+    c.sync({ shown: true, station: 'weapons', target: 1, active: () => true, epoch: 0, enemyKnown: t.known[0] });
+    c.pickUp('laser'); expect(c.aimWeapon()).toBe('laser');
+    g.ask(c.takeRequests()); g.tick();
+    expect([t.scan.contact, t.scan.level]).toEqual([0, 1]);
     expect(g.rt.lastResults().filter((r) => r.status === 'rejected')).toEqual([]);
     g.rt.dispose();
   });
@@ -418,14 +433,14 @@ describe('weapons commands match the sim (H-1b impl review)', () => {
     rt.dispose();
   });
   it('F then Tab in two frames before one tick: no not-at-weapons rejection, nothing stuck', () => {
-    const { time, rt, press, tick } = rig();
+    const { time, rt, press, tick } = rig(), magazine = rt.duel.tactical.systems[0].magazine;
     press('switch'); tick();
     press('launch'); rt.frame(1 / 60);
     press('switch'); rt.frame(1 / 60);
     time.advance(TICK_MS); rt.frame(1 / 60);
     expect(rejected(rt)).toEqual([]);
     expect(rt.active()).toBe(0);   // Tab back to the pilot
-    expect(rt.duel.tactical.systems[0].fireHeld).toBe(false);   // the empty seat let go of Fire
+    expect(rt.duel.tactical.systems[0].magazine).toBe(magazine);   // the dropped launch spent no torpedo
     expect(missileOf(rt.duel.tactical, 0)).toBeNull();
     tick(); expect(rejected(rt)).toEqual([]);
     rt.dispose();

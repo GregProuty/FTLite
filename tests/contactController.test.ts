@@ -76,12 +76,12 @@ describe('the closing rules in sync (enemy ship window spec §3)', () => {
     expect(c.sync(live({ epoch: 3 }))).toBe(true);
     expect(c.sync(live({ epoch: 4 }))).toBe(false); expect(c.state()).toBeNull();
   });
-  it('a station change disarms and keeps the window open; the enemy falling below Level 1 disarms', () => {
+  it('a station change disarms and keeps the window open; the scan level never disarms (a pick-up waits for the rooms)', () => {
     const c = createContactController();
     c.sync(live({ station: 'helm' })); c.click(0); c.arm();
     expect(c.sync(live({ station: 'helm' }))).toBe(true); expect(c.state()).toEqual({ contact: 0, aim: true });
     expect(c.sync(live({ station: 'weapons' }))).toBe(true); expect(c.state()).toEqual({ contact: 0, aim: false });
-    c.arm(); expect(c.sync(live({ enemyKnown: 0 }))).toBe(true); expect(c.state()).toEqual({ contact: 0, aim: false });
+    c.arm(); expect(c.sync(live({ enemyKnown: 0 }))).toBe(true); expect(c.state()).toEqual({ contact: 0, aim: true });
   });
 });
 
@@ -170,9 +170,19 @@ describe('the weapon pick-up (FTL targeting spec §1)', () => {
     c.pickUp('laser'); expect([c.state(), c.aimWeapon()]).toEqual([{ contact: 0, aim: false }, null]);
     c.click(1); c.pickUp('laser'); expect([c.state(), c.aimWeapon()]).toEqual([{ contact: 0, aim: true }, 'laser']);   // from the derelict
   });
-  it('an unknown enemy opens disarmed; Science never picks up', () => {
-    const c = createContactController(); c.sync(live({ enemyKnown: 0 }));
-    c.pickUp('laser'); expect([c.state(), c.aimWeapon()]).toEqual([{ contact: 0, aim: false }, null]);
+  it('an unknown enemy (below Level 1): the pick-up still arms, requests the enemy scan once, and stays live until the rooms arrive; Science never picks up', () => {
+    const c = createContactController(), lock = vi.fn(); c.sync(live({ enemyKnown: 0 }));
+    c.pickUp('laser'); expect([c.state(), c.aimWeapon()]).toEqual([{ contact: 0, aim: true }, 'laser']);
+    expect(c.takeRequests()).toEqual({ designate: null, scan: 0 });                  // the SCAN button's request
+    for (let f = 0; f < 3; f++) c.sync(live({ enemyKnown: 0 }));                      // the scan runs: still picked up
+    expect(c.aimWeapon()).toBe('laser'); expect(c.takeRequests()).toEqual({ designate: null, scan: null });
+    c.sync(live({ enemyKnown: 1 }));                                                  // Level 1: the rooms show
+    c.pick(2, lock); expect(lock).toHaveBeenCalledWith(2, 'laser');
+    c.pickUp('torpedo'); expect(c.takeRequests()).toEqual({ designate: null, scan: null });   // known: no scan request
+    const k = createContactController(); k.sync(live({ enemyKnown: 0 }));
+    expect(k.intercept('Digit2')).toBe(true); expect(k.aimWeapon()).toBe('torpedo');   // the key too
+    expect(k.takeRequests().scan).toBe(0);
+    k.pickUp('torpedo'); expect(k.takeRequests().scan).toBeNull();                    // the cancel requests nothing
     const s = createContactController(); s.sync(live({ station: 'science' }));
     s.pickUp('torpedo'); expect(s.state()).toBeNull();
   });
@@ -189,16 +199,18 @@ describe('the weapon pick-up (FTL targeting spec §1)', () => {
     c.pickUp('torpedo'); c.sync(live());
     expect(c.intercept('Escape')).toBe(true); expect([c.state(), c.aimWeapon()]).toEqual([{ contact: 0, aim: false }, null]);
   });
-  it('the keys at Weapons: 1 and 2 pick up (taken), elsewhere declined; E and Q with the torpedo step its target, with the laser drop the pick-up and pass', () => {
+  it('the keys at Weapons: 1 and 2 pick up (taken), elsewhere declined; E and Q with the torpedo step its target and keep it picked up, with the laser drop the pick-up and pass', () => {
     const c = createContactController(); c.sync(live());
     expect(c.intercept('Digit1')).toBe(true); expect(c.aimWeapon()).toBe('laser');
     expect(c.intercept('Digit1')).toBe(true); expect(c.aimWeapon()).toBeNull();
     expect(c.intercept('Digit2')).toBe(true); expect(c.aimWeapon()).toBe('torpedo');
-    expect(c.intercept('KeyE')).toBe(true); expect(c.aimWeapon()).toBeNull();
-    expect(c.intercept('KeyE')).toBe(false);   // nothing picked up: E is the lock cycle again
-    expect(c.takeRequests()).toEqual({ designate: null, scan: null, torpStep: 1 });
-    c.intercept('Digit2'); c.intercept('KeyQ');
+    expect(c.intercept('KeyE')).toBe(true); expect(c.aimWeapon()).toBe('torpedo');   // the torpedo stays picked up
+    expect(c.intercept('KeyE')).toBe(true); expect(c.aimWeapon()).toBe('torpedo');   // a second E steps it again, never the laser
+    expect(c.takeRequests()).toEqual({ designate: null, scan: null, torpStep: 2 });
+    c.intercept('KeyQ');
     expect(c.takeRequests()).toEqual({ designate: null, scan: null, torpStep: -1 });
+    expect(c.intercept('Digit2')).toBe(true); expect(c.aimWeapon()).toBeNull();      // the key again cancels
+    expect(c.intercept('KeyE')).toBe(false);   // nothing picked up: E is the lock cycle again
     c.intercept('Digit1'); expect(c.intercept('KeyQ')).toBe(false); expect(c.aimWeapon()).toBeNull();
     expect(c.takeRequests()).toEqual({ designate: null, scan: null });
     const h = createContactController(); h.sync(live({ station: 'helm' }));

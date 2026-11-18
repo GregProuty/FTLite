@@ -177,14 +177,15 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
     expect(c.helds().at(-1)).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
     r.dispose();
   });
-  it('focus loss neutralises and lets go of a held charge without pausing; nothing is sent until focus returns', () => {
+  it('focus loss neutralises without pausing and sends no release (Space is a single press, FTL targeting spec §2); nothing is sent until focus returns', () => {
     const r = rig(1), c = r.attach();   // seat 1 sits at Weapons
     r.key('keydown', 'Space'); r.pump();
     expect(c.commands().at(-1)).toEqual({ kind: 'laserCharge', held: true });
-    r.d.tactical.systems[0].fireHeld = true; c.publish(r.d); r.pump();
+    const commands = c.commands().length;
     r.session.setFocused(false);
     expect(c.neutralized).toEqual([1]);
-    expect(c.commands().at(-1)).toEqual({ kind: 'laserCharge', held: false });
+    expect(c.commands().length).toBe(commands);
+    expect(c.commands().some((x) => x.kind === 'laserCharge' && !x.held)).toBe(false);
     expect(c.commands().some((x) => x.kind === 'setPaused')).toBe(false);
     const count = c.sent.length;
     r.pump(); r.pump();
@@ -309,18 +310,25 @@ describe('the Artemis console clicks online (Artemis spec §4.1, §6.2)', () => 
     expect(locks()).toHaveLength(1);
     r.dispose();
   });
-  it('FTL targeting spec §1: a torpedo target click sends torpLock, a card clear sends −1 for either weapon, and E with the torpedo picked up steps its target', () => {
+  it('FTL targeting spec §1: a torpedo target click sends torpLock, a card clear sends −1 for either weapon, and E / Q with the torpedo picked up step its own target, keeping it picked up', () => {
     let input: ConsoleInput | null = null;
     const r = rig(1, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }), c = r.attach();
     const targets = () => c.commands().filter((x) => x.kind === 'laserLock' || x.kind === 'torpLock');
     input!.torpLock(0); r.pump();
     input!.torpLock(-1); input!.lock(-1); r.pump();
     expect(targets()).toEqual([{ kind: 'torpLock', room: 0 }, { kind: 'laserLock', room: -1 }, { kind: 'torpLock', room: -1 }]);
-    const contact = (h.sceneOpts.at(-1) as unknown as { contact: ContactController }).contact, lock = r.d.tactical.systems[0].lock;
+    const contact = (h.sceneOpts.at(-1) as unknown as { contact: ContactController }).contact;
     contact.sync({ shown: true, station: 'weapons', target: 1, active: () => true, epoch: 0 });
+    expect(r.d.tactical.systems[0].torpLock).toBe(-1);
     r.key('keydown', 'Digit2'); r.key('keyup', 'Digit2'); r.key('keydown', 'KeyE'); r.key('keyup', 'KeyE'); r.pump();
-    expect(targets().at(-1)).toEqual({ kind: 'torpLock', room: (lock + 1) % 3 });   // from the laser's lock (no torpedo target yet)
-    expect(c.commands().filter((x) => x.kind === 'laserLock')).toHaveLength(1);    // E was taken: no laser lock step
+    expect(targets().at(-1)).toEqual({ kind: 'torpLock', room: 0 });   // from no torpedo target: E starts at Room 0 (never the laser's lock)
+    expect(contact.aimWeapon()).toBe('torpedo');                         // still picked up
+    r.key('keydown', 'KeyQ'); r.key('keyup', 'KeyQ'); r.pump();
+    expect(targets().at(-1)).toEqual({ kind: 'torpLock', room: 2 });   // the replica still has none: Q starts at Room 2
+    r.d.tactical.systems[0].torpLock = 1; c.publish(r.d);
+    r.key('keydown', 'KeyE'); r.key('keyup', 'KeyE'); r.pump();
+    expect(targets().at(-1)).toEqual({ kind: 'torpLock', room: 2 });   // from its own target (1)
+    expect(c.commands().filter((x) => x.kind === 'laserLock')).toHaveLength(1);    // E and Q were taken: no laser lock step
     r.dispose();
   });
   it('two lock clicks in successive pumps before any new publication both send, in order (no comparison with the confirmed lock)', () => {

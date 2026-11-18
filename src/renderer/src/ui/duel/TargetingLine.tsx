@@ -1,7 +1,8 @@
 // The targeting line (FTL targeting spec §1): while a weapon is picked up at Weapons, a line from its card to the pointer,
 // ending in a reticle, over the whole stage and never taking the pointer (a room click reaches the contact window under
 // it). CRT amber ramp only: the reticle and the line are CRT.hot over a room of the enemy drawing (a valid drop), CRT.mid
-// elsewhere, each on a CRT.glass underlay. A right-click anywhere drops the pick-up without a change.
+// elsewhere, each on a CRT.glass underlay. A right-click anywhere drops the pick-up without a change. Until the pointer
+// moves over the stage the line ends at the app's last pointer position, else at the enemy drawing's centre.
 import { memo, useEffect, useState } from 'react';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import { weaponCard } from '../../render/duel/consoleLayout';
@@ -25,7 +26,13 @@ export function targetingTint(contact: Pick<ContactView, 'rooms'>, p: { x: numbe
   return contact.rooms.some((r) => pointInPolygon(p.x, p.y, r.points)) ? CRT.hot : CRT.mid;
 }
 
-export const TargetingLine = memo(function TargetingLine({ contact }: { contact: ContactView }) {
+/** Where the line ends before the pointer moves over the stage: the app's last pointer position (`seed`), else the
+ *  centre of the enemy window's ship drawing. */
+export function targetingEnd(contact: Pick<ContactView, 'box'>, seed: { x: number; y: number } | null): { x: number; y: number } {
+  return seed ?? { x: contact.box.x + contact.box.w / 2, y: contact.box.y + contact.box.h / 2 };
+}
+
+export const TargetingLine = memo(function TargetingLine({ contact, seed = null }: { contact: ContactView; seed?: { x: number; y: number } | null }) {
   const actions = useActions(), l = useUi((s) => s.layout), weapon = contact.aimWeapon;
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {
@@ -37,18 +44,19 @@ export const TargetingLine = memo(function TargetingLine({ contact }: { contact:
     window.addEventListener('pointerdown', down);
     return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerdown', down); };
   }, [weapon, l, actions]);
-  if (!weapon || !pointer) return null;
-  const from = weaponCard(weapon).anchor, tint = hex(targetingTint(contact, pointer)), glass = hex(CRT.glass);
+  if (!weapon) return null;
+  const end = pointer ?? targetingEnd(contact, seed);
+  const from = weaponCard(weapon).anchor, tint = hex(targetingTint(contact, end)), glass = hex(CRT.glass);
   return (
     <svg data-ui-targeting={weapon} viewBox={`0 0 ${INTERNAL_W} ${INTERNAL_H}`} preserveAspectRatio="none"
       style={{ position: 'absolute', ...boxCss(0, 0, INTERNAL_W, INTERNAL_H, l), pointerEvents: 'none', overflow: 'visible' }}>
-      <line data-ui-targeting-line="" x1={from.x} y1={from.y} x2={pointer.x} y2={pointer.y} stroke={glass} strokeWidth={3} />
-      <line x1={from.x} y1={from.y} x2={pointer.x} y2={pointer.y} stroke={tint} strokeWidth={1} strokeDasharray="6 4" />
+      <line data-ui-targeting-line="" x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke={glass} strokeWidth={3} />
+      <line x1={from.x} y1={from.y} x2={end.x} y2={end.y} stroke={tint} strokeWidth={1} strokeDasharray="6 4" />
       <g data-ui-contact-reticle="">
-        <circle cx={pointer.x} cy={pointer.y} r={RETICLE_R} stroke={glass} strokeWidth={3} fill="none" />
-        <path d={ticks(pointer.x, pointer.y)} stroke={glass} strokeWidth={3} fill="none" />
-        <circle cx={pointer.x} cy={pointer.y} r={RETICLE_R} stroke={tint} strokeWidth={1} fill="none" />
-        <path d={ticks(pointer.x, pointer.y)} stroke={tint} strokeWidth={1} fill="none" />
+        <circle cx={end.x} cy={end.y} r={RETICLE_R} stroke={glass} strokeWidth={3} fill="none" />
+        <path d={ticks(end.x, end.y)} stroke={glass} strokeWidth={3} fill="none" />
+        <circle cx={end.x} cy={end.y} r={RETICLE_R} stroke={tint} strokeWidth={1} fill="none" />
+        <path d={ticks(end.x, end.y)} stroke={tint} strokeWidth={1} fill="none" />
       </g>
     </svg>
   );
