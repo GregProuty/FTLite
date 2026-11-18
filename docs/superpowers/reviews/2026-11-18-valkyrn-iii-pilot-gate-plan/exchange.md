@@ -83,3 +83,56 @@ Confirmed: Step 4's rule covered only PASS lines. Task 4 Step 3 now defines the 
 
 ---
 
+# Round 2 (delta, reviewing 8cd90bc1, effort medium, 56 s, 178306 in / 135742 cached / 5327 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 The sweep's line regex is built from a template literal with an unescaped `\d`, so it matches the letter 'd' and every sweep throws
+`lineOf` builds `new RegExp(`^export const ${name} = (\d+);`, 'gm')` inside a template literal. In JS string and template literals, `\d` is a NonEscapeCharacter escape whose cooked value is plain `d`. The RegExp source is therefore `^export const GUN_HITS_PER_LAYER = (d+);`, which never matches `= 8;`. `lineOf` throws "expected one line ..." on the first `valueOf` (any list left out) or `withValue` call, so neither the Stage A nor the Stage B sweep produces a line. tsc does not flag this. · plan Task 3 Step 3, the `lineOf` function: `const re = new RegExp(`^export const ${name} = (\d+);`, 'gm')` and the second `new RegExp(`^export const ${name} = (\d+);`, 'm')`. The target lines it has to match are in valkyrn-i plan L323 `export const VALKYRN_HULL = 30;` and L343-345 `export const GUN_HITS_PER_LAYER = 8;` / `_HULL = 3;` / `_LEVEL = 6;`. · Task 4 Step 3 runs only `sweep`, so the tuning procedure cannot run as written. The executor would have to debug the tool during execution. This is a regression introduced by the R1-F2 fix. · Double the backslash in both template literals: `(\\d+)`. Alternatively, build the pattern with string concatenation: `'^export const ' + name + ' = (\\d+);'`. Optionally have `lineOf` build the RegExp once and reuse it.
+
+## Prior findings
+- R1-F1: resolved — Decision 7 now says the stand takes two ticks, decided from `d.throttle` alone. Pilot L563-568 sends only `throttle` while seated (aim held, gun off) and, once the throttle is 0, sends only `stand`. `p.task` stays set across the two ticks (L557-558). The repair test (L427-431) gets back 1 or 2 from `fly` and then checks the throttle and `holdHeading`. The swap-order fallback is gone.
+- R1-F2: still open — The mechanism is right: Decision 10 is rewritten, the child process is started through tsx's cli.mjs, the file is restored in `finally` and the restore is verified, and the frozen pre-flight is removed. But the new `lineOf` regex is written in a template literal as `(\d+)`, which cooks to `(d+)`. So every rewrite throws and the sweep cannot run (see the new finding).
+- R1-F3: resolved — `viewOffset` calls `leadPip(s.x, s.y, s.vx, s.vy, e.x, e.y, e.vx, e.vy, GUN.speed)` with `e = ships[systems[0].target]`, and `GUN` is imported. `GunDef.speed` exists (valkyrn-i plan L382, L430), and `ShipSystems.target` exists (sci-2 tactical/state.ts:41). The fallback text is removed.
+- R1-F4: resolved — Task 4 Step 6 now names valkyrnClasses, valkyrnGun and valkyrnRounds and says how each pin is rewritten in terms of GUN.hitsPer* and VALKYRN_HULL. Step 8 runs tests/valkyrn*.test.ts, and Step 10 adds those files by name.
+- R1-F5: resolved — Task 4 Step 3 defines the Stage A pick for all three cases (a PASS line, no PASS but a line with hunter ≥ 1 and cap 0, and anything else) and gives the tie-breaks.
+
+## Verified
+- The pilot's two-tick stand: on the throttle tick the Helm is still attended. On the next tick `d.throttle === 0`, so only `stand` is sent, and `fly` returns 1 or 2 (plan L357-364, L427-429, L563-568).
+- `Outcome` is exported as a const object with Draw 3 and Running 0 (.worktrees/sci-2/src/renderer/src/sim/tactical/state.ts:82), so the script's `Outcome.Draw`/`Outcome.Running` compile.
+- `HUNTER_HULL` exists (.worktrees/sci-2/.../tactical/tuning.ts:42), as Task 4 Step 6 cites.
+- Part i declares the four tuned constants as single-line integer exports (valkyrn-i plan L323, L343-345), which fits Task 1 Step 2's check and the sweep's rewrite. With CRLF line endings, `;` still comes right before `\r`, so the `^...;` match with the m flag still works once the escape is fixed.
+- Validator bounds are already derived in tactical/hash.ts (sci-2 hash.ts:194 shows the `most(...)` pattern), so Task 1 Step 3 now greps the correct file.
+
+## Not verified
+- Whether the child process's stdout has only the JSON line: this depends on nothing in the sim or the helpers logging, and I did not run it.
+- Whether the rewrite rule for valkyrnRounds hull and Room expectations (Task 4 Step 6) gives Part i's exact sequence at tuned values: Part i's test bodies were not re-read in full.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json` against the subject at `6ea1a665`. 1 accepted (R2-F1, which is also the reopened R1-F2), 0 rejected, 0 deferred; R1-F1, R1-F3, R1-F4 and R1-F5 confirmed resolved.
+
+## R2-F1 [P1]: The sweep's line regex is built from a template literal with an unescaped `\d`, so it matches the letter 'd' and every sweep throws
+
+Confirmed: the plan's `lineOf` had `(\d+)` inside a plain template literal (Task 3 Step 3), which cooks to `(d+)`. `lineOf` now builds the pattern once as `String.raw\`^export const ${name} = (\d+);\``, with a comment on why, and uses it for both the exactly-one count (`gm`) and the returned `m` regex. Checked the same code in node: against a CRLF text with `export const GUN_HITS_PER_LAYER = 8;` and a `…_LAYERX = 9;` decoy it counts 1, `exec` gives `8`, and the replace rewrites only that line.
+
+## R1-F2 [P1]: Part i freezes GUN, the class and its slots, so the in-process sweep throws and Task 1 Step 3's expected 'frozen false false' is wrong
+
+Reopened only for the regex escape above; the same edit fixes it. The child-process mechanism, restore and checks are unchanged.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-18-valkyrn-iii-pilot-gate.md
+
+<!-- end -->
+
+---
+

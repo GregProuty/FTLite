@@ -731,9 +731,10 @@ interface GateJson { medianS: number; crewWins: number; hunterWins: number; draw
 
 /** The one `export const NAME = <integer>;` line's pattern; throws unless it matches exactly once in `text`. */
 function lineOf(text: string, name: string): RegExp {
-  const re = new RegExp(`^export const ${name} = (\d+);`, 'gm');
-  if ((text.match(re) ?? []).length !== 1) throw Error(`${TUNING}: expected one line 'export const ${name} = <integer>;'`);
-  return new RegExp(`^export const ${name} = (\d+);`, 'm');
+  // String.raw keeps the backslash: in a plain template literal `\d` cooks to the letter d.
+  const source = String.raw`^export const ${name} = (\d+);`;
+  if ((text.match(new RegExp(source, 'gm')) ?? []).length !== 1) throw Error(`${TUNING}: expected one line 'export const ${name} = <integer>;'`);
+  return new RegExp(source, 'm');
 }
 const valueOf = (text: string, name: string): number => Number(lineOf(text, name).exec(text)![1]);
 const withValue = (text: string, name: string, v: number): string => text.replace(lineOf(text, name), `export const ${name} = ${v};`);
