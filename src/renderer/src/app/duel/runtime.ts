@@ -8,7 +8,8 @@ import { createTickDriver } from '../../authority/tickDriver';
 import type { HeldInput, Scheduler } from '../../net/contracts';
 import { Life, LifeState, Position } from '../../sim/components';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope, type DuelResult } from '../../sim/duel/commands';
-import { canCharge, canLaunch } from '../../sim/tactical/weapons';
+import { rockAlive } from '../../sim/tactical/rocks';
+import { canCharge, canLaunch, validRockLock, validTarget } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, type DuelState } from '../../sim/duel/state';
 import { helmTurn, stepDuelTick } from '../../sim/duel/step';
 import { throttleThrust } from '../../sim/duel/throttle';
@@ -277,6 +278,15 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     }
     // Weapons commands go out only when the sim would accept them (spec §7 table; canCharge / canLaunch), judged against the
     // state this tick will see. FTL targeting spec §2: Space is a single press (a full laser fires), with no release.
+    // Spike ii §6.1: a launch is judged with this tick's effective torpedo rock target (the sim's rule: the last valid
+    // rockLock(torpedo), else −1 after a torpLock, else the stored value).
+    let torpRockNext: number | null = null, torpLocked = false;
+    for (const c of pending) {
+      const k = c.command;
+      if (k.kind === 'torpLock' && validTarget(k.room)) torpLocked = true;
+      else if (k.kind === 'rockLock' && k.weapon === 'torpedo' && validRockLock(d.tactical, k.weapon, k.rock) && (k.rock < 0 || rockAlive(d.tactical, k.rock))) torpRockNext = k.rock;
+    }
+    const torpRockNow = torpRockNext ?? (torpLocked ? -1 : d.tactical.systems[0].torpRock);
     let launched = false;
     for (const c of pending) {
       const k = c.command;
@@ -285,7 +295,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
         // charge command; only a missile already flying does.
         if (!canCharge(d.tactical, 0)) continue;
       } else if (k.kind === 'missileLaunch') {
-        if (launched || !canLaunch(d.tactical, 0)) continue;
+        if (launched || !canLaunch(d.tactical, 0, torpRockNow)) continue;
         launched = true;
       }
       commands.push(envelope(c.player, k));

@@ -3,7 +3,7 @@
 // Commands arrive as one ShipInput per ship per tick; the duel step builds these from the authority's admitted commands.
 import { inArc, lineOfSight } from './geometry';
 import { launchMissile } from './missiles';
-import { firstBlocker, rockAlive, rockAt } from './rocks';
+import { firstBlocker, rockAlive, rockAt, rockSlots } from './rocks';
 import { AUTO_DIG } from './rockTuning';
 import { laserStrikesRock, rockOnTarget, rockShotLine } from './rockWeapons';
 import { hx, hy } from './direction';
@@ -20,6 +20,9 @@ export interface ShipInput {
   laserLock: number | null;
   /** `torpLock {room}` (FTL targeting spec §2, the crew only): the torpedo's target Room, −1 to clear, or null. */
   torpLock: number | null;
+  /** Spike ii §6.1: `rockLock {weapon, rock}` folded per weapon: a slot, −1 to clear, or null for no command this tick
+   *  (the crew only). Applied after laserLock and torpLock, so it wins over a same-tick room lock for its weapon. */
+  rockLock: { laser: number | null; torpedo: number | null };
   /** `laserCharge {held}`: true = press, false = release, null = no command this tick. The crew's laser charges by
    *  itself, so for the crew a press fires a full laser and a release does nothing (FTL targeting spec §2). */
   laserCharge: boolean | null;
@@ -31,9 +34,9 @@ export interface ShipInput {
 }
 
 /** A crew that sits at both consoles and does nothing. */
-export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, scanner: true };
+export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, scanner: true };
 /** Nobody at either console: a ship nobody flies. */
-export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, scanner: true };
+export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, scanner: true };
 
 /** Whether ship i's laser is fully charged. */
 export function laserFull(state: TacticalState, i: number): boolean { return state.systems[i]!.laserCharge >= classOf(state, i).slots.laser.chargeUnits; }
@@ -65,6 +68,10 @@ export function canLaunch(state: TacticalState, i: number, torpRock = state.syst
 export function validLock(room: number): boolean { return Number.isInteger(room) && room >= 0 && room <= 2; }
 /** FTL targeting spec §2: a `laserLock` or `torpLock` command's room, a Room index or −1 (clear the target). */
 export function validTarget(room: number): boolean { return room === -1 || validLock(room); }
+/** Spike ii §6.1: a rockLock command's weapon is the laser or the torpedo, and its rock a whole slot −1 .. rockSlots − 1. */
+export function validRockLock(state: TacticalState, weapon: unknown, rock: number): boolean {
+  return (weapon === 'laser' || weapon === 'torpedo') && Number.isInteger(rock) && rock >= -1 && rock < rockSlots(state);
+}
 
 /** Weapons at damage level 2 is off (owner 2026-11-17, FTL-style): the laser cannot charge, hold or fire and keeps no
  *  charge; canLaunch refuses missiles. A laserCharge command is still admitted (canCharge): it is held, to no effect,
@@ -181,11 +188,17 @@ function stepBurst(state: TacticalState, i: number): void {
  *  and eligible, and a torpedo with a target launches when the launch is legal (launchMissile clears torpLock). */
 export function applyWeaponsInput(state: TacticalState, i: number, input: ShipInput): void {
   const s = state.systems[i]!, crew = i === CREW_SLOT;
-  if (input.weapons && input.laserLock !== null) {   // first: a burst shot reads this tick's lock
+  if (input.weapons && input.laserLock !== null && validTarget(input.laserLock)) {   // first: a burst shot reads this tick's lock
+    s.laserRock = -1;   // spike ii §6.1: an accepted laserLock clears the laser's rock target first
     if (validLock(input.laserLock)) { s.lock = input.laserLock; if (crew) s.laserTargeted = true; }
-    else if (input.laserLock === -1 && crew) s.laserTargeted = false;
+    else if (crew) s.laserTargeted = false;
   }
-  if (input.weapons && crew && input.torpLock !== null && validTarget(input.torpLock)) s.torpLock = input.torpLock;
+  if (input.weapons && crew && input.torpLock !== null && validTarget(input.torpLock)) { s.torpRock = -1; s.torpLock = input.torpLock; }
+  if (input.weapons && crew) {   // spike ii §6.1: rockLock, after laserLock and torpLock, before the burst
+    const rl = input.rockLock, live = (k: number): boolean => k >= 0 && k < rockSlots(state) && rockAlive(state, k);
+    if (rl.laser !== null) { if (live(rl.laser)) { s.laserRock = rl.laser; s.laserTargeted = true; } else if (rl.laser === -1) { s.laserRock = -1; s.laserTargeted = false; } }
+    if (rl.torpedo !== null) { if (live(rl.torpedo)) { s.torpRock = rl.torpedo; s.torpLock = -1; } else if (rl.torpedo === -1) s.torpRock = -1; }
+  }
   stepBurst(state, i);
   if (!input.weapons) { s.fireHeld = false; return; }   // unattended: Fire lets go without firing or discarding
   if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; }   // a hit after its clock ran last tick: no shot

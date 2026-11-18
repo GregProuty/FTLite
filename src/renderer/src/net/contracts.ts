@@ -77,6 +77,8 @@ export type DuelCommand =
   | { kind: 'laserLock'; room: number }
   /** The crew torpedo's target Room 0..2, or −1 to clear it (FTL targeting spec §2). */
   | { kind: 'torpLock'; room: number }
+  /** Spike ii §6.1: a weapon's rock target, a rock pool slot, or −1 to clear it. */
+  | { kind: 'rockLock'; weapon: 'laser' | 'torpedo'; rock: number }
   | { kind: 'laserCharge'; held: boolean }
   | { kind: 'missileLaunch' }
   /** The Helm's throttle (Artemis spec §5.2): an integer level −1..4. Any finite number passes the codec, and the sim
