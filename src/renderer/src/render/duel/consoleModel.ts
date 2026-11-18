@@ -5,7 +5,7 @@ import { NO_HELD_FLAGS, type HeldFlags, type KeyAction } from '../../app/duel/in
 import type { DuelState } from '../../sim/duel/state';
 import { Contact, missileOf } from '../../sim/tactical/state';
 import { HEADING_COUNT, MAGAZINE } from '../../sim/tactical/tuning';
-import { canLaunch } from '../../sim/tactical/weapons';
+import { canLaunch, torpedoInRange } from '../../sim/tactical/weapons';
 import type { MapOverlayView } from '../../ui/views';
 import { chargeRow, type ReadoutRow } from './readoutModel';
 
@@ -13,7 +13,8 @@ export type ConsoleStation = 'helm' | 'weapons' | 'science' | 'ship';
 export type TabState = 'current' | 'open' | 'locked';
 export interface HelmPanel { heading: number; speed: number; held: HeldFlags; throttle: number }
 /** `freq`: the crew laser's tuned frequency 0..2; `weakFreq`: the enemy's weak one, shown only after a Level 2 scan (Sci-1 spec §7.4). */
-export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: string; canLaunch: boolean; missileFlying: boolean; fireHeld: boolean; held: HeldFlags; freq: number; weakFreq: number | null }
+/** `torpedoInRange`: the target within the torpedo's range (weapons update spec §2), shown IN RANGE / OUT OF RANGE. */
+export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: string; canLaunch: boolean; torpedoInRange: boolean; missileFlying: boolean; fireHeld: boolean; held: HeldFlags; freq: number; weakFreq: number | null }
 /** The Science block (Sci-1 spec §7.3): the hover readout, or null with no cursor over the map. */
 export interface SciencePanel { hover: string | null }
 export interface ConsoleView {
@@ -67,7 +68,7 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
     : null;
   const flying = missileOf(t, 0) !== null, sys = t.systems[0];
   const weapons: WeaponsPanel | null = station === 'weapons'
-    ? { lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null }
+    ? { lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null }
     : null;
   const side = i.overlay && station !== 'ship'
     ? { zoom: i.overlay.zoomText.replace(/^ZOOM\s+/, ''), free: i.overlay.snapHint, snapLabel: station === 'weapons' ? 'CAMERA' as const : 'SNAP' as const }

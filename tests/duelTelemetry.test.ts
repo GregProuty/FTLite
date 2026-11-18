@@ -12,6 +12,7 @@ import { BAIT_WINDOW_TICKS, createTelemetry, endedFromPlanet, recordTick, type D
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import { missileOf, Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
+import { inTorpedoRange } from './helpers/torpedoRange';
 
 const layout = parseShip(cutter);
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -132,16 +133,20 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
   it('counts Weapons as idle only with nothing to do: full, no launch possible, enemy out of the arc', () => {
     const d = createSeatedDuel(layout, 5), t = createTelemetry(d), s = d.tactical.systems[0];
     s.laserCharge = LASER_CHARGE_UNITS;
-    step(d, t);                                                             // a launch is possible (enemy far, magazine full)
-    expect(t.weaponsIdleTicks).toBe(0);
+    step(d, t);                                                             // the duel's start: the enemy beyond torpedo range (weapons update spec §2)
+    expect(t.weaponsIdleTicks).toBe(1);
+    inTorpedoRange(d.tactical);
+    step(d, t);                                                             // a launch is possible (enemy astern in range, magazine full)
+    expect(t.weaponsIdleTicks).toBe(1);
     s.magazine = 0;
     step(d, t);
-    expect(t.weaponsIdleTicks).toBe(1);
+    expect(t.weaponsIdleTicks).toBe(2);
     step(d, t, [cmd(d, 1, { kind: 'stand' })]);                             // nobody at Weapons: not idle, empty
-    expect([t.weaponsIdleTicks, t.weaponsEmptyTicks]).toEqual([1, 1]);
+    expect([t.weaponsIdleTicks, t.weaponsEmptyTicks]).toEqual([2, 1]);
   });
   it('counts missile launches and their losses by cause', () => {
     const d = createSeatedDuel(layout, 5), t = createTelemetry(d);
+    inTorpedoRange(d.tactical);
     step(d, t, [cmd(d, 1, { kind: 'missileLaunch' })]);
     while (missileOf(d.tactical, 0) && d.tactical.outcome === Outcome.Running) step(d, t);
     const c = t.ships[0], lost = Object.values(c.missileLosses).reduce((a, b) => a + b, 0) + c.missileHitsByRoom.reduce((a, b) => a + b, 0);

@@ -10,6 +10,7 @@ import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { createSeatedDuel } from './helpers/duelSeat';
+import { inTorpedoRange } from './helpers/torpedoRange';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { missileOf, Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
@@ -106,6 +107,7 @@ describe('consoles are roles (spec §8, §13)', () => {
   it('weapon commands take effect lock, then charge, then launch, whatever their envelope order', () => {
     for (const launchFirst of [true, false]) {
       const d = createSeatedDuel(layout, 5), s = d.tactical.systems[0];
+      inTorpedoRange(d.tactical);                                       // weapons update spec §2: a launch needs the target within 360
       s.fireHeld = true; s.laserCharge = LASER_CHARGE_UNITS;            // a full charge, held
       const launch = cmd(d, 1, { kind: 'missileLaunch' }), release = cmd(d, 1, { kind: 'laserCharge', held: false });
       const results = step(d, launchFirst ? [launch, release] : [release, launch]);
@@ -123,6 +125,8 @@ describe('consoles are roles (spec §8, §13)', () => {
   });
   it('rejects a bad lock, a charge while a missile flies, and a launch it cannot make', () => {
     const d = createSeatedDuel(layout, 5);
+    expect(step(d, [cmd(d, 1, { kind: 'missileLaunch' })]).map((r) => r.reason)).toEqual(['unavailable']);   // weapons update spec §2: out of range
+    inTorpedoRange(d.tactical);
     const lock = cmd(d, 1, { kind: 'laserLock', room: 1.5 }), launch = cmd(d, 1, { kind: 'missileLaunch' });
     expect(step(d, [lock, launch]).map((r) => r.reason)).toEqual(['malformed', undefined]);
     const charge = cmd(d, 1, { kind: 'laserCharge', held: true }), again = cmd(d, 1, { kind: 'missileLaunch' });

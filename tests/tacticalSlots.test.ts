@@ -2,7 +2,7 @@
 // fire at the locked target, and ship classes and weapons as definitions. Storage only: an extra inactive slot changes
 // nothing about the duel's two, and today's numbers are the cutter's and hunter's entries.
 import { describe, expect, it } from 'vitest';
-import { CUTTER_CLASS, DUEL_CLASSES, HUNTER_CLASS, LASER, MISSILE, SHIP_CLASSES, ShipClass } from '../src/renderer/src/sim/tactical/defs';
+import { CUTTER_CLASS, DUEL_CLASSES, HUNTER_CLASS, HUNTER_LASER, LASER, MISSILE, SHIP_CLASSES, ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { hunterSlot, stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { launchMissile, resolveMissiles } from '../src/renderer/src/sim/tactical/missiles';
 import { stepFlight } from '../src/renderer/src/sim/tactical/physics';
@@ -15,7 +15,7 @@ import { CUTTER, passiveInput } from './helpers/scriptedDuel';
 import { makeHostile } from './helpers/hostile';
 import { classOf, createTacticalState, emptyMissile, missileOf, placeMissile, removeMissile, shipBody, targetOf, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import {
-  ENGINE_FACTOR, LASER_CHARGE_UNITS, LASER_HULL, LASER_RANGE, MAGAZINE, MISSILE_HULL, MISSILE_LIFE_TICKS, SHIELD_LAYERS, SHIP_HULL, SHIP_RADIUS, THRUST, TURN_STEPS_PER_TICK
+  ENGINE_FACTOR, HUNTER_HULL, LASER_CHARGE_UNITS, LASER_HULL, LASER_RANGE, MAGAZINE, MISSILE_HULL, MISSILE_LIFE_TICKS, SHIELD_LAYERS, SHIP_HULL, SHIP_RADIUS, THRUST, TURN_STEPS_PER_TICK
 } from '../src/renderer/src/sim/tactical/tuning';
 import { applyWeaponsInput, IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
@@ -36,10 +36,15 @@ describe('ship classes and weapons as definitions (spec §5)', () => {
     expect(SHIP_CLASSES).toEqual([CUTTER_CLASS, HUNTER_CLASS]);
     expect(DUEL_CLASSES).toEqual([ShipClass.Cutter, ShipClass.Hunter]);
     for (const c of SHIP_CLASSES) {
-      expect(c).toMatchObject({ hull: SHIP_HULL, radius: SHIP_RADIUS, thrust: THRUST, turnStepsPerTick: TURN_STEPS_PER_TICK, engineFactor: ENGINE_FACTOR, power: null });
+      expect(c).toMatchObject({ radius: SHIP_RADIUS, thrust: THRUST, turnStepsPerTick: TURN_STEPS_PER_TICK, engineFactor: ENGINE_FACTOR, power: null });
       expect(c.shields.layers).toBe(SHIELD_LAYERS);
-      expect(c.slots).toEqual({ laser: LASER, missile: MISSILE });
+      expect(c.slots.missile).toBe(MISSILE);
     }
+    // Weapons update spec §1, §3: the Hunter's own hull, and the crew's double laser against the Hunter's single one.
+    expect([CUTTER_CLASS.hull, HUNTER_CLASS.hull]).toEqual([SHIP_HULL, HUNTER_HULL]);
+    expect([CUTTER_CLASS.slots.laser, HUNTER_CLASS.slots.laser]).toEqual([LASER, HUNTER_LASER]);
+    expect([LASER.shots, HUNTER_LASER.shots]).toEqual([2, 1]);
+    expect(HUNTER_LASER).toEqual({ ...LASER, shots: 1 });
     expect([CUTTER_CLASS.ai, HUNTER_CLASS.ai]).toEqual(['crew', 'hunter']);
     expect(LASER).toMatchObject({ range: LASER_RANGE, chargeUnits: LASER_CHARGE_UNITS, hull: LASER_HULL });
     expect(MISSILE).toMatchObject({ magazine: MAGAZINE, lifeTicks: MISSILE_LIFE_TICKS, hull: MISSILE_HULL });
@@ -50,7 +55,7 @@ describe('ship classes and weapons as definitions (spec §5)', () => {
     expect([classOf(st, 0), classOf(st, 1)]).toEqual([CUTTER_CLASS, HUNTER_CLASS]);
     expect([targetOf(st, 0), targetOf(st, 1)]).toEqual([1, 0]);
     expect(hunterSlot(st)).toBe(1);
-    expect(st.systems.map((y) => [y.hull, y.shields, y.magazine])).toEqual([[SHIP_HULL, SHIELD_LAYERS, MAGAZINE], [SHIP_HULL, SHIELD_LAYERS, MAGAZINE]]);   // full shields while holding (owner decision 2026-11-17)
+    expect(st.systems.map((y) => [y.hull, y.shields, y.magazine])).toEqual([[SHIP_HULL, SHIELD_LAYERS, MAGAZINE], [HUNTER_HULL, SHIELD_LAYERS, MAGAZINE]]);   // full shields while holding (owner decision 2026-11-17)
   });
 });
 
@@ -79,7 +84,7 @@ describe('ship slots (spec §5 "arrays, not pairs")', () => {
     Object.assign(st.ships[0], { x: 465, y: -1800, vx: 100, vy: 0, heading: 64 });               // overlapping it by 5, closing
     stepFlight(st, [{ turn: 0, thrust: 0 }, { turn: 0, thrust: 0 }, { turn: 0, thrust: 0 }], { gravity: false, edge: false, drag: 0, stabilise: 0 });
     expect([st.ships[0].shipHits, st.ships[2]!.shipHits, st.ships[1].shipHits]).toEqual([1, 1, 0]);
-    expect([st.systems[0].hull, st.systems[2]!.hull]).toEqual([SHIP_HULL - 1, SHIP_HULL - 1]);
+    expect([st.systems[0].hull, st.systems[2]!.hull]).toEqual([SHIP_HULL - 1, HUNTER_HULL - 1]);   // the third ship is a Hunter-class copy
     expect(st.ships[0].graceUntil[shipBody(st.map, 0, 2)]).toBeGreaterThan(0);
     expect(st.ships[2]!.graceUntil[shipBody(st.map, 2, 0)]).toBeGreaterThan(0);
     const before = { ...st.systems[1] };
@@ -153,6 +158,6 @@ describe('the declared-added fields (new in the R-2 alias table)', () => {
     } finally { disposeDuel(d); }
     expect(ticks).toBeGreaterThan(0);
     expect(wrong).toBe(0);
-    if (crew === 'scripted') expect(ticks).toBe(18793);   // seed 1's scripted Cutter duel (9724 before Sci-1's merge, SIM_VERSION 47; 10320 before homing torpedoes, SIM_VERSION 46; 16268 before the Hunter's grace, SIM_VERSION 45; 15772 before duel fire)
+    if (crew === 'scripted') expect(ticks).toBe(16340);   // seed 1's scripted Cutter duel (18793 before the weapons update, SIM_VERSION 48; 9724 before Sci-1's merge, SIM_VERSION 47; 10320 before homing torpedoes, SIM_VERSION 46; 16268 before the Hunter's grace, SIM_VERSION 45; 15772 before duel fire)
   }, 60_000);
 });

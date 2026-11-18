@@ -8,7 +8,9 @@ import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { CUTTER, runDuel } from './helpers/scriptedDuel';
 
 const none: Migration = { change: 'none', rename: () => undefined, derived: [], added: [] };
-const SHORT: OracleRunSpec = { id: 'scripted-3', seed: 3, crew: 'scripted', cap: 240 };
+/** 300 ticks (240 before the weapons update): the ships' start is point-symmetric until the crew first acts, on tick 265
+ *  now that the scripted gunner no longer launches at a far target (weapons update spec §2; it was tick 81). */
+const SHORT: OracleRunSpec = { id: 'scripted-3', seed: 3, crew: 'scripted', cap: 300 };
 
 describe('the alias table', () => {
   it('maps unchanged names to themselves and leaves the version field out on both sides', () => {
@@ -71,7 +73,7 @@ describe('the R-2 alias table (37 → 38)', () => {
 describe('the per-tick record', () => {
   it('a re-run in the baseline schema matches it; a wrong alias fails at its first tick, naming the fields', () => {
     const was = recordRun(SHORT).run;
-    expect(was.perTick).toHaveLength(240);
+    expect(was.perTick).toHaveLength(300);
     const same = recordRun(SHORT, { names: was.names, counts: was.counts });
     expect(same.problems).toEqual([]);
     expect(runDifferences(was, same.run)).toEqual([]);
@@ -80,7 +82,7 @@ describe('the per-tick record', () => {
     expect(wrong.problems).toEqual([]);
     const diff = runDifferences(was, wrong.run);
     expect(diff).toHaveLength(1);
-    expect(diff[0]).toMatch(/^scripted-3: first difference at tick 81 \(fields\); fields that differ during the run: space\.ships\.0\.x, space\.ships\.1\.x$/);   // the crew walk to their consoles first (start-aboard spec §1) while the Hunter holds (its grace)
+    expect(diff[0]).toMatch(/^scripted-3: first difference at tick 265 \(fields\); fields that differ during the run: space\.ships\.0\.x, space\.ships\.1\.x$/);   // the crew walk to their consoles first (start-aboard spec §1) while the Hunter holds (its grace); the Helm first thrusts on 265
   }, 30_000);
   it('records hashDuel at the duel golden cadence, and throws when the schema does not name every flattened value', () => {
     const r = recordRun({ id: 'scripted-1', seed: 1, crew: 'scripted', cap: 1300 });

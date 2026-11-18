@@ -1,7 +1,8 @@
-// Homing torpedoes (docs/superpowers/specs/2026-11-17-homing-torpedo-design.md §1, §4): the guidance law and the
-// headless accuracy gate. Over seeds 1–20 the crew launches, nose roughly on the enemy, at a coasting enemy 300–600
-// units away in open space (the map's asteroids removed, the planet far off): at least 90% must hit. Against an enemy
-// in a hard full-thrust turn the hit rate is only reported.
+// Homing torpedoes (docs/superpowers/specs/2026-11-17-homing-torpedo-design.md §1, §4; weapons update spec §2, §3): the
+// guidance law and the headless accuracy gate. Over seeds 1–20 the crew launches, nose roughly on the enemy or with the
+// enemy behind it (90°–180° off the nose), at a coasting enemy 120–360 units away (inside the torpedo range) in open
+// space (the map's asteroids removed, the planet far off): at least 90% must hit. Against an enemy in a hard
+// full-thrust turn the hit rate is only reported.
 import { describe, expect, it } from 'vitest';
 import { createRng, nextFloat } from '../src/shared/rng';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
@@ -9,7 +10,7 @@ import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
 import { flyMissile, homingTurn, launchMissile, resolveMissiles } from '../src/renderer/src/sim/tactical/missiles';
 import { flySlot } from '../src/renderer/src/sim/tactical/physics';
 import { createTacticalState, missileOf, NO_AXES, type Axes, type TacticalState } from '../src/renderer/src/sim/tactical/state';
-import { DEFAULT_FLIGHT, HEADING_COUNT, MISSILE_FUEL_TICKS, MISSILE_LIFE_TICKS } from '../src/renderer/src/sim/tactical/tuning';
+import { DEFAULT_FLIGHT, HEADING_COUNT, MISSILE_BOOST_TICKS, MISSILE_FUEL_TICKS, MISSILE_LIFE_TICKS, MISSILE_RANGE } from '../src/renderer/src/sim/tactical/tuning';
 
 /** The heading index nearest the direction (dx, dy), by the table (no trigonometry). */
 function headingOf(dx: number, dy: number): number {
@@ -27,17 +28,18 @@ function openSpace(seed: number): TacticalState {
 }
 
 /**
- * Seed s's engagement: the crew 1500–1900 from the planet, the enemy 300–600 away at a random bearing, the crew's nose
- * on the enemy ±22.5°, the enemy moving 0–200 u/s and the crew 0–100 u/s, each in a random direction.
+ * Seed s's engagement: the crew 1500–1900 from the planet, the enemy 120–360 away (within MISSILE_RANGE) at a random
+ * bearing, the crew's nose on the enemy ±22.5° (or, `behind`, turned 90°–180° away from it to a random side), the enemy
+ * moving 0–200 u/s and the crew 0–100 u/s, each in a random direction.
  */
-function engagement(seed: number): TacticalState {
+function engagement(seed: number, behind = false): TacticalState {
   const st = openSpace(seed), r = createRng(seed * 7919 + 1);
   const at = (k: number): [number, number] => [hx(k), hy(k)];
   const [px, py] = at(Math.floor(nextFloat(r) * HEADING_COUNT)), rad = 1500 + 400 * nextFloat(r);
   const [bx, by] = at(Math.floor(nextFloat(r) * HEADING_COUNT)), dist = 300 + 300 * nextFloat(r);
   const [tx, ty] = at(Math.floor(nextFloat(r) * HEADING_COUNT)), tSpeed = 200 * nextFloat(r);
   const [cx, cy] = at(Math.floor(nextFloat(r) * HEADING_COUNT)), cSpeed = 100 * nextFloat(r);
-  const aimError = Math.floor(nextFloat(r) * 33) - 16;
+  const aimError = behind ? (nextFloat(r) < 0.5 ? 1 : -1) * (64 + Math.floor(nextFloat(r) * 65)) : Math.floor(nextFloat(r) * 33) - 16;
   const x = px * rad, y = py * rad;
   Object.assign(st.ships[0], { x, y, vx: cx * cSpeed, vy: cy * cSpeed, heading: (headingOf(bx, by) + aimError + HEADING_COUNT) % HEADING_COUNT, headingAcc: 0 });
   Object.assign(st.ships[1], { x: x + bx * dist, y: y + by * dist, vx: tx * tSpeed, vy: ty * tSpeed, heading: headingOf(tx, ty), headingAcc: 0 });
@@ -61,7 +63,7 @@ function shoot(st: TacticalState, enemy: Axes): boolean {
 }
 
 const SEEDS = Array.from({ length: 20 }, (_, k) => k + 1);
-const rate = (enemy: (seed: number) => Axes): number => SEEDS.filter((s) => shoot(engagement(s), enemy(s))).length / SEEDS.length;
+const rate = (enemy: (seed: number) => Axes, behind = false): number => SEEDS.filter((s) => shoot(engagement(s, behind), enemy(s))).length / SEEDS.length;
 
 describe('homing guidance (homing torpedo spec §1)', () => {
   it('turns toward the lead point: a crossing target ahead-right turns the torpedo clockwise, ahead-left anticlockwise', () => {
@@ -112,14 +114,32 @@ describe('homing guidance (homing torpedo spec §1)', () => {
     for (let t = 0; t < 30; t++) flyMissile(st, 0);
     expect([m.heading, m.headingAcc]).toEqual([h, acc]);
   });
-  it('accuracy gate: seeds 1–20, a coasting target 300–600 away, hits at least 90%', () => {
+  it('flies straight out of the nose, unguided, for its boost, then homes (weapons update spec §2)', () => {
+    const st = openSpace(5);
+    Object.assign(st.ships[0], { x: -1600, y: 0, vx: 0, vy: 0, heading: 64 });          // east
+    Object.assign(st.ships[1], { x: -1800, y: 0, vx: 0, vy: 0, heading: 0 });           // dead astern
+    launchMissile(st, 0);
+    const m = missileOf(st, 0)!;
+    for (let t = 0; t < MISSILE_BOOST_TICKS; t++) flyMissile(st, 0);
+    expect([m.age, m.heading, m.headingAcc]).toEqual([MISSILE_BOOST_TICKS, 64, 0]);
+    expect(homingTurn(st, 0, m)).not.toBe(0);                                                   // it wants to turn back
+    flyMissile(st, 0);                                                                         // the first guided tick turns
+    expect(m.heading + m.headingAcc).not.toBe(64);
+  });
+  it('accuracy gate: seeds 1–20, a coasting target 120–360 away, nose on it, hits at least 90%', () => {
     const hits = rate(() => NO_AXES);
     console.log(`torpedo hit rate, coasting target: ${(hits * 100).toFixed(0)}%`);
     expect(hits).toBeGreaterThanOrEqual(0.9);
   });
+  it('accuracy gate: seeds 1–20, a coasting target 120–360 away and 90°–180° off the nose, hits at least 90%', () => {
+    const hits = rate(() => NO_AXES, true);
+    console.log(`torpedo hit rate, coasting target behind the ship: ${(hits * 100).toFixed(0)}%`);
+    expect(hits).toBeGreaterThanOrEqual(0.9);
+  });
   it('reports the hit rate against a hard full-thrust turn (no threshold)', () => {
     const hits = rate((s) => ({ turn: s % 2 ? 1 : -1, thrust: 1 }));
-    console.log(`torpedo hit rate, hard full-thrust turn: ${(hits * 100).toFixed(0)}%`);
+    const behind = rate((s) => ({ turn: s % 2 ? 1 : -1, thrust: 1 }), true);
+    console.log(`torpedo hit rate, hard full-thrust turn: ${(hits * 100).toFixed(0)}% (behind the ship ${(behind * 100).toFixed(0)}%)`);
     expect(hits).toBeGreaterThanOrEqual(0);
   });
 });

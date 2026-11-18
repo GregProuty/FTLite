@@ -7,7 +7,7 @@ intuitive." Requests:
 - "making the torpedo be able to lock and homing fire on the enemy regardless of direction, but it would be interesting
   if the torpedo was launched forward and then homing tracks from there."
 
-A sim change: SIM_VERSION 46 → 47. Decisions below were taken under the standing order (take the recommendation).
+A sim change: SIM_VERSION 47 → 48 (master was already at 47 from Sci-1). Built with `HUNTER_HULL` = 70 (the Cutter keeps 40): with the double laser the scripted median fell to 143 s, under the 3–5 minute gate; at 70 it is 217 s, 8 wins, 2 losses. Decisions below were taken under the standing order (take the recommendation).
 
 ## 1. Double laser (sim)
 
@@ -53,6 +53,6 @@ A sim change: SIM_VERSION 46 → 47. Decisions below were taken under the standi
 - Render: the circle at radius 360·zoom on both maps, its two brightness states; `crtColours` stays green.
 - duelGates: report the median round length and wins/losses; the 3–5 minute gate must hold (re-tune the burst gap or
   the Hunter, and report, if not).
-- Bless procedure (never `--fresh`): baselines at 46, version-only bless at 47, then the same-version bless after.
+- Bless procedure (never `--fresh`): baselines at 47, version-only bless at 48, then the same-version bless after.
 - Gates: `npx tsc -b`, `npx vitest run --maxWorkers=4` (after `npm run build` in a fresh worktree),
   `npm run test:duel-app-runtime`.

@@ -2,14 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { flyMissile, resolveMissiles } from '../src/renderer/src/sim/tactical/missiles';
 import { createTacticalState, missileOf, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { applyWeaponsInput, IDLE_INPUT, tickWeapons, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
-import { DT, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, MISSILE_LIFE_TICKS, MISSILE_THRUST, MISSILE_TURN_STEPS_PER_TICK, R_MAP, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
+import { HUNTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
+import { DT, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, MISSILE_LIFE_TICKS, MISSILE_THRUST, MISSILE_BOOST_TICKS, MISSILE_TURN_STEPS_PER_TICK, R_MAP, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
 import { makeHostile } from './helpers/hostile';
 
-/** Crew at (−600, −300) heading east, enemy far off at (−600, 600): inside the belt and clear of the planet. */
+/** Crew at (−600, −300) heading east, enemy 350 to the south at (−600, 50), inside the torpedo range (weapons update
+ *  spec §2; it was 900 away before the range): inside the belt and clear of the planet. */
 function duel(): TacticalState {
   const st = makeHostile(createTacticalState(5));
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
-  Object.assign(st.ships[1], { x: -600, y: 600, vx: 0, vy: 0, heading: 0 });
+  Object.assign(st.ships[1], { x: -600, y: 50, vx: 0, vy: 0, heading: 0 });
   return st;
 }
 const input = (over: Partial<ShipInput> = {}): ShipInput => ({ ...IDLE_INPUT, ...over });
@@ -31,8 +33,9 @@ describe('launch (spec §7b)', () => {
     expect([m.x, m.y, m.vx, m.vy, m.heading, m.age]).toEqual([-575, -300, 70, 0, 64, 0]);
     expect([st.systems[0].magazine, st.systems[0].missilesLaunched]).toEqual([MAGAZINE - 1, 1]);
   });
-  it('is refused with an empty magazine, Weapons at level 2, a missile already flying, or nobody at Weapons', () => {
+  it('is refused with an empty magazine, Weapons at level 2, a missile already flying, the target beyond 360, or nobody at Weapons', () => {
     for (const setup of [
+      (st: TacticalState) => { st.ships[1].y = 61; },                 // 361 away (weapons update spec §2)
       (st: TacticalState) => { st.systems[0].magazine = 0; },
       (st: TacticalState) => { st.systems[0].rooms[Room.Weapons] = 2; },
       (st: TacticalState) => { applyWeaponsInput(st, 0, input({ missileLaunch: true })); }
@@ -63,10 +66,14 @@ describe('launch (spec §7b)', () => {
 describe('flight (spec §7b)', () => {
   it('homes at 120°/s by itself (homing torpedo spec §1)', () => {
     const st = duel();
-    Object.assign(st.ships[0], { x: -600, y: -300, heading: 0 });       // aim north, the enemy dead astern: it turns clockwise
+    Object.assign(st.ships[0], { x: -600, y: -300, heading: 0 });       // aim north, the enemy dead astern
     tick(st, input({ missileLaunch: true }));
-    for (let t = 1; t < 60; t++) tick(st, input());
-    expect(missileOf(st, 0)!.heading).toBe(Math.floor(MISSILE_TURN_STEPS_PER_TICK * 60));   // the launch tick's flight turns too
+    for (let t = 1; t < MISSILE_BOOST_TICKS; t++) tick(st, input());
+    expect(missileOf(st, 0)!.heading).toBe(0);                           // weapons update spec §2: straight out of the nose
+    for (let t = MISSILE_BOOST_TICKS; t < 60; t++) tick(st, input());
+    // Then it homes at full rate. The boost's gravity drift (east, toward the planet) puts the enemy south-west of it, so
+    // it turns anticlockwise (it turned clockwise when it homed from launch).
+    expect(256 - missileOf(st, 0)!.heading).toBe(Math.floor(MISSILE_TURN_STEPS_PER_TICK * (60 - MISSILE_BOOST_TICKS)));
   });
   it('thrusts on its first 360 ticks and coasts after', () => {
     const st = duel();
@@ -123,7 +130,7 @@ describe('missile contacts (spec §4 collision matrix)', () => {
     expect(missileOf(st, 0)).toBeNull();
     expect(st.systems[1].shields).toBe(2);
     expect(st.systems[1].rooms).toEqual([0, 0, 1]);
-    expect(st.systems[1].hull).toBe(SHIP_HULL - 3);
+    expect(st.systems[1].hull).toBe(HUNTER_CLASS.hull - 3);
     expect(st.systems[0].missileHits).toBe(1);
     expect(st.events).toContainEqual(expect.objectContaining({ kind: 'missileEnd', ship: 0, cause: 'ship', target: 1, room: Room.Engines }));
   });
@@ -172,7 +179,7 @@ describe('missile contacts (spec §4 collision matrix)', () => {
     Object.assign(missileOf(st, 1)!, { x: missileOf(st, 0)!.x + 5, y: missileOf(st, 0)!.y });
     resolveMissiles(st);
     expect(st.missiles.every((m) => !m.active)).toBe(true);
-    expect(st.systems[1].hull).toBe(SHIP_HULL);
+    expect(st.systems[1].hull).toBe(HUNTER_CLASS.hull);
   });
   it('a frozen full charge keeps its hold timer, then vents after the rest of the 3 s with no press, and does not recharge', () => {
     const st = duel(), s = st.systems[0];

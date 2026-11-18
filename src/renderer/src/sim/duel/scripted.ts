@@ -259,7 +259,9 @@ function gunner(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void {
   const want = t.systems[target]!.shields > 0 ? Room.Shields : Room.Weapons;
   if (sys.lock !== want) out.push({ kind: 'laserLock', room: want });
   if (missileOf(t, 0)) return;
-  if (canLaunch(t, 0) && ex * ex + ey * ey > LASER_RANGE * LASER_RANGE && t.tick - pair.lastLaunch >= MISSILE_GAP) {
+  // Weapons update spec §2: the torpedo launches only within its range, so it goes when the laser has no shot to make
+  // (not full and on target, no burst shot pending), since a torpedo in flight freezes the laser.
+  if (canLaunch(t, 0) && !(laserFull(t, 0) && laserEligible(t, 0, target)) && sys.laserBurst === 0 && t.tick - pair.lastLaunch >= MISSILE_GAP) {
     out.push({ kind: 'missileLaunch' }); pair.lastLaunch = t.tick;
     return;
   }

@@ -5,7 +5,7 @@ import { flyMissile, launchMissile } from '../src/renderer/src/sim/tactical/miss
 import { Contact, createTacticalState, type DuelEvent, missileOf, removeMissile, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
-import { LASER_RANGE, MISSILE_LIFE_TICKS, MISSILE_RADIUS, PLANET_RADIUS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
+import { LASER_RANGE, MISSILE_LIFE_TICKS, MISSILE_RADIUS, MISSILE_RANGE, PLANET_RADIUS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
 import { createCamera, worldToScreen, type Camera } from '../src/renderer/src/render/tactical/camera';
 import { BEAM_HIT, BEAM_MISS, createFx, hitsCrew, pushEvents, recordTrails, resetFx, shakeOffset, SHAKE_S, stepFx, TRAIL_POINTS, type ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import { createTacticalLayer, starField } from '../src/renderer/src/render/tactical/tacticalLayer';
@@ -50,7 +50,22 @@ describe('the combat model (H-1 spec §7)', () => {
     expect(w.enemyArc!.r).toBe(LASER_RANGE * 0.5);
     expect(w.ring).not.toBeNull();
     const [a, b] = st.ships, range = Math.round(Math.hypot(b.x - a.x, b.y - a.y));
-    expect(w.info.text).toBe(`ENEMY BRG ${String(bearingDeg(b.x - a.x, b.y - a.y)).padStart(3, '0')}  RNG ${range}  NO SHOT`);
+    expect(w.info.text).toBe(`ENEMY BRG ${String(bearingDeg(b.x - a.x, b.y - a.y)).padStart(3, '0')}  RNG ${range}  NO SHOT  TORP ${range <= MISSILE_RANGE ? 'IN RANGE' : 'OUT OF RANGE'}`);
+  });
+  it('the torpedo range circle (weapons update spec §2): radius 360 · zoom about the own ship on both maps; lit at Weapons only while in range', () => {
+    const st = createTacticalState(11);
+    for (const z of [0.25, 0.5, 1]) {
+      const cam = createCamera(st.ships[0].x, st.ships[0].y, z);
+      Object.assign(st.ships[1], { x: st.ships[0].x + 500, y: st.ships[0].y });          // out of range
+      const out = combatModel(input(st, cam, 'weapons'));
+      expect(out.torpedoRange).toEqual({ x: 640, y: 360, r: MISSILE_RANGE * cam.zoom, lit: false });
+      expect(out.weapons!.torpedoInRange).toBe(false); expect(out.weapons!.info.text).toMatch(/TORP OUT OF RANGE$/);
+      st.ships[1].x = st.ships[0].x - 300;                                                  // in range, behind
+      const inside = combatModel(input(st, cam, 'weapons'));
+      expect(inside.torpedoRange).toEqual({ x: 640, y: 360, r: MISSILE_RANGE * cam.zoom, lit: true });
+      expect(inside.weapons!.info.text).toMatch(/TORP IN RANGE$/);
+      expect(combatModel(input(st, cam, 'helm')).torpedoRange).toEqual({ x: 640, y: 360, r: MISSILE_RANGE * cam.zoom, lit: false });   // the Helm: dim only
+    }
   });
   it('the info text centres between a left and a right reserve (the Artemis console)', () => {
     const st = createTacticalState(11);

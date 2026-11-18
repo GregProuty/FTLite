@@ -7,7 +7,7 @@ import { Life, LifeState, Position } from '../../sim/components';
 import type { DuelState } from '../../sim/duel/state';
 import { throttleThrust } from '../../sim/duel/throttle';
 import { hx, hy } from '../../sim/tactical/direction';
-import { missileOf, NO_AXES, Outcome, type Axes, type DuelEvent, type Missile, type TacticalState } from '../../sim/tactical/state';
+import { CREW_SLOT, missileOf, NO_AXES, Outcome, type Axes, type DuelEvent, type Missile, type TacticalState } from '../../sim/tactical/state';
 import { LASER_RANGE } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import type { OtherStatus } from '../../render/duel/readoutModel';
@@ -62,9 +62,12 @@ export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: r
     // laser's lock room. A missile hit struck a room whose level rose beyond what those laser hits explain, else unknown (−1).
     const tw = beforeCounters[target], tn = tgt ? duelCounters(t, target) : null;
     const rose = tw && tn ? tn.rooms.map((r, k) => r - tw.rooms[k]!) : [0, 0, 0];
-    const hits = now.laserHits - was.laserHits, strips = Math.min(hits, now.stripped - was.stripped);
+    // A weak-frequency crew shot strips 2 layers (Sci-1 §4.4), so the layers stripped are spent per stripping hit, in order.
+    const hits = now.laserHits - was.laserHits, weak = i === CREW_SLOT && t.systems[i]!.freq === t.weakFreq;
+    let layers = now.stripped - was.stripped;
     for (let k = 0; k < now.shots - was.shots; k++) {
-      const hit = k < hits && !!tgt, stripped = hit && k < strips, room = hit && !stripped ? lock : -1;
+      const hit = k < hits && !!tgt, stripped = hit && layers > 0, room = hit && !stripped ? lock : -1;
+      if (stripped) layers -= weak ? Math.min(2, layers) : 1;
       if (room >= 0 && rose[room]! > 0) rose[room]!--;
       const x2 = hit ? tgt!.x : ship.x + hx(ship.heading) * LASER_RANGE, y2 = hit ? tgt!.y : ship.y + hy(ship.heading) * LASER_RANGE;
       out.push({ kind: 'laser', ship: i, hit, stripped, room, x1: ship.x, y1: ship.y, x2, y2 } satisfies DuelEvent);

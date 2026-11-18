@@ -19,8 +19,9 @@ import { build } from 'vite';
 import { computeContentDigest } from '../../build/contentDigest';
 import { startOnlineAppRuntime } from './online-app-runtime';
 
-/** The test-only first seed: with no flight or weapon input its first round is decided on tick 3423, about 57 s of play
- *  (the Hunter's 30 s grace included), whoever is seated or away (found by search over seeds 1-1500 at SIM_VERSION 45;
+/** The test-only first seed: with no flight or weapon input its first round is decided on tick 4453, about 74 s of play
+ *  (the Hunter's 30 s grace included; 3423 before the weapons update, SIM_VERSION 48), whoever is seated or away (found
+ *  by search over seeds 1-1500 at SIM_VERSION 45;
  *  2277, decided on tick 1471, before the grace). */
 export const DUEL_TEST_SEED = 351;
 const delay = (ms: number) => new Promise(done => setTimeout(done, ms));

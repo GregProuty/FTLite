@@ -1,5 +1,6 @@
 // The Weapons station block (spec 2026-11-17-artemis-consoles §4.1): laser charge and FIRE, the lock room, the torpedo
-// magazine and LAUNCH. The torpedo homes by itself (homing torpedo spec §3), so there is nothing to steer.
+// magazine, its range state (IN RANGE / OUT OF RANGE, weapons update spec §2) and LAUNCH. The torpedo homes by itself
+// (homing torpedo spec §3), so there is nothing to steer.
 // Sci-1 spec §7.4: the frequency row, A B C with the tuned one lit and the weak one marked after a Level 2 scan.
 import { memo } from 'react';
 import type { WeaponsPanel } from '../../render/duel/consoleModel';
@@ -38,7 +39,10 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons }: { weapon
       <Box x={x0} y={y0 + 112} w={right - x0} h={1} style={{ background: hex(crt ? CRT.dim : BAR_OFF) }} />
       <PixelText text="TORPEDO" x={x0} y={y0 + 118} size={FONT_NATIVE} tint={dim} />
       <PixelText text={`MAG ${weapons.magazine}`} x={x0} y={y0 + 134} size={FONT_SIZE} tint={main} />
-      {weapons.missileFlying && <PixelText text="FLYING" x={x0 + textPx(`MAG ${weapons.magazine}`) + 8} y={y0 + 138} size={FONT_NATIVE} tint={crt ? CRT.hot : AMBER} />}
+      {weapons.missileFlying
+        ? <PixelText text="FLYING" x={x0 + textPx(`MAG ${weapons.magazine}`) + 8} y={y0 + 138} size={FONT_NATIVE} tint={crt ? CRT.hot : AMBER} />
+        : <PixelText text={weapons.torpedoInRange ? 'IN RANGE' : 'OUT OF RANGE'} x={x0 + textPx(`MAG ${weapons.magazine}`) + 8} y={y0 + 138} size={FONT_NATIVE}
+          tint={weapons.torpedoInRange ? main : dim} />}
       <Button name="launch" label="LAUNCH" hint="F" x={right - 120} y={y0 + 134} w={120} h={24} disabled={!weapons.canLaunch} onPress={() => actions.console.press('launch')} />
       <PixelText text="FREQ" x={x0} y={y0 + 174} size={FONT_NATIVE} tint={main} />
       {FREQ_NAMES.map((label, f) => <Button key={f} name={`freq-${f}`} label={label} x={x0 + 52 + f * 56} y={y0 + 170} w={52} h={24}

@@ -19,7 +19,7 @@ const btn = (name: string) => document.querySelector(`[data-testid="console-${na
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
 const weaponsConsole: ConsoleView = {
   station: 'weapons', tabs: { helm: 'open', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: 'switch', weapons: null, science: null, ship: 'stand' },
-  helm: null, science: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null },
+  helm: null, science: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null },
   side: { zoom: '0.90', free: false, snapLabel: 'CAMERA' }
 };
 const helmConsole: ConsoleView = { ...weaponsConsole, station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
@@ -92,6 +92,19 @@ describe('the Weapons block layout', () => {
     const f = find('FLYING')!;
     expect(f).toBeDefined();
     expect(f.x + textPx('FLYING', FONT_NATIVE / 16)).toBeLessThan(STATION.x + STATION.w - 8 - 120);
+  });
+  it('the torpedo range state sits next to MAG (weapons update spec §2): IN RANGE, or OUT OF RANGE with LAUNCH greyed, ending before LAUNCH', () => {
+    const { duel } = mount();
+    act(() => duel.frame(view(weaponsConsole)));
+    expect(find('IN RANGE')).toBeDefined(); expect(find('OUT OF RANGE')).toBeUndefined();
+    act(() => duel.frame(view({ ...weaponsConsole, weapons: { ...weaponsConsole.weapons!, torpedoInRange: false, canLaunch: false } })));
+    const o = find('OUT OF RANGE')!;
+    expect(o).toBeDefined(); expect(find('IN RANGE')).toBeUndefined();
+    expect(o.x).toBeGreaterThan(STATION.x + 8 + textPx('MAG 4/4'));
+    expect(o.x + textPx('OUT OF RANGE', FONT_NATIVE / 16)).toBeLessThan(STATION.x + STATION.w - 8 - 120);
+    expect(btn('launch').dataset.uiButton).toBe('disabled');
+    act(() => duel.frame(view({ ...weaponsConsole, weapons: { ...weaponsConsole.weapons!, missileFlying: true } })));
+    expect(find('FLYING')).toBeDefined(); expect(find('IN RANGE')).toBeUndefined();
   });
 });
 

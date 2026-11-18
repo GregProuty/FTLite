@@ -4,12 +4,12 @@
 // (tested). The ship colours come from shipColours.ts so both screens agree.
 import { extinguishProgress, pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
-import { Contact, missileOf, Room, targetOf } from '../../sim/tactical/state';
+import { classOf, Contact, missileOf, Room, targetOf } from '../../sim/tactical/state';
 import { REPAIR_UNITS } from '../../sim/duel/tuning';
 import { hostilityLine } from './scienceModel';
 import { Health, Life, LifeState } from '../../sim/components';
 import { HEALTH_MAX } from '../../sim/tuning';
-import { LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, SHIELD_LAYERS, SHIP_HULL } from '../../sim/tactical/tuning';
+import { LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, SHIELD_LAYERS } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import { AMBER, DIM, TEXT, WARN, GOOD } from '../theme';
 import { CREW_SHIP, ENEMY_SHIP } from '../tactical/shipColours';
@@ -79,10 +79,11 @@ export function healthRow(d: DuelState, pid: number): ReadoutRow {
 export function readoutRows(input: ReadoutInput): ReadoutRow[] {
   const d = input.duel, t = d.tactical, target = targetOf(t, 0), other = input.active === 0 ? 1 : 0;
   const crew = t.ships[0], enemy = t.ships[target]!, crewSys = t.systems[0], enemySys = t.systems[target]!;
+  const crewHull = classOf(t, 0).hull, enemyHull = classOf(t, target).hull;   // the Hunter's hull is its own (weapons update spec §3)
   const rows: ReadoutRow[] = [
     ...(input.console ? [] : [heading(input.mode === 'helm' ? 'HELM' : input.mode === 'weapons' ? 'WEAPONS' : input.mode === 'science' ? 'SCIENCE' : 'ON FOOT', AMBER)]),
     em(heading(d.interior.layout.id.toUpperCase(), CREW_SHIP), 'crew'),
-    em(row('HULL', `${crewSys.hull}/${SHIP_HULL}`, DIM, crewSys.hull <= SHIP_HULL / 4 ? WARN : TEXT), crewSys.hull <= SHIP_HULL / 4 ? 'alert' : null),
+    em(row('HULL', `${crewSys.hull}/${crewHull}`, DIM, crewSys.hull <= crewHull / 4 ? WARN : TEXT), crewSys.hull <= crewHull / 4 ? 'alert' : null),
     { ...row('SHIELD'), pips: { n: crewSys.shields, max: Math.max(SHIELD_LAYERS, crewSys.shields), colour: CREW_SHIP }, emphasis: 'crew' }   // Shield loot can add a layer (Sci-1 spec §4.5)
   ];
   for (let r = 0; r < 3; r++) {
@@ -99,7 +100,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
   rows.push(em(heading(seen === 0 ? 'CONTACT' : 'HUNTER', ENEMY_SHIP), 'enemy'));
   const hostile = input.console ? hostilityLine(t) : null;   // Sci-1 spec §7.1: the consoles' hostility line
   if (hostile) rows.push(em(heading(hostile.text, WARN), hostile.alert ? 'alert' : 'warn'));
-  rows.push(seen === 0 ? row('HULL', '?') : em(row('HULL', `${enemySys.hull}/${SHIP_HULL}`, DIM, enemySys.hull <= SHIP_HULL / 4 ? GOOD : TEXT), enemySys.hull <= SHIP_HULL / 4 ? 'good' : null));
+  rows.push(seen === 0 ? row('HULL', '?') : em(row('HULL', `${enemySys.hull}/${enemyHull}`, DIM, enemySys.hull <= enemyHull / 4 ? GOOD : TEXT), enemySys.hull <= enemyHull / 4 ? 'good' : null));
   rows.push(seen === 0 ? { ...row('SHIELD', '?'), emphasis: 'enemy' } : { ...row('SHIELD'), pips: { n: enemySys.shields, max: SHIELD_LAYERS, colour: ENEMY_SHIP }, emphasis: 'enemy' });
   rows.push(seen < 2 ? row('ROOMS', seen === 0 ? '?' : '? ? ?') : em(row('ROOMS', enemySys.rooms.map((n, r) => `${ROOM_NAMES[r]!.charAt(0)}${n}`).join(' ')), enemySys.rooms.some((n) => n > 0) ? 'warn' : null));
   if (input.mode === 'weapons' && !input.console) {

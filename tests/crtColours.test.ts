@@ -15,7 +15,7 @@ const vp = { w: 1280, h: 720 };
 const ship = (patch: Partial<ShipDraw>): ShipDraw => ({ index: 0, x: 500, y: 360, angle: 0.4, scale: 0.9, chevron: false, crew: true, hull: 'hound', rooms: [1, 2, 0], shields: 2, ...patch });
 const trail = (x: number, y: number) => Array.from({ length: 12 }, (_, k) => ({ x: x - 6 * k, y: y + 3 * k })).reverse();
 
-function fullFrame(console: 'helm' | 'weapons'): { d: TacticalDraw; c: CombatDraw } {
+function fullFrame(console: 'helm' | 'weapons', inRange = true): { d: TacticalDraw; c: CombatDraw } {
   const ring = ringDraw(500, 360);
   const d: TacticalDraw = {
     grid: { spacing: 250, lines: [{ x1: 100, y1: 0, x2: 100, y2: 720, major: true }, { x1: 0, y1: 200, x2: 1280, y2: 200, major: false }], columns: [{ text: 'H', x: 100, y: 4 }], rows: [{ text: '9', x: 4, y: 200 }] },
@@ -30,8 +30,10 @@ function fullFrame(console: 'helm' | 'weapons'): { d: TacticalDraw; c: CombatDra
   const c: CombatDraw = {
     weapons: console === 'weapons' ? {
       ownArc: { x: 500, y: 360, r: 300, angle: 0.4, half: Math.PI / 3 }, enemyArc: { x: 760, y: 260, r: 300, angle: 3, half: Math.PI / 3 }, ring,
-      info: { text: 'ENEMY BRG 055  RNG 294  IN ARC', x: 507, y: 12 }, inArc: true
+      info: { text: `ENEMY BRG 055  RNG 294  IN ARC  TORP ${inRange ? 'IN RANGE' : 'OUT OF RANGE'}`, x: 507, y: 12 }, inArc: true, torpedoInRange: inRange
     } : null,
+    // Weapons update spec §2: the torpedo's range circle, lit at Weapons while in range, dim otherwise and at the Helm.
+    torpedoRange: { x: 500, y: 360, r: 324, lit: console === 'weapons' && inRange },
     lock: { x: 770, y: 262, r: 12, room: 1, label: { text: 'LOCK SHIELDS', x: 800, y: 252 } },
     missiles: [{ x: 560, y: 320, r: 4, crew: true, trail: trail(560, 320) }, { x: 700, y: 330, r: 4, crew: false, trail: trail(700, 330) }],
     effects: [
@@ -60,8 +62,8 @@ function colours(root: Container): Set<number> {
 const count = (c: Container): number => c.children.reduce((n, k) => n + 1 + count(k as Container), 0);
 
 describe('the CRT map draws only the amber ramp (CRT map spec section 2)', () => {
-  for (const console of ['helm', 'weapons'] as const) for (const t of [0, 0.3, 0.6, 0.9]) it(`${console} at t = ${t}`, () => {
-    const layer = createTacticalLayer({ fontFamily: 'm5x7', viewport: vp }), { d, c } = fullFrame(console);
+  for (const console of ['helm', 'weapons'] as const) for (const inRange of [true, false]) for (const t of [0, 0.3, 0.6, 0.9]) it(`${console}${inRange ? '' : ' (torpedo out of range)'} at t = ${t}`, () => {
+    const layer = createTacticalLayer({ fontFamily: 'm5x7', viewport: vp }), { d, c } = fullFrame(console, inRange);
     layer.draw(d, c, t);
     const seen = colours(layer.container);
     expect(seen.size).toBeGreaterThan(4);

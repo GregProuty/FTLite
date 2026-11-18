@@ -46,6 +46,8 @@ export interface ShipSystems {
   shields: number; shieldClock: number;
   /** Laser (spec §7a): charge 0..chargeUnits (full), ticks a full charge has been held, whether Fire is held, the locked target Room. */
   laserCharge: number; laserHold: number; fireHeld: boolean; lock: number;
+  /** Weapons update spec §1: the burst's shots still to fire after the first, and the ticks until the next one. */
+  laserBurst: number; laserBurstClock: number;
   /** Sci-1 spec §4.4: the laser's tuned frequency 0..2 (A..C); only the crew's ever changes (laserFrequency). */
   freq: number;
   /** Missiles in the magazine and the regain clock in ticks (spec §7b). */
@@ -143,12 +145,12 @@ function emptyShip(bodies: number): Ship {
 function systemsFor(cls: number, target: number): ShipSystems {
   const c = SHIP_CLASSES[cls]!;
   return {
-    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: Room.Shields, freq: 0,
+    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: Room.Shields, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: c.slots.missile.magazine, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0
   };
 }
 function emptySystems(): ShipSystems {
-  return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, freq: 0,
+  return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: 0, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0 };
 }
 /** A free missile pool entry. */

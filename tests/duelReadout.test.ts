@@ -22,13 +22,14 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     d.tactical.systems[1].hull = 21; d.tactical.systems[1].rooms = [0, 2, 1]; d.tactical.systems[0].rooms[Room.Engines] = 1; d.tactical.systems[0].shields = 1;
     const rows = readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' });
     expect(rows.map((r) => [r.label, r.value])).toEqual([
+    // Weapons update spec §3: the Hunter's own hull (HUNTER_HULL 70), the crew's 40.
       ['HELM', ''], ['CUTTER', ''], ['HULL', '40/40'], ['SHIELD', ''], ['WEAPONS', 'OK'], ['SHIELDS', 'OK'], ['ENGINES', 'DMG 1'],
-      ['HUNTER', ''], ['HULL', '21/40'], ['SHIELD', ''], ['ROOMS', 'W0 S2 E1'], ['HEALTH', '100/100'], ['OTHER', 'PRESENT'], ['', 'AT WEAPONS']
+      ['HUNTER', ''], ['HULL', '21/70'], ['SHIELD', ''], ['ROOMS', 'W0 S2 E1'], ['HEALTH', '100/100'], ['OTHER', 'PRESENT'], ['', 'AT WEAPONS']
     ]);
     expect(rows[3]!.pips).toMatchObject({ n: 1, max: 2 }); expect(rows[9]!.pips).toMatchObject({ n: 2, max: 2 });
     disposeDuel(d);
   });
-  for (const [lvl, head, hull, shield, rooms] of [[0, 'CONTACT', '?', null, '?'], [1, 'HUNTER', '40/40', 2, '? ? ?'], [2, 'HUNTER', '40/40', 2, 'W0 S0 E0']] as const) {
+  for (const [lvl, head, hull, shield, rooms] of [[0, 'CONTACT', '?', null, '?'], [1, 'HUNTER', '70/70', 2, '? ? ?'], [2, 'HUNTER', '70/70', 2, 'W0 S0 E0']] as const) {
     it(`the enemy rows at scan level ${lvl}: ${lvl === 2 ? 'everything' : lvl === 1 ? 'hull and shield, rooms hidden' : 'nothing but a CONTACT heading'}`, () => {
       const d = createDuel(layout, 5);
       makeHostile(d.tactical); d.tactical.known[Contact.Enemy] = lvl;

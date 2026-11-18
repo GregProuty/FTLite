@@ -241,6 +241,9 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         bodies.poly(pts).fill(CRT.dim).stroke({ width: 1, color: CRT.mid });
       }
 
+      // Weapons update spec §2: the torpedo's range circle, dashed, mid while the target is in range at Weapons, else dim.
+      const tr = c?.torpedoRange ?? null;
+      if (tr) segments(arcs, dashCircle(tr.x, tr.y, Math.max(1, tr.r), DASH, GAP, seg), 1, tr.lit ? CRT.mid : CRT.dim);
       const wd = c?.weapons ?? null;
       if (wd) {
         if (wd.enemyArc) arc(arcs, wd.enemyArc, false, 0);
