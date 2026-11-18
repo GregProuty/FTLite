@@ -10,7 +10,9 @@ import { roomAt } from '../grid';
 import { inReachOfTile } from '../interact';
 import { movementSystem } from '../movement';
 import { stepDuel } from '../tactical/duel';
-import { Outcome } from '../tactical/state';
+import { scanCommand } from '../tactical/science';
+import { SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
+import { CONTACT_MAX_LEVEL, Outcome } from '../tactical/state';
 import { canCharge, canLaunch, validLock, type ShipInput } from '../tactical/weapons';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
 import { extinguishWork, firePhase, pointBurning } from './fire';
@@ -26,7 +28,7 @@ const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 /** The fixed order weapon commands take effect in within one tick. */
 const WEAPON_ORDER = ['laserLock', 'laserCharge', 'missileLaunch'] as const;
 /** Every duel command kind the step handles; any other kind is rejected not-in-duel. */
-const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle'];
+const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle', 'contactScan', 'designate', 'laserFrequency'];
 
 function resetScratch(d: DuelState): void {
   const sc = d.interior.scratch;
@@ -46,6 +48,11 @@ function sector(env: DuelEnvelope): CommandEnvelope {
 function attendant(d: DuelState, station: number): number {
   const pid = d.interior.stations.occupant[station]!;
   return pid >= 0 && d.present[pid as 0 | 1] ? pid : -1;
+}
+/** The console (Navigation, Weapons or Science) pid is the present attendant of, or −1 (Sci-1 spec §5: who may scan). */
+function scanStation(d: DuelState, pid: number): number {
+  for (const s of [d.nav, d.weapons, d.science]) if (s >= 0 && attendant(d, s) === pid) return s;
+  return -1;
 }
 
 function conscious(d: DuelState, pid: number): boolean { return Life.state[d.interior.crew[pid]!] === LifeState.Conscious; }
@@ -129,7 +136,7 @@ function stepDecided(d: DuelState, input: DuelInput): DuelResult[] {
 /**
  * Spec §13, in order: scratch reset (and d.events cleared); seat phase (sit through today's interaction validation,
  * only at the two role consoles; stand through today's handler; then presence); tactical commands validated against the
- * seats after the seat phase and folded into the crew's ShipInput; the Helm's throttle (Artemis spec §5.2); repair, with its events; movement for standing
+ * seats after the seat phase and folded into the crew's ShipInput; the Helm's throttle (Artemis spec §5.2); laserFrequency, designate and contactScan (Sci-1 spec §5); repair, with its events; movement for standing
  * present players; the tactical stepDuel; hit damage to the crew; fire (growth, damage, ignition from this tick's hits);
  * health (fire damage, downed, pick-up, the Medbay, the both-down loss); the interior tick. Commands apply in the order given (the authority's
  * envelope order). Returns one result per command, sorted by player then sequence. A rematch while the round runs is
@@ -147,7 +154,8 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   // Seat phase: sits (today's validation), then stands (today's handler), then presence.
   const away = (e: DuelEnvelope): boolean => !d.present[e.id.player as 0 | 1];   // an away character stays exactly where it is (spec §8)
   const sits = input.commands.filter((e) => e.command.kind === 'sit');
-  const allowedSits = sits.filter((e) => e.command.kind === 'sit' && (e.command.station === d.nav || e.command.station === d.weapons));
+  const roleConsole = (station: number): boolean => station === d.nav || station === d.weapons || (d.science >= 0 && station === d.science);   // Sci-1 spec §6.1
+  const allowedSits = sits.filter((e) => e.command.kind === 'sit' && roleConsole(e.command.station));
   for (const e of sits) if (!allowedSits.includes(e)) result(e, 'not-in-duel');
   const liveSits = allowedSits.filter((e) => { if (!away(e)) return true; result(e, 'unavailable'); return false; });
   applyInteractionCommands(st, liveSits.map(sector));
@@ -188,6 +196,34 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (level === d.throttle) { result(e, undefined, 'noop'); continue; }
     d.throttle = level; result(e);
   }
+  // Sci-1 (spec §5), against the seats as they now stand: every laserFrequency in envelope order, then every designate,
+  // then every contactScan; each is checked for stale-tick first, and within a kind the last applied wins.
+  const t = d.tactical, scientist = d.science >= 0 ? attendant(d, d.science) : -1;
+  for (const e of input.commands) if (e.command.kind === 'laserFrequency') {
+    const freq = e.command.freq;
+    if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
+    if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }
+    if (!Number.isInteger(freq) || freq < 0 || freq > 2) { result(e, 'malformed'); continue; }
+    if (freq === t.systems[0].freq) { result(e, undefined, 'noop'); continue; }
+    t.systems[0].freq = freq; result(e);
+  }
+  for (const e of input.commands) if (e.command.kind === 'designate') {
+    const c = e.command.contact;
+    if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
+    if (scientist < 0 || e.id.player !== scientist) { result(e, 'invalid-seat'); continue; }
+    if (c !== -1 && c !== 0 && c !== 1) { result(e, 'malformed'); continue; }
+    if (c === t.designated) { result(e, undefined, 'noop'); continue; }
+    t.designated = c; result(e);
+  }
+  for (const e of input.commands) if (e.command.kind === 'contactScan') {
+    const c = e.command.contact, station = scanStation(d, e.id.player);
+    if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
+    if (station < 0) { result(e, 'invalid-seat'); continue; }
+    if (c !== 0 && c !== 1) { result(e, 'malformed'); continue; }
+    if (t.known[c]! >= CONTACT_MAX_LEVEL[c]!) { result(e, 'unavailable'); continue; }
+    result(e, undefined, scanCommand(t, c, station === d.science ? SCAN_RATE_SCIENCE : SCAN_RATE_OTHER, station));
+  }
+  crew.scanner = t.scan.contact < 0 || attendant(d, t.scan.by) >= 0;   // spec §4.6: after admission, so a same-tick takeover keeps it
   for (const e of input.commands) if (e.command.kind === 'rematch') result(e, 'duel-running');
   for (const e of input.commands) if (!DUEL_KINDS.includes(e.command.kind)) result(e, 'not-in-duel');
   if (helm >= 0) crew.axes = { turn: (input.held[helm] ?? NO_HELD).moveX, thrust: throttleThrust(d.throttle) };   // Artemis spec §5.3: held moveX turns, the throttle thrusts; held moveY no longer does

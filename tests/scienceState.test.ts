@@ -23,7 +23,7 @@ describe('the science module (spec §6.2)', () => {
     const st = createTacticalState(3);
     expect(scienceModule.fields(st).map((f) => f.name)).toEqual(FIELDS);
     expect(scienceModule.fields(st).map((f) => f.count)).toEqual([1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
-    expect([scienceModule.commands, scienceModule.reasons]).toEqual([[], []]);   // Task 2 fills both
+    expect([scienceModule.commands, scienceModule.reasons]).toEqual([['contactScan', 'designate', 'laserFrequency'], ['stale-tick', 'invalid-seat', 'not-at-weapons', 'malformed', 'unavailable']]);
     const ship = shipModule.fields(st).map((f) => f.name);
     for (const i of [0, 1]) expect(ship.indexOf(`systems.${i}.freq`)).toBe(ship.indexOf(`systems.${i}.lock`) + 1);
     expect(CONTACT_MAX_LEVEL).toEqual([2, 1]);

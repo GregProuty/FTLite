@@ -117,6 +117,9 @@ export const duelWire: ModeWire<DuelSnapshot> = {
       z.object({ kind: z.literal('laserCharge'), held: z.boolean() }).strict(),
       z.object({ kind: z.literal('missileLaunch') }).strict(),
       z.object({ kind: z.literal('throttle'), level: z.number().finite() }).strict(),
+      z.object({ kind: z.literal('contactScan'), contact: z.number().int() }).strict(),
+      z.object({ kind: z.literal('designate'), contact: z.number().int() }).strict(),
+      z.object({ kind: z.literal('laserFrequency'), freq: z.number().int() }).strict(),
       z.object({ kind: z.literal('rematch') }).strict(),
       z.object({ kind: z.literal('setPaused'), paused: z.boolean() }).strict()
     ];

@@ -137,10 +137,8 @@ export const scienceModule: SimModule<TacticalState> = {
   id: 'science',
   fields: () => SCIENCE,
   notSnapshotted: {},
-  // Empty until Task 2 adds the three kinds to the codec (tests/duelModules.test.ts and duelCheckpoint.test.ts compare
-  // the modules' kinds with the codec's).
-  commands: [],
-  reasons: []
+  commands: ['contactScan', 'designate', 'laserFrequency'],
+  reasons: ['stale-tick', 'invalid-seat', 'not-at-weapons', 'malformed', 'unavailable']
 };
 /** The tactical state's modules in canonical order. */
 export const TACTICAL_MODULES: readonly SimModule<TacticalState>[] = [spaceModule, shipModule, scienceModule];

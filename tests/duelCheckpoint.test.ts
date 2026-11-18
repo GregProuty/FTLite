@@ -136,7 +136,7 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
   it('the duel codec admits exactly the duel modules\' command kinds plus the core\'s setPaused', () => {
     const codec = duelCodec(2), envelope = (command: unknown) => ({ kind: 'command' as const, envelope: { runId: 'r', id: { player: 0, sequence: 1 }, requestedTick: 0, command } as CommandEnvelope });
     const examples: Record<string, unknown> = { sit: { kind: 'sit', station: 0 }, stand: { kind: 'stand' }, presence: { kind: 'presence', present: true },
-      laserLock: { kind: 'laserLock', room: 1 }, laserCharge: { kind: 'laserCharge', held: true }, missileLaunch: { kind: 'missileLaunch' }, rematch: { kind: 'rematch' }, throttle: { kind: 'throttle', level: 2 } };
+      laserLock: { kind: 'laserLock', room: 1 }, laserCharge: { kind: 'laserCharge', held: true }, missileLaunch: { kind: 'missileLaunch' }, rematch: { kind: 'rematch' }, throttle: { kind: 'throttle', level: 2 }, contactScan: { kind: 'contactScan', contact: 0 }, designate: { kind: 'designate', contact: 1 }, laserFrequency: { kind: 'laserFrequency', freq: 2 } };
     const kinds = DUEL_MODULES.flatMap(({ module }) => [...module.commands]);
     expect(kinds.sort()).toEqual(Object.keys(examples).sort());
     for (const command of [...kinds.map((k) => examples[k]), { kind: 'setPaused', paused: true }]) expect(codec.decodeMessage(codec.encodeMessage(envelope(command)))).toEqual(envelope(command));

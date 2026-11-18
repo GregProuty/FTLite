@@ -42,6 +42,8 @@ export interface DuelState {
   points: RepairPoint[];
   /** Station indices of the two consoles that are roles (spec §8). */
   nav: number; weapons: number;
+  /** The Science console's station index (Sci-1 spec §6.1), or −1 when the layout has none. */
+  science: number;
   /** This tick's repair and fire events: every repairWork or fireWork in player order, then each Room's repairDone or
    *  fireOut in Room order (repairPhase), then any fireStart in tactical event order (firePhase, after stepDuel), then the
    *  health events (healthPhase): crewHurt from hits in tactical event order, crewHurt from fire, downed, revived. */
@@ -71,6 +73,7 @@ export function createDuel(layout: ShipLayout, seed: number, helmPlayer: 0 | 1 =
     interior.doors.state.fill(DoorState.HeldOpen);
     const nav = interior.derived.stationOfKind[StationKind.Navigation]!, weapons = interior.derived.stationOfKind[StationKind.Weapons]!;
     if (nav < 0 || weapons < 0) throw new Error('duel layout needs Navigation and Weapons consoles');
+    const science = interior.derived.stationOfKind[StationKind.Science] ?? -1;   // Sci-1 spec §6.1: the third seat
     const gn = interior.derived.stationGroup[nav]!;
     if (gn >= 0 && gn === interior.derived.stationGroup[weapons]) throw new Error(`duel layout ${layout.id} puts Navigation and Weapons in one console group; the two players need separate seats`);
     // Start aboard (start-aboard spec §1): nobody is seated; both stand at the layout's spawns and walk to a console.
@@ -81,7 +84,7 @@ export function createDuel(layout: ShipLayout, seed: number, helmPlayer: 0 | 1 =
       if (room < 0 || roomAt(interior, tx + 0.5, ty + 0.5) !== room) throw new Error(`repair point ${p.room} ${tx},${ty} is not inside its room`);
       return { tacticalRoom: p.tacticalRoom, room, tile: ty * interior.derived.width + tx };
     });
-    return { interior, tactical, present: [true, true], repair: [0, 0, 0], points, nav, weapons, events: [], round: 0, helmPlayer, baseTick: 0, decidedTick: -1, throttle: 0 };
+    return { interior, tactical, present: [true, true], repair: [0, 0, 0], points, nav, weapons, science, events: [], round: 0, helmPlayer, baseTick: 0, decidedTick: -1, throttle: 0 };
   } catch (err) {
     disposeSimState(interior);   // release its entities and component storage before rethrowing
     throw err;

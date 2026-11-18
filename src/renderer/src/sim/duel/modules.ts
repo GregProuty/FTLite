@@ -80,6 +80,7 @@ export const DUEL_NOT_SNAPSHOTTED: Readonly<Record<string, string>> = {
   points: 'the repair points, resolved from the duel layout by createDuel',
   nav: 'the Navigation station index, from the layout',
   weapons: 'the Weapons station index, from the layout',
+  science: 'the Science station index, from the layout',
   events: 'per-tick repair events, cleared every tick'
 };
 

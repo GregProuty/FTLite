@@ -77,6 +77,12 @@ export type DuelCommand =
   /** The Helm's throttle (Artemis spec §5.2): an integer level −1..4. Any finite number passes the codec, and the sim
    *  answers a bad one malformed. */
   | { kind: 'throttle'; level: number }
+  /** Sci-1 spec §5: scan the next level of a contact (0 the enemy, 1 the derelict) from the Helm, Weapons or Science. */
+  | { kind: 'contactScan'; contact: number }
+  /** Science points out a contact (−1 none, 0 or 1) for every screen. */
+  | { kind: 'designate'; contact: number }
+  /** Weapons tunes the crew laser to frequency 0..2 (A..C). */
+  | { kind: 'laserFrequency'; freq: number }
   /** On a decided round's end card: start the next round (H-2 spec §7). */
   | { kind: 'rematch' }
   | { kind: 'setPaused'; paused: boolean };
