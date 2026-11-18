@@ -15,14 +15,14 @@ import { makeUi } from './helpers/uiStore';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
-const contactOf = (station: 'helm' | 'weapons', aim: boolean, ship = 1, slots = 2): ContactView => {
-  const st = createTacticalState(4, slots); if (slots > 2) st.ships[2]!.active = true;
-  return contactModel({ state: st, ship, aim, station, t: 0, weapons: station === 'weapons' ? { charge } : null })!;
+const contactOf = (station: 'helm' | 'weapons', aim: boolean): ContactView => {
+  const st = createTacticalState(4); st.known[0] = 2;   // Sci-1: the full window is Level 2
+  return contactModel({ state: st, contact: 0, aim, station, t: 0, weapons: station === 'weapons' ? { charge } : null })!;
 };
 const view = (contact: ContactView): DuelUiView => ({ readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console: null, contact });
 function mount(contact: ContactView) {
   const ui = makeUi(), duel = createDuelSink(ui.store);
-  const c = { close: vi.fn(), arm: vi.fn(), cancelAim: vi.fn(), pick: vi.fn() };
+  const c = { close: vi.fn(), arm: vi.fn(), cancelAim: vi.fn(), pick: vi.fn(), scan: vi.fn() };
   ui.actions.setContact(c);
   render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);
   act(() => duel.frame(view(contact)));
@@ -93,13 +93,6 @@ describe('the contact window (spec §4.2, §5)', () => {
     fireEvent.pointerDown(box(), { button: 0, clientX: shld.x, clientY: shld.y });
     expect(c.pick).not.toHaveBeenCalled();
     expect(document.querySelector('[data-ui-contact-reticle]')).toBeNull();
-  });
-  it('a ship that is not the laser\'s target: LASER disabled and NOT TARGETED', () => {
-    const c = mount(contactOf('weapons', false, 2, 3));
-    expect(btn('contact-laser')!.dataset.uiButton).toBe('disabled');
-    expect(texts()).toContain('NOT TARGETED');
-    fireEvent.pointerDown(btn('contact-laser')!, { button: 0 });
-    expect(c.arm).not.toHaveBeenCalled();
   });
   it('a struck room flashes: a hot fill over its polygon at the flash alpha (duel polish i spec §B)', () => {
     const c = contactOf('helm', false);

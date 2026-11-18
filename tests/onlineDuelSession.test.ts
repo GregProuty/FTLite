@@ -11,6 +11,7 @@ import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
+import { sitDown, standUp } from '../src/renderer/src/sim/stations';
 import type { OnlinePortDescriptor, OnlineStatus } from '../src/shared/onlineSession';
 import { duelCompatibility } from '../src/main/network/onlineDuel';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -48,7 +49,7 @@ function stubClient() {
 }
 type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
-  clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null }[], overlay: [] as (readonly string[] | null)[],
+  clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null; notice?: string | null }[], overlay: [] as (readonly string[] | null)[],
   sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void } }[], disposes: { n: 0 }
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
@@ -65,8 +66,8 @@ vi.mock('../src/renderer/src/app/duel/scene', () => ({
   createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void } }) => {
     h.sceneOpts.push(opts);
     return {
-      draw: (_source: unknown, _dt: number, o: { banner: string | null }) => {
-        h.draws.push({ banner: o.banner });
+      draw: (_source: unknown, _dt: number, o: { banner: string | null; notice?: string | null }) => {
+        h.draws.push({ banner: o.banner, notice: o.notice });
         opts.ui.frame({ readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null });
       },
       dispose() { h.disposes.n++; opts.ui.clear(); }
@@ -421,10 +422,10 @@ describe('the contact window online (enemy ship window spec §3, §6.2)', () => 
     show(contact);
     r.session.setInputBlocked(true);
     r.key('keydown', 'Escape'); r.key('keyup', 'Escape'); r.key('keydown', 'KeyT'); r.key('keyup', 'KeyT');
-    expect(contact.state()).toEqual({ ship: 1, aim: false });
+    expect(contact.state()).toEqual({ contact: 1, aim: false });
     r.session.setInputBlocked(false); r.session.setFocused(false);
     r.key('keydown', 'Escape'); r.key('keyup', 'Escape');
-    expect(contact.state()).toEqual({ ship: 1, aim: false });
+    expect(contact.state()).toEqual({ contact: 1, aim: false });
     r.session.setFocused(true);
     r.key('keydown', 'Escape'); r.key('keyup', 'Escape');
     expect(contact.state()).toBeNull();
@@ -451,3 +452,58 @@ describe('the contact window online (enemy ship window spec §3, §6.2)', () => 
     expect(setContact).toHaveBeenCalledTimes(2); expect(setContact.mock.calls[1]![0]).toBeNull();
   });
 });
+
+describe('the online seat notice (start-aboard spec §1)', () => {
+  it('shows YOU: SCIENCE for NOTICE_MS after the first sync, then nothing', () => {
+    const r = rig(0); sitDown(r.d.interior, 0, r.d.science); r.attach(); r.session.frame();
+    expect(h.draws.at(-1)!.notice).toBe('YOU: SCIENCE');
+    r.advance(2900); r.session.frame();
+    expect(h.draws.at(-1)!.notice).toBe('YOU: SCIENCE');
+    r.advance(200); r.session.frame();
+    expect(h.draws.at(-1)!.notice).toBeNull();
+    r.dispose();
+  });
+});
+
+describe('Science and the frequency online (Sci-1 spec §5, §7.3, §7.4)', () => {
+  const contactOf = (): ContactController => (h.sceneOpts.at(-1) as unknown as { contact: ContactController }).contact;
+  it('at Science a selection sends designate, S sends contactScan; at Weapons Digit2 sends laserFrequency 1', () => {
+    const r = rig(1);
+    standUp(r.d.interior, 1); sitDown(r.d.interior, 1, r.d.science);
+    const c = r.attach(), contact = contactOf();
+    contact.sync({ shown: true, station: 'science', target: 1, active: () => true, epoch: 0 });
+    contact.click(1); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'designate')).toEqual([{ kind: 'designate', contact: 1 }]);
+    r.key('keydown', 'KeyS'); r.key('keyup', 'KeyS'); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'contactScan')).toEqual([{ kind: 'contactScan', contact: 1 }]);
+    r.dispose();
+    const w = rig(1), cw = w.attach();   // the seated start: player 1 at Weapons
+    w.key('keydown', 'Digit2'); w.key('keyup', 'Digit2'); w.pump();
+    expect(cw.commands().filter((x) => x.kind === 'laserFrequency')).toEqual([{ kind: 'laserFrequency', freq: 1 }]);
+    w.dispose();
+  });
+  it('a quick undo inside one round trip is sent, not deduped against the lagging replica', () => {
+    const r = rig(1);
+    standUp(r.d.interior, 1); sitDown(r.d.interior, 1, r.d.science);
+    const c = r.attach(), contact = contactOf();
+    contact.sync({ shown: true, station: 'science', target: 1, active: () => true, epoch: 0 });
+    contact.click(0); r.pump(); contact.close(); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'designate')).toEqual([{ kind: 'designate', contact: 0 }, { kind: 'designate', contact: -1 }]);
+    r.dispose();
+    const w = rig(1), cw = w.attach();
+    w.key('keydown', 'Digit2'); w.key('keyup', 'Digit2'); w.pump();
+    w.key('keydown', 'Digit1'); w.key('keyup', 'Digit1'); w.pump();
+    expect(cw.commands().filter((x) => x.kind === 'laserFrequency')).toEqual([{ kind: 'laserFrequency', freq: 1 }, { kind: 'laserFrequency', freq: 0 }]);
+    w.dispose();
+  });
+  it('one request is sent once: a repeated identical request in the same frame is not doubled', () => {
+    const r = rig(1);
+    standUp(r.d.interior, 1); sitDown(r.d.interior, 1, r.d.science);
+    const c = r.attach(), contact = contactOf();
+    contact.sync({ shown: true, station: 'science', target: 1, active: () => true, epoch: 0 });
+    contact.click(1); r.pump(); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'designate')).toEqual([{ kind: 'designate', contact: 1 }]);
+    r.dispose();
+  });
+});
+

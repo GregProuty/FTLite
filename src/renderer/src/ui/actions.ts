@@ -46,17 +46,20 @@ export function createUiActions(deps: UiActionDeps) {
     press: (action) => consoleInput?.press(action),
     hold: (code, on) => consoleInput?.hold(code, on),
     lock: (room) => consoleInput?.lock(room),
-    throttle: (level) => consoleInput?.throttle(level)
+    throttle: (level) => consoleInput?.throttle(level),
+    frequency: (freq) => consoleInput?.frequency(freq)
   };
 
   // The contact window's clicks (enemy ship window spec §6.6) go to the duel mode's contact controller while one is set;
-  // a pick locks through the console input, the same path as the WEAP/SHLD/ENG buttons. A no-op otherwise.
+  // a pick locks through the console input, the same path as the WEAP/SHLD/ENG buttons. SCAN asks the controller for a scan
+  // request (Sci-1 spec §7.2). A no-op otherwise.
   let contactInput: ContactActions | null = null;
   const contactActions = {
     close: (): void => contactInput?.close(),
     arm: (): void => contactInput?.arm(),
     cancelAim: (): void => contactInput?.cancelAim(),
-    pick: (room: number): void => contactInput?.pick(room, (r) => consoleActions.lock(r))
+    pick: (room: number): void => contactInput?.pick(room, (r) => consoleActions.lock(r)),
+    scan: (): void => contactInput?.scan()
   };
 
   return {

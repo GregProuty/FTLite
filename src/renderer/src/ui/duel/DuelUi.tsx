@@ -3,8 +3,9 @@
 // context and one glow wrapper, the CRT screen and bezel follow the banners, and the end card and the latency overlay stay
 // outside, never covered and never amber. With a console view (Artemis spec 2026-11-17-artemis-consoles §2) the readout moves
 // to the status table at the left, and the tab strip, side column and the Helm or Weapons block draw over the map.
-// The contact window (enemy ship window spec §6.6) follows the station blocks while the frame carries one, and the ship
-// HUD (duel polish i spec §E) draws on the SHIP view, under the banners, with the interior's (non-CRT) theme colours.
+// The contact window (enemy ship window spec §6.6) follows the station blocks while the frame carries one (Sci-1 adds the
+// Science block), and the ship HUD (duel polish i spec §E) draws on the SHIP view, under the banners, with the interior's
+// (non-CRT) theme colours.
 import { useUi } from '../context';
 import { CrtGlow, CrtProvider } from '../stage/CrtContext';
 import { CrtScreen } from '../stage/CrtScreen';
@@ -19,6 +20,7 @@ import { CONSOLE_RESERVE } from '../../render/duel/consoleLayout';
 import { ReadoutPanel } from './ReadoutPanel';
 import { SideColumn } from './SideColumn';
 import { TabStrip } from './TabStrip';
+import { ScienceStation } from './ScienceStation';
 import { WeaponsStation } from './WeaponsStation';
 import { ContactWindow } from './ContactWindow';
 import { ShipHud } from './ShipHud';
@@ -36,6 +38,7 @@ export function DuelUi() {
           {duel.console?.side && <SideColumn side={duel.console.side} />}
           {duel.console?.helm && <HelmStation helm={duel.console.helm} />}
           {duel.console?.weapons && <WeaponsStation weapons={duel.console.weapons} />}
+          {duel.console?.science && <ScienceStation science={duel.console.science} />}
           {duel.contact && <ContactWindow contact={duel.contact} />}
           {duel.hud && <ShipHud hud={duel.hud} />}
           <Banners banners={duel.banners} cx={duel.console && duel.console.station !== 'ship' ? (CONSOLE_RESERVE.left + INTERNAL_W - CONSOLE_RESERVE.right) / 2 : undefined} />

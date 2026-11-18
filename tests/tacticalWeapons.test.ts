@@ -3,10 +3,11 @@ import { createTacticalState, Room, type TacticalState } from '../src/renderer/s
 import { applyWeaponsInput, canCharge, canLaunch, IDLE_INPUT, laserEligible, tickWeapons, validLock, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
 import { inArc, lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
 import { LASER_ARC_COS, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, LASER_RANGE, MAGAZINE, MAGAZINE_REGEN_TICKS, SHIELD_RATE, SHIELD_RECHARGE_UNITS, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
+import { makeHostile } from './helpers/hostile';
 
 /** Crew at (−600, −300) heading east, enemy 300 units east of it: inside the belt, clear of the planet, in arc and range. */
 function duel(): TacticalState {
-  const st = createTacticalState(5);
+  const st = makeHostile(createTacticalState(5));
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
   return st;

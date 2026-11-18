@@ -112,7 +112,7 @@ describe('a decided round and the rematch (spec §7)', () => {
       step(d, [env(d, 0, { kind: 'rematch' })]);
       const T = d.baseTick, fresh = createDuel(CUTTER, d.tactical.seed), pa = createScriptedPair(d.tactical.seed), pb = createScriptedPair(d.tactical.seed);
       // Tick stamps: these hold an encounter tick, so a round started at T holds the fresh duel's value plus T.
-      const stamps = /^(space\.tick|space\.ships\.\d+\.graceUntil|space\.hunter\.lastLaunch|interior\.tick)$/, fireAt = 'space.hunter.fireAt';
+      const stamps = /^(space\.tick|space\.ships\.\d+\.graceUntil|space\.hunter\.lastLaunch|science\.startTick|interior\.tick)$/, fireAt = 'space.hunter.fireAt';
       try {
         for (let k = 0; k <= 600; k++) {
           const a = named(d), b = named(fresh);

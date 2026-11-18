@@ -3,7 +3,7 @@
 // Commands arrive as one ShipInput per ship per tick; the duel step builds these from the authority's admitted commands.
 import { inArc, lineOfSight } from './geometry';
 import { launchMissile } from './missiles';
-import { classOf, missileOf, Room, type Axes, type TacticalState } from './state';
+import { classOf, CREW_SLOT, missileOf, Room, type Axes, type TacticalState } from './state';
 
 /** One ship's inputs for one tick. `helm` / `weapons`: a present player is seated at that console ("attended", spec §8). */
 export interface ShipInput {
@@ -17,12 +17,15 @@ export interface ShipInput {
   laserCharge: boolean | null;
   /** `missileLaunch`. */
   missileLaunch: boolean;
+  /** Sci-1 spec §4.6: whether the station running the ship's scan is attended (true when no scan runs). The duel step
+   *  computes it for the crew; every other input sets true. */
+  scanner: boolean;
 }
 
 /** A crew that sits at both consoles and does nothing. */
-export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, laserCharge: null, missileLaunch: false };
+export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, laserCharge: null, missileLaunch: false, scanner: true };
 /** Nobody at either console: a ship nobody flies. */
-export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, laserCharge: null, missileLaunch: false };
+export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, laserCharge: null, missileLaunch: false, scanner: true };
 
 /** Whether ship i's laser is fully charged. */
 export function laserFull(state: TacticalState, i: number): boolean { return state.systems[i]!.laserCharge >= classOf(state, i).slots.laser.chargeUnits; }
@@ -62,7 +65,10 @@ function fireLaser(state: TacticalState, i: number): void {
   as.shots++;
   if (hit && bs) {
     as.laserHits++;
-    if (bs.shields > 0) { bs.shields--; bs.shieldClock = 0; as.layersStripped++; stripped = true; }
+    if (bs.shields > 0) {   // Sci-1 spec §4.4: the crew laser tuned to the weak frequency strips 2 layers (as many as are up)
+      const n = i === CREW_SLOT && as.freq === state.weakFreq ? Math.min(2, bs.shields) : 1;
+      bs.shields -= n; bs.shieldClock = 0; as.layersStripped += n; stripped = true;
+    }
     else {
       room = as.lock;
       if (bs.rooms[as.lock]! < 2) bs.rooms[as.lock as 0 | 1 | 2]++;

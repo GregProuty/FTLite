@@ -72,7 +72,7 @@ describe('the online duel view source (spec §3)', () => {
       }
       c.publish(d); source.frame(1 / 60, null, null); online.push(...source.drainEvents());
       const count = (events: ViewEvent[], kind: string, ship: number, hit?: boolean) =>
-        events.filter((e) => e.kind === kind && e.ship === ship && (hit === undefined || (e as { hit?: boolean; cause?: string }).hit === hit || (kind === 'missileEnd' && ((e as { cause: string }).cause === 'ship') === hit))).length;
+        events.filter((e) => (e.kind === 'laser' || e.kind === 'missileEnd') && e.kind === kind && e.ship === ship && (hit === undefined || (e as { hit?: boolean; cause?: string }).hit === hit || (kind === 'missileEnd' && ((e as { cause: string }).cause === 'ship') === hit))).length;
       for (const ship of [0, 1]) {
         expect(count(online, 'laser', ship), `ship ${ship} beams`).toBe(count(local, 'laser', ship));
         expect(count(online, 'laser', ship, true), `ship ${ship} beam hits`).toBe(count(local, 'laser', ship, true));
@@ -90,6 +90,13 @@ describe('the online duel view source (spec §3)', () => {
     const events = gapEvents([duelCounters(before, 0), duelCounters(before, 1)], [{ x: 100, y: 200, h: 0 }, null], after);
     expect(events).toEqual([{ kind: 'missileEnd', ship: 0, cause: 'expired', target: -1, room: -1, x: 100, y: 200 }]);
     expect(missileOf(after, 0)).not.toBeNull();
+  });
+  it('a self-hit (counted neither a hit nor a loss) still ends the missile online: launched minus in flight', () => {
+    const before = createTacticalState(4), after = createTacticalState(4);
+    placeMissile(before, 0, { x: 100, y: 200, vx: 1, vy: 0, heading: 0, headingAcc: 0, age: 90 });
+    before.systems[0].missilesLaunched = 1; after.systems[0].missilesLaunched = 1;   // after: the missile is gone, no counter moved
+    const events = gapEvents([duelCounters(before, 0), duelCounters(before, 1)], [{ x: 100, y: 200, h: 0 }, null], after);
+    expect(events).toEqual([{ kind: 'missileEnd', ship: 0, cause: 'expired', target: -1, room: -1, x: 100, y: 200 }]);
   });
   it('online hits say what they did (duel polish i spec §B): a strip, the lock room, and a missile on the room that rose', () => {
     const before = createTacticalState(4), after = createTacticalState(4), a = after.systems[0], e = after.systems[1];

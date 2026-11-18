@@ -9,9 +9,9 @@ import { FONT_NATIVE, FONT_SIZE, textPx } from '../theme';
 import { SHIP_RADIUS } from '../../sim/tactical/tuning';
 import type { CrtScale } from '../crt';
 import { createCrtFilters, type CrtFilters } from './crtFilter';
-import { blink, CRT, DAMAGE_BLINK_HZ, DASH, ENEMY_BLINK_HZ, GAP, HATCH_ANGLE, HATCH_SPACING, roomLevel, roomLook } from './crtTheme';
+import { ALERT_BLINK_HZ, blink, CRT, DAMAGE_BLINK_HZ, DASH, ENEMY_BLINK_HZ, GAP, HATCH_ANGLE, HATCH_SPACING, roomLevel, roomLook } from './crtTheme';
 import { dashCircle, dashLine, hatchSegments } from './dashModel';
-import { asteroidShape, CHEVRON_SIZE, type ArrowTarget, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
+import { asteroidShape, CHEVRON_SIZE, type ArrowTarget, type ContactMarkDraw, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
 import { ENEMY_RING, HULLS } from './hullModel';
 import type { ArcDraw, CombatDraw, MissileDraw } from './weaponsModel';
 import type { Viewport } from './camera';
@@ -23,6 +23,9 @@ export const SPACE = CRT.glass;
 const STAR_COUNT = 220;
 /** Pool sizes: the labels name 500-unit squares (12 per axis at most), the ring has 12 labels, at most 4 arrows. */
 const GRID_LABELS = 12, RING_LABELS = 12, ARROWS = 4;
+/** Sci-1: the contact marks (at most the enemy and the derelict); Science's ring turns at this many radians a second;
+ *  the designation bracket pulses at this rate. */
+const MARKS = 2, LOCK_RING_SPEED = 0.8, DESIGNATE_PULSE_HZ = 1;
 /** The enemy's blinking marker ring (moved to hullModel.ts so the pure model and its test need no Pixi). */
 export { ENEMY_RING };
 
@@ -58,9 +61,9 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
   container.addChild(bloom);
   // The lock label (bar and text) sits in `container` above the filtered `bloom`, so neighbouring strokes never soften it.
   const lockBar = new Graphics();
-  const bg = new Graphics(), stars = new Graphics(), grid = new Graphics(), contours = new Graphics(), bodies = new Graphics(), arcs = new Graphics(), ships = new Graphics(), helm = new Graphics(), combat = new Graphics(), overlay = new Graphics();
-  bloom.addChild(bg, stars, grid, contours, bodies, arcs, ships, helm, combat, overlay);
-  const drawn = [grid, contours, bodies, arcs, ships, helm, combat, overlay, lockBar];
+  const bg = new Graphics(), stars = new Graphics(), grid = new Graphics(), contours = new Graphics(), bodies = new Graphics(), arcs = new Graphics(), ships = new Graphics(), marks = new Graphics(), helm = new Graphics(), combat = new Graphics(), overlay = new Graphics();
+  bloom.addChild(bg, stars, grid, contours, bodies, arcs, ships, marks, helm, combat, overlay);
+  const drawn = [grid, contours, bodies, arcs, ships, marks, helm, combat, overlay, lockBar];
   const mk = (size: number, tint: number, anchorX = 0, anchorY = 0, parent?: Container): BitmapText => {
     const t = new BitmapText({ text: '', style: { fontFamily: opts.fontFamily, fontSize: size } });
     t.tint = tint; t.roundPixels = true; t.anchor.set(anchorX, anchorY); t.visible = false; (parent ?? bloom).addChild(t); return t;
@@ -71,9 +74,12 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
   const arrowText = Array.from({ length: ARROWS }, () => mk(FONT_NATIVE, CRT.main, 0.5, 0.5));
   container.addChild(lockBar);
   const lockText = mk(FONT_NATIVE, CRT.glass, 0, 0, container), info = mk(FONT_SIZE, CRT.main, 0.5, 0);
+  const markQ = Array.from({ length: MARKS }, () => mk(FONT_SIZE, CRT.dim, 0.5, 0.5));
+  const markLabel = Array.from({ length: MARKS }, () => mk(FONT_NATIVE, CRT.mid, 0, 0.5));
+  const markAlert = Array.from({ length: MARKS }, () => mk(FONT_NATIVE, CRT.hot, 0, 0.5));
   // Duel polish i spec §A, §B: the charge ring's CHARGING / FIRING label and the hit callouts, centred over the enemy.
   const chargeText = mk(FONT_NATIVE, CRT.hot, 0.5, 0.5), calloutText = Array.from({ length: CALLOUT_MAX }, () => mk(FONT_NATIVE, CRT.main, 0.5, 0.5));
-  const texts = [...cols, ...rows, ...ring, ...arrowText, lockText, info, chargeText, ...calloutText];
+  const texts = [...cols, ...rows, ...ring, ...arrowText, ...markQ, ...markLabel, ...markAlert, lockText, info, chargeText, ...calloutText];
   // Reused buffers for lists that are consumed at once (dash and hatch segments, polylines fed to dashLine). A list passed
   // to Graphics.poly is kept by reference until the frame renders, so every poly gets a fresh array.
   const pts: number[] = [], seg: number[] = [], line: number[] = [];
@@ -170,6 +176,45 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
     for (const k of r.ticks) helm.moveTo(k.x1, k.y1).lineTo(k.x2, k.y2).stroke({ width: 1, color: CRT.dim, alpha: k.major ? 1 : 0.6 });
   }
 
+  /** Four corner brackets of half-size r about (x, y). */
+  function bracket(g: Graphics, x: number, y: number, r: number, alpha: number): void {
+    const k = r * 0.45;
+    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const)
+      g.moveTo(x + sx * r, y + sy * (r - k)).lineTo(x + sx * r, y + sy * r).lineTo(x + sx * (r - k), y + sy * r).stroke({ width: 2, color: CRT.hot, alpha });
+  }
+  /** Sci-1 spec §7.1: the contact marks, the salvage ring and Science's ring, then their text. */
+  function drawMarks(d: TacticalDraw, t: number): void {
+    const list: readonly ContactMarkDraw[] = d.marks ?? [];
+    for (const m of list) {
+      if (m.unknown) marks.circle(m.x, m.y, 9).stroke({ width: 1, color: CRT.dim });
+      if (m.wreck) {   // a broken hull: two offset plates and a spar
+        marks.rect(m.x - 7, m.y - 3, 8, 6).stroke({ width: 1, color: CRT.mid });
+        marks.rect(m.x + 3, m.y - 7, 5, 4).stroke({ width: 1, color: CRT.mid });
+        marks.moveTo(m.x + 1, m.y + 3).lineTo(m.x + 7, m.y + 7).stroke({ width: 1, color: CRT.mid });
+      }
+      if (m.scan !== null) {
+        marks.circle(m.x, m.y, m.r).stroke({ width: 1, color: CRT.faint });
+        if (m.scan > 0) marks.moveTo(m.x, m.y - m.r).arc(m.x, m.y, m.r, -Math.PI / 2, -Math.PI / 2 + m.scan * 2 * Math.PI).stroke({ width: 2, color: CRT.main });
+      }
+      if (m.designated) bracket(marks, m.x, m.y, m.r + 6, blink(t, DESIGNATE_PULSE_HZ) ? 1 : 0.45);
+    }
+    const s = d.salvage ?? null;
+    if (s) {
+      marks.circle(s.x, s.y, s.r).stroke({ width: 1, color: CRT.faint });
+      marks.moveTo(s.x, s.y - s.r).arc(s.x, s.y, s.r, -Math.PI / 2, -Math.PI / 2 + s.fill * 2 * Math.PI).stroke({ width: 2, color: CRT.hot });
+    }
+    const lr = d.lockRing ?? null;
+    if (lr) for (let k = 0; k < 4; k++) {
+      const a = t * LOCK_RING_SPEED + (k * Math.PI) / 2;
+      marks.moveTo(lr.x + Math.cos(a) * lr.r, lr.y + Math.sin(a) * lr.r).arc(lr.x, lr.y, lr.r, a, a + Math.PI / 4).stroke({ width: 1, color: CRT.mid });
+    }
+    fill(markQ, list.filter((m) => m.unknown).map((m) => ({ text: '?', x: m.x, y: m.y })));
+    fill(markLabel, list.flatMap((m) => (m.label ? [{ text: m.label, x: m.x + m.r + 6, y: m.y - 6 }] : [])));
+    fill(markAlert, list.flatMap((m) => (m.alert ? [{ text: m.alert, x: m.x + m.r + 6, y: m.y + 10 }] : [])));
+    const alertTint = blink(t, ALERT_BLINK_HZ) ? CRT.hot : CRT.main;
+    for (const a of markAlert) a.tint = alertTint;
+  }
+
   return {
     container, bloom, stars,
     draw(d, c = null, t = 0) {
@@ -203,6 +248,7 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       }
 
       for (const s of d.ships) drawShip(ships, s, t);
+      drawMarks(d, t);
 
       let ringLabels: readonly Label[] = wd?.ring?.labels ?? [];
       if (wd?.ring) compass(wd.ring);

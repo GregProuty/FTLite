@@ -28,10 +28,11 @@ export interface ConfirmedDuel {
   live?(): boolean;
 }
 interface Counters { shots: number; laserHits: number; stripped: number; launched: number; ended: number; missileHits: number; contacts: [number, number, number]; rooms: [number, number, number] }
-/** Ship i's cumulative counters, which the snapshot carries. */
+/** Ship i's cumulative counters, which the snapshot carries. `ended` is every missile that has ended: launched minus the
+ *  one in flight, which also counts a self-hit (neither a hit nor a loss); never fewer than hits plus losses. */
 export const duelCounters = (t: TacticalState, i: number): Counters => {
-  const s = t.systems[i]!, b = t.ships[i]!;
-  return { shots: s.shots, laserHits: s.laserHits, stripped: s.layersStripped, launched: s.missilesLaunched, ended: s.missileHits + s.missilesLost, missileHits: s.missileHits, contacts: [b.planetHits, b.asteroidHits, b.shipHits], rooms: [s.rooms[0], s.rooms[1], s.rooms[2]] };
+  const s = t.systems[i]!, b = t.ships[i]!, ended = Math.max(s.missileHits + s.missilesLost, s.missilesLaunched - (missileOf(t, i) ? 1 : 0));
+  return { shots: s.shots, laserHits: s.laserHits, stripped: s.layersStripped, launched: s.missilesLaunched, ended, missileHits: s.missileHits, contacts: [b.planetHits, b.asteroidHits, b.shipHits], rooms: [s.rooms[0], s.rooms[1], s.rooms[2]] };
 };
 const body = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
 const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null);
@@ -44,8 +45,9 @@ const workOf = (d: DuelState): number[] => [0, 1, 2].map((r) => {
 
 /**
  * The events of one publication gap (spec §3): each `shots` increment is a beam to the target (a hit when `laserHits`
- * rose) or to arc range along the firing ship's heading; each increment of `missileHits + missilesLost` is a missile
- * ending at the missile's previous position (a hit when `missileHits` rose; a loss draws the neutral burst); each
+ * rose) or to arc range along the firing ship's heading; each increment of `ended` (launched minus in flight) is a
+ * missile ending at the missile's previous position (a hit when `missileHits` rose; a loss or a self-hit draws the
+ * neutral burst); each
  * contact counter increment is a spark at the ship. An ending and a relaunch in one gap are told apart because both
  * counters rose: the ending is drawn at the old missile's last position.
  */
@@ -88,7 +90,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [];
   let latest: { bodies: PrevBody[]; missiles: (PrevBody | null)[]; crew: { x: number; y: number }[]; counters: Counters[]; repair: number[] } | null = null;
   let prevRepair: number[] = [0, 0, 0], events: ViewEvent[] = [], sentHeld = { moveX: 0, moveY: 0 };
-  let cameras = { helm: createCamera(), weapons: createCamera() };
+  let cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() };
   let uiHeld: HeldFlags = NO_HELD_FLAGS, shownThrottle: number | null = null;
   const cameraInput = createCameraInput(deps.now, deps.viewport), interiorCamera = createInteriorCamera();
   const gaps: number[] = [];
@@ -100,7 +102,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     const t = d.tactical, now = deps.now();
     if (d.round !== round) {   // the first publication or a new round: no interpolation across it, fresh cameras
       round = d.round; latest = null; lastTick = -1;
-      const s = t.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y) }; cameraInput.reset(); resetInteriorCamera(interiorCamera);
+      const s = t.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y), science: createCamera(s.x, s.y) }; cameraInput.reset(); resetInteriorCamera(interiorCamera);
     }
     if (latest) events.push(...gapEvents(latest.counters, latest.missiles, t));
     prev = latest ? latest.bodies : t.ships.map(body);
@@ -137,7 +139,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     otherStatus(): OtherStatus {
       const d = duel(), other = seat === 0 ? 1 : 0, s = seatOf(d, other);
       if (Life.state[d.interior.crew[other]!] === LifeState.Downed) return 'DOWNED';   // duel-health spec §2
-      if (s !== 'standing') return s === 'helm' ? 'AT HELM' : 'AT WEAPONS';
+      if (s !== 'standing') return s === 'helm' ? 'AT HELM' : s === 'weapons' ? 'AT WEAPONS' : 'AT SCIENCE';
       if (!d.present[other]) return 'STANDING BY';   // away and on foot (start-aboard spec §1)
       const room = repairInReach(d, other);
       return d.present[other] && room >= 0 && workOf(d)[room]! > prevRepair[room]! ? 'REPAIRING' : 'WALKING';
@@ -165,9 +167,9 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       observe();
       const d = client.state(); if (!d) return;
       frameAlpha = Math.max(0, Math.min(1, (deps.now() - receivedAt) * TICK_HZ / (1000 * gap)));
-      const view = seatOf(d, seat), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : null;
+      const view = seatOf(d, seat), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : view === 'science' ? cameras.science : null;
       if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer); else cameraInput.applyInterior(interiorCamera, keys, pointer); }
-      for (const c of [cameras.helm, cameras.weapons]) {
+      for (const c of [cameras.helm, cameras.weapons, cameras.science]) {
         if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');
         const target = c.follow === 'missile' ? interpolatedMissile(d.tactical, missilePrev, frameAlpha, 0) : followTarget(d.tactical, prev, frameAlpha, c.follow);
         updateCamera(c, deps.viewport, dt, target);

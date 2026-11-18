@@ -3,8 +3,8 @@
 // banners, the end card and the map overlay are drawn by React through the UI sink (React UI spec §6). It draws from a
 // DuelViewSource: the local runtime (Single player) or the online duel source (Multiplayer), so both modes show exactly
 // the same screens.
-import { hunterHostile } from '../../sim/duel/hostility';
 import { Container } from 'pixi.js';
+import { enemyHostile } from '../../sim/tactical/science';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { Renderer } from '../../render/renderer';
 import { crtActive, crtScale } from '../../render/crt';
@@ -12,6 +12,7 @@ import type { EndView } from '../../render/duel/endModel';
 import { CONSOLE_RESERVE, CONTACT_RESERVE } from '../../render/duel/consoleLayout';
 import { consoleModel, consoleStation, type ConsoleStation } from '../../render/duel/consoleModel';
 import { contactModel } from '../../render/duel/contactModel';
+import { hoverReadout } from '../../render/duel/scienceModel';
 import { shipHud } from '../../render/duel/shipHudModel';
 import { READOUT_COLUMN } from '../../render/duel/interiorModel';
 import { createInteriorView, type InteriorView } from '../../render/duel/interiorView';
@@ -19,7 +20,7 @@ import { readoutHelp, readoutRows, type OtherStatus } from '../../render/duel/re
 import { createFx, pushEvents, recordTrails, resetFx, shakeOffset, stepFx, type ViewEvent } from '../../render/tactical/fxModel';
 import { flashesFor, pushHits } from '../../render/tactical/hitModel';
 import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
-import { pickShip, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
+import { interpolatedShip, pickContact, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
 import { combatModel } from '../../render/tactical/weaponsModel';
 import { worldToScreen, type Camera } from '../../render/tactical/camera';
 import { screenPan, worldPan } from '../../audio/voices';
@@ -29,7 +30,7 @@ import { crewLife } from '../../render/duel/healFxModel';
 import type { DuelSink } from '../../ui/sinks';
 import { mapOverlayOf, type Banners, type MapOverlayView } from '../../ui/views';
 import type { DuelState } from '../../sim/duel/state';
-import { CREW_SLOT, Outcome, type Axes } from '../../sim/tactical/state';
+import { Contact, CREW_SLOT, Outcome, targetOf, type Axes } from '../../sim/tactical/state';
 import type { InteriorCamera } from '../../render/duel/interiorCamera';
 import type { HeldFlags } from './input';
 import type { ContactController } from './contactController';
@@ -42,7 +43,7 @@ export interface DuelViewSource {
   readonly prev: readonly PrevBody[];
   readonly missilePrev: readonly (PrevBody | null)[];
   readonly crewPrev: readonly { x: number; y: number }[];
-  readonly cameras: { readonly helm: Camera; readonly weapons: Camera };
+  readonly cameras: { readonly helm: Camera; readonly weapons: Camera; readonly science: Camera };
   /** The interior's zoom and follow (interior zoom spec), following `active()`'s character. */
   readonly interiorCamera: InteriorCamera;
   /** Changes when the view's caches must start again (a new round). */
@@ -95,6 +96,8 @@ export interface DuelSceneOptions {
   contact?: ContactController;
   /** The last left-button press on the canvas since the previous frame, in internal px (spec §6.2); drained every frame. */
   takeClick?: () => { x: number; y: number } | null;
+  /** The pointer's last position in internal px, or null (Sci-1 spec §7.3: Science's hover readout). */
+  pointer?: () => { x: number; y: number } | null;
 }
 
 export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
@@ -126,19 +129,19 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const hidden = consoleHidden(d, overlay, source.running()), onConsole = !hidden && view !== 'interior';
       // Enemy ship window spec §6.5 steps 1 to 3: the station from the seat, this frame's map click, then the closing rules.
       const station = hidden ? null : consoleStation(d, source.active());
-      const aimable = view !== 'interior' && (station === 'helm' || station === 'weapons');
+      const onMap = view !== 'interior' && (station === 'helm' || station === 'weapons' || station === 'science');   // Sci-1 spec §7.2: the window on all three
       const click = options.takeClick?.() ?? null;   // drained every frame, so a click never waits for a later frame
-      if (contact && click && aimable)
-        contact.click(pickShip({ state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport }, click));
+      if (contact && click && onMap)
+        contact.click(pickContact({ state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport }, click));
       const shown = contact
-        ? contact.sync({ shown: aimable, station, target: d.tactical.systems[CREW_SLOT]!.target, active: (slot) => d.tactical.ships[slot]?.active === true, epoch: source.epoch() })
+        ? contact.sync({ shown: onMap, station, target: d.tactical.systems[CREW_SLOT]!.target, active: (slot) => d.tactical.ships[slot]?.active === true, epoch: source.epoch(), enemyKnown: d.tactical.known[Contact.Enemy], designated: d.tactical.designated })
         : false;
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       const events = source.drainEvents();
       pushEvents(fx, events); pushHits(fx, events, d.tactical);   // duel polish i spec §B: the callouts and the struck-room flashes
       if (sound) {   // Audio-i spec section 4: the same events the effects use; pan from the screen on a map view, crew-relative inside
         const cam = view === 'interior' ? null : source.cameras[view], crew = d.tactical.ships[CREW_SLOT]!;
-        sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true, me: source.active(), crew: crewLife(d), dt, hostile: hunterHostile(d),   // duel polish i spec §C
+        sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true, me: source.active(), crew: crewLife(d), dt, hostile: enemyHostile(d.tactical),   // duel polish i spec §C
           pan: (x, y) => (cam ? screenPan(worldToScreen(cam, viewport, x, y).x, viewport.w) : worldPan(x - crew.x)) });
       }
       // Paused, or a frozen online copy (a lost link): the callouts, flashes, heal motes and the charge pulse hold (polish i review).
@@ -152,18 +155,22 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         // Step 4: the map keeps its arrows and info line clear of the window while it is shown.
         const input = {
           state: d.tactical, prev: source.prev, alpha, camera: source.cameras[view], viewport, console: view, axes: source.axes(),
-          ships: [0, 1], paused: overlay.layerPaused, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right } : { reserveRight: READOUT_COLUMN }), spreadArrows: true, missilePrev: source.missilePrev, fx, t
+          ships: [0, 1], paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right } : { reserveRight: READOUT_COLUMN }), spreadArrows: true, missilePrev: source.missilePrev, fx, t
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting
         layer.draw(model, combatModel({ ...input, t: frozen ? 0 : t, enemyArrow: model.arrows.find((a) => a.target === 'enemy') ?? null }), t);   // the blinks run on the presentation clock, paused or not
         overlayView = mapOverlayOf(model.overlay);
       }
-      const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView, throttle: source.throttle() });
+      // Sci-1 spec §7.3: Science's hover readout, from the crew ship's drawn position to the cursor.
+      const hover = station === 'science' && view !== 'interior'
+        ? hoverReadout(source.cameras[view], viewport, interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), options.pointer?.() ?? null)
+        : null;
+      const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView, throttle: source.throttle(), hover });
       // Step 5: the contact view, only while shown.
       const open = contact?.state() ?? null;
-      const contactView = shown && open && (station === 'helm' || station === 'weapons')
-        ? contactModel({ state: d.tactical, ship: open.ship, aim: open.aim, station, t, weapons: consoleView?.weapons ?? null, flashes: flashesFor(fx.struck, open.ship) })
+      const contactView = shown && station !== null && station !== 'ship'   // Science's window shows with nothing selected
+        ? contactModel({ state: d.tactical, contact: open?.contact ?? null, aim: open?.aim ?? false, station, t, weapons: consoleView?.weapons ?? null, flashes: open?.contact === 0 ? flashesFor(fx.struck, targetOf(d.tactical, CREW_SLOT)) : [] })
         : null;
       options.ui.frame({
         readout: { rows: readoutRows({ duel: d, mode: view, active: source.active(), other: source.otherStatus(), console: onConsole }), help: onConsole ? [] : readoutHelp(view) },

@@ -5,11 +5,12 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { REPAIR_UNITS } from '../src/renderer/src/sim/duel/tuning';
-import { Outcome, placeMissile, Room } from '../src/renderer/src/sim/tactical/state';
+import { Contact, Outcome, placeMissile, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
 import { endModel } from '../src/renderer/src/render/duel/endModel';
 import { readoutHelp, readoutRows, READOUT_ROWS, READOUT_W, type ReadoutInput, type ReadoutMode } from '../src/renderer/src/render/duel/readoutModel';
 import { PAD, textPx } from '../src/renderer/src/render/theme';
+import { makeHostile } from './helpers/hostile';
 
 const layout = parseShip(cutter);
 const pairs = (input: ReadoutInput) => readoutRows(input).map((r) => [r.label, r.value]);
@@ -17,6 +18,7 @@ const pairs = (input: ReadoutInput) => readoutRows(input).map((r) => [r.label, r
 describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
   it('both hulls, both shields, the crew rooms and the enemy rooms; the other character status', () => {
     const d = createDuel(layout, 5);
+    makeHostile(d.tactical); d.tactical.known[Contact.Enemy] = 2;
     d.tactical.systems[1].hull = 21; d.tactical.systems[1].rooms = [0, 2, 1]; d.tactical.systems[0].rooms[Room.Engines] = 1; d.tactical.systems[0].shields = 1;
     const rows = readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' });
     expect(rows.map((r) => [r.label, r.value])).toEqual([
@@ -26,6 +28,18 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     expect(rows[3]!.pips).toMatchObject({ n: 1, max: 2 }); expect(rows[9]!.pips).toMatchObject({ n: 2, max: 2 });
     disposeDuel(d);
   });
+  for (const [lvl, head, hull, shield, rooms] of [[0, 'CONTACT', '?', null, '?'], [1, 'HUNTER', '40/40', 2, '? ? ?'], [2, 'HUNTER', '40/40', 2, 'W0 S0 E0']] as const) {
+    it(`the enemy rows at scan level ${lvl}: ${lvl === 2 ? 'everything' : lvl === 1 ? 'hull and shield, rooms hidden' : 'nothing but a CONTACT heading'}`, () => {
+      const d = createDuel(layout, 5);
+      makeHostile(d.tactical); d.tactical.known[Contact.Enemy] = lvl;
+      const rows = readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' });
+      expect(rows.length).toBe(14);
+      expect(pairs({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' }).slice(7, 11)).toEqual([[head, ''], ['HULL', hull], ['SHIELD', shield === null ? '?' : ''], ['ROOMS', rooms]]);
+      const pips = rows[9]!.pips;
+      if (shield === null) expect(pips === undefined || pips.n === 0).toBe(true); else expect(pips).toMatchObject({ n: shield });
+      disposeDuel(d);
+    });
+  }
   it('the crew-ship heading comes from the layout id (Art-iv): HOUND for the Hound duel, CUTTER for the Cutter', () => {
     for (const [ship, name] of [[hound, 'HOUND'], [cutter, 'CUTTER']] as const) {
       const d = createDuel(parseShip(ship), 5);

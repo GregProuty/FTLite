@@ -3,8 +3,9 @@
 // (tacticalLayer.ts) only draws what this returns. Render code, so it may use any Math (not under the determinism guard).
 import { gravityAccel } from '../../sim/tactical/physics';
 import { predictPath } from '../../sim/tactical/predict';
-import { CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
-import { HEADING_COUNT, R_MAP, SHIP_RADIUS } from '../../sim/tactical/tuning';
+import { derelictPos } from '../../sim/tactical/science';
+import { Contact, CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
+import { HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
 import { hullFor, type HullId } from './hullModel';
 
@@ -61,6 +62,16 @@ export interface HelmDraw { path: Point[]; origin: Point; velocity: Point; headi
 export type ArrowTarget = 'ship' | 'enemy' | 'planet' | 'missile';
 export interface ArrowDraw { target: ArrowTarget; x: number; y: number; angle: number; distance: number; label: string }
 export interface OverlayDraw { zoomText: string; scaleBar: { px: number; units: number }; snapHint: boolean; paused: boolean }
+/** The derelict's loot as the map and the contact window name it (Loot order). */
+export const LOOT_NAMES = ['HULL', 'TORPEDOES', 'SHIELD'] as const;
+/** Sci-1 spec §7.1: one map contact's mark. `unknown` (Level 0): a plain `?`, no silhouette or shield ring. `wreck`: the
+ *  derelict at Level 1, with its `label` and, trapped, the `alert`. `r`: the radius of its scan ring and designation
+ *  bracket. `scan`: the scanner's progress 0..1 while it scans this contact, else null. */
+export interface ContactMarkDraw { contact: 0 | 1; x: number; y: number; r: number; unknown: boolean; wreck: boolean; label: string | null; alert: string | null; scan: number | null; designated: boolean }
+/** The salvage hold as a ring round the crew ship, filled 0..1 over SALVAGE_TICKS. */
+export interface SalvageDraw { x: number; y: number; r: number; fill: number }
+/** Science's slow rotating ring on the crew laser's target (Artemis). */
+export interface LockRingDraw { x: number; y: number; r: number }
 export interface TacticalDraw {
   grid: GridDraw;
   contours: (CircleDraw & { accel: number })[];
@@ -73,6 +84,8 @@ export interface TacticalDraw {
   overlay: OverlayDraw;
   /** The star field's offset within one screen-sized tile, 0..w × 0..h (see starOffset). */
   stars: Point;
+  /** Sci-1 (only with `contacts`): the contact marks, the salvage ring, Science's lock ring. */
+  marks?: ContactMarkDraw[]; salvage?: SalvageDraw | null; lockRing?: LockRingDraw | null;
 }
 
 export interface TacticalModelInput {
@@ -82,7 +95,9 @@ export interface TacticalModelInput {
   alpha: number;
   camera: Camera;
   viewport: Viewport;
-  console: 'helm' | 'weapons';
+  console: 'helm' | 'weapons' | 'science';
+  /** The duel's contacts (Sci-1 spec §7.1): hide an unknown enemy's silhouette and draw the marks. The flight view leaves it off. */
+  contacts?: boolean;
   /** The Helm's effective axes the runtime last sent to the sim. */
   axes: Axes;
   /** Ships to draw (the flight view draws only ship 0). The crew ship is index 0. */
@@ -268,6 +283,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
 
   const ships: ShipDraw[] = [];
   for (const i of input.ships) {
+    if (input.contacts && i !== CREW_SLOT && i === targetOf(state, CREW_SLOT) && state.known[Contact.Enemy] === 0) continue;   // unknown: a ? mark only
     const b = interpolatedShip(state, prev, alpha, i), s = state.systems[i]!;
     if (!onScreen(b.x, b.y, Math.max(SHIP_RADIUS * 2, (SHIP_RADIUS * 1.9 * drawnScale(z)) / z))) continue;   // the drawn rings reach 1.9 units
     const p = toS(b.x, b.y);
@@ -295,7 +311,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     const p = toS(wx, wy), e = edgePoint(vp, input.reserveLeft ?? 0, input.reserveRight, p.x, p.y);
     if (!e) return;
     const distance = Math.round(Math.sqrt((wx - fromX) ** 2 + (wy - fromY) ** 2));
-    arrows.push({ target, x: e.x, y: e.y, angle: e.angle, distance, label: `${ARROW_NAMES[target]} ${distance}` });
+    arrows.push({ target, x: e.x, y: e.y, angle: e.angle, distance, label: `${target === 'enemy' && input.contacts && state.known[Contact.Enemy] === 0 ? 'CONTACT' : ARROW_NAMES[target]} ${distance}` });
   };
   if (input.ships.includes(0)) arrow('ship', own.x, own.y, cam.centreX, cam.centreY);
   const foe = targetOf(state, CREW_SLOT);   // the crew's locked target (engine refactor Decision 15)
@@ -305,9 +321,32 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   if (m) arrow('missile', m.x, m.y, own.x, own.y);
   if (input.spreadArrows) spreadArrows(arrows, vp, input.reserveRight, input.reserveLeft ?? 0);
 
+  // Sci-1 spec §7.1: the contact marks, the salvage ring and Science's ring, in the duel only.
+  let marks: ContactMarkDraw[] | undefined, salvage: SalvageDraw | null = null, lockRing: LockRingDraw | null = null;
+  if (input.contacts) {
+    marks = [];
+    const sc = state.scan, scanOf = (c: number): number | null => (sc.contact === c ? Math.min(1, sc.progress / SCAN_UNITS[sc.level]!) : null);
+    const enemy = targetOf(state, CREW_SLOT), ringR = SHIP_RADIUS * 2.2 * drawnScale(z);
+    if (state.ships[enemy]?.active && input.ships.includes(enemy)) {
+      const b = interpolatedShip(state, prev, alpha, enemy), p = toS(b.x, b.y), unknown = state.known[Contact.Enemy] === 0;
+      if (onScreen(b.x, b.y, SHIP_RADIUS * 3)) {
+        marks.push({ contact: Contact.Enemy, x: p.x, y: p.y, r: unknown ? 14 : Math.max(14, ringR), unknown, wreck: false, label: null, alert: null, scan: scanOf(Contact.Enemy), designated: state.designated === Contact.Enemy });
+        if (input.console === 'science') lockRing = { x: p.x, y: p.y, r: Math.max(18, ringR + 6) };
+      }
+    }
+    const w = derelictPos(state), dr = state.derelict, known = state.known[Contact.Derelict] >= 1;
+    if (onScreen(w.x, w.y, 40)) {
+      const p = toS(w.x, w.y);
+      marks.push({ contact: Contact.Derelict, x: p.x, y: p.y, r: 14, unknown: !known, wreck: known, label: known ? `DERELICT ${dr.salvaged ? 'SALVAGED' : LOOT_NAMES[dr.loot] ?? ''}` : null,
+        alert: known && dr.trapped && !dr.salvaged ? 'TRAPPED' : null, scan: scanOf(Contact.Derelict), designated: state.designated === Contact.Derelict });
+    }
+    if (dr.salvage > 0 && !dr.salvaged && input.ships.includes(CREW_SLOT)) salvage = { x: ownS.x, y: ownS.y, r: Math.max(16, ringR), fill: Math.min(1, dr.salvage / SALVAGE_TICKS) };
+  }
+
   const units = [...SCALE_STEPS].reverse().find((u) => u * z <= SCALE_BAR_MAX_PX) ?? SCALE_STEPS[0]!;
   return {
     grid: gridDraw(cam, vp), contours, edge, planet, asteroids, ships, helm, arrows,
+    ...(marks ? { marks, salvage, lockRing } : {}),
     overlay: { zoomText: `ZOOM ${z.toFixed(2)}`, scaleBar: { px: units * z, units }, snapHint: cam.follow === 'free', paused: input.paused },
     stars: starOffset(cam.centreX, cam.centreY, vp)
   };
@@ -329,6 +368,20 @@ export function pickShip(input: Pick<TacticalModelInput, 'state' | 'prev' | 'alp
     const d = Math.hypot(s.x - p.x, s.y - p.y);
     if (d <= r && d < bestD) { best = i; bestD = d; }
   }
+  return best;
+}
+
+/** Sci-1 spec §7.2: the contact under a map click, or null: the enemy by pickShip, the derelict at derelictPos within
+ *  the same pickRadius; the nearer of the two wins. */
+export function pickContact(input: Pick<TacticalModelInput, 'state' | 'prev' | 'alpha' | 'camera' | 'viewport'>, p: Point): 0 | 1 | null {
+  const r = pickRadius(input.camera.zoom), slot = pickShip(input, p);
+  let best: 0 | 1 | null = null, bestD = Infinity;
+  if (slot !== null) {
+    const b = interpolatedShip(input.state, input.prev, input.alpha, slot), s = worldToScreen(input.camera, input.viewport, b.x, b.y);
+    best = Contact.Enemy; bestD = Math.hypot(s.x - p.x, s.y - p.y);
+  }
+  const w = derelictPos(input.state), s = worldToScreen(input.camera, input.viewport, w.x, w.y), dd = Math.hypot(s.x - p.x, s.y - p.y);
+  if (dd <= r && dd < bestD) best = Contact.Derelict;
   return best;
 }
 

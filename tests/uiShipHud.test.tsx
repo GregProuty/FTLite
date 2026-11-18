@@ -18,8 +18,8 @@ afterEach(() => { cleanup(); });
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((c) => ({ text: c.dataset.text!, x: Number(c.dataset.x), y: Number(c.dataset.y) }));
 const find = (t: string) => texts().find((c) => c.text === t);
 const all = (attr: string, v?: string) => Array.from(document.querySelectorAll<HTMLElement>(v === undefined ? `[${attr}]` : `[${attr}="${v}"]`));
-const shipConsole: ConsoleView = { station: 'ship', tabs: { helm: 'open', weapons: 'locked', ship: 'current' }, tabActions: { helm: 'interact', weapons: null, ship: null }, helm: null, weapons: null, side: null };
-const helmConsole: ConsoleView = { ...shipConsole, station: 'helm', tabs: { helm: 'current', weapons: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, ship: 'stand' },
+const shipConsole: ConsoleView = { station: 'ship', tabs: { helm: 'open', weapons: 'locked', science: 'locked', ship: 'current' }, tabActions: { helm: 'interact', weapons: null, science: null, ship: null }, helm: null, weapons: null, science: null, side: null };
+const helmConsole: ConsoleView = { ...shipConsole, station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
   helm: { heading: 0, speed: 0, held: NO_HELD_FLAGS, throttle: 0 } };
 const hud: ShipHudView = {
   hull: { segments: 20, lit: 7, tone: 'warn' },

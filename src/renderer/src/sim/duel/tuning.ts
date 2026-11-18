@@ -40,8 +40,3 @@ export const DUEL_EXTINGUISH_RATE_TEAM = 5;
 /** Duel health (duel-health spec §1.4): a downed character with a conscious, present, standing teammate within REACH
  *  stands up at 1 health after DUEL_REVIVE_TICKS ticks (5 s); Life.reviveProgress holds ticks / DUEL_REVIVE_TICKS. */
 export const DUEL_REVIVE_TICKS = 300;
-
-/** The Hunter's grace at a round's start (owner 2026-11-17): it holds its position and its fire for this many ticks
- *  (30 s at 60 Hz) while the crew reaches the consoles, unless the crew fires first. */
-export const HUNTER_GRACE_TICKS = 1800;
-

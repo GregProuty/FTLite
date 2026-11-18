@@ -11,6 +11,7 @@ import {
   HUNTER_AVOID_MARGIN, HUNTER_BRAKE_SPEED, HUNTER_JITTER_TICKS, HUNTER_LEAD_S, HUNTER_LOOKAHEAD_S, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_MISSILE_RANGE,
   HUNTER_STANDOFF, HUNTER_THRUST_COS, HUNTER_TRAIL_TICKS, HUNTER_WALK_TICKS, REPAIR_WORK_TICKS
 } from './tuning';
+import { enemyHostile } from './science';
 import { laserEligible, laserFull, type ShipInput } from './weapons';
 
 /** Repair priority (spec §9): highest level first, ties Engines, then Weapons, then Shields. */
@@ -55,15 +56,16 @@ function updateRepair(state: TacticalState, i: number): void {
 
 /** Ship i's input for this tick (the duel's hunter is slot 1), against its locked target. Updates the hunter's own state
  *  (trail, repair timers, scheduled release). The trail is still recorded, but since its missile homes by itself (homing
- *  torpedo spec) nothing reads it. */
-export function hunterThink(state: TacticalState, i = 1, hold = false): ShipInput {
+ *  torpedo spec) nothing reads it. Before it turns hostile (`hostileAt` −1, Sci-1 spec §4.2, owner decision 2026-11-17)
+ *  it holds: no thrust, no turn, no charge, no launch. */
+export function hunterThink(state: TacticalState, i = 1): ShipInput {
   const h = state.hunter, me = state.ships[i]!, mine = state.systems[i]!, target = mine.target, crew = state.ships[target]!, crewSys = state.systems[target]!;
   h.trail[2 * h.trailHead] = crew.x; h.trail[2 * h.trailHead + 1] = crew.y; h.trailHead = (h.trailHead + 1) % HUNTER_TRAIL_TICKS;
   updateRepair(state, i);
   const repairing = h.mode === HunterMode.Repair;
   const helm = !(repairing && h.room === Room.Engines), weapons = !(repairing && h.room !== Room.Engines);
-  const input: ShipInput = { helm, weapons, axes: { turn: 0, thrust: 0 }, laserLock: null, laserCharge: null, missileLaunch: false };
-  if (hold) { h.fireAt = -1; return input; }   // the grace (hunter grace spec): no thrust, no turn, no charge, no launch
+  const input: ShipInput = { helm, weapons, axes: { turn: 0, thrust: 0 }, laserLock: null, laserCharge: null, missileLaunch: false, scanner: true };
+  if (!enemyHostile(state)) { h.fireAt = -1; return input; }   // the hold before hostility (Sci-1 spec §4.2): it keeps only its drift
 
   if (helm) {
     const threat = threatAhead(state, i);

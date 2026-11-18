@@ -111,3 +111,19 @@ export const HUNTER_WALK_TICKS = 360;         // 6 s stand-in for crossing its s
 export const REPAIR_WORK_TICKS = 240;         // 4 s per damage level
 export const HUNTER_STANDOFF = 320;           // within this it stops pursuing and holds its nose on the crew
 export const HUNTER_BRAKE_SPEED = 40;         // and brakes (reverse thrust) when closing faster than this
+
+// Science (Sci-1 spec 2026-11-17-science-scans §4): the hostility clock, the scans, the derelict and its salvage.
+export const HOSTILE_AFTER_TICKS = 1800;          // the enemy turns hostile on its own in the step of rt 1799 (30 s of hold; owner 2026-11-17)
+/** Scan units to reach each level (index = level); Level 1 at 900, Level 2 at 1800. */
+export const SCAN_UNITS: readonly number[] = [0, 900, 1800];
+export const SCAN_RATE_SCIENCE = 5;               // units per tick from the Science console
+export const SCAN_RATE_OTHER = 2;                 // from the Helm or Weapons console
+export const SALVAGE_RANGE = 60;                  // the crew ship within this of the derelict ...
+export const SALVAGE_SPEED = 40;                  // ... at most this fast relative to it (u/s) ...
+export const SALVAGE_TICKS = 300;                 // ... for 5 s salvages it
+export const TRAP_HULL = 3;                       // a trapped derelict costs this much hull
+export const LOOT_HULL = 8;                       // Hull loot, capped at the class hull
+/** The derelict's orbit bands, clear of the belt (BELT_INNER 1100 to BELT_OUTER 1300). */
+export const DERELICT_NEAR_MIN = 700, DERELICT_NEAR_MAX = 1000, DERELICT_FAR_MIN = 1400, DERELICT_FAR_MAX = 1599;
+/** Its phase is redrawn while it would start within this of either spawn, at most DERELICT_PHASE_DRAWS draws in all. */
+export const DERELICT_SPAWN_CLEAR = 600, DERELICT_PHASE_DRAWS = 16;

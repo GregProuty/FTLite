@@ -8,6 +8,7 @@ import type { HeldInput } from '../src/renderer/src/net/contracts';
 import type { DuelCommand, DuelEnvelope } from '../src/renderer/src/sim/duel/commands';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { missileOf, Outcome, Room } from '../src/renderer/src/sim/tactical/state';
@@ -41,7 +42,7 @@ describe('createDuel (spec §8)', () => {
 
 describe('DuelState shape', () => {
   it('has exactly these fields; a new field must also go into flattenDuel in duel/hash.ts', () => {
-    expect(Object.keys(createSeatedDuel(layout, 5)).sort()).toEqual(['baseTick', 'decidedTick', 'events', 'helmPlayer', 'interior', 'nav', 'points', 'present', 'repair', 'round', 'tactical', 'throttle', 'weapons']);
+    expect(Object.keys(createSeatedDuel(layout, 5)).sort()).toEqual(['baseTick', 'decidedTick', 'events', 'helmPlayer', 'interior', 'nav', 'points', 'present', 'repair', 'round', 'science', 'tactical', 'throttle', 'weapons']);
   });
   it('disposeDuel is idempotent', () => {
     const d = createSeatedDuel(layout, 5);
@@ -149,7 +150,7 @@ describe('consoles are roles (spec §8, §13)', () => {
   it('rejects sitting at a scenery console, unknown kinds, and stale ticks', () => {
     const d = createSeatedDuel(layout, 5);
     step(d, [cmd(d, 0, { kind: 'stand' })]);
-    const science = 3, sit = cmd(d, 0, { kind: 'sit', station: science });
+    const medbay = d.interior.derived.stationOfKind[StationKind.Medbay]!, sit = cmd(d, 0, { kind: 'sit', station: medbay });
     const stale: DuelEnvelope = { ...cmd(d, 1, { kind: 'laserCharge', held: true }), requestedTick: d.interior.tick - 1 };
     expect(step(d, [sit, stale]).map((r) => r.reason)).toEqual(['not-in-duel', 'stale-tick']);
   });

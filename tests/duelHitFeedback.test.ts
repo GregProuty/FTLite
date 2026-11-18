@@ -180,10 +180,10 @@ describe('the struck-room flash (spec §B)', () => {
     expect(fx.struck).toHaveLength(0);
   });
   it('the contact view carries each flash with its room polygon', () => {
-    const st = createTacticalState(3);
-    const v = contactModel({ state: st, ship: 1, aim: false, station: 'helm', t: 0, weapons: null, flashes: [{ room: 1, alpha: 0.3 }, { room: 7, alpha: 0.5 }] })!;
+    const st = createTacticalState(3); st.known[0] = 1;   // Sci-1: the enemy's rooms are drawn from Level 1
+    const v = contactModel({ state: st, contact: 0, aim: false, station: 'helm', t: 0, weapons: null, flashes: [{ room: 1, alpha: 0.3 }, { room: 7, alpha: 0.5 }] })!;
     expect(v.flash).toEqual([{ room: 1, points: v.rooms[1]!.points, alpha: 0.3 }]);
-    expect(contactModel({ state: st, ship: 1, aim: false, station: 'helm', t: 0, weapons: null })!.flash).toEqual([]);
+    expect(contactModel({ state: st, contact: 0, aim: false, station: 'helm', t: 0, weapons: null })!.flash).toEqual([]);
   });
 });
 

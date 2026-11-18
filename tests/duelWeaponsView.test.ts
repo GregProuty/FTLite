@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Container } from 'pixi.js';
 import { flyMissile, launchMissile } from '../src/renderer/src/sim/tactical/missiles';
-import { createTacticalState, type DuelEvent, missileOf, removeMissile, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { Contact, createTacticalState, type DuelEvent, missileOf, removeMissile, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { LASER_RANGE, MISSILE_LIFE_TICKS, MISSILE_RADIUS, PLANET_RADIUS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
@@ -64,6 +64,15 @@ describe('the combat model (H-1 spec §7)', () => {
     const enemy = arrows.find((a) => a.target === 'enemy')!, planet = arrows.find((a) => a.target === 'planet')!;
     expect(enemy.x).toBe(planet.x);   // both on the left edge
     expect(Math.abs(enemy.y - planet.y)).toBeGreaterThanOrEqual(ARROW_GAP_SIDE);
+  });
+  it('the off-screen enemy arrow reads CONTACT while the enemy is unscanned (Sci-1), ENEMY otherwise or without contacts', () => {
+    const st = createTacticalState(11), cam = createCamera(2600, 0);
+    Object.assign(st.ships[0], { x: 2600, y: 0 }); Object.assign(st.ships[1], { x: 0, y: 40 });
+    const label = (contacts: boolean) => tacticalModel({ ...input(st, cam, 'helm'), contacts }).arrows.find((a) => a.target === 'enemy')!.label;
+    st.known[Contact.Enemy] = 0;
+    expect(label(true)).toMatch(/^CONTACT \d+$/); expect(label(false)).toMatch(/^ENEMY \d+$/);
+    st.known[Contact.Enemy] = 1;
+    expect(label(true)).toMatch(/^ENEMY \d+$/);
   });
   for (const n of [2, 3, 4]) {
     it(`spreadArrows keeps ${n} clustered arrows at least a gap apart and on the edge`, () => {

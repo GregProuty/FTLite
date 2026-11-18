@@ -59,10 +59,11 @@ describe('the scene and the contact window (spec §6.5)', () => {
     const r = rig();
     try {
       expect(r.rt.view()).toBe('weapons');
+      r.rt.duel.tactical.known[0] = 2;   // Sci-1: the full window needs the enemy at Level 2
       r.scene.draw(r.rt, 1 / 60, LIVE);
       expect(r.view()).toBeNull();
       r.clicks.push(r.enemyOnScreen()); r.scene.draw(r.rt, 1 / 60, LIVE);
-      expect(r.contact.state()).toEqual({ ship: 1, aim: false });
+      expect(r.contact.state()).toEqual({ contact: 0, aim: false });
       expect(r.view()?.title).toBe('ENEMY SHIP');
       expect(r.view()?.weapons?.laser.enabled).toBe(true);
       expect(r.view()?.lockRoom).toBe(r.rt.duel.tactical.systems[0].lock);

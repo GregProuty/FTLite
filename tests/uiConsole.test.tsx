@@ -18,18 +18,18 @@ const find = (t: string) => texts().find((c) => c.text === t);
 const btn = (name: string) => document.querySelector(`[data-testid="console-${name}"]`) as HTMLElement;
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
 const weaponsConsole: ConsoleView = {
-  station: 'weapons', tabs: { helm: 'open', weapons: 'current', ship: 'open' }, tabActions: { helm: 'switch', weapons: null, ship: 'stand' },
-  helm: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS },
+  station: 'weapons', tabs: { helm: 'open', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: 'switch', weapons: null, science: null, ship: 'stand' },
+  helm: null, science: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null },
   side: { zoom: '0.90', free: false, snapLabel: 'CAMERA' }
 };
-const helmConsole: ConsoleView = { ...weaponsConsole, station: 'helm', tabs: { helm: 'current', weapons: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, ship: 'stand' },
+const helmConsole: ConsoleView = { ...weaponsConsole, station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
   weapons: null, helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 2 }, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } };
 const view = (console: ConsoleView | null): DuelUiView => ({
   readout: { rows: [{ label: 'HULL', value: '10/40', labelTint: TEXT, valueTint: TEXT }], help: ['TAB  SWITCH'] }, end: null,
   banners: { interior: null, tactical: null, notice: null }, overlay: { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: false }, crt: true, console });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store);
-  const input = { press: vi.fn(), hold: vi.fn(), lock: vi.fn(), throttle: vi.fn() };
+  const input = { press: vi.fn(), hold: vi.fn(), lock: vi.fn(), throttle: vi.fn(), frequency: vi.fn() };
   ui.actions.setConsole(input);
   render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);
   return { ...ui, duel, input };

@@ -7,12 +7,12 @@ import { stationOnline } from '../../sim/stations';
 import { pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
 
-export type Seat = 'helm' | 'weapons' | 'standing';
+export type Seat = 'helm' | 'weapons' | 'science' | 'standing';
 
-/** Where player pid's character is: seated at Navigation (the Helm), at Weapons, or standing. */
+/** Where player pid's character is: seated at Navigation (the Helm), at Weapons, at Science (Sci-1 spec §6.1), or standing. */
 export function seatOf(d: DuelState, pid: number): Seat {
   const station = Seated.station[d.interior.crew[pid]!]!;
-  return station === d.nav ? 'helm' : station === d.weapons ? 'weapons' : 'standing';
+  return station === d.nav ? 'helm' : station === d.weapons ? 'weapons' : d.science >= 0 && station === d.science ? 'science' : 'standing';
 }
 
 /** The tactical Room player pid would repair (or put out, duel-fire spec §1.4) by holding E now, or −1: the first damaged
@@ -26,13 +26,14 @@ export function repairInReach(d: DuelState, pid: number): number {
   return p ? p.tacticalRoom : -1;
 }
 
-/** The free role console (Navigation or Weapons) player pid can sit at now, or −1: today's sit rule, from inside the
+/** The free role console (Navigation, Weapons or Science) player pid can sit at now, or −1: today's sit rule, from inside the
  *  console's room and in reach of its tile. */
 export function consoleInReach(d: DuelState, pid: number): number {
   const st = d.interior, eid = st.crew[pid]!;
   if (Seated.station[eid]! >= 0 || Life.state[eid] !== LifeState.Conscious) return -1;
   const here = roomAt(st, Position.x[eid]!, Position.y[eid]!);
-  for (const i of [d.nav, d.weapons]) {
+  for (const i of [d.nav, d.weapons, d.science]) {
+    if (i < 0) continue;   // a layout without a Science console
     // As the sim's sit check: no member of the console's group occupied, and at least one online.
     const g = st.derived.stationGroup[i], members = g !== undefined && g >= 0 ? st.derived.groupStations[g]! : [i];
     if (members.some((j) => st.stations.occupant[j]! >= 0) || !members.some((j) => stationOnline(st, j)) || st.derived.stationRoom[i] !== here) continue;

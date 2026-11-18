@@ -30,6 +30,7 @@ function hurt(d: DuelState, pid: number, amount: number): number {
  *  spec §1.1): a laser that hit, fired by ship 1, costs ENEMY_SHOT_CREW_DAMAGE; a missile that ended on ship 0
  *  DEBRIS_CREW_DAMAGE; anything else 0. */
 export function hitDamage(e: DuelEvent): number {
+  if (e.kind !== 'laser' && e.kind !== 'missileEnd') return 0;   // Sci-1's hostile, scanDone and salvage are no hits
   if (e.room < 0) return 0;
   if (e.kind === 'laser') return e.ship === 1 && e.hit ? ENEMY_SHOT_CREW_DAMAGE : 0;
   return e.cause === 'ship' && e.target === 0 ? DEBRIS_CREW_DAMAGE : 0;
@@ -41,6 +42,7 @@ export function hitDamage(e: DuelEvent): number {
 export function applyHitDamage(d: DuelState, events: readonly DuelEvent[]): HealthEvent[] {
   const out: HealthEvent[] = [];
   for (const e of events) {
+    if (e.kind !== 'laser' && e.kind !== 'missileEnd') continue;
     const amount = hitDamage(e);
     if (amount === 0) continue;
     const point = d.points.find((q) => q.tacticalRoom === e.room);

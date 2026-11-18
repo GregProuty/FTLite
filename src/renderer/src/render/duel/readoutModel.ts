@@ -4,8 +4,9 @@
 // (tested). The ship colours come from shipColours.ts so both screens agree.
 import { extinguishProgress, pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
-import { missileOf, Room, targetOf } from '../../sim/tactical/state';
+import { Contact, missileOf, Room, targetOf } from '../../sim/tactical/state';
 import { REPAIR_UNITS } from '../../sim/duel/tuning';
+import { hostilityLine } from './scienceModel';
 import { Health, Life, LifeState } from '../../sim/components';
 import { HEALTH_MAX } from '../../sim/tuning';
 import { LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, SHIELD_LAYERS, SHIP_HULL } from '../../sim/tactical/tuning';
@@ -15,8 +16,8 @@ import { CREW_SHIP, ENEMY_SHIP } from '../tactical/shipColours';
 import { bearingDeg } from '../tactical/weaponsModel';
 import { READOUT_COLUMN, ROOM_NAMES } from './interiorModel';
 
-export type ReadoutMode = 'helm' | 'weapons' | 'interior';
-export type OtherStatus = 'AT HELM' | 'AT WEAPONS' | 'WALKING' | 'REPAIRING' | 'DOWNED' | 'STANDING BY';
+export type ReadoutMode = 'helm' | 'weapons' | 'science' | 'interior';
+export type OtherStatus = 'AT HELM' | 'AT WEAPONS' | 'AT SCIENCE' | 'WALKING' | 'REPAIRING' | 'DOWNED' | 'STANDING BY';
 
 /** The HEALTH row turns red under this (duel-health spec §2). */
 export const HEALTH_LOW = 30;
@@ -79,10 +80,10 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
   const d = input.duel, t = d.tactical, target = targetOf(t, 0), other = input.active === 0 ? 1 : 0;
   const crew = t.ships[0], enemy = t.ships[target]!, crewSys = t.systems[0], enemySys = t.systems[target]!;
   const rows: ReadoutRow[] = [
-    ...(input.console ? [] : [heading(input.mode === 'helm' ? 'HELM' : input.mode === 'weapons' ? 'WEAPONS' : 'ON FOOT', AMBER)]),
+    ...(input.console ? [] : [heading(input.mode === 'helm' ? 'HELM' : input.mode === 'weapons' ? 'WEAPONS' : input.mode === 'science' ? 'SCIENCE' : 'ON FOOT', AMBER)]),
     em(heading(d.interior.layout.id.toUpperCase(), CREW_SHIP), 'crew'),
     em(row('HULL', `${crewSys.hull}/${SHIP_HULL}`, DIM, crewSys.hull <= SHIP_HULL / 4 ? WARN : TEXT), crewSys.hull <= SHIP_HULL / 4 ? 'alert' : null),
-    { ...row('SHIELD'), pips: { n: crewSys.shields, max: SHIELD_LAYERS, colour: CREW_SHIP }, emphasis: 'crew' }
+    { ...row('SHIELD'), pips: { n: crewSys.shields, max: Math.max(SHIELD_LAYERS, crewSys.shields), colour: CREW_SHIP }, emphasis: 'crew' }   // Shield loot can add a layer (Sci-1 spec §4.5)
   ];
   for (let r = 0; r < 3; r++) {
     const point = d.points.find((p) => p.tacticalRoom === r);
@@ -94,10 +95,13 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
     const n = crewSys.rooms[r]!, progress = d.repair[r]! / REPAIR_UNITS, out = em(row(ROOM_NAMES[r]!, level(n, r), DIM, levelTint(n)), n === 0 ? 'good' : 'warn');
     rows.push(n > 0 && progress > 0 ? { ...out, bar: { fill: progress, colour: GOOD } } : out);
   }
-  rows.push(em(heading('HUNTER', ENEMY_SHIP), 'enemy'));
-  rows.push(em(row('HULL', `${enemySys.hull}/${SHIP_HULL}`, DIM, enemySys.hull <= SHIP_HULL / 4 ? GOOD : TEXT), enemySys.hull <= SHIP_HULL / 4 ? 'good' : null));
-  rows.push({ ...row('SHIELD'), pips: { n: enemySys.shields, max: SHIELD_LAYERS, colour: ENEMY_SHIP }, emphasis: 'enemy' });
-  rows.push(em(row('ROOMS', enemySys.rooms.map((n, r) => `${ROOM_NAMES[r]!.charAt(0)}${n}`).join(' ')), enemySys.rooms.some((n) => n > 0) ? 'warn' : null));
+  const seen = t.known[Contact.Enemy];   // Sci-1: what a scan shows; level 0 hides it all, level 1 the rooms
+  rows.push(em(heading(seen === 0 ? 'CONTACT' : 'HUNTER', ENEMY_SHIP), 'enemy'));
+  const hostile = input.console ? hostilityLine(t) : null;   // Sci-1 spec §7.1: the consoles' hostility line
+  if (hostile) rows.push(em(heading(hostile.text, WARN), hostile.alert ? 'alert' : 'warn'));
+  rows.push(seen === 0 ? row('HULL', '?') : em(row('HULL', `${enemySys.hull}/${SHIP_HULL}`, DIM, enemySys.hull <= SHIP_HULL / 4 ? GOOD : TEXT), enemySys.hull <= SHIP_HULL / 4 ? 'good' : null));
+  rows.push(seen === 0 ? { ...row('SHIELD', '?'), emphasis: 'enemy' } : { ...row('SHIELD'), pips: { n: enemySys.shields, max: SHIELD_LAYERS, colour: ENEMY_SHIP }, emphasis: 'enemy' });
+  rows.push(seen < 2 ? row('ROOMS', seen === 0 ? '?' : '? ? ?') : em(row('ROOMS', enemySys.rooms.map((n, r) => `${ROOM_NAMES[r]!.charAt(0)}${n}`).join(' ')), enemySys.rooms.some((n) => n > 0) ? 'warn' : null));
   if (input.mode === 'weapons' && !input.console) {
     const flying = missileOf(t, 0) !== null;
     rows.push(heading('LASER', AMBER));
@@ -128,6 +132,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
 export function readoutHelp(mode: ReadoutMode): string[] {
   if (mode === 'helm') return ['W/S THROTTLE   A/D TURN', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];
   if (mode === 'weapons') return ['SPACE HOLD: CHARGE, FIRE', 'F TORPEDO', 'E/Q LOCK   C CAMERA', 'X STAND   TAB SWITCH', 'ESC PAUSE'];
+  if (mode === 'science') return ['S SCAN   T NEXT CONTACT', 'CLICK A CONTACT: DESIGNATE', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];
   return ['WASD WALK', 'E SIT   HOLD E REPAIR/EXTINGUISH', 'STAND BY DOWNED TO REVIVE', 'WHEEL ZOOM  DRAG PAN  C FOLLOW', 'TAB SWITCH   ESC PAUSE'];
 }
 

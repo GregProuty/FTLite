@@ -4,6 +4,7 @@
 import { hunterThink } from './hunter';
 import { flyMissile, resolveMissiles } from './missiles';
 import { flySlot } from './physics';
+import { hostilityStep, salvageStep, scanStep } from './science';
 import { resolveContacts } from './contacts';
 import { classOf, CREW_SLOT, NO_AXES, Outcome, type TacticalState } from './state';
 import { DEFAULT_FLIGHT, type FlightTuning } from './tuning';
@@ -15,16 +16,15 @@ export function hunterSlot(state: TacticalState): number {
 }
 
 /**
- * Order, fixed: think (the hunter reads the state as it stands), weapon commands (every active ship, in slot order),
- * ships fly, missiles fly, ship contacts, missile contacts, weapon clocks, outcome, tick. The crew wins when every other
+ * Order, fixed (Sci-1 spec §4.6): think (the hunter reads the state as it stands), weapon commands (every active ship, in slot order),
+ * ships fly, missiles fly, ship contacts, missile contacts, weapon clocks, hostility, scan progress (the crew input's scanner), salvage, outcome, tick. The crew wins when every other
  * active ship's hull is gone. Does nothing once the duel has ended.
  */
-/** `hunterHold`: the Hunter's grace (hunter grace spec): it holds position and fire this tick. */
-export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTuning = DEFAULT_FLIGHT, hunterHold = false): void {
+export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTuning = DEFAULT_FLIGHT): void {
   if (state.outcome !== Outcome.Running) return;
   state.events = [];
   const hunter = hunterSlot(state), n = state.ships.length;
-  const inputs = state.ships.map((s, i) => (!s.active ? UNCREWED_INPUT : i === CREW_SLOT ? crew : i === hunter ? hunterThink(state, i, hunterHold) : UNCREWED_INPUT));
+  const inputs = state.ships.map((s, i) => (!s.active ? UNCREWED_INPUT : i === CREW_SLOT ? crew : i === hunter ? hunterThink(state, i) : UNCREWED_INPUT));
   const hunterLaunches = hunter >= 0 ? state.systems[hunter]!.missilesLaunched : 0;
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) applyWeaponsInput(state, i, inputs[i]!);
   if (hunter >= 0 && state.systems[hunter]!.missilesLaunched > hunterLaunches) state.hunter.lastLaunch = state.tick;   // a refused launch costs no cooldown
@@ -33,6 +33,9 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTu
   resolveContacts(state);
   resolveMissiles(state);
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) tickWeapons(state, i, inputs[i]!);
+  hostilityStep(state, hunter);
+  scanStep(state, crew.scanner);
+  salvageStep(state);
   const down = (i: number): boolean => state.systems[i]!.hull <= 0;
   const crewDown = down(CREW_SLOT), others = state.ships.map((s, i) => i).filter((i) => i !== CREW_SLOT && state.ships[i]!.active);
   const enemyDown = others.length > 0 && others.every(down);

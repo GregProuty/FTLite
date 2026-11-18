@@ -3,7 +3,8 @@
 // view's resolved ramp colours and does no blinking of its own. At Weapons, LASER arms the aim: the drawing box hides
 // the cursor and draws a reticle, the hovered room gets a hot stroke, and a room click picks it (the console lock).
 // The Helm only looks. The window takes the pointer, so no click or wheel over it reaches the map.
-import { memo, useState, type PointerEvent as ReactPointerEvent, type SyntheticEvent, type WheelEvent as ReactWheelEvent } from 'react';
+// Sci-1 spec §7.2: the window shows a contact id at its scan level (the unknown contact and the derelict have no drawing), a SCAN button with its progress, and info lines under the drawing.
+import { Fragment, memo, useState, type PointerEvent as ReactPointerEvent, type SyntheticEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import type { ContactView } from '../../render/duel/contactModel';
 import { CONTACT } from '../../render/duel/consoleLayout';
 import { FONT_NATIVE, textPx } from '../../render/theme';
@@ -34,11 +35,15 @@ const ticks = (x: number, y: number): string => {
 const stop = (e: SyntheticEvent): void => e.preventDefault();
 const swallow = (e: ReactWheelEvent): void => e.stopPropagation();
 
+/** The info lines' row height (Sci-1 spec §7.2): text, then the line's bar under it. */
+const LINE_H = 20;
+
 export const ContactWindow = memo(function ContactWindow({ contact }: { contact: ContactView }) {
   const actions = useActions(), l = useUi((s) => s.layout);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const b = contact.box, x0 = CONTACT.x + 8, right = CONTACT.x + CONTACT.w - 8, top = CONTACT.y;
   const statusY = top + 34, laserY = top + 270, missileY = top + 306, barX = x0 + 104;
+  const linesY = contact.weapons ? top + 336 : top + 270, drawn = contact.outline.length > 0;
   const aiming = contact.aim && contact.weapons !== null;
   /** A client position to internal px: the inverse of boxCss on the stage (which starts below the session strip). */
   const toInternal = (e: { clientX: number; clientY: number }): { x: number; y: number } => {
@@ -48,7 +53,7 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
   const roomAt = (p: { x: number; y: number }): number => contact.rooms.findIndex((r) => pointInPolygon(p.x, p.y, r.points));
   const hover = aiming && pointer ? roomAt(pointer) : -1;
   const lock = contact.lockRoom === null ? null : contact.rooms[contact.lockRoom]?.centre ?? null;
-  const laser = contact.weapons?.laser ?? null;
+  const laser = contact.weapons?.laser ?? null, scan = contact.scan;
   const rootDown = (e: ReactPointerEvent<HTMLDivElement>): void => { e.preventDefault(); if (e.button === 2) actions.contact.cancelAim(); };
   const boxDown = (e: ReactPointerEvent<SVGSVGElement>): void => {
     e.preventDefault();
@@ -64,27 +69,41 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
         style={{ position: 'absolute', boxSizing: 'border-box', ...boxCss(CONTACT.x, CONTACT.y, CONTACT.w, CONTACT.h, l), pointerEvents: 'auto' }} />
       <Panel x={CONTACT.x} y={CONTACT.y} w={CONTACT.w} h={CONTACT.h} />
       <PixelText text={contact.title} x={x0} y={top + 8} size={FONT_NATIVE} tint={CRT.main} />
-      <Button name="contact-close" label="X" x={right - 24} y={top + 6} w={24} h={20} onPress={() => actions.contact.close()} />
-      <PixelText text="SHLD" x={x0} y={statusY} size={FONT_NATIVE} tint={CRT.mid} />
-      {Array.from({ length: contact.shields.of }, (_, k) => (
-        <Box key={k} x={x0 + 40 + k * 12} y={statusY + 4} w={8} h={8} attrs={{ 'data-ui-contact-pip': k < contact.shields.up ? 'up' : 'down' }}
-          style={k < contact.shields.up ? { background: hex(CRT.main) } : { border: `1px solid ${hex(CRT.mid)}` }} />
-      ))}
-      <PixelText text="HULL" x={x0 + 120} y={statusY} size={FONT_NATIVE} tint={CRT.mid} />
-      <Bar x={x0 + 156} y={statusY + 6} w={80} h={6} fill={contact.hull.fill} colour={CRT.main} />
-      <PixelText text={String(contact.hull.value)} x={right} y={statusY} size={FONT_NATIVE} tint={CRT.main} anchorX={1} />
-      <svg data-ui-contact-box="" viewBox={`${b.x} ${b.y} ${b.w} ${b.h}`} preserveAspectRatio="none" shapeRendering="crispEdges"
-        style={{ ...boxStyle, pointerEvents: 'auto', cursor: aiming ? 'none' : 'default' }}
-        onPointerMove={(e) => setPointer(toInternal(e))} onPointerLeave={() => setPointer(null)} onPointerDown={boxDown}
-        onContextMenu={stop} onMouseDown={stop} onAuxClick={stop} onWheel={swallow}>
-        <polygon points={polyPoints(contact.outline)} fill={hex(CRT.glass)} stroke={hex(CRT.main)} strokeWidth={1} />
-        {contact.rooms.map((r, k) => (
-          <g key={k} data-ui-contact-room={r.label}>
-            <polygon points={polyPoints(r.points)} fill={r.fill === null ? 'none' : hex(r.fill)} stroke={hex(r.stroke)} strokeWidth={1} />
-            {r.hatch && <path d={segPath(r.hatch.segments)} stroke={hex(r.hatch.colour)} strokeWidth={1} fill="none" />}
-          </g>
-        ))}
-      </svg>
+      {contact.contact !== null && <Button name="contact-close" label="X" x={right - 24} y={top + 6} w={24} h={20} onPress={() => actions.contact.close()} />}
+      {scan && scan.enabled && <Button name="contact-scan" label={scan.label} x={right - 24 - 6 - 132} y={top + 6} w={132} h={20} onPress={() => actions.contact.scan()} />}
+      {scan && !scan.enabled && <><Box testId="contact-scanned" x={right - 24 - 6 - 132} y={top + 6} w={132} h={20} style={{ pointerEvents: 'none' }} />
+        <PixelText text={scan.label} x={right - 24 - 6 - 132} y={top + 10} size={FONT_NATIVE} tint={CRT.mid} /></>}
+      {scan?.progress != null && <Bar x={x0} y={top + 28} w={right - x0} h={3} fill={scan.progress} colour={CRT.main} />}
+      {contact.shields && (
+        <>
+          <PixelText text="SHLD" x={x0} y={statusY} size={FONT_NATIVE} tint={CRT.mid} />
+          {Array.from({ length: contact.shields.of }, (_, k) => (
+            <Box key={k} x={x0 + 40 + k * 12} y={statusY + 4} w={8} h={8} attrs={{ 'data-ui-contact-pip': k < contact.shields!.up ? 'up' : 'down' }}
+              style={k < contact.shields!.up ? { background: hex(CRT.main) } : { border: `1px solid ${hex(CRT.mid)}` }} />
+          ))}
+        </>
+      )}
+      {contact.hull && (
+        <>
+          <PixelText text="HULL" x={x0 + 120} y={statusY} size={FONT_NATIVE} tint={CRT.mid} />
+          <Bar x={x0 + 156} y={statusY + 6} w={80} h={6} fill={contact.hull.fill} colour={CRT.main} />
+          <PixelText text={String(contact.hull.value)} x={right} y={statusY} size={FONT_NATIVE} tint={CRT.main} anchorX={1} />
+        </>
+      )}
+      {drawn && (
+        <svg data-ui-contact-box="" viewBox={`${b.x} ${b.y} ${b.w} ${b.h}`} preserveAspectRatio="none" shapeRendering="crispEdges"
+          style={{ ...boxStyle, pointerEvents: 'auto', cursor: aiming ? 'none' : 'default' }}
+          onPointerMove={(e) => setPointer(toInternal(e))} onPointerLeave={() => setPointer(null)} onPointerDown={boxDown}
+          onContextMenu={stop} onMouseDown={stop} onAuxClick={stop} onWheel={swallow}>
+          <polygon points={polyPoints(contact.outline)} fill={hex(CRT.glass)} stroke={hex(CRT.main)} strokeWidth={1} />
+          {contact.rooms.map((r, k) => (
+            <g key={k} data-ui-contact-room={r.label}>
+              <polygon points={polyPoints(r.points)} fill={r.fill === null ? 'none' : hex(r.fill)} stroke={hex(r.stroke)} strokeWidth={1} />
+              {r.hatch && <path d={segPath(r.hatch.segments)} stroke={hex(r.hatch.colour)} strokeWidth={1} fill="none" />}
+            </g>
+          ))}
+        </svg>
+      )}
       {contact.rooms.map((r, k) => {
         const w = Math.ceil(textPx(r.label, 1)), h = FONT_NATIVE, pad = 2;
         return (
@@ -95,31 +114,33 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
       {contact.rooms.map((r, k) => (
         <PixelText key={k} text={r.label} x={r.centre.x} y={r.centre.y} size={FONT_NATIVE} tint={CRT.hot} anchorX={0.5} anchorY={0.5} />
       ))}
-      <svg data-ui-contact-marks="" viewBox={`${b.x} ${b.y} ${b.w} ${b.h}`} preserveAspectRatio="none" style={{ ...boxStyle, pointerEvents: 'none' }}>
-        {contact.flash.map((f) => (   // duel polish i spec §B: the struck room flashes, the ramp's hot as the spec's white
-          <polygon key={`f${f.room}`} data-ui-contact-flash={contact.rooms[f.room]?.label ?? ''} points={polyPoints(f.points)} fill={hex(CRT.hot)} fillOpacity={f.alpha} stroke="none" />
-        ))}
-        {hover >= 0 && (
-          <g data-ui-contact-hover="">
-            <polygon points={polyPoints(contact.rooms[hover]!.points)} fill="none" stroke={hex(CRT.glass)} strokeWidth={3} />
-            <polygon points={polyPoints(contact.rooms[hover]!.points)} fill="none" stroke={hex(CRT.hot)} strokeWidth={1} />
-          </g>
-        )}
-        {lock && (
-          <g data-ui-contact-lock="">
-            <path d={brackets(lock.x, lock.y)} stroke={hex(CRT.glass)} strokeWidth={3} fill="none" />
-            <path d={brackets(lock.x, lock.y)} stroke={hex(CRT.hot)} strokeWidth={1} fill="none" />
-          </g>
-        )}
-        {aiming && pointer && (
-          <g data-ui-contact-reticle="">
-            <circle cx={pointer.x} cy={pointer.y} r={RETICLE_R} stroke={hex(CRT.glass)} strokeWidth={3} fill="none" />
-            <path d={ticks(pointer.x, pointer.y)} stroke={hex(CRT.glass)} strokeWidth={3} fill="none" />
-            <circle cx={pointer.x} cy={pointer.y} r={RETICLE_R} stroke={hex(CRT.hot)} strokeWidth={1} fill="none" />
-            <path d={ticks(pointer.x, pointer.y)} stroke={hex(CRT.hot)} strokeWidth={1} fill="none" />
-          </g>
-        )}
-      </svg>
+      {drawn && (
+        <svg data-ui-contact-marks="" viewBox={`${b.x} ${b.y} ${b.w} ${b.h}`} preserveAspectRatio="none" style={{ ...boxStyle, pointerEvents: 'none' }}>
+          {contact.flash.map((f) => (   // duel polish i spec §B: the struck room flashes, the ramp's hot as the spec's white
+            <polygon key={`f${f.room}`} data-ui-contact-flash={contact.rooms[f.room]?.label ?? ''} points={polyPoints(f.points)} fill={hex(CRT.hot)} fillOpacity={f.alpha} stroke="none" />
+          ))}
+          {hover >= 0 && (
+            <g data-ui-contact-hover="">
+              <polygon points={polyPoints(contact.rooms[hover]!.points)} fill="none" stroke={hex(CRT.glass)} strokeWidth={3} />
+              <polygon points={polyPoints(contact.rooms[hover]!.points)} fill="none" stroke={hex(CRT.hot)} strokeWidth={1} />
+            </g>
+          )}
+          {lock && (
+            <g data-ui-contact-lock="">
+              <path d={brackets(lock.x, lock.y)} stroke={hex(CRT.glass)} strokeWidth={3} fill="none" />
+              <path d={brackets(lock.x, lock.y)} stroke={hex(CRT.hot)} strokeWidth={1} fill="none" />
+            </g>
+          )}
+          {aiming && pointer && (
+            <g data-ui-contact-reticle="">
+              <circle cx={pointer.x} cy={pointer.y} r={RETICLE_R} stroke={hex(CRT.glass)} strokeWidth={3} fill="none" />
+              <path d={ticks(pointer.x, pointer.y)} stroke={hex(CRT.glass)} strokeWidth={3} fill="none" />
+              <circle cx={pointer.x} cy={pointer.y} r={RETICLE_R} stroke={hex(CRT.hot)} strokeWidth={1} fill="none" />
+              <path d={ticks(pointer.x, pointer.y)} stroke={hex(CRT.hot)} strokeWidth={1} fill="none" />
+            </g>
+          )}
+        </svg>
+      )}
       {contact.weapons && laser && (
         <>
           <Button name="contact-laser" label="LASER" x={x0} y={laserY} w={96} h={24} lit={laser.lit} disabled={!laser.enabled} onPress={() => actions.contact.arm()} />
@@ -130,6 +151,12 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
           <PixelText text={`MAG ${contact.weapons.missile.magazine}`} x={barX} y={missileY} size={FONT_NATIVE} tint={CRT.dim} />
         </>
       )}
+      {contact.lines.map((ln, k) => (
+        <Fragment key={k}>
+          <PixelText text={ln.text} x={x0} y={linesY + k * LINE_H} size={FONT_NATIVE} tint={ln.tint} />
+          {ln.bar !== null && <Bar x={x0} y={linesY + k * LINE_H + 14} w={right - x0} h={3} fill={ln.bar} colour={CRT.main} />}
+        </Fragment>
+      ))}
     </>
   );
 });
