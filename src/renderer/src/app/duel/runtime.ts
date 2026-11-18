@@ -257,12 +257,18 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   const ended = (): boolean => d.tactical.outcome !== Outcome.Running;
   /** The player seated at station i who is present, or −1 (the sim's attendant rule). */
   const attendant = (station: number): number => { const pid = d.interior.stations.occupant[station]!; return pid >= 0 && d.present[pid as 0 | 1] ? pid : -1; };
+  /** Single player only: whether a character the keyboard leaves stays present, i.e. it sits at a console. */
+  const stayPresent = (pid: 0 | 1): boolean => seatOf(d, pid) !== 'standing';
 
   const onTick = (_tick: number, tickTimeMs: number): void => {
     capture();
     const commands: DuelEnvelope[] = [];
     const envelope = (player: number, command: DuelCommand): DuelEnvelope => ({ runId: LOCAL_DUEL_RUN, id: { player, sequence: seq[player]!++ }, requestedTick: d.interior.tick, command });
     if (firstTick) { commands.push(envelope(1, { kind: 'presence', present: false })); firstTick = false; }   // the solo start rule (spec §4)
+    else if (!switching) {   // a character left seated (stayPresent) that is now on foot (stood by the sim) goes away, as a Tab would have sent
+      const other = active === 0 ? 1 : 0;
+      if (d.present[other] && !stayPresent(other) && !pending.some((c) => c.player === other && c.command.kind === 'presence')) commands.push(envelope(other, { kind: 'presence', present: false }));
+    }
     // Weapons commands go out only when the sim would accept them (spec §7 table; canCharge / canLaunch), judged against the
     // state this tick will see. FTL targeting spec §2: Space is a single press (a full laser fires), with no release.
     let launched = false;
@@ -328,12 +334,14 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
 
   /** One frame's press edges for the active character, by where it is (spec §5 table). */
   function play(k: KeySample, requests: ContactRequests): KeySample {
-    if (k.presses.switch > 0) {   // Tab: presence false for the character left, true for the one taken, same tick; nothing carries over
+    if (k.presses.switch > 0) {   // Tab: presence true for the one taken; false for the character left unless it is seated; nothing carries over
       // The left character's queued weapons commands would reach the sim after it has gone (not-at-weapons): drop them.
       pending = pending.filter((c) => !isConsoleCommand(c.command));
       cameraInput.reset(); refollowInteriorCamera(interiorCamera);
       for (let n = 0; n < k.presses.switch; n++) {
-        queue({ kind: 'presence', present: false });
+        // Feel-i review (single player fires while you fly): a character left seated stays present, so its console stays
+        // attended (the laser auto-fires, the Helm's throttle flies) under the sim's own attendant rule; one left on foot goes away.
+        if (!stayPresent(active)) queue({ kind: 'presence', present: false });
         active = active === 0 ? 1 : 0;
         queue({ kind: 'presence', present: true });
       }

@@ -17,6 +17,7 @@ import { soloDuelRecord, validateDuelRecord } from '../src/renderer/src/net/duel
 import { soloRecorder } from '../src/renderer/src/app/duel/soloRecorder';
 import { seatDuelCrew } from './helpers/duelSeat';
 import { inTorpedoRange } from './helpers/torpedoRange';
+import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 
 const layout = parseShip(cutter);
 const TICK_MS = 1000 / 60;
@@ -94,21 +95,29 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     expect(rt.duel.tactical.tick).toBe(60);
     rt.dispose();
   });
-  it('Tab switches presence on one tick, clears the keyboard and leaves the old character neutral', () => {
+  it('Tab takes the other character on one tick, clears the keyboard and leaves the old one neutral; a seated one stays present', () => {
     const { rt, hold, press, tick, cleared } = rig();
     hold({ moveY: -1 }); press('throttleUp', 'throttleUp', 'throttleUp', 'throttleUp'); tick();   // Artemis-ii: full throttle; held W no longer thrusts
     expect(rt.held()[0]).toEqual({ moveX: 0, moveY: -1, interactHeld: false });
     expect(rt.axes()).toEqual({ turn: 0, thrust: 1 });
     press('switch'); tick();
     const presence = rt.lastResults().filter((r) => r.status === 'applied').map((r) => [r.id.player, r.tick]);
-    expect(presence).toEqual([[0, 1], [1, 1]]);   // the character left, then the one taken, on the same tick
-    expect(rt.duel.present).toEqual([false, true]);
+    expect(presence).toEqual([[1, 1]]);   // the one taken; the Helm player, seated, stays present (Feel-i review)
+    expect(rt.duel.present).toEqual([true, true]);
     expect([rt.active(), rt.view(), rt.otherStatus()]).toEqual([1, 'weapons', 'AT HELM']);
     expect(cleared()).toBe(1);
     expect(rt.held()).toEqual([{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }]);
-    expect(rt.axes()).toEqual({ turn: 0, thrust: 0 });   // the Helm is empty: the ship coasts
+    expect(rt.axes()).toEqual({ turn: 0, thrust: 1 });   // the Helm stays attended: its throttle keeps flying, with no turn
     press('switch'); tick();
-    expect([rt.active(), rt.duel.present]).toEqual([0, [true, false]]);
+    expect([rt.active(), rt.duel.present]).toEqual([0, [true, true]]);   // the gunner, seated, stays present too
+    rt.dispose();
+  });
+  it('a character left on foot by a Tab goes away; one left seated goes away once the sim stands it', () => {
+    const { rt, press, tick } = rig();
+    tick();
+    press('switch'); tick(); press('stand'); tick();   // player 1 stands up from Weapons
+    press('switch'); tick();                           // back to the Helm: player 1, on foot, goes away
+    expect([rt.active(), rt.duel.present, rt.otherStatus()]).toEqual([0, [true, false], 'STANDING BY']);
     rt.dispose();
   });
   it('X stands into the interior; E sits again at the role console in reach', () => {
@@ -139,7 +148,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     const { rt, press, tick } = rig();
     tick();
     press('switch'); rt.frame(1 / 60); press('stand'); tick();   // both edges before the Tab's presence tick runs
-    expect([rt.active(), rt.duel.present]).toEqual([1, [false, true]]);
+    expect([rt.active(), rt.duel.present]).toEqual([1, [true, true]]);   // the Helm player, seated, stays present
     tick();
     expect(rt.lastResults().map((r) => [r.id.player, r.status])).toEqual([[1, 'applied']]);
     expect(rt.view()).toBe('interior');
@@ -178,6 +187,24 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     hold({ moveX: -1 }); ticks(20);
     expect(Position.x[eid]!).toBeLessThan(x0 - 0.5);
     expect([Position.x[other], Position.y[other]]).toEqual(o);
+    rt.dispose();
+  });
+  it('single player fires while you fly: seated at both consoles, Tabbed back to the Helm, the lined-up laser auto-fires', () => {
+    const { rt, press, tick } = rig();
+    const t = rt.duel.tactical, me = t.ships[0], e = t.ships[1], sys = t.systems[0];
+    const lineUp = (): void => {
+      t.map.asteroids.length = 0;
+      Object.assign(me, { x: 3000, y: 0, vx: 0, vy: 0 });
+      Object.assign(e, { x: me.x + 300 * hx(me.heading), y: me.y + 300 * hy(me.heading), vx: 0, vy: 0 });
+    };
+    tick(); lineUp(); tick();                    // player 1 is away at Weapons: nobody fires
+    expect([sys.shots, sys.laserTargeted, sys.laserCharge]).toEqual([0, true, LASER_CHARGE_UNITS]);
+    Object.assign(e, { x: me.x + 4000, y: me.y });      // out of range while the gunner is taken
+    press('switch'); tick(); press('switch'); tick();   // sit at both: take the gunner, then back to the Helm
+    expect([rt.active(), rt.view(), rt.duel.present, sys.shots]).toEqual([0, 'helm', [true, true], 0]);
+    lineUp(); rt.drainEvents(); tick();
+    expect(sys.shots).toBeGreaterThan(0);
+    expect(rt.drainEvents().some((ev) => ev.kind === 'laser' && ev.ship === 0)).toBe(true);
     rt.dispose();
   });
   it('Space is one press that fires a full laser; E and Q step the laser target (FTL targeting spec §1, §2)', () => {
