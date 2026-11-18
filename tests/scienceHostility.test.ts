@@ -81,7 +81,7 @@ describe('the crew firing first ends the hold at once (spec §2.2, §4.1)', () =
   it('a crew laser release that hits turns it that step (cause laser), one layer stripped', () => {
     const st = facing(); st.tick = 300; st.systems[0].freq = (st.weakFreq + 1) % 3;   // off the weak frequency: one layer
     st.systems[0].fireHeld = true; st.systems[0].laserCharge = LASER_CHARGE_UNITS;
-    stepDuel(st, { ...IDLE_INPUT, laserCharge: false });
+    stepDuel(st, { ...IDLE_INPUT, laserCharge: true });
     expect(st.hostileAt).toBe(300);
     expect(hostile(st)).toEqual([{ kind: 'hostile', cause: 'laser' }]);
     expect(st.systems[1].shields).toBe(classOf(st, 1).shields.layers - 1);
@@ -89,7 +89,7 @@ describe('the crew firing first ends the hold at once (spec §2.2, §4.1)', () =
   it('a crew laser release that misses provokes it too (cause laser)', () => {
     const miss = facing(); miss.ships[0].heading = 192;   // facing away from it
     miss.systems[0].fireHeld = true; miss.systems[0].laserCharge = LASER_CHARGE_UNITS;
-    stepDuel(miss, { ...IDLE_INPUT, laserCharge: false });
+    stepDuel(miss, { ...IDLE_INPUT, laserCharge: true });
     expect(miss.events.some((e) => e.kind === 'laser' && e.ship === 0 && !e.hit)).toBe(true);
     expect(miss.hostileAt).toBe(0);
     expect(hostile(miss)).toEqual([{ kind: 'hostile', cause: 'laser' }]);

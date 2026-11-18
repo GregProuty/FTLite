@@ -20,11 +20,15 @@ export function launchMissile(state: TacticalState, i: number): void {
     heading: s.heading, headingAcc: 0, age: 0
   });
   sys.magazine--; sys.missilesLaunched++;
+  // FTL targeting spec §2: the torpedo strikes the room its target names at launch (−1: the lock room as it lands), and
+  // a torpedo's target is a single shot, so it clears.
+  sys.torpRoom = sys.torpLock; sys.torpLock = -1;
 }
 
 function end(state: TacticalState, m: Missile, cause: EndCause, target = -1, room = -1): void {
   state.events.push({ kind: 'missileEnd', ship: m.owner, cause, target, room, x: m.x, y: m.y });
   if (cause !== 'ship') state.systems[m.owner]!.missilesLost++;
+  state.systems[m.owner]!.torpRoom = -1;
   Object.assign(m, emptyMissile());
 }
 
@@ -79,12 +83,13 @@ function touches(m: Missile, radius: number, x: number, y: number, r: number): b
   return dx * dx + dy * dy < rr * rr;
 }
 
-/** Land missile m on ship k: it strikes its owner's lock room (homing torpedo spec §2), but a self-hit strikes the room
- *  under the impact point, since a lock names a room on the target. Shields are bypassed (spec §7b, Q20). */
+/** Land missile m on ship k: it strikes its owner's torpedo target room (FTL targeting spec §2), else its lock room
+ *  (homing torpedo spec §2), but a self-hit strikes the room under the impact point, since a lock names a room on the
+ *  target. Shields are bypassed (spec §7b, Q20). */
 function land(state: TacticalState, m: Missile, k: number): void {
   const target = state.ships[k]!, sys = state.systems[k]!;
   const owner = state.systems[m.owner]!;   // the lock names a room on the owner's target; any other ship takes the impact room
-  const room = (k === owner.target && k !== m.owner ? owner.lock : roomAtImpact(target, m.x, m.y)) as 0 | 1 | 2;
+  const room = (k === owner.target && k !== m.owner ? (owner.torpRoom >= 0 ? owner.torpRoom : owner.lock) : roomAtImpact(target, m.x, m.y)) as 0 | 1 | 2;
   if (sys.rooms[room] < 2) sys.rooms[room]++;
   sys.hull = Math.max(0, sys.hull - classOf(state, m.owner).slots.missile.hull);
   if (k !== m.owner) state.systems[m.owner]!.missileHits++;   // a self-hit is not a hit; the event's target tells them apart

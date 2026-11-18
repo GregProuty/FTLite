@@ -14,8 +14,8 @@ import { queryGrid } from '../tactical/grid';
 import { circularSpeed } from '../tactical/map';
 import { predictPath } from '../tactical/predict';
 import { missileOf, Room, targetOf, type Axes } from '../tactical/state';
-import { BELT_OUTER, LASER_ARC_COS, LASER_HOLD_TICKS, LASER_RANGE, R_MAP, SHIP_RADIUS } from '../tactical/tuning';
-import { canCharge, canLaunch, laserEligible, laserFull } from '../tactical/weapons';
+import { BELT_OUTER, LASER_ARC_COS, LASER_RANGE, R_MAP, SHIP_RADIUS } from '../tactical/tuning';
+import { canLaunch, laserEligible, laserFull } from '../tactical/weapons';
 import { CREW_SPEED, DT, HEALTH_MAX, REACH } from '../tuning';
 import { isDowned, medbayOnline, medbayRoom, revivers } from './health';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope } from './commands';
@@ -38,8 +38,9 @@ export const SPEED_SLACK = 8;
  *  spec §1: a hard turn can beat it). 350 from the telemetry gate (tests/duelGates.test.ts): without a dodge the
  *  homing Hunter torpedo cut the median duel to 136 s. */
 export const EVADE_RANGE = 350;
-/** Ticks between two crew missile launches. */
-export const MISSILE_GAP = 900;
+/** Ticks between two crew missile launches. 1500 (was 900) from the telemetry gate at the FTL targeting update (FTL
+ *  targeting spec §3): with the laser always ready and auto-firing, 900 won all ten gate seeds, and the gate wants a loss. */
+export const MISSILE_GAP = 1500;
 /** A bot below this health with nothing to repair goes to the Medbay and stays until full (duel-health spec §1.9). */
 export const HURT_HEALTH = 50;
 /** Salt for the pair's own stream, so it never shares a sequence with rng.tactical. */
@@ -95,7 +96,7 @@ function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } | null {
   return null;
 }
 
-/** The Helm's axes (spec §3): avoid, then dodge an inbound torpedo, then line up, then orbit. The hazard check predicts with the thrust the ship flies
+/** The Helm's axes (spec §3): avoid, then dodge an inbound torpedo, then line up (a full laser with a target, FTL targeting spec §3), then orbit. The hazard check predicts with the thrust the ship flies
  *  at this tick before any new command: the throttle's (Artemis spec §5.5). */
 function helmAxes(pair: ScriptedPair, d: DuelState): Axes {
   const t = d.tactical, s = t.ships[0], e = t.ships[targetOf(t, 0)]!;
@@ -112,7 +113,7 @@ function helmAxes(pair: ScriptedPair, d: DuelState): Axes {
     }
   }
   const ex = e.x - s.x, ey = e.y - s.y;
-  if (laserFull(t, 0) && t.systems[0].fireHeld && ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE && !inArc(s.heading, ex, ey, LASER_ARC_COS))
+  if (laserFull(t, 0) && t.systems[0].laserTargeted && ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE && !inArc(s.heading, ex, ey, LASER_ARC_COS))
     return { turn: turnToward(s.heading, ex, ey), thrust: 0 };
   // Orbit: t is the prograde tangent (the way the ship already circles, clockwise at rest); tilt it toward the planet
   // when outside the radius and away when inside, by at most 30°.
@@ -252,22 +253,20 @@ function roomTiles(d: DuelState, room: number): Set<number> {
   return out;
 }
 
-/** The gunner's commands while seated at Weapons (spec §3). Its missile homes by itself (homing torpedo spec), so the
- *  gunner holds nothing. */
+/** The gunner's commands while seated at Weapons (spec §3; FTL targeting spec §3: it uses targets). The laser targets the
+ *  enemy's Shields while they are up, else its Weapons, and auto-fires; its missile homes by itself (homing torpedo spec),
+ *  so the gunner holds nothing. */
 function gunner(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void {
-  const t = d.tactical, target = targetOf(t, 0), s = t.ships[0], e = t.ships[target]!, ex = e.x - s.x, ey = e.y - s.y, sys = t.systems[0];
+  const t = d.tactical, target = targetOf(t, 0), sys = t.systems[0];
   const want = t.systems[target]!.shields > 0 ? Room.Shields : Room.Weapons;
-  if (sys.lock !== want) out.push({ kind: 'laserLock', room: want });
-  if (missileOf(t, 0)) return;
-  // Weapons update spec §2: the torpedo launches only within its range, so it goes when the laser has no shot to make
-  // (not full and on target, no burst shot pending), since a torpedo in flight freezes the laser.
+  if (!sys.laserTargeted || sys.lock !== want) out.push({ kind: 'laserLock', room: want });
+  if (missileOf(t, 0) || sys.torpLock >= 0) return;
+  // Weapons update spec §2: the torpedo launches only within its range, so it is targeted when the laser has no shot to
+  // make (not full and on target, no burst shot pending), since a torpedo in flight freezes the laser; the target
+  // launches it this tick and clears.
   if (canLaunch(t, 0) && !(laserFull(t, 0) && laserEligible(t, 0, target)) && sys.laserBurst === 0 && t.tick - pair.lastLaunch >= MISSILE_GAP) {
-    out.push({ kind: 'missileLaunch' }); pair.lastLaunch = t.tick;
-    return;
+    out.push({ kind: 'torpLock', room: want }); pair.lastLaunch = t.tick;
   }
-  if (!canCharge(t, 0)) return;
-  if (!sys.fireHeld) out.push({ kind: 'laserCharge', held: true });
-  else if (laserFull(t, 0) && (laserEligible(t, 0, target) || sys.laserHold >= LASER_HOLD_TICKS - 1)) out.push({ kind: 'laserCharge', held: false });   // release on a shot, or before the vent
 }
 
 /** This tick's input for the duel: both players' held input and commands, stamped with the duel's tick. */

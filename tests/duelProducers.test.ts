@@ -20,12 +20,12 @@ const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 const peerLost = (rig: ReturnType<typeof onlineDuel>) => rig.captures.filter((c) => c.cause === 'pause' && c.checkpoint.pauseReason === 'peer-lost');
 
 describe('the away steward and the peer-lost pause (spec §6)', () => {
-  it('a remote Weapons seat lost mid-charge: the presence false is applied first, then the peer-lost pause, and its capture is delivered', () => {
+  it('a remote Weapons seat lost with a target set: the presence false is applied first, then the peer-lost pause, and its capture is delivered', () => {
     const rig = onlineDuel(2), a = rig.connect(0), b = rig.connect(1);
     rig.tick(3);
-    expect(b.client.command(1, { kind: 'laserCharge', held: true })).not.toBeNull();
+    expect(b.client.command(1, { kind: 'torpLock', room: 2 })).not.toBeNull();   // FTL targeting spec §2
     rig.tick(6);
-    expect(rig.session().duel.tactical.systems[0].fireHeld).toBe(true);
+    expect(rig.session().duel.tactical.systems[0].torpLock).toBe(2);
     b.detach();
     rig.tick(6);
     const lost = peerLost(rig);

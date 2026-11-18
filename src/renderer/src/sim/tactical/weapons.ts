@@ -11,9 +11,13 @@ export interface ShipInput {
   weapons: boolean;
   /** Turn and thrust, read only while `helm`. */
   axes: Axes;
-  /** `laserLock {room}`: the target Room to lock, or null for no command this tick. */
+  /** `laserLock {room}`: the target Room to lock, −1 to clear the crew laser's target (FTL targeting spec §2), or null
+   *  for no command this tick. */
   laserLock: number | null;
-  /** `laserCharge {held}`: true = press, false = release, null = no command this tick. */
+  /** `torpLock {room}` (FTL targeting spec §2, the crew only): the torpedo's target Room, −1 to clear, or null. */
+  torpLock: number | null;
+  /** `laserCharge {held}`: true = press, false = release, null = no command this tick. The crew's laser charges by
+   *  itself, so for the crew a press fires a full laser and a release does nothing (FTL targeting spec §2). */
   laserCharge: boolean | null;
   /** `missileLaunch`. */
   missileLaunch: boolean;
@@ -23,9 +27,9 @@ export interface ShipInput {
 }
 
 /** A crew that sits at both consoles and does nothing. */
-export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, laserCharge: null, missileLaunch: false, scanner: true };
+export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, scanner: true };
 /** Nobody at either console: a ship nobody flies. */
-export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, laserCharge: null, missileLaunch: false, scanner: true };
+export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, scanner: true };
 
 /** Whether ship i's laser is fully charged. */
 export function laserFull(state: TacticalState, i: number): boolean { return state.systems[i]!.laserCharge >= classOf(state, i).slots.laser.chargeUnits; }
@@ -48,6 +52,8 @@ export function canLaunch(state: TacticalState, i: number): boolean {
 }
 /** A lock target must be a Room index. */
 export function validLock(room: number): boolean { return Number.isInteger(room) && room >= 0 && room <= 2; }
+/** FTL targeting spec §2: a `laserLock` or `torpLock` command's room, a Room index or −1 (clear the target). */
+export function validTarget(room: number): boolean { return room === -1 || validLock(room); }
 
 /** Weapons at damage level 2 is off (owner 2026-11-17, FTL-style): the laser cannot charge, hold or fire and keeps no
  *  charge; canLaunch refuses missiles. A laserCharge command is still admitted (canCharge): it is held, to no effect,
@@ -108,25 +114,35 @@ function stepBurst(state: TacticalState, i: number): void {
   s.laserBurst--; s.laserBurstClock = s.laserBurst > 0 ? classOf(state, i).slots.laser.burstGapTicks : 0;
 }
 
-/** Apply ship i's weapon commands for this tick, before anything moves (spec §7 table). */
+/** Apply ship i's weapon commands for this tick, before anything moves (spec §7 table). The crew's ship (FTL targeting
+ *  spec §2): `laserLock` sets the laser's target (−1 clears it, keeping the lock room for a manual shot) and `torpLock`
+ *  the torpedo's; a charge press fires a full laser; then, attended, the laser with a target fires its burst when full
+ *  and eligible, and a torpedo with a target launches when the launch is legal (launchMissile clears torpLock). */
 export function applyWeaponsInput(state: TacticalState, i: number, input: ShipInput): void {
-  const s = state.systems[i]!;
-  if (input.weapons && input.laserLock !== null && validLock(input.laserLock)) s.lock = input.laserLock;   // first: a burst shot reads this tick's lock
+  const s = state.systems[i]!, crew = i === CREW_SLOT;
+  if (input.weapons && input.laserLock !== null) {   // first: a burst shot reads this tick's lock
+    if (validLock(input.laserLock)) { s.lock = input.laserLock; if (crew) s.laserTargeted = true; }
+    else if (input.laserLock === -1 && crew) s.laserTargeted = false;
+  }
+  if (input.weapons && crew && input.torpLock !== null && validTarget(input.torpLock)) s.torpLock = input.torpLock;
   stepBurst(state, i);
   if (!input.weapons) { s.fireHeld = false; return; }   // unattended: Fire lets go without firing or discarding
   if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; }   // a hit after its clock ran last tick: no shot
   if (input.laserCharge !== null && canCharge(state, i)) {
-    if (input.laserCharge) s.fireHeld = true;
+    if (crew) { if (input.laserCharge && s.laserBurst === 0 && laserFull(state, i)) fireLaser(state, i); }   // a single press
+    else if (input.laserCharge) s.fireHeld = true;
     else if (s.fireHeld) {
       s.fireHeld = false;
       if (laserFull(state, i)) fireLaser(state, i);
       else { s.laserCharge = 0; s.laserHold = 0; }
     }
   }
+  if (crew && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && laserEligible(state, i, s.target)) fireLaser(state, i);   // auto-fire
   if (input.missileLaunch && canLaunch(state, i)) {
     launchMissile(state, i);
     s.fireHeld = false;
   }
+  if (crew && s.torpLock >= 0 && canLaunch(state, i)) launchMissile(state, i);   // auto-launch, once
 }
 
 /** Advance ship i's laser charge and hold timer, shields and magazine by one tick (spec §5, §7). */
@@ -134,7 +150,9 @@ export function tickWeapons(state: TacticalState, i: number, input: ShipInput): 
   const s = state.systems[i]!, c = classOf(state, i), laser = c.slots.laser;
   if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; s.laserBurst = 0; s.laserBurstClock = 0; }   // off: every tick, frozen or not
   else if (s.laserBurst === 0 && !laserFrozen(state, i, input)) {   // no charging while a burst shot is pending
-    if (s.fireHeld && !laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + laser.chargeRate[s.rooms[Room.Weapons]]!);
+    // FTL targeting spec §2: the crew's laser charges by itself, with no hold, and stays full (no vent) until it fires.
+    if (i === CREW_SLOT) { if (!laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + laser.chargeRate[s.rooms[Room.Weapons]]!); }
+    else if (s.fireHeld && !laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + laser.chargeRate[s.rooms[Room.Weapons]]!);
     else if (laserFull(state, i) && ++s.laserHold >= laser.holdTicks) { s.laserCharge = 0; s.laserHold = 0; }   // vents; recharges if still held
   }
   if (s.shields >= c.shields.layers) s.shieldClock = 0;

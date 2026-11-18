@@ -18,13 +18,14 @@ import { LAYOUT } from './helpers/sim';
 import { runReplay } from '../src/renderer/src/authority/replay';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
-/** Seed 3's scripted duel is a crew win at tick 15361 (SIM_VERSION 48, the weapons update; at SPLIT 5395; seeds 1, 2, 4, 6,
- *  7 and 9 have no qualifying tick since). Seed 6 was used before: a crew win at tick 11401 (SIM_VERSION 47, Sci-1 merged with the Hunter grace; at SPLIT 6249;
+/** Seed 5's scripted duel is a crew win at tick 14986 (SIM_VERSION 49, FTL targeting; at SPLIT 5434; seeds 1, 2, 3, 6, 8,
+ *  9 and 10 have no qualifying tick since). Seed 3 was used before: a crew win at tick 15361 (SIM_VERSION 48, the weapons
+ *  update; at SPLIT 5395). Seed 6 was used before: a crew win at tick 11401 (SIM_VERSION 47, Sci-1 merged with the Hunter grace; at SPLIT 6249;
  *  seed 9 has no qualifying tick since). Seed 9 was used before: a crew loss at tick 8777 (SIM_VERSION 46, homing
  *  torpedoes; at SPLIT 5108). Seed 4 before that: a crew loss at tick 8859 with SPLIT 5193 (SIM_VERSION 45, the Hunter's grace; now a crew win at 9346); seed 7 before that: a crew loss at tick 8069 (8311 before Artemis-ii, SIM_VERSION 43; 7282 before duel health, SIM_VERSION 41; 8832 before duel fire), short enough to run to its end twice.
  *  SPLIT is the first tick from 5000 on that ends with a missile in flight, a damaged crew room and a repair in
  *  progress (found by stepping the scripted duel; the test asserts all three). */
-const SEED = 3, SPLIT = 5395;
+const SEED = 5, SPLIT = 5434;
 function runToEnd(h: DuelCore, driver: ReturnType<typeof createDriver>, hashes: string[], frames: ReplayFrame[] = [], until = Infinity) {
   while (h.state.duel.tactical.outcome === Outcome.Running && duelRules.tick(h.state) < until) {   // to the round's decision (H-2: the run itself never ends)
     for (const frame of stepScripted(h, driver)) { frames.push(frame); if (frame.action.kind === 'tick') hashes.push(frame.after!.hash); }
@@ -56,7 +57,7 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
         expect(resumed.state.summary).toEqual(end);
         expect(resumed.core.captureCheckpoint().modeMemory, 'the final telemetry accumulator of the restored run').toEqual(reference.core.captureCheckpoint().modeMemory);
         expect(end).toMatchObject({ outcome: Outcome.CrewWins, ticks: referenceHashes.length,
-          terminal: [[], ['missile']], laserReleases: [31, 15], laserHits: [38, 15], missilesLaunched: [9, 7], missileHits: [5, 2], repairsFinished: [0, 7] });   // seed 3 (SIM_VERSION 48, the weapons update)
+          terminal: [[], ['planet']], laserReleases: [17, 15], laserHits: [22, 15], missilesLaunched: [8, 6], missileHits: [3, 2], repairsFinished: [1, 8] });   // seed 5 (SIM_VERSION 49, FTL targeting)
         expect(Object.isFrozen(end)).toBe(true);
         expect(referenceHashes.length).toBeGreaterThan(SPLIT);
         console.log(`continuation proof: seed ${SEED}, ${SPLIT} + ${referenceHashes.length - SPLIT} ticks; summary ${JSON.stringify(end)}`);
@@ -139,7 +140,7 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
   it('the duel codec admits exactly the duel modules\' command kinds plus the core\'s setPaused', () => {
     const codec = duelCodec(2), envelope = (command: unknown) => ({ kind: 'command' as const, envelope: { runId: 'r', id: { player: 0, sequence: 1 }, requestedTick: 0, command } as CommandEnvelope });
     const examples: Record<string, unknown> = { sit: { kind: 'sit', station: 0 }, stand: { kind: 'stand' }, presence: { kind: 'presence', present: true },
-      laserLock: { kind: 'laserLock', room: 1 }, laserCharge: { kind: 'laserCharge', held: true }, missileLaunch: { kind: 'missileLaunch' }, rematch: { kind: 'rematch' }, throttle: { kind: 'throttle', level: 2 }, contactScan: { kind: 'contactScan', contact: 0 }, designate: { kind: 'designate', contact: 1 }, laserFrequency: { kind: 'laserFrequency', freq: 2 } };
+      laserLock: { kind: 'laserLock', room: 1 }, torpLock: { kind: 'torpLock', room: -1 }, laserCharge: { kind: 'laserCharge', held: true }, missileLaunch: { kind: 'missileLaunch' }, rematch: { kind: 'rematch' }, throttle: { kind: 'throttle', level: 2 }, contactScan: { kind: 'contactScan', contact: 0 }, designate: { kind: 'designate', contact: 1 }, laserFrequency: { kind: 'laserFrequency', freq: 2 } };
     const kinds = DUEL_MODULES.flatMap(({ module }) => [...module.commands]);
     expect(kinds.sort()).toEqual(Object.keys(examples).sort());
     for (const command of [...kinds.map((k) => examples[k]), { kind: 'setPaused', paused: true }]) expect(codec.decodeMessage(codec.encodeMessage(envelope(command)))).toEqual(envelope(command));

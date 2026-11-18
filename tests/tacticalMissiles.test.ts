@@ -93,11 +93,11 @@ describe('flight (spec §7b)', () => {
     tick(st, input({ missileLaunch: true }));
     const m = missileOf(st, 0)!;
     Object.assign(m, { x: -300, y: 600, vx: 60, vy: 0, age: MISSILE_LIFE_TICKS - 2 });   // open space, coasting east
-    s.laserCharge = LASER_CHARGE_UNITS; s.laserHold = 50;                 // a full charge, frozen while the missile flies
+    s.laserCharge = 100;                                                  // a part charge, frozen while the missile flies
     tick(st, input());
     expect(m.age).toBe(MISSILE_LIFE_TICKS - 1);
     expect(missileOf(st, 0)).not.toBeNull();
-    expect(s.laserHold).toBe(50);                                          // tick 479: still frozen
+    expect(s.laserCharge).toBe(100);                                       // tick 479: still frozen
     const x479 = m.x;
     tick(st, input());
     expect(missileOf(st, 0)).toBeNull();
@@ -106,7 +106,7 @@ describe('flight (spec §7b)', () => {
     expect(ended).toMatchObject({ kind: 'missileEnd', ship: 0, cause: 'expired' });
     expect(ended.kind === 'missileEnd' && ended.x).toBeGreaterThan(x479 + 0.9);   // tick 480 still moved it (about 1 unit east)
     expect(s.missilesLost).toBe(1);
-    expect(s.laserHold).toBe(51);                                          // unfrozen on tick 480 itself
+    expect(s.laserCharge).toBeGreaterThan(100);                            // unfrozen on tick 480 itself (it charges by itself, FTL targeting spec §2)
   });
   it('homes the same when nobody is at Weapons, and keeps its thrust', () => {
     const attended = duel(), alone = duel();
@@ -181,37 +181,29 @@ describe('missile contacts (spec §4 collision matrix)', () => {
     expect(st.missiles.every((m) => !m.active)).toBe(true);
     expect(st.systems[1].hull).toBe(HUNTER_CLASS.hull);
   });
-  it('a frozen full charge keeps its hold timer, then vents after the rest of the 3 s with no press, and does not recharge', () => {
+  it('a frozen part charge holds while the missile flies and charges again the tick it ends; a full crew charge never vents (FTL targeting spec §2)', () => {
     const st = duel(), s = st.systems[0];
-    tick(st, input({ laserCharge: true }));
-    for (let t = 1; t < 240 + 100; t++) tick(st, input());
-    expect([s.laserCharge, s.laserHold]).toEqual([LASER_CHARGE_UNITS, 100]);
+    s.laserCharge = 1000;
     tick(st, input({ missileLaunch: true }));                          // the launch freezes before the clocks run
     for (let t = 0; t < 50; t++) tick(st, input());
-    expect([s.laserCharge, s.laserHold, s.fireHeld]).toEqual([LASER_CHARGE_UNITS, 100, false]);
+    expect([s.laserCharge, s.laserHold, s.fireHeld]).toEqual([1000, 0, false]);
     Object.assign(missileOf(st, 0)!, { x: 0, y: -60 });                  // into the planet
-    tick(st, input());                                                  // ends; the hold timer resumes this tick
+    tick(st, input());                                                  // ends; the charge resumes this tick
     expect(missileOf(st, 0)).toBeNull();
-    expect(s.laserHold).toBe(101);
-    for (let t = 0; t < LASER_HOLD_TICKS - 102; t++) tick(st, input());
-    expect([s.laserCharge, s.laserHold]).toEqual([LASER_CHARGE_UNITS, LASER_HOLD_TICKS - 1]);
-    tick(st, input());
-    expect([s.laserCharge, s.laserHold]).toEqual([0, 0]);              // vented
-    for (let t = 0; t < 60; t++) tick(st, input());
-    expect(s.laserCharge).toBe(0);                                      // Fire is not held: no recharge
+    expect(s.laserCharge).toBeGreaterThan(1000);
+    for (let t = 0; t < 240 + 2 * LASER_HOLD_TICKS; t++) tick(st, input());
+    expect([s.laserCharge, s.laserHold]).toEqual([LASER_CHARGE_UNITS, 0]);   // full, held, never vented
   });
-  it('unfreezes the laser when the missile ends; a held full charge needs a fresh press and release', () => {
+  it('unfreezes the laser when the missile ends; a single press then fires the full charge', () => {
     const st = duel(), s = st.systems[0];
-    tick(st, input({ laserCharge: true }));
-    for (let t = 1; t < 240; t++) tick(st, input());
+    expect(s.laserCharge).toBe(LASER_CHARGE_UNITS);                      // the round starts full
     tick(st, input({ missileLaunch: true }));
     Object.assign(missileOf(st, 0)!, { x: 0, y: -60 });                  // into the planet
     tick(st, input());
     expect(missileOf(st, 0)).toBeNull();
-    tick(st, input({ laserCharge: false }));                            // a release without a press: nothing
+    tick(st, input({ laserCharge: false }));                            // a release does nothing
     expect(s.shots).toBe(0);
     tick(st, input({ laserCharge: true }));
-    tick(st, input({ laserCharge: false }));
     expect(s.shots).toBe(1);
   });
 });

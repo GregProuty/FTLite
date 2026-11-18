@@ -13,7 +13,7 @@ import { stepDuel } from '../tactical/duel';
 import { scanCommand } from '../tactical/science';
 import { SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
 import { CONTACT_MAX_LEVEL, Outcome } from '../tactical/state';
-import { canCharge, canLaunch, validLock, type ShipInput } from '../tactical/weapons';
+import { canCharge, canLaunch, validTarget, type ShipInput } from '../tactical/weapons';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
 import { extinguishWork, firePhase, pointBurning } from './fire';
 import { applyHitDamage, healthPhase } from './health';
@@ -26,9 +26,9 @@ export interface DuelInput { held: readonly HeldInput[]; commands: readonly Duel
 
 const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 /** The fixed order weapon commands take effect in within one tick. */
-const WEAPON_ORDER = ['laserLock', 'laserCharge', 'missileLaunch'] as const;
+const WEAPON_ORDER = ['laserLock', 'torpLock', 'laserCharge', 'missileLaunch'] as const;
 /** Every duel command kind the step handles; any other kind is rejected not-in-duel. */
-const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle', 'contactScan', 'designate', 'laserFrequency'];
+const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'torpLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle', 'contactScan', 'designate', 'laserFrequency'];
 
 function resetScratch(d: DuelState): void {
   const sc = d.interior.scratch;
@@ -172,16 +172,17 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   }
 
   // Tactical commands, against the seats as they now stand. Within a tick they take effect in a fixed order, lock, then
-  // charge, then launch (the order applyWeaponsInput applies them), whatever their envelope order; admission is checked
+  // the torpedo's target (FTL targeting spec §2), then charge, then launch (the order applyWeaponsInput applies them), whatever their envelope order; admission is checked
   // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins.
   const helm = attendant(d, d.nav), gunner = attendant(d, d.weapons);
-  const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, laserLock: null, laserCharge: null, missileLaunch: false, scanner: true };
+  const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, scanner: true };
   for (const e of WEAPON_ORDER.flatMap((kind) => input.commands.filter((x) => x.command.kind === kind))) {
     const c = e.command;
-    if (c.kind !== 'laserLock' && c.kind !== 'laserCharge' && c.kind !== 'missileLaunch') continue;
+    if (c.kind !== 'laserLock' && c.kind !== 'torpLock' && c.kind !== 'laserCharge' && c.kind !== 'missileLaunch') continue;
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }   // −1 is the empty-seat value, never a player
-    if (c.kind === 'laserLock') { if (!validLock(c.room)) { result(e, 'malformed'); continue; } crew.laserLock = c.room; }
+    if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.laserLock = c.room; }   // −1 clears the target
+    else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.torpLock = c.room; }
     else if (c.kind === 'laserCharge') { if (!canCharge(d.tactical, 0)) { result(e, 'missile-in-flight'); continue; } crew.laserCharge = c.held; }
     else { if (!canLaunch(d.tactical, 0)) { result(e, 'unavailable'); continue; } crew.missileLaunch = true; }
     result(e);

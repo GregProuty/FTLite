@@ -108,8 +108,8 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
   it('a laser kill is attributed to the laser, not the planet', () => {
     const d = createSeatedDuel(layout, 5), t = createTelemetry(d), [s, e] = d.tactical.ships;
     e.x = s.x + hx(s.heading) * 200; e.y = s.y + hy(s.heading) * 200; e.vx = s.vx; e.vy = s.vy; d.tactical.systems[1].shields = 0; d.tactical.systems[1].hull = 1;
-    d.tactical.systems[0].laserCharge = LASER_CHARGE_UNITS; d.tactical.systems[0].fireHeld = true;
-    step(d, t, [cmd(d, 1, { kind: 'laserCharge', held: false })]);
+    d.tactical.systems[0].laserCharge = LASER_CHARGE_UNITS;
+    step(d, t, [cmd(d, 1, { kind: 'laserCharge', held: true })]);   // FTL targeting spec §2: one press fires a full laser
     expect(t.outcome).toBe(Outcome.CrewWins);
     expect(t.terminal).toEqual([[], ['laser']]);
     expect(t.ships[0]).toMatchObject({ laserReleases: 1, laserHits: 1, laserMisses: 0, layersStripped: 0 });

@@ -46,6 +46,10 @@ export interface ShipSystems {
   shields: number; shieldClock: number;
   /** Laser (spec §7a): charge 0..chargeUnits (full), ticks a full charge has been held, whether Fire is held, the locked target Room. */
   laserCharge: number; laserHold: number; fireHeld: boolean; lock: number;
+  /** FTL targeting spec §2 (the crew only): whether the laser has a target (`lock`), on which it auto-fires; the
+   *  torpedo's target Room (−1 none), cleared by its launch; the Room the torpedo in flight strikes (−1: the lock room).
+   *  An inactive slot holds zeros. */
+  laserTargeted: boolean; torpLock: number; torpRoom: number;
   /** Weapons update spec §1: the burst's shots still to fire after the first, and the ticks until the next one. */
   laserBurst: number; laserBurstClock: number;
   /** Sci-1 spec §4.4: the laser's tuned frequency 0..2 (A..C); only the crew's ever changes (laserFrequency). */
@@ -142,15 +146,17 @@ function emptyShip(bodies: number): Ship {
   return { active: false, x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, graceUntil: new Int32Array(bodies),
     planetHits: 0, asteroidHits: 0, shipHits: 0, released: false, skidBudget: 0, skidSign: 0 };
 }
-function systemsFor(cls: number, target: number): ShipSystems {
+/** A slot's systems at the round's start; the crew's laser starts full (FTL targeting spec §2: the first shot is ready). */
+function systemsFor(cls: number, target: number, crew = false): ShipSystems {
   const c = SHIP_CLASSES[cls]!;
   return {
-    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: Room.Shields, laserBurst: 0, laserBurstClock: 0, freq: 0,
+    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: crew ? c.slots.laser.chargeUnits : 0, laserHold: 0, fireHeld: false, lock: Room.Shields,
+    laserTargeted: false, torpLock: -1, torpRoom: -1, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: c.slots.missile.magazine, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0
   };
 }
 function emptySystems(): ShipSystems {
-  return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, laserBurst: 0, laserBurstClock: 0, freq: 0,
+  return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, laserTargeted: false, torpLock: 0, torpRoom: 0, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: 0, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0 };
 }
 /** A free missile pool entry. */
@@ -191,7 +197,7 @@ export function createTacticalState(seed: number, slots = DUEL_CLASSES.length): 
   return {
     tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap),
     ships: [shipAt(map.spawns[0], bodies), shipAt(map.spawns[1], bodies), ...extra.map(() => emptyShip(bodies))],
-    systems: [systemsFor(DUEL_CLASSES[0]!, 1), systemsFor(DUEL_CLASSES[1]!, 0), ...extra.map(emptySystems)],
+    systems: [systemsFor(DUEL_CLASSES[0]!, 1, true), systemsFor(DUEL_CLASSES[1]!, 0), ...extra.map(emptySystems)],
     missiles: [emptyMissile(), emptyMissile(), ...extra.map(emptyMissile)],
     hunter: hunterFor(map.spawns[0]), outcome: Outcome.Running, events: [],
     // Sci-1 (spec §4): the round starts with the enemy unidentified and holding, the scanner idle.

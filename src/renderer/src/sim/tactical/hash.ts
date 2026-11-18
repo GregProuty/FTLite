@@ -18,9 +18,9 @@ export const MISSILE_SLOT = 9;
 const BODY = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'planetHits', 'asteroidHits', 'shipHits', 'released', 'skidBudget', 'skidSign'] as const satisfies readonly (keyof Ship)[];
 /** A systems record's scalar fields in canonical order; `rooms` comes after `hull`. */
 const SYSTEMS_HEAD = ['cls', 'target', 'hull'] as const satisfies readonly (keyof ShipSystems)[];
-const SYSTEMS_TAIL = ['shields', 'shieldClock', 'laserCharge', 'laserHold', 'fireHeld', 'lock', 'freq', 'laserBurst', 'laserBurstClock', 'magazine', 'magazineClock',
+const SYSTEMS_TAIL = ['shields', 'shieldClock', 'laserCharge', 'laserHold', 'fireHeld', 'lock', 'freq', 'laserTargeted', 'torpLock', 'torpRoom', 'laserBurst', 'laserBurstClock', 'magazine', 'magazineClock',
   'shots', 'laserHits', 'layersStripped', 'missilesLaunched', 'missileHits', 'missilesLost'] as const satisfies readonly (keyof ShipSystems)[];
-const FLAGS = new Set<string>(['released', 'fireHeld']);
+const FLAGS = new Set<string>(['released', 'fireHeld', 'laserTargeted']);
 export const MISSILE_KEYS = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'age'] as const satisfies readonly (keyof MissileFlight)[];
 /** Compile-time completeness: a `Missile` member missing from these keys makes this `never` assignment fail typecheck. */
 type MissingMissileKeys = Exclude<keyof Missile, (typeof MISSILE_KEYS)[number] | 'active' | 'owner'>;
@@ -116,7 +116,7 @@ export const shipModule: SimModule<TacticalState> = {
   id: 'ship',
   fields: (s) => shipFields(s.systems.length),
   notSnapshotted: {},
-  commands: ['laserLock', 'laserCharge', 'missileLaunch'],
+  commands: ['laserLock', 'torpLock', 'laserCharge', 'missileLaunch'],
   reasons: ['not-at-weapons', 'missile-in-flight', 'malformed', 'stale-tick', 'unavailable']
 };
 /** The `science` module (Sci-1 spec §6.2): round-relative time and hostility, what each contact is known to, the ship's
@@ -193,7 +193,7 @@ const BODY_RULES: Readonly<Record<string, (v: number) => boolean>> = {
 const systemsRules = (slots: number): Readonly<Record<string, (v: number) => boolean>> => ({
   cls: within(0, SHIP_CLASSES.length - 1), target: within(0, slots - 1), hull: (v) => v >= 0 && v <= most((c) => c.hull), rooms: room,
   shields: within(0, most((c) => c.shields.layers) + 1), freq: within(0, 2), shieldClock: count, laserCharge: within(0, most((c) => c.slots.laser.chargeUnits)), laserHold: count,
-  fireHeld: flagBit, lock: room, laserBurst: within(0, most((c) => c.slots.laser.shots) - 1), laserBurstClock: within(0, most((c) => c.slots.laser.burstGapTicks)),
+  fireHeld: flagBit, lock: room, laserTargeted: flagBit, torpLock: within(-1, 2), torpRoom: within(-1, 2), laserBurst: within(0, most((c) => c.slots.laser.shots) - 1), laserBurstClock: within(0, most((c) => c.slots.laser.burstGapTicks)),
   magazine: within(0, most((c) => c.slots.missile.magazine)), magazineClock: count,
   shots: count, laserHits: count, layersStripped: count, missilesLaunched: count, missileHits: count, missilesLost: count
 });
