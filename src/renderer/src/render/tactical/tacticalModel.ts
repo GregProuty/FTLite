@@ -311,7 +311,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     const p = toS(wx, wy), e = edgePoint(vp, input.reserveLeft ?? 0, input.reserveRight, p.x, p.y);
     if (!e) return;
     const distance = Math.round(Math.sqrt((wx - fromX) ** 2 + (wy - fromY) ** 2));
-    arrows.push({ target, x: e.x, y: e.y, angle: e.angle, distance, label: `${ARROW_NAMES[target]} ${distance}` });
+    arrows.push({ target, x: e.x, y: e.y, angle: e.angle, distance, label: `${target === 'enemy' && input.contacts && state.known[Contact.Enemy] === 0 ? 'CONTACT' : ARROW_NAMES[target]} ${distance}` });
   };
   if (input.ships.includes(0)) arrow('ship', own.x, own.y, cam.centreX, cam.centreY);
   const foe = targetOf(state, CREW_SLOT);   // the crew's locked target (engine refactor Decision 15)

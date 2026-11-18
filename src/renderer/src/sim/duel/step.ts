@@ -135,7 +135,7 @@ function stepDecided(d: DuelState, input: DuelInput): DuelResult[] {
 
 /**
  * Spec §13, in order: scratch reset (and d.events cleared); seat phase (sit through today's interaction validation,
- * only at the two role consoles; stand through today's handler; then presence); tactical commands validated against the
+ * only at the three role consoles (Navigation, Weapons, Science); stand through today's handler; then presence); tactical commands validated against the
  * seats after the seat phase and folded into the crew's ShipInput; the Helm's throttle (Artemis spec §5.2); laserFrequency, designate and contactScan (Sci-1 spec §5); repair, with its events; movement for standing
  * present players; the tactical stepDuel; hit damage to the crew; fire (growth, damage, ignition from this tick's hits);
  * health (fire damage, downed, pick-up, the Medbay, the both-down loss); the interior tick. Commands apply in the order given (the authority's

@@ -45,13 +45,14 @@ describe('the contact window (spec §7.2)', () => {
     fireEvent.pointerDown(btn('contact-scan')!, { button: 0 });
     expect(c.scan).toHaveBeenCalledTimes(1);
   });
-  it('the derelict at Level 1: its loot, TRAPPED, the range, the hint; SCANNED is disabled', () => {
+  it('the derelict at Level 1: its loot, TRAPPED, the range, the hint; fully known shows SCANNED as plain text', () => {
     const st = createTacticalState(4); st.known[1] = 1; Object.assign(st.derelict, { loot: Loot.Shield, trapped: true, salvage: 0, salvaged: false });
     const { c } = mount(frame(null, contactModel({ state: st, contact: 1, aim: false, station: 'helm', t: 0, weapons: null })));
-    for (const t of ['DERELICT', 'LOOT SHIELD', 'TRAPPED', 'CLOSE TO 60, MATCH SPEED', 'SCANNED']) expect(texts(), t).toContain(t);
+    for (const t of ['DERELICT', 'LOOT SHIELD', 'TRAPPED', 'CLOSE TO 60, MATCH SPEED']) expect(texts(), t).toContain(t);
     expect(texts().some((t) => /^RANGE \d+$/.test(t ?? ''))).toBe(true);
-    expect(btn('contact-scan')!.dataset.uiButton).toBe('disabled');
-    fireEvent.pointerDown(btn('contact-scan')!, { button: 0 });
+    expect(btn('contact-scan')).toBeNull();   // fully known (the derelict has one level): SCANNED is plain text, not a disabled button
+    expect(texts()).toContain('SCANNED');
+    expect(document.querySelector('[data-testid="contact-scanned"]')).not.toBeNull();
     expect(c.scan).not.toHaveBeenCalled();
   });
   it('Science with nothing selected: the title only, no close and no SCAN button', () => {

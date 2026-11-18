@@ -4,7 +4,7 @@
 // (tested). The ship colours come from shipColours.ts so both screens agree.
 import { extinguishProgress, pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
-import { missileOf, Room, targetOf } from '../../sim/tactical/state';
+import { Contact, missileOf, Room, targetOf } from '../../sim/tactical/state';
 import { REPAIR_UNITS } from '../../sim/duel/tuning';
 import { hostilityLine } from './scienceModel';
 import { Health, Life, LifeState } from '../../sim/components';
@@ -95,12 +95,13 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
     const n = crewSys.rooms[r]!, progress = d.repair[r]! / REPAIR_UNITS, out = em(row(ROOM_NAMES[r]!, level(n, r), DIM, levelTint(n)), n === 0 ? 'good' : 'warn');
     rows.push(n > 0 && progress > 0 ? { ...out, bar: { fill: progress, colour: GOOD } } : out);
   }
-  rows.push(em(heading('HUNTER', ENEMY_SHIP), 'enemy'));
+  const seen = t.known[Contact.Enemy];   // Sci-1: what a scan shows; level 0 hides it all, level 1 the rooms
+  rows.push(em(heading(seen === 0 ? 'CONTACT' : 'HUNTER', ENEMY_SHIP), 'enemy'));
   const hostile = input.console ? hostilityLine(t) : null;   // Sci-1 spec §7.1: the consoles' hostility line
   if (hostile) rows.push(em(heading(hostile.text, WARN), hostile.alert ? 'alert' : 'warn'));
-  rows.push(em(row('HULL', `${enemySys.hull}/${SHIP_HULL}`, DIM, enemySys.hull <= SHIP_HULL / 4 ? GOOD : TEXT), enemySys.hull <= SHIP_HULL / 4 ? 'good' : null));
-  rows.push({ ...row('SHIELD'), pips: { n: enemySys.shields, max: SHIELD_LAYERS, colour: ENEMY_SHIP }, emphasis: 'enemy' });
-  rows.push(em(row('ROOMS', enemySys.rooms.map((n, r) => `${ROOM_NAMES[r]!.charAt(0)}${n}`).join(' ')), enemySys.rooms.some((n) => n > 0) ? 'warn' : null));
+  rows.push(seen === 0 ? row('HULL', '?') : em(row('HULL', `${enemySys.hull}/${SHIP_HULL}`, DIM, enemySys.hull <= SHIP_HULL / 4 ? GOOD : TEXT), enemySys.hull <= SHIP_HULL / 4 ? 'good' : null));
+  rows.push(seen === 0 ? { ...row('SHIELD', '?'), emphasis: 'enemy' } : { ...row('SHIELD'), pips: { n: enemySys.shields, max: SHIELD_LAYERS, colour: ENEMY_SHIP }, emphasis: 'enemy' });
+  rows.push(seen < 2 ? row('ROOMS', seen === 0 ? '?' : '? ? ?') : em(row('ROOMS', enemySys.rooms.map((n, r) => `${ROOM_NAMES[r]!.charAt(0)}${n}`).join(' ')), enemySys.rooms.some((n) => n > 0) ? 'warn' : null));
   if (input.mode === 'weapons' && !input.console) {
     const flying = missileOf(t, 0) !== null;
     rows.push(heading('LASER', AMBER));

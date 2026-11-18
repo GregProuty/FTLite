@@ -81,7 +81,7 @@ describe('the console model (spec §7.3, §7.4)', () => {
     const d = createDuel(CUTTER, 5);
     try {
       const labels = readoutRows({ duel: d, mode: 'helm', active: 0, other: 'WALKING', console: true }).map((r) => r.label);
-      expect(labels[labels.indexOf('HUNTER') + 1]).toBe('INCOMING SCAN');
+      expect(labels[labels.indexOf('CONTACT') + 1]).toBe('INCOMING SCAN');
       expect(readoutRows({ duel: d, mode: 'helm', active: 0, other: 'WALKING' }).map((r) => r.label)).not.toContain('INCOMING SCAN');
       const row = readoutRows({ duel: d, mode: 'helm', active: 0, other: 'WALKING', console: true }).find((r) => r.label === 'INCOMING SCAN')!;
       expect(row.emphasis).toBe('alert');

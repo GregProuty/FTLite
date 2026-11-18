@@ -70,7 +70,9 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
       <Panel x={CONTACT.x} y={CONTACT.y} w={CONTACT.w} h={CONTACT.h} />
       <PixelText text={contact.title} x={x0} y={top + 8} size={FONT_NATIVE} tint={CRT.main} />
       {contact.contact !== null && <Button name="contact-close" label="X" x={right - 24} y={top + 6} w={24} h={20} onPress={() => actions.contact.close()} />}
-      {scan && <Button name="contact-scan" label={scan.label} x={right - 24 - 6 - 132} y={top + 6} w={132} h={20} disabled={!scan.enabled} onPress={() => actions.contact.scan()} />}
+      {scan && scan.enabled && <Button name="contact-scan" label={scan.label} x={right - 24 - 6 - 132} y={top + 6} w={132} h={20} onPress={() => actions.contact.scan()} />}
+      {scan && !scan.enabled && <><Box testId="contact-scanned" x={right - 24 - 6 - 132} y={top + 6} w={132} h={20} style={{ pointerEvents: 'none' }} />
+        <PixelText text={scan.label} x={right - 24 - 6 - 132} y={top + 10} size={FONT_NATIVE} tint={CRT.mid} /></>}
       {scan?.progress != null && <Bar x={x0} y={top + 28} w={right - x0} h={3} fill={scan.progress} colour={CRT.main} />}
       {contact.shields && (
         <>

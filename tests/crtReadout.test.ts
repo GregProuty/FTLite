@@ -4,7 +4,7 @@ import hound from '../src/renderer/src/sim/ship/hound.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { REPAIR_UNITS } from '../src/renderer/src/sim/duel/tuning';
-import { placeMissile, Room } from '../src/renderer/src/sim/tactical/state';
+import { Contact, placeMissile, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
 import { readoutRows, type ReadoutRow } from '../src/renderer/src/render/duel/readoutModel';
 import { CRT } from '../src/renderer/src/render/tactical/crtTheme';
@@ -16,6 +16,7 @@ const marks = (rows: readonly ReadoutRow[]) => rows.map((r) => [r.label || r.val
 describe('readoutRows emphasis (CRT map spec section 2)', () => {
   it('helm, healthy: the crew heading and pips crew, rooms good, the HUNTER heading, pips and nothing else enemy', () => {
     const d = createDuel(layout, 5);
+    d.tactical.known[Contact.Enemy] = 2;   // the full enemy rows are what this test is about
     expect(marks(readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' }))).toEqual([
       ['HELM', '-'], ['HOUND', 'crew'], ['HULL', '-'], ['SHIELD', 'crew'], ['WEAPONS', 'good'], ['SHIELDS', 'good'], ['ENGINES', 'good'],
       ['HUNTER', 'enemy'], ['HULL', '-'], ['SHIELD', 'enemy'], ['ROOMS', '-'], ['HEALTH', '-'], ['OTHER', '-'], ['AT WEAPONS', '-']
@@ -24,6 +25,7 @@ describe('readoutRows emphasis (CRT map spec section 2)', () => {
   });
   it('helm, hurt: own low hull alert, damaged rooms warn (with the repair bar), enemy low hull good, enemy rooms warn', () => {
     const d = createDuel(layout, 5), s = d.tactical.systems;
+    d.tactical.known[Contact.Enemy] = 2;
     s[0].hull = SHIP_HULL / 4; s[0].rooms = [1, 2, 0]; d.repair[Room.Shields] = REPAIR_UNITS / 2; s[1].hull = SHIP_HULL / 4; s[1].rooms = [0, 0, 1];
     const rows = readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' });
     expect(marks(rows)).toEqual([
