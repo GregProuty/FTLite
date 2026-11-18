@@ -77,7 +77,7 @@ export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: r
     }
     // Valkyrn spec §7.3: each gunHits increment is a round that hit the target; the snapshot carries neither the Room nor
     // a strip, so the event names none (−1, not stripped), at the target's position.
-    if (tgt) for (let k = 0; k < now.gunHits - was.gunHits; k++) out.push({ kind: 'gunHit', ship: target, room: -1, stripped: false, x: tgt.x, y: tgt.y } satisfies DuelEvent);
+    if (tgt) for (let k = 0; k < now.gunHits - was.gunHits; k++) out.push({ kind: 'gunHit', ship: target, room: -1, stripped: false, hull: false, x: tgt.x, y: tgt.y } satisfies DuelEvent);
     (['planet', 'asteroid', 'ship'] as const).forEach((kind, k) => {
       for (let n = 0; n < now.contacts[k]! - was.contacts[k]!; n++) out.push({ kind: 'contact', ship: i, body: kind, x: ship.x, y: ship.y });
     });

@@ -91,4 +91,18 @@ describe('a null laser (spec §6.1)', () => {
     const cp = JSON.parse(JSON.stringify(live.core.captureCheckpoint())) as DuelCheckpoint;
     expect(() => validateDuelCheckpoint(cp, DIGEST, resolveCutter)).not.toThrow();
   });
+  it('online, the checkpoint snapshot\'s crew class must be the layout\'s own (spec §8: the laser fit is local only)', () => {
+    const live = liveDuel(duelInit(5, 'crew-class', 0, DUEL_LAYOUT));
+    const cp = JSON.parse(JSON.stringify(live.core.captureCheckpoint())) as DuelCheckpoint;
+    const swapped = (cls: number): DuelCheckpoint => {
+      const d = createDuel(DUEL_LAYOUT, cp.snapshot.header.seed, 0, 2, cls);
+      try { return { ...cp, snapshot: JSON.parse(JSON.stringify(saveDuelSnapshot(d, DIGEST))) }; } finally { disposeDuel(d); }
+    };
+    expect(cp.snapshot.header.tick).toBe(0);
+    expect(() => validateDuelCheckpoint(swapped(ShipClass.Cutter), DIGEST, resolveCutter)).not.toThrow();   // the swap itself is a valid checkpoint
+    expect(() => validateDuelCheckpoint(swapped(ShipClass.ValkyrnLaser), DIGEST, resolveCutter)).toThrow(/crew class/);
+    // Locally the snapshot keeps the class free: the laser fit round-trips on the Hound's layout.
+    const fit = createDuel(DUEL_LAYOUT, 5, 0, 2, ShipClass.ValkyrnLaser);
+    try { const r = loadDuelSnapshot(DUEL_LAYOUT, JSON.parse(JSON.stringify(saveDuelSnapshot(fit, DIGEST))), DIGEST); try { expect(r.crewClass).toBe(ShipClass.ValkyrnLaser); } finally { disposeDuel(r); } } finally { disposeDuel(fit); }
+  });
 });

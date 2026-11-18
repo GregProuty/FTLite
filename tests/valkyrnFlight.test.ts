@@ -23,6 +23,11 @@ import { duelInit, resolveCutter } from './helpers/duelAuthority';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { liveDuel } from './helpers/liveDuel';
 import { createSeatedValkyrn, VALKYRN_TEST } from './helpers/valkyrnDuel';
+import { sitDown } from '../src/renderer/src/sim/stations';
+import hound from '../src/renderer/src/sim/ship/hound.json';
+import { parseShip } from '../src/renderer/src/sim/ship/schema';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
+import { REMOTE_HELD_TIMEOUT_MS } from '../src/renderer/src/net/receivePolicy';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -138,5 +143,44 @@ describe('aim and gunHeld on the held wire (spec §6.2, §7.1)', () => {
     const replay = JSON.parse(JSON.stringify(live.core.replay())) as unknown;
     expect(() => parseEncounterReplay(duelRules, replay, DIGEST, resolveCutter)).not.toThrow();
     expect(JSON.stringify(replay)).toContain('"aim":40');
+  });
+});
+
+describe('the authority clears aim and gunHeld (spec §6.2)', () => {
+  /** An online crew-of-two Hound whose layout names the gun class, player 0 seated at Weapons (so a held trigger fires). */
+  const gunHound = parseShip({ ...hound, shipClass: 'valkyrn' });
+  const gunDuel = (runId: string) => liveDuel(duelInit(5, runId, 1, gunHound), (s) => {
+    expect(s.duel.crewClass).toBe(ShipClass.Valkyrn);
+    sitDown(s.duel.interior, 0, s.duel.weapons);
+  }, undefined, () => gunHound);
+  const gunFires = (l: ReturnType<typeof gunDuel>) => l.state.duel.tactical.events.filter((e) => e.kind === 'gunFire' && e.ship === 0).length;
+  const heldOf = (l: ReturnType<typeof gunDuel>) => (JSON.parse(JSON.stringify(l.core.captureCheckpoint())) as DuelCheckpoint).held[0]!;
+  it('baseline: the held trigger fires the gun', () => {
+    const l = gunDuel('held-fire');
+    let fired = 0;
+    for (let k = 0; k < 12; k++) { l.held(0, { ...NONE, aim: 40, gunHeld: true }); l.tick(); fired += gunFires(l); }
+    expect(fired).toBeGreaterThan(0);
+  });
+  it('a pause deletes the held aim and trigger; nothing fires on the tick after the resume', () => {
+    const l = gunDuel('held-pause');
+    l.held(0, { ...NONE, aim: 40, gunHeld: true }); l.tick();
+    expect(heldOf(l)).toMatchObject({ aim: 40, gunHeld: true });
+    l.command(0, { kind: 'setPaused', paused: true }); l.tick();
+    expect(l.core.captureCheckpoint().phase).toBe('paused');
+    const h = heldOf(l);
+    expect(['aim' in h, 'gunHeld' in h]).toEqual([false, false]);
+    l.command(0, { kind: 'setPaused', paused: false }); l.tick(); l.tick();
+    expect(l.core.captureCheckpoint().phase).toBe('running');
+    expect(gunFires(l)).toBe(0);
+  });
+  it('an expired held frame is neutralised: no aim, no trigger, nothing fires', () => {
+    const l = gunDuel('held-expire');
+    l.held(0, { ...NONE, aim: 40, gunHeld: true }); l.tick();
+    expect(heldOf(l)).toMatchObject({ aim: 40, gunHeld: true });
+    l.tick(Math.ceil(REMOTE_HELD_TIMEOUT_MS / (1000 / 60)) + 2);
+    const h = heldOf(l);
+    expect([h.aim, h.gunHeld]).toEqual([undefined, undefined]);
+    l.tick();
+    expect(gunFires(l)).toBe(0);
   });
 });

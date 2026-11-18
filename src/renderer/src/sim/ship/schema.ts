@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { reachableTiles } from './reachability';
 import { HULL_IDS } from './fleet';
+import { SHIP_CLASSES } from '../tactical/defs';
 import { STATION_IDS, StationKind } from '../stationKinds';
 import { STATION_MAX, REACTOR_CAPACITY } from '../tuning';
 
@@ -35,6 +36,11 @@ const shipSchema = z.object({
   hull: z.enum(HULL_IDS).optional()
 }).superRefine((s, ctx) => {
   const fail = (message: string): void => { ctx.addIssue({ code: z.ZodIssueCode.custom, message }); };
+  if (s.shipClass !== undefined) {   // Valkyrn spec §3.1: a crew class id in SHIP_CLASSES (not the Hunter's, not a typo)
+    const cls = SHIP_CLASSES.find((c) => c.id === s.shipClass);
+    if (!cls) return fail(`shipClass: unknown ship class ${s.shipClass}`);
+    if (cls.ai !== 'crew') return fail(`shipClass: ${s.shipClass} is not a crew ship class`);
+  }
   if (s.rows.length !== s.height) return fail(`rows: expected ${s.height} rows (height)`);
   for (let y = 0; y < s.height; y++) if (s.rows[y]!.length !== s.width) return fail(`rows[${y}]: expected width ${s.width}`);
   const roomIds = new Set(s.rooms.map((r) => r.id));

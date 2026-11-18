@@ -96,14 +96,15 @@ function gunHit(state: TacticalState, owner: number, k: number, ox: number, oy: 
   if (t.shields > 0) {
     const stripped = ++t.gunWear >= g.hitsPerLayer;
     if (stripped) { t.shields--; t.shieldClock = 0; t.gunWear = 0; }
-    state.events.push({ kind: 'gunHit', ship: k, room: -1, stripped, x, y });
+    state.events.push({ kind: 'gunHit', ship: k, room: -1, stripped, hull: false, x, y });
     return;
   }
   const room = gunRoomOf(state, k, ox, oy, nx, ny);
-  if (++t.gunHull >= g.hitsPerHull) { t.hull = Math.max(0, t.hull - 1); t.gunHull = 0; }
+  const hull = ++t.gunHull >= g.hitsPerHull;   // this hit takes a hull point (spec §7.3: only it is the terminal cause gun)
+  if (hull) { t.hull = Math.max(0, t.hull - 1); t.gunHull = 0; }
   if (t.rooms[room] < 2) { if (++t.gunRoomWear[room] >= g.hitsPerLevel) { t.rooms[room]++; t.gunRoomWear[room] = 0; } }
   else t.gunRoomWear[room] = 0;
-  state.events.push({ kind: 'gunHit', ship: k, room, stripped: false, x, y });
+  state.events.push({ kind: 'gunHit', ship: k, room, stripped: false, hull, x, y });
 }
 
 /**

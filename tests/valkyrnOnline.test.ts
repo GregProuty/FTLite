@@ -21,7 +21,7 @@ describe('the online view (spec §7.3)', () => {
     expect(before[0]!.gunHits).toBe(0);
     st.systems[0].gunHits += 3;
     const hits = gapEvents(before, [null, null], st).filter((e) => e.kind === 'gunHit');
-    expect(hits).toEqual(Array.from({ length: 3 }, () => ({ kind: 'gunHit', ship: 1, room: -1, stripped: false, x: st.ships[1].x, y: st.ships[1].y })));
+    expect(hits).toEqual(Array.from({ length: 3 }, () => ({ kind: 'gunHit', ship: 1, room: -1, stripped: false, hull: false, x: st.ships[1].x, y: st.ships[1].y })));
     expect(gapEvents([duelCounters(createTacticalState(5), 0), duelCounters(createTacticalState(5), 1)], [null, null], createTacticalState(5)).some((e) => e.kind === 'gunHit')).toBe(false);
   });
 });
@@ -46,6 +46,23 @@ describe('telemetry (spec §7.3)', () => {
       stepDuelTick(d, input); recordTick(t, d, input);
       expect([d.tactical.outcome, t.terminal[1]]).toEqual([Outcome.CrewWins, ['gun']]);
       expect(duelEndSummary(t).terminal[1]).toEqual(['gun']);
+    } finally { disposeDuel(d); }
+  });
+  it('a gun hit that only adds wear (no hull point) is not a terminal cause (spec §7.3)', () => {
+    const d = createValkyrnDuel(5), t = createTelemetry(d);
+    try {
+      const h = d.tactical.ships[1], hs = d.tactical.systems[1];
+      hs.shields = 0; hs.hull = 1; hs.gunHull = 0;
+      placeRound(d.tactical, { x: h.x - 30, y: h.y, vx: 700 + h.vx, vy: h.vy, age: 0, owner: 0 });
+      const input = { held: [NONE], commands: [] };
+      stepDuelTick(d, input);
+      const hit = d.tactical.events.find((e) => e.kind === 'gunHit');
+      expect(hit).toMatchObject({ ship: 1, hull: false });
+      expect([hs.hull, hs.gunHull]).toEqual([1, 1]);
+      // The hull reaches 0 on this tick by some other, unattributed means: the wear-only gun hit is not credited.
+      hs.hull = 0; d.tactical.outcome = Outcome.CrewWins;
+      recordTick(t, d, input);
+      expect(t.terminal[1]).toEqual([]);
     } finally { disposeDuel(d); }
   });
 });

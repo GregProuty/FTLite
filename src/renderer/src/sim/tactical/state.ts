@@ -121,7 +121,7 @@ export type DuelEvent =
   | { kind: 'gunFire'; ship: number; muzzle: number }
   /** Valkyrn spec §7.2: a round hit ship `ship` (the target) at the closest-approach point (x, y): `room` the Room it
    *  struck, or −1 on a shield hit; `stripped` when that hit took a layer. */
-  | { kind: 'gunHit'; ship: number; room: number; stripped: boolean; x: number; y: number }
+  | { kind: 'gunHit'; ship: number; room: number; stripped: boolean; hull: boolean; x: number; y: number }
   /** A scan finished: `contact` is now known to `level`. */
   | { kind: 'scanDone'; contact: number; level: number }
   /** The derelict was salvaged: its loot, and whether it was trapped. */

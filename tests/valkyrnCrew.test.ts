@@ -41,7 +41,7 @@ describe('the layout fields (spec §3.1)', () => {
   it('are optional and absent on the Hound; the test Valkyrn carries all four; bad values are refused', () => {
     expect([DUEL_LAYOUT.shipClass, DUEL_LAYOUT.crew, DUEL_LAYOUT.helmHoldsUnattended, DUEL_LAYOUT.hull]).toEqual([undefined, undefined, undefined, undefined]);
     expect([VALKYRN_TEST.shipClass, VALKYRN_TEST.crew, VALKYRN_TEST.helmHoldsUnattended, VALKYRN_TEST.hull]).toEqual(['valkyrn', 1, true, 'valkyrn']);
-    for (const bad of [{ crew: 0 }, { crew: 5 }, { crew: 1.5 }, { shipClass: '' }, { hull: 'cutter' }, { helmHoldsUnattended: 'yes' }])
+    for (const bad of [{ crew: 0 }, { crew: 5 }, { crew: 1.5 }, { shipClass: '' }, { shipClass: 'hunter' }, { shipClass: 'valkyrm' }, { hull: 'cutter' }, { helmHoldsUnattended: 'yes' }])
       expect(() => parseShip({ ...hound, ...bad }), JSON.stringify(bad)).toThrow();
   });
   it('the class, the crew and the unattended rule join the layout hash only when present; the hull is view data', () => {

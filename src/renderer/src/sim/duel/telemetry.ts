@@ -100,7 +100,7 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
   // Weapons and missiles, from the tick's events.
   const laserOn = [false, false], missileOn = [false, false], gunOn = [false, false];
   for (const e of tac.events) {
-    if (e.kind === 'gunHit') { if (e.room >= 0) gunOn[e.ship] = true; continue; }   // Valkyrn spec §7.3: a round's hull hit
+    if (e.kind === 'gunHit') { if (e.hull) gunOn[e.ship] = true; continue; }   // Valkyrn spec §7.3: a round's hull hit (the hit that took a hull point, not wear)
     if (e.kind !== 'laser' && e.kind !== 'missileEnd') continue;   // Sci-1's and the gun's other events are not these weapons
     const s = t.ships[e.ship as 0 | 1]!;
     if (e.kind === 'laser') {
