@@ -28,7 +28,7 @@ on the right. We copy that pairing with small windows.
     its bottom edge with `extinguishProgress(d, p)` while above 0;
   - each crew member is a 3×3 `CRT.hot` dot at its position (`crewHealthMarks(d)`); a downed one draws hollow.
   - No room labels (too small); fire and damage are read by colour and blink.
-- **Fire start flash:** for 2 s after any `fireStart` event, the window's border draws `CRT.hot` at 2 px and blinks at
+- **Fire start flash:** for 2 s after a room catches fire (see §4 for how this is detected), the window's border draws `CRT.hot` at 2 px and blinks at
   `ALERT_BLINK_HZ`. The existing fire alarm sound is unchanged.
 - The window is display-only: it takes no clicks, but it swallows pointer and wheel events like the contact window so a
   click on it never reaches the map.
@@ -46,9 +46,11 @@ export const OWN_SHIP_BOX = { x: OWN_SHIP.x + 8, y: OWN_SHIP.y + 34, w: OWN_SHIP
 
 - `OWN_SHIP` must not overlap `TABS`, `STATION` (any station's top), `FLIGHT`, `SIDE` or `CONTACT`. A layout test
   checks this.
-- The map's off-screen arrows keep clear of it. The left reserve rises to `OWN_SHIP.x + OWN_SHIP.w + EDGE` only for an
-  arrow whose y is within `OWN_SHIP`'s band. If the arrow code can't do a banded reserve simply, fall back to raising
-  `STATUS_RESERVE` on the left side; the plan picks one after reading the arrow code.
+- The map's off-screen arrows keep clear of it. The reserve stays the rectangle `edgePoint`
+  (`render/tactical/tacticalModel.ts`) uses today. After `edgePoint` places an arrow, an arrow whose point falls inside
+  `OWN_SHIP` grown by `ARROW_MARGIN` slides out along its edge: a top-edge arrow moves right to
+  `x = OWN_SHIP.x + OWN_SHIP.w + ARROW_MARGIN`; a left-edge arrow moves down to `y = OWN_SHIP.y + OWN_SHIP.h + ARROW_MARGIN`.
+  The tactical view input gains an optional `avoid` rect for this (console views pass `OWN_SHIP`; others pass nothing).
 - The enemy contact window is unchanged. Making it smaller to match is a possible follow-up, not part of this spec.
 
 ## 4. Architecture
@@ -88,9 +90,13 @@ All pure view-model plus one display component, following the contact window's p
 - **View plumbing:** `DuelUiView` (`ui/views.ts`) gains `ownShip: OwnShipView | null`. `app/duel/scene.ts` builds it
   beside `contactModel` when `station !== null && station !== 'ship'`, and otherwise passes `null`. `DuelUi.tsx` renders
   `<OwnShipWindow>` inside the CRT provider, after `ReadoutPanel`.
-- **Fire-start flash:** `scene.ts` keeps `flashUntil` (seconds, render time). When the frame's duel events include a
-  `fireStart`, it sets `flashUntil = t + 2`. The model's `flash` is `t < flashUntil && blink(t, ALERT_BLINK_HZ)`.
-  This is render-only state; nothing enters the sim.
+- **Fire-start flash:** detected from state, not from sim events, because the scene's drained `ViewEvent`s carry no
+  `fireStart` and an online client never sees the host's sim events (the fire alarm's `ignited` count is a state diff
+  for the same reason). `scene.ts` keeps the set of burning point rooms from the previous frame (`pointBurning` per
+  `d.points` entry) and `flashUntil` (seconds, render time). When a point room burns now that did not burn last frame,
+  it sets `flashUntil = t + 2`. On the first frame and after a duel reset the set re-baselines with no flash. The
+  model's `flash` is `t < flashUntil && blink(t, ALERT_BLINK_HZ) === 1`. This is render-only state; nothing enters the
+  sim.
 
 ## 5. Out of scope
 
