@@ -48,36 +48,58 @@ merging to master.
 - The pool keeps its layout (kind, x, y, vx, vy, r, hp; kind 0 gone, 1 static, 2 moving). `ROCK_RESERVE` rises from 32
   to **96** spare slots.
 - **Mass** `m = r²` (no unit). Ships have mass `SHIP_MASS = 900` for rock contacts (§5); every class uses it in this spike.
-- **Hp is a real number**, `hp = ceil(r / 10)` at birth (2 to 6). Damage may be fractional (§4.3, §5.1). A rock breaks the
+- **Hp is a real number**, `hp = ceil(r / 10)` at birth (2 to 6). Damage may be fractional (§3.3, §4.2, §5.1). A rock breaks the
   moment hp ≤ 0. The crack rendering reads `hp / hpMax`, with `hpMax = ceil(r / 10)` recomputed from r.
-- **Static becomes moving, never the reverse.** A seeded rock sits still (kind 1) until anything gives it a velocity
-  change: a laser push, a blast, a collision, a ship's ram. Then it is kind 2 for good. The grid invariant from spike i
-  holds: the never-rebuilt grid indexes only seeded slots, a grid hit counts only while its slot is still kind 1, and a
-  kind-1 rock never moves. Moving rocks (seeded or pieces) are found by the linear scan.
+- **Static becomes moving, never the reverse.** A seeded rock sits still (kind 1) until it **wakes**: a laser push or a
+  blast always wakes it; a rock-rock contact (§3.3) or a ship's ram (§5.1) wakes it only when the closing speed exceeds
+  `ROCK_WAKE_SPEED = 40` u/s. Then it is kind 2 for good. A kind-1 rock that does not wake is treated as infinitely
+  heavy for that contact: it takes no velocity and no position change. The grid invariant from spike i holds: the
+  never-rebuilt grid indexes only seeded slots, a grid hit counts only while its slot is still kind 1, and a kind-1 rock
+  never moves. A seeded slot reused for a piece holds kind 2, so the grid ignores it and the scan finds it. Moving rocks
+  (seeded or pieces) are found by the linear scan.
+- **The born mask.** A per-tick transient array (one flag per slot, not hashed, not snapshotted, cleared at the start
+  of every `stepDuel` tick, so a save between ticks never needs it) marks every slot written with a new piece this
+  tick. A born slot does not move this tick, is skipped as either body in rock-rock contacts this tick (§3.3), is
+  skipped by ship contacts this tick (§5.1), is not hit by the blast that made it (§4.2), and is never chosen for
+  eviction (§3.4).
+- **Single-ship flight paths.** `stepFlight` and `stepSoloFlight` (`physics.ts`; the flight-only modes that call the
+  contacts but not `stepRocks`) never wake a rock: in those paths every rock contact uses the kind-1 infinite-mass rule
+  of §5.1, as today.
 
-### 3.2 Motion (`stepRocks`, each moving rock in ascending slot order)
+### 3.2 Motion (`stepRocks` part 1: every kind-2, not-born rock in ascending slot order)
 
 - Gravity at `ROCK_GRAVITY = 1.0` × the ships' gravity, then drag `v ← v · (1 − ROCK_DRAG · dt)` with `ROCK_DRAG = 0.1`
   per second, then a speed cap `ROCK_MAX_SPEED = 300` u/s (scale the velocity down to it), then semi-implicit Euler.
-- A moving rock that touches the planet, or whose centre leaves the map (`x² + y² > R_MAP²`), is gone as **dust**
-  (§3.5).
+  Velocity changes from hits between motion steps are not capped until the next motion step.
+- All motion happens before any contact (part 2). The planet and edge test is the first step of each rock's turn in
+  part 2.
 - Tuning risk, to report: with gravity on, a pushed belt rock never comes to rest and drifts slowly toward the planet
   (about 1.7 u/s² at the belt). `ROCK_GRAVITY` is a knob; the report says what 1.0 and 0.0 feel like.
 
 ### 3.3 Rock-on-rock collisions
 
-After every moving rock has moved, contacts are resolved once per pair, in a fixed order: for each moving rock `a` in
-ascending slot, each rock `b` from `rocksNear` with `b ≠ a`, skipping a pair already resolved this tick (both moving and
-`b < a`). For a touching pair, with normal `n` from b to a and closing speed `vc = (vb − va) · n > 0`:
+`stepRocks` part 2, after all motion. A transient per-tick **processed mask** (like the born mask, not hashed) records
+which slots have had their turn as `a`.
 
-- **Separate** by the overlap, shared by inverse mass (a kind-1 rock is moved only if it becomes moving this contact).
-- **Bounce** with restitution `ROCK_RESTITUTION = 0.8`, impulse `j = (1 + e) · vc / (1/ma + 1/mb)`, applied along `n` to
-  both. A kind-1 `b` becomes kind 2 and takes its share. Momentum along `n` is conserved (to floating point).
-- **Damage** when `vc > ROCK_CRUSH_SPEED = 30` u/s: `base = (vc − 30) / ROCK_CRUSH_STEP` with `ROCK_CRUSH_STEP = 40`;
-  rock a takes `base · 2·mb / (ma + mb)`, rock b takes `base · 2·ma / (ma + mb)`. Equal rocks take `base` each; the
-  lighter takes more. Damage is applied after the bounce, a then b; a break (§3.4) uses the collision normal as its hit
-  direction (a's away from b, b's away from a) and the rock's post-bounce velocity as the parent velocity.
-- A pair closing at ≤ 30 u/s only bounces. A pair moving apart (`vc ≤ 0`) only separates.
+- **Outer loop, live**: for slot `a` from 0 upward to the pool's end, reading kinds as they stand now, `a` takes a turn
+  when it is kind 2 and not born. (A rock woken earlier in this pass at a higher slot therefore takes its turn; one
+  woken at a lower slot does not, but its pairs with later rocks are still resolved from their side, below.)
+- **Turn of a**: first the planet and edge test: a rock touching the planet, or whose centre is outside the map
+  (`x² + y² > R_MAP²`), turns to dust (§3.5) and its turn ends. Otherwise take `rocksNear(a)` once, ascending, and for
+  each `b ≠ a` in it: skip `b` if it is no longer alive, is born, or is processed; else resolve the pair if they touch.
+  If `a` breaks during its turn, its turn ends at once. Mark `a` processed when its turn ends.
+- **Resolving a touching pair**, normal `n` from b to a (zero distance: `n` = north, as in `damageRock`), closing speed
+  `vc = (vb − va) · n`:
+  - **Wake**: a kind-1 `b` wakes when `vc > ROCK_WAKE_SPEED`; otherwise it stays kind 1 and counts as infinitely heavy.
+  - **Separate** by the overlap: shared by inverse mass when both are kind 2; all of it to `a` when `b` is kind 1.
+  - **Bounce**, only when `vc > 0`, with restitution `ROCK_RESTITUTION = 0.8`: impulse
+    `j = (1 + e) · vc / (1/ma + 1/mb)` along `n`, with `1/mb = 0` for a kind-1 `b`. Both kind 2: momentum along `n` is
+    conserved (to floating point).
+  - **Damage**, only when `vc > ROCK_CRUSH_SPEED = 30` u/s: `base = (vc − 30) / ROCK_CRUSH_STEP` with
+    `ROCK_CRUSH_STEP = 40`; `da = base · 2·mb / (ma + mb)` and `db = base · 2·ma / (ma + mb)` (masses `r²` here even
+    for a kind-1 `b`). Equal rocks take `base` each; the lighter takes more. **Both amounts are worked out first, then
+    applied, a then b**, and only then are any breaks done (a's first). A break uses the collision normal as its hit
+    direction (`n` for a, `−n` for b) and the rock's post-bounce velocity as the parent velocity.
 - No grace window between rocks: separation plus the closing-speed test stops repeat damage on resting contacts.
 
 ### 3.4 Breaking
@@ -85,23 +107,32 @@ ascending slot, each rock `b` from `rocksNear` with `b ≠ a`, skipping a pair a
 When a rock's hp reaches ≤ 0 it breaks at once. The **hit direction** `u` (unit) and the **cause** come from what broke
 it (a shot's line, the blast's centre-to-rock direction, a collision normal, a ram).
 
-- **Laser or collision or ram break**:
-  - `r ≥ 45`: 3 pieces; `30 ≤ r < 45`: 2 pieces; `r < 30`: dust.
+Belt rocks have r 15 to 45 (never 45: `map.ts` draws 15 + u · 30, u < 1) and cluster rocks r 20 to 55, so the
+thresholds below are set so that belt rocks split too.
+
+- **Laser, blast-secondary, collision or ram break** (the fan pattern):
+  - `r ≥ 40`: 3 pieces; `25 ≤ r < 40`: 2 pieces; `r < 25`: dust.
   - Piece radius `rp = 0.9 · r / √n`. Pieces with `rp < ROCK_MIN_R = 8` are dust instead.
   - Directions: fanned across the 120° in front of `u`, piece k of n at `θk = −60° + 120° · (k + 0.5) / n` from `u`
     (2 pieces: ±30°; 3 pieces: −40°, 0°, +40°). Speed `ROCK_FLING = 150` u/s plus the parent's velocity.
-- **Torpedo direct hit** (the rock the torpedo touched):
-  - `r ≥ 45`: 6 pieces; `30 ≤ r < 45`: 4 pieces; `r < 30`: dust.
-  - Same radius rule. Directions: a full circle, `θk = 360° · k / n`, rotated from `u` (the torpedo's direction of travel
-    relative to the rock), so one piece always flies straight on. Speed `ROCK_BLAST_FLING = 200` u/s plus the parent's
-    velocity.
+- **Torpedo direct hit** (the rock the torpedo touched; the burst pattern):
+  - `r ≥ 35`: 6 pieces; `25 ≤ r < 35`: 4 pieces; `r < 25`: dust.
+  - Same radius rule (r 35, n 6: rp about 12.9; r 25, n 4: 11.25). Directions: a full circle, `θk = 360° · k / n`
+    rotated from `u` (the torpedo's velocity relative to the rock; zero: north), so one piece flies straight on. Speed
+    `ROCK_BLAST_FLING = 200` u/s plus the parent's velocity.
 - Pieces start at `centre + dir · 0.6 · r`, kind 2, `hp = ceil(rp / 10)`, fresh contact grace on every ship (spike i's
-  `freshGrace`). Pieces born this tick first move next tick, and are not tested against each other this tick.
-- Angles are fixed rational fractions of a turn, so directions come from a precomputed table of cos/sin values written as
-  literals (no `Math.cos`/`Math.sin` at run time; the guard allows only `+ − × ÷`, sqrt, abs, min, max, ceil).
+  `freshGrace`), and are marked born (§3.1).
+- Angles are fixed fractions of a turn (multiples of 15°, 20°, 30°, 60°), so directions come from a table of cos/sin
+  values written as literals and rotated onto `u` by multiplication. No `Math.cos` / `Math.sin` at run time; the
+  determinism guard (`tests/helpers/determinismGuard.ts`) allows `+ − × ÷`, abs, ceil, floor, round, min, max, sign,
+  imul and sqrt.
 - **Slot use**: the first piece keeps the broken rock's slot; the others take the lowest empty slots, ascending. When no
-  slot is free: if some moving rock is smaller than the new piece, the smallest moving rock (ties: the lowest slot) is
-  turned to dust and its slot reused; otherwise the new piece is dust. Never silent: every dust emits an event.
+  slot is free: if some kind-2 rock that is **not born this tick and not either body of the contact being resolved** is
+  smaller than the new piece, the smallest such rock (ties: the lowest slot) is turned to dust and its slot reused
+  (`rockEvictions` + 1); otherwise the new piece is dust. Never silent: every dust emits an event.
+- **A slot rewritten this tick is a new rock.** Any damage, push or contact computed against a slot that is born this
+  tick is skipped; `damageRock` and the push helpers check the born mask, so a reused slot can never take a hit meant for
+  the rock that used to be there.
 
 ### 3.5 Dust
 
@@ -114,21 +145,24 @@ velocity, and the renderer throws a puff of particles along that velocity.
 
 A laser shot that meets a rock (aimed at it, §6, or in the way of the enemy, or the aimless nose ray of spike i) does
 `LASER_ROCK_DAMAGE = 2` (up from 1) and gives the rock a push `LASER_ROCK_PUSH = 4000` along the shot line: `Δv = J / m`
-(r 15: about 18 u/s; r 45: about 2 u/s). Push first, then damage. A kind-1 rock becomes kind 2.
+(r 15: about 18 u/s; r 45: about 2 u/s). Push first, then damage. A kind-1 rock wakes (§3.1).
 
 ### 4.2 Torpedo blast
 
 A torpedo that touches any rock (on purpose or not) **detonates** at its position, `BLAST_RADIUS = 120`:
 
-1. The rock it touched takes the direct hit: it breaks at once (§3.4, torpedo pattern), whatever its hp.
+1. The rock it touched takes the direct hit: it breaks at once (§3.4, the burst pattern), whatever its hp.
 2. Every other live rock whose surface is within the radius (`d = max(0, dist − r) < 120`, distance from the blast point)
    takes `fall = 1 − d / 120`:
    - damage `BLAST_ROCK_DAMAGE_MIN + (BLAST_ROCK_DAMAGE_MAX − BLAST_ROCK_DAMAGE_MIN) · fall` with 2 and 6;
-   - push `Δv = BLAST_PUSH · fall / m` along the blast-to-rock direction, `BLAST_PUSH = 60000` (r 45 at 0: about 30 u/s;
-     r 15: capped at 300);
+   - push `Δv = BLAST_PUSH · fall / m` along the blast-to-rock direction (zero distance: north),
+     `BLAST_PUSH = 60000` (r 45 at fall 1: about 30 u/s; r 15: about 267 u/s; anything above `ROCK_MAX_SPEED` is cut
+     at the next motion step);
    - push first, then damage; a rock this breaks uses the **laser pattern** (2 or 3 pieces fanned outward along the
      blast-to-rock direction). Only the touched rock gets the 4 to 6 piece burst.
-   - Rocks are processed in ascending slot. Pieces born from the blast are not themselves hit by it.
+   - The list of rocks in the radius is taken once, ascending, before the direct hit's pieces are written; each is
+     then processed in order, skipping any slot that is born (§3.4) or no longer alive. Pieces born from the blast are
+     not hit by it.
 3. Every active ship within the radius (surface distance, ship radius) is pushed `Δv = BLAST_SHIP_PUSH · fall` along
    the blast-to-ship direction, `BLAST_SHIP_PUSH = 120` u/s. No hull damage from the blast.
 4. The torpedo ends with cause `'asteroid'` as now. A torpedo that lands on a ship does not blast (unchanged rules).
@@ -140,16 +174,25 @@ A torpedo that touches any rock (on purpose or not) **detonates** at its positio
 Ship-rock contact (`contacts.ts`) becomes two-body. For ship s (mass `SHIP_MASS`) and rock k touching, normal n from rock
 to ship, closing speed `vc = (vk − vs) · n`:
 
-- Separate: the ship is pushed out of the rock fully when the rock is kind 1; when kind 2, the overlap is shared by
-  inverse mass.
-- Bounce: impulse `j = (1 + RESTITUTION) · vc / (1/ms + 1/mk)` (ships keep their `RESTITUTION = 0.5`) applied to both,
-  only when `vc > 0`. A kind-1 rock struck by a ship becomes kind 2 **only if** `vc > ROCK_WAKE_SPEED = 40` u/s (so
-  scraping along the belt does not set it drifting).
-- **Hull cost** (outside the pair's grace, as now): `impact = vc · mk / (mk + ms)`; cost
-  `min(4, 1 + floor(max(0, impact − 40) / 40))`. A gentle bump costs 1, as today. Examples: r 15 piece at 200 u/s:
-  impact 40, cost 1; r 30 at 200: 100, cost 2; r 45 at 250: about 173, cost 4.
-- **Rock damage from a ram**: the rock takes `max(0, vc − ROCK_CRUSH_SPEED) / ROCK_CRUSH_STEP · 2·ms / (ms + mk)` (the
-  §3.3 formula with the ship as the other body). Ramming a small cracked rock can break it.
+Ships meet rocks in ship contacts as today (each active ship in slot order, the planet then `rocksNear`, the list taken
+once), skipping slots that are born or no longer alive.
+
+1. **Wake test first.** A kind-1 rock wakes only if `vc > ROCK_WAKE_SPEED` (40 u/s), and never in the single-ship
+   flight paths (§3.1).
+2. **A kind-1 rock that does not wake is infinitely heavy, exactly as today**: full push-out of the ship, the ship's
+   normal speed reflected with `RESTITUTION = 0.5` (`contacts.ts` today), and the hull cost of today
+   (`ASTEROID_CONTACT_HULL = 1`). Flying into the still terrain keeps the Helm's current tuning; the speed-scaled cost
+   below is for moving rocks only.
+3. **A kind-2 rock (or one that just woke)** is a two-body contact: the overlap shared by inverse mass; impulse
+   `j = (1 + RESTITUTION) · vc / (1/ms + 1/mk)` along n applied to both, only when `vc > 0`; `impact = vc · mk / (mk + ms)`.
+- **Hull cost for case 3** (outside the pair's grace, as now): `min(4, 1 + floor(max(0, impact − 40) / 40))`. A gentle
+  bump costs 1, as today. Examples: r 15 piece at 200 u/s: impact 40, cost 1; r 30 piece at 200: 100, cost 2; r 45 piece
+  at 250: about 173, cost 4. (A ship that hits a static rock hard enough to wake it is case 3: r 45 at 200 u/s, impact
+  about 138, cost 3.)
+- **Rock damage from a ram** (any of the three cases, outside the pair's grace, applied after the bounce): the rock takes
+  `max(0, vc − ROCK_CRUSH_SPEED) / ROCK_CRUSH_STEP · 2·ms / (ms + mk)` (the §3.3 formula with the ship as the other
+  body). A break uses `u = −n` (from the ship into the rock) and the rock's post-bounce velocity. Ramming a small
+  cracked rock can break it.
 
 ### 5.2 Torpedoes and pieces
 
@@ -159,48 +202,84 @@ A torpedo meets moving rocks exactly as static ones (spike i): it touches, it de
 
 ### 6.1 State and commands
 
-- Each ship system gets `laserRock` and `torpRock` (a rock slot, or −1). They are hashed, snapshotted and cloned with the
-  other system fields.
-- A new crew command `rockLock { weapon: 'laser' | 'torpedo', rock: number }` sets one of them (−1 clears it). It is
-  validated like `laserLock` / `torpLock` (seat rules: the Weapons seat), rejected as malformed when the slot is out of
-  range, and rejected as `noop` when the slot holds no live rock. `laserLock` / `torpLock` with a room clear the matching
-  rock target (the weapon goes back to the enemy).
-- **A rock target clears itself** the tick its rock breaks or turns to dust (any slot cleared or rewritten by §3.4 clears
-  every `laserRock` / `torpRock` that pointed at it), so a reused slot is never mistaken for the old rock.
+- Each ship system gets three new fields, hashed, snapshotted and cloned with the other system fields:
+  - `laserRock`: the laser's rock target, a slot or −1.
+  - `torpRock`: the next torpedo's rock target, a slot or −1 (a single shot, like `torpLock`).
+  - `torpRockFlying`: the flying torpedo's rock, a slot, −1 (no rock: the torpedo follows today's rules) or −2 (its
+    rock broke: it flies unguided). Like `torpRoom`.
+- A new crew command `rockLock { weapon: 'laser' | 'torpedo', rock: number }`:
+  - **Wire**: added to the duel command kinds (`DUEL_KINDS` in `sim/duel/step.ts`), the command union and its codec
+    (`src/renderer/src/net/codec.ts`), and `WEAPON_ORDER` right after `torpLock`
+    (`laserLock, torpLock, rockLock, laserCharge, missileLaunch`).
+  - **Validation**, in step.ts with the other weapon commands: stale first, then the same seat rule as `laserLock`
+    (`not-at-weapons` unless sent by the Weapons seat's player), then `malformed` unless `weapon` is one of the two and
+    `rock` is an integer from −1 to `rockSlots − 1`, then `noop` when `rock ≥ 0` and the slot holds no live rock. Within
+    the tick the last accepted `rockLock` per weapon wins.
+  - **Folding**: into a new `ShipInput.rockLock: { laser: number | null; torpedo: number | null }` (null: no command),
+    applied in `applyWeaponsInput` after `laserLock` and `torpLock` and before `stepBurst`. So a same-tick `rockLock`
+    beats a same-tick room lock for the same weapon.
+  - **Laser effects**: `rockLock(laser, k ≥ 0)` sets `laserRock = k` and `laserTargeted = true` (the crew auto-fire
+    reads it). `rockLock(laser, −1)` sets `laserRock = −1` and `laserTargeted = false` (today's right-click effect).
+    An accepted `laserLock` (room or −1) sets `laserRock = −1` before its own effect.
+  - **Torpedo effects**: `rockLock(torpedo, k ≥ 0)` sets `torpRock = k` and `torpLock = −1`; `rockLock(torpedo, −1)`
+    sets `torpRock = −1`. An accepted `torpLock` sets `torpRock = −1` before its own effect.
+- **A rock target clears itself**: whenever a slot is cleared or rewritten (break, dust, eviction; §3.4), every
+  `laserRock` and `torpRock` equal to it becomes −1, and every `torpRockFlying` equal to it becomes −2. So a reused slot
+  is never mistaken for the old rock.
 
 ### 6.2 Laser with a rock target
 
-- While `laserRock ≥ 0` the laser's aim is that rock, not the enemy. A shot is **on target** when the rock is inside the
-  laser's arc and its surface within the laser's range. The shot's line runs from the ship to the rock's centre; the first
-  blocker on it (spike i's `firstBlocker`) takes the shot: the planet (the shot misses), another rock (it takes the hit, an
-  accident), or the target rock.
-- The laser's existing fire rules (charge, hold, manual fire, the crew auto-fire when lined up, the burst) apply with
-  "lined up" meaning "the rock target on target". The Weapons card's FIRING flash and its reason row use the same test
-  (`LASER: OUT OF ARC`, `OUT OF RANGE`, words as today).
-- A burst's later shots re-aim at the rock as it now stands; if it broke, they fall back to the enemy rules.
+- While `laserRock ≥ 0` the laser aims at that rock, not the enemy. It is **on target** when the rock's centre is inside
+  the laser's arc and the rock's surface within the laser's range (`dist − r ≤ range`). The shot's line runs from the
+  ship to the rock's centre; spike i's `firstBlocker` on that line decides what it meets: the planet (the shot misses),
+  another rock (that rock takes the hit, an accident) or the target rock.
+- The laser's fire rules are today's (charge, manual fire, the crew auto-fire, the burst), with `laserEligible` replaced
+  by "on target" while `laserRock ≥ 0`. Auto-fire therefore needs `laserTargeted`, which `rockLock(laser, k)` sets. The
+  Weapons card's FIRING flash and reason row use the same test, with today's words (`LASER: OUT OF ARC: HELM TURN
+  RIGHT`, `OUT OF RANGE`).
+- A burst's later shots re-aim at the rock as it now stands. If the rock broke, `laserRock` is −1 and they follow
+  today's enemy rules.
 
-### 6.3 Accidental hits and AUTO_DIG
+### 6.3 Accidental hits, AUTO_DIG and hostility
 
 - A laser shot at the enemy whose line is blocked by a rock hits that rock (spike i, kept). The aimless nose ray (no
   target in reach) also stays.
 - **`AUTO_DIG` is false.** The laser never fires on its own just because a rock is in the way; digging is chosen by
   dropping the laser on the rock.
+- **Hostility is unchanged**: every crew laser shot and torpedo launch counts in `shots` and `missilesLaunched` as
+  today, so shooting rocks during the Hunter's hold ends the hold (`science.ts`). Gunfire is gunfire.
 
 ### 6.4 Torpedo with a rock target
 
-- While `torpRock ≥ 0` the torpedo homes on that rock: `homingTurn` uses the rock's position and velocity in place of the
-  target ship's. Its IN RANGE / OUT OF RANGE state uses the distance to the rock.
-- If the rock breaks while the torpedo flies, the torpedo flies on unguided (as when its target ship is gone).
+- **Range**: while `torpRock ≥ 0`, `torpedoInRange` (and so `canLaunch` and the card's IN RANGE / OUT OF RANGE) tests
+  the rock's centre distance against the class's torpedo range, instead of the target ship's.
+- **Launch**: the crew's auto-launch fires when `torpRock ≥ 0` and `canLaunch` holds, as it does today for
+  `torpLock ≥ 0`. `launchMissile` copies `torpRock` into `torpRockFlying` and clears `torpRock` (single shot), as it
+  does `torpLock` into `torpRoom`. A manual `missileLaunch` with `torpRock ≥ 0` does the same.
+- **Homing**: while `torpRockFlying ≥ 0`, `homingTurn` uses that rock's position and velocity in place of the target
+  ship's. At −2 it returns 0 (unguided). At −1 it is today's homing on the enemy.
+- The missile's end (any cause) sets `torpRockFlying = −1`, as it does `torpRoom`.
+- A `rockLock(torpedo)` while a torpedo flies sets the next shot's target only.
 - It detonates on whatever rock it touches first (§4.2), which may not be its target.
 
-### 6.5 UI (Weapons and Helm map views)
+### 6.5 UI (map views)
 
-- With a weapon picked up (a card or 1 / 2, as today), the pointer over a rock on the map highlights it (a bracket in
-  the weapon's mark), and a click on it drops the weapon there: the duel mode sends `rockLock`. The contact window closes.
-- A targeted rock wears that weapon's bracket (laser and torpedo marks differ, both drawn on the CRT amber ramp) until the
+- A new controller method `pickRock(slot)` in `contactController.ts`: valid only while a weapon is picked up; it emits a
+  request the duel mode turns into `rockLock { weapon, rock: slot }`, then disarms the pick-up and closes the contact
+  window. The scan request that today's `pickUp` makes below Level 1 stands (it was sent at pick-up).
+- A new pure `pickRock` hit test in `render/tactical/tacticalModel.ts` beside `pickContact`, returning the slot of the
+  live rock under the pointer (the nearest centre among rocks whose drawn circle contains it; ties: lowest slot) or null.
+  The scene asks `pickContact` first: **a ship contact under the pointer wins over a rock**.
+- While a weapon is picked up, the rock under the pointer shows a hover bracket in the weapon's mark.
+- A targeted rock wears that weapon's bracket (laser and torpedo marks differ, both on the CRT amber ramp) until the
   target clears.
-- The card's target words read `TGT ROCK`. A right-click on the card clears the target, as today (it sends `rockLock`
-  with −1 and the room lock as it was).
+- The card's target words read `TGT ROCK` while that weapon's rock target (`laserRock`, or `torpRock` /
+  `torpRockFlying ≥ 0` for the torpedo) is set.
+- A right-click on the LASER card sends `rockLock(laser, −1)` when `laserRock ≥ 0`, else today's `lock(−1)`; on the
+  TORPEDO card, `rockLock(torpedo, −1)` when `torpRock ≥ 0`, else today's `torpLock(−1)`.
+- The drop works from any map view that allows a pick-up today (Helm and Weapons). The sim's seat rule decides: a
+  `rockLock` from a player not at Weapons is rejected `not-at-weapons`, exactly as a room drop is. In single player
+  the solo seat handling applies as it does to `laserLock`.
 - A click on a rock with no weapon picked up does nothing new.
 
 ## 7. Feel: the feedback
@@ -232,10 +311,13 @@ All view-owned, never hashed, driven by the tick's `rock` events and the live po
 - The `rock` event becomes
   `{ kind: 'rock'; what: 'hit' | 'split' | 'dust' | 'blast' | 'bump'; by: 'laser' | 'torpedo' | 'collision' | 'ram' | 'planet' | 'edge'; rock; x; y; r; vx; vy; ship? }`
   where `blast` is the detonation (x, y the blast point, r the radius), `bump` a damaging rock-rock or ship-rock contact
-  (x, y the contact point), `split` carries `pieces`, and `ship` names the ship whose shot, torpedo or ram caused it.
-  Spike i's `'shatter'` is renamed `'dust'` and `'fragment'` becomes `'collision'`.
+  (x, y the contact point), `split` carries `pieces`, and `ship` names the ship whose laser hit, torpedo (its direct
+  hit and every break its blast causes) or ram caused it; `ship` is absent for breaks caused by rock-rock collisions,
+  the planet, the edge and eviction. Spike i's `'shatter'` is renamed `'dust'` and `'fragment'` becomes `'collision'`.
 - Counters (in the space module, hashed): `rockHits`, `rockSplits`, `rockDust`, `rockBlasts`, `rockCollisions`
-  (damaging rock-rock contacts), `rockEvictions`. Per ship system: `rocksBroken`.
+  (damaging rock-rock contacts), `rockEvictions`. Per ship system: `rocksBroken`, + 1 for every `split` or `dust` event
+  of a rock's break (not dust from eviction, the planet or the edge) whose `ship` is that ship. Chain breaks from
+  collisions do not count.
 
 ## 9. Measurement and acceptance
 
@@ -248,18 +330,25 @@ The spike is accepted for the owner's play when all of these hold:
 2. **Broad phase**: `rocksNear` agrees with brute force while seeded rocks are moving and pieces are flying (spike i's
    test, extended).
 3. **Physics unit tests**: a rock-rock collision conserves momentum along n (within 1e-9 relative); no damage at
-   `vc ≤ 30`; the lighter rock takes more; a laser push gives `Δv = J/m`; a torpedo direct hit on r 50 gives 6 pieces and
-   on r 35 gives 4, each `0.9 · r / √n`, total piece area ≤ the parent's; blast damage and push fall off linearly to
+   `vc ≤ 30`; the lighter rock takes more; a laser push gives `Δv = J/m`; a torpedo direct hit on r 50 and on r 35 gives
+   6 pieces, on r 30 gives 4, on r 20 dust, each `0.9 · r / √n`, total piece area ≤ the parent's; a laser break on
+   r 42 gives 3, on r 30 gives 2, on r 20 dust; a kind-1 rock touched at `vc ≤ 40` stays kind 1 and does not move;
+   the born mask keeps a reused slot from taking the old rock's pending damage; a pair is resolved once per tick; blast damage and push fall off linearly to
    zero at the radius; the ship hull-cost examples of §5.1; eviction picks the smallest moving rock; a rock target clears
    when its rock breaks and when its slot is reused; a rock-targeted torpedo homes on a moving rock and hits it.
-4. **Feel proxies** (scripted, logged in the report, not pass/fail beyond these floors): one torpedo into each of the
-   10 largest belt rocks (crew stationary 300 u away, aimed on it) produces at least 4 pieces and at least 2 damaging
-   collisions within 5 s in at least 7 of the 10; the report logs pieces, collisions, breaks and the farthest piece
-   travel per shot.
-5. **Cost**: tactical `stepDuel` p99 under 0.5 ms in the stress script on the dev PC; snapshot values, full image,
-   20 Hz delta images (median and max, with 0 and with 60 moving rocks) and publication cost per tick measured against
-   master and spike i, as spike i's report did. No pass threshold beyond the existing publication budgets (host 1.5 ms,
-   client 1.0 ms), which must still hold.
+4. **Feel proxies** (scripted, logged in the report, not pass/fail beyond these floors). Setup per shot: a fresh duel
+   on seed 2026, the Hunter inactive, the crew ship placed at the rock's centre plus 300 u along the outward radial
+   (away from the planet), at rest, facing the rock, with `rockLock(torpedo, rock)`; the test ends 5 s after the blast.
+   For each of the 10 largest belt rocks: count the pieces made (the direct hit plus every secondary break) and the
+   damaging collisions among rocks that are either pieces of this blast or were hit by it. Floor: at least 6 pieces
+   and at least 2 damaging collisions in at least 7 of the 10. The report also logs breaks, the farthest piece travel
+   and the moving-rock count 30 s after the blast.
+5. **Cost**: a pass gate: tactical `stepDuel` p99 under 0.5 ms over the stress script on the dev PC. If it fails,
+   build a moving-rock grid (rebuilt each tick, same ascending, no-repeat `rocksNear` contract) and re-measure; the
+   spike is not accepted until it passes. Also measured and reported, with no threshold beyond the existing publication
+   budgets (host 1.5 ms, client 1.0 ms, which must still hold): snapshot values, full image, 20 Hz delta images (median
+   and max, with 0 and with 60 moving rocks) and publication cost per tick, against master and spike i, as spike i's
+   report did.
 6. **Existing gates**: the whole suite green; `duelGates` passes (median round in 180 to 300 s, the crew wins and loses);
    `npm run test:duel-app-runtime` passes.
 7. **Screenshots** (staged with the solo hook, CRT map): a laser chipping a rock with sparks, a laser split with pieces
@@ -276,12 +365,14 @@ The spike is accepted for the owner's play when all of these hold:
 
 ## 11. Risks
 
-1. **Belt erosion**: moving seeded rocks never re-enter the grid; a long round with many blasts leaves many moving
-   bodies and a thinning belt. Measured by the stress script (moving count over time).
+1. **Belt erosion and wake cascades**: moving seeded rocks never re-enter the grid and, with gravity on, never come
+   to rest; a drifting rock can wake neighbours when it reaches them above `ROCK_WAKE_SPEED`. A long round with many
+   blasts leaves many moving bodies and a thinning belt. Measured by the stress script: the moving count every 10 s.
 2. **Chaos for tests and tuning**: as spike i found, any rock event changes the rest of a round. Fixtures pinned to
    scripted ticks will need re-finding after the merge and after this change.
-3. **Pair cost**: moving-moving contacts are O(n²) over at most 86 + 96 movers (about 16,500 pairs a tick at worst). The
-   p99 budget in §9.5 decides whether a moving-rock grid is needed; not built unless it fails.
-4. **Snapshot growth**: the pool grows to (86 + 96) × 7 values plus ship grace for 96 more bodies. Measured, spike only.
+3. **Pair cost**: moving-moving contacts are O(n²) over at most 91 + 96 movers (maps have 82 to 91 seeded rocks, by
+   seed), about 17,000 pairs a tick at worst. §9.5's gate decides whether the moving-rock grid is built.
+4. **Snapshot growth**: the pool grows to (82 to 91 + 96) × 7 values plus ship grace for 96 more bodies. Measured,
+   spike only.
 5. **Duel gates**: pieces flying into ships may shorten rounds; if `duelGates` fails, tune `BLAST_SHIP_PUSH`, the hull
    cost thresholds or `ROCK_FLING` within the spike and say so in the report.
