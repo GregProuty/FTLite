@@ -2,7 +2,7 @@
 // marker on the enemy's locked room (both consoles, parent §7a), the Weapons layer (bearing ring, both laser arcs, the
 // enemy's bearing and range, the missile's predicted path) and the event effects. Pure, like tacticalModel, which it
 // sits beside: the layer draws TacticalDraw and CombatDraw together.
-import { missileOf, targetOf } from '../../sim/tactical/state';
+import { Contact, missileOf, targetOf } from '../../sim/tactical/state';
 import { laserEligible } from '../../sim/tactical/weapons';
 import { LASER_ARC_COS, LASER_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { ROOM_NAMES } from '../duel/interiorModel';
@@ -63,7 +63,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   // The lock marker sits on the locked room of the enemy's hull (the scout), or on the chevron when the ship is drawn as one.
   let lock: LockDraw | null = null;
   const room = state.systems[0].lock;
-  if (onScreen(enemyS, SHIP_RADIUS * 2 * z + 40)) {
+  if (!(input.contacts && state.known[Contact.Enemy] === 0) && onScreen(enemyS, SHIP_RADIUS * 2 * z + 40)) {   // Sci-1: no lock mark on an unknown contact
     const chevron = 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, a = headingAngle(enemy.h), fx = Math.sin(a), fy = -Math.cos(a), rx = -fy, ry = fx;
     const c = chevron ? { f: 0, s: 0 } : roomCentre(hullFor(false), room), k = SHIP_RADIUS * drawnScale(z);
     const x = enemyS.x + (fx * c.f + rx * c.s) * k, y = enemyS.y + (fy * c.f + ry * c.s) * k, r = Math.max(7, k * 0.45);
