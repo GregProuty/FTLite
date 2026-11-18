@@ -82,3 +82,41 @@ Confirmed. `DuelInit` is used only in `.worktrees/sci-2/src/renderer/src/authori
 
 ---
 
+# Round 2 (delta, reviewing 6ea1a665, effort medium, 73 s, 312592 in / 266980 cached / 6077 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — Task 5 Files (plan L1413), Step 10 (L2003-2007) and the commit (L2020) now expect, prove and stage basic.json. Task 8 Files (L2540), Step 2 (L2559-2576) expect basic.json to move, prove it with `canonical-trace.ts golden` and commit it. The <t1> diff-stat check covers determinism-v2.json only. `canonical-trace.ts golden` (scripts/golden/canonical-trace.ts:L30-44) compares against the basicCopy that `baseline` writes (L20), which Task 2 Step 1 records (plan L206). Its filter (L42) allows contentDigest leaves, and its output matches the expected line `<k> leaves differ, 0 outside version, digest and hashes` (L43).
+- R1-F2: resolved — Part i now states the constraint at Interfaces (L635) and Step 4 (L878), and hands it over in Task 8 Step 5 (L2600). Part ii's fleet.ts block now ends with `export const HULL_IDS = ['hound', 'scout', 'valkyrn'] as const;` (valkyrn-ii plan L669, L702), so the cross-part name holds.
+- R1-F3: resolved — Migration.frozen (L1868-1874) and ADDITIONS[53].frozen (L1863) are in place. The recordRun additions compile against the real code: the insertion anchors exist verbatim at duelOracle.ts:L243, L252 and L270, and `now.names`/`now.counts` are the full flattened schema whose offsets match `all.subarray(1)` (L246, L250). `added` is a const narrowed before the forEach callback, and `firstValues ??=` narrows within record. The problems flow into the returned `problems`, which judgeDuelOracle fails on. The new test reuses SHORT and `none` (tests/duelOracle.test.ts:L10-13). It freezes space.ships.0.x, which L85 shows first moves at tick 265, inside the 300-tick cap, and it checks the frozen:false control.
+- R1-F4: resolved — Decision 16 (plan L60) now explains that the spec's single-player DuelInit widening is moot: the local runtime calls createDuel, and DuelInit is used only on the online checkpoint path. So the schema stays 2..4.
+
+## Verified
+- The recordRun insertion anchors quoted in plan L1876, L1885 and L1895 match .worktrees/sci-2/scripts/golden/duelOracle.ts:L243, L252 and L270 verbatim.
+- Frozen offsets are computed with the same offset walk as aliasPlan (duelOracle.ts:L144-145), over now.names, which includes the version fields. That is consistent with all.subarray(1) and flatCount (L246, L250).
+- The new frozen test's schema (was.names/was.counts, with version fields dropped by `kept`, L244) is the same shape the existing per-tick test passes (tests/duelOracle.test.ts:L77). The swap test (L80) confirms that `none.rename` returning undefined maps a field to itself.
+- canonical-trace.ts golden mode output string and leaf filter (scripts/golden/canonical-trace.ts:L42-43) match the plan's expected lines at L2007 and L2563.
+- Task 8 Step 2's git-status expectation (only basic.json) holds: Tasks 6 and 7 edit sim sources, and the duel goldens and determinism-v2 are not rewritten in canonical content.
+- Part ii plan L669/L702 now keeps HULL_IDS in its fleet.ts replacement.
+
+## Not verified
+- Whether the Part ii plan edit that adds HULL_IDS is committed: git status shows the Part ii plan as modified in the working tree. I read the working-tree text.
+- Whether the oracle runs' gun and round fields stay constant through Task 6's stepRounds and hostility changes: Task 6 is outside the touched regions. Task 8 Step 1's `added` run (which now checks frozen) would catch a change during execution.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the subject at the round 1 commit. 0 accepted / 0 rejected / 0 deferred; the reviewer confirmed R1-F1, R1-F2, R1-F3 and R1-F4 resolved. No new findings.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
