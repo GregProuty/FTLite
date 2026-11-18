@@ -14,8 +14,8 @@ export const FREQ_NAMES = ['A', 'B', 'C'] as const;
 export const HOSTILE_SHOWN_TICKS = 180;
 
 export interface HostilityLine { text: string; alert: boolean }
-/** Spec §7.1: while it patrols, INCOMING SCAN (blinking) before the enemy is known to Level 1, then HOSTILE IN n s with
- *  n = ceil((1200 − rt) / 60); once hostile, HOSTILE (blinking) for 3 s; then nothing. */
+/** Spec §7.1: while it holds, INCOMING SCAN (blinking) before the enemy is known to Level 1, then HOSTILE IN n s with
+ *  n = ceil((1800 − rt) / 60); once hostile, HOSTILE (blinking) for 3 s; then nothing. */
 export function hostilityLine(t: TacticalState): HostilityLine | null {
   const rt = roundTick(t);
   if (t.hostileAt < 0) return t.known[Contact.Enemy] >= 1 ? { text: `HOSTILE IN ${Math.ceil((HOSTILE_AFTER_TICKS - rt) / TICK_HZ)} s`, alert: false } : { text: 'INCOMING SCAN', alert: true };

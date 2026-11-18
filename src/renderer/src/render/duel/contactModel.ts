@@ -46,7 +46,7 @@ export interface ContactView {
   rooms: ContactRoom[];
   /** The crew laser's lock room, at Level 2. */
   lockRoom: number | null;
-  /** Weapons only, the enemy at Level 1 or more: LASER (the station block's charge row) and MISSILE (not aimable). */
+  /** Weapons only, the enemy at Level 1 or more: LASER (the station block's charge row) and TORPEDO (not aimable). */
   weapons: null | { laser: ContactLaser; missile: { magazine: number } };
   /** The aim is armed (Weapons only). */
   aim: boolean;
@@ -131,7 +131,7 @@ export function contactModel(i: ContactModelInput): ContactView | null {
     lines.push(line(`WEAK FREQ ${FREQ_NAMES[state.weakFreq] ?? ''}`));
     lines.push(line('ENEMY LASER', CRT.main, Math.min(1, sys.laserCharge / cls.slots.laser.chargeUnits)));
     const ready = sys.magazine > 0 && missileOf(state, slot) === null && state.tick - state.hunter.lastLaunch >= HUNTER_MISSILE_COOLDOWN_TICKS;
-    lines.push(line(ready ? 'MISSILE READY' : 'RELOADING'));
+    lines.push(line(ready ? 'TORPEDO READY' : 'RELOADING'));
   }
   return {
     contact: Contact.Enemy, title: 'ENEMY SHIP',

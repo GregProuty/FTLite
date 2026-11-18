@@ -54,7 +54,7 @@ describe('the SCAN button (spec §7.2)', () => {
     t.known = [2, 1];
     expect(scanButton(t, 0, 'science')).toEqual({ label: 'SCANNED', enabled: false, progress: null });
     expect(scanButton(t, 1, 'helm')).toEqual({ label: 'SCANNED', enabled: false, progress: null });
-    expect([FREQ_NAMES, LOOT_NAMES]).toEqual([['A', 'B', 'C'], ['HULL', 'MISSILES', 'SHIELD']]);
+    expect([FREQ_NAMES, LOOT_NAMES]).toEqual([['A', 'B', 'C'], ['HULL', 'TORPEDOES', 'SHIELD']]);
   });
 });
 

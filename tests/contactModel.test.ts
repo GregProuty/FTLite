@@ -57,11 +57,11 @@ describe('the enemy at Level 2 (enemy ship window spec §4.2)', () => {
     const h = model(st, { station: 'helm', weapons: null, aim: true })!;
     expect([h.weapons, h.aim]).toEqual([null, false]);
   });
-  it('the readings: the weak frequency, the enemy laser\'s charge, MISSILE READY or RELOADING; SCANNED', () => {
+  it('the readings: the weak frequency, the enemy laser\'s charge, TORPEDO READY or RELOADING; SCANNED', () => {
     const st = known(2); st.hostileAt = 0; st.tick = 1000;   // hostile long ago: no hostility line
     st.weakFreq = 1; st.systems[1].laserCharge = classOf(st, 1).slots.laser.chargeUnits / 2;
     const v = model(st)!;
-    expect(v.lines).toEqual([{ text: 'WEAK FREQ B', tint: CRT.main, bar: null }, { text: 'ENEMY LASER', tint: CRT.main, bar: 0.5 }, { text: 'MISSILE READY', tint: CRT.main, bar: null }]);
+    expect(v.lines).toEqual([{ text: 'WEAK FREQ B', tint: CRT.main, bar: null }, { text: 'ENEMY LASER', tint: CRT.main, bar: 0.5 }, { text: 'TORPEDO READY', tint: CRT.main, bar: null }]);
     expect(v.scan).toEqual({ label: 'SCANNED', enabled: false, progress: null });
     st.systems[1].magazine = 0;
     expect(model(st)!.lines[2]!.text).toBe('RELOADING');

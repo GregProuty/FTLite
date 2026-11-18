@@ -68,7 +68,7 @@ describe('the derelict on the map (spec §7.1)', () => {
     st.known[1] = 1;
     expect(mark(st, 1, onDerelict(st))).toMatchObject({ unknown: false, wreck: true, label: 'DERELICT SHIELD', alert: 'TRAPPED' });
     st.derelict.trapped = false; st.derelict.loot = Loot.Missiles;
-    expect(mark(st, 1, onDerelict(st))).toMatchObject({ label: 'DERELICT MISSILES', alert: null });
+    expect(mark(st, 1, onDerelict(st))).toMatchObject({ label: 'DERELICT TORPEDOES', alert: null });
     st.derelict.salvaged = true;
     expect(mark(st, 1, onDerelict(st))).toMatchObject({ label: 'DERELICT SALVAGED', alert: null });
   });

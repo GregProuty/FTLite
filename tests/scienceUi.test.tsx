@@ -65,7 +65,7 @@ describe('the contact window (spec §7.2)', () => {
     mount(frame(null, contactModel({ state: st, contact: 0, aim: false, station: 'weapons', t: 0, weapons: { charge } })));
     expect(document.querySelector('[data-ui-contact-box]')).not.toBeNull();
     expect(btn('contact-laser')).not.toBeNull();
-    for (const t of ['ENEMY SHIP', 'WEAP', 'WEAK FREQ C', 'ENEMY LASER', 'MISSILE READY', 'SCANNED']) expect(texts(), t).toContain(t);
+    for (const t of ['ENEMY SHIP', 'WEAP', 'WEAK FREQ C', 'ENEMY LASER', 'TORPEDO READY', 'SCANNED']) expect(texts(), t).toContain(t);
   });
 });
 

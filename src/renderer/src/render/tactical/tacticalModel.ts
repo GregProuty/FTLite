@@ -63,7 +63,7 @@ export type ArrowTarget = 'ship' | 'enemy' | 'planet' | 'missile';
 export interface ArrowDraw { target: ArrowTarget; x: number; y: number; angle: number; distance: number; label: string }
 export interface OverlayDraw { zoomText: string; scaleBar: { px: number; units: number }; snapHint: boolean; paused: boolean }
 /** The derelict's loot as the map and the contact window name it (Loot order). */
-export const LOOT_NAMES = ['HULL', 'MISSILES', 'SHIELD'] as const;
+export const LOOT_NAMES = ['HULL', 'TORPEDOES', 'SHIELD'] as const;
 /** Sci-1 spec §7.1: one map contact's mark. `unknown` (Level 0): a plain `?`, no silhouette or shield ring. `wreck`: the
  *  derelict at Level 1, with its `label` and, trapped, the `alert`. `r`: the radius of its scan ring and designation
  *  bracket. `scan`: the scanner's progress 0..1 while it scans this contact, else null. */

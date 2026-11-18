@@ -116,7 +116,7 @@ export interface TacticalState {
   outcome: number;
   events: DuelEvent[];
   /** The science module (Sci-1 spec §4, §6.2). `startTick`: the tactical tick the round began on; every round-relative
-   *  rule reads rt = tick − startTick. `hostileAt`: the rt the enemy turned hostile, −1 while it patrols. `known`: the
+   *  rule reads rt = tick − startTick. `hostileAt`: the rt the enemy turned hostile, −1 while it holds. `known`: the
    *  level each contact is known to (Contact order). `scan`: the ship's scanner. `designated`: the contact Science
    *  points out, −1 none (no rule reads it). `weakFreq`: the enemy's weak shield frequency 0..2. `derelict`: the wreck. */
   startTick: number; hostileAt: number; known: [number, number]; scan: Scan; designated: number; weakFreq: number; derelict: Derelict;
