@@ -2,16 +2,16 @@
 // bracket and the bright arc, the hit juice (beams, flare, shield pop, floats, shakes, the kill and its render-only slow
 // motion), and the sit-down card, goal glow and auto-frame. Presentation only: none of it touches the sim.
 import { afterEach, describe, expect, it } from 'vitest';
-import { laserCardReason, laserSituation, linedUp, SOLUTION_HOLD_S, statusSentence } from '../src/renderer/src/render/duel/situationModel';
-import { countSit, FRAME_ZOOM_MAX, FRAME_ZOOM_MIN, frameZoom, resetSits, SIT_CARD_S, sitCard } from '../src/renderer/src/render/duel/sitModel';
+import { gunnerPresent, laserCardReason, laserSituation, linedUp, SOLUTION_HOLD_S, statusSentence } from '../src/renderer/src/render/duel/situationModel';
+import { countSit, createSitTracker, FRAME_ZOOM_MAX, FRAME_ZOOM_MIN, frameZoom, resetSits, SIT_CARD_S, sitCard, trackSit } from '../src/renderer/src/render/duel/sitModel';
 import { consoleModel } from '../src/renderer/src/render/duel/consoleModel';
-import { createFx, fxDt, KILL_SLOWMO_RATE, KILL_SLOWMO_S, pushEvents, pushKill, ROOM_SHAKE, shakeOffset, stepFx, TORPEDO_SHAKE, trackSolution, type ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
+import { createFx, FLOAT_STEP_PX, fxDt, KILL_SLOWMO_RATE, KILL_SLOWMO_S, pushEvents, pushKill, ROOM_SHAKE, shakeOffset, stepFx, TORPEDO_SHAKE, trackSolution, type ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import { combatModel, INFO_Y, STATUS_Y } from '../src/renderer/src/render/tactical/weaponsModel';
 import { createCamera } from '../src/renderer/src/render/tactical/camera';
 import { CRT } from '../src/renderer/src/render/tactical/crtTheme';
 import { shakeScale } from '../src/renderer/src/render/shake';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
-import { createTacticalState, placeMissile, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { createTacticalState, Outcome, placeMissile, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -61,9 +61,12 @@ describe('the status sentence and the card why-not (spec §1, §3)', () => {
   });
   it('the torpedo in flight holds the laser; the Weapons panel carries the reason and the goal glow only while untargeted', () => {
     const st = createTacticalState(5);
-    place(st, 300, 10); st.systems[0].laserCharge = 0;
+    place(st, 300, 10);   // lined up, full and targeted: the sim would fire but for the torpedo (laserFrozen)
+    expect(laserSituation(st).kind).toBe('solution');
     placeMissile(st, 0, { x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });
-    expect(statusSentence(laserSituation(st))).toBe('LASER HOLDS: TORPEDO FLYING');
+    let s = laserSituation(st);
+    expect([statusSentence(s), laserCardReason(s), linedUp(s)]).toEqual(['LASER HOLDS: TORPEDO FLYING', 'HOLDS: TORPEDO FLYING', true]);
+    expect(laserSituation(st, SOLUTION_HOLD_S / 2).kind).toBe('solution');   // a volley already released is real
     const d = createSeatedDuel(CUTTER, 5);
     try {
       place(d.tactical, 612);
@@ -72,6 +75,36 @@ describe('the status sentence and the card why-not (spec §1, §3)', () => {
       d.tactical.systems[0].laserTargeted = false;
       expect(consoleModel({ duel: d, me: 1, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null, goal: true })!.weapons!.goal).toBe(true);
     } finally { disposeDuel(d); }
+  });
+});
+
+describe('the words never disagree with the sim (Feel-i review)', () => {
+  it('no gunner at Weapons, with a full laser lined up: NO GUNNER, no bracket, no bright arc, no FIRING', () => {
+    const st = createTacticalState(5); place(st, 300, 10);
+    const s = laserSituation(st, Infinity, false);
+    expect([statusSentence(s), laserCardReason(s), linedUp(s)]).toEqual(['NO GUNNER: SIT AT WEAPONS', 'NO GUNNER', false]);
+    const fx = createFx(); trackSolution(fx, linedUp(s), 0); trackSolution(fx, linedUp(s), 0.3);
+    const h = combatModel({ ...input(st, 'helm', fx), gunner: false });
+    expect([h.status!.label.text, h.status!.colour, h.solution, h.helmArc!.bright]).toEqual(['NO GUNNER: SIT AT WEAPONS', CRT.main, null, false]);
+    const d = createSeatedDuel(CUTTER, 5);
+    try {
+      place(d.tactical, 300, 10);
+      const panel = () => consoleModel({ duel: d, me: 1, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null })!.weapons!;
+      expect(gunnerPresent(d)).toBe(true); expect(panel().laserReason).toBe('FIRING');
+      d.present[1] = false;   // the gunner Tabbed away online-style: seated but away
+      expect(gunnerPresent(d)).toBe(false); expect(panel().laserReason).toBe('NO GUNNER');
+    } finally { disposeDuel(d); }
+  });
+  it('once the round is decided: no sentence, no bracket or its label, no bright arc', () => {
+    const st = createTacticalState(5); place(st, 300, 10);
+    const fx = createFx(); trackSolution(fx, true, 0); trackSolution(fx, true, 0.3);
+    expect(combatModel(input(st, 'helm', fx)).solution!.label?.text).toBe('FIRING SOLUTION');
+    st.outcome = Outcome.EnemyWins;   // a loss: the end card is up
+    const s = laserSituation(st, 0);
+    expect([s.kind, linedUp(s), laserCardReason(s)]).toEqual(['none', false, null]);
+    trackSolution(fx, linedUp(s), 0.016);
+    const h = combatModel(input(st, 'helm', fx));
+    expect([h.status, h.solution, h.helmArc!.bright]).toEqual([null, null, false]);
   });
 });
 
@@ -126,6 +159,16 @@ describe('hits are loud (spec §3)', () => {
     pushEvents(fx, [laser({})]);
     expect(fx.shakePx).toBe(TORPEDO_SHAKE.px);
   });
+  it('successive floats stand side by side; a column frees when its float ends', () => {
+    const fx = createFx(), at = laser({});
+    pushEvents(fx, [at]); stepFx(fx, 0.2); pushEvents(fx, [at, at]);
+    expect(fx.floats.map((f) => f.slot)).toEqual([0, 1, 2]);
+    const xs = combatModel(input(createTacticalState(5), 'weapons', fx)).floats!.map((f) => f.x);
+    expect([xs[1]! - xs[0]!, xs[2]! - xs[1]!]).toEqual([FLOAT_STEP_PX, FLOAT_STEP_PX]);
+    stepFx(fx, 0.95);   // the first has ended
+    pushEvents(fx, [at]);
+    expect(fx.floats.map((f) => f.slot)).toEqual([1, 2, 0]);
+  });
   it('the shake setting scales the offset: off none, low half', () => {
     const fx = createFx();
     pushEvents(fx, [{ kind: 'missileEnd', ship: 0, cause: 'ship', target: 1, room: 0, x: 5, y: 5 }]);
@@ -159,6 +202,18 @@ describe('sitting down (spec §1)', () => {
     expect(sitCard('weapons', 0.5, false, true)).toMatchObject({ title: 'WEAPONS: CLICK A WEAPON, THEN A ROOM', top: true });
     expect(sitCard('helm', SIT_CARD_S - 0.25, false)!.alpha).toBeCloseTo(0.5, 6);
     expect([sitCard('helm', SIT_CARD_S, false), sitCard('helm', 1, true)]).toEqual([null, null]);
+  });
+  it('a sit is a character sitting down, not a Tab to one already seated', () => {
+    const tr = createSitTracker();
+    expect(trackSit(tr, 0, [null, null])).toBe(false);
+    expect(trackSit(tr, 0, ['helm', null])).toBe(true);          // player 0 sits at the Helm
+    expect(trackSit(tr, 0, ['helm', null])).toBe(false);
+    expect(trackSit(tr, 1, ['helm', null])).toBe(false);         // Tab to player 1, on foot
+    expect(trackSit(tr, 1, ['helm', 'weapons'])).toBe(true);     // player 1 sits at Weapons
+    expect(trackSit(tr, 0, ['helm', 'weapons'])).toBe(false);    // Tab back to the seated Helm: no sit
+    expect(trackSit(tr, 1, ['helm', 'weapons'])).toBe(false);    // and to the seated gunner: no sit
+    expect(trackSit(tr, 1, ['helm', null])).toBe(false);         // the gunner stands
+    expect(trackSit(tr, 1, ['helm', 'weapons'])).toBe(true);     // and sits again: a sit
   });
   it('auto-frame fits the enemy inside the map, clamped to 0.25..1', () => {
     const vp = { w: 1280, h: 720 };

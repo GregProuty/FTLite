@@ -22,6 +22,17 @@ export function countSit(seat: SitSeat): boolean { shown[seat]++; return shown[s
 /** Tests: forget the session's sits. */
 export function resetSits(): void { shown.helm = 0; shown.weapons = 0; }
 
+/** Each character's Helm or Weapons seat last frame (null on foot or at Science), so a sit is told from a Tab. */
+export interface SitTracker { seats: [SitSeat | null, SitSeat | null] }
+export function createSitTracker(): SitTracker { return { seats: [null, null] }; }
+/** One frame (Feel-i review): true when the `active` character has just sat down at the Helm or Weapons, its own seat going
+ *  from none to a console. A Tab to a character already seated is no sit (no card, no auto-frame). Records both seats. */
+export function trackSit(tr: SitTracker, active: 0 | 1, seats: readonly [SitSeat | null, SitSeat | null]): boolean {
+  const sat = tr.seats[active] === null && seats[active] !== null;
+  tr.seats = [seats[0], seats[1]];
+  return sat;
+}
+
 /** The card `age` seconds after sitting, or null once its time is up or the seat has acted. Fades over its last half
  *  second. `enemyBelow`: the enemy is below the ship on screen, so the card goes to the top to keep it in view. */
 export function sitCard(seat: SitSeat, age: number, acted: boolean, enemyBelow = false): SitCardView | null {

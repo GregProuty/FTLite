@@ -8,7 +8,7 @@ import { HEADING_COUNT, MAGAZINE } from '../../sim/tactical/tuning';
 import { canLaunch, torpedoInRange } from '../../sim/tactical/weapons';
 import type { MapOverlayView } from '../../ui/views';
 import { chargeRow, type ReadoutRow } from './readoutModel';
-import { laserCardReason, laserSituation } from './situationModel';
+import { gunnerPresent, laserCardReason, laserSituation } from './situationModel';
 import { laserOffline } from '../../sim/tactical/weapons';
 
 export type ConsoleStation = 'helm' | 'weapons' | 'science' | 'ship';
@@ -81,7 +81,7 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   const weapons: WeaponsPanel | null = station === 'weapons'
     ? { lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null,
       laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock, burst: classOf(t, 0).slots.laser.shots,
-      laserReason: laserCardReason(laserSituation(t, i.sinceShot ?? Infinity), laserOffline(t, 0)), goal: (i.goal ?? false) && !sys.laserTargeted }
+      laserReason: laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), laserOffline(t, 0)), goal: (i.goal ?? false) && !sys.laserTargeted }
     : null;
   const side = i.overlay && station !== 'ship'
     ? { zoom: i.overlay.zoomText.replace(/^ZOOM\s+/, ''), free: i.overlay.snapHint, snapLabel: station === 'weapons' ? 'CAMERA' as const : 'SNAP' as const }

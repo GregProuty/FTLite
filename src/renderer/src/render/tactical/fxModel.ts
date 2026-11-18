@@ -18,7 +18,7 @@ export const BEAM_S = 0.15, BURST_S = 0.3, SPARK_S = 0.3, SHAKE_S = 0.2, SHAKE_P
  *  its first CORE_S; an impact flare where it lands; the enemy's shield bubble pops when a layer goes; a floating `-2`
  *  over a room hit; the shakes on the seats that see it (a laser room hit 2 px 120 ms, a torpedo hit 4 px 200 ms); a kill
  *  is a big explosion, the hull breaking apart and KILL_SLOWMO_S of render-only slow motion at KILL_SLOWMO_RATE. */
-export const CREW_BEAM_S = 0.22, CORE_S = 0.06, FLARE_S = 0.35, POP_S = 0.45, FLOAT_S = 1.1, FLOAT_RISE_PX = 30, FLOATS_MAX = 4;
+export const CREW_BEAM_S = 0.22, CORE_S = 0.06, FLARE_S = 0.35, POP_S = 0.45, FLOAT_S = 1.1, FLOAT_RISE_PX = 30, FLOATS_MAX = 4, FLOAT_STEP_PX = 44;
 export const ROOM_SHAKE = { px: 2, s: 0.12 }, TORPEDO_SHAKE = { px: 4, s: 0.2 }, KILL_SHAKE = { px: 6, s: 0.4 };
 export const KILL_S = 1.8, KILL_SLOWMO_S = 0.4, KILL_SLOWMO_RATE = 0.3, BOOM_S = 0.9;
 /** Trail length in drawn positions (spec §7 item 6). */
@@ -31,7 +31,8 @@ export const SPARK: Readonly<Record<ContactEvent['body'], number>> = { planet: C
  *  impact; a `pop` the enemy shield bubble flashing out (x1, y1 its centre); a `boom` the kill's explosion. */
 export interface FxItem { kind: 'beam' | 'burst' | 'spark' | 'flare' | 'pop' | 'boom'; age: number; life: number; x1: number; y1: number; x2: number; y2: number; colour: number; crew?: boolean; side?: number }
 /** A floating damage number over the enemy, at the world point it rose from. */
-export interface FloatItem { text: string; x: number; y: number; age: number }
+/** `slot` (Feel-i review): the lowest column free when it appeared, so successive floats stand side by side, not stacked. */
+export interface FloatItem { text: string; x: number; y: number; age: number; slot: number }
 /** The kill (Feel-i): the enemy's last drawn place and heading, and the seconds since. */
 export interface KillFx { x: number; y: number; h: number; age: number }
 export interface FxState {
@@ -64,8 +65,10 @@ export function startShake(fx: FxState, px: number, s: number): void {
   fx.shakePx = px; fx.shakeLife = s; fx.shake = s; fx.shakeT = 0;
 }
 function float(fx: FxState, text: string, x: number, y: number): void {
-  fx.floats.push({ text, x, y, age: 0 });
-  if (fx.floats.length > FLOATS_MAX) fx.floats.splice(0, fx.floats.length - FLOATS_MAX);
+  if (fx.floats.length >= FLOATS_MAX) fx.floats.splice(0, fx.floats.length - FLOATS_MAX + 1);   // the oldest goes first
+  let slot = 0;
+  while (fx.floats.some((f) => f.slot === slot)) slot++;
+  fx.floats.push({ text, x, y, age: 0, slot });
 }
 
 /** Whether an event is a hit on the crew ship (CREW_SLOT): a laser hit from another ship, or any missile landing on it.

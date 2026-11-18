@@ -11,7 +11,7 @@ import { laserSituation, linedUp, sentenceTone, statusSentence } from '../duel/s
 import { CRT } from './crtTheme';
 import { FONT_NATIVE, FONT_SIZE, textPx } from '../theme';
 import { worldToScreen, type Point } from './camera';
-import { CORE_S, FLOAT_RISE_PX, FLOAT_S, interpolatedMissile, KILL_S, type FxState } from './fxModel';
+import { CORE_S, FLOAT_RISE_PX, FLOAT_S, FLOAT_STEP_PX, interpolatedMissile, KILL_S, type FxState } from './fxModel';
 import {
   BEARING_RING_ZOOM, headingAngle, interpolatedShip, drawnScale, ringDraw, SHIP_CHEVRON_PX, type Label, type PrevBody, type RingDraw,
   type TacticalModelInput
@@ -81,6 +81,9 @@ export interface CombatModelInput extends TacticalModelInput {
   infoBand?: { left: number; right: number };
   /** Feel-i (spec §1): pulse the goal glow on the Helm's enemy edge arrow (the scene stops it once the Helm acts). */
   goal?: boolean;
+  /** Whether a present player sits at Weapons (situationModel's gunnerPresent); default true. Without one the laser cannot
+   *  fire, so there is no solution: NO GUNNER, no bracket, no bright arc. */
+  gunner?: boolean;
 }
 
 /** Bearing in whole degrees, 0 to 359, north 0, clockwise. */
@@ -139,7 +142,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   const torpedoRange: RangeDraw | null = (input.console === 'weapons' || input.console === 'helm') && input.ships.includes(0)
     ? { x: ownS.x, y: ownS.y, r: MISSILE_RANGE * z, lit: input.console === 'weapons' && inRange } : null;
   // Feel-i (console feel spec §1, §2): the laser's situation drives the sentence, the bright arc and the bracket.
-  const situation = laserSituation(state, input.fx.sinceShot), lined = linedUp(situation), ready = situation.kind === 'solution';
+  const situation = laserSituation(state, input.fx.sinceShot, input.gunner ?? true), lined = linedUp(situation), ready = situation.kind === 'solution';
   const centre = ((input.reserveLeft ?? 0) + vp.w - input.reserveRight) / 2;
   const sentence = statusSentence(situation);
   const status: StatusDraw | null = input.infoBand && sentence ? { label: bandLabel(sentence, centre, input.infoBand, STATUS_Y, FONT_SIZE / FONT_NATIVE), colour: TONE[sentenceTone(situation)] } : null;
@@ -172,7 +175,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
     ? { x: input.enemyArrow.x, y: input.enemyArrow.y, r: 20, alpha: 0.35 + 0.65 * (0.5 + 0.5 * Math.cos((input.t ?? 0) * 2 * Math.PI * GOAL_PULSE_HZ)) } : null;
   const floats: FloatDraw[] = input.fx.floats.map((f) => {
     const p = toS(f.x, f.y), k = Math.min(1, f.age / FLOAT_S);
-    return { text: f.text, x: p.x + 44, y: p.y - 14 - FLOAT_RISE_PX * k, alpha: 1 - k * k };   // right of the bracket
+    return { text: f.text, x: p.x + 44 + FLOAT_STEP_PX * f.slot, y: p.y - 14 - FLOAT_RISE_PX * k, alpha: 1 - k * k };   // right of the bracket, each in its own column
   });
 
   const shieldR = SHIP_RADIUS * drawnScale(z) * 1.9;   // the enemy's shield bubble's drawn size (tacticalLayer: 1.6 + 0.25 a layer)
