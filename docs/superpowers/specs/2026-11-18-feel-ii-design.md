@@ -65,7 +65,11 @@ order. Items marked **(sim)** change the sim (SIM 50 → 51, bless procedure); t
    send it from the Helm only. The Helm's camera no longer pans by the right button (`rightX/rightY` in the pointer
    sample); the middle button still pans there, and both still pan the other consoles. The marker: a chevron on the bearing
    ring's radius (`CRT.mid`) and a dashed line from the nose; the Helm block reads `HDG 136 TO 056` and `R-CLICK MAP:
-   HEADING`. Same-version bless: tick counts and outcomes unchanged, hashes moved.
+   HEADING`. Same-version bless: tick counts and outcomes unchanged, hashes moved. The request is deduped against a base:
+   Single player's latest queued heading, else the sim's; online the heading in flight until its result (as the
+   throttle's), else the replica's. A/D or auto-face held at the Helm makes the base −1 (the sim clears the hold), online
+   until the replica shows −1. A Tab or a rematch zeroes the frame's right drag with the rest, so the Helm camera never
+   pans by it.
 2. **Collision warning.** `predictFlight` (predictPath plus the first contact's point and tick) drives the Helm path; on a
    contact within its horizon the last segment draws `CRT.hot`, an X at the point and `COLLISION 1.8s`. The status sentence
    leads with `COLLISION: TURN OR BRAKE` (hot) when the 2 s prediction (fixed, whatever the zoom) meets a solid. Every seat
@@ -76,11 +80,13 @@ order. Items marked **(sim)** change the sim (SIM 50 → 51, bless procedure); t
    pull is half and all of the crew class's thrust (120 u/s²: radii 203 and 142), Helm only. `SLINGSHOT` blinks (3 Hz) at
    the path's fastest point inside G 1 above 200 u/s, only with no contact on the path.
 4. **Throttle QoL.** A wheel strip over the throttle notches steps a preset per 100 px of wheel (up is more), clamped to
-   REV..100; Shift+W asks for 100 (and is no notch press).
+   REV..100; Shift+W asks for 100 (and is no notch press). The wheel's wrapper holds the notch buttons, so it works over them.
 5. **Lock tone.** `lockTone` (audio/duelSounds.ts) from the scene's `torpedoTone` frame data (a target and all of canLaunch's
    checks but range): a short `console` beep every 0.9 s three ranges out down to 0.12 s at the range, then the steady
    tone (`jumpCharge`, 0.3 s) once on reaching range, or on the launch itself when auto-launch fired the tick it came in
-   range. The launch whoosh is the existing `thruster` on any torpedo going active.
+   range. The steady tone re-arms only when the lock is lost, the target room changes, or the enemy goes more than 40 u
+   (`LOCK_REARM_U`) beyond the range, silent in that band; a frozen or paused frame keeps the watch, so resuming does not
+   replay it. The launch whoosh is the existing `thruster` on any torpedo going active.
 6. **Incoming torpedo.** `predictMissile` (flyMissile on a copy of the pool, 2 s) draws the enemy torpedo's path dashed hot on
    every console. `evadeDir`: perpendicular to the torpedo's approach relative to the ship, toward the side whose first
    solid (sampled every 50 u to 600 u) is further; a tie goes to the approach's right. The Helm draws an EVADE arrow 70 px
@@ -90,7 +96,8 @@ order. Items marked **(sim)** change the sim (SIM 50 → 51, bless procedure); t
    label for 3 s, one per player at a time, at most six; the `ready` tone softly. Single player shows it at once (one a
    second). Online it is a `ping` aux message on its own reliable stream beside the callout (sharing the auxiliary
    sequence), never journalled; the authority relays it as a `ping` event to every seat at most once a second a player
-   (its clock, live only), and the client limits itself the same way.
+   (its clock, live only), and the client limits itself the same way. The authority emits the relayed pings after the
+   batch's admission frame completes, so a ping's event sequence is never counted in a journalled frame.
 8. **Never a dead click.** `refusal` (situationModel) is the sim's own order: FIRE: NO GUNNER, TORPEDO FLYING (canCharge),
    WEAPONS OFFLINE (admitted but inert); LAUNCH: NO GUNNER then canLaunch's checks (TORPEDO FLYING, NO TORPEDOES, WEAPONS
    OFFLINE, OUT OF RANGE); the Helm's turn, auto-face, throttle and heading: ENGINES OFFLINE (the commands still go and
