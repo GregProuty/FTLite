@@ -1,0 +1,142 @@
+# Codex review exchange: 2026-11-18-engineering-spike-spec
+
+Subject: `docs/superpowers/specs/2026-11-18-engineering-spike-design.md` (spec). Reviewer: Codex CLI via `codex exec`. Responder: controller.
+
+---
+
+# Round 1 (full, reviewing 06bde9b0, effort high, 254 s, 1012952 in / 923687 cached / 24134 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R1-F1 No step order or hazard cadence for the new phases in the duel tick
+The spec turns on doorSystem, oxygenStep, fireStep, heat, breach rolls, low-air damage and bar knockout, but never says where they run in stepDuelTick or on which ticks. The heat numbers it quotes are 'per hazard tick', and the duel has no hazard tick. Several of these phases draw from rng.hazards, and the draw order isn't given either. · spec L69-L70 ('per hazard tick'), L82-L97, L127 (gives only module/snapshot order, not step order). duel/step.ts:L1-L2 ('The sector step ... is never called on the duel's interior') and L262-L272 (repair, movement, stepDuel, applyHitDamage, firePhase, healthPhase). sim/step.ts:L35 and L45-L53 (sector: hazardTick = state.tick % HAZARD_EVERY; movement → doorSystem → lifeSupportInjection → oxygenStep → fireStep → heatStep). duel/step.ts:L111 (the interior tick starts at baseTick each round). rng.hazards is drawn by fire/fire.ts:L35, heat.ts:L40 and duel/fire.ts:L38. · Two builds would run hazards every tick or every 5th tick, and would key the cadence to st.tick or to tick − baseTick. They would order the fire, breach and spread draws differently on rng.hazards, and put doorSystem before or after movement. Each choice changes rates by up to 5× and changes the goldens. The spec's own bar is that two implementers build the same sim. · Add a numbered duel phase list. For example: seat → tactical commands → power/coolant/door/airlock commands → repair/patch work → movement → doorSystem → stepDuel → applyHitDamage → bar knockout → per hit, in event order, the fire roll then the breach roll → firePhase cadence. Then, on (tick − baseTick) % HAZARD_EVERY === 0: injection → oxygenStep → fireStep → duel heat. Then healthPhase (fire, then low air). Name every rng.hazards draw in that order.
+
+### [P1] R1-F2 Duel fire and the sector fireStep double-grow the repair rooms; the spread test contradicts the code
+§4 says the duel fire 'uses the sector fire step' and also 'keeps today's damage cadence'. It never says whether firePhase's per-tick DUEL_FIRE_GROW stays. If it stays, the three repair rooms grow under both rules and every other room only under fireStep. fireStep also spreads through closed doors at PASSAGE_CLOSED (0.05×), so the test 'spreads through an open door but not a closed one' is false against the code. The '15 %' shrink line doesn't match the code either. · spec L93-L95, L146. duel/fire.ts:L48-L51 (grows DUEL_FIRE_GROW = 1/60 per tick at points), duel/tuning.ts:L34. hazards/fire.ts:L28-L29 (FIRE_GROW_RATE·HAZARD_DT above 0.2, shrink below 0.1) and L34 (p = FIRE_SPREAD_P × passageFor). oxygen.ts:L14 (a closed door gives PASSAGE_CLOSED). sim/tuning.ts:L19, L26-L27 (FIRE_SHRINK_FRAC 0.1, not 15 %). · If both growths run, a repair-room fire grows at 1.5 intensity/s against 0.5 in every other room, which is the question-10 double-step. If DUEL_FIRE_GROW is dropped, today's tuning changes silently. The closed-door spread test would fail on some seeds, or pass only by luck. · State that firePhase drops DUEL_FIRE_GROW and keeps only the DUEL_FIRE_DAMAGE_TICKS cadence and the hit ignition, and that fireStep is the one growth, shrink and spread rule for every room. Either keep closed-door spread at PASSAGE_CLOSED and reword the test ('spreads through an open door at FIRE_SPREAD_P and through a closed one at 0.05×, statistically over N hazard ticks'), or add an explicit duel rule that closed doors pass no fire. Correct '15 %' to the 0.1/0.2 hysteresis.
+
+### [P1] R1-F3 Fires that spread to non-repair rooms cannot be put out by hand
+Once fire spreads, any of the Hound's eight rooms can burn, including B, where the Helm and Weapons sit. The duel's extinguish work exists only at the three repair points (O, R, E). A fire in B, Q, M, L or H can only die from lack of oxygen or venting. Meanwhile healthPhase burns every conscious character in the room, seated ones included. · spec L94-L97 (spread through open doors; venting is the only other remedy described). duel/step.ts:L73 (repairPhase only finds d.points) and L80-L81 (extinguishWork only at a point). duel/tuning.ts:L18-L22 (Hound points in O, R and E only). duel/health.ts:L97-L102 (fire damage to every conscious character in a burning room, seated or not). hound.json:L165-L177 (navigation and weapons stations both in room B). · This comes up in ordinary play. A fire that spreads to the Bridge burns both seated officers with no manual counterplay, and B has no airlock. It also changes the duel-fire spec's model, where a player can always put a fire out. · Either give every room an extinguish point, with the same work loop and rates (the room's breach-site tile or a named tile per room), or state explicitly that non-point rooms can only be vented or starved, and add a test for it. Say whether seated characters take fire and low-air damage.
+
+### [P1] R1-F4 Damage-to-bars rule contradicts itself and leaves today's 'level 2 = off' gates in place
+'Each damage level removes one usable bar' disagrees with `min(powered, max + overdrive − damage)`. Under the formula, damage removes nothing while powered is below capacity (Weapons at 1 bar with damage 1 stays at 1). Because Room damage is capped at 2, the formula can never take Shields (4), Weapons (3) or Engines (3) to 0. The weapon code, however, still shuts Weapons off at rooms ≥ 2 and indexes the engine factor by damage level. The spec doesn't say whether those gates are removed for the crew ship. The Hunter's lock also switches off Shields at rooms == 2, when the crew may still hold a layer. · spec L51-L54, L44-L45, L61. weapons.ts:L51 (canLaunch needs rooms[Weapons] < 2), L61 (laserOffline = rooms[Weapons] ≥ 2), L111, L130, L151. physics.ts:L63 (flyShip gets rooms[Engines] as the level). weapons.ts:L91 and duel/fire.ts:L51 (damage capped at 2). hunter.ts:L111 (laserLock = crew Shields < 2 ? Shields : Weapons). · One build keeps laserOffline, so damage 2 still kills the laser at 1 bar. Another drops it, so the laser can never be shot out. These are different games. The overdrive slot also makes capacity ambiguous: is it max + 1 always, or only while overdriven? · Define capacity = max + (system ≠ Oxygen ? 1 : 0) − rooms[r]. On a damage rise, if powered > capacity, return the excess bars, overdrive bar first. State that the crew ship's laserOffline, canLaunch, stepBurst and flySlot read effective bars (0 = off), not rooms. State whether damage can ever zero a system; if FTL-like knockout is wanted, consider max − damage × ceil(max/2). Record the Hunter-lock consequence.
+
+### [P1] R1-F5 Shield layer cap at round start halves today's shields and has no rule for shields above the cap
+The round-start Shields bars are 2, so the cap = floor(2/2) = 1 layer. Today the crew ship has SHIELD_LAYERS = 2. That contradicts 'the round-start bars = today's level-0 value'. The spec also doesn't say what happens to layers already up when bars drop below the cap: tickWeapons never lowers shields above the layer count. · spec L43, L50, L59-L60. tactical/tuning.ts:L84 (SHIELD_LAYERS = 2). defs.ts:L65 (layers is a class constant). weapons.ts:L158-L159 (shields ≥ layers only resets the clock; nothing strips the excess). · Every round would start at half shields against a Hunter tuned so that duels last 3 to 5 minutes (tuning.ts:L40-L41). Two builds would also differ on whether removing a Shields bar drops a live layer. · Choose and state one: either the round start is Shields 4 (taking from another system), or the cap is ceil(bars/2), or the crew's base layers are 1 by design (note the balance change). Add a rule that when the cap falls below current layers, the excess layers drop at once and the clock resets, and add a test for it.
+
+### [P1] R1-F6 'Today's level-0 value, +25 % per bar, interpolated toward off' is undefined for several tables
+The rule assumes every table has a level-0 and a level-2 'off' value. Magazine regen is a single tick constant, unaffected by damage today. The scan rates are scalars with no 'off' value. Oxygen injection has no tactical table at all. For the rest, '+25 %' could be additive or compounding, and 'interpolated toward off' isn't defined: linear in bars, or today's level-1 value? Non-integer results also break the whole-unit convention, for example SHIELD_RATE 3 × 1.25 = 3.75. · spec L57-L60, L65-L66. tactical/tuning.ts:L45 (ENGINE_FACTOR [1, 0.6, 0]), L76 (LASER_CHARGE_RATE [40, 25, 0], whole units), L88 (SHIELD_RATE [3, 2, 0]), L92 (MAGAZINE_REGEN_TICKS 2700 scalar), L135-L136 (SCAN_RATE_SCIENCE 5 / OTHER 2 scalars). weapons.ts:L160-L161 (the magazine clock is ++ per tick, not rate-indexed). · Two builds produce different rates at 1, 3, 4 and 5 bars. Weapons at 1 bar would be 20 (linear) or 25 (today's level 1). The magazine and scan tables can't be built from the rule as written. · Write the start tables out in the spec: one row per system, one column per effective bar 0..max+1, with integer units. For the magazine, convert to a rate (units per tick against a units threshold) and give its column. Give scan rates per Sensors bar for both the Science console and Helm/Weapons. Say 'additive: base × (1 + 0.25·(bars − start))' and 'below start: base × bars/start'.
+
+### [P1] R1-F7 Life Support reuse is false: lifeSupportInjection reads the sector LS station, not duel bars, and fills every room
+§4 says Life Support '(room L)' injects at a rate set by the duel Oxygen system's effective bars. The existing lifeSupportInjection takes its rate from the sector LifeSupport station's stationOutput (level / STATION_MAX × skill curve, plus a seated bonus) and injects into every room in proportion to its volume, not into room L. The spec gives no level-0 rate for the Oxygen bars to start from. · spec L47, L84-L85. hazards/lifeSupport.ts:L9-L12 (out = stationOutput(LS); inj[r] for every r). stations.ts:L13-L16 (stationOutput = level/STATION_MAX × skillCurve). hound.json:L196-L200 (LS allocation 1). sim/tuning.ts:L50 (STATION_MAX LS = 3), L58 (INJECT_FRAC). · An implementer who reuses the function gets a rate that never changes with the HUD. One who writes a new function must choose between injecting only into L and spreading by volume, which changes how fast distant rooms recover, the core of question 1. · Specify a duel injection: inj[r] = INJECT_FRAC × V[r] × HAZARD_DT × OXY_FACTOR[effective Oxygen bars], with OXY_FACTOR given (for example [0, 0.75, 1.0]), into every non-venting room (or only L, say which). State that it bypasses stationOutput and the seated bonus.
+
+### [P1] R1-F8 The duel interior draws a seeded run quirk that the reused hazard code obeys
+createSimState always draws run.quirk from the seed, and createDuel passes no override. The reused code reads that quirk: oxygenStep multiplies closed-door leak by quirkPassageMult (Leaky Seals), and doorSystem stretches the close delay by quirkDoorDelayMult. If heat.ts is ported literally, quirkHeatRise adds to heat rise. The spec never mentions quirks. · spec L72-L76, L80-L83, L101-L102. state.ts:L138 (run.quirk = nextInt(rng.quirk, QUIRK_COUNT)). duel/state.ts:L82 (createSimState(layout, crew, seed, ...) with no options). oxygen.ts:L54. doors.ts:L95. heat.ts:L47. quirks.ts:L14-L17. · Some duel seeds would get leakier doors or slower auto-close, and maybe faster overheating, with no indication to players. That skews the feel answers and the seed-sweep comparisons in the report. · Have createDuel force a neutral quirk (a SimOptions value the hooks treat as none, or a new 'none' quirk). Alternatively state that quirks apply and show them on the HUD. Add a test that the duel's quirk hooks are neutral.
+
+### [P2] R1-F9 Heat port quietly changes heat.ts rules and leaves fire heat, coolant wrap and Sensors' room open
+The spec says the heat rules 'come from heat.ts' but changes them. heat.ts's overheat resets heat to 0 immediately, whereas the spec makes a failed system cool from HEAT_MAX at 'HEAT_COOL_IDLE plus its coolant', a rule heat.ts doesn't have. The spec doesn't say whether fireHeat (a burning room heats its stations) is ported. It doesn't say whether a coolant click with an empty pool wraps to 0 or is rejected, and its reasons list doesn't cover coolant. Sensors 'can overheat' and 'roll to set its room alight', but Sensors has no room on the Hound. · spec L67-L73, L118, L128-L129, L55-L56. heat.ts:L37-L40 (overheat: failStation, heat = 0, one draw), L47-L49 (coolant only while overdriven; fireHeat added), L28-L34 (cycleCoolant wraps to 0). duel/tuning.ts:L18-L22 (only Weapons→O, Shields→R, Engines→E have rooms). · These are rule differences a builder has to guess. Two builds would differ on recovery time after an overheat, on fire-driven overheats, and on which room a Sensors overheat ignites. · State the duel heat rules outright: on overheat, does heat stay at HEAT_MAX and then fall by HEAT_COOL_IDLE + coolant × HEAT_COOL_UNIT per hazard tick? Is fireHeat in or out? Does coolant wrap 0→1→2→0, skipping a step the pool can't supply, with result 'applied', or is it rejected 'unavailable'? Name each system's room (Sensors → O, Oxygen → L).
+
+### [P2] R1-F10 Ship-view authority is a UI rule written as a sim rule; power and coolant authority unstated
+§5 says the commands are accepted 'from any player whose screen shows the ship view'. The sim can't know that, and the next sentence reduces it to 'conscious and present'. That rule is given only for door and airlock. §6/§7 add power and coolant without saying who may send them. Seated players without the SHIP tab open could still send them online. · spec L104-L106, L112, L127-L129, L148. ui/views.ts:L21 (the HUD is shown when standing or console.station 'ship', a client-only notion). duel/step.ts:L32 (DUEL_KINDS must list the new kinds for stepDecided to answer duel-decided). duel/step.ts:L142. · The rule is implementable only as 'any present, conscious player, any seat'. Saying so removes a disagreement between §5 and §7. Implementers also need to know that power commands follow the same rule and what the decided-round answer is. · Rewrite as: sim rule, `power`, `coolant`, `door` and `airlock` are applied for any valid, present, conscious player, seated or standing, with no range check; UI rule, the HUD (and so the commands) appears only in the ship view. List the four kinds in DUEL_KINDS (duel-decided after the round ends). Give the full reason order (stale-tick → malformed → unavailable → noop).
+
+### [P2] R1-F11 Breach patching: work precedence, storage and roll order undefined
+Patching uses 'the same work loop as putting out a fire', but repairPhase gives each player one point per tick. The spec doesn't say which wins when a player is in reach of a burning or damaged point and a breach site at once. It doesn't say where patch progress is stored or in what units. It doesn't say whether a hit's fire roll or breach roll draws first from rng.hazards. · spec L86-L89. duel/step.ts:L73-L76 (one point per worker, the first match). duel/fire.ts:L36-L38 (one rng.hazards draw per qualifying hit). hazards/breach.ts:L4-L14 (breaches.active/repair). hound.json:L135-L158 (sites O [10,4], R [4,13], E [4,1], separate tiles from the repair points). · Two builds would split work differently and order the draws differently, so their goldens diverge. · State that breaches.repair holds progress as a 0..1 fraction of DUEL_EXTINGUISH_UNITS, and fix a precedence (fire > breach > repair for a worker in reach of more than one). State that per hit, the fire roll comes first and then the breach roll, both on rng.hazards, and that a breach roll picks the room's single site (the Hound has exactly one per room).
+
+### [P3] R1-F12 Door and airlock reuse silently depends on the sector Doors station staying online
+doorSystem runs doorsFailSafe first. With the sector Doors station offline, it closes every airlock and returns every held-open door to Closed each tick. The duel keeps that station at its allocation of 1 and never fails it, so this works today, but the spec doesn't state the dependency, and 'Doors power' is listed as out of scope. · spec L101-L107, L156. doors.ts:L68-L81 (doorsOnline via stationOnline of the Doors station), L85. hound.json:L190-L195 (doors station, allocation 1). stations.ts:L8-L9. · A later change that touches sector station levels in the duel would silently disable remote doors and airlocks. · State that the duel keeps the sector Doors station at its layout allocation and never fails it, or have the duel call a variant of doorSystem without the fail-safe. Add a test that an airlock stays open across ticks.
+
+## Verified
+- The duel never calls the sector step. Hazards, doorSystem and heat don't run in the duel today: duel/step.ts:L1-L2, L262-L272.
+- createDuel holds every door open (duel/state.ts:L84), so dropping that is a one-line change, as spec L102 implies.
+- Oxygen, fire, fireRepair, breaches, airlocks and door state live in the interior SimState that interiorModule flattens (duel/modules.ts:L72-L89; oxygen.ts and fire.ts write state.rooms, state.breaches and state.airlocks). So spec L130 is plausible: no new field is needed for them.
+- heat.ts numbers match spec L69-L70: HEAT_MAX 240, HEAT_RISE 2, HEAT_COOL_UNIT 1, HEAT_COOL_IDLE 4 (sim/tuning.ts:L77-L80). Two coolant units hold the rise level (2 − 2·1 = 0, heat.ts:L47). COOLANT_POOL is 4 (tuning.ts:L81), so spec L68 is right to call 8 a change.
+- heat.ts and power.ts are keyed by sector StationKind (power.ts:L28-L30 via run.upgrades and STATION_MAX), so spec L74-L76's choice of a separate duel power module is justified.
+- Effective bars can't go negative under the spec's formula: Room damage is capped at 2 (weapons.ts:L91, duel/fire.ts:L51), and the smallest max with damage is Weapons/Engines at 3.
+- The Hound has breach sites in every room, including the repair rooms O, R and E, and airlocks in H and L (hound.json:L123-L163, L221-L230), matching spec L86-L87 and L96.
+- The ship-view HUD hook exists for standing players or console.station 'ship' (ui/views.ts:L21), and the SHIP tab exists (ui/duel/TabStrip.tsx:L8).
+- Every new round is a fresh createDuel (duel/step.ts:L107-L117), so 'start of every round' bars (spec L50) fit the existing round reset if the power state lives on DuelState.
+- oxygenStep's LS XP and the sealed-door skill lookup are inert in the duel: sits are allowed only at the role consoles (duel/step.ts:L170-L172), so the LS and Doors occupants are −1 (oxygen.ts:L15-L17, L120-L121), and Sealed is out of scope.
+
+## Not verified
+- The '~2 s' airlock vent time (spec L96). It depends on the Hound's derived room volumes and kEff (ship/derived.ts:L90-L91), which I didn't read in full. A rough estimate with kEff = 6 and V ≈ 20 gives ~2.5 s to 10 % air.
+- Whether canonicalFields/flatten include doors.closeTimer, breaches.repair and airlocks.open for the Hound. I inferred this from the module comments and didn't read canonicalFields.ts.
+- The duel-app smoke, the goldens, and the snapshot-size measurement path. These are outside the manifest.
+- The three convention specs (destructible-asteroids spike, duel-fire design, CRT map design). I didn't open them; I took the CRT and fire conventions from the code comments.
+
+---
+
+# Round 1 response (spec revised)
+
+Reviewed `round-1.json` against the subject at `b2fb869a`. 12 accepted, 0 rejected, 0 deferred.
+
+## R1-F1 [P1]: No step order or hazard cadence for the new phases in the duel tick
+
+Confirmed. duel/step.ts never calls the sector step, and the heat numbers are per hazard tick (sim/tuning.ts:L4-L5). §7 now gives a numbered step order with the hazard tick defined as (tick − baseTick) % HAZARD_EVERY = 0, and names the order of the rng.hazards draws.
+
+## R1-F2 [P1]: Duel fire and the sector fireStep double-grow the repair rooms
+
+Confirmed. fireStep grows by oxygen fraction (hazards/fire.ts:L28-L29) and spreads at FIRE_SPREAD_P × passageFor, which is 0.05 through a closed door (sim/tuning.ts:L19). §4 now makes fireStep the one rule for growth, shrink and spread. firePhase drops DUEL_FIRE_GROW and keeps the damage cadence and the hit ignition. The shrink line is corrected to the 10 % / 20 % hysteresis, and the §8 spread test is now statistical, open versus closed at 0.05×.
+
+## R1-F3 [P1]: Fires that spread to non-repair rooms cannot be put out by hand
+
+Confirmed. Hound repair points exist only in O, R and E (duel/tuning.ts). §4 adds the rule that rooms without a point are fought at their breach-site tile (the Hound has one site per room, hound.json). It also states that seated characters take fire and low-air damage, as the duel already does for fire. §8 tests a fire in a non-point room.
+
+## R1-F4 [P1]: Damage-to-bars rule contradicts itself and leaves the level-2 gates
+
+Confirmed. The old formula could not zero a system with damage capped at 2. §2 now sets capacity = max(0, slots − damage × ceil(slots/2)), which gives 5/2/0 and 4/2/0. Excess bars return, the overdrive bar first. For ship 0 the gates read bars, and damage 2 still means off. The Hunter's lock at hunter.ts:L111 is unchanged and stated.
+
+## R1-F5 [P1]: Shield layer cap at round start halves today's shields
+
+Confirmed (SHIELD_LAYERS 2, tactical/tuning.ts:L84; weapons.ts:L158-L159 never strips excess layers). §2 keeps the FTL floor and states that the 1-layer round start is deliberate: Engineering buys the second layer back with bars. It adds the rule that layers above the cap drop at once and the clock resets, with a test.
+
+## R1-F6 [P1]: The rate rule is undefined for several tables
+
+Confirmed. §2 now has an explicit start table for every system and bar count, from 0 to slots, in whole units where the code uses them. Magazine regen becomes a units clock (10800 units, 4 per tick at 2 bars, which is exactly 2700 ticks). The Science and Helm/Weapons scan rates are given per bar. The oxygen factor is given.
+
+## R1-F7 [P1]: Life Support reuse is false
+
+Confirmed (hazards/lifeSupport.ts:L9-L12 reads stationOutput of the sector LS station). §4 now specifies a duel injection, INJECT_FRAC × V × HAZARD_DT × OXY_FACTOR[bars], into every room, with oxygenStep's clamp and venting skip. It bypasses stationOutput and the seated bonus.
+
+## R1-F8 [P1]: The duel interior draws a seeded run quirk
+
+Confirmed (state.ts:L138-L139; quirks.ts hooks). createDuel passes quirk 3 (Lucky Hull), whose only hook is sector debris, which never runs in the duel. §8 has a neutral-hook test.
+
+## R1-F9 [P2]: Heat port changes heat.ts rules and leaves details open
+
+Confirmed. §3 now states the heat rules outright:
+- the rise and coolant per hazard tick;
+- idle cooling;
+- failed cooling at HEAT_COOL_UNIT × (1 + coolant), with heat held at HEAT_MAX on overheat;
+- one overheat draw;
+- fire heat out;
+- coolant wrapping as cycleCoolant.
+
+The §2 table names each system's room (Sensors O, Oxygen L).
+
+## R1-F10 [P2]: Ship-view authority written as a sim rule
+
+Confirmed. §6 states the UI rule and §7 the sim rule: any valid, present, conscious player, seated or standing, with no range or view check. The four kinds are in DUEL_KINDS, and the reason order is given.
+
+## R1-F11 [P2]: Breach patching undefined
+
+Confirmed (duel/step.ts:L73-L76, one job per worker). §4 now stores patch progress in breaches.repair as a whole-unit fraction of DUEL_EXTINGUISH_UNITS. It sets the precedence fire > breach > repair, lowest room on a tie, and orders the rolls per hit: fire first, then breach. The roll activates the room's single site.
+
+## R1-F12 [P3]: Door reuse depends on the Doors station staying online
+
+Confirmed (doors.ts:L75-L85). §5 states that the duel keeps the Doors station online and the fail-safe never fires, with a 600-tick airlock test. §5 also replaces the sector cycleDoor, which passes through Sealed, with a duel auto ↔ held-open toggle.
+
+## Also changed
+
+- §2 adds a per-system room and tactical Room table.
+- §4 gives low-air damage the crewHurt cause 'air'.
+- §7 names the magazine clock as power-module state.
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-18-engineering-spike-design.md
+
+<!-- end -->
+
+---
+
