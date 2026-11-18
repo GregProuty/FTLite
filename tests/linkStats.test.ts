@@ -5,7 +5,7 @@ import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { localAddress, rtcRoute } from '../src/network/rtc/route';
 import { createTransportController, STATS_MS } from '../src/network/transport/controller';
-import { createRtcTransport } from '../src/main/network/rtcTransport';
+import { createRtcTransport } from '../src/network/transport/owner';
 import { isRtcResponse, type RtcAttemptOptions, type RtcRequest, type RtcResponse } from '../src/shared/rtcSession';
 import { validateOnlineLinkStats } from '../src/shared/onlineSession';
 import type { PortEndpoint } from '../src/shared/netSession';

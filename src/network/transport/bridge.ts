@@ -3,15 +3,14 @@ import { SESSION_PROTOCOL_VERSION, type PortEndpoint } from '../../shared/netSes
 import { isRtcRequest, RTC_REQUEST_CHANNEL, RTC_RESPONSE_CHANNEL } from '../../shared/rtcSession';
 import { createTransportController, type HiddenControllerOptions } from './controller';
 
-export function browserPortEndpoint(port: MessagePort): PortEndpoint {
-  return {
-    postMessage: data => port.postMessage(data), start: () => port.start(), close: () => port.close(),
-    onMessage(callback) { const receive = (event: MessageEvent) => callback(event.data); port.addEventListener('message', receive); return () => port.removeEventListener('message', receive); },
-    onClose(callback) {
-      port.addEventListener('messageerror', callback); port.addEventListener('close', callback);
-      return () => { port.removeEventListener('messageerror', callback); port.removeEventListener('close', callback); };
-    }
-  };
+import { webPortEndpoint } from '../platformPort';
+/** The game's port adapter (renderer app/onlineSession.ts) and the controller's: one browser endpoint. */
+export const browserPortEndpoint = webPortEndpoint;
+/** Answer the host Worker's transport port (web build spec §3.2): the page-side half of the Worker owner's readiness. */
+export function connectTransportPort(port: MessagePort, identity: HostIdentity): void {
+  port.addEventListener('messageerror', () => port.close());
+  port.start();
+  port.postMessage({ kind: 'transport-ready', protocolVersion: SESSION_PROTOCOL_VERSION, ...identity });
 }
 export function installTransportBridge(target: Window, identity: HostIdentity, dependencies: Omit<HiddenControllerOptions, 'identity' | 'respond'> = {}) {
   let port: MessagePort | undefined, disposed = false;

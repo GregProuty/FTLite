@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createRtcTransport } from '../src/main/network/rtcTransport';
+import { createRtcTransport } from '../src/network/transport/owner';
 import type { RtcAttemptOptions, RtcRequest, RtcSignal } from '../src/shared/rtcSession';
 
 const identity = { modeId: 'counter', schemaVersion: 1, simVersion: 9, contentDigest: 'a'.repeat(64), hostGeneration: 7 };
