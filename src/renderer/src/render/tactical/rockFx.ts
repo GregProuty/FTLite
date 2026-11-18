@@ -8,6 +8,11 @@ import { BURST, BURST_S, FLARE_S, fxRandom, SPARK_S, startShake, type FxItem, ty
 import type { EffectDraw } from './weaponsModel';
 
 export const CHIP_S = 0.4, CHIP_TAIL_S = 0.04, SPECK_S = 0.6, PUFF_S = 0.5, SHOCK_S = 0.35, CORE_FLASH_S = 0.15, BLAST_SPECK_S = 0.7;
+/** Feel fix: the rock fx's sizes in world units (they follow the zoom), and the screen-pixel floors that keep them
+ *  readable at the map zoom 0.25: a chip's head radius and tail, a speck's radius, the core flash, the rock impact
+ *  flare and the shockwave's stroke. */
+export const CHIP_R_U = 2.5, SPECK_R_U = 2;
+export const CHIP_MIN_PX = 2, CHIP_TAIL_MIN_PX = 6, SPECK_MIN_PX = 1.5, CORE_MIN_PX = 10, FLARE_MIN_PX = 8, SHOCK_WIDTH_MIN_PX = 2;
 /** §7 item 6: a blast on screen shakes strongly, falling with distance from the crew ship (to 0 at `fade` u); a break lightly. */
 export const BLAST_SHAKE = { px: 8, s: 0.35, fade: 1500 } as const, BREAK_SHAKE = { px: 2, s: 0.12 } as const;
 
@@ -23,7 +28,7 @@ function fling(fx: FxState, kind: 'chip' | 'speck', life: number, x: number, y: 
 export function pushRockFx(fx: FxState, events: readonly ViewEvent[]): void {
   for (const e of events) {
     if (e.kind === 'laser' && (e.rock ?? -1) >= 0) {   // §7 item 1: the flare and the chips, back along the shot
-      fx.items.push({ kind: 'flare', age: 0, life: FLARE_S, x1: e.x2, y1: e.y2, x2: e.x2, y2: e.y2, colour: CRT.hot });
+      fx.items.push({ kind: 'flare', age: 0, life: FLARE_S, x1: e.x2, y1: e.y2, x2: e.x2, y2: e.y2, colour: CRT.hot, size: 0 });   // sized: a rock's flare (rockEffectDraw floors it)
       const back = Math.atan2(e.y1 - e.y2, e.x1 - e.x2);
       for (let n = between(fx, 5, 8); n > 0; n--) fling(fx, 'chip', CHIP_S, e.x2, e.y2, back, 0.6, 60, 160, 0, 0, CRT.hot);
       continue;
@@ -56,14 +61,21 @@ export function pushRockShakes(fx: FxState, events: readonly ViewEvent[], crew: 
 }
 
 /** The screen draw of a rock effect at its age, or null for the other kinds: chips and specks at their world velocity,
- *  fading; the shockwave grows to its size with an ease-out, thinning; the core flash shrinks; a sized burst grows with its rock. */
+ *  fading; the shockwave grows to its size with an ease-out, thinning; the core flash shrinks; a sized burst grows with its
+ *  rock; a sized flare is a rock's impact flare. Feel fix: each keeps its screen-pixel floor (above) at the map zoom and
+ *  follows its world size once zoomed in past it. */
 export function rockEffectDraw(it: FxItem, toS: (x: number, y: number) => Point, z: number): EffectDraw | null {
   const k = Math.min(1, it.age / it.life), vx = it.vx ?? 0, vy = it.vy ?? 0, x = it.x1 + vx * it.age, y = it.y1 + vy * it.age, a = toS(x, y);
   const at = { x1: a.x, y1: a.y, x2: a.x, y2: a.y, colour: it.colour, alpha: 1 - k };
-  if (it.kind === 'chip') { const b = toS(x - vx * CHIP_TAIL_S, y - vy * CHIP_TAIL_S); return { kind: 'chip', ...at, x2: b.x, y2: b.y, r: 0 }; }
-  if (it.kind === 'speck') return { kind: 'speck', ...at, r: 1.5 };
-  if (it.kind === 'shock') return { kind: 'shock', ...at, r: (it.size ?? 0) * z * (1 - (1 - k) * (1 - k)), width: 1 + 3 * (1 - k) };
-  if (it.kind === 'core') return { kind: 'core', ...at, r: Math.max(4, (it.size ?? 0) * z) * (1 - 0.6 * k) };
+  if (it.kind === 'chip') {   // the head at the chip, the tail back along its flight, at least CHIP_TAIL_MIN_PX long
+    const b = toS(x - vx * CHIP_TAIL_S, y - vy * CHIP_TAIL_S), dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
+    const s = len > 0 ? Math.max(len, CHIP_TAIL_MIN_PX) / len : 0;
+    return { kind: 'chip', ...at, x2: a.x + dx * s, y2: a.y + dy * s, r: Math.max(CHIP_MIN_PX, CHIP_R_U * z) };
+  }
+  if (it.kind === 'speck') return { kind: 'speck', ...at, r: Math.max(SPECK_MIN_PX, SPECK_R_U * z) };
+  if (it.kind === 'shock') return { kind: 'shock', ...at, r: (it.size ?? 0) * z * (1 - (1 - k) * (1 - k)), width: Math.max(SHOCK_WIDTH_MIN_PX, 1 + 3 * (1 - k)) };
+  if (it.kind === 'core') return { kind: 'core', ...at, r: Math.max(CORE_MIN_PX, (it.size ?? 0) * z * (1 - 0.6 * k)) };
   if (it.kind === 'burst' && it.size !== undefined) return { kind: 'burst', ...at, r: Math.max(6, it.size * z * (0.6 + 1.2 * k)) };
+  if (it.kind === 'flare' && it.size !== undefined) return { kind: 'flare', ...at, r: Math.max(FLARE_MIN_PX, 5 + 22 * k) };
   return null;
 }

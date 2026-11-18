@@ -42,14 +42,14 @@ function roomCallout(state: TacticalState, room: number, prefix: string): Callou
   return { text: `${prefix}${room === Room.Shields ? 'SHIELDS DMG 2' : `${name} OFFLINE`}`, colour: CALLOUT_COLOUR.offline, kind: 'offline' };
 }
 
-/** §B: the callouts for one frame's events, in event order: every crew laser release (ship 0) and every crew missile
- *  that lands on the enemy on a room. The room's level is read from the state the events arrived with. */
+/** §B: the callouts for one frame's events, in event order: every crew laser release (ship 0) but one a rock stopped,
+ *  and every crew missile that lands on the enemy on a room. The room's level is read from the state the events arrived with. */
 export function hitCallouts(events: readonly ViewEvent[], state: TacticalState): Callout[] {
   const out: Callout[] = [];
   for (const e of events) {
     if (e.kind === 'laser' && e.ship === CREW_SLOT) {
       if (e.stripped) out.push({ text: 'SHIELD DOWN', colour: CALLOUT_COLOUR.shield, kind: 'shield' });
-      else if (!e.hit) out.push({ text: 'MISS', colour: CALLOUT_COLOUR.miss, kind: 'miss' });
+      else if (!e.hit) { if ((e.rock ?? -1) < 0) out.push({ text: 'MISS', colour: CALLOUT_COLOUR.miss, kind: 'miss' }); }   // spike ii: a shot a rock stopped is a rock hit (rockFx), never a MISS at the enemy
       else if (e.room >= 0) out.push(roomCallout(state, e.room, ''));
     } else if (e.kind === 'missileEnd' && e.ship === CREW_SLOT && e.target === ENEMY_SLOT && e.room >= 0) out.push(roomCallout(state, e.room, 'TORPEDO: '));
   }

@@ -110,6 +110,11 @@ describe('hitCallouts (spec §B)', () => {
     expect(out.map((c) => c.colour)).toEqual([CALLOUT_COLOUR.shield, CALLOUT_COLOUR.hit, CALLOUT_COLOUR.offline, CALLOUT_COLOUR.offline, CALLOUT_COLOUR.miss]);
     expect(out.map((c) => c.kind)).toEqual(['shield', 'hit', 'offline', 'offline', 'miss']);
   });
+  it('spike ii: a crew shot that struck a rock is a rock hit, not a MISS at the enemy; a stray shot still misses', () => {
+    const st = createTacticalState(3);
+    expect(hitCallouts([laser({ hit: false, rock: 2 }), laser({ hit: false, rock: 0 })], st)).toEqual([]);
+    expect(hitCallouts([laser({ hit: false, rock: -1 }), laser({ hit: false })], st).map((c) => c.text)).toEqual(['MISS', 'MISS']);
+  });
   it('the torpedo on the enemy\'s room: TORPEDO: <ROOM> HIT / OFFLINE (homing torpedo spec §3); elsewhere nothing', () => {
     const st = createTacticalState(3); st.systems[1].rooms = [0, 0, 2];
     const out = hitCallouts([missile({ room: Room.Shields }), missile({ room: Room.Engines }), missile({ room: -1 }), missile({ target: -1, cause: 'planet' }), missile({ ship: 1, target: 0, room: 0 })], st);

@@ -9,8 +9,9 @@ import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
 import type { ConsoleView, WeaponsPanel } from '../src/renderer/src/render/duel/consoleModel';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
-import { TEXT } from '../src/renderer/src/render/theme';
-import { targetText } from '../src/renderer/src/ui/duel/WeaponsStation';
+import { TEXT, textPx } from '../src/renderer/src/render/theme';
+import { targetText, WEAPONS_HINT } from '../src/renderer/src/ui/duel/WeaponsStation';
+import { STATION } from '../src/renderer/src/render/duel/consoleLayout';
 import { makeUi } from './helpers/uiStore';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -52,5 +53,12 @@ describe('the Weapons cards with rock targets (spec §6.5)', () => {
   it('shows the ROCKS tally (spec §7 item 9)', () => {
     mount({ rocks: 3 });
     expect(texts()).toContain('ROCKS 3');
+  });
+  it('the hint names rocks too, and fits its row left of the ROCKS tally', () => {
+    mount({ laserReason: 'NO TARGET', rocks: 99 });
+    expect(WEAPONS_HINT).toBe('CLICK A WEAPON, THEN A ROOM OR ROCK');
+    expect(texts()).toContain(WEAPONS_HINT);
+    const x0 = STATION.x + 8, right = STATION.x + STATION.w - 8;
+    expect(x0 + textPx(WEAPONS_HINT, 1) + 8).toBeLessThanOrEqual(right - textPx('ROCKS 99', 1));
   });
 });

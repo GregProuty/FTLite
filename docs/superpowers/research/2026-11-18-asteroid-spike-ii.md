@@ -219,7 +219,8 @@ Taken in `C:\Users\djuar\FTLite-shots\asteroid-spike-ii\` with `scripts/spike-as
 - `b0-laser-chip`:
   - Shows: the laser beam from the crew ship onto the bracketed rock. Card reads `FIRING`, `TGT ROCK`, status
     `FIRING SOLUTION`, `ROCKS 0`.
-  - Not visible: the chip sparks are not distinguishable from the bracket and beam at either zoom.
+  - Not visible: the chip sparks are not distinguishable from the bracket and beam at either zoom. (Fixed after this
+    pass, Task 13: the rock fx now keep a minimum screen size; see "Not so good" below.)
 - `b1-laser-split`:
   - Shows: the rock just split. A small cluster of pieces sits where it was, with one cracked piece glyph (zoom), and
     the beam is still drawn.
@@ -274,10 +275,14 @@ From the screenshots, the numbers, and the state of the code. Nobody has played 
   - Shakes and sounds are not visible in stills, so they are untested here. The owner's ears and eyes decide.
   - Zooming to 0.39 helps but does not fix it. The chip, speck and impact effects may need to be bigger for the map
     scale.
-- **Laser shots at a rock show "MISS" callouts at the Hunter** (`b0`, `b1`).
-  - Cause: `hitModel.ts` calls out every crew laser release that does not hit the enemy, including deliberate rock
+  - Fixed for the fx in Task 13 (view only): `rockEffectDraw` floors each rock effect at a screen size and follows its
+    world size once zoomed in past it: chips at least 2 px with a 6 px tail (drawn as a tail and a head), specks 1.5 px,
+    the core flash 10 px, the rock impact flare 8 px, the shockwave's stroke 2 px. The pieces themselves are unchanged.
+- **Laser shots at a rock showed "MISS" callouts at the Hunter** (`b0`, `b1` in the first pass). Fixed in Task 13.
+  - Cause: `hitModel.ts` called out every crew laser release that did not hit the enemy, including deliberate rock
     shots.
-  - A real build should skip the callout for rock-targeted shots.
+  - Fix: `hitCallouts` skips the MISS for a laser event that carries a rock (`rock >= 0`); the rock's own chips and
+    flare are its feedback. A stray shot still reads MISS.
 - **Chaos for tests and tuning got worse, as §11.2 predicted.**
   - Every rule change moves the pinned trajectories: the checkpoint seed and split, the snapshot fixture, the slots
     tick count, and the app smoke's forced-end seed (moved twice).
@@ -326,9 +331,9 @@ slow, short-lived fragments. That reason is gone here, because the pieces matter
 So the recommendation is to **ship the billiard version** if the owner's play test confirms that the cascade feels fun
 from the Weapons seat. A proper build should add:
 - rock fx for guests, derived from pool diffs;
-- no `MISS` callout for rock shots;
+- no `MISS` callout for rock shots (done in the spike, Task 13);
 - a cap on rock fx items;
-- bigger chip and impact cues at map zoom;
+- bigger chip and impact cues at map zoom (screen-size floors done in the spike, Task 13; pieces still small);
 - a Hunter that at least avoids moving pieces by their velocity.
 
 It should also plan for re-pinning fixtures on every tuning change. If the play test says the effects are too small to

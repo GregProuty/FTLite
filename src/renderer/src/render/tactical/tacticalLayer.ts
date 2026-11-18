@@ -410,7 +410,7 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
             .circle(e.x1, e.y1, e.r * 0.3).fill({ color: colour, alpha: e.alpha * 0.5 });
         }
         else if (e.kind === 'burst') combat.circle(e.x1, e.y1, e.r).stroke({ width: 3, color: colour, alpha: e.alpha }).circle(e.x1, e.y1, e.r * 0.4).fill({ color: colour, alpha: e.alpha * 0.6 });
-        else if (e.kind === 'chip') combat.moveTo(e.x1, e.y1).lineTo(e.x2, e.y2).stroke({ width: 1.5, color: colour, alpha: e.alpha });   // spike ii §7
+        else if (e.kind === 'chip') combat.moveTo(e.x1, e.y1).lineTo(e.x2, e.y2).stroke({ width: e.r, color: colour, alpha: e.alpha }).circle(e.x1, e.y1, e.r).fill({ color: colour, alpha: e.alpha });   // spike ii §7: a tail and a hot head
         else if (e.kind === 'speck') combat.circle(e.x1, e.y1, e.r).fill({ color: colour, alpha: e.alpha });
         else if (e.kind === 'shock') combat.circle(e.x1, e.y1, Math.max(1, e.r)).stroke({ width: e.width ?? 2, color: colour, alpha: e.alpha });
         else if (e.kind === 'core') combat.circle(e.x1, e.y1, e.r).fill({ color: CRT.hot, alpha: e.alpha });

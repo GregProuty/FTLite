@@ -59,6 +59,9 @@ function Card({ weapon, lit, crt, flash = false, glow = false, now = 0, rock = f
   );
 }
 
+/** The Weapons station's how-to hint (spike ii: a rock is a target too). */
+export const WEAPONS_HINT = 'CLICK A WEAPON, THEN A ROOM OR ROCK';
+
 export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null }: { weapons: WeaponsPanel; aim?: Weapon | null }) {
   const actions = useActions(), { crt, now } = useCrt();
   const top = stationTop('weapons'), x0 = STATION.x + 8, y0 = top + 6, right = STATION.x + STATION.w - 8;
@@ -93,8 +96,8 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
         ? <PixelText text={`${refused.control === 'launch' ? 'LAUNCH' : 'FIRE'}: ${refused.reason}`} x={refused.control === 'launch' ? tx : x0} y={y0 + 116} size={FONT_NATIVE} tint={hot} />
         : reason !== null && !firing
         ? <PixelText text={`LASER: ${reason}`} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={hot} />
-        : <PixelText text={firing ? 'LASER: FIRING' : 'CLICK A WEAPON, THEN A ROOM'} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={firing ? hot : dim} />}
-      <PixelText text={reason !== null && !firing ? 'CLICK A WEAPON, THEN A ROOM' : 'RIGHT-CLICK A WEAPON: CLEAR'} x={x0} y={y0 + 134} size={FONT_NATIVE} tint={dim} />
+        : <PixelText text={firing ? 'LASER: FIRING' : WEAPONS_HINT} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={firing ? hot : dim} />}
+      <PixelText text={reason !== null && !firing ? WEAPONS_HINT : 'RIGHT-CLICK A WEAPON: CLEAR'} x={x0} y={y0 + 134} size={FONT_NATIVE} tint={dim} />
       <Box x={x0} y={y0 + 156} w={right - x0} h={1} style={{ background: hex(crt ? CRT.dim : BAR_OFF) }} />
       <PixelText text="FREQ" x={x0} y={y0 + 174} size={FONT_NATIVE} tint={main} />
       {FREQ_NAMES.map((label, f) => <Button key={f} name={`freq-${f}`} label={label} x={x0 + 52 + f * 56} y={y0 + 170} w={52} h={24}

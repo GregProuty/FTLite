@@ -4,7 +4,8 @@
 // growth, the moving-rock streaks and the cracks from hp / hpMax.
 import { describe, expect, it } from 'vitest';
 import { createFx, type FxItem, type ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
-import { BLAST_SHAKE, CHIP_S, pushRockFx, pushRockShakes, rockEffectDraw, SHOCK_S } from '../src/renderer/src/render/tactical/rockFx';
+import { BLAST_SHAKE, CHIP_MIN_PX, CHIP_S, CHIP_TAIL_MIN_PX, CORE_FLASH_S, CORE_MIN_PX, FLARE_MIN_PX, pushRockFx, pushRockShakes, rockEffectDraw, SHOCK_S, SPECK_MIN_PX, SPECK_S } from '../src/renderer/src/render/tactical/rockFx';
+import { CRT, CRT_RAMP } from '../src/renderer/src/render/tactical/crtTheme';
 import { createCamera } from '../src/renderer/src/render/tactical/camera';
 import { tacticalModel, type TacticalModelInput } from '../src/renderer/src/render/tactical/tacticalModel';
 import { NO_AXES } from '../src/renderer/src/sim/tactical/state';
@@ -52,6 +53,36 @@ describe('rock fx (spec §7)', () => {
     const chip: FxItem = { kind: 'chip', age: 0.1, life: CHIP_S, x1: 10, y1: 0, x2: 10, y2: 0, colour: 0, vx: -100, vy: 0 };
     expect(rockEffectDraw(chip, toS, 1)).toMatchObject({ kind: 'chip', x1: 0, y1: 0 });
     expect(rockEffectDraw({ ...chip, kind: 'beam' }, toS, 1)).toBeNull();
+  });
+  it('feel fix: at the map zoom 0.25 the rock fx keep a minimum screen size; at a large zoom they follow world size', () => {
+    const at = (z: number) => (x: number, y: number) => ({ x: x * z, y: y * z });   // the camera at zoom z about the origin
+    const tail = (d: { x1: number; y1: number; x2: number; y2: number }) => Math.hypot(d.x2 - d.x1, d.y2 - d.y1);
+    const chip: FxItem = { kind: 'chip', age: 0.1, life: CHIP_S, x1: 0, y1: 0, x2: 0, y2: 0, colour: CRT.hot, vx: -100, vy: 0 };
+    const speck: FxItem = { kind: 'speck', age: 0.1, life: SPECK_S, x1: 0, y1: 0, x2: 0, y2: 0, colour: CRT.main, vx: 50, vy: 0 };
+    const shock: FxItem = { kind: 'shock', age: SHOCK_S * 0.99, life: SHOCK_S, x1: 0, y1: 0, x2: 0, y2: 0, colour: CRT.hot, size: 120 };
+    const core: FxItem = { kind: 'core', age: CORE_FLASH_S * 0.99, life: CORE_FLASH_S, x1: 0, y1: 0, x2: 0, y2: 0, colour: CRT.hot, size: 120 * 0.3 };
+    const fx = createFx();
+    pushRockFx(fx, [{ kind: 'laser', ship: 0, hit: false, stripped: false, room: -1, x1: 0, y1: 0, x2: 100, y2: 0, rock: 3 }]);
+    const flare = { ...of(fx.items, 'flare')[0]!, age: 0 };
+    const z = 0.25;
+    const c = rockEffectDraw(chip, at(z), z)!;
+    expect(c.r).toBeGreaterThanOrEqual(CHIP_MIN_PX); expect(CHIP_MIN_PX).toBeGreaterThanOrEqual(2);
+    expect(tail(c)).toBeCloseTo(CHIP_TAIL_MIN_PX, 9); expect(CHIP_TAIL_MIN_PX).toBeGreaterThanOrEqual(6);
+    expect(c.x2).toBeGreaterThan(c.x1);   // the tail trails behind the chip's flight (it flies -x)
+    expect(rockEffectDraw(speck, at(z), z)!.r).toBeGreaterThanOrEqual(SPECK_MIN_PX); expect(SPECK_MIN_PX).toBeGreaterThanOrEqual(1.5);
+    expect(rockEffectDraw(core, at(z), z)!.r).toBeGreaterThanOrEqual(CORE_MIN_PX); expect(CORE_MIN_PX).toBeGreaterThanOrEqual(10);
+    expect(rockEffectDraw(shock, at(z), z)!.width).toBeGreaterThanOrEqual(2);
+    expect(rockEffectDraw(flare, at(z), z)).toMatchObject({ kind: 'flare' });
+    expect(rockEffectDraw(flare, at(z), z)!.r).toBeGreaterThanOrEqual(FLARE_MIN_PX); expect(FLARE_MIN_PX).toBeGreaterThanOrEqual(8);
+    for (const it of [chip, speck, shock, core, flare]) expect(CRT_RAMP).toContain(rockEffectDraw(it, at(z), z)!.colour);
+    // a large zoom: the world size wins, in proportion to the zoom
+    const big = 4, huge = 8;
+    expect(rockEffectDraw(chip, at(huge), huge)!.r).toBeCloseTo(2 * rockEffectDraw(chip, at(big), big)!.r, 9);
+    expect(tail(rockEffectDraw(chip, at(huge), huge)!)).toBeCloseTo(2 * tail(rockEffectDraw(chip, at(big), big)!), 9);
+    expect(rockEffectDraw(speck, at(huge), huge)!.r).toBeCloseTo(2 * rockEffectDraw(speck, at(big), big)!.r, 9);
+    expect(rockEffectDraw(core, at(huge), huge)!.r).toBeCloseTo(2 * rockEffectDraw(core, at(big), big)!.r, 9);
+    expect(rockEffectDraw(chip, at(big), big)!.r).toBeGreaterThan(CHIP_MIN_PX);
+    expect(rockEffectDraw(speck, at(big), big)!.r).toBeGreaterThan(SPECK_MIN_PX);
   });
   it('evicted dust and lost-piece dust (rock -1) start no break shake; evicted dust still gets a puff', () => {
     const crew = { x: 0, y: 0 }, all = () => true;
