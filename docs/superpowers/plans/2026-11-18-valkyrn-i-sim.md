@@ -42,7 +42,7 @@
 
 Line numbers below were verified against branch `sci-2` at `d06b64b1` plus its Task 3 working tree (the post-Sci-2 shape). After Sci-2 merges they may shift by a few lines: **match every edit by the quoted text**, not the number.
 
-1. **The proof chain (contract steps 3 and 4).** The oracle's `same` mode refuses a new field (`scripts/golden/duelOracle.ts:181`, "new field … is neither mapped nor declared added", with no migration at `:345`), and `check` needs the version to be the baseline's plus 1 (`:342`), so neither proves Task 5's added fields at 53. Task 5 adds a third mode, `added`: same version, the old fields mapped to themselves, the new ones matched against `ADDITIONS[53]`, every run identical at every tick (values, results, events, telemetry). It is the stricter `same` plus a declared list, as `MIGRATIONS` is for a bump (`:87-113`). One baseline (Task 2 Step 1) serves Tasks 2 to 8.
+1. **The proof chain (contract steps 3 and 4).** The oracle's `same` mode refuses a new field (`scripts/golden/duelOracle.ts:181`, "new field … is neither mapped nor declared added", with no migration at `:345`), and `check` needs the version to be the baseline's plus 1 (`:342`), so neither proves Task 5's added fields at 53. Task 5 adds a third mode, `added`: same version, the old fields mapped to themselves, the new ones matched against `ADDITIONS[53]`, every run identical at every tick (values, results, events, telemetry), and every declared-added field holding its first recorded value at every tick (`frozen`: no oracle run has a gun, so a run that moved a gun field or a round would be a bug the old fields cannot show). It is the stricter `same` plus a declared list, as `MIGRATIONS` is for a bump (`:87-113`). One baseline (Task 2 Step 1) serves Tasks 2 to 8.
 2. **The event union is `DuelEvent`** (`sim/tactical/state.ts:101`), not `TacticalEvent` as the contract says; the two kinds join it under that name (no rename). **`gunHit` also carries `stripped: boolean`:** spec §7.2 says a gun strip makes "the same `stripped` event a laser strip makes", but §10 says the gun Valkyrn "never emits a `laser` event"; a flag on `gunHit` is the only way to satisfy both, and the view's shield pop (Part ii) reads it.
 3. **A Valkyrn-shaped test layout.** The Valkyrn JSON arrives in Part ii, so Part i's tests use `tests/helpers/valkyrnDuel.ts`: a copy of the Hound with `shipClass:'valkyrn'`, `crew:1`, `helmHoldsUnattended:true`, `hull:'valkyrn'`, and the Weapons station moved onto the Navigation tile (20,7) in a second console group `[navigation, weapons]`. It keeps the id `'hound'` because the repair points are keyed by layout id (`sim/duel/tuning.ts:24`, read at `sim/duel/state.ts:91`); every cache is keyed by the layout object, and its layout hash differs from the Hound's.
 4. **`crewClass` is not a second hashed field.** `systems.0.cls` is already hashed and snapshotted (`sim/tactical/hash.ts:20`) and is validated equal to the header's `crewClass`; a new duel-module field would shift every snapshot offset (`sim/duel/snapshot.ts:107`, `:144`). `crewClass` joins `DUEL_NOT_SNAPSHOTTED` (`sim/duel/modules.ts:92-98`) with that reason.
@@ -57,7 +57,7 @@ Line numbers below were verified against branch `sci-2` at `d06b64b1` plus its T
 13. **The unattended Helm** sets the crew input's `helm` true with the throttle and held-heading axes: `stepDuel` flies a ship's axes only when `helm` (`sim/tactical/duel.ts:231`). `weapons` stays the attendant rule (auto-fire needs the seat, spec §4.4).
 14. **Telemetry:** the terminal cause `'gun'` sits after `'laser'` in `TERMINAL_CAUSES` (`sim/duel/summary.ts:9`); the checkpoint, codec and record enums derive from it.
 15. **Online `gapEvents`:** a `gunHits` increment draws a `gunHit` at the target with `room −1` and `stripped false` (the snapshot carries neither).
-16. **A local crew of 1 on the Hound** is legal for `createDuel` (spec §4.4: 1..4 locally); the Hound stays 2..4 through its callers. The two Sci-2 tests that pin "crew 1 throws" move to 0 (Task 3 Step 2). Online (`duelCheckpoint.ts` `crewList`, the init's `playerCount` union) keeps 2..4.
+16. **A local crew of 1 on the Hound** is legal for `createDuel` (spec §4.4: 1..4 locally); the Hound stays 2..4 through its callers. The two Sci-2 tests that pin "crew 1 throws" move to 0 (Task 3 Step 2). Online (`duelCheckpoint.ts` `crewList`, the init's `playerCount` union) keeps 2..4. Spec §4.4's single-player `DuelInit.playerCount` 1..4 is moot: no local path builds a `DuelInit` (the local runtime, `app/duel/runtime.ts`, calls `createDuel` directly; `DuelInit` is built and parsed only by the online checkpoint path), so the one `DuelInit` schema stays 2..4 and is not widened.
 17. **The aim on the wire** is an integer −1..255 (anything else is refused by the codecs); in the sim (`heldAim`) any other value counts as −1, for in-process callers.
 18. **The Flight seat at a crew of one** needs no new seat rule: sitting at a console group seats the character at every member (`sim/stations.ts:31-38`), so `attendant(d, d.nav)` and `attendant(d, d.weapons)` are both the pilot.
 
@@ -632,7 +632,7 @@ git commit -m "feat(valkyrn): the Valkyrn and laser-fit classes, the gun's defin
 - Produces:
   ```ts
   // sim/ship/fleet.ts
-  export const HULL_IDS: readonly ['hound', 'scout', 'valkyrn'];
+  export const HULL_IDS: readonly ['hound', 'scout', 'valkyrn'];   // schema.ts imports it: any later rewrite of fleet.ts (Part ii Task 3 Step 5) must keep it
   // sim/ship/schema.ts: ShipLayout gains shipClass?: string; crew?: 1|2|3|4; helmHoldsUnattended?: boolean; hull?: 'hound'|'scout'|'valkyrn'
   // sim/duel/state.ts
   export const LOCAL_CREW_MIN = 1;
@@ -874,6 +874,8 @@ Append to `src/renderer/src/sim/ship/fleet.ts`:
  *  draws one per id. Kept here, a file allowed ship id literals (spec §3.2), so the schema carries none. */
 export const HULL_IDS = ['hound', 'scout', 'valkyrn'] as const;
 ```
+
+`schema.ts` imports this name at load (`z.enum(HULL_IDS)`), so a later whole-file replacement of `fleet.ts` that drops it breaks `tsc -b` and every ship parse. Part ii's fleet.ts block must carry this export unchanged (Task 8 Step 5 hands it over).
 
 `src/renderer/src/sim/ship/schema.ts`: add `import { HULL_IDS } from './fleet';` after the `reachableTiles` import, and replace the `consoleGroups:` line (L27) with:
 
@@ -1405,10 +1407,10 @@ git commit -m "feat(valkyrn): mouse aim and the gun trigger on the held wire, ai
 **Files:**
 - Modify: `src/renderer/src/sim/tactical/state.ts` (`ShipSystems`, `GunRound`, `emptyRound`, `TacticalState.rounds`, `DuelEvent`, `systemsFor`, `emptySystems`, `createTacticalState`), `src/renderer/src/sim/tactical/hash.ts` (round fields, gun fields, `FLAGS`, validator, clone), `src/renderer/src/sim/tactical/weapons.ts` (the `tickGun` call)
 - Create: `src/renderer/src/sim/tactical/gun.ts`
-- Modify (proof tooling, Decision 1): `scripts/golden/duelOracle.ts` (`ADDITIONS`, the `added` mode, `verifyDuelAdditive`), `scripts/golden/duel-oracle.ts`
+- Modify (proof tooling, Decision 1): `scripts/golden/duelOracle.ts` (`ADDITIONS`, `Migration.frozen` and its check in `recordRun`, the `added` mode, `verifyDuelAdditive`), `scripts/golden/duel-oracle.ts`
 - Modify (tests): `tests/duelModules.test.ts`, `tests/tacticalDeterminism.test.ts:115-123`, `tests/duelOracle.test.ts`
 - Create: `tests/valkyrnGun.test.ts`
-- Regenerated by `npm run bless` (same version): `tests/golden/duel-1.json`, `tests/golden/duel-rematch.json`
+- Regenerated by `npm run bless` (same version): `tests/golden/duel-1.json`, `tests/golden/duel-rematch.json`, and `tests/golden/basic.json` in its embedded content digest only (the digest hashes every `.ts`/`.json` under `src/renderer/src/sim` and `authority`, `build/contentDigest.ts:12-16`, so any sim edit moves it; its canonical hashes do not move)
 
 **Interfaces:**
 - Consumes: Task 2's `GUN`, `GUN_POOL`, `classOf`; Task 4's `ShipInput.gunHeld` and the crew input's trigger.
@@ -1856,11 +1858,48 @@ function roundFields(k: number): ModuleField<TacticalState>[] {
  *  counterpart that a change adds without a bump. `duel-oracle.ts added` maps every baseline field to itself, requires
  *  every new field to match one of these, and every run identical at every tick (values, results, events, telemetry). */
 export const ADDITIONS: Readonly<Record<number, Migration>> = {
-  /** Valkyrn-i (53): the gun's state on every systems record and the round pool; no oracle run has a gun, so they stay 0. */
-  53: { change: 'Valkyrn-i: the gun state and the round pool', rename: () => undefined, derived: [],
+  /** Valkyrn-i (53): the gun's state on every systems record and the round pool; no oracle run has a gun, so they stay
+   *  at their first recorded value (0), which `frozen` makes recordRun check at every tick. */
+  53: { change: 'Valkyrn-i: the gun state and the round pool', rename: () => undefined, derived: [], frozen: true,
     added: [/^space\.rounds\.\d+\.(active|owner|flight)$/, /^ship\.systems\.\d+\.gun(Heat|Locked|Cooldown|Muzzle|Wear|Hull|RoomWear|Shots|Hits)$/] }
 };
 ```
+
+- In `interface Migration`, after `readonly added: readonly RegExp[];` add:
+
+```ts
+  /** ADDITIONS only (Valkyrn-i): every current field matching `added` must hold its first recorded value at every
+   *  recorded tick, so an additive change that moves a new field in a run that never uses it fails the oracle. */
+  readonly frozen?: boolean;
+```
+
+- In `recordRun`, after the line `const plan = aliasPlan(target.names, target.counts, now.names, now.counts, schema?.migration);` add:
+
+```ts
+    // Frozen additions (Migration.frozen): the offsets, in the current flattened values, of every field declared added.
+    const frozen: { name: string; offset: number; count: number }[] = [], moved = new Set<string>(), added = schema?.migration;
+    let firstValues: Float64Array | undefined;
+    if (added?.frozen) { let o = 0; now.names.forEach((n, k) => { if (added.added.some((p) => p.test(n))) frozen.push({ name: n, offset: o, count: now.counts[k]! }); o += now.counts[k]!; }); }
+```
+
+  in `record`, after `const values = plan.build(all.subarray(1));` add:
+
+```ts
+      if (frozen.length > 0) {
+        const flat = all.subarray(1);
+        firstValues ??= Float64Array.from(flat);
+        for (const f of frozen) for (let j = 0; j < f.count; j++) if (flat[f.offset + j] !== firstValues[f.offset + j]) { moved.add(f.name); break; }
+      }
+```
+
+  and replace `return { problems: plan.problems, hashes, rematch, run };` with:
+
+```ts
+    const frozenProblems = [...moved].map((n) => `added field ${n} changed during the run (declared added at the same version, it must hold its first recorded value)`);
+    return { problems: [...plan.problems, ...frozenProblems], hashes, rematch, run };
+```
+
+  (`judgeDuelOracle` already prefixes a run's problems with its id and fails on any.)
 
 - Replace `judgeDuelOracle`'s doc comment and signature with:
 
@@ -1923,6 +1962,19 @@ and the usage error `'usage: npx tsx scripts/golden/duel-oracle.ts baseline|chec
   });
 ```
 
+and at the end of `describe('the per-tick record', …)` add:
+
+```ts
+  it('frozen additions (Valkyrn-i): a declared-added field that moves during the run is a problem', () => {
+    const was = recordRun(SHORT).run;
+    const freeze = (re: RegExp): Migration => ({ ...none, added: [re], frozen: true });
+    // space.ships.0.x first moves on tick 265 (the test above), inside SHORT's 300 ticks.
+    expect(recordRun(SHORT, { names: was.names, counts: was.counts, migration: freeze(/^space\.ships\.0\.x$/) }).problems)
+      .toEqual(['added field space.ships.0.x changed during the run (declared added at the same version, it must hold its first recorded value)']);
+    expect(recordRun(SHORT, { names: was.names, counts: was.counts, migration: { ...freeze(/^space\.ships\.0\.x$/), frozen: false } }).problems).toEqual([]);
+  }, 30_000);
+```
+
 (`none`, `okRun`, `trace` and `rerun` are the file's existing helpers; if `okRun` is declared after the tests that use it, keep the new test after that declaration.)
 
 - [ ] **Step 8: Run the tests and the typecheck**
@@ -1949,7 +2001,10 @@ Run: `npm run bless`
 Expected, exit 0: four `blessed …` lines whose counts, ticks, outcomes, rematch tick and rounds equal Task 1 Step 5's (`30 checkpoints, 18155 ticks, outcome 1` and `55 checkpoints, rematch on tick 18155, rounds 18155 ticks outcome 1 then 15320 ticks outcome 1`); only the hex hashes differ.
 
 Run: `git status --short tests/golden tests/fixtures`
-Expected: exactly `M tests/golden/duel-1.json` and `M tests/golden/duel-rematch.json` (the sector golden and the determinism fixture do not move).
+Expected: exactly `M tests/golden/basic.json`, `M tests/golden/duel-1.json` and `M tests/golden/duel-rematch.json` (the determinism fixture does not move: its bless restages only `fixture.expected`; `basic.json` moves because it embeds the content digest, which Tasks 2 to 5's source edits change).
+
+Run: `npx tsx scripts/golden/canonical-trace.ts golden`
+Expected: `tests/golden/basic.json: <k> leaves differ, 0 outside version, digest and hashes`, exit 0 (compared with the copy Task 2 Step 1 recorded: only the `contentDigest` strings moved).
 
 Run: `git diff -U0 -- tests/golden/duel-1.json tests/golden/duel-rematch.json | grep -E '^[-+] ' | grep -vE '^[-+] +"[0-9a-f]{8}",?$|"finalHash"'`
 Expected: no output (every changed line is a checkpoint hash or a final hash).
@@ -1962,7 +2017,7 @@ Expected: every test file PASS (`tests/duelGates.test.ts` with its numbers uncha
 - [ ] **Step 12: Commit**
 
 ```bash
-git add src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/tactical/gun.ts src/renderer/src/sim/tactical/weapons.ts src/renderer/src/sim/tactical/hash.ts scripts/golden/duelOracle.ts scripts/golden/duel-oracle.ts tests/valkyrnGun.test.ts tests/duelModules.test.ts tests/tacticalDeterminism.test.ts tests/duelOracle.test.ts tests/golden/duel-1.json tests/golden/duel-rematch.json
+git add src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/tactical/gun.ts src/renderer/src/sim/tactical/weapons.ts src/renderer/src/sim/tactical/hash.ts scripts/golden/duelOracle.ts scripts/golden/duel-oracle.ts tests/valkyrnGun.test.ts tests/duelModules.test.ts tests/tacticalDeterminism.test.ts tests/duelOracle.test.ts tests/golden/basic.json tests/golden/duel-1.json tests/golden/duel-rematch.json
 git commit -m "feat(valkyrn): the minigun fires (interval, alternate muzzles, heat and lockout, the round pool); gun state hashed, snapshotted and bounded; same-version bless after the oracle's new added mode proves every run unchanged" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -2482,11 +2537,11 @@ git commit -m "feat(valkyrn): online gap events from gunHits, the terminal cause
 
 ### Task 8: End-to-end proof, the handover baseline, every gate
 
-**Files:** none changed (a failing gate is fixed in the task that caused it, by a new commit naming it).
+**Files:** `tests/golden/basic.json` only, re-blessed in its embedded content digest (Step 2); nothing else changes (a failing gate is fixed in the task that caused it, by a new commit naming it).
 
 **Interfaces:**
 - Consumes: Tasks 1 to 7.
-- Produces: Part i complete at SIM 53, the goldens Task 5 blessed, a fresh baseline at 53 for Part ii's first proof.
+- Produces: Part i complete at SIM 53, the duel goldens Task 5 blessed (basic.json re-blessed in its digest), a fresh baseline at 53 for Part ii's first proof.
 
 - [ ] **Step 1: The end-to-end proofs against Task 2's baseline**
 
@@ -2496,20 +2551,29 @@ Expected: as in Task 5 Step 9, exit 0.
 Run: `npx tsx scripts/golden/canonical-trace.ts same`
 Expected: as in Task 2 Step 12, exit 0.
 
-- [ ] **Step 2: A same-version bless changes nothing, and the goldens differ from Task 1's only in hashes**
+- [ ] **Step 2: A same-version bless moves no canonical value: the duel goldens differ from Task 1's only in hashes, basic.json only in its digest**
 
 Run: `npm run bless`
 Expected: exit 0; the four `blessed …` lines carry Task 1 Step 5's counts, ticks, outcomes, rematch tick and rounds.
 
 Run: `git status --short tests/golden tests/fixtures`
-Expected: no output (the code reproduces exactly what Task 5 blessed).
+Expected: exactly `M tests/golden/basic.json` (Tasks 6 and 7 edited sim sources, so its embedded content digest moved again); the duel goldens and the determinism fixture do not move (the code reproduces exactly what Task 5 blessed).
+
+Run: `npx tsx scripts/golden/canonical-trace.ts golden`
+Expected: `tests/golden/basic.json: <k> leaves differ, 0 outside version, digest and hashes`, exit 0 (against Task 2 Step 1's copy: only the digest strings moved).
 
 Run (the Task 1 commit): `git log -1 --format=%h --grep="SIM_VERSION 52 -> 53 alone"` and note `<t1>`.
 Run: `git diff -U0 <t1> -- tests/golden/duel-1.json tests/golden/duel-rematch.json | grep -E '^[-+] ' | grep -vE '^[-+] +"[0-9a-f]{8}",?$|"finalHash"'`
 Expected: no output: since the version bump, the duel goldens moved only in hashes; tick counts and outcomes are unchanged.
 
-Run: `git diff --stat <t1> -- tests/golden/basic.json tests/fixtures/determinism-v2.json`
-Expected: no output.
+Run: `git diff --stat <t1> -- tests/fixtures/determinism-v2.json`
+Expected: no output. (`basic.json` is proved by `canonical-trace.ts golden` above instead: its digest strings differ from Task 1's by design.)
+
+Commit the digest-only re-bless:
+```bash
+git add tests/golden/basic.json
+git commit -m "chore(valkyrn): re-bless basic.json (content digest only; canonical-trace golden proves 0 leaves outside version, digest and hashes)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
 
 - [ ] **Step 3: Every gate**
 
@@ -2533,7 +2597,7 @@ Expected: both pass at 53 → 53. Part ii's tasks prove `same` against this reco
 
 - [ ] **Step 5: Report**
 
-Nothing to commit (`git status --short` lists none of this branch's files). Report to the controller: the commits of Tasks 1 to 7, the four bless lines, the oracle `added` line, and for Part ii: the four view readers with type-only guards (Decision 11), `HULL_IDS` for `HullId`, `heldTurn` (`app/duel/runtime.ts`) already calls `helmTurn` so the aim needs only the runtime to send `aim`/`gunHeld`, and `gunHit.stripped` for the shield pop.
+Nothing more to commit (`git status --short` lists none of this branch's files). Report to the controller: the commits of Tasks 1 to 7 and Task 8 Step 2's digest-only re-bless, the four bless lines, the oracle `added` line, and for Part ii: the four view readers with type-only guards (Decision 11), `HULL_IDS` for `HullId` (and that Part ii's whole-file `fleet.ts` replacement in its Task 3 Step 5 must keep the `HULL_IDS` export, which `schema.ts` imports), `heldTurn` (`app/duel/runtime.ts`) already calls `helmTurn` so the aim needs only the runtime to send `aim`/`gunHeld`, and `gunHit.stripped` for the shield pop.
 
 ---
 
