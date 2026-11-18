@@ -130,8 +130,8 @@ export function contactModel(i: ContactModelInput): ContactView | null {
   if (!body || !body.active) return null;
   const level = state.known[Contact.Enemy];
   const crewSys = state.systems[CREW_SLOT], weapon = i.weapon ?? 'laser';
-  const weaponRows = (): ContactView['weapons'] => i.station === 'weapons' && i.weapons
-    ? { laser: { label: i.weapons.charge.label, value: i.weapons.charge.value, fill: i.weapons.charge.bar?.fill ?? 0, lit: i.aim && weapon === 'laser', enabled: true, note: null },
+  const weaponRows = (): ContactView['weapons'] => (i.station === 'weapons' || i.station === 'flight') && i.weapons   // Valkyrn spec §5: Flight's rows too
+    ? { laser: { label: i.weapons.charge.label, value: i.weapons.charge.value, fill: i.weapons.charge.bar?.fill ?? 0, lit: i.aim && weapon === 'laser', enabled: classOf(state, CREW_SLOT).slots.laser !== null, note: null },
         missile: { magazine: crewSys.magazine, lit: i.aim && weapon === 'torpedo' } }
     : null;
   if (level < 1) {

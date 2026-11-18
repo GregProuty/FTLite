@@ -33,10 +33,10 @@ describe('settings store (Audio-i spec section 6)', () => {
 describe('the controls list', () => {
   it('names every bound key from the input tables, with no gamepad or second keyboard', () => {
     const sections = controlSections(), all = sections.flatMap(s => s.rows.map(r => r.keys)).join(' | ');
-    expect(sections.map(s => s.title)).toEqual(['Single player', 'Multiplayer', 'Anywhere']);
+    expect(sections.map(s => s.title)).toEqual(['Single player', 'Single player: Valkyrn', 'Multiplayer', 'Anywhere']);
     for (const code of Object.keys(PRESS_CODES)) expect(all).toContain(keyLabel(code));
     for (const code of [...Object.values(MOVE_CODES), INTERACT_HELD, FIRE_HELD]) expect(all).toContain(keyLabel(code));
-    const sector = sections[1]!.rows.map(r => r.keys).join(' ');
+    const sector = sections.find(s => s.title === 'Multiplayer')!.rows.map(r => r.keys).join(' ');
     for (const code of [SECTOR_KEYS.up, SECTOR_KEYS.left, SECTOR_KEYS.down, SECTOR_KEYS.right, SECTOR_KEYS.interact, SECTOR_KEYS.confirm, SECTOR_KEYS.cancel, SECTOR_KEYS.callout]) expect(sector).toContain(keyLabel(code));
     expect(sections[0]!.rows.find(r => r.keys === 'M')!.action).toContain('main menu');
     expect(all).not.toMatch(/pad|stick|arrow/i);

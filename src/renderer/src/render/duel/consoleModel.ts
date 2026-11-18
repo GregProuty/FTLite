@@ -3,7 +3,7 @@
 import { consoleInReach, flightSeat, repairInReach, seatOf, type Seat } from '../../app/duel/controls';
 import { NO_HELD_FLAGS, type HeldFlags, type KeyAction } from '../../app/duel/input';
 import type { DuelState } from '../../sim/duel/state';
-import { classOf, Contact, missileOf } from '../../sim/tactical/state';
+import { classOf, Contact, missileOf, Room } from '../../sim/tactical/state';
 import { HEADING_COUNT, MAGAZINE } from '../../sim/tactical/tuning';
 import { canLaunch, torpedoInRange } from '../../sim/tactical/weapons';
 import type { MapOverlayView } from '../../ui/views';
@@ -34,6 +34,11 @@ export interface HelmPanel {
  *  not yet picked up this sit). */
 export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: string; canLaunch: boolean; torpedoInRange: boolean; missileFlying: boolean; fireHeld: boolean; held: HeldFlags; freq: number; weakFreq: number | null;
   laserTarget: number; torpTarget: number; burst: number; laserReason?: string | null; goal?: boolean; refused?: RefusedView | null }
+/** Valkyrn spec §8: the GUN card: OFFLINE (Weapons at 2), OVERHEAT (locked) or READY; heat 0..1. */
+export interface GunPanel { state: 'READY' | 'OVERHEAT' | 'OFFLINE'; heat: number; locked: boolean }
+/** Valkyrn spec §5: the Flight seat's weapons: the GUN card (null with the laser fit) and the Weapons panel its cards and the
+ *  contact window read. */
+export interface FlightPanel { gun: GunPanel | null; weapons: WeaponsPanel }
 /** The Science block (Sci-1 spec §7.3): the hover readout, or null with no cursor over the map. */
 export interface SciencePanel { hover: string | null }
 export interface ConsoleView {
@@ -45,6 +50,8 @@ export interface ConsoleView {
   weapons: WeaponsPanel | null;
   science: SciencePanel | null;
   side: { zoom: string; free: boolean; snapLabel: 'SNAP' | 'CAMERA' } | null;
+  /** Valkyrn spec §5: the Flight seat's block; present only there. */
+  flight?: FlightPanel | null;
 }
 export interface ConsoleModelInput {
   duel: DuelState; me: number; mode: 'single' | 'online'; hidden: boolean; held: HeldFlags; overlay: MapOverlayView | null;
@@ -98,15 +105,19 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
         refused: i.refused && HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, holdHeading: d.holdHeading, ...(station === 'flight' ? { flight: true } : {}) }
     : null;
   const flying = missileOf(t, 0) !== null, sys = t.systems[0];
-  const weapons: WeaponsPanel | null = station === 'weapons'
-    ? { lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null,
+  const weaponsPanel = (): WeaponsPanel => ({ lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null,
       laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock, burst: classOf(t, 0).slots.laser?.shots ?? 0,   // Valkyrn-i: Part ii gives the gun its own card
       laserReason: laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), laserOffline(t, 0)), goal: (i.goal ?? false) && !sys.laserTargeted,
-      refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null }
+      refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null });
+  const weapons: WeaponsPanel | null = station === 'weapons' ? weaponsPanel() : null;
+  const gunDef = classOf(t, 0).slots.gun;   // Valkyrn spec §5, §8: the Flight seat's GUN card (null with the laser fit) and its weapons
+  const flight: FlightPanel | null = station === 'flight'
+    ? { gun: gunDef ? { state: sys.rooms[Room.Weapons] >= 2 ? 'OFFLINE' : sys.gunLocked === true ? 'OVERHEAT' : 'READY', heat: Math.max(0, Math.min(1, sys.gunHeat / gunDef.heatMax)), locked: sys.gunLocked === true } : null,
+        weapons: weaponsPanel() }
     : null;
   const side = i.overlay && station !== 'ship'
     ? { zoom: i.overlay.zoomText.replace(/^ZOOM\s+/, ''), free: i.overlay.snapHint, snapLabel: station === 'weapons' ? 'CAMERA' as const : 'SNAP' as const }
     : null;
   const science = station === 'science' ? { hover: i.hover ?? null } : null;
-  return { station, tabs, tabActions, helm, weapons, science, side };
+  return { station, tabs, tabActions, helm, weapons, science, side, ...(flight ? { flight } : {}) };
 }
