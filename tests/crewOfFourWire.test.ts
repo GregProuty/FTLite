@@ -106,6 +106,11 @@ describe('the init and the checkpoint at n (spec §4.3)', () => {
     expect(state).toBeDefined();
     const p = validateDuelPublication(JSON.parse(JSON.stringify((state as { state: unknown }).state)), { resolveLayout: resolveCutter, contentDigest: DIGEST });
     expect([p.snapshot.header.playerCount, p.commandHighWater.length]).toEqual([3, 3]);
+    // Sci-2 spec §4.4: watermarks not one per crew member are refused (the schema's refine refuses first; the client's
+    // own check backs it).
+    const short = JSON.parse(JSON.stringify((state as { state: unknown }).state));
+    for (const k of ['commandHighWater', 'heldHighWater', 'auxiliaryHighWater']) short[k] = short[k].slice(0, 2);
+    expect(() => validateDuelPublication(short, { resolveLayout: resolveCutter, contentDigest: DIGEST })).toThrow(/watermarks/);
   });
 });
 

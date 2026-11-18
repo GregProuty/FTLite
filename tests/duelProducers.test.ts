@@ -85,7 +85,7 @@ describe('the away steward and the peer-lost pause (spec §6)', () => {
   it('a rejected presence is retried once; a second rejection pauses anyway', () => {
     const attached: Link[] = [], pauses: string[] = [], codec = duelCodec(2);
     const authority = { attach(link: Link) { attached.push(link); return () => {}; } } as unknown as Authority<DuelTypes>;
-    const producers = createDuelProducers({ authority, runId: 'r', contentDigest: DIGEST, pause: (reason) => pauses.push(reason) });
+    const producers = createDuelProducers({ authority, runId: 'r', contentDigest: DIGEST, playerCount: 2, pause: (reason) => pauses.push(reason) });
     ownTestCleanup(() => producers.dispose());
     const human = linkPair('human');
     const off = producers.attachHuman(human.host.link, [1], { admissionPolicy: 'receive-time' }, 'remote');
@@ -111,7 +111,7 @@ describe('the away steward and the peer-lost pause (spec §6)', () => {
   it('a presence still in flight when another player pauses owes no peer-lost pause after the resume', () => {
     const attached: Link[] = [], pauses: string[] = [], codec = duelCodec(2);
     const authority = { attach(link: Link) { attached.push(link); return () => {}; } } as unknown as Authority<DuelTypes>;
-    const producers = createDuelProducers({ authority, runId: 'r', contentDigest: DIGEST, pause: (reason) => pauses.push(reason) });
+    const producers = createDuelProducers({ authority, runId: 'r', contentDigest: DIGEST, playerCount: 2, pause: (reason) => pauses.push(reason) });
     ownTestCleanup(() => producers.dispose());
     const human = linkPair('human');
     const off = producers.attachHuman(human.host.link, [1], { admissionPolicy: 'receive-time' }, 'remote');
@@ -138,7 +138,7 @@ describe('the away steward and the peer-lost pause (spec §6)', () => {
   it('a human who takes a lost seat clears its peer-lost debt, and replacing a bound human owes none', () => {
     const attached: Link[] = [], pauses: string[] = [], codec = duelCodec(2);
     const authority = { attach(link: Link) { attached.push(link); return () => {}; } } as unknown as Authority<DuelTypes>;
-    const producers = createDuelProducers({ authority, runId: 'r', contentDigest: DIGEST, pause: (reason) => pauses.push(reason) });
+    const producers = createDuelProducers({ authority, runId: 'r', contentDigest: DIGEST, playerCount: 2, pause: (reason) => pauses.push(reason) });
     ownTestCleanup(() => producers.dispose());
     const first = linkPair('first'), second = linkPair('second'), third = linkPair('third');
     const offFirst = producers.attachHuman(first.host.link, [1], { admissionPolicy: 'receive-time' }, 'remote');
