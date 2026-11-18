@@ -77,9 +77,9 @@ describe('the duel modules (spec §6 module contract)', () => {
     } finally { disposeDuel(d); }
   });
   it('a missile pool entry is walked against its fields, and a member added to it is caught', () => {
-    const d = played(7, 5156);
+    const d = played(1, 5659);   // seed 7 became a crew win under Sci-1 with no qualifying tick
     try {
-      expect(d.tactical.missiles.some((m) => m.active), 'seed 7 tick 5156 has a missile in flight').toBe(true);
+      expect(d.tactical.missiles.some((m) => m.active), 'seed 1 tick 5659 has a missile in flight').toBe(true);
       expect(uncovered(d.tactical, tacticalNames(d.tactical), tacticalExcluded)).toEqual([]);
       (d.tactical.missiles[1] as unknown as Record<string, unknown>).newMissileThing = 1;
       expect(uncovered(d.tactical, tacticalNames(d.tactical), tacticalExcluded)).toEqual(['missiles.1.newMissileThing']);

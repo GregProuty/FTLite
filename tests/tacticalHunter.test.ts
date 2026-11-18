@@ -6,10 +6,11 @@ import { hunterThink, pursuitTurn } from '../src/renderer/src/sim/tactical/hunte
 import { createTacticalState, HunterMode, missileOf, Outcome, placeMissile, removeMissile, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { HUNTER_JITTER_TICKS, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_WALK_TICKS, LASER_CHARGE_UNITS, REPAIR_WORK_TICKS, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
+import { makeHostile } from './helpers/hostile';
 
 /** Enemy at (−300, −300) facing west at the crew 300 units away: in arc, in range, clear of the planet. */
 function facing(): TacticalState {
-  const st = createTacticalState(5);
+  const st = makeHostile(createTacticalState(5));
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
   return st;
@@ -96,7 +97,7 @@ describe('hunter: flying (spec §9 Hunt)', () => {
   it('rams far less against a crew that sits still than pure pursuit did', () => {
     let rams = 0;
     for (const seed of [1, 2, 3, 4]) {
-      const st = createTacticalState(seed);
+      const st = makeHostile(createTacticalState(seed));
       for (let t = 0; t < 60 * 120 && st.outcome === Outcome.Running; t++) stepDuel(st, IDLE_INPUT);
       rams += st.ships[0].shipHits;
     }
@@ -110,7 +111,7 @@ describe('hunter: flying (spec §9 Hunt)', () => {
     expect(axes.turn).not.toBe(0);
   });
   it('closes on a crew that sits still', () => {
-    const st = createTacticalState(5), d0 = Math.hypot(st.ships[1].x - st.ships[0].x, st.ships[1].y - st.ships[0].y);
+    const st = makeHostile(createTacticalState(5)), d0 = Math.hypot(st.ships[1].x - st.ships[0].x, st.ships[1].y - st.ships[0].y);
     for (let t = 0; t < 1800; t++) stepDuel(st, IDLE_INPUT);
     expect(Math.hypot(st.ships[1].x - st.ships[0].x, st.ships[1].y - st.ships[0].y)).toBeLessThan(d0);
   });
@@ -203,11 +204,11 @@ describe('hunter: repair (spec §9 Repair)', () => {
 
 describe('duel step (spec §4 to §9)', () => {
   it('is deterministic: the same seed and crew inputs give the same hash', () => {
-    const run = (): string => { const st = createTacticalState(9); for (let t = 0; t < 3600; t++) stepDuel(st, IDLE_INPUT); return hashTactical(st); };
+    const run = (): string => { const st = makeHostile(createTacticalState(9)); for (let t = 0; t < 3600; t++) stepDuel(st, IDLE_INPUT); return hashTactical(st); };
     expect(run()).toBe(run());
   });
   it('the hunter wears down a crew that only sits there, and the duel ends', () => {
-    const st = createTacticalState(9);
+    const st = makeHostile(createTacticalState(9));
     for (let t = 0; t < 60 * 600 && st.outcome === Outcome.Running; t++) stepDuel(st, IDLE_INPUT);
     expect(st.systems[0].hull).toBeLessThan(SHIP_HULL);
     expect(st.systems[1].shots + st.systems[1].missilesLaunched).toBeGreaterThan(0);

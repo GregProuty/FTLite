@@ -18,10 +18,10 @@ import { LAYOUT } from './helpers/sim';
 import { runReplay } from '../src/renderer/src/authority/replay';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
-/** Seed 7's scripted duel is a crew loss at tick 8069 (8311 before Artemis-ii, SIM_VERSION 43; 7282 before duel health, SIM_VERSION 41; 8832 before duel fire), short enough to run to its end twice.
+/** Seed 1's scripted duel is a crew loss at tick 8648 (seed 7 became a crew win under Sci-1 with no qualifying tick; seed 7 was a crew loss at 8069 before Sci-1, SIM_VERSION 45; 8311 before Artemis-ii, SIM_VERSION 43; 7282 before duel health, SIM_VERSION 41; 8832 before duel fire), short enough to run to its end twice.
  *  SPLIT is the first tick from 5000 on that ends with a missile in flight, a damaged crew room and a repair in
  *  progress (found by stepping the scripted duel; the test asserts all three). */
-const SEED = 7, SPLIT = 5156;
+const SEED = 1, SPLIT = 5659;
 function runToEnd(h: DuelCore, driver: ReturnType<typeof createDriver>, hashes: string[], frames: ReplayFrame[] = [], until = Infinity) {
   while (h.state.duel.tactical.outcome === Outcome.Running && duelRules.tick(h.state) < until) {   // to the round's decision (H-2: the run itself never ends)
     for (const frame of stepScripted(h, driver)) { frames.push(frame); if (frame.action.kind === 'tick') hashes.push(frame.after!.hash); }
@@ -53,7 +53,7 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
         expect(resumed.state.summary).toEqual(end);
         expect(resumed.core.captureCheckpoint().modeMemory, 'the final telemetry accumulator of the restored run').toEqual(reference.core.captureCheckpoint().modeMemory);
         expect(end).toMatchObject({ outcome: Outcome.EnemyWins, ticks: referenceHashes.length,
-          terminal: [['laser'], []], laserReleases: [3, 26], laserHits: [1, 26], missilesLaunched: [2, 4], missileHits: [0, 4], repairsFinished: [6, 14] });
+          terminal: [['laser'], []], laserReleases: [6, 25], laserHits: [3, 25], missilesLaunched: [3, 4], missileHits: [0, 3], repairsFinished: [5, 12] });
         expect(Object.isFrozen(end)).toBe(true);
         expect(referenceHashes.length).toBeGreaterThan(SPLIT);
         console.log(`continuation proof: seed ${SEED}, ${SPLIT} + ${referenceHashes.length - SPLIT} ticks; summary ${JSON.stringify(end)}`);

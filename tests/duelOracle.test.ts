@@ -75,12 +75,14 @@ describe('the per-tick record', () => {
     const same = recordRun(SHORT, { names: was.names, counts: was.counts });
     expect(same.problems).toEqual([]);
     expect(runDifferences(was, same.run)).toEqual([]);
-    const swap: Migration = { ...none, rename: (o) => (o === 'space.ships.0.x' ? 'space.ships.1.x' : o === 'space.ships.1.x' ? 'space.ships.0.x' : undefined) };
+    // Sci-1: the headings, not the x values: in Patrol the two ships stay exact mirrors (x0 = −x1), and a swap of two
+    // values that differ only in sign does not show in the per-tick digest.
+    const swap: Migration = { ...none, rename: (o) => (o === 'space.ships.0.heading' ? 'space.ships.1.heading' : o === 'space.ships.1.heading' ? 'space.ships.0.heading' : undefined) };
     const wrong = recordRun(SHORT, { names: was.names, counts: was.counts, migration: swap });
     expect(wrong.problems).toEqual([]);
     const diff = runDifferences(was, wrong.run);
     expect(diff).toHaveLength(1);
-    expect(diff[0]).toMatch(/^scripted-3: first difference at tick 26 \(fields\); fields that differ during the run: space\.ships\.0\.x, space\.ships\.1\.x$/);   // the crew walk to their consoles first (start-aboard spec §1)
+    expect(diff[0]).toMatch(/^scripted-3: first difference at tick 1 \(fields\); fields that differ during the run: space\.ships\.0\.heading, space\.ships\.1\.heading$/);   // the two ships face apart from the first tick
   }, 30_000);
   it('records hashDuel at the duel golden cadence, and throws when the schema does not name every flattened value', () => {
     const r = recordRun({ id: 'scripted-1', seed: 1, crew: 'scripted', cap: 1300 });

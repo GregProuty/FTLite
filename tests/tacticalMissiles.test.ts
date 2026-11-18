@@ -3,10 +3,11 @@ import { flyMissile, resolveMissiles } from '../src/renderer/src/sim/tactical/mi
 import { createTacticalState, missileOf, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { applyWeaponsInput, IDLE_INPUT, tickWeapons, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
 import { DT, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, MISSILE_LIFE_TICKS, MISSILE_THRUST, MISSILE_TURN_STEPS_PER_TICK, R_MAP, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
+import { makeHostile } from './helpers/hostile';
 
 /** Crew at (−600, −300) heading east, enemy far off at (−600, 600): inside the belt and clear of the planet. */
 function duel(): TacticalState {
-  const st = createTacticalState(5);
+  const st = makeHostile(createTacticalState(5));
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -600, y: 600, vx: 0, vy: 0, heading: 0 });
   return st;

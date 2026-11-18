@@ -12,6 +12,7 @@ import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { CUTTER, passiveInput } from './helpers/scriptedDuel';
+import { makeHostile } from './helpers/hostile';
 import { classOf, createTacticalState, emptyMissile, missileOf, placeMissile, removeMissile, shipBody, targetOf, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import {
   ENGINE_FACTOR, LASER_CHARGE_UNITS, LASER_HULL, LASER_RANGE, MAGAZINE, MISSILE_HULL, MISSILE_LIFE_TICKS, SHIELD_LAYERS, SHIP_HULL, SHIP_RADIUS, THRUST, TURN_STEPS_PER_TICK
@@ -49,7 +50,7 @@ describe('ship classes and weapons as definitions (spec §5)', () => {
     expect([classOf(st, 0), classOf(st, 1)]).toEqual([CUTTER_CLASS, HUNTER_CLASS]);
     expect([targetOf(st, 0), targetOf(st, 1)]).toEqual([1, 0]);
     expect(hunterSlot(st)).toBe(1);
-    expect(st.systems.map((y) => [y.hull, y.shields, y.magazine])).toEqual([[SHIP_HULL, SHIELD_LAYERS, MAGAZINE], [SHIP_HULL, SHIELD_LAYERS, MAGAZINE]]);
+    expect(st.systems.map((y) => [y.hull, y.shields, y.magazine])).toEqual([[SHIP_HULL, SHIELD_LAYERS, MAGAZINE], [SHIP_HULL, SHIELD_LAYERS - 1, MAGAZINE]]);   // Sci-1: the enemy patrols one layer down
   });
 });
 
@@ -71,7 +72,7 @@ describe('ship slots (spec §5 "arrays, not pairs")', () => {
     }
   }, 60_000);
   it('contacts and the laser work across any pair of active slots, by the locked target', () => {
-    const st = createTacticalState(5, 3);
+    const st = makeHostile(createTacticalState(5, 3));
     quiet(st);
     Object.assign(st.ships[2]!, { active: true, x: 500, y: -1800, vx: 0, vy: 0, heading: 192 });   // a third ship, west-facing
     Object.assign(st.systems[2]!, { ...st.systems[1], rooms: [0, 0, 0], target: 0 });
@@ -152,6 +153,6 @@ describe('the declared-added fields (new in the R-2 alias table)', () => {
     } finally { disposeDuel(d); }
     expect(ticks).toBeGreaterThan(0);
     expect(wrong).toBe(0);
-    if (crew === 'scripted') expect(ticks).toBe(16268);   // the duel golden's length (tests/golden/duel-1.json; 15772 before duel fire)
+    if (crew === 'scripted') expect(ticks).toBe(8648);   // the duel golden's length (tests/golden/duel-1.json; 15772 before duel fire; 16268 before Sci-1)
   }, 60_000);
 });

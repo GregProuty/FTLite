@@ -10,6 +10,7 @@ import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
 import { endModel } from '../src/renderer/src/render/duel/endModel';
 import { readoutHelp, readoutRows, READOUT_ROWS, READOUT_W, type ReadoutInput, type ReadoutMode } from '../src/renderer/src/render/duel/readoutModel';
 import { PAD, textPx } from '../src/renderer/src/render/theme';
+import { makeHostile } from './helpers/hostile';
 
 const layout = parseShip(cutter);
 const pairs = (input: ReadoutInput) => readoutRows(input).map((r) => [r.label, r.value]);
@@ -17,6 +18,7 @@ const pairs = (input: ReadoutInput) => readoutRows(input).map((r) => [r.label, r
 describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
   it('both hulls, both shields, the crew rooms and the enemy rooms; the other character status', () => {
     const d = createDuel(layout, 5);
+    makeHostile(d.tactical);
     d.tactical.systems[1].hull = 21; d.tactical.systems[1].rooms = [0, 2, 1]; d.tactical.systems[0].rooms[Room.Engines] = 1; d.tactical.systems[0].shields = 1;
     const rows = readoutRows({ duel: d, mode: 'helm', active: 0, other: 'AT WEAPONS' });
     expect(rows.map((r) => [r.label, r.value])).toEqual([

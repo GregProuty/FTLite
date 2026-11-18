@@ -8,9 +8,10 @@ import { engineFactor, flyShip } from '../src/renderer/src/sim/tactical/physics'
 import { CUTTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { DEFAULT_FLIGHT, DT, LASER_CHARGE_UNITS, THRUST, TURN_STEPS_PER_TICK, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
+import { makeHostile } from './helpers/hostile';
 
 function duel(): TacticalState {
-  const st = createTacticalState(5);
+  const st = makeHostile(createTacticalState(5));
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
   return st;

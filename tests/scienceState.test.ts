@@ -1,14 +1,17 @@
 // Sci-1 (spec 2026-11-17-science-scans §6.2, §6.3 step 1): the science tactical module and each laser's freq, at their
-// step-1 neutral values; their order, validation, clone and snapshot round trip; the 44 → 45 alias table. Task 6
-// replaces the neutral-values test with the drawn values.
+// step-1 neutral values; their order, validation, clone and snapshot round trip; the 44 → 45 alias table. Since Task 6
+// the creation test checks the drawn values and the Patrol start.
 import { describe, expect, it } from 'vitest';
 import { hashF64 } from '../src/shared/hash';
+import { createRng, nextInt } from '../src/shared/rng';
+import { dirBetween } from '../src/renderer/src/sim/tactical/direction';
+import { generateMap } from '../src/renderer/src/sim/tactical/map';
 import { DUEL_MODULES } from '../src/renderer/src/sim/duel/modules';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { loadDuelSnapshot, saveDuelSnapshot, validateDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { flattenTactical, scienceModule, shipModule, TACTICAL_MODULES } from '../src/renderer/src/sim/tactical/hash';
-import { classOf, cloneTactical, CONTACT_MAX_LEVEL, createTacticalState, HunterMode, idleScan, Loot } from '../src/renderer/src/sim/tactical/state';
+import { classOf, cloneTactical, CONTACT_MAX_LEVEL, createTacticalState, HunterMode, idleScan } from '../src/renderer/src/sim/tactical/state';
 import { aliasPlan, duelSchema, MIGRATIONS } from '../scripts/golden/duelOracle';
 import { CUTTER } from './helpers/scriptedDuel';
 
@@ -28,14 +31,27 @@ describe('the science module (spec §6.2)', () => {
     for (const i of [0, 1]) expect(ship.indexOf(`systems.${i}.freq`)).toBe(ship.indexOf(`systems.${i}.lock`) + 1);
     expect(CONTACT_MAX_LEVEL).toEqual([2, 1]);
   });
-  it('holds the step-1 neutral values (spec §6.3): Hunt and hostile from tick 0, the scan idle, freq 0, the derelict already salvaged', () => {
-    const st = createTacticalState(3);
-    expect({ startTick: st.startTick, hostileAt: st.hostileAt, mode: st.hunter.mode, known: st.known, scan: st.scan, designated: st.designated, weakFreq: st.weakFreq, derelict: st.derelict })
-      .toEqual({ startTick: 0, hostileAt: 0, mode: HunterMode.Hunt, known: [0, 0], scan: idleScan(), designated: -1, weakFreq: 0,
-        derelict: { orbitR: 700, phase: 0, loot: Loot.Hull, trapped: false, salvage: 0, salvaged: true } });
-    expect(st.systems.map((y) => y.freq)).toEqual([0, 0]);
-    expect(st.systems[1].shields).toBe(classOf(st, 1).shields.layers);
-    expect(idleScan()).toEqual({ contact: -1, level: 0, progress: 0, rate: 0, by: 0 });
+  it('draws the weak frequency and the derelict right after the map, in order (spec §4.5), and starts in Patrol one layer down', () => {
+    const weak = new Set<number>(), loot = new Set<number>(), bands = new Set<string>();
+    for (let seed = 1; seed <= 40; seed++) {
+      const st = createTacticalState(seed), rng = createRng(seed), map = generateMap(rng);
+      const weakFreq = nextInt(rng, 3), u = nextInt(rng, 501), orbitR = u <= 300 ? 700 + u : 1400 + (u - 301);
+      const near = (phase: number): boolean => map.spawns.some((s) => {
+        const [ux, uy] = dirBetween(phase, 0), dx = ux * orbitR - s.x, dy = uy * orbitR - s.y;
+        return dx * dx + dy * dy < 600 * 600;
+      });
+      let phase = nextInt(rng, 256), draws = 1;
+      while (draws < 16 && near(phase)) { phase = nextInt(rng, 256); draws++; }
+      const lootDrawn = nextInt(rng, 3), trapped = nextInt(rng, 3) === 0;
+      expect({ weakFreq: st.weakFreq, derelict: st.derelict }, `seed ${seed}`).toEqual({ weakFreq, derelict: { orbitR, phase, loot: lootDrawn, trapped, salvage: 0, salvaged: false } });
+      expect(st.rng.s, `seed ${seed}: nothing else reads the rng at creation`).toBe(rng.s);
+      expect((orbitR >= 700 && orbitR <= 1000) || (orbitR >= 1400 && orbitR <= 1599), `seed ${seed}: orbit ${orbitR} clear of the belt`).toBe(true);
+      expect(!near(phase) || draws === 16, `seed ${seed}: 600 clear of both spawns unless all 16 draws were near`).toBe(true);
+      expect({ mode: st.hunter.mode, hostileAt: st.hostileAt, startTick: st.startTick, known: st.known, scan: st.scan, designated: st.designated, shields: st.systems.map((y) => y.shields), freq: st.systems.map((y) => y.freq) }, `seed ${seed}`)
+        .toEqual({ mode: HunterMode.Patrol, hostileAt: -1, startTick: 0, known: [0, 0], scan: idleScan(), designated: -1, shields: [classOf(st, 0).shields.layers, classOf(st, 1).shields.layers - 1], freq: [0, 0] });
+      weak.add(weakFreq); loot.add(lootDrawn); bands.add(orbitR <= 1000 ? 'near' : 'far');
+    }
+    expect([weak.size, loot.size, bands.size]).toEqual([3, 3, 2]);
   });
   it('the clone builds fresh known, scan and derelict containers and copies every value', () => {
     const st = createTacticalState(3);
@@ -43,8 +59,9 @@ describe('the science module (spec §6.2)', () => {
     const copy = cloneTactical(st);
     expect(flattenTactical(copy)).toEqual(flattenTactical(st));
     expect([copy.known === st.known, copy.scan === st.scan, copy.derelict === st.derelict]).toEqual([false, false, false]);
-    copy.known[1] = 1; copy.scan.progress = 99; copy.derelict.salvaged = false;
-    expect([st.known[1], st.scan.progress, st.derelict.salvaged]).toEqual([0, 40, true]);
+    const salvaged = st.derelict.salvaged;
+    copy.known[1] = 1; copy.scan.progress = 99; copy.derelict.salvaged = !salvaged;
+    expect([st.known[1], st.scan.progress, st.derelict.salvaged]).toEqual([0, 40, salvaged]);
   });
 });
 

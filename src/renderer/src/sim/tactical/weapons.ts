@@ -67,7 +67,10 @@ function fireLaser(state: TacticalState, i: number): void {
   as.shots++;
   if (hit && bs) {
     as.laserHits++;
-    if (bs.shields > 0) { bs.shields--; bs.shieldClock = 0; as.layersStripped++; stripped = true; }
+    if (bs.shields > 0) {   // Sci-1 spec §4.4: the crew laser tuned to the weak frequency strips 2 layers (as many as are up)
+      const n = i === CREW_SLOT && as.freq === state.weakFreq ? Math.min(2, bs.shields) : 1;
+      bs.shields -= n; bs.shieldClock = 0; as.layersStripped += n; stripped = true;
+    }
     else {
       room = as.lock;
       if (bs.rooms[as.lock]! < 2) bs.rooms[as.lock as 0 | 1 | 2]++;
