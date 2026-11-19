@@ -59,3 +59,26 @@ export function throttleAllowed(sys: Pick<ShipSystems, 'rooms' | 'bars'>, level:
 export function levelWithinCap(sys: Pick<ShipSystems, 'rooms' | 'bars'>, level: number): number {
   return throttleAllowed(sys, level) ? level : level > 0 ? throttleCap(sys) : 0;
 }
+
+// ---- Weapons, the allocation (Task 9a; Engineering spike spec §10.3, Amendment 2; isolated) ----
+/** Spec §10.3, §11: the three crew weapons in slot order: pew pew (W-1's weapon: its bars have no effect on this branch), the beam (today's laser), the torpedo. */
+export const WeaponSlot = { Pew: 0, Beam: 1, Torpedo: 2 } as const;
+export const WEAPON_SLOTS = 3;
+/** A weapon's bars without the overdrive bar; the overdrive bar can be one weapon's 4th (spec §10.3). */
+export const WEAPON_BAR_MAX = 3;
+/** Spec §10.3: the round starts pew pew 1, beam 0, torpedo 1 (2 Weapons bars). */
+export const START_WEAPON_POWER: readonly number[] = [1, 0, 1];
+type WeaponSys = Pick<ShipSystems, 'rooms' | 'bars' | 'weaponPower'>;
+/** The Weapons bars the officer can spend now (the effective Weapons bars). */
+export function weaponBarsUsable(sys: Pick<ShipSystems, 'rooms' | 'bars'>): number { return effectiveBars(sys, DuelSystem.Weapons); }
+/** Spec §10.3 (Decision 17): the bars each weapon stands on now. Without the overdrive bar (usable ≤ 9) no weapon keeps a
+ *  4th; then while more are spent than usable, one bar comes off the highest slot that has one (torpedo, beam, pew pew). */
+export function trimmedWeaponPower(sys: WeaponSys): number[] {
+  const usable = weaponBarsUsable(sys), t = sys.weaponPower.slice();
+  if (usable <= SYSTEM_MAX[DuelSystem.Weapons]!) for (let k = 0; k < WEAPON_SLOTS; k++) if (t[k]! > WEAPON_BAR_MAX) t[k] = WEAPON_BAR_MAX;
+  let spent = t[0]! + t[1]! + t[2]!;
+  for (let k = WEAPON_SLOTS - 1; k >= 0 && spent > usable;) { if (t[k]! > 0) { t[k] = t[k]! - 1; spent--; } else k--; }
+  return t;
+}
+/** The bars weapon `slot` stands on now (trimmed). */
+export function weaponBars(sys: WeaponSys, slot: number): number { return trimmedWeaponPower(sys)[slot]!; }

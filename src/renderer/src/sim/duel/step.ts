@@ -11,7 +11,8 @@ import { roomAt } from '../grid';
 import { fireStep } from '../hazards/fire';
 import { oxygenStep } from '../hazards/oxygen';
 import { movementSystem } from '../movement';
-import { throttleAllowed } from '../tactical/bars';
+import { throttleAllowed, WEAPON_SLOTS } from '../tactical/bars';
+import { applyWeaponPower } from './weaponSlots';
 import { stepDuel } from '../tactical/duel';
 import { autoFaceTurn, headingTurn } from '../tactical/hunter';
 import { scanCommand } from '../tactical/science';
@@ -38,7 +39,7 @@ const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 const WEAPON_ORDER = ['laserLock', 'torpLock', 'rockLock', 'laserCharge', 'missileLaunch'] as const;
 /** Every duel command kind the step handles; any other kind is rejected not-in-duel. */
 const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency',
-  'shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock'];   // Engineering spike spec §7
+  'shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock', 'weaponPower'];   // Engineering spike spec §7, §10.3
 /** Engineering spike spec §7: the ship-view commands. */
 const SHIP_KINDS = new Set(['shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock']);
 
@@ -316,6 +317,16 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     else if (c.kind === 'shipCoolant') result(e, undefined, cycleDuelCoolant(d, c.system));
     else if (c.kind === 'shipDoor') { toggleDoor(d, c.edge); result(e); }
     else if (c.kind === 'shipAirlock') { toggleAirlock(d, c.index); result(e); }
+  }
+  // Task 9a, spec §10.3: weaponPower from the Weapons seat's attendant, in (player, sequence) order: stale, the seat,
+  // the slot and delta, then the allocation rules.
+  for (const e of input.commands.filter((x) => x.command.kind === 'weaponPower').sort((a, b) => a.id.player - b.id.player || a.id.sequence - b.id.sequence)) {
+    const c = e.command;
+    if (c.kind !== 'weaponPower') continue;
+    if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
+    if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }
+    if (!Number.isInteger(c.slot) || c.slot < 0 || c.slot >= WEAPON_SLOTS || (c.delta !== 1 && c.delta !== -1)) { result(e, 'malformed'); continue; }
+    if (applyWeaponPower(d, c.slot, c.delta) === 'applied') result(e); else result(e, 'unavailable');
   }
   clampThrottle(d);   // Task 8, spec §10.2: an Engines bar removed this tick lowers the throttle before the axes read it
   for (const e of input.commands) if (e.command.kind === 'rematch') result(e, 'duel-running');

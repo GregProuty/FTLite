@@ -104,6 +104,9 @@ export type DuelCommand =
   | { kind: 'shipCoolant'; system: number }
   | { kind: 'shipDoor'; edge: number }
   | { kind: 'shipAirlock'; index: number }
+  /** Engineering spike spec §10.3: the Weapons seat moves one bar onto (+1) or off (−1) weapon slot 0..2 (pew pew, beam,
+   *  torpedo). The sim checks the ranges. */
+  | { kind: 'weaponPower'; slot: number; delta: number }
   | { kind: 'setPaused'; paused: boolean };
 /** The one command union (engine refactor spec §6): every mode's kinds; `setPaused` is the core's control. */
 export type Command = SectorCommand | DuelCommand;

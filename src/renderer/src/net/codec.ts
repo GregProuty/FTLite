@@ -130,6 +130,7 @@ export const duelWire: ModeWire<DuelSnapshot> = {
       z.object({ kind: z.literal('shipCoolant'), system: z.number().int() }).strict(),
       z.object({ kind: z.literal('shipDoor'), edge: z.number().int() }).strict(),
       z.object({ kind: z.literal('shipAirlock'), index: z.number().int() }).strict(),
+      z.object({ kind: z.literal('weaponPower'), slot: z.number().int(), delta: z.number().int() }).strict(),   // spec §10.3
       z.object({ kind: z.literal('setPaused'), paused: z.boolean() }).strict()
     ];
   },

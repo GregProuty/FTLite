@@ -145,7 +145,7 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
     const codec = duelCodec(2), envelope = (command: unknown) => ({ kind: 'command' as const, envelope: { runId: 'r', id: { player: 0, sequence: 1 }, requestedTick: 0, command } as CommandEnvelope });
     const examples: Record<string, unknown> = { sit: { kind: 'sit', station: 0 }, stand: { kind: 'stand' }, presence: { kind: 'presence', present: true },
       laserLock: { kind: 'laserLock', room: 1 }, torpLock: { kind: 'torpLock', room: -1 }, rockLock: { kind: 'rockLock', weapon: 'laser', rock: 0 }, laserCharge: { kind: 'laserCharge', held: true }, missileLaunch: { kind: 'missileLaunch' }, rematch: { kind: 'rematch' }, throttle: { kind: 'throttle', level: 2 }, heading: { kind: 'heading', heading: 64 }, contactScan: { kind: 'contactScan', contact: 0 }, designate: { kind: 'designate', contact: 1 }, laserFrequency: { kind: 'laserFrequency', freq: 2 },
-      shipPower: { kind: 'shipPower', system: 1, delta: -1 }, shipCoolant: { kind: 'shipCoolant', system: 0 }, shipDoor: { kind: 'shipDoor', edge: 2 }, shipAirlock: { kind: 'shipAirlock', index: 1 } };
+      shipPower: { kind: 'shipPower', system: 1, delta: -1 }, shipCoolant: { kind: 'shipCoolant', system: 0 }, shipDoor: { kind: 'shipDoor', edge: 2 }, shipAirlock: { kind: 'shipAirlock', index: 1 }, weaponPower: { kind: 'weaponPower', slot: 1, delta: 1 } };
     const kinds = DUEL_MODULES.flatMap(({ module }) => [...module.commands]);
     expect(kinds.sort()).toEqual(Object.keys(examples).sort());
     for (const command of [...kinds.map((k) => examples[k]), { kind: 'setPaused', paused: true }]) expect(codec.decodeMessage(codec.encodeMessage(envelope(command)))).toEqual(envelope(command));
