@@ -540,9 +540,13 @@ rejoined rails at nearby ρ could pass through each other (G2).
 **Lane zones.** Lane bands are replaced by **lane zones**, one per lane: the part of [1092, 1308] nearest that lane. The
 boundaries are 1161 and 1239.
 
-**The target velocity V\*.** A free rock's drag target (§13.3) and rejoin target depend on where it is:
-- In a lane zone, the lane's rigid rotation: `V* = ω(ρ_lane) · perp(p)`.
-- Elsewhere, V_c(p).
+**The target velocity V\*** (revised 2026-11-19 after planning; plan deviation 20). V\* = V_c(p) everywhere: drag and rejoin always aim at the true circular velocity. Plan simulations showed that a lane's rigid rotation is not an orbit. Used as a drag target, it pushed rocks away from the lane, about 55 u in 10 minutes.
+
+**Lane pull.** Inside a lane zone a radial pull draws debris toward the lane:
+- `a = −LANE_PULL · (ρ − ρ_lane) · p/ρ · (k / SETTLE_K_MAX)`, with `LANE_PULL` 0.004/s².
+- It ramps in with the drag.
+- The radial period is about 100 s and the damping ratio about 0.5 at full drag, so debris settles onto the lane without oscillating.
+- It is added in the kick step.
 
 **Rejoining.** The §3.4 rule becomes these checks, applied with V\*:
 - (T + 1) − t ≥ 120;
@@ -552,7 +556,7 @@ boundaries are 1161 and 1239.
 - it overlaps no live rock.
 
 Its ρ_ω is then chosen in this order:
-1. **Lane zone:** ρ_ω = ρ_lane.
+1. **Lane zone:** if the rock is in a lane zone and |ρ − ρ_lane| ≤ `LANE_CAPTURE_DR` (5 u), ρ_ω = ρ_lane, a snap of about 0.3 u/s. If it is in a lane zone but further off, it stays Free and the lane pull keeps working on it.
 2. **Rigid group:** otherwise, scan rails that are neither lane rocks nor cluster rocks, in slot order. If the rock's padded
    annulus overlaps that rail's, and the snap `1.5 · ω · |ρ − ρ_ω(other)| < 2 u/s`, it takes that rail's ρ_ω. The lowest slot
    wins.
@@ -575,7 +579,7 @@ the free flight.
 **One tick, split symmetrically:**
 1. Drift: `p += v · DT/2`.
 2. Half drag: `v += (V* − v) · k · DT/2`.
-3. Kick: `v += (g(p) + e_rock(p)) · DT`.
+3. Kick: `v += (g(p) + e_rock(p) + lanePull(p)) · DT`.
 4. Half drag: `v += (V* − v) · k · DT/2`.
 5. Speed cap at 300.
 6. Drift: `p += v · DT/2`.
