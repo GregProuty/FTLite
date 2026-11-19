@@ -16,7 +16,7 @@ import { BUTTON, MENU_CLASS, menuCss, PANEL_OVERLAY, PANEL_STRIP, ROOT_OVERLAY, 
 import { versionText } from '../version';
 
 export function Menu() {
-  const menu = useUi((s) => s.menu), online = useUi((s) => s.online), actions = useActions();
+  const menu = useUi((s) => s.menu), online = useUi((s) => s.online), update = useUi((s) => s.browser.update), actions = useActions();
   const ref = useRef<HTMLDivElement>(null), playing = isPlaying(menu);
   useLayoutEffect(() => {
     const el = ref.current; if (!playing || !el) return;
@@ -33,6 +33,7 @@ export function Menu() {
     <div ref={ref} data-testid="session-menu" aria-label="FTLite session menu" data-layout={playing ? 'strip' : 'overlay'} className={MENU_CLASS} style={playing ? ROOT_STRIP : ROOT_OVERLAY}>
       <MenuStyle />
       <section className={playing ? undefined : SCREEN_CLASS} style={playing ? PANEL_STRIP : PANEL_OVERLAY}>
+        {update && !playing && <p data-testid="update-banner" role="status">New version: <button type="button" data-testid="reload" style={BUTTON} onClick={actions.reload}>reload</button></p>}
         {!playing && <><h1>FTLite</h1><p>Crew together. Keep the ship flying.</p></>}
         {(page === 'multiplayer' || page === 'settings' || page === 'ship') && <h2 data-testid="page-title">{page === 'multiplayer' ? 'Multiplayer' : page === 'ship' ? 'Single player' : 'Settings'}</h2>}
         <p data-testid="status" role="status" aria-live="polite">{menuMessage({ menu, online })}</p>

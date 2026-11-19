@@ -17,6 +17,8 @@ export interface UiActionDeps {
   setLaserFit?(on: boolean): void;
   /** Quit the app (owner 2026-11-17: Quit on the main menu): closes the window, as its close button does. */
   quit?(): void;
+  /** Web build spec §5.4: the update banner's reload (location.reload in the page). */
+  reload?(): void;
   setVolume?(channel: VolumeChannel, volume: number): void;
   /** Feel-i: the screen shake setting changed (main saves it and hands it to the renderer). */
   setShake?(shake: import('../render/shake').ShakeSetting): void;
@@ -89,6 +91,9 @@ export function createUiActions(deps: UiActionDeps) {
     setLaserFit(on: boolean): void { store.setState((s) => ({ settings: { ...s.settings, valkyrnLaserFit: on } })); deps.setLaserFit?.(on); },
     openMultiplayer(): void { setMenu({ localError: '', page: 'multiplayer' }); },
     quit(): void { deps.quit?.(); },
+    /** Web build spec §5.4: version.json names another build (the version watch); shown by the menu outside a match. */
+    updateAvailable(): void { if (!store.getState().browser.update) store.setState((s) => ({ browser: { ...s.browser, update: true } })); },
+    reload(): void { deps.reload?.(); },
     openSettings(): void { setMenu({ localError: '', page: 'settings' }); readFullscreen(); },
     openHost(): void { setMenu({ hadView: false, page: 'host' }); },
     openJoin(): void { setMenu({ hadView: false, page: 'join' }); },

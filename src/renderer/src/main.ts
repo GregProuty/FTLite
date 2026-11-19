@@ -17,6 +17,7 @@ import { startDuelMode } from './app/duel/duelMode';
 import { createOnlineBridge } from './app/onlineBridge';
 import { createPageOnline } from './app/online/pageSession';
 import { watchHostVisibility } from './app/online/hostVisibility';
+import { versionPollActive, watchVersion } from './app/web/versionWatch';
 import { validatePageOnlineConfig } from '../../shared/onlineConfig';
 import { createOnlineRendererSession } from './app/onlineSession';
 import { createOnlineModeSession } from './app/onlineModeSession';
@@ -133,6 +134,7 @@ async function startApp(): Promise<void> {
     setVolume(channel, volume) { settings = { ...settings, [channel]: volume }; audio.setVolumes(settings); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     setShake(shake) { settings = { ...settings, shake }; renderer.setShake?.(shake); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) } : undefined,
+    reload() { location.reload(); },   // web build spec §5.4: the update banner
     quit() { window.close(); }   // the main window's close: main quits the app on window-all-closed, as the close button does
   });
   // Online input is blocked everywhere but a viewed session (React UI spec §2), applied when the derived value changes.
@@ -140,6 +142,11 @@ async function startApp(): Promise<void> {
   setBlocked(inputBlockedOf(store.getState()));
   const offBlocked = store.subscribe((s) => { const value = inputBlockedOf(s); if (value !== blocked) setBlocked(value); });
   const offStatus = bridge?.onStatus(next => { status = next; online?.setStatus(next); actions.setStatus(next); });
+  // Web build spec §5.4: version.json at start and every 5 minutes on the menu or in a lobby (the browser only).
+  const offVersion = window.ftlite ? undefined : watchVersion({ fetch: (url, init) => fetch(url, init),
+    local: { build: __FTLITE_BUILD__, sim: __FTLITE_BUILD__.sim, digest: __GAMEPLAY_CONTENT_DIGEST__ },
+    active: () => versionPollActive(store.getState()), onUpdate: () => actions.updateAvailable(),
+    setInterval: (cb, ms) => window.setInterval(cb, ms), clearInterval: handle => window.clearInterval(handle as number) });
   if (document.hidden || !document.hasFocus()) session.pause();
   // The session strip's height (written by the menu while it is the strip, 0 otherwise) moves the canvas down.
   const resize = (): void => {
