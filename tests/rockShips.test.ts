@@ -6,7 +6,7 @@ import { ramHull, resolveContacts } from '../src/renderer/src/sim/tactical/conta
 import { stepSoloFlight } from '../src/renderer/src/sim/tactical/physics';
 import { rockAlive, rockAt, RockKind, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { SHIP_MASS } from '../src/renderer/src/sim/tactical/rockTuning';
-import { arena, mover, rail, rockEvents, seeded } from './helpers/rockArena';
+import { arena, mover, rail, rockEvents, seeded, withSwitches } from './helpers/rockArena';
 
 /** A moving rock of radius r touching the crew ship (at rest at (0, −2500), radius 20) from the east, closing at `speed`. */
 function incoming(r: number, speed: number, hp = 99) { const st = arena(); mover(st, 100, 20 + r - 1, -2500, -speed, 0, r, hp); return st; }
@@ -28,15 +28,15 @@ describe('a moving rock is a second body (spec §5.1 case 3)', () => {
     expect(Math.abs(after - before)).toBeLessThanOrEqual(1e-9 * Math.abs(before));
     expect(st.ships[0].vx).toBeLessThan(0);   // thrown west, away from the rock
   });
-  it('shares the impulse by inverse mass: r 15 (m 225) against the ship (m 900) at 200 u/s', () => {
+  it('shares the impulse by inverse mass: r 15 (m 225) against the ship (m 900) at 200 u/s', () => withSwitches({ massCube: false }, () => {
     // n from the rock to the ship is west (−x), vc 200; each body's change is (1 + 0.5)·vc·(1/m) / (1/ms + 1/mk).
     const st = incoming(15, 200), ms = SHIP_MASS, mk = 225, vc = 200, share = (m: number): number => (1.5 * vc * (1 / m)) / (1 / ms + 1 / mk);
     resolveContacts(st, true);
     expect(st.ships[0].vx).toBeCloseTo(0 - share(ms), 9);          // −60: thrown west
     expect(rockAt(st, 100).vx).toBeCloseTo(-200 + share(mk), 9);   // +40: the light rock rebounds east
     expect([share(ms), share(mk)]).toEqual([60, 240].map((x) => expect.closeTo(x, 9)));
-  });
-  it('ram damage (vc − 30) / 40 · 2·900 / (900 + m) can break a rock: a bump then the break, both named for the ship', () => {
+  }));
+  it('ram damage (vc − 30) / 40 · 2·900 / (900 + m) can break a rock: a bump then the break, both named for the ship', () => withSwitches({ massCube: false }, () => {
     const st = incoming(15, 200, 99);
     resolveContacts(st, true);
     expect(rockAt(st, 100).hp).toBeCloseTo(99 - (170 / 40) * 1800 / 1125, 12);
@@ -49,7 +49,7 @@ describe('a moving rock is a second body (spec §5.1 case 3)', () => {
     resolveContacts(tiny, true);
     expect(rockEvents(tiny).map((e) => [e.what, e.by, e.ship])).toEqual([['bump', 'ram', 0], ['dust', 'ram', 0]]);
     expect([rockAlive(tiny, 100), tiny.systems[0].rocksBroken]).toEqual([false, 1]);
-  });
+  }));
   it('inside the pair\'s grace there is no hull cost and no ram damage', () => {
     const st = incoming(30, 200);
     resolveContacts(st, true);

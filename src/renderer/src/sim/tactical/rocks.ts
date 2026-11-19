@@ -19,7 +19,7 @@
 import { clusterOf, type MapDef } from './map';
 import { railPos, type RailOut } from './rails';
 import { emptyRockGrid, linkRock, peekRockGrid, queryRockGrid } from './grid';
-import { ROCK_GRID_PAD, ROCK_HP_PER, ROCK_R_MAX, ROCK_SWITCHES } from './rockTuning';
+import { ROCK_GRID_PAD, ROCK_HP_PER, ROCK_MASS_DIVISOR, ROCK_R_MAX, ROCK_SWITCHES } from './rockTuning';
 import type { TacticalState } from './state';
 export type { RockCause } from './state';
 
@@ -36,8 +36,9 @@ export function rockCapacity(map: MapDef): number { return map.asteroids.length 
 export function rockHp(r: number): number { return Math.ceil(r / ROCK_HP_PER); }
 /** Spike ii §3.1: the cracks read hp / hpMax, with hpMax recomputed from r. */
 export const rockHpMax = rockHp;
-/** Spike ii §3.1: a rock's mass, r² (no unit). */
-export function rockMass(r: number): number { return r * r; }
+/** Spike ii §3.1, asteroids-iii §13.4: a rock's mass (no unit): r³ / ROCK_MASS_DIVISOR with the massCube switch (r 30
+ *  weighs 900, the ship's mass), r² without. */
+export function rockMass(r: number, cube = ROCK_SWITCHES.massCube): number { return cube ? (r * r * r) / ROCK_MASS_DIVISOR : r * r; }
 
 /** §13.1: seeded asteroid k's rail: a belt rock a Rail centred on itself (offset 0); a cluster rock on its cluster's centre
  *  with its offset, a Tumble when the clusterTumble switch is on (else a Rail: the cluster turns rigidly). */

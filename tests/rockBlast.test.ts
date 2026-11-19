@@ -9,7 +9,7 @@ import { placeMissile } from '../src/renderer/src/sim/tactical/state';
 import { applyWeaponsInput, canLaunch, IDLE_INPUT, torpedoInRange } from '../src/renderer/src/sim/tactical/weapons';
 import { rockAlive, rockAt } from '../src/renderer/src/sim/tactical/rocks';
 import { blastFall, detonateTorpedo } from '../src/renderer/src/sim/tactical/rockBlast';
-import { arena, fillPool, mover, rockEvents } from './helpers/rockArena';
+import { arena, fillPool, mover, rockEvents, withSwitches } from './helpers/rockArena';
 
 describe('the direct hit (spec §4.2 item 1)', () => {
   it('bursts the touched rock whatever its hp: r 50 and r 35 give 6, r 30 gives 4, r 20 dust; piece 0 straight on at 200 plus the rock', () => {
@@ -29,7 +29,7 @@ describe('the direct hit (spec §4.2 item 1)', () => {
 });
 
 describe('the blast (spec §4.2 items 2 and 3)', () => {
-  it('falls off linearly: damage 2 + 4·fall and push 60000·fall / m along the blast-to-rock line; nothing at or beyond the radius', () => {
+  it('falls off linearly: damage 2 + 4·fall and push 60000·fall / m along the blast-to-rock line; nothing at or beyond the radius', () => withSwitches({ massCube: false }, () => {
     const st = arena();
     mover(st, 100, -60, 2000, 0, 0, 25, 99);   // the touched rock
     mover(st, 101, 0, 2005, 0, 0, 10, 20);     // surface 0: fall 1
@@ -46,7 +46,7 @@ describe('the blast (spec §4.2 items 2 and 3)', () => {
     expect(rockAt(st, 104)).toMatchObject({ hp: 20, vx: 0, vy: 0 });
     expect(rockAt(st, 105)).toMatchObject({ hp: 20, vx: 0, vy: 0 });
     expect(rockEvents(st, 'hit').map((e) => e.rock)).toEqual([101, 102, 103]);
-  });
+  }));
   it('pushes ships in its radius 120·fall away from the blast and costs them no hull', () => {
     const st = arena();
     mover(st, 100, -60, 2000, 0, 0, 25, 99);

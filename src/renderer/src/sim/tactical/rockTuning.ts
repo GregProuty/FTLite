@@ -20,8 +20,7 @@ export const ROCK_BLAST_FLING = 200;
 /** Spike ii §3.2, asteroids-iii §13.3: rock gravity as a share of the ships', and the speed cap (u/s), a safety net counted in rockCapHits. */
 export const ROCK_GRAVITY = 1.0;
 export const ROCK_MAX_SPEED = 300;
-/** §3.3: rock-rock restitution, and the crush rule: damage only above ROCK_CRUSH_SPEED, (vc − 30) / ROCK_CRUSH_STEP. */
-export const ROCK_RESTITUTION = 0.8;
+/** §3.3: the crush rule: damage only above ROCK_CRUSH_SPEED, (vc − 30) / ROCK_CRUSH_STEP. (The restitution is §13.4: rockContacts.ts.) */
 export const ROCK_CRUSH_SPEED = 30;
 export const ROCK_CRUSH_STEP = 40;
 
