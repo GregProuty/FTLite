@@ -2734,7 +2734,24 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 | Gate | Command | Result |
 |---|---|---|
-| (to be filled by Task 12) | | |
+| Typecheck | `npm run typecheck` | exit 0 |
+| Unit | `npm test` | exit 1 on 3 known load flakes (director soak, run captain-bot evasive, snapshot mid Build Up); 400/403 files, 5200/5203 tests passed; 2 vitest onTaskUpdate timeouts (load noise). Each file rerun alone: director 35/35, run 52/52, snapshot 49/49 pass |
+| Web output | `npm run test:web-output` | exit 0, WEB OUTPUT PASS: 96 static paths need the cookie |
+| Production refusals | `FTLITE_WEB_SERVICE_ORIGIN=https://example.workers.dev npm run build:web`; `npm run build:web` | both refuse: `public/assets/paid is missing or empty`; `must be exactly one https origin` |
+| Signalling | `npm run test:signalling`; `npm run typecheck:signalling` | 15 files / 224 tests pass; exit 0 |
+| Determinism | `npm run test:determinism` (logs restored with git checkout) | exit 0; Node v24.18.0, Electron 37.10.3 (Chromium 138), Firefox 160 UA: 1800 samples PASS each; SIM_VERSION 53, no diff vs merge-base |
+| Electron | `test:worker-boot` | exit 0, WORKER BOOT PASS |
+|  | `test:host-runtime` | exit 0, 15 checks PASS |
+|  | `test:rtc-runtime` | first run exit 1 (renderer call timeout, load); rerun alone exit 0, 17 required checks PASS |
+|  | `test:room-service-runtime` | exit 0, PASS |
+|  | `test:online-app-runtime` | exit 0, PASS |
+|  | `test:online-recovery-runtime` | exit 0, PASS hound-2 |
+|  | `test:duel-app-runtime` | exit 0, PASS (175 s) |
+| Vitest | `onlineRecoveryInstrumentation` + `build-output` | 2 files / 6 tests pass |
+| Browser | `npm run test:web-net` | exit 0, ACTUAL BROWSER NETWORK GATE PASS (90.8 s): chromium-firefox, firefox-chromium, chromium-electron |
+| Injection | `web-net-smoke.ts --inject=origin-refused --pairing=chromium-firefox` | exit 1, WEB NET INJECTED FAIL (origin-refused): ... online error unavailable (403 seen) |
+
+Head b532961f; Node v24.18.0, Electron 37.10.3.
 
 ---
 
