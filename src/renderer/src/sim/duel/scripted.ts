@@ -14,7 +14,7 @@ import { autoFaceTurn } from '../tactical/hunter';
 import { rockAt, rocksNear } from '../tactical/rocks';
 import { circularSpeed } from '../tactical/map';
 import { predictPath } from '../tactical/predict';
-import { missileOf, Room, targetOf, type Axes } from '../tactical/state';
+import { classOf, missileOf, Room, targetOf, type Axes } from '../tactical/state';
 import { BELT_OUTER, LASER_ARC_COS, LASER_RANGE, R_MAP, SHIP_RADIUS } from '../tactical/tuning';
 import { canLaunch, laserEligible, laserFull } from '../tactical/weapons';
 import { CREW_SPEED, DT, HEALTH_MAX, REACH } from '../tuning';
@@ -23,6 +23,7 @@ import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope } from './commands'
 import type { DuelState } from './state';
 import type { DuelInput } from './step';
 import { THROTTLE_MAX, THROTTLE_MIN, throttleThrust } from './throttle';
+import { crewThrust } from './helmFlight';
 
 // The pair's own numbers (spec §3 "Tunable"), separate from the game tuning.
 /** Ticks of predicted path the Helm checks for hazards, and the clearance it keeps from them (u). */
@@ -102,7 +103,7 @@ export function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } |
  *  at this tick before any new command: the throttle's (Artemis spec §5.5). */
 function helmAxes(pair: ScriptedPair, d: DuelState): Axes & { face?: boolean } {
   const t = d.tactical, s = t.ships[0], e = t.ships[targetOf(t, 0)]!;
-  const away = hazardAway(d, { turn: pair.axes.turn, thrust: throttleThrust(d.throttle) });
+  const away = hazardAway(d, { turn: pair.axes.turn, thrust: classOf(t, 0).newtonianHelm ? crewThrust(d.thrMille) : throttleThrust(d.throttle) });   // playtest2feedback §7: the thrust it flies now
   if (away) return { turn: turnToward(s.heading, away.x, away.y), thrust: 1 };
   // Dodge (homing torpedo spec): the enemy's torpedo within EVADE_RANGE, turn the nose square across its line of approach,
   // on the side the ship already moves to, at full thrust.
@@ -316,9 +317,14 @@ export function scriptedInput(pair: ScriptedPair, d: DuelState): DuelInput {
       const axes = helmAxes(pair, d);
       pair.axes = axes;
       // Artemis spec §5.5: the throttle stands for the wanted thrust (1 → 4, 0 → 0, −1 → −1), sent only when it changes.
-      const level = axes.thrust > 0 ? THROTTLE_MAX : axes.thrust < 0 ? THROTTLE_MIN : 0;
-      if (level !== d.throttle) cmds[pid]!.push({ kind: 'throttle', level });
-      held[pid] = axes.face ? { moveX: 0, moveY: 0, interactHeld: false, face: true } : { moveX: axes.turn, moveY: 0, interactHeld: false };
+      // Playtest2feedback §7 (Decision 8): on a newtonianHelm class it holds W for thrust, S for reverse, neither for 0.
+      const crewHelm = classOf(d.tactical, 0).newtonianHelm, thr = Math.sign(axes.thrust) || 0;
+      if (!crewHelm) {
+        const level = axes.thrust > 0 ? THROTTLE_MAX : axes.thrust < 0 ? THROTTLE_MIN : 0;
+        if (level !== d.throttle) cmds[pid]!.push({ kind: 'throttle', level });
+      }
+      const lever = crewHelm && thr !== 0 ? { throttleHeld: thr } : {};
+      held[pid] = axes.face ? { moveX: 0, moveY: 0, interactHeld: false, face: true, ...lever } : { moveX: axes.turn, moveY: 0, interactHeld: false, ...lever };
     } else if (seat === d.weapons) {
       gunner(pair, d, cmds[pid]!);
     }

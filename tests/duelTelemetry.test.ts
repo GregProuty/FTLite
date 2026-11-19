@@ -13,6 +13,7 @@ import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import { missileOf, Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
 import { inTorpedoRange } from './helpers/torpedoRange';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const layout = parseShip(cutter);
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -158,7 +159,7 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
 describe('a set throttle is a manoeuvre (Artemis spec §5.3)', () => {
   it('an enemy planet contact while the throttle is set counts as a bait; with the throttle back at STOP for the window it does not', () => {
     const bait = (levels: number[], wait: number): number => {
-      const d = createSeatedDuel(layout, 5), t = createTelemetry(d), [s, e] = d.tactical.ships, p = d.tactical.map.planet;
+      const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn), t = createTelemetry(d), [s, e] = d.tactical.ships, p = d.tactical.map.planet;
       e.x = s.x + 500; e.y = s.y; e.vx = s.vx; e.vy = s.vy;                  // within 900 of the crew, far from the planet
       for (const level of levels) step(d, t, [cmd(d, 0, { kind: 'throttle', level })]);
       for (let k = 0; k < wait; k++) step(d, t);

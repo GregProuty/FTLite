@@ -22,7 +22,7 @@ import { applyHitDamage, healthPhase } from './health';
 import { followingSeed } from './seeds';
 import { throttleThrust, validHoldHeading, validThrottle } from './throttle';
 import { createDuel, disposeDuel, type DuelState } from './state';
-import { noVent } from './helmFlight';
+import { compressorMax, crewThrust, engineBars, heldAxis, noVent, rampThrottle, throttleCap, throttleFloor } from './helmFlight';
 import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
 
 export interface DuelInput { held: readonly HeldInput[]; commands: readonly DuelEnvelope[] }
@@ -31,7 +31,7 @@ const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 /** The fixed order weapon commands take effect in within one tick. */
 const WEAPON_ORDER = ['laserLock', 'torpLock', 'rockLock', 'laserCharge', 'missileLaunch'] as const;
 /** Every duel command kind the step handles; any other kind is rejected not-in-duel. */
-const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency'];
+const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency', 'helmPower'];
 
 function resetScratch(d: DuelState): void {
   const sc = d.interior.scratch;
@@ -115,6 +115,23 @@ export function helmTurn(d: DuelState, h: HeldInput): number {
   const aim = heldAim(h);
   if (aim >= 0) return aimTurn(d.tactical.ships[0].heading, aim);
   return d.holdHeading >= 0 ? headingTurn(d.tactical, 0, d.holdHeading) : 0;
+}
+
+/** Playtest2feedback (spec §3, §5, §7's step order 2, 3 and 7): the crew Helm's tick on a newtonianHelm class, attended
+ *  (`h` is the attendant's held input) or not (null). The turn comes from the state before the step. Then the throttle
+ *  ramp runs on the attendant's throttleHeld (0 with no attendant), with its clamp to the ENGINE share's floor and cap.
+ *  Then the crew's axes: the ship flies attended or not, coasting once the throttle is back at 0, and a held heading still
+ *  turns it. Runs only while the round runs (stepDuelTick). */
+function crewHelm(d: DuelState, h: HeldInput | null, crew: ShipInput): void {
+  const held = h ?? NO_HELD, turn = helmTurn(d, held);
+  if (h) {
+    if ((Math.sign(h.moveX) || 0) !== 0 || h.face === true) d.holdHeading = -1;
+    else if (heldAim(h) >= 0) d.holdHeading = heldAim(h);
+  }
+  const engine = engineBars(d);
+  d.thrMille = rampThrottle(d.thrMille, h ? heldAxis(h.throttleHeld) : 0, throttleFloor(engine), throttleCap(engine));
+  crew.helm = true;
+  crew.axes = { turn, thrust: crewThrust(d.thrMille) };
 }
 
 /**
@@ -239,6 +256,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     const level = e.command.level;
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (helm < 0 || e.id.player !== helm) { result(e, 'invalid-seat'); continue; }
+    if (classOf(d.tactical, 0).newtonianHelm) { result(e, 'unavailable'); continue; }   // playtest2feedback §3: the crew Helm holds its throttle (Decision 6)
     if (!validThrottle(level)) { result(e, 'malformed'); continue; }
     if (level === d.throttle) { result(e, undefined, 'noop'); continue; }
     d.throttle = level; result(e);
@@ -252,6 +270,19 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (!validHoldHeading(h)) { result(e, 'malformed'); continue; }
     if (h === d.holdHeading) { result(e, undefined, 'noop'); continue; }
     d.holdHeading = h; result(e);
+  }
+  // Playtest2feedback §5: the Helm's power split, checked like the heading: stale, the Helm attendant, the class (only a
+  // newtonianHelm class splits its bars), the delta (±1; Decision 7), then the range 0..min(3, helmBars) for the
+  // COMPRESSOR share. +1 moves a bar to ENGINE. Envelope order holds within a tick.
+  for (const e of input.commands) if (e.command.kind === 'helmPower') {
+    const delta: number = e.command.delta;
+    if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
+    if (helm < 0 || e.id.player !== helm) { result(e, 'invalid-seat'); continue; }
+    if (!classOf(d.tactical, 0).newtonianHelm) { result(e, 'unavailable'); continue; }
+    if (delta !== 1 && delta !== -1) { result(e, 'malformed'); continue; }
+    const next = d.compressor - delta;
+    if (next < 0 || next > compressorMax(d.helmBars)) { result(e, 'unavailable'); continue; }
+    d.compressor = next; result(e);
   }
   // Sci-1 (spec §5), against the seats as they now stand: every laserFrequency in envelope order, then every designate,
   // then every contactScan; each is checked for stale-tick first, and within a kind the last applied wins.
@@ -290,7 +321,9 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   // Valkyrn spec §6.2: a held aim turns before the held heading, and when neither A/D nor auto-face is held a valid aim
   // becomes the held heading. Valkyrn spec §4.4: with the Helm empty, a layout whose Helm holds unattended flies its
   // throttle and held heading; any other (the Hound's) flies zero axes as before.
-  if (helm >= 0) {
+  // Playtest2feedback §3: a newtonianHelm class runs crewHelm instead, attended or not.
+  if (classOf(t, 0).newtonianHelm) crewHelm(d, helm >= 0 ? input.held[helm] ?? NO_HELD : null, crew);   // playtest2feedback §3, §7: attended or not
+  else if (helm >= 0) {
     const h = input.held[helm] ?? NO_HELD;
     crew.axes = { turn: helmTurn(d, h), thrust: throttleThrust(d.throttle) };
     if ((Math.sign(h.moveX) || 0) !== 0 || h.face === true) d.holdHeading = -1;

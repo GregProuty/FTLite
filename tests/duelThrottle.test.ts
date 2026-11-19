@@ -17,7 +17,7 @@ import { createTacticalState, Outcome, type Axes, type Ship } from '../src/rende
 import { predictPath } from '../src/renderer/src/sim/tactical/predict';
 import { edgeAccel, engineFactor, flyShip, gravityAccel } from '../src/renderer/src/sim/tactical/physics';
 import { hx, hy, wrapHeading } from '../src/renderer/src/sim/tactical/direction';
-import { CUTTER_CLASS, HUNTER_CLASS, type ShipClassDef } from '../src/renderer/src/sim/tactical/defs';
+import { CUTTER_CLASS, HUNTER_CLASS, ShipClass, type ShipClassDef } from '../src/renderer/src/sim/tactical/defs';
 import { DEFAULT_FLIGHT, DT, THRUST, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
 import { aliasPlan, duelSchema, MIGRATIONS } from '../scripts/golden/duelOracle';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -29,6 +29,8 @@ const cmd = (d: DuelState, player: number, command: DuelCommand, requestedTick =
   ({ runId: 'duel', id: { player, sequence: ++seq }, requestedTick, command });
 const step = (d: DuelState, commands: DuelEnvelope[] = [], held: HeldInput[] = [NONE, NONE]) => stepDuelTick(d, { held, commands });
 const throttle = (level: number): DuelCommand => ({ kind: 'throttle', level });
+/** Playtest2feedback Decision 17: the throttle levels are the Valkyrn's; the Cutter holds its throttle. */
+const seatedValkyrn = (seed: number): DuelState => createSeatedDuel(CUTTER, seed, 0, 2, ShipClass.Valkyrn);
 /** The flattened offset of helm.throttle: after SIM_VERSION and every module before helm. */
 function helmOffset(d: DuelState): number {
   let at = 1;
@@ -51,8 +53,8 @@ describe('the throttle levels (Artemis spec §5.1, §5.3)', () => {
 describe('the helm module (Artemis spec §5.1)', () => {
   it('sits after round and before interior, owns throttle, and its field moves the duel hash', () => {
     expect(DUEL_MODULES.map(({ module }) => module.id)).toEqual(['space', 'ship', 'science', 'presence', 'repair', 'round', 'helm', 'interior']);
-    expect([helmModule.commands, helmModule.reasons]).toEqual([['throttle', 'heading'], ['invalid-seat', 'malformed', 'stale-tick']]);   // Feel-ii adds the held heading
-    const d = createSeatedDuel(CUTTER, 5);
+    expect([helmModule.commands, helmModule.reasons]).toEqual([['throttle', 'heading', 'helmPower'], ['invalid-seat', 'malformed', 'stale-tick', 'unavailable']]);   // Feel-ii adds the held heading; playtest2feedback the power split
+    const d = seatedValkyrn(5);
     try {
       expect(d.throttle).toBe(0);
       const base = hashDuel(d);
@@ -64,7 +66,7 @@ describe('the helm module (Artemis spec §5.1)', () => {
 
 describe('the throttle command (Artemis spec §5.2)', () => {
   it('admits in order: stale-tick, then invalid-seat, then malformed, then noop, else applied', () => {
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = seatedValkyrn(5);
     try {
       const r = step(d, [
         cmd(d, 1, throttle(9), d.interior.tick + 1),   // stale comes before the seat
@@ -80,14 +82,14 @@ describe('the throttle command (Artemis spec §5.2)', () => {
     } finally { disposeDuel(d); }
   });
   it('envelope order holds within a tick and the last applied level wins; a repeat of the new level is noop', () => {
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = seatedValkyrn(5);
     try {
       expect(step(d, [cmd(d, 0, throttle(2)), cmd(d, 0, throttle(4)), cmd(d, 0, throttle(4))]).map((x) => x.status)).toEqual(['applied', 'applied', 'noop']);
       expect(d.throttle).toBe(4);
     } finally { disposeDuel(d); }
   });
   it('only the present Helm attendant may set it: an away Helm player and an empty Helm are invalid-seat', () => {
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = seatedValkyrn(5);
     try {
       step(d, [cmd(d, 0, { kind: 'presence', present: false })]);
       expect(step(d, [cmd(d, 0, throttle(2))])[0]).toMatchObject({ status: 'rejected', reason: 'invalid-seat' });
@@ -98,7 +100,7 @@ describe('the throttle command (Artemis spec §5.2)', () => {
     } finally { disposeDuel(d); }
   });
   it('is kept across stand and sit, answered duel-decided on the end card, and reset to 0 by a new round', () => {
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = seatedValkyrn(5);
     try {
       step(d, [cmd(d, 0, throttle(3))]);
       expect(step(d, [cmd(d, 0, { kind: 'stand' })])[0]!.status).toBe('applied');
@@ -126,7 +128,7 @@ describe('the throttle on the wire (Artemis spec §5.2)', () => {
 
 describe('the throttle in the snapshot (Artemis spec §5.1)', () => {
   it('round-trips mid-throttle and refuses a level that is not an integer in −1..4, even rehashed', () => {
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = seatedValkyrn(5);
     try {
       step(d, [cmd(d, 0, throttle(-1))]);
       const snap = saveDuelSnapshot(d, DIGEST), at = helmOffset(d);
@@ -145,7 +147,7 @@ describe('the 42 → 43 alias table (Artemis spec §5.6)', () => {
   it('declares helm.throttle added, after the round module, and maps every other field to itself', () => {
     const m = MIGRATIONS[42]!;
     expect(m.change).toBe('Artemis-ii: helm throttle');
-    const d = createSeatedDuel(CUTTER, 1);
+    const d = seatedValkyrn(1);
     try {
       const now = duelSchema(d), k = now.names.indexOf('helm.throttle');
       expect(k).toBe(now.names.indexOf('round.decidedTick') + 1);
@@ -211,7 +213,7 @@ describe('quarter-thrust flight (Artemis spec §5.3)', () => {
 describe('the throttle flies the duel (Artemis spec §5.3)', () => {
   it('levels 4, 2 and −1 fly the held-thrust path 1, 0.5 and −1 tick for tick while the Helm is crewed', () => {
     for (const [level, thrust] of [[4, 1], [2, 0.5], [-1, -1]] as const) {
-      const d = createSeatedDuel(CUTTER, 5);
+      const d = seatedValkyrn(5);
       try {
         const path = predictPath(d.tactical, 0, { turn: 0, thrust }, 60, 1), s = d.tactical.ships[0];
         expect(path).toHaveLength(60);
@@ -225,7 +227,7 @@ describe('the throttle flies the duel (Artemis spec §5.3)', () => {
     }
   });
   it('held W no longer thrusts; an empty Helm coasts and keeps its level, and the next pilot flies at it', () => {
-    const d = createSeatedDuel(CUTTER, 5), coast = createSeatedDuel(CUTTER, 5);
+    const d = seatedValkyrn(5), coast = seatedValkyrn(5);
     try {
       step(d, [], [{ moveX: 0, moveY: -1, interactHeld: false }, NONE]); step(coast);
       expect([d.tactical.ships[0].vx, d.tactical.ships[0].vy]).toEqual([coast.tactical.ships[0].vx, coast.tactical.ships[0].vy]);

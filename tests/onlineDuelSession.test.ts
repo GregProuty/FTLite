@@ -9,6 +9,7 @@ import type { DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { createSeatedDuel } from './helpers/duelSeat';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import { sitDown, standUp } from '../src/renderer/src/sim/stations';
@@ -101,9 +102,9 @@ let win: ReturnType<typeof target>;
 beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; h.sceneOpts.length = 0; h.disposes.n = 0; });
 afterEach(() => { delete (globalThis as { window?: unknown }).window; });
 
-function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame() {}, clear() {} }, api: object = {}, extra: object = {}) {
+function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame() {}, clear() {} }, api: object = {}, extra: object = {}, cls?: number) {   // playtest2feedback Decision 17: cls picks the Valkyrn for the client's throttle prediction tests
   let now = 1000, pending: (() => void) | null = null;
-  const records: DuelPlaytestRecord[] = [], leave = vi.fn(), d = createSeatedDuel(CUTTER, 7);
+  const records: DuelPlaytestRecord[] = [], leave = vi.fn(), d = createSeatedDuel(CUTTER, 7, 0, 2, cls);
   // The F3 overlay's sink: the lines it was last given, or null once hidden.
   const latency = { frame: (lines: readonly string[]) => { h.overlay.push(lines); }, clear: () => { h.overlay.push(null); } };
   const session = createOnlineDuelSession({
@@ -370,7 +371,7 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
   const throttles = (c: Stub) => c.commands().filter((x) => x.kind === 'throttle');
   const lastThrottleId = (c: Stub) => c.ids[c.commands().map((x) => x.kind).lastIndexOf('throttle')]!;
   it('two W presses inside one round trip move two notches; S steps down from the level in flight', () => {
-    const r = rig(0), c = r.attach();   // seat 0 flies the Helm
+    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();   // seat 0 flies the Helm
     tap(r, 'KeyW'); tap(r, 'KeyW');
     expect(throttles(c)).toEqual([{ kind: 'throttle', level: 1 }, { kind: 'throttle', level: 2 }]);
     tap(r, 'KeyS');
@@ -378,7 +379,7 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
     r.dispose();
   });
   it('a rejected throttle drops back to the replica level', () => {
-    const r = rig(0), c = r.attach();
+    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();
     tap(r, 'KeyW'); tap(r, 'KeyW');   // 1, then 2 on top of it
     c.results.push({ id: lastThrottleId(c), tick: 3, status: 'rejected', reason: 'invalid-seat' }); r.pump();
     tap(r, 'KeyW');
@@ -387,7 +388,7 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
   });
   it('only the result for the level in flight hands the base back to the replica; a notch click asks for its level', () => {
     let input: ConsoleInput | null = null;
-    const r = rig(0, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }), c = r.attach();
+    const r = rig(0, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }, ShipClass.Valkyrn), c = r.attach();
     tap(r, 'KeyW');
     const first = lastThrottleId(c);
     tap(r, 'KeyW');                                                       // 2 in flight
@@ -402,7 +403,7 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
     r.dispose();
   });
   it('a stand and a new round clear the level in flight', () => {
-    const r = rig(0), c = r.attach();
+    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();
     tap(r, 'KeyW');                                                       // 1 in flight
     tap(r, 'KeyX');                                                       // the stand clears it (the replica still shows the seat)
     tap(r, 'KeyW');
@@ -414,7 +415,7 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
     r.dispose();
   });
   it('a sit, a re-attach and a noop result each clear the level in flight (the base falls back to the replica)', () => {
-    const r = rig(0), c = r.attach();
+    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();
     tap(r, 'KeyW');                                                       // 1 in flight
     stepDuelTick(r.d, { held: [], commands: [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: r.d.interior.tick, command: { kind: 'stand' } }] });
     c.publish(r.d); r.pump();

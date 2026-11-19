@@ -60,8 +60,8 @@ export const helmModule: SimModule<DuelState> = {
   id: 'helm',
   fields: () => HELM,
   notSnapshotted: {},
-  commands: ['throttle', 'heading'],
-  reasons: ['invalid-seat', 'malformed', 'stale-tick']
+  commands: ['throttle', 'heading', 'helmPower'],   // playtest2feedback §5: the crew Helm's power split
+  reasons: ['invalid-seat', 'malformed', 'stale-tick', 'unavailable']   // playtest2feedback §3, §5: throttle and helmPower on the wrong class or out of range
 };
 const HELM: ModuleField<DuelState>[] = [
   scalar('throttle', (d) => d.throttle, (d, v) => { d.throttle = v; }),

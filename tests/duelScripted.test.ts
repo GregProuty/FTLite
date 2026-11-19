@@ -6,6 +6,7 @@ import { solidAt } from '../src/renderer/src/sim/grid';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import {
   AVOID_MARGIN, AVOID_TICKS, bfsPath, createScriptedPair, goalTiles, MISSILE_GAP, ORBIT_GAIN, ORBIT_MAX, ORBIT_MIN, scriptedInput, SPEED_SLACK
 } from '../src/renderer/src/sim/duel/scripted';
@@ -46,7 +47,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
     disposeDuel(d);
   });
   it('the Helm turns away from the planet and sets full throttle when its predicted path meets it', () => {
-    const d = createSeatedDuel(layout, 1), s = d.tactical.ships[0], pair = createScriptedPair(1);
+    const d = createSeatedDuel(layout, 1, 0, 2, ShipClass.Valkyrn), s = d.tactical.ships[0], pair = createScriptedPair(1);
     s.x = 0; s.y = -300; s.vx = 0; s.vy = 150; s.heading = 128;           // falling south onto the planet, nose south
     const input = scriptedInput(pair, d);
     expect(input.held[0]).toEqual({ moveX: 1, moveY: 0, interactHeld: false });   // dead astern of the away direction: clockwise
@@ -79,7 +80,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
       for (const e of input.commands) { kinds.add(e.command.kind); expect(e.requestedTick).toBe(d.interior.tick); }
       expect(stepDuelTick(d, input).every((r) => r.status === 'applied')).toBe(true);
     }
-    expect([...kinds].sort()).toEqual(['laserLock', 'sit', 'stand', 'throttle', 'torpLock']);   // FTL targeting spec §3: the gunner fires by targets
+    expect([...kinds].sort()).toEqual(['laserLock', 'sit', 'stand', 'torpLock']);   // FTL targeting spec §3: the gunner fires by targets; playtest2feedback: no throttle commands on the Cutter
     disposeDuel(d);
   });
 });

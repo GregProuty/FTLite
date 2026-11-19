@@ -91,6 +91,9 @@ export type DuelCommand =
   /** Feel-ii's click-to-heading (Feel-ii spec §1.1): a heading index 0..255 the Helm turns to and holds, or −1 to clear
    *  it. Any finite number passes the codec, and the sim answers a bad one malformed. */
   | { kind: 'heading'; heading: number }
+  /** Playtest2feedback §5: move one of the crew Helm's bars: +1 to ENGINE (the COMPRESSOR share falls by 1), −1 to
+   *  COMPRESSOR. The codec admits only 1 and −1. */
+  | { kind: 'helmPower'; delta: 1 | -1 }
   /** Sci-1 spec §5: scan the next level of a contact (0 the enemy, 1 the derelict) from the Helm, Weapons or Science. */
   | { kind: 'contactScan'; contact: number }
   /** Science points out a contact (−1 none, 0 or 1) for every screen. */

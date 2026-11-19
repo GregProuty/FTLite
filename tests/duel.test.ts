@@ -15,6 +15,7 @@ import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { missileOf, Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const layout = parseShip(cutter);
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -83,7 +84,7 @@ describe('consoles are roles (spec §8, §13)', () => {
     const d = createSeatedDuel(layout, 5), s = d.tactical.ships[0], h0 = s.heading;
     step(d, [], [{ moveX: 1, moveY: 0, interactHeld: false }, NONE]);
     expect(s.heading).toBe((h0 + 1) % 256);                              // 1.78 steps per tick: one whole step on the first tick
-    const coast = createSeatedDuel(layout, 5), thrust = createSeatedDuel(layout, 5), held = createSeatedDuel(layout, 5);
+    const coast = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn), thrust = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn), held = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn);
     step(coast); step(thrust, [cmd(thrust, 0, { kind: 'throttle', level: 4 })]); step(held, [], [{ moveX: 0, moveY: -1, interactHeld: false }, NONE]);
     const [a, b, w] = [coast.tactical.ships[0], thrust.tactical.ships[0], held.tactical.ships[0]];
     const dx = b.vx - a.vx, dy = b.vy - a.vy;                           // the velocity full throttle added this tick

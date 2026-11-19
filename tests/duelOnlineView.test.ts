@@ -16,6 +16,7 @@ import type { ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import type { OnlinePortDescriptor } from '../src/shared/onlineSession';
 import { CUTTER } from './helpers/scriptedDuel';
 import { emptyPresses } from '../src/renderer/src/app/duel/input';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 /** A fake confirmed client: `publish` restores a fresh replica from the live duel, as a received publication would. */
@@ -43,7 +44,7 @@ describe('the online duel view source (spec §3)', () => {
     c.dispose();
   });
   it('interpolates over the actual tick gap: alpha reaches 1 only when the next publication is due', () => {
-    const d = createSeatedDuel(CUTTER, 3), c = confirmed();
+    const d = createSeatedDuel(CUTTER, 3, 0, 2, ShipClass.Valkyrn), c = confirmed();   // playtest2feedback Decision 17: the notched throttle is the Valkyrn's
     let now = 0;
     const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => now, viewport: { w: 1280, h: 720 } });
     try {

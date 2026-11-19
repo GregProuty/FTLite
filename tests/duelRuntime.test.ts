@@ -20,6 +20,7 @@ import { soloRecorder } from '../src/renderer/src/app/duel/soloRecorder';
 import { seatDuelCrew } from './helpers/duelSeat';
 import { inTorpedoRange } from './helpers/torpedoRange';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const layout = parseShip(cutter);
 const TICK_MS = 1000 / 60;
@@ -45,7 +46,7 @@ function fakeTime() {
 }
 const idle = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() });
 /** Scripted keys: the test sets held keys and presses, `frame()` samples them once and runs due ticks. */
-function rig(seed = 5, onRound?: (record: DuelRoundRecord) => void, seated = true) {
+function rig(seed = 5, onRound?: (record: DuelRoundRecord) => void, seated = true, cls?: number) {   // playtest2feedback Decision 17: cls picks the Valkyrn for the notched-throttle tests
   const time = fakeTime();
   let keys = idle(), cleared = 0, requests: ContactRequests = { designate: null, scan: null };
   const pointer: PointerSample = { x: null, y: null, wheel: 0, dragX: 0, dragY: 0 };
@@ -54,7 +55,7 @@ function rig(seed = 5, onRound?: (record: DuelRoundRecord) => void, seated = tru
     sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses(), lockTo: null, torpTo: null, rockTo: null }; return k; },
     takeContactRequests: () => { const r = requests; requests = { designate: null, scan: null }; return r; },
     samplePointer: () => ({ ...pointer }),
-    clearKeys: () => { keys = idle(); cleared++; }, onRound
+    clearKeys: () => { keys = idle(); cleared++; }, onRound, cls
   });
   if (seated) seatDuelCrew(rt.duel);   // the old seated start: createDuel now leaves both standing
   const hold = (h: Partial<Omit<KeySample, 'presses'>>): void => { keys = { ...keys, ...h }; };
@@ -98,7 +99,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     rt.dispose();
   });
   it('Tab takes the other character on one tick, clears the keyboard and leaves the old one neutral; a seated one stays present', () => {
-    const { rt, hold, press, tick, cleared } = rig();
+    const { rt, hold, press, tick, cleared } = rig(5, undefined, true, ShipClass.Valkyrn);
     hold({ moveY: -1 }); press('throttleUp', 'throttleUp', 'throttleUp', 'throttleUp'); tick();   // Artemis-ii: full throttle; held W no longer thrusts
     expect(rt.held()[0]).toEqual({ moveX: 0, moveY: -1, interactHeld: false });
     expect(rt.axes()).toEqual({ turn: 0, thrust: 1 });
@@ -609,7 +610,7 @@ describe('the Artemis console clicks (Artemis spec §4.1, §6.1)', () => {
 
 describe('the Helm throttle (Artemis spec §5.4)', () => {
   it('W and S step it a notch a press, clamped to −1..4, and it holds with no key down', () => {
-    const { rt, press, tick, ticks } = rig();
+    const { rt, press, tick, ticks } = rig(5, undefined, true, ShipClass.Valkyrn);
     press('throttleUp'); tick();
     expect([rt.duel.throttle, rt.throttle(), rt.axes()]).toEqual([1, 1, { turn: 0, thrust: 0.25 }]);
     press('throttleUp', 'throttleUp', 'throttleUp', 'throttleUp'); tick();
@@ -624,7 +625,7 @@ describe('the Helm throttle (Artemis spec §5.4)', () => {
     rt.dispose();
   });
   it('two presses in two frames before one tick build on the queued level, not the confirmed one', () => {
-    const { rt, press, tick } = rig();
+    const { rt, press, tick } = rig(5, undefined, true, ShipClass.Valkyrn);
     tick();
     press('throttleUp'); rt.frame(1 / 60); press('throttleUp'); rt.frame(1 / 60);
     expect([rt.duel.throttle, rt.throttle()]).toEqual([0, 2]);
@@ -633,7 +634,7 @@ describe('the Helm throttle (Artemis spec §5.4)', () => {
     rt.dispose();
   });
   it('the end card flies nothing: axes() is NO_AXES on a decided round with a non-zero throttle', () => {
-    const { rt, press, tick, ticks } = rig();
+    const { rt, press, tick, ticks } = rig(5, undefined, true, ShipClass.Valkyrn);
     press('throttleUp', 'throttleUp'); tick();
     expect(rt.axes().thrust).toBe(0.5);
     rt.duel.tactical.systems[1].hull = 0; ticks(3);
@@ -642,7 +643,7 @@ describe('the Helm throttle (Artemis spec §5.4)', () => {
     rt.dispose();
   });
   it('a notch click asks for its level at the Helm only; stand and sit keep the level, and the empty Helm coasts', () => {
-    const { rt, hold, press, tick } = rig();
+    const { rt, hold, press, tick } = rig(5, undefined, true, ShipClass.Valkyrn);
     hold({ throttleTo: 3 }); tick(); hold({ throttleTo: null });
     expect(rt.duel.throttle).toBe(3);
     press('stand'); tick();
@@ -654,7 +655,7 @@ describe('the Helm throttle (Artemis spec §5.4)', () => {
     rt.dispose();
   });
   it('Tab drops a throttle the left Helm had queued, so nothing is rejected', () => {
-    const { rt, press, tick } = rig();
+    const { rt, press, tick } = rig(5, undefined, true, ShipClass.Valkyrn);
     tick();
     press('throttleUp'); rt.frame(1 / 60); press('switch'); tick();
     expect(rt.lastResults().some((r) => r.status === 'rejected')).toBe(false);

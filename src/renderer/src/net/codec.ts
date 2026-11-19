@@ -121,6 +121,7 @@ export const duelWire: ModeWire<DuelSnapshot> = {
       z.object({ kind: z.literal('missileLaunch') }).strict(),
       z.object({ kind: z.literal('throttle'), level: z.number().finite() }).strict(),
       z.object({ kind: z.literal('heading'), heading: z.number().finite() }).strict(),   // Feel-ii's click-to-heading
+      z.object({ kind: z.literal('helmPower'), delta: z.union([z.literal(1), z.literal(-1)]) }).strict(),   // playtest2feedback §5
       z.object({ kind: z.literal('contactScan'), contact: z.number().int() }).strict(),
       z.object({ kind: z.literal('designate'), contact: z.number().int() }).strict(),
       z.object({ kind: z.literal('laserFrequency'), freq: z.number().int() }).strict(),

@@ -19,6 +19,7 @@ import { createTacticalState, Outcome, Room } from '../src/renderer/src/sim/tact
 import { heldTurn } from '../src/renderer/src/app/duel/runtime';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -68,7 +69,7 @@ describe('the heading command (Feel-ii §1.1)', () => {
     } finally { disposeDuel(d); }
   });
   it('turns the ship onto the bearing and holds it there, at the throttle\'s thrust', () => {
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.Valkyrn);
     try {
       const target = (d.tactical.ships[0].heading + 100) % 256;
       step(d, [cmd(d, 0, heading(target)), cmd(d, 0, { kind: 'throttle', level: 2 })]);
@@ -113,10 +114,10 @@ describe('the heading command (Feel-ii §1.1)', () => {
     try {
       step(d, [cmd(d, 0, heading(90))]);
       expect(step(d, [cmd(d, 0, { kind: 'stand' })])[0]!.status).toBe('applied');
-      expect([d.holdHeading, helmTurn(d, NONE) !== 0]).toEqual([90, true]);   // the rule; the step flies no axes with no Helm
+      expect([d.holdHeading, helmTurn(d, NONE) !== 0]).toEqual([90, true]);   // the rule; playtest2feedback §3: the unattended crew Helm now turns onto it too
       const h0 = d.tactical.ships[0].heading;
       step(d);
-      expect(d.tactical.ships[0].heading).toBe(h0);
+      expect(d.tactical.ships[0].heading).not.toBe(h0);   // playtest2feedback §3: an unattended crew Helm turns onto its held heading
       expect(step(d, [cmd(d, 0, heading(10))])[0]).toMatchObject({ status: 'rejected', reason: 'invalid-seat' });
       expect(step(d, [cmd(d, 0, { kind: 'sit', station: d.nav })])[0]!.status).toBe('applied');
       expect(d.holdHeading).toBe(90);

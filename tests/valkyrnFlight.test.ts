@@ -111,7 +111,7 @@ describe('the empty Helm (spec §4.4)', () => {
     } finally { disposeDuel(d); }
   });
   it('the Hound flies zero axes with the Helm empty, whatever its throttle and held heading', () => {
-    const d = createSeatedDuel(DUEL_LAYOUT, 5);
+    const d = createSeatedDuel(DUEL_LAYOUT, 5, 0, 2, ShipClass.Valkyrn);
     try {
       const h = (d.tactical.ships[0].heading + 64) % 256;
       step(d, [cmd(d, 0, { kind: 'throttle', level: 4 }), cmd(d, 0, { kind: 'heading', heading: h })]);
