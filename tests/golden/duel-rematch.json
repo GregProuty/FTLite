@@ -14,10 +14,10 @@
       "seed": 2,
       "baseTick": 6312,
       "outcome": 2,
-      "ticks": 6984
+      "ticks": 5933
     }
   ],
-  "finalHash": "8fd01ffb",
+  "finalHash": "5be9400e",
   "hashes": [
     "ff8d4f3d",
     "3d14f022",
@@ -25,21 +25,19 @@
     "e2eb7c3c",
     "f3a651da",
     "9ce56f3a",
-    "63f44ffe",
-    "7fbb58a6",
-    "443e4b67",
-    "7cc26aa0",
+    "d876e727",
+    "228a89a4",
+    "1802bdc2",
+    "16fc4569",
     "e93c6366",
     "fd10e31f",
     "d03b2610",
     "9b0174ea",
     "7d9c2aac",
-    "56adba67",
-    "8c4227a1",
-    "eef8cb36",
-    "d271bc63",
-    "d422276d",
-    "ca601fdd",
-    "d11e7d09"
+    "068452d5",
+    "beeaa307",
+    "8e0c8758",
+    "e43b4925",
+    "e0b94904"
   ]
 }

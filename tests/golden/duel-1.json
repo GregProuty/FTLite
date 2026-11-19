@@ -3,7 +3,7 @@
   "seed": 1,
   "outcome": 2,
   "ticks": 6311,
-  "finalHash": "b94538ff",
+  "finalHash": "05b64f02",
   "every": 600,
   "hashes": [
     "ff8d4f3d",
@@ -12,9 +12,9 @@
     "e2eb7c3c",
     "f3a651da",
     "9ce56f3a",
-    "63f44ffe",
-    "7fbb58a6",
-    "443e4b67",
-    "7cc26aa0"
+    "d876e727",
+    "228a89a4",
+    "1802bdc2",
+    "16fc4569"
   ]
 }
