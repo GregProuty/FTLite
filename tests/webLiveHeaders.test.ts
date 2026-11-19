@@ -90,8 +90,13 @@ describe('checkServiceOrigin', () => {
     return new Response(null, { status, headers: allow ? { 'access-control-allow-origin': allow } : {} });
   };
   it('accepts a preflight that allows the live origin and names the fix otherwise', async () => {
-    expect((await checkServiceOrigin({ serviceOrigin: 'https://sig.example', pageOrigin: URL_, fetch: service(204, URL_) })).problem).toBeNull();
-    expect((await checkServiceOrigin({ serviceOrigin: 'https://sig.example', pageOrigin: URL_, fetch: service(403, null) })).problem).toMatch(/wrangler secret put ALLOWED_ORIGINS with null,https:\/\/ftlite-test\.vercel\.app/);
+    expect((await checkServiceOrigin({ serviceOrigin: 'https://sig.example', pageOrigin: URL_, fetch: service(204, URL_), secrets: [] })).problem).toBeNull();
+    expect((await checkServiceOrigin({ serviceOrigin: 'https://sig.example', pageOrigin: URL_, fetch: service(403, null), secrets: [] })).problem).toMatch(/wrangler secret put ALLOWED_ORIGINS with null,https:\/\/ftlite-test\.vercel\.app/);
+  });
+  it('redacts a failure before cutting it (review R1-F4)', async () => {
+    const failing: FetchLike = async () => { throw Error(`${'x'.repeat(180)} sec ret pass`); };
+    const problem = (await checkServiceOrigin({ serviceOrigin: 'https://sig.example', pageOrigin: URL_, fetch: failing, secrets: ['sec ret pass'] })).problem!;
+    expect(problem).toContain('[redacted]'); expect(problem).not.toContain('sec');
   });
 });
 

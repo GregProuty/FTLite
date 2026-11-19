@@ -1,7 +1,7 @@
 // Web-iii live smoke, the page-side pieces run in Node against fakes: the RTCPeerConnection relay hook, the stats read
 // for Chromium- and Firefox-shaped stats, the phase read from the menu, and the relay verdict.
 import { describe, expect, it } from 'vitest';
-import { LIVE_PLAY_MS, MIN_EARLY_END_MS, PEER_STATS_SOURCE, playStep, RELAY_INIT_SCRIPT, relayVerdict, roomCodeOf, UI_READ_SOURCE, uiPhase,
+import { candidateTypes, LIVE_PLAY_MS, localPairVerdict, MIN_EARLY_END_MS, PEER_STATS_SOURCE, playStep, RELAY_INIT_SCRIPT, relayInitScript, relayVerdict, roomCodeOf, UI_READ_SOURCE, uiPhase,
   type PeerSample, type PlayState, type UiView } from '../scripts/web/live/relay';
 
 class FakePc { config: any; connectionState = 'new'; stats = new Map<string, any>();
@@ -22,6 +22,18 @@ describe('the relay hook', () => {
     const bare = new g.RTCPeerConnection(); expect(bare.config).toEqual({ iceTransportPolicy: 'relay' });
     expect(g.__ftliteLive.peers).toEqual([pc, bare]);
     const none: any = {}; new Function('globalThis', RELAY_INIT_SCRIPT)(none); expect(none.__ftliteLive).toBeUndefined();
+  });
+});
+
+describe('the non-forcing hook (local smoke)', () => {
+  it('keeps every instance and leaves the configuration alone', () => {
+    const g: any = { RTCPeerConnection: FakePc };
+    new Function('globalThis', relayInitScript({ force: false }))(g);
+    const pc = new g.RTCPeerConnection({ iceServers: [], iceTransportPolicy: 'all' }), bare = new g.RTCPeerConnection();
+    expect(pc).toBeInstanceOf(FakePc); expect(pc.config).toEqual({ iceServers: [], iceTransportPolicy: 'all' }); expect(bare.config).toBeUndefined();
+    pc.setConfiguration({ iceTransportPolicy: 'all' }); expect(pc.config.iceTransportPolicy).toBe('all');
+    expect(g.__ftliteLive.peers).toEqual([pc, bare]); expect(g.__ftliteLive.force).toBe(false);
+    expect(relayInitScript({ force: true })).toBe(RELAY_INIT_SCRIPT);
   });
 });
 
@@ -80,6 +92,9 @@ describe('playStep', () => {
     expect(playStep(both('ended', 'running'), 30000, s)).toBe('continue'); expect(s.endedAtMs).toBe(30000);
     expect(playStep(both('ended', 'ended'), 33000, s)).toBe('ended');
     expect(playStep(both('ended', 'ended'), MIN_EARLY_END_MS - 1, { endedAtMs: null })).toEqual({ fail: expect.stringMatching(/ended after only/) });
+    // Review R1-F3: a sample between ticks must not stretch the 5 s agreement window.
+    expect(playStep(both('ended', 'ended'), 36000, { endedAtMs: 30000 })).toEqual({ fail: expect.stringMatching(/read ended 6000 ms apart/) });
+    expect(playStep(both('ended', 'ended'), 35000, { endedAtMs: 30000 })).toBe('ended');
   });
   it('fails a one-sided end, a pause, an error or any other phase', () => {
     const s: PlayState = { endedAtMs: null };
@@ -101,5 +116,14 @@ describe('relayVerdict', () => {
     expect(relayVerdict([[peer(100, { policy: 'all' })], [peer(9000)]])).toMatch(/iceTransportPolicy all/);
     expect(relayVerdict([[peer(100)], [peer(9000, { local: 'srflx' })]])).toMatch(/local srflx, not relay/);
     expect(relayVerdict([[peer(100)], [peer(600)]])).toMatch(/only 500 bytes/);
+    expect(relayVerdict([[peer(100)], [peer(9000, { local: null })]])).toMatch(/local null, not relay/);
+  });
+  it('the local verdict needs a known selected pair and traffic, any policy or type, and lists the types', () => {
+    const host = (bytes: number, o: Partial<PeerSample> = {}) => peer(bytes, { policy: 'all', local: 'host', remote: 'host', ...o });
+    expect(localPairVerdict([[host(100)], [host(9000, { local: 'prflx' })]])).toBeNull();
+    expect(localPairVerdict([[host(100)], []])).toMatch(/only 1 sample/);
+    expect(localPairVerdict([[host(100)], [host(9000, { local: null })]])).toMatch(/no selected candidate pair/);
+    expect(localPairVerdict([[host(100)], [host(600)]])).toMatch(/only 500 bytes arrived over the selected pair/);
+    expect(candidateTypes([[host(100)], [host(9000, { local: 'prflx' }), { ...host(0), state: 'closed', local: 'relay' }]])).toEqual(['host/host', 'prflx/host']);
   });
 });

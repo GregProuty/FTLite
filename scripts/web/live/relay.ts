@@ -11,21 +11,31 @@ export type PlayStep = 'continue' | 'done' | 'ended' | { fail: string };
 export interface LiveDuelReport {
   hostBrowser: string; guestBrowser: string; playedMs: number; endedEarly: boolean; phases: { host: string; guest: string };
   samples: { host: PeerSample[][]; guest: PeerSample[][] }; relay: { host: string | null; guest: string | null }; pageErrors: string[]; problems: string[];
+  /** Selected-pair candidate types seen (`local/remote`), per side. */
+  candidates: { host: string[]; guest: string[] };
 }
 
 /** Playwright init script (runs before any page script, every document): RTCPeerConnection becomes a subclass that
- *  forces iceTransportPolicy 'relay' and keeps every instance in globalThis.__ftliteLive.peers. Installs once. */
-export const RELAY_INIT_SCRIPT = `(() => {
+ *  keeps every instance in globalThis.__ftliteLive.peers and, with `force`, forces iceTransportPolicy 'relay' in the
+ *  constructor and setConfiguration. Installs once. The local smoke uses `force: false` (review R1-F2): the same
+ *  subclass and stats read run in real browsers without changing the policy (loopback ICE has no relay). */
+export function relayInitScript(o: { force: boolean }): string {
+  const forced = o.force
+    ? `constructor(config, ...rest) { super(Object.assign({}, config || {}, { iceTransportPolicy: 'relay' }), ...rest); peers.push(this); }
+    setConfiguration(config) { return super.setConfiguration(Object.assign({}, config || {}, { iceTransportPolicy: 'relay' })); }`
+    : `constructor(...args) { super(...args); peers.push(this); }`;
+  return `(() => {
   const g = globalThis, Native = g.RTCPeerConnection;
   if (typeof Native !== 'function' || g.__ftliteLive) return;
   const peers = [];
   class RelayPeerConnection extends Native {
-    constructor(config, ...rest) { super(Object.assign({}, config || {}, { iceTransportPolicy: 'relay' }), ...rest); peers.push(this); }
-    setConfiguration(config) { return super.setConfiguration(Object.assign({}, config || {}, { iceTransportPolicy: 'relay' })); }
+    ${forced}
   }
   Object.defineProperty(g, 'RTCPeerConnection', { value: RelayPeerConnection, writable: true, configurable: true });
-  g.__ftliteLive = { peers };
+  g.__ftliteLive = { peers, force: ${o.force} };
 })();`;
+}
+export const RELAY_INIT_SCRIPT = relayInitScript({ force: true });
 
 /** page.evaluate source: one PeerSample per kept connection; the selected pair from Chromium's transport stats, else
  *  Firefox's selected pair, else a nominated succeeded pair. null when the hook is missing. */
@@ -80,6 +90,8 @@ export function playStep(phases: { host: string; guest: string }, elapsedMs: num
   const { host, guest } = phases, hostEnded = host === 'ended', guestEnded = guest === 'ended';
   if (hostEnded && guestEnded) {
     const first = state.endedAtMs ?? elapsedMs;
+    // Review R1-F3: a stats sample can sit between ticks, so the agreement window is checked here too.
+    if (elapsedMs - first > END_AGREE_MS) return { fail: `the two sides read ended ${elapsedMs - first} ms apart (allowed ${END_AGREE_MS})` };
     return first < MIN_EARLY_END_MS ? { fail: `the round ended after only ${first} ms (need ${MIN_EARLY_END_MS} for two relay samples)` } : 'ended';
   }
   if (hostEnded || guestEnded) {
@@ -97,14 +109,23 @@ export function playStep(phases: { host: string; guest: string }, elapsedMs: num
 
 /** null when the samples prove TURN: two samples with a connected peer, every connected peer relay-only with a relay
  *  local candidate on its selected pair, and at least MIN_RELAY_BYTES received between the first and last of them. */
-export function relayVerdict(samples: readonly (readonly PeerSample[])[]): string | null {
+export function relayVerdict(samples: readonly (readonly PeerSample[])[]): string | null { return pairVerdict(samples, true); }
+/** The local smoke's check (review R1-F2, loopback ICE, hook not forcing): the same samples, every connected peer with a
+ *  selected pair whose local candidate type is known, and the same traffic floor; the policy and type are not judged. */
+export function localPairVerdict(samples: readonly (readonly PeerSample[])[]): string | null { return pairVerdict(samples, false); }
+function pairVerdict(samples: readonly (readonly PeerSample[])[], relay: boolean): string | null {
   const connected = samples.map(s => s.filter(p => p.state === 'connected')).filter(s => s.length > 0);
   if (connected.length < 2) return `only ${connected.length} sample(s) had a connected peer (need 2)`;
   for (const sample of connected) for (const p of sample) {
-    if (p.policy !== 'relay') return `a peer connection ran with iceTransportPolicy ${p.policy}`;
-    if (p.local !== 'relay') return `the selected candidate pair is local ${p.local}, not relay`;
+    if (relay && p.policy !== 'relay') return `a peer connection ran with iceTransportPolicy ${p.policy}`;
+    if (relay && p.local !== 'relay') return `the selected candidate pair is local ${p.local}, not relay`;
+    if (p.local === null) return 'a connected peer has no selected candidate pair (local null)';
   }
   const bytes = (s: readonly PeerSample[]): number => s.reduce((n, p) => n + p.bytesReceived, 0);
   const moved = bytes(connected[connected.length - 1]!) - bytes(connected[0]!);
-  return moved < MIN_RELAY_BYTES ? `only ${moved} bytes arrived over the relay during play (need ${MIN_RELAY_BYTES})` : null;
+  return moved < MIN_RELAY_BYTES ? `only ${moved} bytes arrived over the ${relay ? 'relay' : 'selected pair'} during play (need ${MIN_RELAY_BYTES})` : null;
+}
+/** The distinct `local/remote` candidate types of the connected peers' selected pairs, for the report. */
+export function candidateTypes(samples: readonly (readonly PeerSample[])[]): string[] {
+  return [...new Set(samples.flat().filter(p => p.state === 'connected').map(p => `${p.local ?? 'none'}/${p.remote ?? 'none'}`))].sort();
 }

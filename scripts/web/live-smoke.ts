@@ -40,7 +40,7 @@ async function main(): Promise<void> {
     if (deployed.problem) { report.headers.problems.push(deployed.problem); throw Error(`${deployed.problem} (an older production deployment is being served, or deploy:web did not finish)`); }
     if (args.serviceOrigin) {
       step = 'service preflight'; console.log(`[web-live] ${step}`);
-      report.service = await checkServiceOrigin({ serviceOrigin: args.serviceOrigin, pageOrigin: args.url, fetch: liveFetch });
+      report.service = await checkServiceOrigin({ serviceOrigin: args.serviceOrigin, pageOrigin: args.url, fetch: liveFetch, secrets });
       if (report.service.problem) throw Error(report.service.problem);
     }
     step = 'duel';

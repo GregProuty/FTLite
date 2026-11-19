@@ -148,14 +148,14 @@ export async function runHeaderChecks(o: { url: string; passcode: string; paidPa
 }
 
 /** The page's room-create preflight from Node with the live Origin (web-net-smoke.ts's shape): ALLOWED_ORIGINS must list it. */
-export async function checkServiceOrigin(o: { serviceOrigin: string; pageOrigin: string; fetch: FetchLike }): Promise<ServiceCheck> {
+export async function checkServiceOrigin(o: { serviceOrigin: string; pageOrigin: string; fetch: FetchLike; secrets: readonly string[] }): Promise<ServiceCheck> {
   const result: ServiceCheck = { origin: o.serviceOrigin, status: null, allowOrigin: null, problem: null };
   let status: number;
   try {
     const r = await o.fetch(`${o.serviceOrigin}/v2/rooms`, { method: 'OPTIONS',
       headers: { Origin: o.pageOrigin, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' } });
     status = r.status; result.status = status; result.allowOrigin = r.headers.get('access-control-allow-origin');
-  } catch (error) { result.problem = `the signalling service did not answer: ${String((error as Error)?.message ?? error).slice(0, 200)}`; return result; }
+  } catch (error) { result.problem = `the signalling service did not answer: ${clip(String((error as Error)?.message ?? error), o.secrets, 200)}`; return result; }
   if (status < 200 || status > 299 || result.allowOrigin !== o.pageOrigin)
     result.problem = `the signalling service refuses ${o.pageOrigin} (preflight ${status}): from services/signalling run npx wrangler secret put ALLOWED_ORIGINS with null,${o.pageOrigin}`;
   return result;

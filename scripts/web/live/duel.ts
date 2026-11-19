@@ -2,20 +2,18 @@
 // Chromium context when Firefox is not installed, plan L-7) open the live site, pass the passcode form as a friend
 // would, host and join by code through the real menu with TURN forced (plan L-1), play 60 s (L-3) and leave. Relay is
 // proven from getStats (L-2). Not run in CI: it needs the owner's live deploy and passcode. `mode: 'local'` (the
-// test:web-live-local smoke) drives the same menu against a local --test build with loopback ICE: no gate, no relay
-// hook, no relay verdict.
+// test:web-live-local smoke) drives the same menu against a local --test build with loopback ICE: no gate, the hook
+// installed without forcing relay, and the selected pair proven connected with traffic instead of relay (review R1-F2).
 import { chromium, firefox, type Browser, type BrowserContext, type LaunchOptions, type Page } from 'playwright';
 import { WRONG_PASSCODE_TEXT } from '../../../src/web/passcode';
 import { bounded, type GateKey } from '../net/players';
 import { LOOPBACK_CHROMIUM, LOOPBACK_FIREFOX } from '../net/stack';
 import { clip } from './headers';
-import { PEER_STATS_SOURCE, playStep, RELAY_INIT_SCRIPT, RELAY_SAMPLE_MS, relayVerdict, roomCodeOf, UI_READ_SOURCE, uiPhase,
+import { candidateTypes, localPairVerdict, PEER_STATS_SOURCE, playStep, relayInitScript, RELAY_SAMPLE_MS, relayVerdict, roomCodeOf, UI_READ_SOURCE, uiPhase,
   type LiveDuelReport, type PeerSample, type PlayState, type UiView } from './relay';
 
 /** Plan L-7: only Playwright's missing-browser error means "Firefox not installed". */
 const FIREFOX_MISSING = /Executable doesn't exist|npx playwright install/;
-/** Shown in place of a relay verdict when the local smoke skips it (loopback ICE has no relay to prove). */
-export const RELAY_NOT_CHECKED = 'not checked (local smoke, loopback ICE)';
 
 interface LivePlayer { readonly name: string; readonly page: Page; readonly context: BrowserContext; readonly errors: string[] }
 const delay = (ms: number) => new Promise<void>(done => setTimeout(done, ms));
@@ -63,7 +61,7 @@ async function leaveToHome(p: LivePlayer, ms: number): Promise<void> {
 
 async function openPlayer(browser: Browser, name: string, url: string, passcode: string, live: boolean): Promise<LivePlayer> {
   const context = await bounded(browser.newContext({ viewport: { width: 1280, height: 800 } }), 15000, `${name} context`);
-  if (live) await bounded(context.addInitScript({ content: RELAY_INIT_SCRIPT }), 4000, `${name} relay hook`);
+  await bounded(context.addInitScript({ content: relayInitScript({ force: live }) }), 4000, `${name} relay hook`);
   const page = await bounded(context.newPage(), 15000, `${name} page`), errors: string[] = [];
   page.on('pageerror', error => { if (errors.length < 20) errors.push(clip(String(error.message), [passcode], 200)); });
   const player: LivePlayer = { name, page, context, errors };
@@ -84,8 +82,8 @@ async function openPlayer(browser: Browser, name: string, url: string, passcode:
     if (performance.now() > end) throw Error(`${name}: the menu did not appear${live ? ' after the passcode' : ''}`);
     await delay(250);
   }
-  if (live && !(await bounded(page.evaluate(() => typeof (globalThis as any).__ftliteLive === 'object'), 4000, `${name} relay check`)))
-    throw Error(`${name}: the relay hook did not load, so TURN would not be forced`);
+  if (!(await bounded(page.evaluate(() => typeof (globalThis as any).__ftliteLive === 'object'), 4000, `${name} relay check`)))
+    throw Error(`${name}: the relay hook did not load${live ? ', so TURN would not be forced' : ''}`);
   return player;
 }
 
@@ -146,11 +144,14 @@ export async function runLiveDuel(o: { url: string; passcode: string; step(label
     await leaveToHome(guest, 20000);
     await leaveToHome(host, 20000);
 
-    const relay = live ? { host: relayVerdict(samples.host), guest: relayVerdict(samples.guest) } : { host: RELAY_NOT_CHECKED, guest: RELAY_NOT_CHECKED };
+    // Live: TURN proven on each side. Local: the same samples prove a connected selected pair with traffic (field name kept).
+    const verdict = live ? relayVerdict : localPairVerdict, what = live ? 'relay' : 'selected pair';
+    const relay = { host: verdict(samples.host), guest: verdict(samples.guest) };
+    const candidates = { host: candidateTypes(samples.host), guest: candidateTypes(samples.guest) };
     const pageErrors = [...host.errors, ...guest.errors];
-    const problems = [...(live && relay.host ? [`host relay: ${relay.host}`] : []), ...(live && relay.guest ? [`guest relay: ${relay.guest}`] : []),
+    const problems = [...(relay.host ? [`host ${what}: ${relay.host}`] : []), ...(relay.guest ? [`guest ${what}: ${relay.guest}`] : []),
       ...(pageErrors.length ? [`page errors: ${pageErrors.slice(0, 3).join(' | ')}`] : [])];
-    return { hostBrowser: 'chromium', guestBrowser: fox ? 'firefox' : 'chromium (Firefox not installed)', playedMs, endedEarly, phases, samples, relay, pageErrors, problems };
+    return { hostBrowser: 'chromium', guestBrowser: fox ? 'firefox' : 'chromium (Firefox not installed)', playedMs, endedEarly, phases, samples, relay, pageErrors, problems, candidates };
   } finally {
     for (const c of contexts) await bounded(c.close(), 10000, 'context close').catch(() => {});
     for (const b of browsers) await b.close().catch(() => {});

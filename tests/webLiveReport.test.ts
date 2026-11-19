@@ -11,7 +11,7 @@ function passing(): LiveReport {
       version: { build: { version: '0.1.0', rev: 'abc1234', sim: 54 }, sim: 54, digest: 'a'.repeat(64) }, versionCompared: true, problems: [] },
     service: { origin: 'https://sig.example', status: 204, allowOrigin: 'https://ftlite-test.vercel.app', problem: null },
     duel: { hostBrowser: 'chromium', guestBrowser: 'firefox', playedMs: 60400, endedEarly: false, phases: { host: 'running', guest: 'running' },
-      samples: { host: [], guest: [] }, relay: { host: null, guest: null }, pageErrors: [], problems: [] },
+      samples: { host: [], guest: [] }, relay: { host: null, guest: null }, pageErrors: [], problems: [], candidates: { host: ['relay/relay'], guest: ['relay/relay'] } },
     failure: null, pass: true };
 }
 describe('validateLiveReport', () => {

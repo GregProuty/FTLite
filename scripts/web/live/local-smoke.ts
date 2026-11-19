@@ -1,7 +1,9 @@
 // `npm run test:web-live-local`: the live duel runner (duel.ts, mode 'local') against the stack test:web-net starts
 // (local workerd, `vite preview` of a --test web build, loopback ICE). It proves the real-menu driving, the phase reads,
-// the 60 s play and the leave before the owner's live run. It cannot prove TURN (loopback ICE, no relay hook) and has no
-// passcode gate (vite preview serves no middleware). The build has no test probe, as a production page has none.
+// the 60 s play and the leave before the owner's live run, and runs the relay hook (not forcing) and the getStats read in
+// real Chromium and Firefox: each side needs a connected selected pair with traffic (review R1-F2). It cannot prove TURN
+// (loopback ICE) and has no passcode gate (vite preview serves no middleware). The build has no test probe, as a
+// production page has none.
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
@@ -33,6 +35,6 @@ async function main(): Promise<void> {
   const report = { version: 1, elapsedMs: Math.ceil(performance.now() - began), duel: duel ?? null, failure: failure ?? null, temporaryRemoved: !existsSync(directory) };
   writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n');
   if (failure) { console.error(`WEB LIVE LOCAL FAIL: ${failure}`); process.exitCode = 1; return; }
-  console.log(`WEB LIVE LOCAL PASS (${report.elapsedMs} ms): ${duel!.hostBrowser} host + ${duel!.guestBrowser} guest, played ${duel!.playedMs} ms${duel!.endedEarly ? ' (round ended)' : ''}; relay not checked (loopback ICE)`);
+  console.log(`WEB LIVE LOCAL PASS (${report.elapsedMs} ms): ${duel!.hostBrowser} host + ${duel!.guestBrowser} guest, played ${duel!.playedMs} ms${duel!.endedEarly ? ' (round ended)' : ''}; selected pairs host ${duel!.candidates.host.join(',')}, guest ${duel!.candidates.guest.join(',')} (loopback ICE, relay not forced)`);
 }
 void main();
