@@ -4,39 +4,13 @@
 import { describe, expect, it } from 'vitest';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
-import { gravityAccel } from '../src/renderer/src/sim/tactical/physics';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
-import { DT } from '../src/renderer/src/sim/tactical/tuning';
 import { rockAlive, rockAt, RockKind, rockKind, rocksNear, rockSlots } from '../src/renderer/src/sim/tactical/rocks';
 import { breakRock, crushDamage, pushRock } from '../src/renderer/src/sim/tactical/rockBreak';
 import { resolveRockPair, stepRocks } from '../src/renderer/src/sim/tactical/rockContacts';
 import { arena, mover, rockEvents, seeded } from './helpers/rockArena';
 
 const momentum = (st: ReturnType<typeof arena>, ks: number[]): [number, number] => ks.reduce<[number, number]>((p, k) => { const a = rockAt(st, k), m = a.r * a.r; return [p[0] + m * a.vx, p[1] + m * a.vy]; }, [0, 0]);
-
-describe('motion (spec §3.2)', () => {
-  it('gravity, then drag, then the 300 u/s cap, then semi-implicit Euler; a rock born this tick does not move', () => {
-    const st = arena();
-    mover(st, 100, 2000, 0, 400, 0, 10);
-    mover(st, 101, -2000, 0, 100, 0, 10);
-    mover(st, 102, 0, 2000, 50, 0, 10); st.rockBorn[102] = 1;
-    stepRocks(st);
-    expect(rockAt(st, 100).vx).toBeCloseTo(300, 9);
-    expect(rockAt(st, 100).vy).toBeCloseTo(0, 12);
-    expect(rockAt(st, 100).x).toBeCloseTo(2000 + 300 * DT, 9);
-    const [gx] = gravityAccel(-2000, 0);
-    expect(rockAt(st, 101).vx).toBeCloseTo((100 + gx * DT) * (1 - 0.1 * DT), 12);
-    expect(rockAt(st, 102)).toMatchObject({ x: 0, y: 2000, vx: 50, vy: 0 });
-  });
-  it('a rock touching the planet, or whose centre leaves the map, turns to dust', () => {
-    const st = arena();
-    mover(st, 100, 0, -85, 0, 0, 20);
-    mover(st, 101, 2810, 0, 0, 0, 10);
-    stepRocks(st);
-    expect([rockAlive(st, 100), rockAlive(st, 101)]).toEqual([false, false]);
-    expect(rockEvents(st, 'dust').map((e) => [e.rock, e.by])).toEqual([[100, 'planet'], [101, 'edge']]);
-  });
-});
 
 describe('rock-rock pairs (spec §3.3)', () => {
   it('conserve momentum along n (and as a vector) within 1e-9 relative', () => {

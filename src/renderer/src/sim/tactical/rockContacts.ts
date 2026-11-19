@@ -1,18 +1,19 @@
 // Spike ii §3.2, §3.3 (docs/superpowers/specs/2026-11-18-asteroids-ii-design.md), asteroids-iii §3.4, §5.4: the free rocks'
 // turn in stepDuel, after the missiles fly and before the ship contacts.
-// Part 1, motion: every Free rock not born this tick, ascending (spike ii's gravity, drag, cap and semi-implicit Euler
-// until asteroids-iii Task 6). Then rocksMoved: free rocks now stand at tick + 1.
+// Part 1, motion: every Free rock not born this tick, ascending, by moveFreeSlot (§13.3: the symmetric age-ramped drag toward V_c, the lane pull, the soft edge, the cap, counted in rockCapHits). Then rocksMoved: free rocks now stand at tick + 1. A rock touching the planet, or past R_MAP + rockEdgeSlack(), turns to dust at the start of its contact turn.
 // Part 2, contacts, a live outer loop: slot a from 0 upward, reading kinds as they stand now, takes a turn when it is
 // Free and not born. Its turn: the planet and edge test (dust, turn over); else rocksNear(a) once, ascending, and each
 // b ≠ a still alive, not born and not done is resolved if it touches (a Rail b at its accessor position); a break of a
 // ends its turn. Then a is marked done (rockDone). A Rail never takes a turn, so a free-rail pair is always checked by
 // the free rock, and rail-rail pairs never are.
 import { gravityAccel } from './physics';
+import { circularVelocity, lanePull, targetVelocity } from './rails';
 import { breakRock, crushDamage, dustRock, wearRock } from './rockBreak';
-import { freeRock, markTouched, rockAlive, rockMass, RockKind, rocksMoved, rocksNear, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
-import { ROCK_CRUSH_SPEED, ROCK_DRAG, ROCK_GRAVITY, ROCK_MAX_SPEED, ROCK_RESTITUTION } from './rockTuning';
+import { freeRock, markTouched, rockAlive, rockMass, RockKind, rockPhase, rocksMoved, rocksNear, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
+import { EDGE_SETTLE_K, K_EDGE_ROCK, ROCK_CRUSH_SPEED, ROCK_EDGE_SLACK, ROCK_EDGE_SLACK_SOFT, ROCK_GRAVITY, ROCK_MAX_SPEED, ROCK_RESTITUTION, ROCK_SWITCHES, SETTLE_A0, SETTLE_A1, SETTLE_K_MAX } from './rockTuning';
 import type { TacticalState } from './state';
-import { DT, R_MAP } from './tuning';
+import { DT, K_EDGE, R_MAP } from './tuning';
+import { TICK_HZ } from '../tuning';
 
 function touching(ax: number, ay: number, ar: number, bx: number, by: number, br: number): boolean {
   const dx = ax - bx, dy = ay - by, rr = ar + br;
@@ -51,25 +52,55 @@ export function resolveRockPair(s: TacticalState, a: number, b: number): void {
   if (bBreaks) breakRock(s, b, -nx, -ny, 'collision', -1, 'fan', [a, b]);
 }
 
+/** §13.3: the settling drag's rate for a rock `ageTicks` old (since its last birth, freeing or push): 0 before SETTLE_A0
+ *  seconds, rising linearly to SETTLE_K_MAX at SETTLE_A1, flat after. A young piece flies a true gravity path. */
+export function settleRate(ageTicks: number): number {
+  const f = (ageTicks / TICK_HZ - SETTLE_A0) / (SETTLE_A1 - SETTLE_A0);
+  return SETTLE_K_MAX * Math.min(1, Math.max(0, f));
+}
+/** §13.3: the rocks' edge spring past R_MAP: K_EDGE_ROCK with the soft edge, the ships' K_EDGE without; zero inside. */
+export function rockEdgeAccel(x: number, y: number, soft = ROCK_SWITCHES.softEdge): [number, number] {
+  const d = Math.sqrt(x * x + y * y);
+  if (d <= R_MAP) return [0, 0];
+  const k = (-(soft ? K_EDGE_ROCK : K_EDGE) * (d - R_MAP)) / d;
+  return [k * x, k * y];
+}
+/** §13.3: the far-edge safety slack past R_MAP (a free rock past R_MAP + this turns to dust, 'edge'). */
+export function rockEdgeSlack(soft = ROCK_SWITCHES.softEdge): number { return soft ? ROCK_EDGE_SLACK_SOFT : ROCK_EDGE_SLACK; }
+/**
+ * §13.3: one tick of a free rock's motion, the slot at base b of v, its age T1 - t: (1) drift p += v*DT/2; (2) half drag
+ * v += (V* - v)*k*DT/2, V* = V_c (and, with the soft edge past R_MAP, + (V_c - v)*EDGE_SETTLE_K*DT/2); (3) kick v += (g*ROCK_GRAVITY +
+ * e_rock + lanePull(p, k))*DT; (4) the same half drag again; (5) the ROCK_MAX_SPEED cap; (6) drift p += v*DT/2. V*, V_c, g, e_rock and the pull are
+ * taken once, at the half-drift point. Returns whether the cap fired (rockCapHits; the stress gate is 0).
+ */
+export function moveFreeSlot(v: Float64Array, b: number, T1: number, soft = ROCK_SWITCHES.softEdge): boolean {
+  const h = DT / 2, k = settleRate(T1 - v[b + 7]!), x = v[b + 1]! + v[b + 3]! * h, y = v[b + 2]! + v[b + 4]! * h;
+  const [gx, gy] = gravityAccel(x, y), [ex, ey] = rockEdgeAccel(x, y, soft), [tx, ty] = targetVelocity(x, y), [lx, ly] = lanePull(x, y, k);
+  const out = soft && x * x + y * y > R_MAP * R_MAP, [cx, cy] = out ? circularVelocity(x, y) : [0, 0], ke = out ? EDGE_SETTLE_K : 0;
+  let vx = v[b + 3]!, vy = v[b + 4]!;
+  vx += (tx - vx) * k * h; vy += (ty - vy) * k * h; vx += (cx - vx) * ke * h; vy += (cy - vy) * ke * h;
+  vx += (gx * ROCK_GRAVITY + ex + lx) * DT; vy += (gy * ROCK_GRAVITY + ey + ly) * DT;
+  vx += (tx - vx) * k * h; vy += (ty - vy) * k * h; vx += (cx - vx) * ke * h; vy += (cy - vy) * ke * h;
+  const sp = Math.sqrt(vx * vx + vy * vy), capped = sp > ROCK_MAX_SPEED;
+  if (capped) { const f = ROCK_MAX_SPEED / sp; vx *= f; vy *= f; }
+  v[b + 1] = x + vx * h; v[b + 2] = y + vy * h; v[b + 3] = vx; v[b + 4] = vy;
+  return capped;
+}
+
 export function stepRocks(s: TacticalState): void {
-  const v = s.rocks, n = rockSlots(s), keep = 1 - ROCK_DRAG * DT;
+  const v = s.rocks, n = rockSlots(s), T1 = rockPhase(s);
   for (let k = 0; k < n; k++) {   // part 1: motion
     const b = k * ROCK_STRIDE;
     if (v[b] !== RockKind.Free || s.rockBorn[k] === 1) continue;
-    const [gx, gy] = gravityAccel(v[b + 1]!, v[b + 2]!);
-    let vx = (v[b + 3]! + gx * ROCK_GRAVITY * DT) * keep, vy = (v[b + 4]! + gy * ROCK_GRAVITY * DT) * keep;
-    const sp = Math.sqrt(vx * vx + vy * vy);
-    if (sp > ROCK_MAX_SPEED) { const f = ROCK_MAX_SPEED / sp; vx *= f; vy *= f; }
-    v[b + 3] = vx; v[b + 4] = vy;
-    v[b + 1]! += vx * DT; v[b + 2]! += vy * DT;
+    if (moveFreeSlot(v, b, T1)) s.rockCapHits++;
   }
   rocksMoved(s);
-  const p = s.map.planet;
+  const p = s.map.planet, far = R_MAP + rockEdgeSlack();
   for (let a = 0; a < n; a++) {   // part 2: contacts, reading kinds as they stand now
     const A = a * ROCK_STRIDE;
     if (v[A] !== RockKind.Free || s.rockBorn[a] === 1) continue;
     const x = v[A + 1]!, y = v[A + 2]!, r = v[A + 5]!, planet = touching(x, y, r, p.x, p.y, p.r);
-    if (planet || x * x + y * y > R_MAP * R_MAP) { dustRock(s, a, planet ? 'planet' : 'edge'); s.rockDone[a] = 1; continue; }
+    if (planet || x * x + y * y > far * far) { dustRock(s, a, planet ? 'planet' : 'edge'); s.rockDone[a] = 1; continue; }
     for (const o of rocksNear(s, x, y, r)) {
       if (o === a || !rockAlive(s, o) || s.rockBorn[o] === 1 || s.rockDone[o] === 1) continue;
       if (!touching(v[A + 1]!, v[A + 2]!, v[A + 5]!, rockX(s, o), rockY(s, o), v[o * ROCK_STRIDE + 5]!)) continue;
