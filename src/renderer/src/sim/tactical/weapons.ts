@@ -114,7 +114,8 @@ export function laserOffline(state: TacticalState, i: number): boolean {
 }
 
 /** W-2 (pew pew spec §2): whether ship i's MANUAL laser would fire on a laserFire now, a torpedo in flight aside
- *  (laserFrozen): a full charge, no burst shot pending, Weapons below level 2. */
+ *  (laserFrozen): a full charge, no burst shot pending, the laser not offline (the crew's: a beam bar, Engineering spike
+ *  §10.3, merge decision 1b; any other ship's: Weapons below level 2). No sight test (firing blind is allowed). */
 export function manualLaserReady(state: TacticalState, i: number): boolean {
   return laserFull(state, i) && state.systems[i]!.laserBurst === 0 && !laserOffline(state, i);
 }
@@ -258,15 +259,16 @@ function fireLaser(state: TacticalState, i: number): void {
 }
 
 /** W-2 (pew pew spec §2): a full charge's MANUAL release along fine aim `aim` (an integer 0..AIM_STEPS − 1, else nothing):
- *  the first shot now along the aim clamped about the heading, the rest of the class's burst queued a burst gap apart,
- *  each to fire along that same clamped aim (laserAim). */
+ *  the first shot now along the aim clamped about the heading, the rest of the burst queued a burst gap apart, each to
+ *  fire along that same clamped aim (laserAim). Engineering spike §10.3 (merge decision 1b): the burst is the beam's bars'
+ *  (beamShots), as AUTO's; no sight test: firing blind along an aim is allowed. */
 function fireLaserAlong(state: TacticalState, i: number, aim: number): void {
   const as = state.systems[i]!, laser = classOf(state, i).slots.laser;
   if (!laser || !Number.isInteger(aim) || aim < 0 || aim >= AIM_STEPS) return;
   const clamped = clampAim(state.ships[i]!.heading, aim, LASER_ARC_STEPS);
   shootAlong(state, i, clamped);
   as.laserCharge = 0; as.laserHold = 0;
-  as.laserBurst = laser.shots - 1; as.laserBurstClock = as.laserBurst > 0 ? laser.burstGapTicks : 0;
+  as.laserBurst = Math.max(0, beamShots(state, i) - 1); as.laserBurstClock = as.laserBurst > 0 ? laser.burstGapTicks : 0;   // spec §10.3
   as.laserAim = as.laserBurst > 0 ? clamped : -1;
 }
 
