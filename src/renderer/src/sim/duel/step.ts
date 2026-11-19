@@ -22,8 +22,8 @@ import { applyHitDamage, healthPhase } from './health';
 import { followingSeed } from './seeds';
 import { throttleThrust, validHoldHeading, validThrottle } from './throttle';
 import { createDuel, disposeDuel, type DuelState } from './state';
-import { compressorMax, crewThrust, engineBars, heldAxis, noVent, rampThrottle, throttleCap, throttleFloor } from './helmFlight';
-import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
+import { compress, compressorMax, crewThrust, engineBars, heldAxis, noVent, rampThrottle, throttleCap, throttleFloor, vents } from './helmFlight';
+import { RCS_GAS_PER_TICK, REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
 
 export interface DuelInput { held: readonly HeldInput[]; commands: readonly DuelEnvelope[] }
 
@@ -117,11 +117,16 @@ export function helmTurn(d: DuelState, h: HeldInput): number {
   return d.holdHeading >= 0 ? headingTurn(d.tactical, 0, d.holdHeading) : 0;
 }
 
-/** Playtest2feedback (spec §3, §5, §7's step order 2, 3 and 7): the crew Helm's tick on a newtonianHelm class, attended
- *  (`h` is the attendant's held input) or not (null). The turn comes from the state before the step. Then the throttle
- *  ramp runs on the attendant's throttleHeld (0 with no attendant), with its clamp to the ENGINE share's floor and cap.
- *  Then the crew's axes: the ship flies attended or not, coasting once the throttle is back at 0, and a held heading still
- *  turns it. Runs only while the round runs (stepDuelTick). */
+/** Playtest2feedback (spec §3, §4, §5, §7's step order 2 to 7): the crew Helm's tick on a newtonianHelm class, attended
+ *  (`h` is the attendant's held input) or not (null). In order:
+ *  - the turn, from the state before the step;
+ *  - the throttle ramp on the attendant's throttleHeld (0 with no attendant), clamped to the ENGINE share's floor and cap;
+ *  - the fore/aft then the side thruster, each venting a tick's gas when held by the attendant and the tank holds it;
+ *  - the compressor, every running tick, attended or not;
+ *  - this tick's helmVent;
+ *  - the crew's axes, which fly attended or not (coasting once the throttle is back at 0), with a held heading still
+ *    turning it.
+ *  Runs only while the round runs (stepDuelTick). */
 function crewHelm(d: DuelState, h: HeldInput | null, crew: ShipInput): void {
   const held = h ?? NO_HELD, turn = helmTurn(d, held);
   if (h) {
@@ -130,8 +135,17 @@ function crewHelm(d: DuelState, h: HeldInput | null, crew: ShipInput): void {
   }
   const engine = engineBars(d);
   d.thrMille = rampThrottle(d.thrMille, h ? heldAxis(h.throttleHeld) : 0, throttleFloor(engine), throttleCap(engine));
+  const rcsY = ventAxis(d, h ? heldAxis(h.rcsY) : 0), rcsX = ventAxis(d, h ? heldAxis(h.rcsX) : 0);   // fore/aft first (§4)
+  const c = compress(d.rcsGas, d.rcsAcc, d.compressor); d.rcsGas = c.gas; d.rcsAcc = c.acc;
+  d.helmVent = { x: rcsX, y: rcsY, boosted: false };
   crew.helm = true;
-  crew.axes = { turn, thrust: crewThrust(d.thrMille) };
+  crew.axes = { turn, thrust: crewThrust(d.thrMille), rcsX, rcsY };
+}
+/** Playtest2feedback §4: an axis held `want` vents when the tank holds a tick's gas; it spends it and returns `want`, else 0. */
+function ventAxis(d: DuelState, want: number): number {
+  if (!vents(want, d.rcsGas)) return 0;
+  d.rcsGas -= RCS_GAS_PER_TICK;
+  return want;
 }
 
 /**
