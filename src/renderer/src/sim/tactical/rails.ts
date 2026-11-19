@@ -64,10 +64,14 @@ export function targetVelocity(x: number, y: number): [number, number] { return 
 /** §13.2: the lane pull at (x, y) for drag rate k: inside a lane zone −LANE_PULL · (ρ − ρ_lane) · p/ρ · (k / SETTLE_K_MAX),
  *  so debris settles onto the lane (radial period about 100 s, damping about 0.5 at full drag); zero outside the zones. */
 export function lanePull(x: number, y: number, k: number): [number, number] {
+  const o = { c: 0, s: 0 }; lanePullOut(x, y, k, o); return [o.c, o.s];
+}
+/** lanePull into `out` (c = x part, s = y part): the same operations in the same order, no allocation. */
+export function lanePullOut(x: number, y: number, k: number, out: Pair): void {
   const rho = Math.sqrt(x * x + y * y), zone = laneZone(rho);
-  if (zone < 0 || k <= 0) return [0, 0];
+  if (zone < 0 || k <= 0) { out.c = 0; out.s = 0; return; }
   const f = (-LANE_PULL * (rho - LANES[zone]!.rho) * (k / SETTLE_K_MAX)) / rho;
-  return [f * x, f * y];
+  out.c = f * x; out.s = f * y;
 }
 const pStep: Pair = { c: 0, s: 0 }, pTurn: Pair = { c: 0, s: 0 }, pSpin: Pair = { c: 0, s: 0 }, pSpinN: Pair = { c: 0, s: 0 };
 /** railPos with ρ = |centre|, ω = orbitRate(ρ) and (c, s) = railStep(ρ) given (a caller that holds them across many ticks;

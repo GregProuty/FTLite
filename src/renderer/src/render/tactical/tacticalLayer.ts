@@ -17,6 +17,9 @@ import type { ArcDraw, CombatDraw, MissileDraw } from './weaponsModel';
 import type { Viewport } from './camera';
 import { CALLOUT_MAX } from './hitModel';
 import { FLOATS_MAX } from './fxModel';
+
+/** §7.1: the rock trails' alpha is quantised into this many bands, one polyline stroke each. */
+const TRAIL_BANDS = 4;
 import { CROSS_PX, PIP_PX } from '../duel/leadModel';
 
 export { CREW_SHIP, ENEMY_SHIP, SHIELD_RING } from './shipColours';
@@ -261,9 +264,15 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         bodies.circle(p.x, p.y, Math.max(1, p.r)).stroke({ width: 1, color: CRT.mid, alpha: 0.6 });
       }
       for (const a of d.asteroids) {
-        if (a.trail) for (let i = 1; i < a.trail.length; i++) {   // §7.1, §13.5: the free rock's fading trail, oldest faintest
-          const p0 = a.trail[i - 1]!, p1 = a.trail[i]!;
-          bodies.moveTo(p0.x, p0.y).lineTo(p1.x, p1.y).stroke({ width: 1, color: CRT.dim, alpha: (0.5 * i) / a.trail.length });
+        if (a.trail) {   // §7.1, §13.5: the free rock's fading trail, oldest faintest: one polyline per alpha band
+          const segs = a.trail.length / 2 - 1;
+          for (let band = 0; band < TRAIL_BANDS; band++) {
+            const lo = Math.floor((band * segs) / TRAIL_BANDS), hi = Math.floor(((band + 1) * segs) / TRAIL_BANDS);
+            if (hi <= lo) continue;
+            bodies.moveTo(a.trail[lo * 2]!, a.trail[lo * 2 + 1]!);
+            for (let i = lo + 1; i <= hi; i++) bodies.lineTo(a.trail[i * 2]!, a.trail[i * 2 + 1]!);
+            bodies.stroke({ width: 1, color: CRT.dim, alpha: (0.5 * (band + 1)) / TRAIL_BANDS });
+          }
         }
         if (a.streak) {   // spike ii §7 item 3: a moving rock's fading streak behind it
           const mx = (a.x + a.streak.x) / 2, my = (a.y + a.streak.y) / 2;

@@ -26,7 +26,7 @@ export function updateRockTrack(t: RockTrack, s: TacticalState): void {
   const n = rockSlots(s);
   if (t.n !== n) sized(t, n);
   if (s.tick === t.tick) return;
-  const first = t.tick < 0, sample = first || Math.floor(s.tick / TRAIL_EVERY) !== Math.floor(t.tick / TRAIL_EVERY);
+  const first = t.tick < 0 || s.tick < t.tick, sample = first || Math.floor(s.tick / TRAIL_EVERY) !== Math.floor(t.tick / TRAIL_EVERY);
   for (let k = 0; k < n; k++) {
     const kind = s.rocks[k * ROCK_STRIDE]!;
     if (kind === RockKind.Gone) { t.kind[k] = 0; t.len[k] = 0; continue; }
@@ -53,13 +53,21 @@ export function rockDrawPos(t: RockTrack | null, s: TacticalState, k: number, al
   if (!t || t.tick !== s.tick || k >= t.n) return { x: v[b + 1]!, y: v[b + 2]! };
   return { x: t.px[k]! + (t.cx[k]! - t.px[k]!) * alpha, y: t.py[k]! + (t.cy[k]! - t.py[k]!) * alpha };
 }
-/** Rock k's trail in world units, oldest first: 25 s while it is younger than 60 s, 6 s after; empty for a rail. */
-export function rockTrail(t: RockTrack, s: TacticalState, k: number): Point[] {
-  if (k >= t.n || s.rocks[k * ROCK_STRIDE] !== RockKind.Free) return [];
-  const young = (s.tick - rockT(s, k)) / TICK_HZ < YOUNG_AGE_S, keep = Math.min(t.len[k]!, (young ? TRAIL_YOUNG_S : TRAIL_OLD_S) * TRAIL_HZ), out: Point[] = [];
-  for (let i = keep; i >= 1; i--) {
+/** Rock k's trail written into `out` as flat world x, y pairs, oldest first (the number of pairs is returned): 25 s while it
+ *  is younger than 60 s, 6 s after; none for a rail. `out` is the caller's scratch: no allocation once it has grown. */
+export function rockTrailInto(t: RockTrack, s: TacticalState, k: number, out: number[]): number {
+  if (k >= t.n || s.rocks[k * ROCK_STRIDE] !== RockKind.Free) return 0;
+  const young = (s.tick - rockT(s, k)) / TICK_HZ < YOUNG_AGE_S, keep = Math.min(t.len[k]!, (young ? TRAIL_YOUNG_S : TRAIL_OLD_S) * TRAIL_HZ);
+  for (let i = keep, j = 0; i >= 1; i--, j += 2) {
     const at = (k * TRAIL_LEN + ((t.head[k]! - i + TRAIL_LEN) % TRAIL_LEN)) * 2;
-    out.push({ x: t.trail[at]!, y: t.trail[at + 1]! });
+    out[j] = t.trail[at]!; out[j + 1] = t.trail[at + 1]!;
   }
+  return keep;
+}
+const scratch: number[] = [];
+/** Rock k's trail in world units, oldest first (rockTrailInto, as Points). */
+export function rockTrail(t: RockTrack, s: TacticalState, k: number): Point[] {
+  const n = rockTrailInto(t, s, k, scratch), out: Point[] = [];
+  for (let i = 0; i < n; i++) out.push({ x: scratch[i * 2]!, y: scratch[i * 2 + 1]! });
   return out;
 }

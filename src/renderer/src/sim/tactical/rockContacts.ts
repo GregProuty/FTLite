@@ -7,13 +7,12 @@
 // ends its turn. Then a is marked done (rockDone). A Rail never takes a turn, so a free-rail pair is always checked by
 // the free rock, and rail-rail pairs never are.
 // Pairs (asteroids-iii §5.4, §13.4): only Free rocks take turns; candidates are every live, unborn rock near the turn's rock, ascending; one that had its turn this tick (rockDone) is skipped. A rail never has rockDone, so a free-rail pair is always checked; a rail freed mid-pass takes its own turn later if its slot is higher.
-import { gravityAccel } from './physics';
-import { circularVelocity, lanePull, targetVelocity } from './rails';
+import { lanePullOut, type Pair } from './rails';
 import { breakRock, crushDamage, dustRock, wearRock } from './rockBreak';
 import { freeRock, markTouched, regridRock, rockAlive, rockMass, RockKind, rockPhase, rocksMoved, restartClock, rocksNear, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
 import { BOUNCE_MIN, E_LOW, E_RAMP, E_SPAN, EDGE_SETTLE_K, FAN_SPLIT_MIN_R, K_EDGE_ROCK, ROCK_CRUSH_SPEED, ROCK_EDGE_SLACK, ROCK_EDGE_SLACK_SOFT, ROCK_GRAVITY, ROCK_MAX_SPEED, ROCHE_MIN_AGE, ROCHE_R, ROCK_SEPARATE_MAX, ROCK_SWITCHES, SETTLE_A0, SETTLE_A1, SETTLE_K_MAX, SEPARATE_SHARE, SEPARATE_SLOP, TOUCH_MIN } from './rockTuning';
 import type { TacticalState } from './state';
-import { DT, K_EDGE, R_MAP } from './tuning';
+import { DT, GM, GRAVITY_EPS, K_EDGE, R_MAP } from './tuning';
 import { TICK_HZ } from '../tuning';
 
 function touching(ax: number, ay: number, ar: number, bx: number, by: number, br: number): boolean {
@@ -82,6 +81,7 @@ export function rockEdgeAccel(x: number, y: number, soft = ROCK_SWITCHES.softEdg
 }
 /** §13.3: the far-edge safety slack past R_MAP (a free rock past R_MAP + this turns to dust, 'edge'). */
 export function rockEdgeSlack(soft = ROCK_SWITCHES.softEdge): number { return soft ? ROCK_EDGE_SLACK_SOFT : ROCK_EDGE_SLACK; }
+const pull: Pair = { c: 0, s: 0 };   // moveFreeSlot's lane-pull scratch
 /**
  * §13.3: one tick of a free rock's motion, the slot at base b of v, its age T1 - t: (1) drift p += v*DT/2; (2) half drag
  * v += (V* - v)*k*DT/2, V* = V_c (and, with the soft edge past R_MAP, + (V_c - v)*EDGE_SETTLE_K*DT/2); (3) kick v += (g*ROCK_GRAVITY +
@@ -90,8 +90,15 @@ export function rockEdgeSlack(soft = ROCK_SWITCHES.softEdge): number { return so
  */
 export function moveFreeSlot(v: Float64Array, b: number, T1: number, soft = ROCK_SWITCHES.softEdge): boolean {
   const h = DT / 2, k = settleRate(T1 - v[b + 7]!), x = v[b + 1]! + v[b + 3]! * h, y = v[b + 2]! + v[b + 4]! * h;
-  const [gx, gy] = gravityAccel(x, y), [ex, ey] = rockEdgeAccel(x, y, soft), [tx, ty] = targetVelocity(x, y), [lx, ly] = lanePull(x, y, k);
-  const out = soft && x * x + y * y > R_MAP * R_MAP, [cx, cy] = out ? circularVelocity(x, y) : [0, 0], ke = out ? EDGE_SETTLE_K : 0;
+  // Inlined gravityAccel, rockEdgeAccel, targetVelocity (= circularVelocity) and lanePull: the same operations in the same order, no tuples.
+  const r2 = x * x + y * y, q = r2 + GRAVITY_EPS * GRAVITY_EPS, qs = q * Math.sqrt(q), kg = -GM / qs, gx = kg * x, gy = kg * y;
+  const w = Math.sqrt(GM / qs), tx = -w * y, ty = w * x;
+  let ex = 0, ey = 0;
+  const d = Math.sqrt(r2);
+  if (!(d <= R_MAP)) { const ke0 = (-(soft ? K_EDGE_ROCK : K_EDGE) * (d - R_MAP)) / d; ex = ke0 * x; ey = ke0 * y; }
+  lanePullOut(x, y, k, pull);
+  const lx = pull.c, ly = pull.s;
+  const out = soft && r2 > R_MAP * R_MAP, cx = out ? tx : 0, cy = out ? ty : 0, ke = out ? EDGE_SETTLE_K : 0;
   let vx = v[b + 3]!, vy = v[b + 4]!;
   vx += (tx - vx) * k * h; vy += (ty - vy) * k * h; vx += (cx - vx) * ke * h; vy += (cy - vy) * ke * h;
   vx += (gx * ROCK_GRAVITY + ex + lx) * DT; vy += (gy * ROCK_GRAVITY + ey + ly) * DT;

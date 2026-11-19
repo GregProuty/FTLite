@@ -2,10 +2,12 @@
 // (25 s at 4 Hz while young, 6 s after) that reset on a kind or r change or a jump, streaks relative to V_c, the outline
 // spin, and the predicted path of the Weapons map's rock target.
 import { describe, expect, it } from 'vitest';
-import { createCamera } from '../src/renderer/src/render/tactical/camera';
-import { createRockTrack, JUMP_RESET_U, rockDrawPos, rockTrail, TRAIL_LEN, updateRockTrack } from '../src/renderer/src/render/tactical/rockTrack';
+import { createCamera, worldToScreen } from '../src/renderer/src/render/tactical/camera';
+import { createRockTrack, JUMP_RESET_U, rockDrawPos, rockTrail, rockTrailInto, TRAIL_LEN, updateRockTrack } from '../src/renderer/src/render/tactical/rockTrack';
 import { asteroidSpin, tacticalModel, type TacticalModelInput } from '../src/renderer/src/render/tactical/tacticalModel';
-import { circularVelocity, orbitRate } from '../src/renderer/src/sim/tactical/rails';
+import { circularVelocity, orbitRate, railPos, type RailOut } from '../src/renderer/src/sim/tactical/rails';
+import { predictRock } from '../src/renderer/src/sim/tactical/predict';
+import { RockKind, ROCK_STRIDE, rockX, rockY, writeRock } from '../src/renderer/src/sim/tactical/rocks';
 import { NO_AXES } from '../src/renderer/src/sim/tactical/state';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
@@ -24,6 +26,59 @@ describe('the rock track (spec §7.1, §13.5)', () => {
     expect(p.x).toBeCloseTo(-Math.sin(a) * 1700, 9); expect(p.y).toBeCloseTo(Math.cos(a) * 1700, 9);
     const q = rockDrawPos(track, st, 4, 0.5);
     expect(q.x).toBeCloseTo((0 + st.rocks[4 * 8 + 1]!) / 2, 9);
+    const before = { x: st.rocks[4 * 8 + 1]!, y: st.rocks[4 * 8 + 2]! };   // the tick-1 position: px must hold it after the next step
+    stepDuel(st, IDLE_INPUT); updateRockTrack(track, st);
+    expect(track.px[4]).toBe(before.x); expect(track.py[4]).toBe(before.y);
+    expect(track.cx[4]).toBe(st.rocks[4 * 8 + 1]!);
+    const r = rockDrawPos(track, st, 4, 0.5);
+    expect(r.x).toBeCloseTo((before.x + st.rocks[4 * 8 + 1]!) / 2, 9); expect(r.y).toBeCloseTo((before.y + st.rocks[4 * 8 + 2]!) / 2, 9);
+  });
+  it("draws a Tumble with a nonzero offset where the sim's railPos puts it at tick - 1 and at tick", () => {
+    const st = arena(), track = createRockTrack();
+    writeRock(st, 6, RockKind.Tumble, 1500, 300, 25, -12, 20, 5, st.tick);
+    for (let i = 0; i < 90; i++) stepDuel(st, IDLE_INPUT);
+    updateRockTrack(track, st);
+    const out: RailOut = { x: 0, y: 0, vx: 0, vy: 0 }, v = st.rocks, b = 6 * ROCK_STRIDE;
+    for (const [alpha, T] of [[0, st.tick - 1], [1, st.tick]] as const) {
+      railPos(v[b + 1]!, v[b + 2]!, v[b + 3]!, v[b + 4]!, v[b + 7]!, T, true, out);
+      const p = rockDrawPos(track, st, 6, alpha);
+      expect(p.x).toBeCloseTo(out.x, 6); expect(p.y).toBeCloseTo(out.y, 6);
+    }
+  });
+  it('a free rock that jumps, changes r or is refreed on a 4 Hz sample tick restarts its trail with exactly the new position', () => {
+    const run = (mutate: (st: ReturnType<typeof arena>) => void): { len: number; head: number[]; at: number[] } => {
+      const st = arena(), track = createRockTrack(), [vx, vy] = circularVelocity(0, 1700);
+      mover(st, 4, 0, 1700, vx, vy + 5, 10); rail(st, 5, 300, 1700, 12);
+      updateRockTrack(track, st);
+      while ((st.tick + 1) % 15 !== 0 || st.tick < 100) { stepDuel(st, IDLE_INPUT); updateRockTrack(track, st); }   // the next update is a 4 Hz sample tick
+      expect(track.len[4]).toBeGreaterThan(3);
+      mutate(st); stepDuel(st, IDLE_INPUT); updateRockTrack(track, st);
+      const out: number[] = [], n = rockTrailInto(track, st, 4, out);
+      const o5: number[] = [], n5 = rockTrailInto(track, st, 5, o5);
+      return { len: n, head: [rockX(st, 4), rockY(st, 4)], at: n5 > 0 ? o5.slice(0, 2) : out.slice(0, 2) };
+    };
+    const jumped = run((st) => { st.rocks[4 * 8 + 1]! += JUMP_RESET_U + 1; });
+    expect(jumped.len).toBe(1); expect(jumped.at).toEqual(jumped.head);
+    const resized = run((st) => { st.rocks[4 * 8 + 5] = 11; });
+    expect(resized.len).toBe(1); expect(resized.at).toEqual(resized.head);
+    const kept = run(() => undefined);   // no change: the history continues
+    expect(kept.len).toBeGreaterThan(3);
+    // slot 5 was a rail: a free rock now, so its history is exactly one sample at its position
+    const st = arena(), track = createRockTrack();
+    rail(st, 5, 300, 1700, 12); updateRockTrack(track, st);
+    while ((st.tick + 1) % 15 !== 0 || st.tick < 100) { stepDuel(st, IDLE_INPUT); updateRockTrack(track, st); }
+    writeRock(st, 5, RockKind.Free, 300, 1700, 0, 0, 12, 5, st.tick); stepDuel(st, IDLE_INPUT); updateRockTrack(track, st);
+    const out: number[] = [];
+    expect(rockTrailInto(track, st, 5, out)).toBe(1);
+    expect(out.slice(0, 2)).toEqual([rockX(st, 5), rockY(st, 5)]);
+  });
+  it('a tick that goes backwards resets the history', () => {
+    const st = arena(), track = createRockTrack();
+    mover(st, 4, 0, 1700, 1, 1, 10); updateRockTrack(track, st);
+    for (let i = 0; i < 120; i++) { stepDuel(st, IDLE_INPUT); updateRockTrack(track, st); }
+    expect(track.len[4]).toBeGreaterThan(3);
+    st.tick = 3; updateRockTrack(track, st);
+    expect(track.len[4]).toBe(1);
   });
   it('keeps 25 s of 4 Hz samples while a free rock is young and shows 6 s once it is older than 60 s; resets on a kind or r change or a jump', () => {
     const st = arena(), track = createRockTrack(), [vx, vy] = circularVelocity(0, 1700);
@@ -61,5 +116,9 @@ describe('the map model (spec §7.1, §7.2, §13.5)', () => {
     st.systems[0].laserRock = 3;
     expect(model(st, { contacts: true }).rockPath).toHaveLength(40);
     expect(model(st, { contacts: true, console: 'helm' }).rockPath).toBeUndefined();
+    const cam = createCamera(0, 2000, 1), vp = { w: 1280, h: 720 }, scr = (k: number) => predictRock(st, k, 1200, 30).map((q) => worldToScreen(cam, vp, q.x, q.y));
+    expect(model(st, { contacts: true }).rockPath).toEqual(scr(3));
+    st.systems[0].laserRock = -1; st.systems[0].torpRock = -1; mover(st, 9, 400, 2200, 3, -2, 15); st.systems[0].torpRockFlying = 9;
+    expect(model(st, { contacts: true }).rockPath).toEqual(scr(9));
   });
 });

@@ -10,7 +10,7 @@ import { rockAlive, rockAt, rockHpMax, RockKind, rockSlots } from '../../sim/tac
 import { AIM_STEPS, HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
-import { rockDrawPos, rockTrail, type RockTrack } from './rockTrack';
+import { rockDrawPos, rockTrailInto, type RockTrack } from './rockTrack';
 import { hullFor, type HullId } from './hullModel';
 import type { HelmVent } from '../../sim/duel/helmFlight';
 import type { FogView, GhostKind } from './fogModel';
@@ -53,7 +53,7 @@ export interface GridDraw { spacing: number; lines: (Line & { major: boolean })[
 export interface CircleDraw { x: number; y: number; r: number }
 /** Spike ii: `wear` 0 (whole) .. 1 from hp / hpMax, drawn as cracks and a dimmer fill; `streak` (§7 item 3) the screen end of
  *  a moving rock's fading streak behind it, with its alpha. */
-export interface AsteroidDraw extends CircleDraw { index: number; dot: boolean; wear?: number; streak?: { x: number; y: number; alpha: number }; spin?: number; trail?: Point[] }
+export interface AsteroidDraw extends CircleDraw { index: number; dot: boolean; wear?: number; streak?: { x: number; y: number; alpha: number }; spin?: number; trail?: number[] }
 /** Asteroids-iii §7.1: a free rock streaks along its velocity relative to V_c(p) when that is above STREAK_MIN_REL (u/s), for STREAK_S seconds of that motion, at most STREAK_MAX_U (plan deviation 12). */
 export const STREAK_MIN_REL = 8, STREAK_S = 1, STREAK_MAX_U = 90;
 /** §7.2: the predicted path of the Weapons map's rock target: ticks and the dot spacing (20 s, a dot every 0.5 s). */
@@ -401,9 +401,16 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
       const [cx, cy] = circularVelocity(a.x, a.y), ux = a.vx - cx, uy = a.vy - cy, rel = Math.hypot(ux, uy);
       if (rel > STREAK_MIN_REL) { const tail = Math.min(STREAK_MAX_U, rel * STREAK_S) / rel; streak = { ...toS(w.x - ux * tail, w.y - uy * tail), alpha: Math.min(1, (rel - STREAK_MIN_REL) / 40) }; }
     }
-    const trail = input.rockTrack && a.kind === RockKind.Free ? rockTrail(input.rockTrack, state, index).map((q) => toS(q.x, q.y)) : [];
+    let trail: number[] | null = null;   // flat screen x, y pairs from the slot's scratch, the rock's draw position last so the trail meets it
+    if (input.rockTrack && a.kind === RockKind.Free) {
+      const buf = trailBuf[index] ?? (trailBuf[index] = []), m = rockTrailInto(input.rockTrack, state, index, buf);
+      if (m > 0) {
+        for (let i = 0; i < m; i++) { buf[i * 2] = vp.w / 2 + (buf[i * 2]! - cam.centreX) * z; buf[i * 2 + 1] = vp.h / 2 + (buf[i * 2 + 1]! - cam.centreY) * z; }
+        buf[m * 2] = p.x; buf[m * 2 + 1] = p.y; buf.length = (m + 1) * 2; trail = buf;
+      }
+    }
     asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX, wear: Math.max(0, Math.min(1, 1 - a.hp / rockHpMax(a.r))), spin: (asteroidSpin(index) * (state.tick + alpha)) / TICK_HZ,
-      ...(streak ? { streak } : {}), ...(trail.length > 1 ? { trail } : {}) });
+      ...(streak ? { streak } : {}), ...(trail ? { trail } : {}) });
   }
 
   const ships: ShipDraw[] = [];
@@ -538,7 +545,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   let rockPath: Point[] | undefined;
   if (input.contacts && input.console === 'weapons') {
     const sys = state.systems[CREW_SLOT]!, k = sys.laserRock >= 0 ? sys.laserRock : sys.torpRock >= 0 ? sys.torpRock : sys.torpRockFlying;
-    if (k >= 0 && rockAlive(state, k)) rockPath = predictRock(state, k, ROCK_PATH_TICKS, ROCK_PATH_EVERY).map((q) => toS(q.x, q.y));
+    if (k >= 0 && rockAlive(state, k)) rockPath = cachedRockPath(state, k).map((q) => toS(q.x, q.y));
   }
 
   // Engineering spike §10.4: the sensor range ring and the ghosts of contacts last seen.
@@ -610,10 +617,17 @@ export function pickRock(input: Pick<TacticalModelInput, 'state' | 'camera' | 'v
   return best;
 }
 
+/** §7.2: the target's predicted path in world units, kept for the tick and rock it was made for (the frames between two ticks reuse it). */
+let pathCache: { state: TacticalState; tick: number; k: number; pts: Point[] } | null = null;
+export function cachedRockPath(state: TacticalState, k: number): Point[] {
+  if (!pathCache || pathCache.state !== state || pathCache.tick !== state.tick || pathCache.k !== k) pathCache = { state, tick: state.tick, k, pts: predictRock(state, k, ROCK_PATH_TICKS, ROCK_PATH_EVERY) };
+  return pathCache.pts;
+}
+const trailBuf: number[][] = [];   // per rock slot: the draw list's trail scratch (the model builds one frame at a time)
 const shapeCache = new Map<number, number[]>();
 /** Asteroids-iii §13.5: rock `index`'s outline spin, a hashed ±0.1 to 0.5 rad/s (drawing only; the cracks turn with it). */
 export function asteroidSpin(index: number): number {
-  const h = Math.imul(((index + 1) * 2654435761) >>> 0 ^ 0x9e3779b9, 2246822519) >>> 0, f = (h % 10000) / 10000;
+  const h = Math.imul((((index + 1) * 2654435761) >>> 0) ^ 0x9e3779b9, 2246822519) >>> 0, f = (h % 10000) / 10000;
   return (h & 1 ? 1 : -1) * (0.1 + 0.4 * f);
 }
 /** A rough asteroid outline as radius multipliers (9 vertices, 0.72..1.08), seeded by the asteroid's index. Render-only randomness. */
