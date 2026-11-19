@@ -14,6 +14,8 @@ import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
 import { validateMap } from '../src/renderer/src/sim/tactical/map';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
+import { breakRock } from '../src/renderer/src/sim/tactical/rockBreak';
+import { beginRockTick, RockKind, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { duelPublicationToImage, imageToDuelPublication, type DuelPublication } from '../src/network/modes/duelStream';
 import { decodeState, encodeDelta, encodeFull, type StateImage } from '../src/network/state/imageCodec';
 import { hashF64 } from '../src/shared/hash';
@@ -40,6 +42,15 @@ const d = createDuel(layout, seed), pair = createScriptedPair(seed);
 let replica: DuelState | null = null;
 try {
   for (let k = 0; k < WARM; k++) stepDuelTick(d, scriptedInput(pair, d));
+  // Spike ii §9.5: `--movers N` breaks static rocks (fan) until N rocks move, then samples (they decay while sampling).
+  const moversAt = process.argv.indexOf('--movers'), movers = moversAt > 0 ? Number(process.argv[moversAt + 1]) : 0;
+  const moving = (): number => { let n = 0; for (let k = 0; k < d.tactical.rocks.length; k += ROCK_STRIDE) if (d.tactical.rocks[k] === RockKind.Moving) n++; return n; };
+  if (movers > 0) {
+    beginRockTick(d.tactical);
+    for (let k = 0; k < d.tactical.map.asteroids.length && moving() < movers; k++)
+      if (d.tactical.rocks[k * ROCK_STRIDE] === RockKind.Static && d.tactical.rocks[k * ROCK_STRIDE + 5]! >= 25) breakRock(d.tactical, k, 1, 0, 'collision', -1, 'fan');
+  }
+  const moversAtStart = moving();
   const host: number[] = [], client: number[] = [];
   let previous: StateImage | null = null;
   for (let k = 0; k < SAMPLES; k++) {
@@ -54,7 +65,7 @@ try {
     client.push(performance.now() - t);
     previous = images[0]!;
   }
-  const result = { seed, tick: d.interior.tick, samples: SAMPLES, restore: 'restoreDuelSnapshot' in snapshots ? 'restoreDuelSnapshot' : 'loadDuelSnapshot',
+  const result = { seed, tick: d.interior.tick, samples: SAMPLES, movers: moversAtStart, restore: 'restoreDuelSnapshot' in snapshots ? 'restoreDuelSnapshot' : 'loadDuelSnapshot',
     hostMedianMs: Number(median(host).toFixed(3)), clientMedianMs: Number(median(client).toFixed(3)), hostBudgetMs: 1.5, clientBudgetMs: 1.0 };
   console.log(`duel publication profile, seed ${seed} at tick ${result.tick} (${SAMPLES} samples, restore by ${result.restore}): host ${result.hostMedianMs} ms per tick (budget 1.5), client ${result.clientMedianMs} ms per publication (budget 1.0)`);
   const at = process.argv.indexOf('--json');

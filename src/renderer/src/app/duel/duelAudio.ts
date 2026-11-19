@@ -11,6 +11,7 @@ import {
 } from '../../audio/duelSounds';
 export type { TorpedoTone } from '../../audio/duelSounds';
 import { interiorAudioView, interiorSounds, type InteriorWatch } from '../../audio/interiorSounds';
+import { rockSounds, type RockSoundWatch } from '../../audio/rockSounds';
 
 /** `live`: false while the view is a frozen copy (a lost online link); absent means live. `me`: the local player's index
  *  (the active character in Single player, this seat online), `crew`: each character's health and downed state, `dt`: this
@@ -29,6 +30,7 @@ export interface DuelAudioFrame {
 export function createDuelAudio(out: AudioOut) {
   let duelWatch: DuelWatch | null = null, inside: InteriorWatch | null = null, crewWatch: CrewWatch | null = null;
   let clock = 0, nextBeat: number | null = null, lastAlarm: number | null = null, lock: LockWatch | null = null, crewFlying = false;
+  let rockWatch: RockSoundWatch | null = null;
   return {
     frame(f: DuelAudioFrame): void {
       const t = f.duel.tactical, ev = duelEventSounds(f.events, f.pan);
@@ -49,7 +51,8 @@ export function createDuelAudio(out: AudioOut) {
       // A frozen frame keeps the watch (the steady tone already played stays played on resume).
       const tone = f.torpedo && f.live !== false && !f.paused ? lockTone(lock, f.torpedo, launched, clock) : { watch: lock, sounds: [] };
       lock = tone.watch;
-      const list = [...ev.sounds, ...st.sounds, ...ins.sounds, ...(alarm.play ? FIRE_ALARM : []), ...(beat.beat ? [HEARTBEAT] : []), ...tone.sounds, ...((f.pings ?? 0) > 0 ? [PING_TONE] : [])];
+      const rocks = rockSounds(rockWatch, f.events, f.pan, clock); rockWatch = rocks.watch;   // spike ii §7 item 8
+      const list = [...ev.sounds, ...st.sounds, ...ins.sounds, ...(alarm.play ? FIRE_ALARM : []), ...(beat.beat ? [HEARTBEAT] : []), ...tone.sounds, ...((f.pings ?? 0) > 0 ? [PING_TONE] : []), ...rocks.sounds];
       if (list.length) out.sounds(list);
       for (const cue of [...st.cues, ...life.cues]) out.play(cue);
       const ship = t.ships[CREW]!;
@@ -60,7 +63,7 @@ export function createDuelAudio(out: AudioOut) {
         hum: { thrust: Number.isFinite(f.axes.thrust) ? Math.min(1, Math.abs(f.axes.thrust)) : 0, speed: Math.hypot(ship.vx, ship.vy), charge: 0 } });
     },
     /** A new round or a rebuilt scene: the next frame is a fresh baseline. */
-    reset(): void { duelWatch = null; inside = null; crewWatch = null; nextBeat = null; lastAlarm = null; lock = null; crewFlying = false; }
+    reset(): void { duelWatch = null; inside = null; crewWatch = null; nextBeat = null; lastAlarm = null; lock = null; crewFlying = false; rockWatch = null; }
   };
 }
 export type DuelAudio = ReturnType<typeof createDuelAudio>;

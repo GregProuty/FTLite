@@ -1,0 +1,54 @@
+{
+  "verdict": "ready with P2s",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "VC_CONFIG now includes envVarsInUse ['FTLITE_PASSCODE','FTLITE_COOKIE_SECRET'] (plan L661-L662). The L42 fact is corrected. L45 keeps the 503 check for Web-iii. gates.md step 5 adds the line that a 503 with both vars set means a Production env problem and a redeploy is needed (plan L855)."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "Four parts, all in place:\n- acquireOnlineLock races a 2 s timer (plan L1580-L1606). On timeout it gives 'unavailable', and a grant that arrives after gaveUp returns undefined, so the browser releases it at once.\n- A busy lock is retried once with AbortSignal.timeout(1500). Its TimeoutError/AbortError maps to 'busy'. A synchronous throw and a rejection both map to 'unavailable'.\n- The pagehide teardown calls `if (lock.state === 'held') lock.release();` (L2170), and the main.ts source test checks for it (L2110). `lock` is typed OnlineLock (L1705), so the narrowing compiles.\n- Task 11 reloads the guest in place, and reload() throws unless __ftliteOnlineTest exists again (L2296-L2300, L2313, L2477).\nThe unit tests cover hold/release, a busy then granted retry, a retry that stays busy, and a grant that arrives late."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "Browser players now log service-origin responses and failed requests with their Origin header (L2303-L2306). After the run, an OPTIONS preflight from Node goes out with the page Origin while workerd is still alive (L2597-L2598); services/signalling/src/index.ts:L62-L65 answers a non-allowed origin's OPTIONS with 403. The run counts as the injection only if all of these hold: the lobby failed, a 403 was seen (or a failed POST carrying the page Origin plus the Node 403), and no 2xx create came back. Otherwise it exits 2 (L2609-L2621). Step 9 expects injection.refused true and injection.created false."
+    },
+    {
+      "id": "R1-F4",
+      "result": "still open",
+      "note": "The new close/reopen/Reconnect sequence does not prove the mirror came from IndexedDB. It is not true that the mirror 'can only have come back from IndexedDB' (plan L2206, L2497).\n- On Reconnect into a 'lost' room, establish() runs savedState then `mirrors(c).refresh()` (src/network/online/onlineSession.ts:L457-L458).\n- refresh() first awaits the IndexedDB load. It then always calls fetchLatest(), which runs `service.getCheckpoint` and accept()s the result (src/network/online/onlineMirrors.ts:L93, L99).\n- A committed mirror is by definition one the service already accepted (onlineMirrors.ts:L109). So the service returns the same capturedTick even if IndexedDB is empty or broken, and the `committed?.capturedTick === last.capturedTick` check at plan L2500 passes either way. This also means the R1-F2 reload does not test the stored mirror.\n- The fallback described in prose (read mirror-v1 and check for FTLNMIR1, L2206) is not in runPairing's code (L2487-L2508). If Re-host is never offered, the until() just times out.\n- The fallback also checks only the magic bytes, not the sequence the finding asked for.\n- proof.rehost.restoredFromIndexedDb is hard-coded to true (L2508).\nFix: after the guest reopens, read the stored mirror before (or without depending on) the service fetch. One way is a test-probe method such as `__ftliteOnlineTest.readStoredMirror()` that returns `mirrorStore.load()`'s committed metadata; the Electron driver can call it too through its status request. Another is a browser-only page.evaluate that opens database 'ftlite', reads records/'mirror-v1', checks MAGIC at bytes 0-7, reads the header length as uint32 LE at offset 8 and JSON-parses the header at offset 12 (mirrorStore.ts:L32-L39). Then assert that header.committed.metadata.checkpointSequence and capturedTick equal `last`, and record the real result in proof instead of a literal true."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "gates.md step 5 now has the live checks:\n- Without the cookie, a 401 for /, the Worker and a real paid file.\n- With the cookie, a 200 with `private, no-cache` for each, and version.json `no-store`.\n- A rollback on any failure, and a 503 diagnosis (plan L851-L856).\n- A checkbox for Web-iii's live-smoke.ts to repeat the checks (L860).\nMinor: a very first deploy has nothing for `vercel rollback` to return to, but the step also offers deleting the deployment."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "browserInit sets onlineBlocked to UNSUPPORTED_TEXT when the lock is unavailable and configured is set (plan L1711-L1712). Task 9's literal replace string at L2042 matches that new text exactly."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "BrowserSlice gains `web` and INITIAL_BROWSER sets it false (L901-L907). browserInit sets web: true. Settings replaces the note line with a ternary on browser.web and imports '../menuState', which is the correct relative path from ui/menu/. The tests check 'F11 also toggles fullscreen.' (FULLSCREEN_KEY = 'F11', src/shared/onlineSession.ts:L161) and BROWSER_F11_TEXT through renderUi's returned store (tests/helpers/uiRender.tsx:L7-L10)."
+    }
+  ],
+  "verified": [
+    "acquireOnlineLock control flow (plan L1580-L1606): the first attempt uses ifAvailable. The retry waits for at most 1.5 s, inside the 2 s start-up limit. gaveUp is set after the race, so a late callback returns undefined and the lock goes at once. A sync throw is caught. Each test mock's call sequence matches the implementation.",
+    "main.ts declares `const lock: OnlineLock` (plan L1705), so `lock.release()` in the teardown narrows correctly.",
+    "Browser close({prompt:false}) uses page.close() with no beforeunload (plan L2327-L2328), so closing the guest during rehost does not hang on a dialog. Electron close kills the app and reopen relaunches it on the same profile (L2385).",
+    "proof is Record<string, unknown> (plan L2427), so the new reloadKeptOnline and restoredFromIndexedDb fields compile.",
+    "services/signalling/src/index.ts:L59-L65: any method from a non-allowed Origin, OPTIONS included, gets a 403, so the Node preflight probe sees a 403 under the injection's 'null' ALLOWED_ORIGINS.",
+    "Rehost is offered only when the phase is 'saved', the snapshot is 'lost', mirror.committed exists and the own seat is occupied (onlineSession.ts:L85), which matches the gate's wait at plan L2500."
+  ],
+  "not_verified": [
+    "Whether Playwright's Chromium request.allHeaders() includes the Origin header on a POST that failed because its CORS preflight was refused. The provisional headers may leave it out. If they do, the fallback branch at plan L2611 cannot match, and the injection would exit 2 unless the preflight itself shows up as a 403 response. Running the gate settles this.",
+    "Whether Vercel's prebuilt Edge function needs or ignores envVarsInUse. The plan now lists the variables either way, and the live 503 check confirms it at Web-iii.",
+    "I ran neither tsc nor the tests, as the constraints require."
+  ]
+}

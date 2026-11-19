@@ -1,0 +1,11 @@
+topic=asteroids-ii-plan
+subject_kind=plan
+subject=docs/superpowers/plans/2026-11-18-asteroids-ii.md
+worktree=C:\Users\djuar\FTLite\.worktrees\asteroids-ii
+base=main
+cap=4
+effort=high
+confirm=0
+verify=
+created=2026-11-18
+head_at_setup=07d22040

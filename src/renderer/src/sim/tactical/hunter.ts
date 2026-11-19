@@ -5,7 +5,7 @@
 import { nextInt } from '../../../../shared/rng';
 import { hx, hy } from './direction';
 import { segmentNear, sideOf } from './geometry';
-import { queryGrid } from './grid';
+import { rockAt, rocksNear } from './rocks';
 import { classOf, HunterMode, missileOf, Room, type TacticalState } from './state';
 import {
   AUTO_FACE_SIN, HUNTER_AVOID_MARGIN, HUNTER_BRAKE_SPEED, HUNTER_JITTER_TICKS, HUNTER_LEAD_S, HUNTER_LOOKAHEAD_S, HUNTER_MISSILE_COOLDOWN_TICKS,
@@ -52,8 +52,8 @@ function threatAhead(state: TacticalState, i: number): { x: number; y: number } 
   const s = state.ships[i]!, ex = s.x + s.vx * HUNTER_LOOKAHEAD_S, ey = s.y + s.vy * HUNTER_LOOKAHEAD_S, p = state.map.planet;
   if (segmentNear(s.x, s.y, ex, ey, p.x, p.y, p.r + HUNTER_AVOID_MARGIN)) return p;
   const half = Math.max(Math.abs(ex - s.x), Math.abs(ey - s.y)) / 2 + HUNTER_AVOID_MARGIN;
-  for (const k of queryGrid(state.grid, (s.x + ex) / 2, (s.y + ey) / 2, half)) {
-    const a = state.map.asteroids[k]!;
+  for (const k of rocksNear(state, (s.x + ex) / 2, (s.y + ey) / 2, half)) {
+    const a = rockAt(state, k);
     if (segmentNear(s.x, s.y, ex, ey, a.x, a.y, a.r + HUNTER_AVOID_MARGIN)) return a;
   }
   return null;
@@ -87,7 +87,7 @@ export function hunterThink(state: TacticalState, i = 1): ShipInput {
   updateRepair(state, i);
   const repairing = h.mode === HunterMode.Repair;
   const helm = !(repairing && h.room === Room.Engines), weapons = !(repairing && h.room !== Room.Engines);
-  const input: ShipInput = { helm, weapons, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, gunHeld: false, scanner: true };
+  const input: ShipInput = { helm, weapons, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, scanner: true };
   if (!enemyHostile(state)) { h.fireAt = -1; return input; }   // the hold before hostility (Sci-1 spec §4.2): it keeps only its drift
 
   if (helm) {

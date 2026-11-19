@@ -342,6 +342,125 @@ differ.
   `weaponPower`.
 - The strip is read-only except on the ship view and the Weapons slot toggles.
 
+## 10. Amendment 2 (owner and a teammate, 2026-11-18): station budgets, three weapons, fog of war
+
+A teammate's notes, adopted by the owner: "each hud should read out how much power do i have for my station; then the
+station's responsibility is using what power they have from engineering to power their systems ... one power bar to
+helm they might only get 25 % throttle ... 50 % for two ... three weapons that take 1-3 power each ... faster recharge
+or more bullets or more damage per weapon depending on how much power weapons officer allocates", plus "fog of war:
+sensor range determined by sensor systems power and repair". The owner then answered three questions:
+- the weapons: "the hound starts with pew pew, beam and torpedo, pew pew and torpedo are on by default";
+- the beam: "its just the old weapon the way it works now";
+- pew pew: "more like the Burst Laser Mark II in FTL".
+
+The owner approved the tables below ("yes") and the ghost contact (A). **This section overrides §2 and §9 where they
+differ.** §9.3 (every console shows its power) stands.
+
+### 10.1 Reactor, maxima and the round start
+
+| System | Max | Overdrive | Start |
+|---|---|---|---|
+| Shields | 4 | +1 | 2 (1 layer) |
+| Weapons | 9 (three weapons × 3) | +1 (to one weapon, as its 4th bar: see 10.3) | 2 (pew pew 1, torpedo 1) |
+| Engines | 4 | +1 | 3 (75 %) |
+| Sensors | 3 | +1 | 1 |
+| Oxygen | 2 | none | 1 |
+
+- The **reactor is 10 bars**. The round start uses 9, leaving 1 spare.
+- `SYSTEM_SLOTS` becomes [5, 10, 5, 4, 2].
+- Weapon damage on a tactical Room still removes capacity at `knock = ceil(slots / 2)`, so level 2 means off:
+  - Shields 5/2/0;
+  - Engines 5/2/0;
+  - Weapons 10/5/0 (knock 5).
+- Sensors damage: see 10.4.
+
+### 10.2 Helm: 1 bar = 25 % throttle
+
+- The top forward throttle level is the Engines effective bars, capped at 4 (100 %): `THROTTLE_CAP_BY_BARS = [0, 1,
+  2, 3, 4, 4]`.
+- The engine factor (thrust and turn) is `[0, 1, 1, 1, 1, 1.25]`: overdrive adds 25 %.
+- Reverse needs at least 1 bar.
+- §9.1's other rules stand: a `throttle` above the cap is `unavailable`, and the stored throttle is clamped the same
+  tick.
+
+### 10.3 Weapons: the officer spends the station's bars across three weapons
+
+The Weapons officer splits the Weapons system's effective bars across three weapons, each taking 0 to 3 bars. The
+overdrive bar can be one weapon's 4th bar, which counts as a 3 for its effect and 1.25× its charge or reload rate. The
+weapons, in slot order:
+
+| Bars on the weapon | **Pew pew** (slot 0, new: a burst laser) | **Beam** (slot 1, today's laser, unchanged) | **Torpedo** (slot 2) |
+|---|---|---|---|
+| 0 | off | off | off: can't launch, no reload |
+| 1 | 2-shot volley | 1-shot burst at today's charge rate | today's reload (MAGAZINE_RATE 4 per tick, 2700 ticks) |
+| 2 | 3-shot volley | 2-shot burst (today's laser) | reload 1.5× (6 per tick) |
+| 3 | 3-shot volley, charge 1.5× | 2-shot burst, charge 1.5× | reload 2× (8 per tick); each hit raises the Room 2 levels (to 2) |
+
+- **Round start:** pew pew 1, beam 0, torpedo 1. The beam starts dark.
+- **Pew pew** is a second laser slot with today's laser rules: charge, hold and vent, lock a Room, auto-fire on a
+  target, the burst gap, hull per hit, shield stripping per shot, range and arc. It gets its own state (charge, hold,
+  lock, targeted, burst remaining, burst clock) and its own charge bar on the Weapons console. Its charge takes 1.5×
+  the beam's base charge time: rate 40 / 1.5, rounded to 27 units per tick at 1 or 2 bars and 40 at 3. It shares the
+  beam's tuned frequency.
+- **Beam** at 1 bar fires a single shot. Its charge rate is today's (40) at 1 or 2 bars and 60 at 3.
+- **Weapon commands:**
+  - `weaponPower { slot: 0..2, delta: +1 | −1 }` replaces §9.2's toggle. It is Weapons seat only. +1 needs a Weapons
+    bar not yet spent and the slot below 3, or below 4 with the overdrive bar; otherwise `unavailable`.
+  - Today's laser commands (`laserLock`, `laserCharge`, firing) gain a `weapon` field, `'beam' | 'pew'`, defaulting
+    to `'beam'`, so old envelopes still mean the beam.
+  - The FTL targeting flow (pick up a weapon, click a room) picks up pew pew, the beam or the torpedo.
+- **Losing bars:** when the effective Weapons bars fall below the bars spent, bars come off the highest slot first
+  (torpedo, then beam, then pew pew), one at a time, the overdrive bar first. This happens in readers and in
+  `clampToCapacity`, as in §9.2.
+- The Hunter keeps today's single laser and torpedo.
+
+### 10.4 Sensors and the fog of war
+
+| Sensors effective bars | 0 | 1 (start) | 2 | 3 | 4 (overdrive) |
+|---|---|---|---|---|---|
+| Sensor range `SENSOR_RANGE_BY_BARS` (map units) | 300 | 900 | 1400 | 2000 | 2800 |
+| Science scan rate | 0 | 5 | 6 | 7 | 8 |
+| Helm/Weapons scan rate | 0 | 2 | 2 | 3 | 3 |
+
+- **Repair:** Sensors loses 1 bar of capacity for each hazard in its room (Ops: a fire, a breach). It comes back when
+  the fire is out or the breach is patched. Sensors capacity = slots − hazards in O, floored at 0, or 0 while failed.
+- **Fog (crew side only):**
+  - A contact (the enemy, the derelict, a torpedo in flight) is **seen** while it's within sensor range of the crew
+    ship's centre.
+  - Planets and asteroids are always shown.
+  - Every crew console map and the HUD draw unseen contacts as a **ghost**: the last seen position and heading, fading
+    over 10 s, then gone. Ghosts are view state, computed by each client from the sim state, so they need no new
+    sim field.
+- **Sim gates:**
+  - a `contactScan`, a laser or pew pew lock, a torpedo lock and a designation need the contact seen, otherwise
+    `unavailable`;
+  - a running scan pauses while its contact is unseen;
+  - auto-fire needs the target seen. Laser range (450) is inside every range above 0 bars, so this only matters at 0
+    bars, where the 300 range still covers it.
+- The Hunter's AI has no fog.
+
+## 11. Amendment 3 (owner, 2026-11-18): pew pew is the W-1 weapon
+
+Owner: "its shot per click, with each shot taking a third of the bar". Pew pew is the W-1 skill-shot weapon
+(`docs/superpowers/specs/2026-11-18-pew-pew-weapons-design.md`, built on branch `w1-pew-pew`), not §10.3's FTL burst
+laser. To avoid building it twice, the Engineering spike builds no pew pew of its own. **This section overrides
+§10.3's pew pew column.**
+
+- **Weapon slots stay three** (pew pew, beam, torpedo), with the officer's allocation, `weaponPower`, the trim order,
+  the 9-bar budget and the round start `[1, 0, 1]`, all as in §10.3.
+- **On this spike branch, pew pew's slot holds bars that have no effect.** The Weapons console shows the PEW PEW card
+  with its bars and the note "ARRIVES WITH W-1". The beam and the torpedo follow §10.3's table. The laser commands get
+  no `weapon` field. There is no pew pew charge bar, no pew pew lock, and no pew pew in the targeting flow.
+- **The plug-in at merge.** Whichever of the two branches merges second wires pew pew's bars into W-1's recharge:
+  - the ticks per third (W-1's PEW_RECHARGE_TICKS 60) become `PEW_TICKS_BY_BARS = [none, 60, 45, 30]` (0 bars: no
+    recharge; the overdrive bar: 24);
+  - the Weapons room's damage acts only through the Weapons capacity and the trim.
+- **The bots.** The beam starts dark and pew pew does nothing on this branch. So in the round's first tick the
+  scripted gunner moves its pew pew bar to the beam (`weaponPower` pew −1, then beam +1), and then fights with the
+  beam and the torpedo as today. Human players keep the owner's start. After the merge, the bots' use of pew pew is
+  W-1's.
+- The report notes that pew pew wasn't playable in this spike.
+
 ## Out of scope
 
 Presets, Artemis's DamCon teams (the players are the repair crew), sealed doors, Medbay and Doors power, a Hunter

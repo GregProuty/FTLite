@@ -1,0 +1,80 @@
+{
+  "verdict": "ready with P2s",
+  "findings": [
+    {
+      "severity": "P2",
+      "title": "Task 11's vent isn't 'away from the Q spawns': the held H\u2013O door and the spawn-held Q\u2013O door put the crew's room on the vented volume",
+      "claim": "The SCRIPT holds edge 2 open at tick 400 and opens airlock 0 (the Hold) from 420 to 900. The comment says the Hold is 'away from the Q spawns', but the crew's room isn't sealed off. On Hound, edge 2 is the H\u2013O door. Player 0 spawns at (13,7), next to the Q\u2013O door tile (12,7). That puts the crew's centre exactly DOOR_ZONE (1.0) from the door's centre, so doorSystem keeps that auto door Open the whole run. H, O and Q (about 65 tiles) therefore drain through AIRLOCK_PASSAGE = 3 for 8 s. By my rough estimate, Q falls below LOW_AIR_FRAC and both standing players take O2_DAMAGE (6 hp/s) from about tick 500 until well after 900. They lose an estimated ~70 hp by tick 1200. The 1200/1201 shipPower commands need `conscious(d, pid)`, so the new 'every command applies' assertion is only safe by a thin, unmeasured margin. The test's stated rationale is also wrong.",
+      "evidence": "plan L3423-3425 (the 'away from the Q spawns' comment), L3429 (edge 2 at 400, airlock 0 from 420 to 900), L3455 (statuses must all be 'applied'), L1223 (engineer requires conscious); hound.json:L80-L86 (edge 2 is H\u2013O, tile [6,5]), L13 (row 7 has '+' at x=12, the Q\u2013O door), L215-L217 (spawns [13,7], [14,7]); src/renderer/src/sim/tuning.ts:L16 (DOOR_ZONE 1.0, Chebyshev \u2264), L22 (AIRLOCK_PASSAGE 3), L34 (O2_DAMAGE 6); src/renderer/src/sim/doors.ts:L20 (`<= DOOR_ZONE` keeps the door open); plan L1890-L1894 (low air hurts below 25 %, seated or standing).",
+      "why": "If the margin fails, every seed fails the same way at tick 1200 or 1201, with 'unavailable' from a downed player. The executor gets no guidance for that, and the fix that looks obvious (dropping the applied assertion) would undo R1-F4. Even if the test passes, its comment misdescribes what runs.",
+      "fix": "Hold a door that is off the crew's air path, for example `{ kind: 'shipDoor', edge: 1 }` (R\u2013H): the Reactor vents with the Hold, and O and Q only leak through closed doors at PASSAGE_CLOSED. Or hold edge 2 only after the airlock closes (for example at tick 950). Also add `expect(Life.state[a.interior.crew[p]!]).toBe(LifeState.Conscious)` for both players at the end of each seed. Correct the comment."
+    },
+    {
+      "severity": "P3",
+      "title": "The new Decisions are numbered out of order, and one cited line range is off",
+      "claim": "Decisions 20 and 21 are placed before Decision 19. In rendered Markdown an ordered list numbers its items in sequence, so the item written as '20.' shows as 19, '21.' as 20, and '19.' as 21. The rendered view therefore disagrees with the plan's references to 'Decision 20' (Task 9b Step 7b) and 'Decision 21' (Task 12). Separately, Task 6 Step 5 says the tuning.ts fire doc comment clause 'spans lines 34 and 35'. In the source it spans L35-L36.",
+      "evidence": "plan L131-L137 (the order 20, 21, 19), L2992 and L3535 (references); plan L1466 vs src/renderer/src/sim/duel/tuning.ts:L35-L36 ('a fire grows DUEL_FIRE_GROW per tick to FIRE_CAP and never goes out by itself;').",
+      "why": "It's a nit. An executor reading the rendered plan could match the wrong Decision. The line range is only a pointer, since the edit is described by its text.",
+      "fix": "Move Decision 19 above 20 and 21. Change 'lines 34 and 35' to 'lines 35 and 36'."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "Task 6 Step 7's quoted lines match scripted.ts:L153 and L169 exactly, and both functions have `d` in scope. derived.wallTile exists (derived.ts:L35-L41). Door tiles have roomOfTile -1, so goalTiles' goal sets are unchanged. solidAt is still used at scripted.ts:L253 and L261, so step (e)'s conditional removal of the import is correct. DOOR_ZONE 1.0 opens a door for a crew member who is blocked next to it. The new Cutter test uses names that exist: createScriptedPair(seed), scriptedInput(pair, d), d.nav and d.weapons, and Seated."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "The quoted pilot lines match scriptedPilot.ts:L123-L124 and L139. `sys` is declared at L112. levelWithinCap(sys, 0) is always 0, so the away branch can't be refused. scriptedPilot.test.ts and duelGates.test.ts are in Step 8's run list."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "The changedFirst regex at duelModules.test.ts:L58 is quoted correctly, with pewTargeted added. duelModules.test.ts is in Step 8's run list."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "present defaults to true (state.ts:L110). The results are sorted by player and then sequence (step.ts:L163), and each scripted tick carries one command, so the statuses line up with SCRIPT. The heat arithmetic holds: Engines reaches 5 > SYSTEM_MAX 4 at tick 40, and 240/2 \u00d7 5 = 600 ticks gives HEAT_MAX near tick 640 (tuning.ts:L4, L77-L78). After the failure, Sensors and Oxygen each have a spare bar and room under capacity. Edge 2 is a Hound door and airlock 0 exists. The air risk this script introduces is filed as a new P2."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "The quoted edits match scripted.ts:L118, L271 and L276. The telemetry.ts:L161 substring matches. laserFull gains its barrel parameter in Task 9b (plan L2754), and laserEligible is geometry only (plan L2795). situationModel is handed to Part ii explicitly."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "Decision 21 records that the loot is nullified, and Task 12's Known limits lists it."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "The tacticalDeterminism line numbers now match: L115 is the key list, L122 the comment's last line, L123 the expect. duelNames is at L42. The fire.ts header edit is described and keeps the real first line. The tuning.ts line range is still off by one (new P3)."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "Global Constraints L89 gives the exemption explicitly. The widened filter covers round, helm and power, as well as the original five modules. All of those are scalar or vector fields that hashDuel flattens (modules.ts:L50-L69, L102-L111), so a +1 write changes the hash."
+    }
+  ],
+  "verified": [
+    "scripted.ts:L118, L153, L160, L169, L271, L276 match the plan's quoted replace text verbatim",
+    "scriptedPilot.ts:L112 declares sys; L123-L124 and L139 match the quoted text",
+    "grid.ts:L14-L21: solidAt treats a Closed door tile as solid; derived.ts:L41, L52: wallTile and doorTileToEdge are separate, so walkable() admits door tiles",
+    "doors.ts:L20 and tuning.ts:L16: a crew member blocked next to an auto door is within DOOR_ZONE, so the door opens and the bot pathing works",
+    "tests/helpers/scriptedDuel.ts:L33-L46: passiveInput and requireApplied behave as described in Decision 16 and Task 11's Interfaces",
+    "duelModules.test.ts:L42, L58, L107 match the cited lines; DUEL_MODULES order is space, ship, science, presence, repair, round, helm, interior (modules.ts:L102-L111)",
+    "tacticalDeterminism.test.ts:L115, L122, L123 match Task 2 Step 6",
+    "telemetry.ts:L161 contains `laserFull(tac, 0) && !canLaunch(tac, 0)`",
+    "Task 11 heat timing agrees with HEAT_MAX 240, HEAT_RISE 2, HAZARD_EVERY 5, START_BARS Engines 3 and SYSTEM_MAX 4 (plan L60, L786, L831)",
+    "hound.json: edge 2 is the H\u2013O door, airlock 0 is in H, and the spawns are in Q"
+  ],
+  "not_verified": [
+    "The exact oxygen trajectory of Q during Task 11's 420\u2013900 vent: kEff comes from the layout and wasn't computed, so the ~70 hp loss is an estimate from the PASSAGE_BREACH half-life comment",
+    "Whether the closed-door Cutter test in Task 6 reaches both seats within 1200 ticks: it depends on movement and BFS lengths over the Cutter's layout, which weren't simulated",
+    "Whether the scripted pair's Helm, with pew pew as primary, changes goldens or gate bands beyond what the fallout rule covers: that is only measurable at execution"
+  ]
+}

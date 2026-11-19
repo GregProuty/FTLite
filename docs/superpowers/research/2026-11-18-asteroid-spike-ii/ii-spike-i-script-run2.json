@@ -1,0 +1,202 @@
+{
+  "simVersion": 53,
+  "sizes": {
+    "seed": 2026,
+    "tick": 3000,
+    "deltaFragmentsMedianBytes": 1718,
+    "values": 2454,
+    "jsonBytes": 10906,
+    "fullImageBytes": 20231,
+    "deltaMedianBytes": 1093,
+    "deltaMaxBytes": 1249
+  },
+  "cost": {
+    "duelTicks": 6000,
+    "duelMedianMs": 0.0062,
+    "duelMeanMs": 0.0075,
+    "tacticalTicks": 6000,
+    "tacticalMedianMs": 0.0036,
+    "tacticalMeanMs": 0.004
+  },
+  "determinism": {
+    "seeds": 20,
+    "twinTicks": 4000,
+    "restoreTicks": 1000,
+    "failures": []
+  },
+  "feel": {
+    "rows": [
+      {
+        "seed": 1,
+        "crewAsteroidContacts": 2,
+        "hunterAsteroidContacts": 6,
+        "seconds": 256.7,
+        "outcome": 1,
+        "rocks": {
+          "laserRock": 3,
+          "torpRock": 0,
+          "hits": 3,
+          "splits": 4,
+          "shatters": 0,
+          "fragmentContacts": 0,
+          "shipFragmentTouchTicks": 4
+        },
+        "rocksLeft": 76
+      },
+      {
+        "seed": 2,
+        "crewAsteroidContacts": 0,
+        "hunterAsteroidContacts": 2,
+        "seconds": 97.4,
+        "outcome": 1,
+        "rocks": {
+          "laserRock": 0,
+          "torpRock": 4,
+          "hits": 4,
+          "splits": 11,
+          "shatters": 0,
+          "fragmentContacts": 0,
+          "shipFragmentTouchTicks": 1
+        },
+        "rocksLeft": 87
+      },
+      {
+        "seed": 3,
+        "crewAsteroidContacts": 2,
+        "hunterAsteroidContacts": 5,
+        "seconds": 175,
+        "outcome": 2,
+        "rocks": {
+          "laserRock": 0,
+          "torpRock": 3,
+          "hits": 3,
+          "splits": 16,
+          "shatters": 0,
+          "fragmentContacts": 0,
+          "shipFragmentTouchTicks": 1
+        },
+        "rocksLeft": 84
+      },
+      {
+        "seed": 4,
+        "crewAsteroidContacts": 1,
+        "hunterAsteroidContacts": 9,
+        "seconds": 245.6,
+        "outcome": 1,
+        "rocks": {
+          "laserRock": 2,
+          "torpRock": 3,
+          "hits": 5,
+          "splits": 24,
+          "shatters": 0,
+          "fragmentContacts": 0,
+          "shipFragmentTouchTicks": 3
+        },
+        "rocksLeft": 75
+      },
+      {
+        "seed": 5,
+        "crewAsteroidContacts": 4,
+        "hunterAsteroidContacts": 2,
+        "seconds": 270.2,
+        "outcome": 1,
+        "rocks": {
+          "laserRock": 1,
+          "torpRock": 4,
+          "hits": 5,
+          "splits": 9,
+          "shatters": 0,
+          "fragmentContacts": 0,
+          "shipFragmentTouchTicks": 5
+        },
+        "rocksLeft": 79
+      },
+      {
+        "seed": 6,
+        "crewAsteroidContacts": 3,
+        "hunterAsteroidContacts": 9,
+        "seconds": 264.1,
+        "outcome": 1,
+        "rocks": {
+          "laserRock": 0,
+          "torpRock": 1,
+          "hits": 1,
+          "splits": 10,
+          "shatters": 0,
+          "fragmentContacts": 0,
+          "shipFragmentTouchTicks": 6
+        },
+        "rocksLeft": 75
+      },
+      {
+        "seed": 7,
+        "crewAsteroidContacts": 1,
+        "hunterAsteroidContacts": 0,
+        "seconds": 214.3,
+        "outcome": 1,
+        "rocks": {
+          "laserRock": 0,
+          "torpRock": 0,
+          "hits": 0,
+          "splits": 5,
+          "shatters": 0,
+          "fragmentContacts": 0,
+          "shipFragmentTouchTicks": 0
+        },
+        "rocksLeft": 82
+      },
+      {
+        "seed": 8,
+        "crewAsteroidContacts": 3,
+        "hunterAsteroidContacts": 5,
+        "seconds": 264.2,
+        "outcome": 1,
+        "rocks": {
+          "laserRock": 0,
+          "torpRock": 0,
+          "hits": 0,
+          "splits": 10,
+          "shatters": 0,
+          "fragmentContacts": 0,
+          "shipFragmentTouchTicks": 12
+        },
+        "rocksLeft": 74
+      },
+      {
+        "seed": 9,
+        "crewAsteroidContacts": 5,
+        "hunterAsteroidContacts": 4,
+        "seconds": 268.2,
+        "outcome": 1,
+        "rocks": {
+          "laserRock": 0,
+          "torpRock": 0,
+          "hits": 0,
+          "splits": 6,
+          "shatters": 0,
+          "fragmentContacts": 0,
+          "shipFragmentTouchTicks": 7
+        },
+        "rocksLeft": 77
+      },
+      {
+        "seed": 10,
+        "crewAsteroidContacts": 0,
+        "hunterAsteroidContacts": 5,
+        "seconds": 193.6,
+        "outcome": 1,
+        "rocks": {
+          "laserRock": 1,
+          "torpRock": 0,
+          "hits": 1,
+          "splits": 6,
+          "shatters": 0,
+          "fragmentContacts": 0,
+          "shipFragmentTouchTicks": 2
+        },
+        "rocksLeft": 85
+      }
+    ],
+    "medianSeconds": 251.14999999999998
+  }
+}

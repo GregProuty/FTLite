@@ -28,8 +28,10 @@ export const BEAM_HIT = CRT.hot, BEAM_MISS = CRT.dim, BURST = CRT.hot;
 export const SPARK: Readonly<Record<ContactEvent['body'], number>> = { planet: CRT.hot, asteroid: CRT.hot, ship: CRT.hot };
 
 /** `crew` (Feel-i): a crew beam, drawn thicker with its core; `side` its burst offset (-1 or 1). A `flare` is a crew hit's
- *  impact; a `pop` the enemy shield bubble flashing out (x1, y1 its centre); a `boom` the kill's explosion. */
-export interface FxItem { kind: 'beam' | 'burst' | 'spark' | 'flare' | 'pop' | 'boom'; age: number; life: number; x1: number; y1: number; x2: number; y2: number; colour: number; crew?: boolean; side?: number }
+ *  impact; a `pop` the enemy shield bubble flashing out (x1, y1 its centre); a `boom` the kill's explosion. Spike ii §7: a
+ *  `chip` or `speck` flies from (x1, y1) at (vx, vy) world u/s; a `shock` ring grows to `size` world units; a `core` flash
+ *  of `size`; a `burst` with a `size` is sized by its rock. */
+export interface FxItem { kind: 'beam' | 'burst' | 'spark' | 'flare' | 'pop' | 'boom' | 'chip' | 'speck' | 'shock' | 'core'; age: number; life: number; x1: number; y1: number; x2: number; y2: number; colour: number; crew?: boolean; side?: number; vx?: number; vy?: number; size?: number }
 /** A floating damage number over the enemy, at the world point it rose from. */
 /** `slot` (Feel-i review): the lowest column free when it appeared, so successive floats stand side by side, not stacked. */
 export interface FloatItem { text: string; x: number; y: number; age: number; slot: number }
@@ -48,14 +50,16 @@ export interface FxState {
    *  since the crew laser last fired (Infinity: never), the seconds the shot has been lined up (-1: not), the kill and
    *  the slow motion left (render seconds), and the crew burst's last beam offset. */
   shakePx: number; shakeLife: number; floats: FloatItem[]; sinceShot: number; solutionAge: number; kill: KillFx | null; slowmo: number; beamSide: number;
+  /** Spike ii: the view's own seeded random (fxRandom), for the rock sprays. */
+  seed: number;
 }
 
 export function createFx(): FxState {
-  return { items: [], shake: 0, shakeT: 0, trails: [[], []], callouts: [], struck: [], shakePx: SHAKE_PX, shakeLife: SHAKE_S, floats: [], sinceShot: Infinity, solutionAge: -1, kill: null, slowmo: 0, beamSide: 1 };
+  return { items: [], shake: 0, shakeT: 0, trails: [[], []], callouts: [], struck: [], shakePx: SHAKE_PX, shakeLife: SHAKE_S, floats: [], sinceShot: Infinity, solutionAge: -1, kill: null, slowmo: 0, beamSide: 1, seed: 1 };
 }
 export function resetFx(fx: FxState): void {
   fx.items.length = 0; fx.shake = 0; fx.shakeT = 0; fx.trails[0].length = 0; fx.trails[1].length = 0; fx.callouts.length = 0; fx.struck.length = 0;
-  fx.shakePx = SHAKE_PX; fx.shakeLife = SHAKE_S; fx.floats.length = 0; fx.sinceShot = Infinity; fx.solutionAge = -1; fx.kill = null; fx.slowmo = 0; fx.beamSide = 1;
+  fx.shakePx = SHAKE_PX; fx.shakeLife = SHAKE_S; fx.floats.length = 0; fx.sinceShot = Infinity; fx.solutionAge = -1; fx.kill = null; fx.slowmo = 0; fx.beamSide = 1; fx.seed = 1;
 }
 
 /** Start a shake of `px` for `s` seconds unless a stronger one is still running. */
@@ -63,6 +67,13 @@ export function startShake(fx: FxState, px: number, s: number): void {
   const now = fx.shake > 0 ? fx.shakePx * (fx.shake / fx.shakeLife) : 0;
   if (px < now) return;
   fx.shakePx = px; fx.shakeLife = s; fx.shake = s; fx.shakeT = 0;
+}
+/** Spike ii: the view's seeded random in [0, 1) (an xorshift on fx.seed): render-only, never the sim's. */
+export function fxRandom(fx: FxState): number {
+  let r = fx.seed >>> 0 || 1;
+  r ^= r << 13; r >>>= 0; r ^= r >>> 17; r ^= r << 5; r >>>= 0;
+  fx.seed = r;
+  return r / 4294967296;
 }
 function float(fx: FxState, text: string, x: number, y: number): void {
   if (fx.floats.length >= FLOATS_MAX) fx.floats.splice(0, fx.floats.length - FLOATS_MAX + 1);   // the oldest goes first
@@ -85,9 +96,9 @@ export function hitsCrew(e: ViewEvent): boolean {
 export function pushEvents(fx: FxState, events: readonly ViewEvent[]): void {
   for (const e of events) {
     if (e.kind === 'laser') {
-      const crew = e.ship === CREW_SLOT;
+      const crew = e.ship === CREW_SLOT, rock = (e.rock ?? -1) >= 0;
       if (crew) { fx.sinceShot = 0; fx.beamSide = -fx.beamSide; }
-      fx.items.push({ kind: 'beam', age: 0, life: crew ? CREW_BEAM_S : BEAM_S, x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, colour: e.hit ? BEAM_HIT : BEAM_MISS, ...(crew ? { crew: true, side: fx.beamSide } : {}) });
+      fx.items.push({ kind: 'beam', age: 0, life: crew ? CREW_BEAM_S : BEAM_S, x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, colour: e.hit || rock ? BEAM_HIT : BEAM_MISS, ...(crew ? { crew: true, side: fx.beamSide } : {}) });
       if (crew && e.hit) fx.items.push({ kind: 'flare', age: 0, life: FLARE_S, x1: e.x2, y1: e.y2, x2: e.x2, y2: e.y2, colour: CRT.hot });
       if (crew && e.stripped) fx.items.push({ kind: 'pop', age: 0, life: POP_S, x1: e.x2, y1: e.y2, x2: e.x2, y2: e.y2, colour: CRT.hot });
       if (crew && e.hit && !e.stripped && e.room >= 0) { float(fx, `-${LASER_HULL}`, e.x2, e.y2); startShake(fx, ROOM_SHAKE.px, ROOM_SHAKE.s); }

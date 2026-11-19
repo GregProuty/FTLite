@@ -24,8 +24,9 @@ import { countSit, createSitTracker, frameZoom, sitCard, trackSit, type SitSeat 
 import { shakeScale } from '../../render/shake';
 import { flashesFor, pushHits } from '../../render/tactical/hitModel';
 import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
+import { pushRockFx, pushRockShakes } from '../../render/tactical/rockFx';
 import { hullFor } from '../../render/tactical/hullModel';
-import { interpolatedShip, pickContact, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
+import { interpolatedShip, pickContact, pickRock, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
 import { combatModel } from '../../render/tactical/weaponsModel';
 import { screenToWorld, worldToScreen, zoomTo, type Camera } from '../../render/tactical/camera';
 import { screenPan, worldPan } from '../../audio/voices';
@@ -182,8 +183,12 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const station = hidden ? null : consoleStation(d, source.active());
       const onMap = view !== 'interior' && (station === 'helm' || station === 'weapons' || station === 'science' || station === 'flight');   // Sci-1 spec §7.2: the window on all three
       const click = options.takeClick?.() ?? null;   // drained every frame, so a click never waits for a later frame
-      if (contact && click && onMap && station !== 'flight')   // Valkyrn spec §5.1: on the Flight seat the left button is the gun
-        contact.click(pickContact({ state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport }, click));
+      if (contact && click && onMap && station !== 'flight') {   // Valkyrn spec §5.1: on the Flight seat the left button is the gun
+        // Spike ii §6.5: a ship contact under the pointer wins; else, with a weapon picked up, a rock under it takes the drop.
+        const at = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport }, ship = pickContact(at, click);
+        const rock = ship === null && contact.aimWeapon() !== null ? pickRock(at, click) : null;
+        if (rock !== null) contact.pickRock(rock); else contact.click(ship);
+      }
       // Feel-ii §1.1: the Helm's right button aims the held heading. A press or a release on the map asks for the bearing from
       // the own ship's drawn marker to the pointer (on the ship itself: clear); while it is held, a preview marker follows.
       const aim = options.takeAim?.() ?? null, running = d.tactical.outcome === Outcome.Running;
@@ -227,7 +232,12 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       ({ watch: fires, flashUntil } = fireWatch(fires, d, t, flashUntil));   // own ship window spec §4
       const events = source.drainEvents();
-      pushEvents(fx, events); pushHits(fx, events, d.tactical); pushGunHits(fx, events);   // Valkyrn spec §7.4: the gun's sparks, pops and -1   // duel polish i spec §B: the callouts and the struck-room flashes
+      pushEvents(fx, events); pushHits(fx, events, d.tactical); pushGunHits(fx, events);   // duel polish i spec §B: the callouts and the struck-room flashes; Valkyrn spec §7.4: the gun's sparks, pops and -1
+      pushRockFx(fx, events);   // spike ii §7: chips, breaks, blasts, sparks
+      if (cam) {   // spike ii §7 item 6: a blast or a break on this screen shakes it
+        const c = cam, crewAt = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT);
+        pushRockShakes(fx, events, crewAt, (x, y) => { const p = worldToScreen(c, viewport, x, y); return p.x >= 0 && p.x <= viewport.w && p.y >= 0 && p.y <= viewport.h; });
+      }
       // Feel-i §3: the kill, seen as the round's outcome turning with the enemy's hull gone (both modes read the same state).
       const enemySlot = targetOf(d.tactical, CREW_SLOT);
       if (lastOutcome === Outcome.Running && d.tactical.outcome !== Outcome.Running && (d.tactical.systems[enemySlot]?.hull ?? 1) <= 0) {
@@ -265,11 +275,15 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       let overlayView: MapOverlayView | null = null;
       if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt, events, frozen ? 0 : dt, { camera: source.interiorCamera, active: source.active() });   // Art-i spec section 7: the light and feel hold while paused
       else {
+        // Spike ii §6.5: with a weapon picked up, the rock under the pointer (no ship contact there) wears a hover bracket.
+        const point = aimed !== null ? options.pointer?.() ?? null : null, pickAt = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport };
+        const hoverRock = point && pickContact(pickAt, point) === null ? pickRock(pickAt, point) : null;
         // Step 4: the map keeps its arrows and info line clear of the window while it is shown.
         const input = {
           state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, console: camKey!, axes: source.axes(),
           ships: fx.kill ? [0] : [0, 1], paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: { left: TABS_RIGHT, right: SIDE.x } } : { reserveRight: READOUT_COLUMN }), ...(onMap ? { avoid: OWN_SHIP } : {}), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
-          holdHeading: view === 'flight' ? -1 : preview ?? d.holdHeading, holdPreview: preview !== null, crewHull: hullFor(true, d.interior.layout.hull), gravity: camKey === 'helm', flight: view === 'flight', alert, pings   // Feel-ii; Valkyrn spec §4.5: the crew hull
+          holdHeading: view === 'flight' ? -1 : preview ?? d.holdHeading, holdPreview: preview !== null, crewHull: hullFor(true, d.interior.layout.hull), gravity: camKey === 'helm', flight: view === 'flight', alert, pings,   // Feel-ii; Valkyrn spec §4.5: the crew hull
+          rockHover: hoverRock !== null && aimed !== null ? { rock: hoverRock, weapon: aimed } : null
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting

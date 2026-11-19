@@ -83,7 +83,7 @@ describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2
     Object.assign(st.ships[1], { x: -600 + 460, y: -300 });  // in arc, out of range
     expect(laserEligible(st, 0, 1)).toBe(false);
   });
-  it('a press in range and arc misses when the planet or an asteroid blocks the line of sight', () => {
+  it('a press in range and arc misses when the planet or an asteroid blocks the line of sight (SPIKE: the asteroid takes the shot)', () => {
     const blockers: [string, (st: TacticalState) => [number, number]][] = [
       ['planet', () => [0, 0]],
       ['asteroid', (st) => { const a = st.map.asteroids[0]!; return [a.x, a.y]; }]
@@ -98,7 +98,10 @@ describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2
       tick(st, press());
       expect([st.systems[0].shots, st.systems[0].laserHits], name).toEqual([1, 0]);
       expect([st.systems[1].shields, st.systems[1].hull], name).toEqual([2, HUNTER_CLASS.hull]);
-      expect(st.events.at(-1), name).toMatchObject({ kind: 'laser', ship: 0, hit: false });
+      const shot = st.events.find((e) => e.kind === 'laser');
+      expect(shot, name).toMatchObject({ kind: 'laser', ship: 0, hit: false });
+      if (name === 'planet') expect((shot as { rock?: number }).rock, name).toBeUndefined();
+      else { expect((shot as { rock?: number }).rock, name).toBe(0); expect(st.rocks[6], name).toBe(Math.ceil(st.map.asteroids[0]!.r / 10) - 2); expect(st.rocks[0], name).toBe(2); }
     }
   });
   it('a full crew charge never vents (LASER_HOLD_TICKS is the hunter laser only)', () => {
