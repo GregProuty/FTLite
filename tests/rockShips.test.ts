@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { ramHull, resolveContacts } from '../src/renderer/src/sim/tactical/contacts';
 import { stepSoloFlight } from '../src/renderer/src/sim/tactical/physics';
 import { rockAlive, rockAt, RockKind, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
-import { SHIP_MASS } from '../src/renderer/src/sim/tactical/rockTuning';
+import { ROCK_SEPARATE_MAX, SHIP_MASS } from '../src/renderer/src/sim/tactical/rockTuning';
 import { arena, mover, rail, rockEvents, seeded, withSwitches } from './helpers/rockArena';
 
 /** A moving rock of radius r touching the crew ship (at rest at (0, −2500), radius 20) from the east, closing at `speed`. */
@@ -86,5 +86,25 @@ describe('a rail rock (asteroids-iii §6.2): freed first, then two bodies', () =
     stepSoloFlight(st, { turn: 0, thrust: 0 });
     expect(Array.from(st.rocks.subarray(5 * ROCK_STRIDE, 6 * ROCK_STRIDE))).toEqual(slot);
     expect(hull - st.systems[0].hull).toBe(1);
+  });
+});
+
+describe('soft ship contacts (asteroids-iii §6.2)', () => {
+  it('a ship co-orbiting at under 15 u/s relative pushes a rail rock free and loses no hull, counts no hit and stamps no grace', () => {
+    const st = arena();
+    rail(st, 100, 20 + 30 - 1, -2500, 30);
+    const a = rockAt(st, 100), hull = st.systems[0].hull;
+    Object.assign(st.ships[0], { vx: a.vx + 10, vy: a.vy });
+    resolveContacts(st, true);
+    expect(rockAt(st, 100).kind).toBe(RockKind.Free);
+    expect(rockAt(st, 100).vx).toBeGreaterThan(a.vx);   // pushed
+    expect([st.systems[0].hull, st.ships[0].asteroidHits, st.ships[0].graceUntil[101]]).toEqual([hull, 0, 0]);
+  });
+  it('a deep overlap moves the rock at most ROCK_SEPARATE_MAX; the ship takes the rest (plan deviation 7)', () => {
+    const st = arena();
+    mover(st, 100, 20 + 15 - 25, -2500, 0, 0, 15);   // overlap 25 with a light rock
+    resolveContacts(st, true);
+    expect(rockAt(st, 100).x).toBeCloseTo(10 + ROCK_SEPARATE_MAX, 9);
+    expect(rockAt(st, 100).x - st.ships[0].x).toBeCloseTo(35, 9);   // fully separated
   });
 });
