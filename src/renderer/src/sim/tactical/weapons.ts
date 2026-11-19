@@ -1,15 +1,17 @@
 // Laser, shields and the magazine (spec §5, §7a, the §7 weapons state transitions table), on each ship's systems record
-// and its class's weapon definitions. A ship's laser fires at its locked target (engine refactor spec §5).
+// and its class's weapon definitions. A ship's laser fires at its locked target (engine refactor spec §5). W-2 (pew pew spec
+// §2): the crew's laser in MANUAL fires only on laserFire, as an instant beam along its aim (shootAlong).
 // Commands arrive as one ShipInput per ship per tick; the duel step builds these from the authority's admitted commands.
-import { inArc, lineOfSight } from './geometry';
+import { inArc, lineOfSight, roomAtImpact } from './geometry';
 import { launchMissile } from './missiles';
-import { firstBlocker, rockAlive, rockAt, rockSlots } from './rocks';
+import { firstBlocker, rockAlive, rockAt, rockSlots, segmentEntry } from './rocks';
 import { AUTO_DIG } from './rockTuning';
 import { laserStrikesRock, rockOnTarget, rockShotLine } from './rockWeapons';
 import { hx, hy } from './direction';
 import { tickGun } from './gun';
-import { firePew, tickPew } from './pew';
+import { aimDir, clampAim, firePew, tickPew } from './pew';
 import { classOf, CREW_SLOT, missileOf, Room, type Axes, type TacticalState } from './state';
+import { AIM_STEPS, LASER_ARC_STEPS } from './tuning';
 
 /** One ship's inputs for one tick. `helm` / `weapons`: a present player is seated at that console ("attended", spec §8). */
 export interface ShipInput {
@@ -139,6 +141,23 @@ export function laserDiggable(state: TacticalState, i: number): boolean {
   return AUTO_DIG && inLaserReach(state, i, state.systems[i]!.target) && laserRockTarget(state, i) !== null;
 }
 
+/** One laser shot of ship i landing on ship j (spec §7a), the hit counted: with a shield layer up it strips one (the crew
+ *  laser on the weak frequency two, Sci-1 spec §4.4), else it raises Room `room` one level (capped at 2) and costs the
+ *  laser's hull. W-2 (pew pew spec §2): shared by the AUTO shot (its lock room) and the MANUAL beam (the room under its hit
+ *  point); returns whether it stripped and the Room struck (−1 on a strip). */
+function laserStrike(state: TacticalState, i: number, j: number, room: number): { stripped: boolean; room: number } {
+  const as = state.systems[i]!, bs = state.systems[j]!, laser = classOf(state, i).slots.laser!;
+  as.laserHits++;
+  if (bs.shields > 0) {   // Sci-1 spec §4.4: the crew laser tuned to the weak frequency strips 2 layers (as many as are up)
+    const n = i === CREW_SLOT && as.freq === state.weakFreq ? Math.min(2, bs.shields) : 1;
+    bs.shields -= n; bs.shieldClock = 0; bs.gunWear = 0; as.layersStripped += n;   // Valkyrn spec §7.2: any strip zeroes the gun wear
+    return { stripped: true, room: -1 };
+  }
+  if (bs.rooms[room]! < 2) bs.rooms[room as 0 | 1 | 2]++;
+  bs.hull = Math.max(0, bs.hull - laser.hull);
+  return { stripped: false, room };
+}
+
 /** One laser shot of ship i at its target and lock room as they stand now (spec §7a; weapons update spec §1: every shot of a
  *  burst re-checks eligibility, strips shields or strikes the room, counts and pushes its own `laser` event). */
 function shoot(state: TacticalState, i: number): void {
@@ -148,18 +167,7 @@ function shoot(state: TacticalState, i: number): void {
   const a = state.ships[i]!, as = state.systems[i]!, j = as.target, b = state.ships[j] ?? a, bs = state.systems[j], hit = laserEligible(state, i, j);
   let stripped = false, room = -1;
   as.shots++;
-  if (hit && bs) {
-    as.laserHits++;
-    if (bs.shields > 0) {   // Sci-1 spec §4.4: the crew laser tuned to the weak frequency strips 2 layers (as many as are up)
-      const n = i === CREW_SLOT && as.freq === state.weakFreq ? Math.min(2, bs.shields) : 1;
-      bs.shields -= n; bs.shieldClock = 0; bs.gunWear = 0; as.layersStripped += n; stripped = true;   // Valkyrn spec §7.2: any strip zeroes the gun wear
-    }
-    else {
-      room = as.lock;
-      if (bs.rooms[as.lock]! < 2) bs.rooms[as.lock as 0 | 1 | 2]++;
-      bs.hull = Math.max(0, bs.hull - laser.hull);
-    }
-  }
+  if (hit && bs) ({ stripped, room } = laserStrike(state, i, j, as.lock));   // W-2: the strike the MANUAL beam shares, unchanged
   if (!hit) {   // spike i, kept (spec §6.3): a blocked or aimless shot strikes the first rock on its line instead
     const r = laserRockTarget(state, i);
     if (r) {
@@ -169,6 +177,40 @@ function shoot(state: TacticalState, i: number): void {
     }
   }
   state.events.push({ kind: 'laser', ship: i, hit, stripped, room, x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+}
+
+/** W-2 (pew pew spec §2): one MANUAL laser shot of ship i along fine aim `aim`, clamped into the laser's ±60° about its
+ *  heading now: an instant beam from its centre to the laser's range. The first solid body (firstBlocker: the planet, or a
+ *  rock; a piece born this tick is not in the way) stops it, unless another active ship's circle is entered strictly
+ *  before it; a torpedo is never in the way. On ship j it strikes the room under the entry point (roomAtImpact, as a
+ *  torpedo's self-hit) through laserStrike; on a rock it does what the AUTO laser does (laserStrikesRock: a push, then the
+ *  damage); on the planet, or with nothing met, it only ends. Counts a shot and pushes its `laser` event (x2, y2 where it
+ *  ended). */
+function shootAlong(state: TacticalState, i: number, aim: number): void {
+  const laser = classOf(state, i).slots.laser;
+  if (!laser) return;
+  const a = state.ships[i]!, as = state.systems[i]!, [ux, uy] = aimDir(clampAim(a.heading, aim, LASER_ARC_STEPS));
+  const ex = a.x + ux * laser.range, ey = a.y + uy * laser.range, f = firstBlocker(state, a.x, a.y, ex, ey);
+  let best = f ? f.t : 2, j = -1;   // entry parameters are at most 1
+  for (let k = 0; k < state.ships.length; k++) {
+    const b = state.ships[k]!;
+    if (!b.active || k === i) continue;
+    const t = segmentEntry(a.x, a.y, ex, ey, b.x, b.y, classOf(state, k).radius);
+    if (t >= 0 && t < best) { best = t; j = k; }
+  }
+  as.shots++;
+  const t = best <= 1 ? best : 1, x = a.x + (ex - a.x) * t, y = a.y + (ey - a.y) * t;
+  if (j >= 0) {
+    const { stripped, room } = laserStrike(state, i, j, roomAtImpact(state.ships[j]!, x, y));
+    state.events.push({ kind: 'laser', ship: i, hit: true, stripped, room, x1: a.x, y1: a.y, x2: x, y2: y });
+    return;
+  }
+  if (f && f.rock >= 0) {
+    state.events.push({ kind: 'laser', ship: i, hit: false, stripped: false, room: -1, x1: a.x, y1: a.y, x2: x, y2: y, rock: f.rock });
+    laserStrikesRock(state, i, f.rock, x, y);
+    return;
+  }
+  state.events.push({ kind: 'laser', ship: i, hit: false, stripped: false, room: -1, x1: a.x, y1: a.y, x2: x, y2: y });
 }
 
 /** Spike ii §6.2: one shot of ship i with a rock target. On target, the line to the rock's centre decides what it meets
@@ -196,15 +238,31 @@ function fireLaser(state: TacticalState, i: number): void {
   as.laserBurst = laser.shots - 1; as.laserBurstClock = as.laserBurst > 0 ? laser.burstGapTicks : 0;
 }
 
+/** W-2 (pew pew spec §2): a full charge's MANUAL release along fine aim `aim` (an integer 0..AIM_STEPS − 1, else nothing):
+ *  the first shot now along the aim clamped about the heading, the rest of the class's burst queued a burst gap apart,
+ *  each to fire along that same clamped aim (laserAim). */
+function fireLaserAlong(state: TacticalState, i: number, aim: number): void {
+  const as = state.systems[i]!, laser = classOf(state, i).slots.laser;
+  if (!laser || !Number.isInteger(aim) || aim < 0 || aim >= AIM_STEPS) return;
+  const clamped = clampAim(state.ships[i]!.heading, aim, LASER_ARC_STEPS);
+  shootAlong(state, i, clamped);
+  as.laserCharge = 0; as.laserHold = 0;
+  as.laserBurst = laser.shots - 1; as.laserBurstClock = as.laserBurst > 0 ? laser.burstGapTicks : 0;
+  as.laserAim = as.laserBurst > 0 ? clamped : -1;
+}
+
 /** Weapons update spec §1: a pending burst shot fires a burst gap after the one before, attended or not, whatever flies;
- *  only Weapons at damage level 2 drops it. */
+ *  only Weapons at damage level 2 drops it. W-2 (pew pew spec §2): a MANUAL burst's shots (laserAim ≥ 0) fire along the
+ *  aim the burst was fired with, from where the ship is and re-clamped about its heading at their own tick, whatever the
+ *  mode is now; the aim clears with the burst's last shot. */
 function stepBurst(state: TacticalState, i: number): void {
   const s = state.systems[i]!;
   if (s.laserBurst === 0) return;
-  if (laserOffline(state, i)) { s.laserBurst = 0; s.laserBurstClock = 0; return; }
+  if (laserOffline(state, i)) { s.laserBurst = 0; s.laserBurstClock = 0; s.laserAim = -1; return; }
   if (--s.laserBurstClock > 0) return;
-  shoot(state, i);
+  if (s.laserAim >= 0) shootAlong(state, i, s.laserAim); else shoot(state, i);
   s.laserBurst--; s.laserBurstClock = s.laserBurst > 0 ? classOf(state, i).slots.laser?.burstGapTicks ?? 0 : 0;
+  if (s.laserBurst === 0) s.laserAim = -1;
 }
 
 /** Apply ship i's weapon commands for this tick, before anything moves (spec §7 table). The crew's ship (FTL targeting
@@ -241,6 +299,9 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
   }
   // Auto-fire: on the enemy when eligible; spike ii §6.2: on a rock target when it is on target (AUTO_DIG is false). W-2: AUTO only.
   if (armed && crew && !s.laserManual && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && (s.laserRock >= 0 ? rockOnTarget(state, i, s.laserRock) : laserEligible(state, i, s.target) || laserDiggable(state, i))) fireLaser(state, i);
+  // W-2 (pew pew spec §2): the MANUAL laser fires only on laserFire, along its aim, with a full charge, no burst pending,
+  // Weapons online and no torpedo of its own in flight (laserFrozen).
+  if (armed && crew && s.laserManual && input.laserFire >= 0 && manualLaserReady(state, i) && !laserFrozen(state, i, input)) fireLaserAlong(state, i, input.laserFire);
   // W-1 merge: the torpedo launch is skipped when this call broke its rock target (impl review R1-F3), but the pew still fires.
   if (!(torpOnRock && s.torpRock < 0)) {   // the torpedo's rock broke this call: no launch this tick (the command can still read 'applied')
     if (input.missileLaunch && canLaunch(state, i)) {
@@ -255,7 +316,7 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
 /** Advance ship i's laser charge and hold timer, shields and magazine by one tick (spec §5, §7). */
 export function tickWeapons(state: TacticalState, i: number, input: ShipInput): void {
   const s = state.systems[i]!, c = classOf(state, i), laser = c.slots.laser;
-  if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; s.laserBurst = 0; s.laserBurstClock = 0; }   // off: every tick, frozen or not
+  if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; s.laserBurst = 0; s.laserBurstClock = 0; s.laserAim = -1; }   // off: every tick, frozen or not (W-2: a MANUAL burst's aim with it)
   else if (laser !== null && s.laserBurst === 0 && !laserFrozen(state, i, input)) {   // no charging while a burst shot is pending, nor without a laser
     // FTL targeting spec §2: the crew's laser charges by itself, with no hold, and stays full (no vent) until it fires.
     if (i === CREW_SLOT) { if (!laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + laser.chargeRate[s.rooms[Room.Weapons]]!); }
