@@ -51,7 +51,7 @@ export const OwnShipWindow = memo(function OwnShipWindow({ ownShip: v }: { ownSh
           </g>
         ))}
         {v.crew.map((c, k) => c.downed
-          ? <rect key={k} data-ui-own-crew="downed" x={c.x - 2} y={c.y - 2} width={5} height={5} fill={hex(CRT.glass)} stroke={hex(CRT.hot)} strokeWidth={1} />
+          ? <rect key={k} data-ui-own-crew="downed" x={c.x - 2} y={c.y - 2} width={4} height={4} fill={hex(CRT.glass)} stroke={hex(CRT.hot)} strokeWidth={1} />
           : <g key={k} data-ui-own-crew="up"><rect x={c.x - 2.5} y={c.y - 2.5} width={5} height={5} fill={hex(CRT.glass)} /><rect x={c.x - 1.5} y={c.y - 1.5} width={3} height={3} fill={hex(CRT.hot)} /></g>)}
       </svg>
     </>
