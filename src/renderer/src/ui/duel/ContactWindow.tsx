@@ -21,11 +21,10 @@ import { hex } from '../stage/color';
 import { boxCss } from '../stage/geometry';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
+import { polyPoints, segPath } from './svgPaths';
 
 /** The laser's target mark: four corner brackets; the torpedo's: a diamond. */
 const LOCK_HALF = 9, LOCK_ARM = 4, DIAMOND = 6;
-const polyPoints = (p: readonly number[]): string => { const out: string[] = []; for (let k = 0; k + 1 < p.length; k += 2) out.push(`${p[k]},${p[k + 1]}`); return out.join(' '); };
-const segPath = (s: readonly number[]): string => { let d = ''; for (let k = 0; k + 3 < s.length; k += 4) d += `M${s[k]} ${s[k + 1]}L${s[k + 2]} ${s[k + 3]}`; return d; };
 const brackets = (x: number, y: number): string => {
   const h = LOCK_HALF, a = LOCK_ARM;
   return `M${x - h} ${y - h + a}L${x - h} ${y - h}L${x - h + a} ${y - h}M${x + h - a} ${y - h}L${x + h} ${y - h}L${x + h} ${y - h + a}`
