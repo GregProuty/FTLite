@@ -39,3 +39,8 @@ export const CONTACT_RESERVE = INTERNAL_W - CONTACT.x + EDGE;
 /** Feel-ii: the top px of a console map the off-screen arrows keep clear of: the status sentence (y 12, FONT_SIZE) and the
  *  Weapons info line under it (y 44, FONT_NATIVE), so an arrow never sits on their words. */
 export const STATUS_RESERVE = 44;
+
+/** Engineering spike §9.3: the console's power strip, to the right of the station block at the bottom: a title line,
+ *  the slots in a row (10 fit: the Weapons system's, spec §10.1) and the heat bar. */
+export const POWER_STRIP = { x: STATION.x + STATION.w + EDGE, w: 236, h: 54, slotW: 18, slotH: 14, slotGap: 2 } as const;
+export function stripTop(): number { return INTERNAL_H - EDGE - POWER_STRIP.h; }

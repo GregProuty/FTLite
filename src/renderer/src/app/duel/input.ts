@@ -77,13 +77,15 @@ export function helmAxes(k: Pick<KeySample, 'moveX' | 'moveY'>): Axes {
 }
 
 /** The level a frame's throttle input asks for (Artemis spec §5.4), or null for none. Each W press moves it one notch up
- *  and each S press one down from `base`, clamped to −1..4 at every step. Then a console notch click (`to`) wins. A
- *  request equal to `base` is null, since the sim would answer noop. */
-export function throttleRequest(base: number, presses: Pick<Record<KeyAction, number>, 'throttleUp' | 'throttleDown'>, to: number | null | undefined): number | null {
-  const steps = presses.throttleUp - presses.throttleDown;
+ *  and each S press one down from `base`; then a console notch click (`to`) wins. Every step is clamped to −1..`cap`
+ *  (Engineering spike §10.2: the Engines bars' cap, default THROTTLE_MAX), and to 0..0 at a cap of 0 (no reverse without
+ *  Engines). A request equal to `base` is null, since the sim would answer noop. */
+export function throttleRequest(base: number, presses: Pick<Record<KeyAction, number>, 'throttleUp' | 'throttleDown'>, to: number | null | undefined, cap: number = THROTTLE_MAX): number | null {
+  const steps = presses.throttleUp - presses.throttleDown, top = Math.min(THROTTLE_MAX, cap), floor = cap <= 0 ? 0 : -1;
+  const fit = (v: number): number => Math.max(floor, Math.min(top, clampThrottle(v)));
   let level = base;
-  for (let n = 0; n < Math.abs(steps); n++) level = clampThrottle(level + Math.sign(steps));
-  if (to !== undefined && to !== null) level = clampThrottle(to);
+  for (let n = 0; n < Math.abs(steps); n++) level = fit(level + Math.sign(steps));
+  if (to !== undefined && to !== null) level = fit(to);
   return level === base ? null : level;
 }
 

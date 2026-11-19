@@ -17,6 +17,7 @@ import { loadDuelSnapshot, saveDuelSnapshot } from '../../sim/duel/snapshot';
 import { disposeDuel, type DuelState } from '../../sim/duel/state';
 import type { DuelRoundRecord } from '../../sim/duel/summary';
 import { Outcome } from '../../sim/tactical/state';
+import { throttleCap } from '../../sim/tactical/bars';
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { computeLetterbox } from '../../render/letterbox';
 import { endModel } from '../../render/duel/endModel';
@@ -199,7 +200,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (requests.scan !== null && d.tactical.known[requests.scan] < CONTACT_MAX_LEVEL[requests.scan]) send({ kind: 'contactScan', contact: requests.scan });   // Sci-1 spec §5
     if (seat === 'helm') {
       if (p.camera > 0 && source) snapBack(source.cameras.helm);
-      const level = throttleRequest(throttleSent ? throttleSent.level : d.throttle, p, k.throttleTo);   // Artemis spec §5.4
+      const level = throttleRequest(throttleSent ? throttleSent.level : d.throttle, p, k.throttleTo, throttleCap(d.tactical.systems[0]!));   // Artemis spec §5.4
       if (level !== null) { const id = send({ kind: 'throttle', level }); if (id) throttleSent = { level, sequence: id.sequence, round: d.round }; }
       // Feel-ii §1.1: deduped against the heading in flight, else the replica's; A/D or auto-face held clears the hold (the sim
       // clears it after this tick's commands), so the base is −1 before and after this frame's request.

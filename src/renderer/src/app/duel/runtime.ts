@@ -9,6 +9,7 @@ import type { HeldInput, Scheduler } from '../../net/contracts';
 import { Position } from '../../sim/components';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope, type DuelResult } from '../../sim/duel/commands';
 import { rockAlive } from '../../sim/tactical/rocks';
+import { throttleCap } from '../../sim/tactical/bars';
 import { canCharge, canLaunch, validRockLock, validTarget } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, DUEL_CREW_MIN, type DuelState } from '../../sim/duel/state';
 import { helmTurn, stepDuelTick } from '../../sim/duel/step';
@@ -402,7 +403,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     if (requests.scan !== null && d.tactical.known[requests.scan] < CONTACT_MAX_LEVEL[requests.scan]) queue({ kind: 'contactScan', contact: requests.scan });
     if (seat === 'flight') {   // Valkyrn spec §5.1: the Flight seat, the Helm and Weapons in one
       if (p.camera > 0) snapBack(cameras.helm);
-      const level = throttleRequest(throttleBase(), p, k.throttleTo);
+      const level = throttleRequest(throttleBase(), p, k.throttleTo, throttleCap(d.tactical.systems[0]!));
       if (level !== null) queue({ kind: 'throttle', level });
       // Q/E (and E/Q while the torpedo is picked up, the contact controller's torpStep) step the torpedo's room.
       const steps = p.interact - p.prevLock + (requests.torpStep ?? 0);
@@ -431,7 +432,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     }
     if (seat === 'helm') {
       if (p.camera > 0) snapBack(cameras.helm);
-      const level = throttleRequest(throttleBase(), p, k.throttleTo);   // W/S a notch, or a notch click (Artemis spec §5.4)
+      const level = throttleRequest(throttleBase(), p, k.throttleTo, throttleCap(d.tactical.systems[0]!));   // W/S a notch, or a notch click (Artemis spec §5.4)
       if (level !== null) queue({ kind: 'throttle', level });
       if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== headingBase((Math.sign(k.moveX) || 0) !== 0 || k.fireHeld)) queue({ kind: 'heading', heading });   // Feel-ii §1.1
       // Feel-ii §2.8: with Engines off the Helm's controls fly nothing (the commands still go: they apply once repaired).

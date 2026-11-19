@@ -27,6 +27,7 @@ import { FlightStation } from './FlightStation';
 import { ContactWindow } from './ContactWindow';
 import { TargetingLine } from './TargetingLine';
 import { ShipHud } from './ShipHud';
+import { PowerStrip } from './PowerStrip';
 import { SitCard } from './SitCard';
 
 export function DuelUi() {
@@ -44,6 +45,7 @@ export function DuelUi() {
           {duel.console?.weapons && <WeaponsStation weapons={duel.console.weapons} aim={duel.contact?.aimWeapon ?? null} />}
           {duel.console?.flight && <FlightStation flight={duel.console.flight} aim={duel.contact?.aimWeapon ?? null} />}
           {duel.console?.science && <ScienceStation science={duel.console.science} />}
+          {duel.console?.power && <PowerStrip strip={duel.console.power} />}   {/* Engineering spike §9.3 */}
           {duel.contact && <ContactWindow contact={duel.contact} />}
           {duel.contact?.aimWeapon && (duel.console?.weapons || duel.console?.flight) && <TargetingLine contact={duel.contact} seed={duel.pointer ?? null}
             from={duel.console?.flight ? flightCard(duel.contact.aimWeapon === 'torpedo' ? 1 : 0).anchor : undefined} />}

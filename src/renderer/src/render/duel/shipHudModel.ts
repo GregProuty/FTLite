@@ -4,8 +4,9 @@
 // keeps React still while nothing changes. FTL's layout idea (a segmented hull bar top left, power bars bottom left),
 // original art, in the console's amber CRT ramp.
 import type { DuelState } from '../../sim/duel/state';
-import { capacityOf, coolantFree, COOLANT_POOL_DUEL, DUEL_SYSTEM_COUNT, isOverdriven, OVERDRIVE_SYSTEMS, REACTOR_BARS, sparesOf, SYSTEM_MAX, SYSTEM_SLOTS } from '../../sim/duel/power';
+import { capacityOf, coolantFree, COOLANT_POOL_DUEL, DUEL_SYSTEM_COUNT, DuelSystem, isOverdriven, OVERDRIVE_SYSTEMS, REACTOR_BARS, sparesOf, SYSTEM_MAX, SYSTEM_SLOTS } from '../../sim/duel/power';
 import { effectiveBars, SHIELD_LAYERS_BY_BARS } from '../../sim/tactical/bars';
+import { sensorRange } from '../../sim/tactical/science';
 import { classOf, CREW_SLOT } from '../../sim/tactical/state';
 import { HEAT_MAX } from '../../sim/tuning';
 
@@ -67,9 +68,9 @@ export function shipHud(d: DuelState): ShipHudView {
 
 /** A slot's look (spec §6): powered, usable but empty, or lost to damage or a failure (crossed). */
 export type SlotState = 'on' | 'empty' | 'lost';
-export function slotState(c: PowerColumn, k: number): SlotState { return k < c.bars ? 'on' : k < c.capacity ? 'empty' : 'lost'; }
+export function slotState(c: Pick<PowerColumn, 'bars' | 'capacity'>, k: number): SlotState { return k < c.bars ? 'on' : k < c.capacity ? 'empty' : 'lost'; }
 /** Slot k is the overdrive slot: the one above max, on a system that has one. */
-export function overdriveSlot(c: PowerColumn, k: number): boolean { return c.slots > c.max && k === c.max; }
+export function overdriveSlot(c: Pick<PowerColumn, 'slots' | 'max'>, k: number): boolean { return c.slots > c.max && k === c.max; }
 
 /** Column n's left edge: the five systems at `pitch`, the reactor (n = 5) `reactorGap` further right. */
 export function powerColumnX(n: number): number { const P = HUD.power; return HUD.x + n * P.pitch + (n >= DUEL_SYSTEM_COUNT ? P.reactorGap : 0); }
@@ -86,3 +87,12 @@ export function powerPanel(): { x: number; y: number; w: number; h: number } {
 }
 /** The left edge of hull segment `k`. */
 export function hullSegX(k: number): number { const h = HUD.hull; return HUD.x + k * (h.segW + h.gap); }
+
+/** Engineering spike §9.3: one console's own system power, read-only; the Sensors strip adds the sensor range (§10.4). */
+export interface ConsolePowerStrip { system: number; name: string; bars: number; capacity: number; slots: number; max: number; lost: number; heat: number; heatMax: number; failed: boolean; overdriven: boolean; spare: number; range?: number }
+/** The strip for `system`: its column's numbers, the slots lost (slots - capacity) and the reactor's spare bars. */
+export function powerStrip(d: DuelState, system: number): ConsolePowerStrip {
+  const v = powerView(d), c = v.systems[system]!;
+  const strip: ConsolePowerStrip = { system, name: c.name, bars: c.bars, capacity: c.capacity, slots: c.slots, max: c.max, lost: c.slots - c.capacity, heat: c.heat, heatMax: c.heatMax, failed: c.failed, overdriven: c.overdriven, spare: v.spare };
+  return system === DuelSystem.Sensors ? { ...strip, range: sensorRange(d.tactical.systems[CREW_SLOT]!) } : strip;
+}
