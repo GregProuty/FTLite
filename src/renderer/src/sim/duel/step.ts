@@ -206,7 +206,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins.
   const helm = attendant(d, d.nav), gunner = attendant(d, d.weapons);
   const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false,
-    gunHeld: gunner >= 0 && (input.held[gunner] ?? NO_HELD).gunHeld === true, scanner: true };   // Valkyrn spec §7.1: the trigger of Weapons' attendant
+    gunHeld: gunner >= 0 && (input.held[gunner] ?? NO_HELD).gunHeld === true, pewAim: -1, scanner: true };   // Valkyrn spec §7.1: the trigger of Weapons' attendant; W-1: pewFire sets pewAim (Task 4)
   for (const e of WEAPON_ORDER.flatMap((kind) => input.commands.filter((x) => x.command.kind === kind))) {
     const c = e.command;
     if (c.kind !== 'laserLock' && c.kind !== 'torpLock' && c.kind !== 'laserCharge' && c.kind !== 'missileLaunch') continue;

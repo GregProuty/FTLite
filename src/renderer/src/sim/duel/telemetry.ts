@@ -109,7 +109,7 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
     } else if (e.cause === 'ship') {
       missileOn[e.target] = true;
       if (e.target === e.ship) s.missileLosses.own++; else s.missileHitsByRoom[e.room as 0 | 1 | 2]++;
-    } else s.missileLosses[e.cause]++;
+    } else s.missileLosses[e.cause === 'shot' ? 'missile' : e.cause]++;   // W-1 (pew pew spec §1; constraints decision 6): a torpedo a pew round shot down is counted under 'missile', the stored wire shape
   }
   for (let i = 0; i < 2; i++) t.ships[i]!.missilesLaunched += now[i]![3]! - t.prev.counters[i]![3]!;
 

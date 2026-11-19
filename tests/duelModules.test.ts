@@ -37,7 +37,8 @@ const names = <S>(m: SimModule<S>, s: S) => new Set(m.fields(s).map((f) => f.nam
 /** A missile pool entry is one field per member (active, owner) plus `flight` for its flight values. */
 const tacticalNames = (s: TacticalState) => new Set([...TACTICAL_MODULES.flatMap((m) => [...names(m, s)]),
   ...s.missiles.flatMap((_, k) => MISSILE_KEYS.map((key) => `missiles.${k}.${key}`)),
-  ...s.rounds.flatMap((_, k) => ROUND_KEYS.map((key) => `rounds.${k}.${key}`))]);   // Valkyrn-i: a round pool entry as a missile's
+  ...s.rounds.flatMap((_, k) => ROUND_KEYS.map((key) => `rounds.${k}.${key}`)),   // Valkyrn-i: a round pool entry as a missile's
+  ...s.pew.flatMap((_, k) => ROUND_KEYS.map((key) => `pew.${k}.${key}`))]);       // W-1: the pew pool's likewise
 const tacticalExcluded = { ...spaceModule.notSnapshotted, ...shipModule.notSnapshotted, ...scienceModule.notSnapshotted };
 const duelNames = (d: DuelState) => new Set([presenceModule, repairModule, roundModule, helmModule, interiorModule].flatMap((m) => [...names(m, d)]));
 function played(seed: number, ticks: number): DuelState {
@@ -50,9 +51,10 @@ function bothFlying(s: TacticalState): void {
   placeMissile(s, 0, { x: 100, y: -200, vx: 3, vy: 4, heading: 7, headingAcc: 0.25, age: 30 });
   placeMissile(s, 1, { x: -100, y: 200, vx: -3, vy: -4, heading: 9, headingAcc: -0.25, age: 40 });
 }
-/** Every round pool entry in flight (Valkyrn-i), so every round field holds values a writer accepts when changed. */
+/** Every round pool entry in flight (Valkyrn-i; W-1: the pew pool too), so every round field holds values a writer accepts when changed. */
 function allRoundsFlying(s: TacticalState): void {
   s.rounds.forEach((r, k) => Object.assign(r, { active: true, owner: k % 2, x: 10 + k, y: -20, vx: 700, vy: 0, age: 1 + (k % 50) }));
+  s.pew.forEach((r, k) => Object.assign(r, { active: true, owner: k % 2, x: 30 + k, y: -40, vx: 0, vy: -900, age: 1 + (k % 20) }));
 }
 /** A changed first value: flags and 0/1 members flip, everything else moves by one. */
 const changedFirst = (name: string, v: number): number => (/\.(active|released|fireHeld|laserTargeted|gunLocked)$/.test(name) || /^derelict\.(trapped|salvaged)$/.test(name) || name.startsWith('present.') || name === 'hunter.working' ? 1 - v : v + 1);

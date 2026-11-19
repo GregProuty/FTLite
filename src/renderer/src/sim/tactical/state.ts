@@ -8,7 +8,7 @@ import { dirBetween } from './direction';
 import { buildGrid, type BroadPhase } from './grid';
 import { generateMap, type MapDef, type Spawn } from './map';
 import { cloneTacticalFromModule } from './hash';
-import { DERELICT_FAR_MIN, DERELICT_NEAR_MIN, DERELICT_PHASE_DRAWS, DERELICT_SPAWN_CLEAR, GUN_POOL, HEADING_COUNT, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_TRAIL_TICKS } from './tuning';
+import { DERELICT_FAR_MIN, DERELICT_NEAR_MIN, DERELICT_PHASE_DRAWS, DERELICT_SPAWN_CLEAR, GUN_POOL, HEADING_COUNT, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_TRAIL_TICKS, PEW_POOL } from './tuning';
 
 /** Tactical rooms (spec §5); the index into ShipSystems.rooms. */
 export const Room = { Weapons: 0, Shields: 1, Engines: 2 } as const;
@@ -65,6 +65,10 @@ export interface ShipSystems {
   gunHeat: number; gunLocked: boolean; gunCooldown: number; gunMuzzle: number;
   gunWear: number; gunHull: number; gunRoomWear: [number, number, number];
   gunShots: number; gunHits: number;
+  /** W-1 (pew pew spec §1, §4): the pew's charge in ticks, 0..shots × rechargeTicks (a third of the bar per rechargeTicks;
+   *  a round spends one third), and its telemetry counters (rounds fired, rounds that hit a ship). All zero on a class
+   *  without the pew. */
+  pewCharge: number; pewShots: number; pewHits: number;
 }
 
 /** A cruise missile's flight (spec §7b). */
@@ -89,6 +93,9 @@ export interface Hunter {
   lastLaunch: number;
   /** Ring buffer of its target's last HUNTER_TRAIL_TICKS positions (x, y pairs); trailHead is the oldest entry. */
   trail: Float64Array; trailHead: number;
+  /** W-1 (pew pew spec §1): the pew rounds still to fire in this attack burst (0: none, it waits for a full charge), and
+   *  the ticks until the burst's next round may go. */
+  pewBurst: number; pewClock: number;
 }
 
 export const Outcome = { Running: 0, CrewWins: 1, EnemyWins: 2, Draw: 3 } as const;
@@ -114,14 +121,18 @@ export type DuelEvent =
   /** A laser release. `stripped`: it took a shield layer; `room`: the Room it struck (its level may already have been 2), or −1 (a miss or a stripped layer). */
   | { kind: 'laser'; ship: number; hit: boolean; stripped: boolean; room: number; x1: number; y1: number; x2: number; y2: number }
   /** A missile ended. `target`: the ship it landed on (its own ship for a self-hit), or −1; `room`: the Room it struck, or −1. */
-  | { kind: 'missileEnd'; ship: number; cause: 'ship' | 'planet' | 'asteroid' | 'edge' | 'expired' | 'missile'; target: number; room: number; x: number; y: number }
+  | { kind: 'missileEnd'; ship: number; cause: 'ship' | 'planet' | 'asteroid' | 'edge' | 'expired' | 'missile' | 'shot'; target: number; room: number; x: number; y: number }
   /** Sci-1 spec §4.6: the enemy turned hostile this tick, and why (laser before gun before missile before clock; Valkyrn spec §7.2). */
-  | { kind: 'hostile'; cause: 'clock' | 'laser' | 'gun' | 'missile' }
+  | { kind: 'hostile'; cause: 'clock' | 'laser' | 'gun' | 'pew' | 'missile' }
   /** Valkyrn spec §7.1: ship `ship` fired a gun round from muzzle `muzzle` (0 starboard, 1 port). */
   | { kind: 'gunFire'; ship: number; muzzle: number }
   /** Valkyrn spec §7.2: a round hit ship `ship` (the target) at the closest-approach point (x, y): `room` the Room it
    *  struck, or −1 on a shield hit; `stripped` when that hit took a layer. */
   | { kind: 'gunHit'; ship: number; room: number; stripped: boolean; hull: boolean; level: boolean; x: number; y: number }   // level: the hit raised the Room's level (Valkyrn spec §7.4)
+  /** W-1 (pew pew spec §1): ship `ship` fired a pew round from its muzzle (x, y). */
+  | { kind: 'pewFire'; ship: number; x: number; y: number }
+  /** W-1: ship `owner`'s pew round hit ship `ship` at (x, y): `stripped` it took a shield layer, `hull` it cost hull. */
+  | { kind: 'pewHit'; ship: number; owner: number; stripped: boolean; hull: boolean; x: number; y: number }
   /** A scan finished: `contact` is now known to `level`. */
   | { kind: 'scanDone'; contact: number; level: number }
   /** The derelict was salvaged: its loot, and whether it was trapped. */
@@ -137,6 +148,8 @@ export interface TacticalState {
   missiles: Slots<Missile>;
   /** Valkyrn spec §7.2: the gun round pool, GUN_POOL entries. */
   rounds: GunRound[];
+  /** W-1 (pew pew spec §1): the pew round pool, PEW_POOL entries shared by every ship (the GunRound shape). */
+  pew: GunRound[];
   hunter: Hunter;
   outcome: number;
   events: DuelEvent[];
@@ -170,18 +183,19 @@ function emptyShip(bodies: number): Ship {
  *  with no setup); a class without a laser (Valkyrn spec §6.1) starts empty and untargeted. Every round, the rematch's
  *  included, is built here. */
 function systemsFor(cls: number, target: number, crew = false): ShipSystems {
-  const c = SHIP_CLASSES[cls]!, laser = c.slots.laser;
+  const c = SHIP_CLASSES[cls]!, laser = c.slots.laser, pew = c.slots.pew;
   return {
     cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: crew && laser ? laser.chargeUnits : 0, laserHold: 0, fireHeld: false, lock: Room.Shields,
     laserTargeted: crew && laser !== null, torpLock: -1, torpRoom: -1, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: c.slots.missile.magazine, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
-    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0
+    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0,
+    pewCharge: pew ? pew.shots * pew.rechargeTicks : 0, pewShots: 0, pewHits: 0   // W-1: a pew starts the round full
   };
 }
 function emptySystems(): ShipSystems {
   return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, laserTargeted: false, torpLock: 0, torpRoom: 0, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: 0, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
-    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0 };
+    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0, pewCharge: 0, pewShots: 0, pewHits: 0 };
 }
 /** A free missile pool entry. */
 export function emptyMissile(): Missile { return { active: false, owner: 0, x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 }; }
@@ -189,7 +203,7 @@ export function emptyMissile(): Missile { return { active: false, owner: 0, x: 0
 function hunterFor(crew: Spawn): Hunter {
   const trail = new Float64Array(2 * HUNTER_TRAIL_TICKS);
   for (let k = 0; k < HUNTER_TRAIL_TICKS; k++) { trail[2 * k] = crew.x; trail[2 * k + 1] = crew.y; }
-  return { mode: HunterMode.Hunt, room: 0, timer: 0, working: false, fireAt: -1, lastLaunch: -HUNTER_MISSILE_COOLDOWN_TICKS, trail, trailHead: 0 };
+  return { mode: HunterMode.Hunt, room: 0, timer: 0, working: false, fireAt: -1, lastLaunch: -HUNTER_MISSILE_COOLDOWN_TICKS, trail, trailHead: 0, pewBurst: 0, pewClock: 0 };
 }
 
 /** Sci-1 spec §4.5's draws, in order, from the tactical rng right after the map: the enemy's weak frequency; the
@@ -226,6 +240,7 @@ export function createTacticalState(seed: number, slots = DUEL_CLASSES.length, c
     systems: [systemsFor(crewClass, 1, true),systemsFor(DUEL_CLASSES[1]!, 0), ...extra.map(emptySystems)],
     missiles: [emptyMissile(), emptyMissile(), ...extra.map(emptyMissile)],
     rounds: Array.from({ length: GUN_POOL }, emptyRound),
+    pew: Array.from({ length: PEW_POOL }, emptyRound),   // W-1 (pew pew spec §1)
     hunter: hunterFor(map.spawns[0]), outcome: Outcome.Running, events: [],
     // Sci-1 (spec §4): the round starts with the enemy unidentified and holding, the scanner idle.
     startTick: 0, hostileAt: -1, known: [0, 0], scan: idleScan(), designated: -1, weakFreq: science.weakFreq, derelict: science.derelict

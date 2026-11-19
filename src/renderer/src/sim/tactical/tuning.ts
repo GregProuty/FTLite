@@ -180,3 +180,27 @@ export const GUN_HITS_PER_HULL = 12;
 /** Valkyrn spec §7.2, §12: gun hits on a Room per damage level. 6, kept at the start value; the Valkyrn gate
  *  (tests/duelGates.test.ts): median 229.8 s, 9 crew wins, 1 Hunter win over seeds 1 to 10. */
 export const GUN_HITS_PER_LEVEL = 6;
+
+// Pew pew (spec 2026-11-18-pew-pew-weapons-design §1, §4; W-1): the Cutter's and the Hunter's skill-shot gun. Start values,
+// tuned in playtest; Task 6 of the W-1 plan may move only the Hunter's and the scripted gunner's knobs.
+/** Fine heading units to the turn (spec §4): a heading index times HEADING_COUNT plus its fraction aimAcc, 0..255. */
+export const AIM_STEPS = HEADING_COUNT * HEADING_COUNT;
+/** The gun holds PEW_SHOTS thirds; one third refills every PEW_RECHARGE_TICKS (a full bar in 180 ticks, 3 s). */
+export const PEW_SHOTS = 3;
+export const PEW_RECHARGE_TICKS = 60;
+/** The round pool's fixed size, shared by every ship (the oldest round is reused when it is full). */
+export const PEW_POOL = 16;
+/** A round flies straight at PEW_SPEED (u/s) for PEW_LIFE ticks, about 450 u, with no gravity and no inherited velocity. */
+export const PEW_SPEED = 900;
+export const PEW_LIFE = 30;
+/** Hull per hit on a ship with no shield layer up (a shielded hit strips one layer instead). */
+export const PEW_HULL = 1;
+/** The aim cone's half-angle in degrees about the heading, and the same in fine heading units (rounded down). */
+export const PEW_ARC = 60;
+export const PEW_ARC_STEPS = Math.floor((PEW_ARC / 360) * AIM_STEPS);   // 10922
+/** cos 60°, for the Hunter's "inside the cone" test by dot product (geometry.ts inArc). */
+export const PEW_ARC_COS = 0.5;
+/** A round's reach: PEW_SPEED · PEW_LIFE · DT (450). The Hunter attacks inside it. */
+export const PEW_RANGE = PEW_SPEED * PEW_LIFE * DT;
+/** W-1 (pew pew spec §1): the Hunter's ticks between two rounds of one attack burst. */
+export const HUNTER_PEW_GAP = 12;

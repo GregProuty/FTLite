@@ -4,6 +4,7 @@
 import { inArc, lineOfSight } from './geometry';
 import { launchMissile } from './missiles';
 import { tickGun } from './gun';
+import { firePew, tickPew } from './pew';
 import { classOf, CREW_SLOT, missileOf, Room, type Axes, type TacticalState } from './state';
 
 /** One ship's inputs for one tick. `helm` / `weapons`: a present player is seated at that console ("attended", spec §8). */
@@ -25,15 +26,18 @@ export interface ShipInput {
   /** Valkyrn spec §7.1: the gun's trigger, held at the Weapons station by its attendant (the duel step computes it from
    *  the held input; every other input sets false). Read only by a class with a gun. */
   gunHeld: boolean;
+  /** W-1 (pew pew spec §1, §4): the pew's fine aim this tick (a heading index × HEADING_COUNT + its fraction, 0..65535),
+   *  or −1 for no shot. At most one a tick; the duel step admits the first pewFire, the Hunter decides its own. */
+  pewAim: number;
   /** Sci-1 spec §4.6: whether the station running the ship's scan is attended (true when no scan runs). The duel step
    *  computes it for the crew; every other input sets true. */
   scanner: boolean;
 }
 
 /** A crew that sits at both consoles and does nothing. */
-export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, gunHeld: false, scanner: true };
+export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, scanner: true };
 /** Nobody at either console: a ship nobody flies. */
-export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, gunHeld: false, scanner: true };
+export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, scanner: true };
 
 /** Whether ship i's laser is fully charged; never for a class without a laser (Valkyrn spec §6.1). */
 export function laserFull(state: TacticalState, i: number): boolean {
@@ -154,6 +158,7 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
     s.fireHeld = false;
   }
   if (crew && s.torpLock >= 0 && canLaunch(state, i)) launchMissile(state, i);   // auto-launch, once
+  if (input.pewAim >= 0) firePew(state, i, input.pewAim);   // W-1 (pew pew spec §1): last, as WEAPON_ORDER admits it; attended (above)
 }
 
 /** Advance ship i's laser charge and hold timer, shields and magazine by one tick (spec §5, §7). */
@@ -170,4 +175,5 @@ export function tickWeapons(state: TacticalState, i: number, input: ShipInput): 
   else if ((s.shieldClock += c.shields.rate[s.rooms[Room.Shields]]!) >= c.shields.rechargeUnits) { s.shields++; s.shieldClock = 0; }   // rate 0: held
   if (s.magazine >= c.slots.missile.magazine) s.magazineClock = 0;
   else if (++s.magazineClock >= c.slots.missile.regenTicks) { s.magazine++; s.magazineClock = 0; }
+  tickPew(state, i);   // W-1: the pew refills every tick, attended or not, whatever the damage (spec §6 decision 4)
 }
