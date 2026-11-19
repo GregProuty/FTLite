@@ -291,6 +291,57 @@ Within a tick, the rng.hazards draws come in this order: the hit rolls in step 8
 - Screenshots (playwright-core and Electron, as in the visual check method): the HUD at round start, an overdriven and
   overheating system, a room venting through an airlock.
 
+## 9. Amendment 1 (owner, 2026-11-18): Engineering drives Helm and Weapons
+
+Owner: "Engineering should directly effect helm and weapons. helm should only be able to 75% throttle by default and
+weapons will only be able to power up and charge 2 of its 3 weapons by default and more power effects charge time.
+the energy your station has should be visible in the UI of each terminal view." Asked which three weapons: "pew pew
+and torpedo", meaning the laser's two shots (its 2-shot burst) and the torpedo. This section overrides §2 where they
+differ.
+
+### 9.1 Helm: Engines bars cap the throttle
+
+| Engines bars | 0 | 1 | 2 (start) | 3 | 4 (overdrive) |
+|---|---|---|---|---|---|
+| Top forward throttle level (`THROTTLE_CAP_BY_BARS`) | 0 | 2 (50 %) | 3 (75 %) | 4 (100 %) | 4 (100 %) |
+| Engine factor (thrust and turn, replaces §2's row) | 0 | 1 | 1 | 1 | 1.25 |
+
+- Reverse (level −1) needs Engines bars ≥ 1. At 0 bars the ship can't thrust or turn, so it drifts.
+- A `throttle` command above the cap is refused `unavailable`.
+- When the cap falls (bars removed, damage, failure), the stored throttle is lowered to the cap in `clampToCapacity`,
+  the same tick. At 0 bars a reverse throttle becomes 0.
+- A held heading and A/D turning still work while the engine factor is above 0.
+
+### 9.2 Weapons: bars power weapons, and spare bars speed up charging
+
+- The Weapons system has **three weapon slots**: Laser shot 1, Laser shot 2 and the Torpedo. Each powered slot takes
+  one Weapons bar. `ShipSystems.weaponPower: number[3]` (0/1 flags, in the `ship` module) records which slots are
+  powered, and the powered slots never outnumber the effective Weapons bars.
+- **Round start:** Weapons 2 bars, with Laser shot 1 and the Torpedo powered. Today's laser fires 2 shots, so the
+  round starts with one fewer laser shot.
+- A new command `weaponPower` (slot 0..2) toggles a slot. Only the player seated at Weapons may send it (refused
+  `not-at-weapons` otherwise, like the laser commands). Powering a slot needs a free Weapons bar, meaning effective
+  bars > powered slots; otherwise `unavailable`.
+- **Laser:** the burst fires as many shots as there are powered laser slots (0, 1 or 2). With no laser slot powered,
+  the laser doesn't charge and can't fire, and `laserOffline` is true.
+- **Torpedo:** unpowered, it can't launch and its magazine doesn't regenerate.
+- **Charge time:** the laser charge and magazine regen rates follow the total effective Weapons bars, as in §2's
+  tables. Bars beyond the powered slots, including the overdrive bar, charge faster.
+- **Losing bars:** when the effective Weapons bars fall below the powered slots, slots unpower from the highest index
+  down: the Torpedo first, then Laser shot 2, then Laser shot 1. This happens at once in `clampToCapacity` and, for a
+  hit inside stepDuel, through the readers' `effectiveBars`. For example, a laser can't use a second shot whose bar
+  is gone.
+
+### 9.3 Every console shows its power
+
+- Each console view (Helm, Weapons, Science) shows a power strip for its own system: Engines, Weapons or Sensors. The
+  strip shows the bars, the capacity, the slots lost to damage, the overdrive slot, the heat bar and the reactor's
+  spare bars, in the HUD's bar style, amber CRT.
+- The Helm's throttle notches above the cap draw locked.
+- The Weapons console shows the three weapon slots (LASER 1, LASER 2, TORPEDO) lit or dark. Clicking a slot sends
+  `weaponPower`.
+- The strip is read-only except on the ship view and the Weapons slot toggles.
+
 ## Out of scope
 
 Presets, Artemis's DamCon teams (the players are the repair crew), sealed doors, Medbay and Doors power, a Hunter
