@@ -6,7 +6,7 @@ import type { DuelState } from '../../sim/duel/state';
 import type { Axes } from '../../sim/tactical/state';
 import type { ViewEvent } from '../../render/tactical/fxModel';
 import {
-  CREW, FIRE_ALARM, HEARTBEAT, OUTCOME_RUNNING, PING_TONE, RCS_HISS, crewLifeSounds, duelEventSounds, duelStateSounds, fireAlarm, heartbeat, heartbeatOn, lockTone, rcsHiss,
+  CREW, FIRE_ALARM, HEARTBEAT, OUTCOME_CREW_WINS, OUTCOME_RUNNING, PING_TONE, RCS_HISS, crewLifeSounds, duelEventSounds, duelMood, duelStateSounds, fireAlarm, heartbeat, heartbeatOn, lockTone, rcsHiss,
   type CrewLife, type CrewWatch, type DuelWatch, type LockWatch, type Pan, type TorpedoTone
 } from '../../audio/duelSounds';
 export type { TorpedoTone } from '../../audio/duelSounds';
@@ -19,7 +19,7 @@ import { rockSounds, type RockSoundWatch } from '../../audio/rockSounds';
 export interface DuelAudioFrame {
   duel: DuelState; events: readonly ViewEvent[]; axes: Axes; paused: boolean; pan: Pan; live?: boolean;
   me: number; crew: CrewLife; dt: number;
-  /** The enemy is hostile (Sci-1 spec §4.1, the Hunter-grace rule): the music stays calm until it is; absent means
+  /** The enemy is hostile (Sci-1 spec §4.1, the Hunter-grace rule): the combat track waits until it is; absent means
    *  hostile. The scene reads it from the sim (`hostileAt >= 0`), since audio imports nothing from sim at runtime. */
   hostile?: boolean;
   /** Feel-ii §2.5: the torpedo lock tone's data (the scene's torpedoTone); absent: no tone. §2.7: the pings that appeared
@@ -60,10 +60,11 @@ export function createDuelAudio(out: AudioOut) {
       if (list.length) out.sounds(list);
       for (const cue of [...st.cues, ...life.cues]) out.play(cue);
       const ship = t.ships[CREW]!;
-      // Engaged: the round is running and the Hunter is hostile (spec section 5; hunter grace spec: calm through the grace). The hum: thrust as the Helm holds it (a non-Helm online seat sees no
-      // axes, so only the speed part), and the crew ship's speed. A frozen view (not live) holds no battle, hum or crackle.
-      if (f.live === false) { out.status({ engaged: false, paused: f.paused, duck: ev.duck, fires: 0, hum: null }); return; }
-      out.status({ engaged: t.outcome === OUTCOME_RUNNING && f.hostile !== false, paused: f.paused, duck: ev.duck, fires: ins.fires,
+      // The mood (music spike; duelMood): combat once the Hunter is hostile (hunter grace spec: none through the grace). The hum: thrust as the Helm holds it (a non-Helm online seat sees no
+      // axes, so only the speed part), and the crew ship's speed. A frozen view (not live) holds no combat track, hum or crackle.
+      if (f.live === false) { out.status({ mood: 'calm', paused: f.paused, duck: ev.duck, fires: 0, hum: null }); return; }
+      const mood = duelMood({ running: t.outcome === OUTCOME_RUNNING, won: t.outcome === OUTCOME_CREW_WINS, hostile: f.hostile !== false, scanning: t.scan.contact >= 0, known: t.known.some((k) => k >= 1), fires: ins.fires });
+      out.status({ mood, paused: f.paused, duck: ev.duck, fires: ins.fires,
         hum: { thrust: Number.isFinite(f.axes.thrust) ? Math.min(1, Math.abs(f.axes.thrust)) : 0, speed: Math.hypot(ship.vx, ship.vy), charge: 0 } });
     },
     /** A new round or a rebuilt scene: the next frame is a fresh baseline. */

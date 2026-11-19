@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   CREW, FIRE_ALARM, HEARTBEAT, HEARTBEAT_BELOW, HEARTBEAT_S, IMPACT_DELAY_S, OUTCOME_CREW_WINS, OUTCOME_RUNNING, crewLifeSounds, duelEventSounds, duelStateSounds,
-  fireAlarm, heartbeat, heartbeatOn, type DuelWatchView
+  duelMood, fireAlarm, heartbeat, heartbeatOn, type DuelWatchView
 } from '../src/renderer/src/audio/duelSounds';
 import { CUE_RECIPES } from '../src/renderer/src/audio/cueRecipes';
 import { HEALTH_LOW } from '../src/renderer/src/render/duel/readoutModel';
@@ -102,5 +102,18 @@ describe('sound cues for trouble (duel polish i spec §C)', () => {
     b = heartbeat(b.next, true, 1.8); expect(b).toEqual({ next: 1.8 + HEARTBEAT_S, beat: true });
     b = heartbeat(b.next, false, 1.9); expect(b).toEqual({ next: null, beat: false });
     expect(heartbeat(b.next, true, 2).beat).toBe(true);   // back on: at once
+  });
+});
+
+describe("the duel's mood (music spike)", () => {
+  const v = { running: true, won: false, hostile: false, scanning: false, known: false, fires: 0 };
+  it('is space at the quiet start, intrigue once the contact is being scanned or is known, combat once hostile or burning', () => {
+    expect(duelMood(v)).toBe('space');
+    expect(duelMood({ ...v, scanning: true })).toBe('intrigue'); expect(duelMood({ ...v, known: true })).toBe('intrigue');
+    expect(duelMood({ ...v, known: true, hostile: true })).toBe('combat'); expect(duelMood({ ...v, fires: 1 })).toBe('combat');
+  });
+  it('is adventure after a won round and calm after a lost one, whatever else is set', () => {
+    expect(duelMood({ ...v, running: false, won: true, hostile: true, fires: 2 })).toBe('adventure');
+    expect(duelMood({ ...v, running: false, hostile: true, fires: 2 })).toBe('calm');
   });
 });

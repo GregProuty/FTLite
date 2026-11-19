@@ -1,6 +1,7 @@
 // Audio-i spec section 3: the engine over a fake AudioContext.
 import { describe, it, expect } from 'vitest';
-import { BATTLE_LOOP_START_S, BATTLE_START_S, DUCK_LEVEL, type AudioStatus } from '../src/renderer/src/audio/musicState';
+import { DUCK_LEVEL, type AudioStatus } from '../src/renderer/src/audio/musicState';
+import { MUSIC } from '../src/renderer/src/audio/soundBank';
 import { HUM_MAX_GAIN, fireGain } from '../src/renderer/src/audio/loops';
 import { createAudio, EFFECTS_LEVEL, MUSIC_LEVEL } from '../src/renderer/src/app/audio';
 import { sfxFiles } from '../src/renderer/src/audio/soundBank';
@@ -59,29 +60,46 @@ describe('the audio engine (Audio-i spec section 3)', () => {
 });
 
 describe('the music and the loops (Audio-i spec sections 4-5)', () => {
-  const tracks = [{ name: 'music.calm', url: 'cobalt.mp3' }, { name: 'music.battle', url: 'time-and-space.mp3' }];
-  const report = (o: Partial<AudioStatus> = {}): AudioStatus => ({ engaged: false, paused: false, duck: false, hum: null, fires: 0, ...o });
-  it('loops calm from the start, starts battle at the orchestral turn when engaged, and stops it after the fade back', async () => {
+  const tracks = Object.values(MUSIC).map((t) => ({ name: t.name, url: t.file }));
+  const report = (o: Partial<AudioStatus> = {}): AudioStatus => ({ mood: 'calm', paused: false, duck: false, hum: null, fires: 0, ...o });
+  it('loops calm from the start, starts the combat track when its mood begins, and stops it after the fade back', async () => {
     const { ctx, made } = fakeAudioContext();
     const a = createAudio({ context: () => ctx });
     await a.load([...effectSources(), ...tracks], bytes(300));
     const music = (): FakeSource[] => made.sources.filter((s) => s.loop && s.loopEnd === 300);
     expect(music()).toHaveLength(1); expect(music()[0]!.loopStart).toBe(0);
-    a.tick(0); a.status(report({ engaged: true })); a.tick(0.05);
+    const calm = music()[0]!;
+    a.tick(0); a.status(report({ mood: 'combat' })); a.tick(0.05);
     const battle = music()[1]!;
-    expect(battle.loopStart).toBe(BATTLE_LOOP_START_S); expect(battle.starts[0]![1]).toBe(BATTLE_START_S);
+    expect(battle.loopStart).toBe(MUSIC.combat.loopStart); expect(battle.starts[0]![1]).toBe(MUSIC.combat.start);
     let t = 0.05;
-    for (; t < 3; t += 0.05) { a.status(report({ engaged: true })); a.tick(t); }
+    for (; t < 3; t += 0.05) { a.status(report({ mood: 'combat' })); a.tick(t); }
+    expect(calm.stops).toBe(1);   // calm faded out under combat: its source is let go
     for (; t < 14; t += 0.05) { a.status(report()); a.tick(t); }
     expect(battle.stops).toBe(1);
-    a.status(report({ engaged: true })); a.tick(t + 0.05);
-    expect(music()).toHaveLength(3);   // a fresh battle source each engagement, from the turn again
+    expect(music()).toHaveLength(3);   // calm again, from its start
+    a.status(report({ mood: 'combat' })); a.tick(t + 0.05);
+    expect(music()).toHaveLength(4);   // a fresh combat source each time, from its start again
+  });
+  it('gives every mood its own gain, at the track level, and plays one quiet mood at a time', async () => {
+    const { ctx, made } = fakeAudioContext();
+    const a = createAudio({ context: () => ctx });
+    await a.load([...effectSources(), ...tracks], bytes(300));
+    const [, , , , , calm, space, intrigue, adventure, combat] = made.gains;   // master, music, effects, synth, mix, then the moods in order
+    expect([calm!.value, space!.value, intrigue!.value, adventure!.value, combat!.value]).toEqual([MUSIC.calm.level, 0, 0, 0, 0]);
+    let t = 0;
+    for (; t < 5; t += 0.05) { a.status(report({ mood: 'space' })); a.tick(t); }
+    expect(space!.value).toBeCloseTo(MUSIC.space.level); expect(calm!.value).toBe(0);
+    for (; t < 10; t += 0.05) { a.status(report({ mood: 'intrigue' })); a.tick(t); }
+    for (; t < 15; t += 0.05) { a.status(report({ mood: 'adventure' })); a.tick(t); }
+    expect([calm!.value, space!.value, intrigue!.value, combat!.value]).toEqual([0, 0, 0, 0]); expect(adventure!.value).toBeCloseTo(MUSIC.adventure.level);
+    expect(made.sources.filter((s) => s.loop && s.loopEnd === 300 && s.stops === 0)).toHaveLength(1);   // only the adventure track still plays
   });
   it('drives the hum and the fire loop from the report: silent while paused or with no report; ducks on impact', async () => {
     const { ctx, made } = fakeAudioContext();
     const a = createAudio({ context: () => ctx });
     await a.load(effectSources(), bytes(2));
-    const [, , , , mix, , , hum, fire] = made.gains;   // master, music, effects, synth, mix, calm, battle, hum, fire
+    const [, , , , mix, , , , , , hum, fire] = made.gains;   // master, music, effects, synth, mix, the five moods, hum, fire
     a.tick(0); a.status(report({ hum: { thrust: 1, speed: 400, charge: 0 }, fires: 2 })); a.tick(0.05);
     expect(hum!.value).toBeCloseTo(HUM_MAX_GAIN); expect(fire!.value).toBeCloseTo(fireGain(2));
     a.status(report({ paused: true, hum: { thrust: 1, speed: 400, charge: 0 }, fires: 2 })); a.tick(0.1);

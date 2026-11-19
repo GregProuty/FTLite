@@ -1,0 +1,15 @@
+Music by Alexandr Zhelanov (opengameart.org/users/alexandr-zhelanov)
+
+Tracks:
+  brave-space-explorers.ogg  'Brave Space Explorers'  https://opengameart.org/content/brave-space-explorers
+  law-in-the-city.ogg        'Law in the City'  https://opengameart.org/content/law-in-the-city
+
+License: Creative Commons Attribution 4.0 International (CC-BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+Credit:
+  'Brave Space Explorers' by Alexandr Zhelanov (opengameart.org/users/alexandr-zhelanov), CC-BY 4.0
+  'Law in the City' by Alexandr Zhelanov (opengameart.org/users/alexandr-zhelanov), CC-BY 4.0
+
+Retrieved: 2026-11-19
+Modifications: silence trimmed at both ends, level-matched, re-encoded to OGG Vorbis

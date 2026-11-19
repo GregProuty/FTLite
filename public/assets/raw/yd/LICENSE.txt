@@ -1,0 +1,13 @@
+Music by yd (opengameart.org/users/yd)
+
+Tracks:
+  observing-the-star.ogg  'Observing the Star' (posted as 'Another space background track')  https://opengameart.org/content/another-space-background-track
+
+License: Creative Commons Zero (CC0 1.0)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Credit:
+  'Observing the Star' by yd (opengameart.org/users/yd), CC0 (no credit is required)
+
+Retrieved: 2026-11-19
+Modifications: silence trimmed at both ends, level-matched, re-encoded to OGG Vorbis
