@@ -65,7 +65,7 @@ describe('the sit-down card (spec §1)', () => {
     const { duel } = mount(); act(() => duel.frame(view(helm, { sitCard: sitCard('helm', 0.5, false) })));
     const card = document.querySelector('[data-ui-sit-card="helm"]') as HTMLElement;
     expect(card).not.toBeNull(); expect(card.style.pointerEvents).toBe('none');
-    for (const t of ['HELM: POINT AT THE ENEMY', 'A/D  TURN', 'W/S  THROTTLE', 'HOLD SPACE  AUTO-FACE']) expect(texts(), t).toContain(t);
+    for (const t of ['HELM: POINT AT THE ENEMY', 'HOLD LMB  STEER', 'W/S  THROTTLE', 'A/D  THRUSTERS']) expect(texts(), t).toContain(t);
     act(() => duel.frame(view(helm, { sitCard: null })));
     expect(document.querySelector('[data-ui-sit-card]')).toBeNull();
   });

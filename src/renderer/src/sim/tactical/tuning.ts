@@ -65,7 +65,8 @@ export const STABILISE = 80;                   // u/s² of sideways velocity rem
 // Broad phase (§4)
 export const BROAD_CELL = 200;
 
-/** Switches for the §4 test configurations; the game always uses DEFAULT_FLIGHT. */
+/** Switches for the §4 test configurations. The game flies each slot's flightFor (physics.ts): CREW_FLIGHT for a
+ *  newtonianHelm crew class (playtest2feedback §2), else DEFAULT_FLIGHT. */
 export interface FlightTuning { gravity: boolean; edge: boolean; drag: number; stabilise: number }
 export const DEFAULT_FLIGHT: FlightTuning = { gravity: true, edge: true, drag: DRAG, stabilise: STABILISE };
 
@@ -185,6 +186,19 @@ export const GUN_HITS_PER_HULL = 12;
  *  (tests/duelGates.test.ts): median 229.8 s, 9 crew wins, 1 Hunter win over seeds 1 to 10. */
 export const GUN_HITS_PER_LEVEL = 6;
 
+// Playtest2feedback (spec 2026-11-18-playtest2feedback-design §2, §4, §4a): the crew Helm's Newtonian flight, on a class
+// whose `newtonianHelm` is true (the Cutter). Start values, tuned in playtest.
+/** §2: the top speed thrust may not push a ship past (u/s); gravity, the edge and bounces still can. */
+export const MAX_SPEED = 400;
+/** §4: one vented cold gas axis's push (u/s²), in the ship frame; never scaled by Engines damage. */
+export const RCS_THRUST = 35;
+/** §4a: a gas-boosted turn steps this many times the class's turn a tick. */
+export const RCS_TURN_BOOST = 2;
+/** §4a: a turn toward an aim or a held heading is far (boosted) while the signed index difference is beyond this; it is
+ *  wider than a boosted step (2 × 1.78 = 3.56), so the boost never reaches the aim's own |d| ≤ 1 band. */
+export const BOOST_FAR = 4;
+/** §2: the crew Helm's flight: gravity and the edge spring, no drag, no stabilise. */
+export const CREW_FLIGHT: FlightTuning = { gravity: true, edge: true, drag: 0, stabilise: 0 };
 // Pew pew (spec 2026-11-18-pew-pew-weapons-design §1, §4; W-1): the Cutter's and the Hunter's skill-shot gun. Start values,
 // tuned in playtest; Task 6 of the W-1 plan may move only the Hunter's and the scripted gunner's knobs.
 /** Fine heading units to the turn (spec §4): a heading index times HEADING_COUNT plus its fraction aimAcc, 0..255. */

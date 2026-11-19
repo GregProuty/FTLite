@@ -23,6 +23,7 @@ import { runReplay } from '../src/renderer/src/authority/replay';
 import { LAYOUT, makeState } from './helpers/sim';
 import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
 import { seatDuelCrew } from './helpers/duelSeat';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 function fakeTarget() {
   const listeners = new Map<string, ((e: never) => void)[]>();
@@ -93,7 +94,7 @@ function rig() {
   let pointer = IDLE_POINTER, contactReq: ContactRequests | null = null;
   const rt = createDuelRuntime({ now: () => now, scheduler, seed: 5, viewport: { w: 1280, h: 720 }, layout: parseShip(cutter),
     sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses(), throttleTo: null }; return k; },
-    samplePointer: () => { const s = pointer; pointer = IDLE_POINTER; return s; }, takeHeading: () => requests.takeHeading(),
+    samplePointer: () => { const s = pointer; pointer = IDLE_POINTER; return s; }, takeHeading: () => requests.takeHeading(), cls: ShipClass.Valkyrn,   // playtest2feedback Decision 17: A/D turns only the Valkyrn class
     takeContactRequests: () => { const c = contactReq ?? { designate: null, scan: null }; contactReq = null; return c; } });
   seatDuelCrew(rt.duel);
   const tick = (): void => { rt.frame(1 / 60); advance(1000 / 60); rt.frame(1 / 60); };

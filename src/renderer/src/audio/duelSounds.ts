@@ -74,6 +74,16 @@ export const HEARTBEAT_BELOW = 30;
 export const HEARTBEAT_S = 0.8, FIRE_ALARM_GAP_S = 1;
 /** The heartbeat: the low boom, softened through a 400 Hz low-pass. */
 export const HEARTBEAT: SoundRequest = { key: 'lowBoom', gain: 0.35, pan: 0, filter: { type: 'lowpass', from: 400 } };
+/** Playtest2feedback §6 (Decision 12): the cold gas hiss, a short, quiet, band-passed sfx.rcs, retriggered every
+ *  RCS_HISS_GAP_S while the crew ship vents. */
+export const RCS_HISS: SoundRequest = { key: 'rcs', gain: 0.25, dur: 0.16, rate: 1.4, filter: { type: 'bandpass', from: 3000, q: 0.7 } };
+export const RCS_HISS_GAP_S = 0.12;
+/** The hiss's clock: at once when venting starts, then every RCS_HISS_GAP_S; nothing (and no clock) while it does not vent. */
+export function rcsHiss(next: number | null, venting: boolean, now: number): { next: number | null; play: boolean } {
+  if (!venting) return { next: null, play: false };
+  if (next === null || now >= next) return { next: now + RCS_HISS_GAP_S, play: true };
+  return { next, play: false };
+}
 /** The fire alarm: the `alarm` cue's layers at gain 0.5 (a cue plays at its recipe's gain, so the requests are scaled here). */
 export const FIRE_ALARM: readonly SoundRequest[] = (CUE_RECIPES.alarm ?? []).map((r) => ({ ...r, gain: 0.5 }));
 

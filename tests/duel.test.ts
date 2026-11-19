@@ -18,6 +18,7 @@ import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { missileOf, Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const layout = parseShip(cutter);
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -46,7 +47,7 @@ describe('createDuel (spec §8)', () => {
 
 describe('DuelState shape', () => {
   it('has exactly these fields; a new field must also go into flattenDuel in duel/hash.ts', () => {
-    expect(Object.keys(createSeatedDuel(layout, 5)).sort()).toEqual(['baseTick', 'decidedTick', 'events', 'helmPlayer', 'interior', 'nav', 'points', 'present', 'repair', 'round', 'science', 'tactical', 'throttle', 'weapons', 'holdHeading', 'crewClass', 'power', 'systemRooms'].sort());   // Engineering spike spec §7: power (hashed) and systemRooms (derived, not snapshotted); Valkyrn-i: crewClass is hashed as systems.0.cls (plan Decision 4)
+    expect(Object.keys(createSeatedDuel(layout, 5)).sort()).toEqual(['baseTick', 'decidedTick', 'events', 'helmPlayer', 'interior', 'nav', 'points', 'present', 'repair', 'round', 'science', 'tactical', 'throttle', 'weapons', 'holdHeading', 'crewClass', 'thrMille', 'helmVent', 'power', 'systemRooms'].sort());   // Engineering spike spec §7: power (hashed) and systemRooms (derived, not snapshotted); Valkyrn-i: crewClass is hashed as systems.0.cls (plan Decision 4)
   });
   it('disposeDuel is idempotent', () => {
     const d = createSeatedDuel(layout, 5);
@@ -83,10 +84,10 @@ describe('seat phase guards', () => {
 
 describe('consoles are roles (spec §8, §13)', () => {
   it('the Helm player’s held moveX turns the ship clockwise and the throttle thrusts along the nose; held W does not (Artemis spec §5.3)', () => {
-    const d = createSeatedDuel(layout, 5), s = d.tactical.ships[0], h0 = s.heading;
+    const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn), s = d.tactical.ships[0], h0 = s.heading;   // playtest2feedback Decision 17: A/D turns only the Valkyrn class
     step(d, [], [{ moveX: 1, moveY: 0, interactHeld: false }, NONE]);
-    expect(s.heading).toBe((h0 + 1) % 256);                              // 1.78 steps per tick: one whole step on the first tick
-    const coast = createSeatedDuel(layout, 5), thrust = createSeatedDuel(layout, 5), held = createSeatedDuel(layout, 5);
+    expect(s.heading).toBe((h0 + 2) % 256);                              // the Valkyrn's turn (playtest2feedback Decision 17; the Cutter's 1.78 steps a tick no longer answers moveX): two whole steps on the first tick
+    const coast = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn), thrust = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn), held = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn);
     thrust.tactical.systems[0].bars[DuelSystem.Engines] = 4;   // Engineering spike spec §10.2 (fallout a): Engines starts at 3 bars (cap 3); a throttle of 4 needs the 4th bar
     step(coast); step(thrust, [cmd(thrust, 0, { kind: 'throttle', level: 4 })]); step(held, [], [{ moveX: 0, moveY: -1, interactHeld: false }, NONE]);
     const [a, b, w] = [coast.tactical.ships[0], thrust.tactical.ships[0], held.tactical.ships[0]];

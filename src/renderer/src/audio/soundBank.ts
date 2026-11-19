@@ -18,7 +18,9 @@ export const SFX = {
   forceField: { pack: 'sci', stem: 'forceField', numbers: [0, 1, 2] },
   doorOpen: { pack: 'sci', stem: 'doorOpen', numbers: [0, 1, 2] },
   doorClose: { pack: 'sci', stem: 'doorClose', numbers: [0, 1, 2] },
-  thruster: { pack: 'sci', stem: 'thrusterFire', numbers: [0, 1, 2] },
+  thruster: { pack: 'sci', stem: 'thrusterFire', numbers: [0, 1] },
+  /** Playtest2feedback §6 (Decision 13): the cold gas hiss, the thruster file the launch whoosh no longer uses. */
+  rcs: { pack: 'sci', stem: 'thrusterFire', numbers: [2] },
   engineHum: { pack: 'sci', stem: 'spaceEngineLow', numbers: [0] },
   jumpCharge: { pack: 'sci', stem: 'spaceEngineSmall', numbers: [0] },
   alarm: { pack: 'ui', stem: 'error', numbers: [4, 5] },

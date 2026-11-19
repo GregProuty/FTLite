@@ -22,6 +22,7 @@ import { disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 const vp = { w: 1280, h: 720 };
@@ -94,7 +95,7 @@ describe('the collision warning (Feel-ii §1.2)', () => {
     expect(flightAlert(st, { turn: 0, thrust: 0 })).toBeNull();
   });
   it('stateAxes is the sim\'s axes from the state alone: the throttle and the held heading while the Helm is attended', () => {
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.Valkyrn);
     try {
       stepDuelTick(d, { held: [], commands: [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: d.interior.tick, command: { kind: 'throttle', level: 2 } }] });
       expect(stateAxes(d)).toEqual({ turn: 0, thrust: 0.5 });

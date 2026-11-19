@@ -3,6 +3,7 @@
 // window spec §6.2); it never becomes a command (parent §10).
 import type { Axes } from '../../sim/tactical/state';
 import { clampThrottle, THROTTLE_MAX } from '../../sim/duel/throttle';
+import type { HeldInput } from '../../net/contracts';
 import type { ShipCommand } from '../../render/duel/shipControls';
 
 /** Press-edge actions (spec §5 table). H-1a uses pause, camera and the zoom keys; H-1b adds the duel ones; Artemis-ii
@@ -26,6 +27,8 @@ export const MOVE_CODES = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD
 export const INTERACT_HELD = 'KeyE', FIRE_HELD = 'Space';
 /** Feel-ii §2.7: G drops a ping at the pointer on a console map (the duel modes take it through the keyboard's intercept). */
 export const PING_CODE = 'KeyG';
+/** Playtest2feedback §4: the crew Helm's cold gas keys: A, Q and ← push to port, D, E and → to starboard, ↑ forward, ↓ aft. */
+export const RCS_CODES = { port: ['KeyA', 'KeyQ', 'ArrowLeft'], starboard: ['KeyD', 'KeyE', 'ArrowRight'], fore: ['ArrowUp'], aft: ['ArrowDown'] } as const;
 
 /** The merged held state a console draws (spec §6.1): Space, A, D, W, S from the keys or the console's buttons. */
 export interface HeldFlags { fire: boolean; left: boolean; right: boolean; up: boolean; down: boolean }
@@ -66,6 +69,9 @@ export interface KeySample {
   throttleTo?: number | null;
   /** The last laser frequency asked for since the previous sample (Digit3..5, or a console button), or null (Sci-1 spec §7.4). */
   freqTo?: number | null;
+  /** Playtest2feedback §3, §4: the crew Helm's held throttle (1 W, −1 S, 0 both or neither) and thrusters (rcsX −1 port,
+   *  1 starboard; rcsY −1 aft, 1 forward; opposite keys cancel). createDuelKeyboard always sets them. */
+  throttleHeld?: number; rcsX?: number; rcsY?: number;
   /** Engineering spike §7: the ship-view commands clicked since the previous sample, oldest first; absent or empty for none. */
   ship?: ShipCommand[];
 }
@@ -77,6 +83,14 @@ export function emptyPresses(): Record<KeyAction, number> {
 /** The flight dev view's held axes from a key sample: A/D turn (D clockwise), W thrusts forward, S reverses (W gives moveY −1). The duel's Helm thrusts by its throttle instead (Artemis spec §5.3). */
 export function helmAxes(k: Pick<KeySample, 'moveX' | 'moveY'>): Axes {
   return { turn: Math.sign(k.moveX) || 0, thrust: -Math.sign(k.moveY) || 0 };
+}
+
+/** Playtest2feedback §3, §4, §4a: the crew Helm's held fields from a key sample and the held steer (a heading index, or −1
+ *  while the left button is up). A zero field is left out (absent means 0 on the wire). The Valkyrn's mapping is
+ *  helmAxes and the throttle notches, unchanged. */
+export function crewHelmHeld(k: Pick<KeySample, 'throttleHeld' | 'rcsX' | 'rcsY'>, steer: number): Pick<HeldInput, 'throttleHeld' | 'rcsX' | 'rcsY' | 'aim'> {
+  const t = k.throttleHeld ?? 0, x = k.rcsX ?? 0, y = k.rcsY ?? 0;
+  return { ...(t !== 0 ? { throttleHeld: t } : {}), ...(x !== 0 ? { rcsX: x } : {}), ...(y !== 0 ? { rcsY: y } : {}), ...(steer >= 0 ? { aim: steer } : {}) };
 }
 
 /** The level a frame's throttle input asks for (Artemis spec §5.4), or null for none. Each W press moves it one notch up
@@ -104,7 +118,11 @@ export interface EventSource {
 }
 interface KeyEventLike { code: string; repeat: boolean; shiftKey?: boolean; preventDefault(): void }
 
-export interface DuelKeyboard { sample(): KeySample; clear(): void; clearUi(): void; destroy(): void; readonly ui: ConsoleInput }
+export interface DuelKeyboard { sample(): KeySample; clear(): void; clearUi(): void; destroy(): void; readonly ui: ConsoleInput;
+  /** Playtest2feedback (final review I1): every key held now stops counting for the crew Helm's held fields (throttleHeld,
+   *  rcsX, rcsY) until it is released and pressed again. The modes call it as their seat becomes the crew Helm, so a key
+   *  held while sitting (E sits and is a thruster) or walking up (W, A, D) never drifts a ship with no drag. */
+  staleHeld(): void }
 
 /** Options (enemy ship window spec §6.2): `intercept` sees each non-repeat keydown's code before PRESS_CODES; returning
  *  true takes the key, so it adds no press edge and is not held (PREVENT's keys still have their default prevented). */
@@ -114,12 +132,15 @@ export interface DuelKeyboardOptions { intercept?: (code: string) => boolean }
  *  Console clicks (Artemis spec §6.2) are a second held set and extra press edges: a code is held when either set holds
  *  it, and Fire's edges are the merged Space state's transitions. `clearUi` drops only the clicks. */
 export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOptions = {}): DuelKeyboard {
-  const keys = new Set<string>(), ui = new Set<string>(), taken = new Set<string>();
+  const keys = new Set<string>(), ui = new Set<string>(), taken = new Set<string>(), stale = new Set<string>();
   let presses = emptyPresses(), lockTo: number | null = null, torpTo: number | null = null, rockTo: { weapon: 'laser' | 'torpedo'; rock: number } | null = null, throttleTo: number | null = null, freqTo: number | null = null;
   let ship: ShipCommand[] = [];   // Engineering spike §7: kept by clearUi, dropped by clear
   const has = (code: string): boolean => keys.has(code) || ui.has(code);
+  /** I1: held for the crew Helm's fields: a console button's hold, or a key pressed since it went stale. */
+  const live = (code: string): boolean => ui.has(code) || (keys.has(code) && !stale.has(code));
   const down = (e: KeyEventLike): void => {
     if (PREVENT.has(e.code)) e.preventDefault();
+    if (!e.repeat) stale.delete(e.code);   // I1: a fresh press counts again (its keyup may have been lost); a repeat stays stale
     if (e.repeat) { if (taken.has(e.code)) return; }   // an OS repeat of a taken key stays taken
     else if (opts.intercept?.(e.code)) { taken.add(e.code); return; }   // taken (the contact window's Esc and T): no edge, not held
     if (!e.repeat && FREQ_CODES[e.code] !== undefined) freqTo = FREQ_CODES[e.code]!;
@@ -133,10 +154,11 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     const was = has(FIRE_HELD);
     taken.delete(e.code);
     keys.delete(e.code);
+    stale.delete(e.code);
     if (e.code === FIRE_HELD && was && !has(FIRE_HELD)) presses.fireUp++;
   };
   const clearUi = (): void => { ui.clear(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; };
-  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; ship = []; };
+  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); stale.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; ship = []; };
   target.addEventListener('keydown', down as (e: never) => void);
   target.addEventListener('keyup', up as (e: never) => void);
   target.addEventListener('blur', clear as (e: never) => void);
@@ -161,12 +183,18 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
       const x = (has(MOVE_CODES.right) ? 1 : 0) - (has(MOVE_CODES.left) ? 1 : 0), y = (has(MOVE_CODES.down) ? 1 : 0) - (has(MOVE_CODES.up) ? 1 : 0);
       const len = Math.sqrt(x * x + y * y) || 1;
       const held: HeldFlags = { fire: has(FIRE_HELD), left: has(MOVE_CODES.left), right: has(MOVE_CODES.right), up: has(MOVE_CODES.up), down: has(MOVE_CODES.down) };
-      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, torpTo, rockTo, throttleTo, freqTo, ...(ship.length > 0 ? { ship } : {}) };
+      // Playtest2feedback §3, §4: the crew Helm's held throttle and thrusters, each opposite pair cancelling.
+      // Final review I1: a stale key (held when the seat became the crew Helm) counts for none of them.
+      const any = (codes: readonly string[]): number => (codes.some(live) ? 1 : 0);
+      const rcsX = any(RCS_CODES.starboard) - any(RCS_CODES.port), rcsY = any(RCS_CODES.fore) - any(RCS_CODES.aft);
+      const throttleHeld = (live(MOVE_CODES.up) ? 1 : 0) - (live(MOVE_CODES.down) ? 1 : 0);
+      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, torpTo, rockTo, throttleTo, freqTo, throttleHeld, rcsX, rcsY, ...(ship.length > 0 ? { ship } : {}) };
       presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; ship = [];
       return out;
     },
     clear,
     clearUi,
+    staleHeld(): void { for (const code of keys) stale.add(code); },
     destroy(): void {
       target.removeEventListener('keydown', down as (e: never) => void);
       target.removeEventListener('keyup', up as (e: never) => void);

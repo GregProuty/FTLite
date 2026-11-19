@@ -8,15 +8,13 @@ import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 interface Point { x: number; y: number }
 interface Rect { x: number; y: number; w: number; h: number }
 const inside = (p: Point, r: Rect): boolean => p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h;
+/** The console blocks drawn over the maps, by name. */
+const TAB_STRIP: Rect = { x: TABS.x, y: TABS.y, w: TABS_RIGHT - TABS.x, h: TABS.h };
+const SIDE_COLUMN: Rect = { x: SIDE.x, y: SIDE.y, w: SIDE.w, h: SIDE_H };
+const HELM_BLOCK: Rect = { x: STATION.x, y: stationTop('helm'), w: STATION.w, h: STATION.h.helm };
 /** The console blocks drawn over the Flight map: the tab strip, the side column, the Helm block, the FLIGHT block and the
  *  own ship window (own ship window spec §3). */
-const BLOCKS: readonly Rect[] = [
-  { x: TABS.x, y: TABS.y, w: TABS_RIGHT - TABS.x, h: TABS.h },
-  { x: SIDE.x, y: SIDE.y, w: SIDE.w, h: SIDE_H },
-  { x: STATION.x, y: stationTop('helm'), w: STATION.w, h: STATION.h.helm },
-  FLIGHT,
-  OWN_SHIP
-];
+const BLOCKS: readonly Rect[] = [TAB_STRIP, SIDE_COLUMN, HELM_BLOCK, FLIGHT, OWN_SHIP];
 
 /** Spec §6.2: whether a screen point (internal pixels) is on the Flight map's open part: on the screen and clear of the
  *  console blocks, and of the contact window while it is shown. Over a side tool the aim keeps its last bearing. */
@@ -65,4 +63,21 @@ export function flightPointer(i: FlightPointerInput): { steer: number | null; la
   const steer = p && onFlightMap(p, i.contactShown) && Math.hypot(p.x - i.ship.x, p.y - i.ship.y) > pickRadius(i.zoom)
     ? headingOf(p.x - i.ship.x, p.y - i.ship.y) : null;
   return { steer, launch: i.press && !i.aimed };
+}
+
+/** Playtest2feedback §4a: the console blocks over the crew Helm's map: the tab strip, the side column, the Helm block and
+ *  the own ship window (own ship window spec §3). */
+const HELM_BLOCKS: readonly Rect[] = [TAB_STRIP, SIDE_COLUMN, HELM_BLOCK, OWN_SHIP];
+/** Whether a screen point is on the crew Helm map's open part: on the screen, clear of its blocks, and of the contact window
+ *  while it is shown. */
+export function onHelmMap(p: Point, contactShown: boolean): boolean {
+  if (p.x < 0 || p.y < 0 || p.x >= INTERNAL_W || p.y >= INTERNAL_H) return false;
+  if (contactShown && inside(p, CONTACT)) return false;
+  return !HELM_BLOCKS.some((r) => inside(p, r));
+}
+/** Playtest2feedback §4a: the bearing the held left button steers to on the crew Helm's map: from the own ship's drawn
+ *  marker to the pointer, or null (send nothing: the last bearing stands) off the open map or on the ship itself. */
+export function helmSteer(i: { pointer: Point | null; ship: Point; zoom: number; contactShown: boolean }): number | null {
+  const p = i.pointer;
+  return p && onHelmMap(p, i.contactShown) && Math.hypot(p.x - i.ship.x, p.y - i.ship.y) > pickRadius(i.zoom) ? headingOf(p.x - i.ship.x, p.y - i.ship.y) : null;
 }

@@ -2,9 +2,9 @@
 // Pure: never touches the state. It stops at the first planet or asteroid contact, which it does not resolve.
 import { flyMissile } from './missiles';
 import { rockAt, rocksNear } from './rocks';
-import { flyShip, shipEngineFactor } from './physics';
+import { flightFor, flyShip, shipEngineFactor } from './physics';
 import { classOf, cloneShip, missileOf, Room, type Axes, type TacticalState } from './state';
-import { DEFAULT_FLIGHT, MISSILE_RADIUS, type FlightTuning } from './tuning';
+import { MISSILE_RADIUS, type FlightTuning } from './tuning';
 
 export interface PathPoint { x: number; y: number }
 
@@ -20,18 +20,18 @@ export function touchesSolid(state: TacticalState, x: number, y: number, r: numb
 }
 
 /** Positions after every `every` ticks for `ticks` ticks, ending early (with that point) at the first solid contact. */
-export function predictPath(state: TacticalState, shipIndex: number, axes: Axes, ticks: number, every: number, tuning: FlightTuning = DEFAULT_FLIGHT): PathPoint[] {
+export function predictPath(state: TacticalState, shipIndex: number, axes: Axes, ticks: number, every: number, tuning?: FlightTuning): PathPoint[] {   // playtest2feedback §2: absent, flightFor
   return predictFlight(state, shipIndex, axes, ticks, every, tuning).points;
 }
 
 /** predictPath's points, and the first solid contact it stopped at (Feel-ii spec §1.2: its point and the tick after now,
  *  1-based), or null when the path ran its whole length. */
-export function predictFlight(state: TacticalState, shipIndex: number, axes: Axes, ticks: number, every: number, tuning: FlightTuning = DEFAULT_FLIGHT): { points: PathPoint[]; contact: (PathPoint & { tick: number }) | null } {
-  const s = cloneShip(state.ships[shipIndex]!), stride = Math.max(1, Math.floor(every));
+export function predictFlight(state: TacticalState, shipIndex: number, axes: Axes, ticks: number, every: number, tuning?: FlightTuning): { points: PathPoint[]; contact: (PathPoint & { tick: number }) | null } {
+  const s = cloneShip(state.ships[shipIndex]!), stride = Math.max(1, Math.floor(every)), fly = tuning ?? flightFor(state, shipIndex);   // playtest2feedback §2
   const cls = classOf(state, shipIndex), engines = state.systems[shipIndex]!.rooms[Room.Engines], factor = shipEngineFactor(state, shipIndex);   // Task 8
   const points: PathPoint[] = [];
   for (let t = 1; t <= ticks; t++) {
-    flyShip(s, axes, tuning, engines, cls, factor);
+    flyShip(s, axes, fly, engines, cls, factor);
     if (touchesSolid(state, s.x, s.y, cls.radius)) { points.push({ x: s.x, y: s.y }); return { points, contact: { x: s.x, y: s.y, tick: t } }; }
     if (t % stride === 0) points.push({ x: s.x, y: s.y });
   }

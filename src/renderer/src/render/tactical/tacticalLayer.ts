@@ -301,6 +301,10 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       if (c?.helmArc) arc(arcs, c.helmArc, true, 0.06);   // Feel-i: the Helm sees the arc it gives Weapons
 
       for (const s of d.ships) drawShip(ships, s, t);
+      for (const p of d.puffs ?? []) {   // playtest2feedback §6: short amber gas puffs
+        ships.circle(p.x + p.dx * 4, p.y + p.dy * 4, 3).fill({ color: CRT.hot, alpha: 0.8 });
+        ships.circle(p.x + p.dx * 9, p.y + p.dy * 9, 2).fill({ color: CRT.main, alpha: 0.5 });
+      }
       drawMarks(d, t);
 
       let ringLabels: readonly Label[] = wd?.ring?.labels ?? [];
@@ -340,6 +344,8 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
           segments(helm, dashLine(line, DASH, GAP, seg), 1, CRT.mid, ho.preview ? 0.6 : 0.9);
           helm.poly([...ho.chevron], false).stroke({ width: 2, color: CRT.mid, alpha: ho.preview ? 0.6 : 1 });
         }
+        const st = hd.steer ?? null;   // playtest2feedback §6: the steering marker, dashed amber from the ship to the cursor
+        if (st) { line.length = 0; line.push(st.from.x, st.from.y, st.to.x, st.to.y); segments(helm, dashLine(line, DASH, GAP, seg), 1, CRT.hot, 0.9); }
         if (hd.slingshot) words.push({ text: hd.slingshot.text, x: hd.slingshot.x, y: hd.slingshot.y, tint: CRT.hot });
       }
       fill(ring, ringLabels);

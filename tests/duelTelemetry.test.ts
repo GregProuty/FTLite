@@ -14,6 +14,7 @@ import { placeRound } from '../src/renderer/src/sim/tactical/gun';
 import { placeMissile, missileOf, Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
 import { inTorpedoRange } from './helpers/torpedoRange';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 const layout = parseShip(cutter);
@@ -122,7 +123,8 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
     const bait = (manoeuvre: boolean, wait: number): number => {
       const d = createSeatedDuel(layout, 5), t = createTelemetry(d), [s, e] = d.tactical.ships, p = d.tactical.map.planet;
       e.x = s.x + 500; e.y = s.y; e.vx = s.vx; e.vy = s.vy;                  // within 900 of the crew, far from the planet
-      step(d, t, [], [manoeuvre ? { moveX: 1, moveY: 0, interactHeld: false } : NONE, NONE]);
+      // playtest2feedback Decision 15: on the Cutter (a newtonianHelm class) moveX is no manoeuvre; one tick of a vented thruster is
+      step(d, t, [], [manoeuvre ? { moveX: 0, moveY: 0, interactHeld: false, rcsX: 1 } : NONE, NONE]);
       for (let k = 0; k < wait; k++) step(d, t);
       e.x = p.x - p.r - SHIP_RADIUS + 5; e.y = p.y; e.vx = 10; e.vy = 0;     // into the planet's far side
       step(d, t);
@@ -162,7 +164,7 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
 describe('a set throttle is a manoeuvre (Artemis spec §5.3)', () => {
   it('an enemy planet contact while the throttle is set counts as a bait; with the throttle back at STOP for the window it does not', () => {
     const bait = (levels: number[], wait: number): number => {
-      const d = createSeatedDuel(layout, 5), t = createTelemetry(d), [s, e] = d.tactical.ships, p = d.tactical.map.planet;
+      const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn), t = createTelemetry(d), [s, e] = d.tactical.ships, p = d.tactical.map.planet;
       e.x = s.x + 500; e.y = s.y; e.vx = s.vx; e.vy = s.vy;                  // within 900 of the crew, far from the planet
       for (const level of levels) step(d, t, [cmd(d, 0, { kind: 'throttle', level })]);
       for (let k = 0; k < wait; k++) step(d, t);

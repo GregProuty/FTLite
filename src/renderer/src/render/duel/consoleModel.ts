@@ -1,6 +1,6 @@
 // The Artemis-style console's view model (spec 2026-11-17-artemis-consoles §4, §6.1, §6.3). Pure: built each frame by
 // the scene from the duel, the local character and the merged held keys; null hides the console.
-import { consoleInReach, flightSeat, repairInReach, seatOf, type Seat } from '../../app/duel/controls';
+import { consoleInReach, crewHelmSeat, flightSeat, repairInReach, seatOf, type Seat } from '../../app/duel/controls';
 import { NO_HELD_FLAGS, type HeldFlags, type KeyAction } from '../../app/duel/input';
 import type { DuelState } from '../../sim/duel/state';
 import { pewThird } from '../../sim/tactical/defs';
@@ -13,6 +13,9 @@ import { gunnerPresent, laserCardReason, laserSituation, manualCardReason, weapo
 import { DuelSystem } from '../../sim/duel/power';
 import { throttleCap, trimmedWeaponPower, weaponBarsUsable, WeaponSlot } from '../../sim/tactical/bars';
 import { powerStrip, type ConsolePowerStrip } from './shipHudModel';
+import { engineBars, throttleCap as crewThrottleCap, throttleFloor } from '../../sim/duel/helmFlight';
+import { THR_MAX, THR_MIN } from '../../sim/duel/tuning';
+export { THR_MAX, THR_MIN };   // playtest2feedback §6: the throttle bar's range, for the UI (which imports no sim values)
 
 export type ConsoleStation = 'helm' | 'weapons' | 'science' | 'flight' | 'ship';
 export type TabState = 'current' | 'open' | 'locked';
@@ -23,8 +26,17 @@ export type ConsoleTabs = Record<TabKey, TabState> & { flight?: TabState };
 export type ConsoleTabActions = Record<TabKey, KeyAction | null> & { flight?: KeyAction | null };
 /** Feel-ii §2.8: a refused control on this block: which, the reason, and whether it is still in its flash. */
 export interface RefusedView { control: RefusedControl; reason: string; flash: boolean }
+/** Playtest2feedback §6: the crew Helm's readings: the shown thrMille, the throttle's cap and floor, and (owner 2026-11-19,
+ *  replacing §5's split) the effective Engines bars that set them. No tank: the cold gas is free (owner 2026-11-19). */
+export interface CrewHelmPanel { thrMille: number; cap: number; floor: number; bars: number }
+export function crewPanel(d: DuelState, thrMille: number): CrewHelmPanel {
+  const engine = engineBars(d);
+  return { thrMille, cap: crewThrottleCap(engine), floor: throttleFloor(engine), bars: engine };
+}
 export interface HelmPanel {
   heading: number; speed: number; held: HeldFlags; throttle: number; refused?: RefusedView | null; holdHeading?: number;
+  /** Playtest2feedback §6: the crew Helm's block (a newtonianHelm class at the Helm); absent: the notched throttle. */
+  crew?: CrewHelmPanel;
   /** Valkyrn spec §5: the Helm block on the Flight seat (its hints name the mouse and the torpedo). */
   flight?: boolean;
   /** Engineering spike §10.2: the highest forward throttle level the Engines bars allow; notches above it draw locked. */
@@ -80,6 +92,8 @@ export interface ConsoleModelInput {
   duel: DuelState; me: number; mode: 'single' | 'online'; hidden: boolean; held: HeldFlags; overlay: MapOverlayView | null;
   /** The Helm throttle level to show (Artemis spec §6.1: the local base); the duel's own level when absent. */
   throttle?: number;
+  /** Playtest2feedback §3, §6: the crew Helm's thrMille to show (Single player the sim's; online the local prediction); the duel's when absent. */
+  thrMille?: number;
   /** Science's hover readout this frame (Sci-1 spec §7.3), from the scene; null or absent with no cursor. */
   hover?: string | null;
   /** Feel-i: seconds since the crew laser last fired on this screen (the FIRING hold; absent: never), and whether the
@@ -134,7 +148,8 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   const ship = t.ships[0]!;
   const helm: HelmPanel | null = station === 'helm' || station === 'flight'
     ? { heading: ((Math.round((ship.heading / HEADING_COUNT) * 360) % 360) + 360) % 360, speed: Math.round(Math.hypot(ship.vx, ship.vy)), held, throttle: i.throttle ?? d.throttle,
-        refused: i.refused && HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, holdHeading: d.holdHeading, cap: throttleCap(t.systems[0]!), ...(station === 'flight' ? { flight: true } : {}) }
+        refused: i.refused && HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, holdHeading: d.holdHeading, cap: throttleCap(t.systems[0]!), ...(station === 'flight' ? { flight: true } : {}),
+        ...(station === 'helm' && crewHelmSeat(d, i.me) ? { crew: crewPanel(d, i.thrMille ?? d.thrMille) } : {}) }   // playtest2feedback §6
     : null;
   const flightM = missileOf(t, 0), flying = flightM !== null, sys = t.systems[0], torpDef = classOf(t, 0).slots.missile;   // W-3: the crew's torpedo in flight and its def, for the card's words
   const weaponsPanel = (): WeaponsPanel => {

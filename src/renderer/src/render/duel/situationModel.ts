@@ -8,7 +8,7 @@ import { predictFlight, touchesSolid } from '../../sim/tactical/predict';
 import { classOf, CREW_SLOT, missileOf, NO_AXES, Outcome, Room, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
 import type { DuelState } from '../../sim/duel/state';
 import { throttleThrust } from '../../sim/duel/throttle';
-import { helmTurn } from '../../sim/duel/step';
+import { crewAxes, helmTurn } from '../../sim/duel/step';
 import { pewPowered, pewReady } from '../../sim/tactical/pew';
 import { laserEligible, laserFull, laserOffline, manualLaserReady, torpedoInRange } from '../../sim/tactical/weapons';
 import { TICK_HZ } from '../../sim/tuning';
@@ -137,6 +137,8 @@ export const COLLISION_TICKS = Math.round(COLLISION_WARN_S * TICK_HZ);
  *  held heading's turn and the throttle's thrust while the Helm is attended, else none (the sim flies no axes then). */
 export function stateAxes(d: DuelState): Axes {
   if (d.tactical.outcome !== Outcome.Running) return NO_AXES;
+  // Playtest2feedback §3: the crew Helm flies attended or not (the throttle's return and the held heading, no thrusters).
+  if (classOf(d.tactical, CREW_SLOT).newtonianHelm) return crewAxes(d, { moveX: 0, moveY: 0, interactHeld: false });
   const pid = d.interior.stations.occupant[d.nav]!, attended = pid >= 0 && d.present[pid] === true;
   if (!attended && d.interior.layout.helmHoldsUnattended !== true) return NO_AXES;   // Valkyrn spec §4.4: the Valkyrn flies on unattended
   return { turn: helmTurn(d, { moveX: 0, moveY: 0, interactHeld: false }), thrust: throttleThrust(d.throttle) };
@@ -204,7 +206,7 @@ export function evadeDir(t: TacticalState): { x: number; y: number } | null {
 }
 
 /** The console controls a refusal can name (the buttons, and their keys). W-1: `pew`, the Weapons map's left click. */
-export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser' | 'pew';
+export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser' | 'pew';   // owner 2026-11-19: the free cold gas is never refused
 /** Valkyrn spec §6.1: the reason a laser key (1, 3/4/5) gives on a class without a laser (the `laser` control, Flight only). */
 export const NO_LASER = 'NO LASER';
 /** Engineering spike §10.4 (final review): why the sim refuses a lock on the target ship (a laserLock or torpLock on a

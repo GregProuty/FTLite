@@ -10,6 +10,7 @@ import type { DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { createSeatedDuel } from './helpers/duelSeat';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import { placeMissile } from '../src/renderer/src/sim/tactical/state';
@@ -52,7 +53,8 @@ function stubClient() {
 type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
   clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null; notice?: string | null }[], overlay: [] as (readonly string[] | null)[],
-  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void; torpHeading(h: number): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 }
+  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void; torpHeading(h: number): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 },
+  source: null as null | { helmVent(): { x: number; y: number; boosted: boolean }; thrMille(): number }
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
 vi.mock('../src/network/portLink', () => ({
@@ -69,6 +71,7 @@ vi.mock('../src/renderer/src/app/duel/scene', () => ({
     h.sceneOpts.push(opts);
     return {
       draw: (source: unknown, _dt: number, o: { banner: string | null; notice?: string | null }) => {
+        h.source = source as typeof h.source;
         h.sources.push(source as never);
         h.draws.push({ banner: o.banner, notice: o.notice });
         opts.ui.frame({ readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null });
@@ -104,9 +107,9 @@ let win: ReturnType<typeof target>;
 beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; h.sceneOpts.length = 0; h.sources.length = 0; h.disposes.n = 0; });
 afterEach(() => { delete (globalThis as { window?: unknown }).window; });
 
-function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame() {}, clear() {} }, api: object = {}, extra: object = {}) {
+function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame() {}, clear() {} }, api: object = {}, extra: object = {}, cls?: number) {   // playtest2feedback Decision 17: cls picks the Valkyrn for the client's throttle prediction tests
   let now = 1000, pending: (() => void) | null = null;
-  const records: DuelPlaytestRecord[] = [], leave = vi.fn(), d = createSeatedDuel(CUTTER, 7);
+  const records: DuelPlaytestRecord[] = [], leave = vi.fn(), d = createSeatedDuel(CUTTER, 7, 0, 2, cls);
   // The F3 overlay's sink: the lines it was last given, or null once hidden.
   const latency = { frame: (lines: readonly string[]) => { h.overlay.push(lines); }, clear: () => { h.overlay.push(null); } };
   const session = createOnlineDuelSession({
@@ -297,7 +300,7 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
     r.dispose();
   });
   it('sends a held frame every pump, quantised to −1, 0 and 1 by Math.sign', () => {
-    const r = rig(0), c = r.attach();
+    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();
     r.key('keydown', 'KeyD'); r.key('keydown', 'KeyW');   // the diagonal: the keyboard gives ±1/√2
     const before = c.helds().length;
     r.pump(); r.pump(); r.pump();
@@ -499,7 +502,7 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
   const throttles = (c: Stub) => c.commands().filter((x) => x.kind === 'throttle');
   const lastThrottleId = (c: Stub) => c.ids[c.commands().map((x) => x.kind).lastIndexOf('throttle')]!;
   it('two W presses inside one round trip move two notches; S steps down from the level in flight', () => {
-    const r = rig(0), c = r.attach();   // seat 0 flies the Helm
+    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();   // seat 0 flies the Helm
     tap(r, 'KeyW'); tap(r, 'KeyW');
     expect(throttles(c)).toEqual([{ kind: 'throttle', level: 1 }, { kind: 'throttle', level: 2 }]);
     tap(r, 'KeyS');
@@ -507,7 +510,7 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
     r.dispose();
   });
   it('a rejected throttle drops back to the replica level', () => {
-    const r = rig(0), c = r.attach();
+    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();
     tap(r, 'KeyW'); tap(r, 'KeyW');   // 1, then 2 on top of it
     c.results.push({ id: lastThrottleId(c), tick: 3, status: 'rejected', reason: 'invalid-seat' }); r.pump();
     tap(r, 'KeyW');
@@ -516,7 +519,7 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
   });
   it('only the result for the level in flight hands the base back to the replica; a notch click asks for its level', () => {
     let input: ConsoleInput | null = null;
-    const r = rig(0, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }), c = r.attach();
+    const r = rig(0, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }, ShipClass.Valkyrn), c = r.attach();
     tap(r, 'KeyW');
     const first = lastThrottleId(c);
     tap(r, 'KeyW');                                                       // 2 in flight
@@ -531,7 +534,7 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
     r.dispose();
   });
   it('a stand and a new round clear the level in flight', () => {
-    const r = rig(0), c = r.attach();
+    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();
     tap(r, 'KeyW');                                                       // 1 in flight
     tap(r, 'KeyX');                                                       // the stand clears it (the replica still shows the seat)
     tap(r, 'KeyW');
@@ -543,7 +546,7 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
     r.dispose();
   });
   it('a sit, a re-attach and a noop result each clear the level in flight (the base falls back to the replica)', () => {
-    const r = rig(0), c = r.attach();
+    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();
     tap(r, 'KeyW');                                                       // 1 in flight
     stepDuelTick(r.d, { held: [], commands: [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: r.d.interior.tick, command: { kind: 'stand' } }] });
     c.publish(r.d); r.pump();
@@ -564,6 +567,58 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
   });
 });
 
+describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () => {
+  const headings = (c: Stub) => c.commands().filter((x) => x.kind === 'heading');
+  const ask = (r: ReturnType<typeof rig>, heading: number): void => { (h.sceneOpts.at(-1) as unknown as { requests: { heading(n: number): void } }).requests.heading(heading); r.pump(); };
+  it('held W rides the frame as throttleHeld and a Digit1 press sends no helmPower (owner 2026-11-19)', () => {
+    const r = rig(0), c = r.attach();
+    r.key('keydown', 'KeyW'); r.key('keydown', 'Digit1'); r.pump(); r.pump(); r.pump();
+    r.key('keyup', 'Digit1'); r.pump();
+    expect(c.helds().at(-1)!.throttleHeld).toBe(1);
+    expect(c.helds().slice(-3).every((x) => x.throttleHeld === 1)).toBe(true);
+    expect(c.commands().filter((x) => (x.kind as string) === 'helmPower')).toEqual([]);
+    r.dispose();
+  });
+  it('A is a thruster here: it does not clear the held heading, so the same heading asked again is deduped', () => {
+    const r = rig(0), c = r.attach();
+    r.d.holdHeading = 77; c.publish(r.d); r.pump();
+    ask(r, 77);
+    expect(headings(c)).toEqual([]);
+    r.key('keydown', 'KeyA'); r.pump(); r.key('keyup', 'KeyA'); r.pump();
+    ask(r, 77);
+    expect(headings(c)).toEqual([]);
+    r.dispose();
+  });
+  it('keys held while sitting (E) or walking up (W) do not carry onto the crew Helm until pressed again (final review I1)', () => {
+    const r = rig(0), c = r.attach();
+    const stepOne = (command: DuelCommand, sequence: number): void => {
+      stepDuelTick(r.d, { held: [], commands: [{ runId: 'duel', id: { player: 0, sequence }, requestedTick: r.d.interior.tick, command }] });
+      c.publish(r.d); r.pump();
+    };
+    stepOne({ kind: 'stand' }, 1);
+    r.key('keydown', 'KeyW'); r.key('keydown', 'KeyE'); r.pump();   // E sits (the session sends it); W is held from the walk
+    expect(c.commands().filter((x) => x.kind === 'sit')).toHaveLength(1);
+    stepOne({ kind: 'sit', station: r.d.nav }, 2);                 // the sit's publication arrives with both still held
+    r.pump(); r.pump();
+    for (const held of c.helds().slice(-3)) expect([held.rcsX, held.throttleHeld]).toEqual([undefined, undefined]);
+    r.key('keyup', 'KeyE'); r.key('keydown', 'KeyE'); r.pump();   // pressed again: starboard
+    expect([c.helds().at(-1)!.rcsX, c.helds().at(-1)!.throttleHeld]).toEqual([1, undefined]);
+    r.key('keyup', 'KeyW'); r.key('keydown', 'KeyW'); r.pump();
+    expect([c.helds().at(-1)!.rcsX, c.helds().at(-1)!.throttleHeld]).toEqual([1, 1]);
+    r.dispose();
+  });
+  it('blur drops the local prediction: the vent and thrMille fall back to the replica state', () => {
+    const r = rig(0), c = r.attach();
+    c.publish(r.d); r.pump(); r.session.frame();
+    r.key('keydown', 'ArrowUp'); r.pump(); r.pump();
+    expect(h.source!.helmVent()).not.toEqual({ x: 0, y: 0, boosted: false, turn: 0 });
+    r.session.setFocused(false); r.pump();
+    expect(h.source!.helmVent()).toEqual({ x: 0, y: 0, boosted: false, turn: 0 });
+    expect(h.source!.thrMille()).toBe(c.state()!.thrMille);
+    r.dispose();
+  });
+});
+
 describe('the online Helm heading (Feel-ii §1.1)', () => {
   const headings = (c: Stub) => c.commands().filter((x) => x.kind === 'heading');
   const ask = (r: ReturnType<typeof rig>, heading: number): void => { (h.sceneOpts.at(-1) as unknown as { requests: { heading(n: number): void } }).requests.heading(heading); r.pump(); };
@@ -579,7 +634,7 @@ describe('the online Helm heading (Feel-ii §1.1)', () => {
     r.dispose();
   });
   it('A held at the Helm clears the base: the same heading asked for again is sent while the replica still shows the old hold', () => {
-    const r = rig(0), c = r.attach();
+    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();
     r.d.holdHeading = 77; c.publish(r.d); r.pump();
     ask(r, 77);
     expect(headings(c)).toEqual([]);   // the replica holds it already

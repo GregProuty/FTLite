@@ -1,6 +1,6 @@
 // The read-only controls list on the Settings page (main menu spec, 2026-11-16). Built from the input code's own tables
 // (the duel's PRESS_CODES and held keys, the sector's one keyboard cluster), so the list cannot drift from the bindings.
-import { FIRE_HELD, FREQ_CODES, INTERACT_HELD, MOVE_CODES, PING_CODE, PRESS_CODES, WEAPON_CODES, type KeyAction } from './duel/input';
+import { FIRE_HELD, FREQ_CODES, INTERACT_HELD, MOVE_CODES, PING_CODE, PRESS_CODES, RCS_CODES, WEAPON_CODES, type KeyAction } from './duel/input';
 import { SECTOR_KEYS } from '../input/sources';
 import { FULLSCREEN_KEY } from '../../../shared/onlineSession';
 
@@ -43,16 +43,23 @@ function codesFor(action: KeyAction): string[] {
 export function controlSections(): ControlSection[] {
   const move = [MOVE_CODES.up, MOVE_CODES.left, MOVE_CODES.down, MOVE_CODES.right].map(keyLabel).join(' ');
   // The mouse rows are written here by hand (createPointerSource in duel/input.ts: wheel zooms, right or middle drag pans).
-  const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, A/D turn; at Weapons, A/D steer a MANUAL torpedo in flight' }];
+  const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, W/S hold the throttle and A/D fire the side thrusters; at Weapons, A/D steer a MANUAL torpedo in flight' }];   // playtest2feedback §6
   for (const action of Object.keys(DUEL_ACTION) as (keyof typeof DUEL_ACTION)[]) {
+    if (action === 'throttleUp' || action === 'throttleDown') continue;   // playtest2feedback §6: the Valkyrn's notches (its own section); the crew Helm holds W/S
     const keys = codesFor(action).map(keyLabel).join(' / ');
     duel.push({ keys, action: DUEL_ACTION[action] });
     if (action === 'interact') duel.push({ keys: `Hold ${keyLabel(INTERACT_HELD)}`, action: 'Repair the damaged system you stand at' });
   }
   duel.find((r) => r.keys === keyLabel(FIRE_HELD))!.keys = `Hold ${keyLabel(FIRE_HELD)}`;
-  // Feel-ii: Shift+W, the ping (G or a middle click), the Helm's right-click heading and the wheel over the throttle; W-1: the Weapons map's left click (the pew).
-  duel.push({ keys: `Shift+${keyLabel(MOVE_CODES.up)}`, action: 'At the Helm, full throttle' }, { keys: `${keyLabel(PING_CODE)} / Middle click`, action: 'Ping the map point (or the enemy) for the crew' });
-  duel.push({ keys: 'Mouse wheel', action: 'Zoom (the maps and the ship); over the Helm throttle, step it' },
+  // Feel-ii: the ping (G or a middle click), the Helm's right-click heading; W-1: the Weapons map's left click (the pew).
+  duel.push({ keys: `${keyLabel(PING_CODE)} / Middle click`, action: 'Ping the map point (or the enemy) for the crew' });
+  // Playtest2feedback §6: the crew Helm: W/S throttle · hold LMB steer · RMB set heading · A/D Q/E ←→↑↓ thrusters (owner
+  // 2026-11-19: no 1/2 power keys; the throttle's cap is Engineering's Engines bars).
+  duel.push({ keys: `Hold ${keyLabel(MOVE_CODES.up)} / ${keyLabel(MOVE_CODES.down)}`, action: 'At the Helm, push the throttle up or down; let go and it returns to 0' },
+    { keys: 'Hold left mouse', action: 'At the Helm, steer: the nose turns toward the pointer' },
+    { keys: `${RCS_CODES.port.slice(0, 2).map(keyLabel).join(' ')} / ${RCS_CODES.starboard.slice(0, 2).map(keyLabel).join(' ')} / ← →`, action: 'At the Helm, cold gas thrusters to port and to starboard' },
+    { keys: '↑ ↓', action: 'At the Helm, cold gas thrusters fore and aft' });
+  duel.push({ keys: 'Mouse wheel', action: 'Zoom (the maps and the ship)' },
     { keys: 'Left click', action: 'At Weapons, fire the pew at the map point (3 shots, then it recharges; inside a 60° cone of the nose)' },
     { keys: 'Right click or drag', action: 'At the Helm, set a heading to hold (on your ship: clear); at Weapons, the heading a MANUAL torpedo in flight holds (on it: clear); elsewhere pan' },
     { keys: 'Middle drag', action: 'Pan the camera (in the ship, when zoomed in)' });

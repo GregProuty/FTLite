@@ -19,6 +19,7 @@ import { createTacticalState, Outcome, Room } from '../src/renderer/src/sim/tact
 import { heldTurn } from '../src/renderer/src/app/duel/runtime';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -68,7 +69,7 @@ describe('the heading command (Feel-ii §1.1)', () => {
     } finally { disposeDuel(d); }
   });
   it('turns the ship onto the bearing and holds it there, at the throttle\'s thrust', () => {
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.Valkyrn);
     try {
       const target = (d.tactical.ships[0].heading + 100) % 256;
       step(d, [cmd(d, 0, heading(target)), cmd(d, 0, { kind: 'throttle', level: 2 })]);
@@ -81,7 +82,7 @@ describe('the heading command (Feel-ii §1.1)', () => {
   });
   it('A/D or auto-face held at the Helm clears it, a −1 clears it; Weapons\' held keys do not', () => {
     for (const [held, cleared] of [[{ ...NONE, moveX: 1 }, true], [{ ...NONE, moveX: -1 }, true], [{ ...NONE, face: true }, true], [NONE, false]] as const) {
-      const d = createSeatedDuel(CUTTER, 5);
+      const d = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.Valkyrn);   // playtest2feedback Decision 17: A/D turns only the Valkyrn class
       try {
         step(d, [cmd(d, 0, heading(40))]);
         step(d, [], [held, { ...NONE, moveX: 1, face: true }]);
@@ -96,7 +97,7 @@ describe('the heading command (Feel-ii §1.1)', () => {
     } finally { disposeDuel(d); }
   });
   it('A/D wins the tick it clears it; the predicted turn (helmTurn, the runtime\'s heldTurn) is the sim\'s', () => {
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.Valkyrn);   // playtest2feedback Decision 17
     try {
       const target = (d.tactical.ships[0].heading + 60) % 256;
       step(d, [cmd(d, 0, heading(target))]);
@@ -108,15 +109,15 @@ describe('the heading command (Feel-ii §1.1)', () => {
       expect(d.tactical.ships[0].heading + d.tactical.ships[0].headingAcc - h0).toBeLessThan(0);
     } finally { disposeDuel(d); }
   });
-  it('is kept across stand and sit (no Helm: no turn), duel-decided on the end card, and −1 in a new round', () => {
+  it('is kept across stand and sit, duel-decided on the end card, and −1 in a new round', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
       step(d, [cmd(d, 0, heading(90))]);
       expect(step(d, [cmd(d, 0, { kind: 'stand' })])[0]!.status).toBe('applied');
-      expect([d.holdHeading, helmTurn(d, NONE) !== 0]).toEqual([90, true]);   // the rule; the step flies no axes with no Helm
+      expect([d.holdHeading, helmTurn(d, NONE) !== 0]).toEqual([90, true]);   // the rule; playtest2feedback §3: the unattended crew Helm now turns onto it too
       const h0 = d.tactical.ships[0].heading;
       step(d);
-      expect(d.tactical.ships[0].heading).toBe(h0);
+      expect(apart(d.tactical.ships[0].heading, 90)).toBeLessThan(apart(h0, 90));   // playtest2feedback §3: an unattended crew Helm turns onto its held heading
       expect(step(d, [cmd(d, 0, heading(10))])[0]).toMatchObject({ status: 'rejected', reason: 'invalid-seat' });
       expect(step(d, [cmd(d, 0, { kind: 'sit', station: d.nav })])[0]!.status).toBe('applied');
       expect(d.holdHeading).toBe(90);

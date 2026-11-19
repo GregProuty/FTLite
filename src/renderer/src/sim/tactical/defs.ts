@@ -9,7 +9,8 @@ import {
   GUN_MUZZLE_LATERAL, GUN_SPEED, HUNTER_HULL, HUNTER_LASER_SHOTS, LASER_ARC_COS, LASER_CHARGE_RATE, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, LASER_BURST_GAP_TICKS, LASER_HULL, LASER_RANGE, MAGAZINE, MAGAZINE_REGEN_TICKS,
   MISSILE_ARM_TICKS, MISSILE_FUEL_TICKS, MISSILE_HULL, MISSILE_BOOST_TICKS, MISSILE_LAUNCH_SPEED, MISSILE_LIFE_TICKS, MISSILE_RADIUS, MISSILE_RANGE, MISSILE_SPAWN_OFFSET, MISSILE_THRUST,
   MISSILE_TURN_STEPS_PER_TICK, REVERSE_FRACTION, SHIELD_LAYERS, SHIELD_RATE, SHIELD_RECHARGE_UNITS, SHIP_HULL, SHIP_RADIUS, THRUST, TURN_STEPS_PER_TICK, VALKYRN_HULL, VALKYRN_THRUST,
-  VALKYRN_TURN_STEPS_PER_TICK, PEW_ARC_STEPS, PEW_HULL, PEW_LIFE, PEW_RECHARGE_TICKS, PEW_CHARGE_SCALE, HUNTER_PEW_RECHARGE_TICKS, PEW_SHOTS, PEW_SPEED
+  VALKYRN_TURN_STEPS_PER_TICK, PEW_ARC_STEPS, PEW_HULL, PEW_LIFE, PEW_RECHARGE_TICKS, PEW_CHARGE_SCALE, HUNTER_PEW_RECHARGE_TICKS, PEW_SHOTS, PEW_SPEED,
+  BOOST_FAR, RCS_TURN_BOOST
 } from './tuning';
 
 /** The laser (spec §7a): range and arc, charge in whole units per Weapons damage level, the hold before it vents, hull per
@@ -68,6 +69,9 @@ export interface ShipClassDef {
   readonly slots: { readonly laser: LaserDef | null; readonly gun: GunDef | null; readonly pew: PewDef | null; readonly missile: MissileDef };
   /** Who flies it when no player does: nobody ('crew') or the hunter's state machine (sim/tactical/hunter.ts). */
   readonly ai: 'crew' | 'hunter';
+  /** Playtest2feedback §1: the crew Helm flies Newtonian (no drag, the held throttle, cold gas, mouse steering, the
+   *  ENGINE / COMPRESSOR split) in the crew slot. True only on the Cutter. */
+  readonly newtonianHelm: boolean;
 }
 
 function laser(shots: number): LaserDef {
@@ -109,12 +113,13 @@ function shipClass(id: string, ai: ShipClassDef['ai'], hull: number, laser: Lase
   return Object.freeze({
     id, hull, radius: SHIP_RADIUS, thrust: flight.thrust, reverseFraction: REVERSE_FRACTION, turnStepsPerTick: flight.turnStepsPerTick, engineFactor: ENGINE_FACTOR,
     shields: Object.freeze({ layers: SHIELD_LAYERS, rechargeUnits: SHIELD_RECHARGE_UNITS, rate: SHIELD_RATE }), power: null,
-    slots: Object.freeze({ laser, gun, pew, missile: MISSILE }), ai
+    slots: Object.freeze({ laser, gun, pew, missile: MISSILE }), ai, newtonianHelm: false
   });
 }
 /** The crew's ship and the enemy's: the same numbers but the hull and the laser's shots, told apart by their AI profile.
- *  W-1: both carry the pew pew (the Hunter's refills slower, HUNTER_PEW). */
-export const CUTTER_CLASS = shipClass('cutter', 'crew', SHIP_HULL, LASER, null, STANDARD, PEW);
+ *  W-1: both carry the pew pew (the Hunter's refills slower, HUNTER_PEW). Playtest2feedback §1: the Cutter flies the
+ *  crew Helm's Newtonian flight. */
+export const CUTTER_CLASS: ShipClassDef = Object.freeze({ ...shipClass('cutter', 'crew', SHIP_HULL, LASER, null, STANDARD, PEW), newtonianHelm: true });
 export const HUNTER_CLASS = shipClass('hunter', 'hunter', HUNTER_HULL, HUNTER_LASER, null, STANDARD, HUNTER_PEW);
 /** Valkyrn spec §6.1, §8: the solo fighter (the gun and the torpedo, no laser) and its developer laser fit (the Cutter's
  *  double laser and torpedo on the Valkyrn's hull and flight). */
@@ -136,4 +141,7 @@ export function classIndexById(id: string): number {
 // Valkyrn spec §6.2: the aim's dead band is three heading indices wide, so a class that turns 3 or more steps a tick
 // could step across it and chatter. Valkyrn spec §7.1: Weapons damage halves the gun's coolings in whole units.
 for (const c of SHIP_CLASSES) if (!(c.turnStepsPerTick < 3)) throw new Error(`ship class ${c.id} turns ${c.turnStepsPerTick} heading steps a tick; the aim band needs fewer than 3`);
+// Playtest2feedback §4a: a boosted turn (RCS_TURN_BOOST × the class turn) must stay inside the far band, so it never
+// steps across the normal turn's own bands and the nose never chatters.
+for (const c of SHIP_CLASSES) if (c.newtonianHelm && !(RCS_TURN_BOOST * c.turnStepsPerTick < BOOST_FAR)) throw new Error(`ship class ${c.id} turns ${RCS_TURN_BOOST * c.turnStepsPerTick} boosted heading steps a tick; the far band needs fewer than ${BOOST_FAR}`);
 if (!Number.isInteger(GUN.cool / 2) || !Number.isInteger(GUN.coolLocked / 2)) throw new Error('the gun\'s coolings must be even, so Weapons damage halves them exactly');
