@@ -50,7 +50,7 @@ The sim must stay bit-identical on Node, Electron and Firefox, and it runs local
 
 ## Reading manifest
 
-- `docs/superpowers/plans/2026-11-18-playtest2feedback.md:L1-L4165`: the subject. Read Global Constraints and Decisions (L1-L70) fully, then each task by range.
+- `docs/superpowers/plans/2026-11-18-playtest2feedback.md:L1-L4192`: the subject. Read Global Constraints and Decisions (L1-L70) fully, then each task by range.
 - `docs/superpowers/specs/2026-11-18-playtest2feedback-design.md:L1-L410`: the spec.
 - `docs/superpowers/plans/2026-11-18-w1-pew-pew.md:L1-L150`: the conventions template.
 - `src/renderer/src/sim/tactical/physics.ts:L1-L80`: `flyShip` and `stepFlight`.
