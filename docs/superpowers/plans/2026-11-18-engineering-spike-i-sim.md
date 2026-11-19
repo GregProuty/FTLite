@@ -122,6 +122,7 @@ Line numbers were verified against master at `cf4d6775`, which already carries V
     - **The Valkyrn gun class (laser null)** has no beam. Its gun keeps today's rules.
 18. **Sensors (Task 10).**
     - **The fog lives in `science.ts`.** `weapons.ts` imports `shipSeen` from it for auto-fire and auto-launch on the enemy (a rock target needs no sight: rocks are always shown). science.ts imports nothing from weapons.ts, so there is no import cycle.
+    - **The auto-launch sight gate is a plan-level extension.** Spec §10.4 names only auto-fire. The torpedo's auto-launch is the torpedo's auto-fire (a standing torpLock launches by itself), so it gets the same sight rule, so that a lock set while seen can't fire blind later. A manual `missileLaunch` stays ungated: the Weapons officer may fire blind on purpose.
     - **"Seen" means within sensor range of the crew ship's centre.** The enemy contact is the crew's target ship. The derelict uses `derelictPos`.
     - **Hazard capacity.** Sensors capacity from hazards is a duel rule (`sim/duel/sensors.ts`, via `capacityOf`), because tactical code can't see the interior. A clamp after the hazard tick catches fires that spread or ignite there.
     - **The gates** are on `contactScan`, `laserLock` and `torpLock` with a room ≥ 0 (clearing needs nothing seen), and on `designate` with a contact ≥ 0. `rockLock` is not gated, because rocks are always shown. A running scan pauses while its contact is unseen.
@@ -1964,6 +1965,7 @@ import { predictFlight } from '../src/renderer/src/sim/tactical/predict';
 import { cloneShip, createTacticalState, Room } from '../src/renderer/src/sim/tactical/state';
 import { DEFAULT_FLIGHT } from '../src/renderer/src/sim/tactical/tuning';
 import { sitDown } from '../src/renderer/src/sim/stations';
+import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 
 const HOUND = parseShip(hound);
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -2001,6 +2003,21 @@ describe('engineering spike: Engines bars (spec §10.2)', () => {
       d.tactical.systems[0].bars[DuelSystem.Engines] = 2; d.throttle = -1;
       d.tactical.systems[0].rooms[Room.Engines] = 2; clampToCapacity(d);
       expect(d.throttle).toBe(0);                                         // damage to 0 bars: a reverse throttle becomes 0
+    } finally { disposeDuel(d); }
+  });
+  it('a fire-cadence damage rise clamps bars and the throttle the same tick (spec §7 clampToCapacity, §8)', () => {
+    const d = createDuel(HOUND, 6);
+    try {
+      d.tactical.ships[1]!.active = false;                                // no hits: only the fire cadence raises the Room
+      const E = d.systemRooms[DuelSystem.Engines]!;
+      igniteRoom(d.interior, E); d.throttle = 3;                          // Engines 3 bars, cap 3
+      while ((d.interior.tick - d.baseTick) % 900 !== 899) { step(d, []); igniteRoom(d.interior, E); }   // keep it burning
+      expect(d.interior.rooms.fire[E]!).toBeGreaterThan(0);
+      expect(d.tactical.systems[0].rooms[Room.Engines]).toBe(0);
+      step(d, []);                                                        // the cadence tick: Engines Room 1, capacity 2
+      expect(d.tactical.systems[0].rooms[Room.Engines]).toBe(1);
+      expect(d.tactical.systems[0].bars[DuelSystem.Engines]).toBe(2);
+      expect(d.throttle).toBe(2);
     } finally { disposeDuel(d); }
   });
 });
@@ -2501,6 +2518,8 @@ import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { requireApplied, CUTTER } from './helpers/scriptedDuel';
+import { RockKind, ROCK_STRIDE, rockSlots } from '../src/renderer/src/sim/tactical/rocks';
+import { touchesSolid } from '../src/renderer/src/sim/tactical/predict';
 
 /** A tactical state whose crew Weapons holds 10 bars (all spendable) split as `power`. */
 function powered(power: number[]): TacticalState {
@@ -2537,9 +2556,19 @@ describe('engineering spike: the beam and the torpedo by bars (spec §10.3, §11
     expect(sys.magazineClock).toBe(0); expect(canLaunch(st, 0)).toBe(false);
     expect(MAGAZINE_REGEN_UNITS).toBe(10800);
   });
+  it('one torpedo bar regains a missile in exactly 2700 ticks: none after 2699, one on the next (spec §8)', () => {
+    const st = powered([0, 0, 1]), sys = st.systems[0];
+    sys.magazine -= 1; sys.magazineClock = 0; const before = sys.magazine;
+    for (let k = 0; k < 2699; k++) tickWeapons(st, 0, IDLE_INPUT);
+    expect(sys.magazine).toBe(before);
+    tickWeapons(st, 0, IDLE_INPUT);
+    expect(sys.magazine).toBe(before + 1);
+  });
   it('a crew torpedo on 3 bars raises the struck Room 2 levels', () => {
     const st = powered([0, 0, 3]), hs = st.systems[0];
+    for (let k = 0; k < rockSlots(st); k++) st.rocks[k * ROCK_STRIDE] = RockKind.Gone;   // no rock can take the torpedo first
     st.ships[0].x = -600; st.ships[0].y = -300; st.ships[1].x = -300; st.ships[1].y = -300;
+    expect(touchesSolid(st, st.ships[1].x, st.ships[1].y, 30), 'the placement must be clear of the planet and rocks').toBe(false);
     hs.torpRoom = Room.Engines;
     placeMissile(st, 0, { x: st.ships[1].x, y: st.ships[1].y, vx: 0, vy: 0, heading: 64, headingAcc: 0, age: 30 });
     resolveMissiles(st);
@@ -2564,7 +2593,7 @@ describe('engineering spike: the beam and the torpedo by bars (spec §10.3, §11
 });
 ```
 
-The torpedo-hit test assumes that a missile placed at the target's centre lands on it in `resolveMissiles`. If `land` needs a rock check (`rockBorn`), the fresh state's masks are empty. If the missile is detonated by a rock first, move both ships to a spot the map's asteroids clear (`touchesSolid(st, x, y, 30)` false) before placing it.
+The torpedo-hit test clears the rock pool and asserts the placement is clear, so its setup is certain. If it fails, the cause is in `land` or the levels, not the setup.
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -2825,13 +2854,14 @@ describe('engineering spike: Sensors (spec §10.4)', () => {
     } finally { disposeDuel(d); }
   });
   it('the gates: contactScan, laser and torpedo locks, and designate need the contact seen', () => {
-    const d = createDuel(HOUND, 13);
+    const d = createDuel(HOUND, 13, 0, 3);   // a crew of 3: designate is the Science seat's (step.ts answers invalid-seat first)
     try {
-      sitDown(d.interior, 0, d.nav); sitDown(d.interior, 1, d.weapons); enemyAt(d, 1200);
-      for (const [pid, c] of [[0, { kind: 'contactScan', contact: 0 }], [1, { kind: 'laserLock', room: 1 }], [1, { kind: 'torpLock', room: 2 }], [1, { kind: 'designate', contact: 0 }]] as [number, DuelCommand][])
+      sitDown(d.interior, 0, d.nav); sitDown(d.interior, 1, d.weapons); sitDown(d.interior, 2, d.science); enemyAt(d, 1200);
+      for (const [pid, c] of [[0, { kind: 'contactScan', contact: 0 }], [1, { kind: 'laserLock', room: 1 }], [1, { kind: 'torpLock', room: 2 }], [2, { kind: 'designate', contact: 0 }]] as [number, DuelCommand][])
         expect(step(d, [env(d, pid, c)])[0], c.kind).toMatchObject({ status: 'rejected', reason: 'unavailable' });
       enemyAt(d, 600);
       expect(step(d, [env(d, 1, { kind: 'laserLock', room: 1 })])[0]).toMatchObject({ status: 'applied' });
+      expect(step(d, [env(d, 2, { kind: 'designate', contact: 0 })])[0]).toMatchObject({ status: 'applied' });
       step(d, [env(d, 1, { kind: 'shipPower', system: DuelSystem.Sensors, delta: -1 })]);              // 0 bars: range 300, rate 0
       expect(step(d, [env(d, 0, { kind: 'contactScan', contact: 0 })])[0]).toMatchObject({ status: 'rejected', reason: 'unavailable' });
       expect(step(d, [env(d, 1, { kind: 'laserLock', room: -1 })])[0]).toMatchObject({ status: 'applied' });   // clearing needs nothing seen
@@ -3168,7 +3198,7 @@ describe('engineering spike: determinism (spec §8)', () => {
 });
 ```
 
-The overheat is asserted for every seed, which covers F4's "at least one". Before hostility (rt 1800) nothing damages the Engines Room, so the timing is the same in every seed: Engines overdriven from tick 40, +2 heat per hazard tick, HEAT_MAX at about tick 640. If a seed shows otherwise, read its heat trace before weakening the assertion.
+The overheat is asserted for every seed, which covers F4's "at least one". Before hostility (rt 1800) nothing damages the Engines Room, so the timing is the same in every seed: Engines overdriven from tick 40, +2 heat per hazard tick, HEAT_MAX at about tick 640. A seed that does not overheat is a bug. Never weaken the assertion: read that seed's heat trace and fix the sim.
 
 - [ ] **Step 2: Run it**
 
@@ -3193,12 +3223,12 @@ git commit -m "test(engineering-spike): hash agreement over a seed sweep and a s
 
 **Interfaces:**
 - Consumes: everything above.
-- Produces: a green full suite on the branch, blessed goldens at 54, and the report's sim measurements, gate table and determinism lines.
+- Produces: a green full suite on the branch, blessed goldens at 55, and the report's sim measurements, gate table and determinism lines.
 
-- [ ] **Step 1: Bless the gameplay change at 54**
+- [ ] **Step 1: Bless the gameplay change at 55**
 
 Run: `npm run bless`
-Expected: a same-version bless (every artifact is stored at 55 since Task 1), so no bump proof runs, and four `blessed ...` lines print. If it refuses, read the message. A refusal here means an artifact is not at 54: rerun Task 1 Step 5's state check with `git log -- tests/golden`.
+Expected: a same-version bless (every artifact is stored at 55 since Task 1), so no bump proof runs, and four `blessed ...` lines print. If it refuses, read the message. A refusal here means an artifact is not at 55: check `git log -- tests/golden tests/fixtures` for Task 1's bless commit.
 
 - [ ] **Step 2: Build and run the full suite**
 
@@ -3229,7 +3259,7 @@ Expected: one JSON line with `"simVersion":55`.
 In `docs/superpowers/research/2026-11-18-engineering-spike.md`:
 - Fill the After column of the measurements table with the new numbers.
 - Replace the gate section's `(Task 12)` with a table of every test skipped under rule (c): its file and name, its band, and the measured value.
-- Below that table, add the per-seed `telemetryLine` output that `npx vitest run tests/duelGates.test.ts` prints, which is logged even for skipped aggregate tests. Run that file's per-seed tests with `--reporter=verbose` to capture the lines.
+- Below that table, add the per-seed telemetry lines that `npx tsx scripts/duel-telemetry.ts` prints (the gates' seeds, scripted and passive). Skipped aggregate tests print nothing, so the script is the source.
 - Add a "Known limits" section listing:
   - the Shield loot cancelled by the bar cap (Decision 21);
   - pew pew not playable in the spike: its slot holds bars with no effect until W-1's plug-in at merge (spec §11, Decision 22);
@@ -3268,7 +3298,7 @@ Stage every fallout test file you changed by name in the same `git add`; list th
 | §5 doors start auto; the toggle; airlocks; the fail-safe never fires | Tasks 5 and 6 |
 | §7 the commands, DUEL_KINDS, duel-decided, reasons; the power module and its place; the snapshot; module completeness | Tasks 4, 5, 9a and 9b |
 | §7 clampToCapacity placement; the step order; rng order | Tasks 5 to 10 (Decision 13) |
-| §8 every sim test; determinism; goldens re-blessed | Tasks 2 to 12 |
+| §8 every sim test (including the same-tick fire-cadence clamp, Task 8 engEngines, and the 2700-tick one-bar magazine, Task 9b engWeapons); determinism; goldens re-blessed | Tasks 2 to 12 |
 | §1 snapshot size, tick cost, determinism in the report | Tasks 1 and 12 (Part ii adds feel and screenshots) |
 | §9.3 console power strips, locked notches; §10.3 and §11 the Weapons console's three weapons and their bars (the PEW PEW card "ARRIVES WITH W-1"); §10.4 ghosts and fog drawing | Part ii |
 | §11 the pew pew plug-in at merge | out of this plan (Decision 22) |
