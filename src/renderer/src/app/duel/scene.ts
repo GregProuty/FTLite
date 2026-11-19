@@ -4,7 +4,7 @@
 // DuelViewSource: the local runtime (Single player) or the online duel source (Multiplayer), so both modes show exactly
 // the same screens.
 import { Container } from 'pixi.js';
-import { enemyHostile } from '../../sim/tactical/science';
+import { enemyHostile, pointSeen, shipSeen } from '../../sim/tactical/science';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { Renderer } from '../../render/renderer';
 import { crtActive, crtScale } from '../../render/crt';
@@ -37,7 +37,7 @@ import { crewLife } from '../../render/duel/healFxModel';
 import type { DuelSink } from '../../ui/sinks';
 import { mapOverlayOf, type Banners, type MapOverlayView } from '../../ui/views';
 import type { DuelState } from '../../sim/duel/state';
-import { classOf, Contact, CREW_SLOT, missileOf, Outcome, Room, targetOf, type Axes } from '../../sim/tactical/state';
+import { classOf, Contact, CREW_SLOT, missileOf, Outcome, Room, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
 import type { InteriorCamera } from '../../render/duel/interiorCamera';
 import type { AimSample, HeldFlags } from './input';
 import type { ContactController } from './contactController';
@@ -112,11 +112,24 @@ export function sceneUi(view: DuelView, overlay: SceneOverlay, pauseText: string
 }
 
 /** Feel-ii §2.5: the torpedo lock tone's frame data: the torpedo has a target and is ready (canLaunch's checks bar the
- *  range: none flying, one in the magazine, Weapons on), the enemy's distance and the torpedo's range. */
+ *  range: none flying, one in the magazine, Weapons on), the enemy's distance and the torpedo's range. Engineering spike
+ *  §10.4: an unseen enemy is never locked, so no beep tracks its distance. */
 export function torpedoTone(d: DuelState): TorpedoTone {
   const t = d.tactical, sys = t.systems[CREW_SLOT]!, me = t.ships[CREW_SLOT]!, e = t.ships[targetOf(t, CREW_SLOT)];
-  const locked = t.outcome === Outcome.Running && sys.torpLock >= 0 && !missileOf(t, CREW_SLOT) && sys.magazine > 0 && sys.rooms[Room.Weapons] < 2 && e?.active === true;
+  const locked = t.outcome === Outcome.Running && sys.torpLock >= 0 && !missileOf(t, CREW_SLOT) && sys.magazine > 0 && sys.rooms[Room.Weapons] < 2 && e?.active === true && shipSeen(t, targetOf(t, CREW_SLOT));
   return { locked, distance: e ? Math.hypot(e.x - me.x, e.y - me.y) : Infinity, range: classOf(t, CREW_SLOT).slots.missile.range, target: sys.torpLock };
+}
+
+/** Engineering spike §10.4: a sound at a point outside sensor range (an unseen enemy's laser or launch chirp, an unseen
+ *  torpedo's blast) plays centred, so its pan reveals no bearing. */
+export function fogPan(t: TacticalState, pan: (x: number, y: number) => number): (x: number, y: number) => number {
+  return (x, y) => (pointSeen(t, x, y) ? pan(x, y) : 0);
+}
+
+/** Spike ii §6.5: the rock under the pointer when no ship contact is there. Engineering spike §10.4: `at.fog` makes an
+ *  unseen enemy no contact, so a rock over it still takes the bracket (no bracket missing gives the enemy away). */
+export function rockHoverAt(at: Parameters<typeof pickContact>[0], point: { x: number; y: number }): number | null {
+  return pickContact(at, point) === null ? pickRock(at, point) : null;
 }
 
 export interface DuelSceneOptions {
@@ -271,7 +284,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         const crew = d.tactical.ships[CREW_SLOT]!;
         sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true, me: source.active(), crew: crewLife(d), dt, hostile: enemyHostile(d.tactical),   // duel polish i spec §C
           torpedo: torpedoTone(d), pings: pinged,   // Feel-ii §2.5, §2.7
-          pan: (x, y) => (cam ? screenPan(worldToScreen(cam, viewport, x, y).x, viewport.w) : worldPan(x - crew.x)) });
+          pan: fogPan(d.tactical, (x, y) => (cam ? screenPan(worldToScreen(cam, viewport, x, y).x, viewport.w) : worldPan(x - crew.x))) });
       }
       // Paused, or a frozen online copy (a lost link): the callouts, flashes, heal motes and the charge pulse hold (polish i review).
       const frozen = source.paused() || source.live?.() === false;
@@ -284,8 +297,8 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt, events, frozen ? 0 : dt, { camera: source.interiorCamera, active: source.active() }, options.pointer?.() ?? null);   // Art-i spec section 7: the light and feel hold while paused; Engineering spike §6: the hover outline
       else {
         // Spike ii §6.5: with a weapon picked up, the rock under the pointer (no ship contact there) wears a hover bracket.
-        const point = aimed !== null ? options.pointer?.() ?? null : null, pickAt = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport };
-        const hoverRock = point && pickContact(pickAt, point) === null ? pickRock(pickAt, point) : null;
+        const point = aimed !== null ? options.pointer?.() ?? null : null, pickAt = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, fog: fogView };
+        const hoverRock = point ? rockHoverAt(pickAt, point) : null;
         // Step 4: the map keeps its arrows and info line clear of the window while it is shown.
         const input = {
           state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, console: camKey!, axes: source.axes(),

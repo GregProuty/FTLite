@@ -200,7 +200,8 @@ describe('the torpedo lock tone and the launch chirp (Feel-ii §2.5, §2.6)', ()
     expect(crew.map((s) => s.key)).toEqual(['thruster']);
   });
   it('the scene\'s tone data: locked only with a target and a torpedo ready', () => {
-    const r = rig(), d = r.rt.duel, sys = d.tactical.systems[0];
+    const r = rig(), d = r.rt.duel, sys = d.tactical.systems[0], [own, hunter] = d.tactical.ships;
+    Object.assign(hunter!, { x: own!.x + 600, y: own!.y });   // Engineering spike §10.4: inside the start sensor range (an unseen enemy is never locked)
     expect(torpedoTone(d).locked).toBe(false);
     sys.torpLock = Room.Shields;
     expect(torpedoTone(d)).toMatchObject({ locked: true, range: 360, target: Room.Shields });

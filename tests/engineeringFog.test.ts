@@ -25,6 +25,14 @@ import { createDuelScene } from '../src/renderer/src/app/duel/scene';
 import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import { createUiStore } from '../src/renderer/src/ui/store';
 import { seatDuelCrew } from './helpers/duelSeat';
+import cutter from '../src/renderer/src/sim/ship/cutter.json';
+import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
+import { Room } from '../src/renderer/src/sim/tactical/state';
+import { readoutRows } from '../src/renderer/src/render/duel/readoutModel';
+import { evadeDir, flightAlert } from '../src/renderer/src/render/duel/situationModel';
+import { fogPan, rockHoverAt, torpedoTone } from '../src/renderer/src/app/duel/scene';
+import { worldToScreen } from '../src/renderer/src/render/tactical/camera';
+import { arena, mover } from './helpers/rockArena';
 
 const vp = { w: 1280, h: 720 };
 const assets: GameAssets = {
@@ -146,5 +154,57 @@ describe('no fog leaks (spec §10.4)', () => {
       scene.draw(rt, 1 / 60, { banner: null, layerPaused: false, end: null });
       expect(rt.cameras.helm.targetZoom).not.toBe(z0);
     } finally { scene.dispose(); rt.dispose(); }
+  });
+});
+
+describe('no fog leaks, review round 1 (spec §10.4)', () => {
+  it('the interior readout: ENEMY NO CONTACT and no BEARING while the enemy is unseen; the range and bearing once seen', () => {
+    const d = createDuel(parseShip(cutter), 5), [crew, enemy] = d.tactical.ships, r = sensorRange(d.tactical.systems[0]!);
+    try {
+      Object.assign(enemy!, { x: crew!.x + r * 2, y: crew!.y, active: true });
+      let rows = readoutRows({ duel: d, mode: 'interior', active: 0 });
+      expect(rows.find((x) => x.label === 'ENEMY')?.value).toBe('NO CONTACT');
+      expect(rows.some((x) => x.label === 'BEARING')).toBe(false);
+      Object.assign(enemy!, { x: crew!.x + r / 2 });
+      rows = readoutRows({ duel: d, mode: 'interior', active: 0 });
+      expect(rows.find((x) => x.label === 'ENEMY')?.value).toBe(String(Math.round(r / 2)));
+      expect(rows.find((x) => x.label === 'BEARING')?.value).toBe('090');
+    } finally { disposeDuel(d); }
+  });
+  it('the torpedo lock tone: an unseen enemy is never locked (no beep tracks its distance)', () => {
+    const d = createDuel(parseShip(cutter), 5), [crew, enemy] = d.tactical.ships, r = sensorRange(d.tactical.systems[0]!);
+    try {
+      d.tactical.systems[0]!.torpLock = Room.Shields;
+      Object.assign(enemy!, { x: crew!.x + r * 2, y: crew!.y, active: true });
+      expect(torpedoTone(d).locked).toBe(false);
+      Object.assign(enemy!, { x: crew!.x + r / 2 });
+      expect(torpedoTone(d).locked).toBe(true);
+    } finally { disposeDuel(d); }
+  });
+  it('an unseen enemy torpedo: TORPEDO INBOUND stays (a warning receiver), the EVADE arrow is gone; seen, the arrow is back', () => {
+    const t = createTacticalState(5), own = t.ships[0]!, r = sensorRange(t.systems[0]!);
+    const m = placeMissile(t, 1, { x: own.x + r * 2, y: own.y, vx: -50, vy: 0, heading: 0, headingAcc: 0, age: 0 });
+    expect(flightAlert(t, { turn: 0, thrust: 0 })).toEqual({ kind: 'torpedo' });
+    expect(evadeDir(t)).toBeNull();
+    m.x = own.x + r / 2;
+    expect(evadeDir(t)).not.toBeNull();
+  });
+  it('a sound at an unseen point plays centred; at a seen point it keeps its pan', () => {
+    const t = createTacticalState(5), own = t.ships[0]!, r = sensorRange(t.systems[0]!), pan = fogPan(t, () => 0.8);
+    expect(pan(own.x + r * 2, own.y)).toBe(0);
+    expect(pan(own.x + r / 2, own.y)).toBe(0.8);
+  });
+  it('a rock over an unseen enemy takes the hover bracket (with the fog); a seen enemy over it is the contact', () => {
+    const st = arena(), e = st.ships[1]!, camera = createCamera(0, 2000, 1);
+    Object.assign(e, { x: 0, y: 2000, active: true }); mover(st, 7, 0, 2000, 0, 0, 40);
+    const at = { state: st, prev: [], alpha: 1, camera, viewport: vp }, p = worldToScreen(camera, vp, 0, 2000);
+    const fog = (enemy: boolean) => ({ range: 900, seen: { enemy, derelict: false, missile: false }, ghosts: [] });
+    expect(rockHoverAt({ ...at, fog: fog(false) }, p)).toBe(7);
+    expect(rockHoverAt({ ...at, fog: fog(true) }, p)).toBeNull();
+  });
+  it('the contact window on an unseen contact has no SCAN button', () => {
+    const t = createTacticalState(5);
+    for (const contact of [0, 1] as const) expect(contactModel({ state: t, contact, aim: false, station: 'science', t: 0, weapons: null, seen: false })!.scan).toBeNull();
+    expect(contactModel({ state: t, contact: 0, aim: false, station: 'science', t: 0, weapons: null, seen: true })!.scan).not.toBeNull();
   });
 });

@@ -5,6 +5,7 @@ import { flyMissile, launchMissile } from '../src/renderer/src/sim/tactical/miss
 import { Contact, createTacticalState, type DuelEvent, missileOf, removeMissile, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
+import { sensorRange } from '../src/renderer/src/sim/tactical/science';
 import { LASER_RANGE, MISSILE_LIFE_TICKS, MISSILE_RADIUS, MISSILE_RANGE, PLANET_RADIUS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
 import { createCamera, worldToScreen, type Camera } from '../src/renderer/src/render/tactical/camera';
 import { BEAM_HIT, BEAM_MISS, createFx, hitsCrew, pushEvents, recordTrails, resetFx, shakeOffset, SHAKE_S, stepFx, TRAIL_POINTS, type ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
@@ -78,9 +79,9 @@ describe('the combat model (H-1 spec §7)', () => {
     // Feel-i: the arc's words moved into the status sentence; the info line is bearing, range and the torpedo, under it.
     expect(weaponsInfoText(263, 3987, false)).toBe('BRG 263  RNG 3987  TORP OUT');
     expect(weaponsInfoText(7, 120, true)).toBe('BRG 007  RNG 120  TORP IN');
-    const st = createTacticalState(11), band = { left: TABS_RIGHT, right: SIDE.x };
+    const st = createTacticalState(11), band = { left: TABS_RIGHT, right: SIDE.x }, seenRange = sensorRange(st.systems[0]!);
     expect([TABS_RIGHT, SIDE.x]).toEqual([408, 1136]);
-    for (const far of [300, 600, 3987, 99999]) {   // Engineering spike §10.4: 600 is seen at the 900 start range, so its sentence is measured
+    for (const far of [300, 600, 3987, 99999]) {   // Engineering spike §10.4: 600 is seen at the start sensor range, so its sentence is measured
       Object.assign(st.ships[1], { x: st.ships[0].x + far, y: st.ships[0].y });
       for (const reserveRight of [CONSOLE_RESERVE.right, CONTACT_RESERVE]) {
         const w = combatModel({ ...input(st, createCamera(st.ships[0].x, st.ships[0].y), 'weapons'), reserveLeft: CONSOLE_RESERVE.left, reserveRight, infoBand: band }).weapons!;
@@ -88,7 +89,7 @@ describe('the combat model (H-1 spec §7)', () => {
         expect(w.info.x - half, `${far} ${reserveRight}`).toBeGreaterThanOrEqual(TABS_RIGHT);
         expect(w.info.x + half, `${far} ${reserveRight}`).toBeLessThanOrEqual(SIDE.x);
         const status = combatModel({ ...input(st, createCamera(st.ships[0].x, st.ships[0].y), 'weapons'), reserveLeft: CONSOLE_RESERVE.left, reserveRight, infoBand: band }).status ?? null;
-        if (far > 900) { expect(status, `status ${far}`).toBeNull(); continue; }   // Engineering spike §10.4: no words of an unseen enemy
+        if (far > seenRange) { expect(status, `status ${far}`).toBeNull(); continue; }   // Engineering spike §10.4: no words of an unseen enemy
         const sh = textPx(status!.label.text, FONT_SIZE / FONT_NATIVE) / 2;
         expect(status!.label.x - sh, `status ${far} ${reserveRight}`).toBeGreaterThanOrEqual(TABS_RIGHT);
         expect(status!.label.x + sh, `status ${far} ${reserveRight}`).toBeLessThanOrEqual(SIDE.x);

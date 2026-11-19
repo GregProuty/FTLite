@@ -12,7 +12,7 @@ import { helmTurn } from '../../sim/duel/step';
 import { laserEligible, laserFull, laserOffline, torpedoInRange } from '../../sim/tactical/weapons';
 import { TICK_HZ } from '../../sim/tuning';
 import { trimmedWeaponPower, WeaponSlot } from '../../sim/tactical/bars';
-import { shipSeen } from '../../sim/tactical/science';
+import { pointSeen, shipSeen } from '../../sim/tactical/science';
 
 /** Seconds a released shot keeps the solution lit, so a volley that auto-fires the tick it is ready still reads FIRING. */
 export const SOLUTION_HOLD_S = 0.6;
@@ -146,6 +146,7 @@ export function flightAlert(t: TacticalState, axes: Axes): FlightAlert {
   if (t.outcome !== Outcome.Running) return null;
   const s = collisionIn(t, axes);
   if (s !== null && s < COLLISION_WARN_S) return { kind: 'collision', seconds: s };
+  // Engineering spike §10.4 (owner's call): a warning receiver, so an unseen torpedo still alerts, with no direction.
   return missileOf(t, targetOf(t, CREW_SLOT)) ? { kind: 'torpedo' } : null;
 }
 
@@ -175,10 +176,10 @@ export const EVADE_LOOK = 600, EVADE_STEP = 50;
 /** Feel-ii §1.6: the unit direction the crew ship should dodge an inbound enemy torpedo: perpendicular to its approach (its
  *  velocity relative to the ship, else the line from it to the ship), on the side with more clear room (the distance to the
  *  first planet or asteroid along each side, up to EVADE_LOOK); a tie takes the right of the approach. Null with none
- *  inbound. */
+ *  inbound, or with it outside sensor range (Engineering spike §10.4: the arrow would give its bearing away). */
 export function evadeDir(t: TacticalState): { x: number; y: number } | null {
   const m = missileOf(t, targetOf(t, CREW_SLOT)), s = t.ships[CREW_SLOT];
-  if (!m || !s || t.outcome !== Outcome.Running) return null;
+  if (!m || !s || t.outcome !== Outcome.Running || !pointSeen(t, m.x, m.y)) return null;
   let ax = m.vx - s.vx, ay = m.vy - s.vy;
   if (Math.hypot(ax, ay) < 1e-6) { ax = s.x - m.x; ay = s.y - m.y; }
   const n = Math.hypot(ax, ay);

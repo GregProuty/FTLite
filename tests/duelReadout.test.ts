@@ -80,6 +80,7 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     const d = createDuel(layout, 5);
     stepDuelTick(d, { held: [], commands: [{ runId: 'duel', id: { player: 1, sequence: 0 }, requestedTick: 0, command: { kind: 'presence', present: false } }, { runId: 'duel', id: { player: 0, sequence: 0 }, requestedTick: 0, command: { kind: 'stand' } }] });
     const [crew, enemy] = d.tactical.ships;
+    Object.assign(enemy!, { x: crew!.x + 600, y: crew!.y });   // Engineering spike §10.4: seen, so the range and bearing show
     let out = pairs({ duel: d, mode: 'interior', active: 0 });
     expect(out.slice(11)).toEqual([
       ['HEALTH', '100/100'], ['P2', 'AWAY'], ['OUTSIDE', ''], ['HELM', 'EMPTY'], ['', 'COASTING'], ['WEAPONS', 'EMPTY'],

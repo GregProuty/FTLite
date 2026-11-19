@@ -171,11 +171,12 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   let weapons: WeaponsDraw | null = null;
   if (input.console === 'weapons') {
     const dx = enemy.x - own.x, dy = enemy.y - own.y, range = Math.round(Math.sqrt(dx * dx + dy * dy)), inArc = laserEligible(state, 0, target);
+    // Engineering spike §10.4: the bearing and range only while the enemy is drawn, or while its kill plays (the dying ship's).
     weapons = {
       ownArc,
       enemyArc: input.ships.includes(target) ? { x: enemyS.x, y: enemyS.y, r: LASER_RANGE * z, angle: headingAngle(enemy.h), half: ARC_HALF } : null,
       ring: z >= BEARING_RING_ZOOM ? ringDraw(ownS.x, ownS.y) : null,
-      info: bandLabel(input.ships.includes(target) ? weaponsInfoText(bearingDeg(dx, dy), range, inRange) : 'NO CONTACT IN SENSOR RANGE', centre, input.infoBand, input.infoBand ? INFO_Y : 12, input.infoBand ? 1 : FONT_SIZE / FONT_NATIVE),
+      info: bandLabel(input.ships.includes(target) || input.fx.kill !== null ? weaponsInfoText(bearingDeg(dx, dy), range, inRange) : 'NO CONTACT IN SENSOR RANGE', centre, input.infoBand, input.infoBand ? INFO_Y : 12, input.infoBand ? 1 : FONT_SIZE / FONT_NATIVE),
       inArc, torpedoInRange: inRange
     };
   }

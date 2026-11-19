@@ -118,7 +118,7 @@ export function contactModel(i: ContactModelInput): ContactView | null {
     scan: contact === null ? null : scanButton(state, contact, i.station), lines
   });
   if (i.contact === null) return i.station === 'science' ? bare(null, 'NO CONTACT SELECTED') : null;
-  if (i.seen === false) return bare(i.contact, 'CONTACT LOST', [line('OUT OF SENSOR RANGE', CRT.mid)]);   // Engineering spike §10.4: no drawing, no picks
+  if (i.seen === false) return { ...bare(i.contact, 'CONTACT LOST', [line('OUT OF SENSOR RANGE', CRT.mid)]), scan: null };   // Engineering spike §10.4: no drawing, no picks, no scan
   if (i.contact === Contact.Derelict) {
     if (state.known[Contact.Derelict] < 1) return bare(Contact.Derelict, 'UNKNOWN CONTACT');
     const dr = state.derelict, p = derelictPos(state), crew = state.ships[CREW_SLOT];
