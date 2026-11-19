@@ -99,8 +99,8 @@ passive median 121.6 s, shortest 101.3 s
 - **The Shield loot does nothing.** The derelict's Shield loot adds a layer over the class layers, but the crew's
   shield cap (`SHIELD_LAYERS_BY_BARS[bars]`) drops any layer above it the same tick (Decision 21). The cap is not
   changed for it.
-- **Pew pew is not playable in the spike.** Its slot holds Weapons bars that count in the allocation and the trim but
-  have no effect until W-1's plug-in at merge (spec §11, Decision 22).
+- **Pew pew's bars (closed at the merge with W-1, SIM 58).** Its bars now set W-1's recharge (see "Merge with W-1, W-2,
+  W-3 (SIM 58)" below).
 - **The scripted gunner's first-tick bar move.** On its first seated tick the scripted gunner moves pew pew's bar to
   the beam (`weaponPower` slot 0 −1, then slot 1 +1), because the beam starts dark (Decision 20).
 - **The bots never move bars otherwise.** Neither the scripted pair nor the Valkyrn pilot sends `shipPower`,
@@ -129,7 +129,7 @@ then 8592 ticks with outcome 2 (final c2704648). They were 15403 ticks with outc
   - Damage knocks out slots, and an overheated system fails until it cools.
 - **Station budgets (spec §10):** each station spends its own bars.
   - Each Engines bar is 25 % throttle.
-  - The Weapons officer spreads the Weapons bars over pew pew (W-1's weapon, whose bars do nothing yet), the beam and the torpedo.
+  - The Weapons officer spreads the Weapons bars over pew pew (W-1's skill shot: its bars set its recharge since the merge), the beam and the torpedo.
   - Sensors sets the sensor range, and every crew map has a fog of war with fading ghosts.
 - **Interior:** oxygen per room, breaches from hits, airlocks that vent, fire that needs air and spreads through open doors, and damage from low air.
 - **Ship view:** it is the Engineering station. Anyone can use it, from anywhere:
@@ -188,7 +188,7 @@ The screenshots:
 
 - Does Engineering feel like a full-time job for the 4th seat, or for whoever is on foot?
 - Does it change how Helm and Weapons fight? Shields start at 1 layer, the throttle at 75 %, and the beam stays dark until Engineering moves bars.
-- Is spreading the Weapons bars over the beam and the torpedo a real choice? (Pew pew comes with W-1.)
+- Is spreading the Weapons bars over the beam and the torpedo a real choice? And pew pew, now that its bars set its recharge?
 - Is the fog's 900 start range right?
 - Can you read power, heat, air, fire and breaches at a glance?
 - Is the 1-layer shield start right? The 25 % air line? The 20 s cool-down after an overheat?
@@ -197,7 +197,6 @@ The screenshots:
 
 - At the zoom-0 fit, the panel may cover the Hound's lower-left rooms. Zoom or pan to reach a covered door.
 - The Helm's locked notches and the Science strip's range are covered by jsdom tests, not by screenshots. The owner sees them on a console.
-- Pew pew isn't playable in this spike (spec §11). It's the W-1 skill-shot weapon from branch `w1-pew-pew`. Its slot takes bars that do nothing until the merge wires them into W-1's recharge.
 - Sensors and Oxygen take no weapon damage, because they have no tactical Room.
 - Fire spread, overheat ignitions and breaches push no events, so there's no sound cue or callout for them yet.
 - Look check: in screenshot 3 the Hold's low-air tint reads amber rather than clearly red.
@@ -227,4 +226,20 @@ The owner's playtest should decide two things:
 - Keep all three station budgets, or start with fewer. One option is the throttle cap and the Weapons split, with lighter shields and fog.
 - Whether to fold the panel down for crews without a dedicated Engineer.
 
-The next integration step either way is merging with W-1 (pew pew's recharge) and with the Helm spike's ENGINE/COMPRESSOR split.
+The merge with W-1, W-2 and W-3 is done (below). The next integration step is the Helm spike's ENGINE/COMPRESSOR split.
+
+## Merge with W-1, W-2, W-3 (SIM 58)
+
+Master (W-1 pew pew, W-2 manual laser, W-3 manual torpedo, Web-iii) was merged into this branch (1f1fd344), then:
+
+- **Pew pew's bars (decision 1a).** The crew's pew recharges a third every `PEW_TICKS_BY_BARS = [0, 60, 45, 30]` ticks by its trimmed bars, 24 on the overdrive 4th bar. At 0 bars it neither refills nor fires: the sim answers `unavailable` and the console says PEW UNPOWERED. The Hunter keeps its fixed 120. The charge is now counted in units, 6 to a tick at the class's own rate (`PEW_CHARGE_SCALE`), so every rate is a whole number. A level-2 Weapons Room now stops the crew's refill, which W-1 alone did not.
+- **MANUAL weapons (1b, 1c).** The MANUAL beam fires only with a beam bar. Its burst and charge follow the beam tables, as AUTO does. The MANUAL torpedo launches only with a torpedo bar, reloads by its bars and hits 2 levels at 3 bars. Neither MANUAL weapon is fog-gated.
+- **The console (4).** W-1/W-2/W-3's cards keep their charge pips, AUTO/MAN tags and MANUAL words, and gain the bar pips (with a dashed overdrive pip on all three weapons), FREE and the WEAP power strip. WEAPONS OFFLINE now means all three weapons are dark.
+- **Fog (1d).** An enemy pew round, its fire flash or its hit at an unseen point is hidden. The crew's own rounds, MANUAL beam and MANUAL torpedo are always shown.
+- **Bots (2).** The scripted gunner keeps Decision 20's first-tick move of pew pew's bar to the beam, because its AUTO laser fights with the beam. So the bots never fire pew pew; its pew is unpowered after the move.
+- **Determinism.** The goldens got a same-version bless at 57 for the merged gameplay (duel-1: 10929 ticks, crew loss). Then SIM_VERSION went 57 → 58 on its own, proved by the canonical trace and the duel oracle: 21 runs, 207903 ticks and 645 fields, unchanged per tick.
+- **Gates at 58.** `npx tsc -b` and `npx electron-vite build` pass. The full suite has 466 files: 5684 tests pass and 2 are skipped, the two balance bands below (kind c). `npm run test:duel-app-runtime` passed in 172 s.
+- **Balance bands (kind c, skipped, limits unchanged).**
+  - Hound duel: median 164.4 s (band 180 to 300). The crew wins 1 and loses 9, with no ends at the cap and no planet ends under 30 s. A passive crew's median is 129.7 s, the shortest 99.5 s.
+  - Valkyrn: median 168.0 s (band 180 to 300). The crew wins 1 and the Hunter 9. The gun hit 3357 of 3853 shots (87.1 %).
+  - As before, the bots never move bars, so these figures say little about a human crew.
