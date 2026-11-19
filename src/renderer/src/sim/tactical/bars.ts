@@ -42,3 +42,20 @@ export function damageCapacity(sys: Pick<ShipSystems, 'rooms'>, k: number): numb
 export function effectiveBars(sys: Pick<ShipSystems, 'rooms' | 'bars'>, k: number): number {
   return Math.min(sys.bars[k]!, damageCapacity(sys, k));
 }
+
+// ---- Engines (Task 8; Engineering spike spec §10.2, Amendment 2; isolated) ----
+/** Spec §10.2: the top forward throttle level at each effective Engines bar count 0..5: 1 bar = 25 %, capped at 4. */
+export const THROTTLE_CAP_BY_BARS: readonly number[] = [0, 1, 2, 3, 4, 4];
+/** Spec §10.2: the thrust and turn factor at each effective Engines bar count; the overdrive bar adds 25 %. */
+export const ENGINE_FACTOR_BY_BARS: readonly number[] = [0, 1, 1, 1, 1, 1.25];
+/** The crew ship's top forward throttle level now. */
+export function throttleCap(sys: Pick<ShipSystems, 'rooms' | 'bars'>): number { return THROTTLE_CAP_BY_BARS[effectiveBars(sys, DuelSystem.Engines)]!; }
+/** Whether throttle `level` is allowed now: up to the cap, and reverse (-1) only with a bar (a cap above 0). */
+export function throttleAllowed(sys: Pick<ShipSystems, 'rooms' | 'bars'>, level: number): boolean {
+  const cap = throttleCap(sys);
+  return level === -1 ? cap > 0 : level <= cap;
+}
+/** The nearest allowed level to `level` (the bots' throttle, Decision 16): itself, else the cap for forward, else 0. */
+export function levelWithinCap(sys: Pick<ShipSystems, 'rooms' | 'bars'>, level: number): number {
+  return throttleAllowed(sys, level) ? level : level > 0 ? throttleCap(sys) : 0;
+}

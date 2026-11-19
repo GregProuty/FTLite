@@ -49,7 +49,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
     s.x = 0; s.y = -300; s.vx = 0; s.vy = 150; s.heading = 128;           // falling south onto the planet, nose south
     const input = scriptedInput(pair, d);
     expect(input.held[0]).toEqual({ moveX: 1, moveY: 0, interactHeld: false });   // dead astern of the away direction: clockwise
-    expect(input.commands.filter((e) => e.id.player === 0).map((e) => e.command)).toEqual([{ kind: 'throttle', level: 4 }]);   // and full throttle
+    expect(input.commands.filter((e) => e.id.player === 0).map((e) => e.command)).toEqual([{ kind: 'throttle', level: 3 }]);   // and full throttle: Engineering spike spec §10.2 (fallout a, Decision 16): the Engines cap at the start is 3 (was 4)
     disposeDuel(d);
   });
   it('the nearest free character (the gunner, 5 tiles away) walks to an Engines repair, fixes it and sits again', () => {

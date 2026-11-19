@@ -8,6 +8,7 @@ import { Health, Life, LifeState, Position, Seated } from '../components';
 import { roomAt, solidAt } from '../grid';
 import { inReachOfTile } from '../interact';
 import { stationOnline } from '../stations';
+import { levelWithinCap } from '../tactical/bars';
 import { hx, hy } from '../tactical/direction';
 import { inArc, sideOf } from '../tactical/geometry';
 import { autoFaceTurn } from '../tactical/hunter';
@@ -323,7 +324,7 @@ export function scriptedInput(pair: ScriptedPair, d: DuelState): DuelInput {
       const axes = helmAxes(pair, d);
       pair.axes = axes;
       // Artemis spec §5.5: the throttle stands for the wanted thrust (1 → 4, 0 → 0, −1 → −1), sent only when it changes.
-      const level = axes.thrust > 0 ? THROTTLE_MAX : axes.thrust < 0 ? THROTTLE_MIN : 0;
+      const level = levelWithinCap(d.tactical.systems[0], axes.thrust > 0 ? THROTTLE_MAX : axes.thrust < 0 ? THROTTLE_MIN : 0);   // Engineering spike Decision 16: within the Engines cap (3 at the start)
       if (level !== d.throttle) cmds[pid]!.push({ kind: 'throttle', level });
       held[pid] = axes.face ? { moveX: 0, moveY: 0, interactHeld: false, face: true } : { moveX: axes.turn, moveY: 0, interactHeld: false };
     } else if (seat === d.weapons) {

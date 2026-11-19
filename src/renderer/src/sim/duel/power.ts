@@ -7,6 +7,7 @@ import { igniteRoom } from '../hazards/fire';
 import { vector, type ModuleField, type SimModule } from '../module';
 import { damageCapacity, DUEL_SYSTEM_COUNT, OVERDRIVE_SYSTEMS, REACTOR_BARS, SYSTEM_MAX } from '../tactical/bars';
 import { HEAT_COOL_IDLE, HEAT_COOL_UNIT, HEAT_MAX, HEAT_RISE, OVERHEAT_FIRE_CHANCE } from '../tuning';
+import { clampThrottle } from './engines';
 import type { DuelState } from './state';
 export {
   DuelSystem, DUEL_SYSTEM_COUNT, OVERDRIVE_SYSTEMS, SYSTEM_MAX, SYSTEM_SLOTS, SYSTEM_TACTICAL_ROOM, REACTOR_BARS, START_BARS, knock, damageCapacity, effectiveBars
@@ -65,6 +66,7 @@ export function cycleDuelCoolant(d: DuelState, system: number): 'applied' | 'noo
 export function clampToCapacity(d: DuelState): void {
   const b = barsOf(d);
   for (let k = 0; k < DUEL_SYSTEM_COUNT; k++) { const cap = capacityOf(d, k); if (b[k]! > cap) b[k] = cap; }
+  clampThrottle(d);   // Task 8, spec §10.2
 }
 
 /** Spec §3, one hazard tick, systems 0..3 in ascending index: overdriven +HEAT_RISE − coolant; idle −HEAT_COOL_IDLE;

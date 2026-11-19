@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DuelSystem } from '../src/renderer/src/sim/tactical/bars';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { Position } from '../src/renderer/src/sim/components';
@@ -99,6 +100,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
   });
   it('Tab takes the other character on one tick, clears the keyboard and leaves the old one neutral; a seated one stays present', () => {
     const { rt, hold, press, tick, cleared } = rig();
+    rt.duel.tactical.systems[0].bars[DuelSystem.Engines] = 4;   // Engineering spike spec §10.2 (fallout a): Engines starts at 3 bars (cap 3); a throttle of 4 needs the 4th bar
     hold({ moveY: -1 }); press('throttleUp', 'throttleUp', 'throttleUp', 'throttleUp'); tick();   // Artemis-ii: full throttle; held W no longer thrusts
     expect(rt.held()[0]).toEqual({ moveX: 0, moveY: -1, interactHeld: false });
     expect(rt.axes()).toEqual({ turn: 0, thrust: 1 });
@@ -610,6 +612,7 @@ describe('the Artemis console clicks (Artemis spec §4.1, §6.1)', () => {
 describe('the Helm throttle (Artemis spec §5.4)', () => {
   it('W and S step it a notch a press, clamped to −1..4, and it holds with no key down', () => {
     const { rt, press, tick, ticks } = rig();
+    rt.duel.tactical.systems[0].bars[DuelSystem.Engines] = 4;   // Engineering spike spec §10.2 (fallout a): Engines starts at 3 bars (cap 3); a throttle of 4 needs the 4th bar
     press('throttleUp'); tick();
     expect([rt.duel.throttle, rt.throttle(), rt.axes()]).toEqual([1, 1, { turn: 0, thrust: 0.25 }]);
     press('throttleUp', 'throttleUp', 'throttleUp', 'throttleUp'); tick();

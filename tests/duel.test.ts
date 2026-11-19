@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DuelSystem } from '../src/renderer/src/sim/tactical/bars';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { inReachOfTile } from '../src/renderer/src/sim/interact';
@@ -85,6 +86,7 @@ describe('consoles are roles (spec §8, §13)', () => {
     step(d, [], [{ moveX: 1, moveY: 0, interactHeld: false }, NONE]);
     expect(s.heading).toBe((h0 + 1) % 256);                              // 1.78 steps per tick: one whole step on the first tick
     const coast = createSeatedDuel(layout, 5), thrust = createSeatedDuel(layout, 5), held = createSeatedDuel(layout, 5);
+    thrust.tactical.systems[0].bars[DuelSystem.Engines] = 4;   // Engineering spike spec §10.2 (fallout a): Engines starts at 3 bars (cap 3); a throttle of 4 needs the 4th bar
     step(coast); step(thrust, [cmd(thrust, 0, { kind: 'throttle', level: 4 })]); step(held, [], [{ moveX: 0, moveY: -1, interactHeld: false }, NONE]);
     const [a, b, w] = [coast.tactical.ships[0], thrust.tactical.ships[0], held.tactical.ships[0]];
     const dx = b.vx - a.vx, dy = b.vy - a.vy;                           // the velocity full throttle added this tick

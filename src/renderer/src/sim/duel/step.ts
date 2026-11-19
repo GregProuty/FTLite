@@ -11,6 +11,7 @@ import { roomAt } from '../grid';
 import { fireStep } from '../hazards/fire';
 import { oxygenStep } from '../hazards/oxygen';
 import { movementSystem } from '../movement';
+import { throttleAllowed } from '../tactical/bars';
 import { stepDuel } from '../tactical/duel';
 import { autoFaceTurn, headingTurn } from '../tactical/hunter';
 import { scanCommand } from '../tactical/science';
@@ -20,6 +21,7 @@ import { HAZARD_EVERY } from '../tuning';
 import { rockAlive } from '../tactical/rocks';
 import { canCharge, canLaunch, validRockLock, validTarget, type ShipInput } from '../tactical/weapons';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
+import { clampThrottle } from './engines';
 import { extinguishRoomWork, extinguishWork, firePhase, pointBurning } from './fire';
 import { applyHitDamage, healthPhase } from './health';
 import { followingSeed } from './seeds';
@@ -253,6 +255,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (helm < 0 || e.id.player !== helm) { result(e, 'invalid-seat'); continue; }
     if (!validThrottle(level)) { result(e, 'malformed'); continue; }
+    if (!throttleAllowed(d.tactical.systems[0], level)) { result(e, 'unavailable'); continue; }   // Task 8, spec §10.2: the Engines cap
     if (level === d.throttle) { result(e, undefined, 'noop'); continue; }
     d.throttle = level; result(e);
   }
@@ -314,6 +317,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     else if (c.kind === 'shipDoor') { toggleDoor(d, c.edge); result(e); }
     else if (c.kind === 'shipAirlock') { toggleAirlock(d, c.index); result(e); }
   }
+  clampThrottle(d);   // Task 8, spec §10.2: an Engines bar removed this tick lowers the throttle before the axes read it
   for (const e of input.commands) if (e.command.kind === 'rematch') result(e, 'duel-running');
   for (const e of input.commands) if (!DUEL_KINDS.includes(e.command.kind)) result(e, 'not-in-duel');
   // Artemis spec §5.3: held moveX turns, the throttle thrusts; held moveY no longer does. Feel-i (console feel spec §2):
