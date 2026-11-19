@@ -240,3 +240,53 @@ Confirmed: sin 5° is about 3.56 indices, which isn't more than a 4-index step. 
 
 ---
 
+# Round 3 (delta, reviewing 5d95232c, effort medium, 54 s, 176794 in / 139430 cached / 4635 out)
+
+Verdict: ready
+
+## Findings
+
+### [P3] R3-F1 §8 says tests set compressor through createDuel options, but the named opts object only carries helmBars, and a snapshot restore drops helmBars
+§5 now defines the option as `opts: { helmBars?: number }` only. §8's lead-in still says the tests 'set HELM_BARS and compressor through createDuel options', so the two texts disagree on where a test's starting compressor comes from. Several tests depend on that start: 'compressor 0 (cap 1000)', 'HELM_BARS 3 with compressor 3', and the new unattended test, which needs thrMille 1000 and so needs compressor 0. Separately, snapshot.ts rebuilds the duel with a five-argument createDuel. A restored duel therefore always gets helmBars 4, which is consistent with 'online uses the default' but isn't stated. · spec L225-L227 (opts: { helmBars?: number }); spec L342 ('set HELM_BARS and compressor through createDuel options'); spec L345, L350, L375; src/renderer/src/sim/duel/snapshot.ts:L203 (createDuel(layout, seed, 0, playerCount, crewClass)); state.ts:L84 · A subagent will either add `compressor` to opts (an interface §5 doesn't define) or guess at a field write or helmPower commands. A round-trip test on a helmBars-3 duel would silently restore at 4. · Reword L342: tests set `helmBars` through createDuel's opts and reach a compressor value by writing `d.compressor` after creation, or by sending helmPower. Add to §5 or §7 that a snapshot restore (snapshot.ts L203) uses the default helmBars, like the online authority.
+
+## Prior findings
+- R1-F9: resolved — §5 L248-L249 now uses max(0, min(3, compressor − lost, HELM_BARS)). Checked: from 4 bars with compressor 1, losing 2 gives compressor 0 and ENGINE 2, so bars come off COMPRESSOR first, then ENGINE. From compressor 3, losing 1 gives compressor 2 and ENGINE stays 1. Merge note (a)-(c) at L250-L257 covers the start split as an owner call, the engine factor reading Engines effective bars, and SIM_VERSION going to whichever spike merges second.
+- R2-F1: resolved — §3 L140-L148 states the unattended newtonianHelm rule: crew.helm = true, the heading turn, helmBoost(d, NO_HELD), crewThrust(thrMille), and rcs 0. It mirrors the existing helmHoldsUnattended branch (step.ts L284-L286). §7 step 2 (L318-L319) references it, and the §8 test is at L375-L376. crew.helm is read only by duel.ts L32 for flight, so setting it unattended has no other side effects. thrust comes after the step-3 ramp, which matches step 7.
+- R2-F2: resolved — §5 L225-L227 names the sixth parameter, its storage as d.helmBars and the pass-through in startRound (step.ts L125). §7 L311-L315 adds DUEL_NOT_SNAPSHOTTED entries for helmBars and helmVent (modules.ts L92 shape), helmPower in commands, unavailable in reasons (modules.ts L63-L64) and the test-list update. A leftover inconsistency at L342 and the snapshot restore are raised as a new P3.
+- R2-F3: resolved — BOOST_FACE_SIN is sin 6°, which is 6×256/360 ≈ 4.27 indices, more than the 4 whole indices a boosted tick can step (2 × 1.778 plus the accumulator). The settle test at L373-L374 now names helmTurn (step.ts L109).
+
+## Verified
+- The unattended rule matches today's helmHoldsUnattended branch (step.ts L284-L286), and crew.helm is read only by tactical/duel.ts L32
+- helmTurn (step.ts L109-L116) orders moveX, then face, then aim, then held heading. With NO_HELD it falls through to headingTurn, so helmBoost(d, NO_HELD) checks the held heading's band
+- createDuel is positional with five parameters (state.ts L84). startRound (step.ts L125), runtime.ts L251, duelRules.ts L31 and snapshot.ts L203 are its callers
+- helmModule commands and reasons (modules.ts L63-L64) and DUEL_NOT_SNAPSHOTTED (modules.ts L92-L99) have the shape §7 assumes
+- Arithmetic for the losing-bars formula and for sin 6° in heading indices
+
+## Not verified
+- Line ranges of situationModel.stateAxes L106-L110 and runtime.ts sentAxes L321-L322: not re-read, because they were already cited by R2-F1's evidence
+- tests/duelModules.test.ts's pinned lists: not re-read, because the spec only says to update them
+
+---
+
+# Round 3 response (spec revised)
+
+Reviewed `round-3.json` against the subject at `5d95232c`. Verdict ready. 1 accepted (P3), 0 rejected, 0 deferred. The reviewer confirmed R1-F9 and R2-F1 to R2-F3 as resolved.
+
+## R3-F1 [P3]: §8 says tests set compressor through createDuel options
+
+Confirmed: §5's `opts` carries only `helmBars`, and snapshot.ts L203 calls a five-argument `createDuel`.
+- §8's lead-in now says tests set `helmBars` through `opts`, and reach a compressor value by writing `d.compressor` or sending `helmPower`.
+- §5 states that a snapshot restore uses the default `helmBars`, like the online authority.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-18-playtest2feedback-design.md
+
+<!-- end -->
+
+---
+

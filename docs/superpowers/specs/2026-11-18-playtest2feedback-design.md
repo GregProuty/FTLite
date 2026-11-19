@@ -224,7 +224,8 @@ in tuning files and tuned in playtest.
 - **The budget:** the Helm has a budget of `HELM_BARS` bars.
   - In this spike it's a stand-in of 4. `createDuel` gains a sixth parameter, `opts: { helmBars?: number } = {}`,
     stored as `d.helmBars` (default 4), so tests can set 0-5. `startRound` passes `d.helmBars` through to the next
-    round's `createDuel`. The online authority and client always use the default.
+    round's `createDuel`. The online authority and client always use the default, and so does a snapshot restore
+    (`snapshot.ts` L203 calls `createDuel` without `opts`).
   - When the Engineering spike lands, it becomes the Engines system's effective bars.
 - **The split:** the pilot splits the budget: `helm.compressor`, from 0 to `min(3, HELM_BARS)`, and ENGINE is
   `HELM_BARS − compressor`.
@@ -339,7 +340,8 @@ The changes are in `ui/duel/HelmStation.tsx`, the console models (`render/duel/c
 
 ## 8. Tests
 
-The tests that need a budget other than the stand-in set `HELM_BARS` and `compressor` through `createDuel` options.
+The tests that need a budget other than the stand-in set `helmBars` through `createDuel`'s `opts`. They reach a
+starting compressor value by writing `d.compressor` after `createDuel`, or by sending `helmPower`.
 
 - **Throttle:**
   - With compressor 0 (cap 1000), held W reaches 1000 in 143 ticks.
