@@ -390,9 +390,6 @@ export function scriptedInput(pair: ScriptedPair, d: DuelState): DuelInput {
         if (level !== d.throttle) cmds[pid]!.push({ kind: 'throttle', level });
       }
       const lever = crewHelm && thr !== 0 ? { throttleHeld: thr } : {};
-      // Playtest2feedback (Task 8 gate, knob 0): the scripted crew moves its compressor bar to ENGINE (cap 1000), since it
-      // never vents a thruster (Decision 8). It limits itself: applied, compressor is 0. A scripted-pair choice, not a rule.
-      if (crewHelm && d.compressor > 0) cmds[pid]!.push({ kind: 'helmPower', delta: 1 });
       // Playtest2feedback §4a, §7: the crew Helm turns by aim or face, never moveX (the Valkyrn class still turns by moveX).
       held[pid] = axes.face ? { moveX: 0, moveY: 0, interactHeld: false, face: true, ...lever }
         : crewHelm ? { moveX: 0, moveY: 0, interactHeld: false, aim: axes.aim, ...lever } : { moveX: axes.turn, moveY: 0, interactHeld: false, ...lever };

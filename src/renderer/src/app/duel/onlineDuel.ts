@@ -245,8 +245,6 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== (headingSent ? headingSent.heading : d.holdHeading)) {
         const id = send({ kind: 'heading', heading }); if (id) headingSent = { heading, sequence: id.sequence, round: d.round };
       }
-      const power = k.power ?? 0;
-      for (let n = 0; n < Math.abs(power); n++) send({ kind: 'helmPower', delta: power > 0 ? 1 : -1 });
       // §4a: a hold steers once the map gives a bearing (a press over a block or the ship steers nothing yet).
       const off = refusal(d, 'turn'), held = k.held ?? NO_HELD_FLAGS, steering = pointer.leftHeld(), steered = steering && steerNow !== null;
       if (off) {

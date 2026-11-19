@@ -9,7 +9,7 @@ import { validateMap } from '../tactical/map';
 import { classIndexById, DUEL_CLASSES, ShipClass } from '../tactical/defs';
 import { createTacticalState, Room, type TacticalState } from '../tactical/state';
 import { createPowerState, type PowerState } from './power';
-import { DUEL_REPAIR_POINTS, HELM_BARS, HELM_BARS_MAX, RCS_TANK } from './tuning';
+import { DUEL_REPAIR_POINTS, RCS_TANK } from './tuning';
 import { noVent, type HelmVent } from './helmFlight';
 
 /** Sci-2 spec §3: a duel crew is 2, 3 or 4 players, fixed for the run. Every value indexed by player is n long. */
@@ -67,14 +67,11 @@ export interface DuelState {
   /** The helm module (Feel-ii spec §1.1): the heading index 0..255 the Helm holds (click-to-heading), or −1 for none.
    *  Set by the `heading` command; A/D or auto-face held at the Helm clears it. −1 in a fresh duel and every new round. */
   holdHeading: number;
-  /** Playtest2feedback §3, §4, §5 (the helm module): the crew Helm's held throttle in per mille, −250..1000; the cold gas
-   *  tank, 0..RCS_TANK, and its compressor's sixtieths, 0..59; the COMPRESSOR share of the Helm's bars, 0..min(3,
-   *  helmBars). A fresh duel and every new round: 0, a full tank, 0, min(1, helmBars). A class that is not newtonianHelm
-   *  (the Valkyrn) holds them unused. */
-  thrMille: number; rcsGas: number; rcsAcc: number; compressor: number;
-  /** §5: the Helm's bar budget, a duel option (createDuel's opts.helmBars, default HELM_BARS) carried into the next round;
-   *  not state (DUEL_NOT_SNAPSHOTTED). */
-  helmBars: number;
+  /** Playtest2feedback §3, §4 (the helm module): the crew Helm's held throttle in per mille, −250..1000; the cold gas
+   *  tank, 0..RCS_TANK, and its compressor's sixtieths, 0..59. A fresh duel and every new round: 0, a full tank, 0. A class
+   *  that is not newtonianHelm (the Valkyrn) holds them unused. Owner 2026-11-19: no COMPRESSOR share and no Helm bar
+   *  budget; the throttle's cap is Engineering's Engines bars. */
+  thrMille: number; rcsGas: number; rcsAcc: number;
   /** §4: this tick's vented thruster axes and boost, per-tick scratch for the puffs and the hiss; not state. */
   helmVent: HelmVent;
   /** Valkyrn spec §6.1: the crew slot's class index (SHIP_CLASSES): createDuel's `cls`, else the layout's `shipClass`,
@@ -94,13 +91,11 @@ export interface DuelState {
  * since xpSystem never runs), every door in auto (closed), quirk 3 (Engineering spike spec §4, §5), every player standing at the layout's spawns in player order with
  * every console free (start-aboard spec §1; `helmPlayer` is kept for the round module and the wire but seats no one),
  * and a tactical state from the same seed, its crew slot of class `cls` (else the layout's `shipClass`, else the Cutter;
- * Valkyrn spec §6.1), whose map must validate. Round 0, beginning on tick 0, the throttle at STOP. Playtest2feedback §5: opts.helmBars is the Helm's bar budget (default HELM_BARS); the round starts with compressor min(1, helmBars). Throws if the crew,
+ * Valkyrn spec §6.1), whose map must validate. Round 0, beginning on tick 0, the throttle at STOP. Throws if the crew,
  * the Helm player, the class, the map or a repair point is invalid, so a bad seed or layout fails loudly; the crew and
  * class checks run before anything is allocated.
  */
-export function createDuel(layout: ShipLayout, seed: number, helmPlayer = 0, crew: number = DUEL_CREW_MIN, cls?: number, opts: { helmBars?: number } = {}): DuelState {
-  const helmBars = opts.helmBars ?? HELM_BARS;   // playtest2feedback §5: tests set 0..HELM_BARS_MAX; the app and a restore use the default
-  if (!Number.isInteger(helmBars) || helmBars < 0 || helmBars > HELM_BARS_MAX) throw new Error(`invalid duel helm bars ${String(helmBars)}`);
+export function createDuel(layout: ShipLayout, seed: number, helmPlayer = 0, crew: number = DUEL_CREW_MIN, cls?: number): DuelState {
   if (!Number.isInteger(crew) || crew < LOCAL_CREW_MIN || crew > DUEL_CREW_MAX) throw new Error(`invalid duel crew ${String(crew)}`);
   if (layout.crew !== undefined && layout.crew !== crew) throw new Error(`duel layout ${layout.id} is crewed by ${layout.crew}, not ${crew}`);   // Valkyrn spec §4.4: one source
   if (crew > layout.spawns.length) throw new Error(`duel layout ${layout.id} has ${layout.spawns.length} spawns, too few for a crew of ${crew}`);
@@ -132,7 +127,7 @@ export function createDuel(layout: ShipLayout, seed: number, helmPlayer = 0, cre
     const systemRooms = [pointRoom(Room.Shields), pointRoom(Room.Weapons), pointRoom(Room.Engines),
       science >= 0 ? interior.derived.stationRoom[science]! : pointRoom(Room.Weapons), ls >= 0 ? interior.derived.stationRoom[ls]! : -1];   // Engineering spike Decision 3
     return { interior, tactical, present: Array<boolean>(crew).fill(true), repair: [0, 0, 0], points, nav, weapons, science, events: [], round: 0, helmPlayer, baseTick: 0, decidedTick: -1, throttle: 0, holdHeading: -1, crewClass,
-      thrMille: 0, rcsGas: RCS_TANK, rcsAcc: 0, compressor: Math.min(1, helmBars), helmBars, helmVent: noVent(),   // playtest2feedback §4, §5: 3 + 1 with the stand-in
+      thrMille: 0, rcsGas: RCS_TANK, rcsAcc: 0, helmVent: noVent(),   // playtest2feedback §3, §4
       power: createPowerState(), systemRooms };
   } catch (err) {
     disposeSimState(interior);   // release its entities and component storage before rethrowing

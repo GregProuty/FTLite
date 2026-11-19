@@ -61,17 +61,17 @@ export const helmModule: SimModule<DuelState> = {
   id: 'helm',
   fields: () => HELM,
   notSnapshotted: {},
-  commands: ['throttle', 'heading', 'helmPower'],   // playtest2feedback §5: the crew Helm's power split
-  reasons: ['invalid-seat', 'malformed', 'stale-tick', 'unavailable']   // playtest2feedback §3, §5: throttle and helmPower on the wrong class or out of range
+  commands: ['throttle', 'heading'],   // owner 2026-11-19: no helmPower (the crew Helm's cap is Engineering's Engines bars)
+  reasons: ['invalid-seat', 'malformed', 'stale-tick', 'unavailable']   // playtest2feedback §3: throttle on the crew Helm's class; Engineering spike §10.2: above the Engines cap
 };
 const HELM: ModuleField<DuelState>[] = [
   scalar('throttle', (d) => d.throttle, (d, v) => { d.throttle = v; }),
   scalar('holdHeading', (d) => d.holdHeading, (d, v) => { d.holdHeading = v; }),
-  // Playtest2feedback §7: the crew Helm's held throttle, the cold gas tank, its compressor's sixtieths, the COMPRESSOR share.
+  // Playtest2feedback §7: the crew Helm's held throttle, the cold gas tank and its compressor's sixtieths (owner 2026-11-19:
+  // no COMPRESSOR share).
   scalar('thrMille', (d) => d.thrMille, (d, v) => { d.thrMille = v; }),
   scalar('rcsGas', (d) => d.rcsGas, (d, v) => { d.rcsGas = v; }),
-  scalar('rcsAcc', (d) => d.rcsAcc, (d, v) => { d.rcsAcc = v; }),
-  scalar('compressor', (d) => d.compressor, (d, v) => { d.compressor = v; })
+  scalar('rcsAcc', (d) => d.rcsAcc, (d, v) => { d.rcsAcc = v; })
 ];
 
 /** The duel ship (the Hound) interior: today's SimState, through the sector snapshot path (flatten / unflatten, validated). */
@@ -102,7 +102,6 @@ export const DUEL_NOT_SNAPSHOTTED: Readonly<Record<string, string>> = {
   science: 'the Science station index, from the layout',
   crewClass: 'the crew slot\'s class: hashed and snapshotted as the ship module\'s systems.0.cls, and in the snapshot header (Valkyrn spec §6.1)',
   events: 'per-tick repair events, cleared every tick',
-  helmBars: 'the Helm\'s bar budget: a duel option fixed per duel, createDuel\'s opts.helmBars (playtest2feedback §5)',
   helmVent: 'per-tick scratch: this tick\'s vented thruster axes and boost, recomputed every running tick (playtest2feedback §4)',
   systemRooms: 'each system\'s interior room, derived from the layout by createDuel (Engineering spike Decision 3)'
 };

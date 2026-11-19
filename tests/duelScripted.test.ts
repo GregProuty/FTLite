@@ -92,7 +92,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
       for (const e of input.commands) { kinds.add(e.command.kind); expect(e.requestedTick).toBe(d.interior.tick); }
       expect(stepDuelTick(d, input).every((r) => r.status === 'applied')).toBe(true);
     }
-    expect([...kinds].sort()).toEqual(['helmPower', 'laserLock', 'sit', 'stand', 'torpLock', 'weaponPower']);   // FTL targeting spec §3: the gunner fires by targets; Engineering spike Decision 20 (kept at the merge, brief decision 2): it moves pew pew's bar to the beam, so no pewFire (W-1 gave the gunner pewFire: kind a, replaced rule); playtest2feedback: no throttle commands on the Cutter, and helmPower (the Task 8 gate's knob 0, the compressor bar to ENGINE)
+    expect([...kinds].sort()).toEqual(['laserLock', 'sit', 'stand', 'torpLock', 'weaponPower']);   // FTL targeting spec §3: the gunner fires by targets; Engineering spike Decision 20 (kept at the merge, brief decision 2): it moves pew pew's bar to the beam, so no pewFire (W-1 gave the gunner pewFire: kind a, replaced rule); playtest2feedback: no throttle commands on the Cutter; owner 2026-11-19: no helmPower (the Task 8 gate's knob 0, the compressor bar to ENGINE, has no split to move)
     disposeDuel(d);
   });
 });

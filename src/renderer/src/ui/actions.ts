@@ -59,7 +59,6 @@ export function createUiActions(deps: UiActionDeps) {
     rockLock: (weapon, rock) => consoleInput?.rockLock?.(weapon, rock),
     throttle: (level) => consoleInput?.throttle(level),
     frequency: (freq) => consoleInput?.frequency(freq),
-    helmPower: (delta) => consoleInput?.helmPower?.(delta),   // playtest2feedback §5: a HELM POWER cell
     ship: (command) => consoleInput?.ship?.(command),
     weaponPower: (slot, delta) => consoleInput?.weaponPower?.(slot, delta)
   };

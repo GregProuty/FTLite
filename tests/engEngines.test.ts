@@ -14,6 +14,7 @@ import { flySlot, shipEngineFactor } from '../src/renderer/src/sim/tactical/phys
 import { predictFlight } from '../src/renderer/src/sim/tactical/predict';
 import { cloneShip, createTacticalState, Room } from '../src/renderer/src/sim/tactical/state';
 import { DEFAULT_FLIGHT } from '../src/renderer/src/sim/tactical/tuning';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 
@@ -34,13 +35,13 @@ describe('engineering spike: Engines bars (spec §10.2)', () => {
   it('the prediction flies exactly as the ship does at the overdrive factor', () => {
     const s = createTacticalState(2);
     s.systems[0].bars[DuelSystem.Engines] = 5;
-    const axes = { turn: 1, thrust: 1 }, path = predictFlight(s, 0, axes, 30, 1).points, ship = cloneShip(s.ships[0]);
+    const axes = { turn: 1, thrust: 1 }, path = predictFlight(s, 0, axes, 30, 1, DEFAULT_FLIGHT).points, ship = cloneShip(s.ships[0]);   // the merge with playtest2feedback (kind a): the Cutter's slot predicts CREW_FLIGHT by default, so this pins the flight both sides fly
     const live = { ...s, ships: [ship, s.ships[1]] as typeof s.ships };
     for (let k = 0; k < 30; k++) flySlot(live, 0, axes, DEFAULT_FLIGHT);
     expect(path[path.length - 1]).toEqual({ x: ship.x, y: ship.y });
   });
   it('a throttle above the cap is unavailable; reverse needs a bar; a lowered cap lowers the stored throttle the same tick', () => {
-    const d = createDuel(HOUND, 5);
+    const d = createDuel(HOUND, 5, 0, 2, ShipClass.Valkyrn);   // owner 2026-11-19 (kind a): the throttle levels and their cap are the Valkyrn's; the crew Helm's held throttle is tests/crewThrottle.test.ts
     try {
       sitDown(d.interior, 0, d.nav);
       expect(step(d, [env(d, 0, { kind: 'throttle', level: 4 })])[0]).toMatchObject({ status: 'rejected', reason: 'unavailable' });   // start: 3 bars, 75 %

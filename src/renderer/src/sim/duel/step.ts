@@ -17,9 +17,9 @@ import { stepDuel } from '../tactical/duel';
 import { autoFacePoint, autoFaceTurn, headingTurn } from '../tactical/hunter';
 import { contactSeen, scanCommand, shipSeen } from '../tactical/science';
 import { BOOST_FAR, HEADING_COUNT, RCS_TURN_BOOST, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
-import { classOf, CONTACT_MAX_LEVEL, Outcome, Room, type Axes } from '../tactical/state';
+import { classOf, CONTACT_MAX_LEVEL, Outcome, type Axes } from '../tactical/state';
 import { hx, hy } from '../tactical/direction';
-import { engineFactor } from '../tactical/physics';
+import { shipEngineFactor } from '../tactical/physics';
 import { HAZARD_EVERY } from '../tuning';
 import { rockAlive } from '../tactical/rocks';
 import { canCharge, canLaunch, manualLaserReady, validRockLock, validTarget, type ShipInput } from '../tactical/weapons';
@@ -33,7 +33,7 @@ import { applyPower, clampToCapacity, cycleDuelCoolant, duelHeatStep, OVERDRIVE_
 import { duelInjection, patchWork, toggleAirlock, toggleDoor, validAirlock, validDoor, workJob } from './hazards';
 import { throttleThrust, validHoldHeading, validThrottle } from './throttle';
 import { createDuel, disposeDuel, type DuelState } from './state';
-import { compress, compressorMax, crewThrust, engineBars, heldAxis, noVent, rampThrottle, throttleCap, throttleFloor, vents } from './helmFlight';
+import { compress, crewThrust, engineBars, heldAxis, noVent, rampThrottle, throttleCap, throttleFloor, vents } from './helmFlight';
 import { BOOST_FACE_SIN, RCS_GAS_PER_TICK, RCS_TURN_GAS, REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
 
 export interface DuelInput { held: readonly HeldInput[]; commands: readonly DuelEnvelope[] }
@@ -43,7 +43,7 @@ const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 const WEAPON_ORDER = ['laserMode', 'torpMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire'] as const;
 /** Every duel command kind the step handles; any other kind is rejected not-in-duel. */
 const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserMode', 'torpMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency',
-  'shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock', 'weaponPower', 'helmPower'];   // Engineering spike spec §7, §10.3; playtest2feedback §5
+  'shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock', 'weaponPower'];   // Engineering spike spec §7, §10.3
 /** Engineering spike spec §7: the ship-view commands. */
 const SHIP_KINDS = new Set(['shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock']);
 
@@ -152,7 +152,7 @@ export function headingDelta(heading: number, target: number): number {
 /** Playtest2feedback §4a: the crew turn's boost this tick, RCS_TURN_BOOST or 1. It is boosted on a newtonianHelm class when
  *  all of these hold:
  *  - helmTurn turns;
- *  - the Engines turn the ship at all;
+ *  - the Engines turn the ship at all (Engineering's engine factor, from the effective Engines bars, above 0);
  *  - the tank holds RCS_TURN_GAS;
  *  - the target is far. For the aim or the held heading, far is |headingDelta| > BOOST_FAR. For auto-face, the led target
  *    lies outside BOOST_FACE_SIN of the nose, or behind it.
@@ -160,7 +160,7 @@ export function headingDelta(heading: number, target: number): number {
  *  before the step: the step and the app's prediction both call it. */
 export function helmBoost(d: DuelState, h: HeldInput): number {
   const t = d.tactical, cls = classOf(t, 0);
-  if (!cls.newtonianHelm || helmTurn(d, h) === 0 || engineFactor(cls, t.systems[0].rooms[Room.Engines]) <= 0 || d.rcsGas < RCS_TURN_GAS) return 1;
+  if (!cls.newtonianHelm || helmTurn(d, h) === 0 || shipEngineFactor(t, 0) <= 0 || d.rcsGas < RCS_TURN_GAS) return 1;
   const heading = t.ships[0].heading;
   if (h.face === true) {
     const p = autoFacePoint(t, 0), dist = Math.sqrt(p.x * p.x + p.y * p.y), h0 = hx(heading), h1 = hy(heading);
@@ -175,7 +175,7 @@ export function helmBoost(d: DuelState, h: HeldInput): number {
  *  and a held input (so flyShip with them flies exactly what crewHelm's tick flies, final review M3):
  *  - the turn and its boost (helmTurn, helmBoost);
  *  - the thrust of one ramp step on the held throttle from `thrMille` (the duel's by default, or the app's local
- *    prediction of it), clamped to the ENGINE share's floor and cap as the step clamps it;
+ *    prediction of it), clamped to the Engines bars' floor and cap as the step clamps it (owner 2026-11-19);
  *  - the held thrusters that the tank would let vent, the boost's gas first and then fore/aft before side, as the step
  *    spends it.
  *  Pure. */
@@ -193,7 +193,8 @@ export function crewAxes(d: DuelState, h: HeldInput, thrMille: number = d.thrMil
  *  attended (`h` is the attendant's held input) or not (null). In order:
  *  - the turn and its boost, from the state before the step;
  *  - a held aim becomes the held heading, and auto-face clears it (moveX never touches it on this class);
- *  - the throttle ramp on the attendant's throttleHeld (0 with no attendant), clamped to the ENGINE share's floor and cap;
+ *  - the throttle ramp on the attendant's throttleHeld (0 with no attendant), clamped to the Engines bars' floor and cap
+ *    (owner 2026-11-19: Engineering's effective Engines bars, after this tick's ship commands);
  *  - the boost's gas, then the fore/aft and then the side thruster, each venting a tick's gas when the attendant holds it
  *    and the tank holds it;
  *  - the compressor, every running tick, attended or not;
@@ -210,7 +211,7 @@ function crewHelm(d: DuelState, h: HeldInput | null, crew: ShipInput): void {
   d.thrMille = rampThrottle(d.thrMille, h ? heldAxis(h.throttleHeld) : 0, throttleFloor(engine), throttleCap(engine));
   if (boost === RCS_TURN_BOOST) d.rcsGas -= RCS_TURN_GAS;
   const rcsY = ventAxis(d, h ? heldAxis(h.rcsY) : 0), rcsX = ventAxis(d, h ? heldAxis(h.rcsX) : 0);
-  const c = compress(d.rcsGas, d.rcsAcc, d.compressor); d.rcsGas = c.gas; d.rcsAcc = c.acc;
+  const c = compress(d.rcsGas, d.rcsAcc); d.rcsGas = c.gas; d.rcsAcc = c.acc;
   d.helmVent = { x: rcsX, y: rcsY, boosted: boost === RCS_TURN_BOOST, turn: boost === RCS_TURN_BOOST ? Math.sign(turn) || 0 : 0 };
   crew.helm = true;
   crew.axes = { turn, turnBoost: boost, thrust: crewThrust(d.thrMille), rcsX, rcsY };
@@ -229,7 +230,7 @@ function ventAxis(d: DuelState, want: number): number {
  * launch. A round started at `tick` behaves as a fresh duel started at 0 (tests/duelRounds.test.ts).
  */
 function startRound(d: DuelState, tick: number): void {
-  const next = createDuel(d.interior.layout, followingSeed(d.tactical.seed), d.helmPlayer, d.interior.playerCount, d.crewClass, { helmBars: d.helmBars });   // Valkyrn spec §6.1: the class carries over; playtest2feedback §5: so does the bar budget
+  const next = createDuel(d.interior.layout, followingSeed(d.tactical.seed), d.helmPlayer, d.interior.playerCount, d.crewClass);   // Valkyrn spec §6.1: the class carries over
   next.present = d.present.slice();   // Sci-2 spec §7: an empty seat stays away in the next round
   next.round = d.round + 1; next.baseTick = tick; next.decidedTick = -1;
   next.interior.tick = tick; next.tactical.tick = tick;
@@ -389,19 +390,6 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (!validHoldHeading(h)) { result(e, 'malformed'); continue; }
     if (h === d.holdHeading) { result(e, undefined, 'noop'); continue; }
     d.holdHeading = h; result(e);
-  }
-  // Playtest2feedback §5: the Helm's power split, checked like the heading: stale, the Helm attendant, the class (only a
-  // newtonianHelm class splits its bars), the delta (±1; Decision 7), then the range 0..min(3, helmBars) for the
-  // COMPRESSOR share. +1 moves a bar to ENGINE. Envelope order holds within a tick.
-  for (const e of input.commands) if (e.command.kind === 'helmPower') {
-    const delta: number = e.command.delta;
-    if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
-    if (helm < 0 || e.id.player !== helm) { result(e, 'invalid-seat'); continue; }
-    if (!classOf(d.tactical, 0).newtonianHelm) { result(e, 'unavailable'); continue; }
-    if (delta !== 1 && delta !== -1) { result(e, 'malformed'); continue; }
-    const next = d.compressor - delta;
-    if (next < 0 || next > compressorMax(d.helmBars)) { result(e, 'unavailable'); continue; }
-    d.compressor = next; result(e);
   }
   // Sci-1 (spec §5), against the seats as they now stand: every laserFrequency in envelope order, then every designate,
   // then every contactScan; each is checked for stale-tick first, and within a kind the last applied wins.

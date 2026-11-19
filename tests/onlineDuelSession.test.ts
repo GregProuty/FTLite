@@ -570,13 +570,13 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
 describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () => {
   const headings = (c: Stub) => c.commands().filter((x) => x.kind === 'heading');
   const ask = (r: ReturnType<typeof rig>, heading: number): void => { (h.sceneOpts.at(-1) as unknown as { requests: { heading(n: number): void } }).requests.heading(heading); r.pump(); };
-  it('held W rides the frame as throttleHeld and one Digit1 press sends exactly one helmPower +1', () => {
+  it('held W rides the frame as throttleHeld and a Digit1 press sends no helmPower (owner 2026-11-19)', () => {
     const r = rig(0), c = r.attach();
     r.key('keydown', 'KeyW'); r.key('keydown', 'Digit1'); r.pump(); r.pump(); r.pump();
     r.key('keyup', 'Digit1'); r.pump();
     expect(c.helds().at(-1)!.throttleHeld).toBe(1);
     expect(c.helds().slice(-3).every((x) => x.throttleHeld === 1)).toBe(true);
-    expect(c.commands().filter((x) => x.kind === 'helmPower')).toEqual([{ kind: 'helmPower', delta: 1 }]);
+    expect(c.commands().filter((x) => (x.kind as string) === 'helmPower')).toEqual([]);
     r.dispose();
   });
   it('A is a thruster here: it does not clear the held heading, so the same heading asked again is deduped', () => {

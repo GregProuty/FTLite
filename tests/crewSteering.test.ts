@@ -78,7 +78,6 @@ describe('the gas boost (spec §4a)', () => {
   it('a far turn with gas runs at 2× and spends 4 gas a tick', () => {
     const d = still();
     try {
-      d.compressor = 0;
       expect(helmBoost(d, { ...NONE, aim: 100 })).toBe(RCS_TURN_BOOST);
       step(d, { ...NONE, aim: 100 });
       expect(nose(d)).toBeCloseTo(RCS_TURN_BOOST * TURN_STEPS_PER_TICK, 9);
@@ -90,7 +89,7 @@ describe('the gas boost (spec §4a)', () => {
   it('under 4 gas, inside the band, with no turn, or with the Engines failed it runs at 1× and spends nothing', () => {
     const d = still();
     try {
-      d.compressor = 0; d.rcsGas = 3;
+      d.rcsGas = 3; d.rcsAcc = 0;   // owner 2026-11-19: one compressor rate; 50 sixtieths a tick add nothing in one tick
       step(d, { ...NONE, aim: 100 });
       expect(nose(d)).toBeCloseTo(TURN_STEPS_PER_TICK, 9);
       expect([d.rcsGas, d.helmVent.boosted, d.helmVent.turn]).toEqual([3, false, 0]);

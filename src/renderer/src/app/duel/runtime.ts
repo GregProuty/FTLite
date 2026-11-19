@@ -255,7 +255,7 @@ export interface DuelRuntime {
 
 const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserMode' || c.kind === 'torpMode' || c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'rockLock' || c.kind === 'laserCharge' || c.kind === 'laserFire' || c.kind === 'missileLaunch' || c.kind === 'pewFire';
 /** The commands only a seated console's player sends (Weapons, the Helm's throttle, Sci-1's three): a Tab or a stand drops them. */
-const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'heading' || c.kind === 'helmPower' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';
+const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'heading' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';
 const NO_REQUESTS: ContactRequests = { designate: null, scan: null };
 const NEUTRAL: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 const IDLE_KEYS = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() });
@@ -465,8 +465,6 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     if (crewHelmSeat(d, active)) {   // playtest2feedback §3-§5: W/S, the thrusters and the steer go out on the held frame
       if (p.camera > 0) snapBack(cameras.helm);
       if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== headingBase(k.fireHeld)) queue({ kind: 'heading', heading });   // RMB; only auto-face clears the hold
-      const power = k.power ?? 0;
-      for (let n = 0; n < Math.abs(power); n++) queue({ kind: 'helmPower', delta: power > 0 ? 1 : -1 });   // 1 to ENGINE, 2 to COMPRESSOR
       // §4a: a hold steers once the map gives a bearing (a press over a block or the ship steers nothing yet).
       const off = refusal(d, 'turn'), held = k.held ?? NO_HELD_FLAGS, steering = deps.steerHeld?.() ?? false, steered = steering && steerNow !== null;
       if (off) {

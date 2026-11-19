@@ -1,7 +1,8 @@
 // Playtest2feedback (spec 2026-11-18-playtest2feedback-design §3, §4, §4a, §5, §6): Single player's crew Helm: the keys
-// (W/S held, A/D Q/E and the arrows as thrusters, 1 and 2 as power), the held frame (moveX 0, the three fields, the
-// steer's aim only while the left button is held), helmPower presses, no throttle commands, the NO PRESSURE and steer
-// refusals, the predicted axes, the Helm map's steer bearing, and the state's axes for an unattended crew Helm.
+// (W/S held, A/D Q/E and the arrows as thrusters), the held frame (moveX 0, the three fields, the steer's aim only while
+// the left button is held), no throttle commands, the NO PRESSURE and steer refusals, the predicted axes, the Helm map's
+// steer bearing, and the state's axes for an unattended crew Helm. Owner 2026-11-19 (replaced rule, kind a): 1 and 2 are
+// no longer power keys and no helmPower is sent.
 import { describe, expect, it } from 'vitest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
@@ -33,17 +34,15 @@ function fakeTarget() {
 const key = (code: string) => ({ code, repeat: false, preventDefault() {} });
 
 describe('the crew Helm\'s keys (spec §3, §4, §5)', () => {
-  it('W/S hold the throttle; A Q ← and D E → push port and starboard; ↑ ↓ fore and aft; opposite keys cancel; 1 and 2 are power', () => {
+  it('W/S hold the throttle; A Q ← and D E → push port and starboard; ↑ ↓ fore and aft; opposite keys cancel; 1 and 2 are not power', () => {
     const t = fakeTarget(), kb = createDuelKeyboard(t);
     const sample = (codes: string[]): KeySample => { for (const c of codes) t.fire('keydown', key(c)); const s = kb.sample(); for (const c of codes) t.fire('keyup', key(c)); return s; };
     expect([sample(['KeyW']).throttleHeld, sample(['KeyS']).throttleHeld, sample(['KeyW', 'KeyS']).throttleHeld, sample([]).throttleHeld]).toEqual([1, -1, 0, 0]);
     for (const c of ['KeyA', 'KeyQ', 'ArrowLeft']) expect(sample([c]).rcsX, c).toBe(-1);
     for (const c of ['KeyD', 'KeyE', 'ArrowRight']) expect(sample([c]).rcsX, c).toBe(1);
     expect([sample(['KeyA', 'KeyD']).rcsX, sample(['ArrowUp']).rcsY, sample(['ArrowDown']).rcsY, sample(['ArrowUp', 'ArrowDown']).rcsY]).toEqual([0, 1, -1, 0]);
-    expect([sample(['Digit1']).power, sample(['Digit2']).power, sample(['Digit1', 'Digit1']).power]).toEqual([1, -1, 1]);   // the same key held twice is one press
-    kb.ui.helmPower?.(-1); kb.ui.helmPower?.(-1);
-    expect(kb.sample().power).toBe(-2);
-    expect(kb.sample().power).toBe(0);
+    for (const c of ['Digit1', 'Digit2']) expect(Object.keys(sample([c])), c).not.toContain('power');   // owner 2026-11-19
+    expect(Object.keys(kb.ui)).not.toContain('helmPower');
   });
   it('crewHelmHeld leaves every zero field out and sends the steer as aim', () => {
     expect(crewHelmHeld({ throttleHeld: 1, rcsX: -1, rcsY: 0 }, 64)).toEqual({ throttleHeld: 1, rcsX: -1, aim: 64 });
@@ -88,7 +87,7 @@ function rig() {
   let keys = idle(), steer: number | null = null, holding = false;
   const rt = createDuelRuntime({
     now: time.now, scheduler: time.scheduler, seed: 5, viewport: { w: 1280, h: 720 }, layout,
-    sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses(), power: 0 }; return k; },
+    sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses() }; return k; },
     samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }),
     takeSteer: () => { const s = steer; steer = null; return s; }, steerHeld: () => holding
   });
@@ -113,13 +112,13 @@ describe('Single player at the crew Helm (spec §3, §4, §4a, §5)', () => {
     expect(r.rt.thrMille()).toBe(r.rt.duel.thrMille);
     r.rt.dispose();
   });
-  it('1 and 2 send helmPower', () => {
+  it('sends no helmPower and holds the throttle under the Engines cap (owner 2026-11-19)', () => {
     const r = rig();
     r.tick();
-    r.set({ power: 1 }); r.tick(); r.tick();
-    expect(r.rt.duel.compressor).toBe(0);
-    r.set({ power: -2 }); r.tick(); r.tick();
-    expect(r.rt.duel.compressor).toBe(2);
+    r.set({ throttleHeld: 1 });
+    for (let k = 0; k < 200; k++) r.tick();
+    expect(r.rt.duel.thrMille).toBe(750);   // Engineering's start: 3 Engines bars
+    expect(r.rt.lastResults().length).toBe(0);
     r.rt.dispose();
   });
   it('steers by the held left button only: the steer is the held aim, and let go there is none', () => {
@@ -137,7 +136,7 @@ describe('Single player at the crew Helm (spec §3, §4, §4a, §5)', () => {
   it('a thruster press with under a tick\'s gas says NO PRESSURE; a steer with the Engines off says ENGINES OFFLINE', () => {
     const r = rig();
     r.tick();
-    Object.assign(r.rt.duel, { rcsGas: 0, compressor: 0 });
+    Object.assign(r.rt.duel, { rcsGas: 0, rcsAcc: 0 });
     r.set({ rcsX: 1 }); r.tick();
     expect(r.rt.takeRefusals()).toContainEqual({ control: 'thrusters', reason: 'NO PRESSURE' });
     r.rt.duel.tactical.systems[0].rooms[Room.Engines] = 2;

@@ -47,7 +47,7 @@ describe('createDuel (spec §8)', () => {
 
 describe('DuelState shape', () => {
   it('has exactly these fields; a new field must also go into flattenDuel in duel/hash.ts', () => {
-    expect(Object.keys(createSeatedDuel(layout, 5)).sort()).toEqual(['baseTick', 'decidedTick', 'events', 'helmPlayer', 'interior', 'nav', 'points', 'present', 'repair', 'round', 'science', 'tactical', 'throttle', 'weapons', 'holdHeading', 'crewClass', 'thrMille', 'rcsGas', 'rcsAcc', 'compressor', 'helmBars', 'helmVent', 'power', 'systemRooms'].sort());   // Engineering spike spec §7: power (hashed) and systemRooms (derived, not snapshotted); Valkyrn-i: crewClass is hashed as systems.0.cls (plan Decision 4)
+    expect(Object.keys(createSeatedDuel(layout, 5)).sort()).toEqual(['baseTick', 'decidedTick', 'events', 'helmPlayer', 'interior', 'nav', 'points', 'present', 'repair', 'round', 'science', 'tactical', 'throttle', 'weapons', 'holdHeading', 'crewClass', 'thrMille', 'rcsGas', 'rcsAcc', 'helmVent', 'power', 'systemRooms'].sort());   // Engineering spike spec §7: power (hashed) and systemRooms (derived, not snapshotted); Valkyrn-i: crewClass is hashed as systems.0.cls (plan Decision 4)
   });
   it('disposeDuel is idempotent', () => {
     const d = createSeatedDuel(layout, 5);

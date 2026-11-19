@@ -29,8 +29,6 @@ export const INTERACT_HELD = 'KeyE', FIRE_HELD = 'Space';
 export const PING_CODE = 'KeyG';
 /** Playtest2feedback §4: the crew Helm's cold gas keys: A, Q and ← push to port, D, E and → to starboard, ↑ forward, ↓ aft. */
 export const RCS_CODES = { port: ['KeyA', 'KeyQ', 'ArrowLeft'], starboard: ['KeyD', 'KeyE', 'ArrowRight'], fore: ['ArrowUp'], aft: ['ArrowDown'] } as const;
-/** Playtest2feedback §5: 1 moves a Helm bar to ENGINE (helmPower +1), 2 to COMPRESSOR (−1). */
-export const POWER_CODES: Readonly<Record<string, 1 | -1>> = { Digit1: 1, Digit2: -1 };
 
 /** The merged held state a console draws (spec §6.1): Space, A, D, W, S from the keys or the console's buttons. */
 export interface HeldFlags { fire: boolean; left: boolean; right: boolean; up: boolean; down: boolean }
@@ -43,8 +41,6 @@ export type HoldCode = 'Space' | 'KeyA' | 'KeyD' | 'KeyW' | 'KeyS';
 export interface ConsoleInput { press(action: KeyAction): void; hold(code: HoldCode, on: boolean): void; lock(room: number): void; torpLock(room: number): void; throttle(level: number): void; frequency(freq: number): void;
   /** Spike ii §6.5: a weapon card's right-click clear of a rock target (rock −1); optional so older fakes still fit. */
   rockLock?(weapon: 'laser' | 'torpedo', rock: number): void;
-  /** Playtest2feedback §5: a HELM POWER cell's click (+1 to ENGINE, −1 to COMPRESSOR); optional so older fakes still fit. */
-  helmPower?(delta: 1 | -1): void;
   /** Engineering spike §6, §7: a ship-view click (a power column, a coolant counter, a door or an airlock). Optional, so
    *  the tests' console literals stay valid; callers use `?.`. */
   ship?(command: ShipCommand): void;
@@ -76,8 +72,6 @@ export interface KeySample {
   /** Playtest2feedback §3, §4: the crew Helm's held throttle (1 W, −1 S, 0 both or neither) and thrusters (rcsX −1 port,
    *  1 starboard; rcsY −1 aft, 1 forward; opposite keys cancel). createDuelKeyboard always sets them. */
   throttleHeld?: number; rcsX?: number; rcsY?: number;
-  /** Playtest2feedback §5: the net helmPower presses since the previous sample (1 and 2, and the HELM POWER cells). */
-  power?: number;
   /** Engineering spike §7: the ship-view commands clicked since the previous sample, oldest first; absent or empty for none. */
   ship?: ShipCommand[];
 }
@@ -139,7 +133,7 @@ export interface DuelKeyboardOptions { intercept?: (code: string) => boolean }
  *  it, and Fire's edges are the merged Space state's transitions. `clearUi` drops only the clicks. */
 export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOptions = {}): DuelKeyboard {
   const keys = new Set<string>(), ui = new Set<string>(), taken = new Set<string>(), stale = new Set<string>();
-  let presses = emptyPresses(), power = 0, lockTo: number | null = null, torpTo: number | null = null, rockTo: { weapon: 'laser' | 'torpedo'; rock: number } | null = null, throttleTo: number | null = null, freqTo: number | null = null;
+  let presses = emptyPresses(), lockTo: number | null = null, torpTo: number | null = null, rockTo: { weapon: 'laser' | 'torpedo'; rock: number } | null = null, throttleTo: number | null = null, freqTo: number | null = null;
   let ship: ShipCommand[] = [];   // Engineering spike §7: kept by clearUi, dropped by clear
   const has = (code: string): boolean => keys.has(code) || ui.has(code);
   /** I1: held for the crew Helm's fields: a console button's hold, or a key pressed since it went stale. */
@@ -150,7 +144,6 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     if (e.repeat) { if (taken.has(e.code)) return; }   // an OS repeat of a taken key stays taken
     else if (opts.intercept?.(e.code)) { taken.add(e.code); return; }   // taken (the contact window's Esc and T): no edge, not held
     if (!e.repeat && FREQ_CODES[e.code] !== undefined) freqTo = FREQ_CODES[e.code]!;
-    if (!e.repeat && !has(e.code) && POWER_CODES[e.code] !== undefined) power += POWER_CODES[e.code]!;   // playtest2feedback §5
     if (e.code === FIRE_HELD) { if (!e.repeat && !has(FIRE_HELD)) presses.fireDown++; }
     else if (e.code === MOVE_CODES.up && e.shiftKey === true) { if (!e.repeat) throttleTo = THROTTLE_MAX; }   // Feel-ii §1.4: Shift+W is full burn
     else { const action = PRESS_CODES[e.code]; if (action && !e.repeat) presses[action]++; }
@@ -164,8 +157,8 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     stale.delete(e.code);
     if (e.code === FIRE_HELD && was && !has(FIRE_HELD)) presses.fireUp++;
   };
-  const clearUi = (): void => { ui.clear(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; power = 0; };
-  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); stale.clear(); presses = emptyPresses(); power = 0; lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; ship = []; };
+  const clearUi = (): void => { ui.clear(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; };
+  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); stale.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; ship = []; };
   target.addEventListener('keydown', down as (e: never) => void);
   target.addEventListener('keyup', up as (e: never) => void);
   target.addEventListener('blur', clear as (e: never) => void);
@@ -181,7 +174,6 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     rockLock(weapon, rock) { rockTo = { weapon, rock }; },
     throttle(level) { throttleTo = level; },
     frequency(freq) { freqTo = freq; },
-    helmPower(delta) { power += delta; },   // playtest2feedback §5: a HELM POWER cell
     ship(command) { ship.push(command); if (ship.length > SHIP_QUEUE_MAX) ship.shift(); },
     weaponPower(slot, delta) { ship.push({ kind: 'weaponPower', slot, delta }); if (ship.length > SHIP_QUEUE_MAX) ship.shift(); }
   };
@@ -196,8 +188,8 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
       const any = (codes: readonly string[]): number => (codes.some(live) ? 1 : 0);
       const rcsX = any(RCS_CODES.starboard) - any(RCS_CODES.port), rcsY = any(RCS_CODES.fore) - any(RCS_CODES.aft);
       const throttleHeld = (live(MOVE_CODES.up) ? 1 : 0) - (live(MOVE_CODES.down) ? 1 : 0);
-      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, torpTo, rockTo, throttleTo, freqTo, throttleHeld, rcsX, rcsY, power, ...(ship.length > 0 ? { ship } : {}) };
-      presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; power = 0; ship = [];
+      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, torpTo, rockTo, throttleTo, freqTo, throttleHeld, rcsX, rcsY, ...(ship.length > 0 ? { ship } : {}) };
+      presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; ship = [];
       return out;
     },
     clear,

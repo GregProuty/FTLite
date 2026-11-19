@@ -50,41 +50,37 @@ describe('the gas (spec §4)', () => {
   it('each vented axis costs 8; with 8 gas and both held only rcsY vents; the tank never goes below 0', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
-      d.compressor = 0;
       step(d, { ...NONE, rcsY: 1 }); expect(d.rcsGas).toBe(RCS_TANK - 8);
+      d.rcsAcc = 0;   // owner 2026-11-19: one compressor rate, no share to switch off; 50 sixtieths add nothing in one tick
       step(d, { ...NONE, rcsX: -1, rcsY: -1 }); expect(d.rcsGas).toBe(RCS_TANK - 24);
-      d.rcsGas = 8;
+      d.rcsGas = 8; d.rcsAcc = 0;
       step(d, { ...NONE, rcsX: 1, rcsY: 1 });
       expect([d.rcsGas, d.helmVent]).toEqual([0, { x: 0, y: 1, boosted: false, turn: 0 }]);
-      d.rcsGas = 5;
-      for (let k = 0; k < 10; k++) step(d, { ...NONE, rcsX: 1, rcsY: 1 });
+      d.rcsGas = 5; d.rcsAcc = 0;
+      step(d, { ...NONE, rcsX: 1, rcsY: 1 });
       expect([d.rcsGas, d.helmVent]).toEqual([5, { x: 0, y: 0, boosted: false, turn: 0 }]);
     } finally { disposeDuel(d); }
   });
   it('only the Helm attendant vents: Weapons holding a thruster spends nothing', () => {
     const d = createSeatedDuel(CUTTER, 5);
-    try { d.compressor = 0; step(d, NONE, { ...NONE, rcsX: 1, rcsY: 1 }); expect([d.rcsGas, d.helmVent.x, d.helmVent.y]).toEqual([RCS_TANK, 0, 0]); } finally { disposeDuel(d); }
+    try { step(d, NONE, { ...NONE, rcsX: 1, rcsY: 1 }); expect([d.rcsGas, d.helmVent.x, d.helmVent.y]).toEqual([RCS_TANK, 0, 0]); } finally { disposeDuel(d); }
   });
-  it('the compressor refills an empty tank in exactly 1200, 600 and 400 ticks at 1 to 3 bars, attended or not; rcsAcc resets full', () => {
-    for (const [bars, ticks] of [[1, 1200], [2, 600], [3, 400]] as const) {
-      const d = createSeatedDuel(CUTTER, 5);
-      try {
-        Object.assign(d, { compressor: bars, rcsGas: 0, rcsAcc: 0 });
-        for (let k = 0; k < ticks - 1; k++) step(d);
-        expect(d.rcsGas, `${bars} bars at ${ticks - 1}`).toBeLessThan(RCS_TANK);
-        step(d);
-        expect([d.rcsGas, d.rcsAcc], `${bars} bars`).toEqual([RCS_TANK, 0]);
-      } finally { disposeDuel(d); }
-    }
+  it('the compressor refills an empty tank in exactly 1200 ticks, attended or not; rcsAcc resets full (owner 2026-11-19: one rate)', () => {
+    const d = createSeatedDuel(CUTTER, 5);
+    try {
+      Object.assign(d, { rcsGas: 0, rcsAcc: 0 });
+      for (let k = 0; k < 1199; k++) step(d);
+      expect(d.rcsGas).toBeLessThan(RCS_TANK);
+      step(d);
+      expect([d.rcsGas, d.rcsAcc]).toEqual([RCS_TANK, 0]);
+    } finally { disposeDuel(d); }
     const u = createSeatedDuel(CUTTER, 5);
     try {
-      Object.assign(u, { compressor: 2, rcsGas: 0, rcsAcc: 0 });
+      Object.assign(u, { rcsGas: 0, rcsAcc: 0 });
       stepDuelTick(u, { held: [NONE, NONE], commands: [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: u.interior.tick, command: { kind: 'stand' } }] });
-      for (let k = 1; k < 600; k++) step(u);
+      for (let k = 1; k < 1200; k++) step(u);
       expect(u.rcsGas).toBe(RCS_TANK);   // the compressor runs with the Helm empty
     } finally { disposeDuel(u); }
-    const z = createSeatedDuel(CUTTER, 5);
-    try { Object.assign(z, { compressor: 0, rcsGas: 0 }); for (let k = 0; k < 600; k++) step(z); expect(z.rcsGas).toBe(0); } finally { disposeDuel(z); }
   });
   it('helmVent is recomputed every tick and never moves the hash', () => {
     const d = createSeatedDuel(CUTTER, 5);

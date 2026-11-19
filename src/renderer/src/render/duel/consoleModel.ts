@@ -14,7 +14,7 @@ import { DuelSystem } from '../../sim/duel/power';
 import { throttleCap, trimmedWeaponPower, weaponBarsUsable, WeaponSlot } from '../../sim/tactical/bars';
 import { powerStrip, type ConsolePowerStrip } from './shipHudModel';
 import { engineBars, throttleCap as crewThrottleCap, throttleFloor } from '../../sim/duel/helmFlight';
-import { COMPRESSOR_RATE, RCS_TANK, THR_MAX, THR_MIN } from '../../sim/duel/tuning';
+import { RCS_TANK, THR_MAX, THR_MIN } from '../../sim/duel/tuning';
 export { THR_MAX, THR_MIN };   // playtest2feedback §6: the throttle bar's range, for the UI (which imports no sim values)
 
 export type ConsoleStation = 'helm' | 'weapons' | 'science' | 'flight' | 'ship';
@@ -26,12 +26,12 @@ export type ConsoleTabs = Record<TabKey, TabState> & { flight?: TabState };
 export type ConsoleTabActions = Record<TabKey, KeyAction | null> & { flight?: KeyAction | null };
 /** Feel-ii §2.8: a refused control on this block: which, the reason, and whether it is still in its flash. */
 export interface RefusedView { control: RefusedControl; reason: string; flash: boolean }
-/** Playtest2feedback §5, §6: the crew Helm's readings: the shown thrMille, the throttle's cap and floor from the ENGINE
- *  share, the tank in percent, the COMPRESSOR share, the bar budget, and the compressor's rate in tank percent a second. */
-export interface CrewHelmPanel { thrMille: number; cap: number; floor: number; gas: number; compressor: number; bars: number; rate: number }
+/** Playtest2feedback §6: the crew Helm's readings: the shown thrMille, the throttle's cap and floor, the tank in percent,
+ *  and (owner 2026-11-19, replacing §5's split) the effective Engines bars that set the cap and the floor. */
+export interface CrewHelmPanel { thrMille: number; cap: number; floor: number; gas: number; bars: number }
 export function crewPanel(d: DuelState, thrMille: number): CrewHelmPanel {
   const engine = engineBars(d);
-  return { thrMille, cap: crewThrottleCap(engine), floor: throttleFloor(engine), gas: Math.round((d.rcsGas * 100) / RCS_TANK), compressor: d.compressor, bars: d.helmBars, rate: COMPRESSOR_RATE[d.compressor]! / 10 };
+  return { thrMille, cap: crewThrottleCap(engine), floor: throttleFloor(engine), gas: Math.round((d.rcsGas * 100) / RCS_TANK), bars: engine };
 }
 export interface HelmPanel {
   heading: number; speed: number; held: HeldFlags; throttle: number; refused?: RefusedView | null; holdHeading?: number;
