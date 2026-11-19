@@ -654,6 +654,10 @@ The goal is bots that use pew pew and the autocannon. The crew bots lose all ten
 
 ### 13.3 SIM_VERSION and the bless
 
+**Version note (controller, 2026-11-19, after convergence).** Master moved to SIM_VERSION 60 with the fire-venting merge
+(0dbe1be6), after this spec was written. Every "SIM 59" in this spec means the version on master when W-4 starts (60),
+and every "SIM 60" means that version plus one (61). The W-4 plans read the version at their start and use V and V + 1.
+
 The repo's pattern, as the playtest2feedback merge did it (58e61a6d's parents):
 1. Re-pick the pinned whole-run fixtures (kind b) and replace the changed rules' tests (kind a, listed in §14).
 2. A same-version bless at SIM 59 for the new behaviour: `tests/golden/duel-1.json`, `duel-rematch.json` and the
