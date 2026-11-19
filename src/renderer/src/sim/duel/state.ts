@@ -7,7 +7,8 @@ import { createSimState, disposeSimState, type SimState } from '../state';
 import { StationKind } from '../stationKinds';
 import { validateMap } from '../tactical/map';
 import { classIndexById, DUEL_CLASSES, ShipClass } from '../tactical/defs';
-import { createTacticalState, type TacticalState } from '../tactical/state';
+import { createTacticalState, Room, type TacticalState } from '../tactical/state';
+import { createPowerState, type PowerState } from './power';
 import { DUEL_REPAIR_POINTS } from './tuning';
 
 /** Sci-2 spec §3: a duel crew is 2, 3 or 4 players, fixed for the run. Every value indexed by player is n long. */
@@ -69,6 +70,11 @@ export interface DuelState {
    *  else the Cutter. Hashed and snapshotted as the tactical `systems.0.cls`, which always equals it, and carried in the
    *  snapshot header; a rematch keeps it. */
   crewClass: number;
+  /** Engineering spike spec §3, §7: the power module (heat, coolant, failed per system); the bars are systems[0].bars. */
+  power: PowerState;
+  /** Engineering spike Decision 3: each system's interior room (Shields, Weapons, Engines: their repair point's room;
+   *  Sensors: the Science station's, else Weapons'; Oxygen: the Life Support station's, else −1). Derived from the layout. */
+  systemRooms: number[];
 }
 
 /**
@@ -107,7 +113,12 @@ export function createDuel(layout: ShipLayout, seed: number, helmPlayer = 0, cre
       if (room < 0 || roomAt(interior, tx + 0.5, ty + 0.5) !== room) throw new Error(`repair point ${p.room} ${tx},${ty} is not inside its room`);
       return { tacticalRoom: p.tacticalRoom, room, tile: ty * interior.derived.width + tx };
     });
-    return { interior, tactical, present: Array<boolean>(crew).fill(true), repair: [0, 0, 0], points, nav, weapons, science, events: [], round: 0, helmPlayer, baseTick: 0, decidedTick: -1, throttle: 0, holdHeading: -1, crewClass };
+    const pointRoom = (r: number): number => points.find((p) => p.tacticalRoom === r)?.room ?? -1;
+    const ls = interior.derived.stationOfKind[StationKind.LifeSupport] ?? -1;
+    const systemRooms = [pointRoom(Room.Shields), pointRoom(Room.Weapons), pointRoom(Room.Engines),
+      science >= 0 ? interior.derived.stationRoom[science]! : pointRoom(Room.Weapons), ls >= 0 ? interior.derived.stationRoom[ls]! : -1];   // Engineering spike Decision 3
+    return { interior, tactical, present: Array<boolean>(crew).fill(true), repair: [0, 0, 0], points, nav, weapons, science, events: [], round: 0, helmPlayer, baseTick: 0, decidedTick: -1, throttle: 0, holdHeading: -1, crewClass,
+      power: createPowerState(), systemRooms };
   } catch (err) {
     disposeSimState(interior);   // release its entities and component storage before rethrowing
     throw err;

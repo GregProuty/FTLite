@@ -10,6 +10,7 @@
 // bounded caches. Every check keeps its order; only the regeneration is shared. The cached tactical shape is read only
 // by validateTacticalValues and never leaves this module.
 import { hashF64 } from '../../../../shared/hash';
+import { POWER_VALUES, validatePowerValues } from './power';
 import { canonicalFields, type CanonicalField } from '../canonicalFields';
 import { deriveLayout, type Derived } from '../ship/derived';
 import type { ShipLayout } from '../ship/schema';
@@ -146,7 +147,7 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   // -0 is written as 0 (flattenDuel and here): no sim path distinguishes the two zeros (no 1/x, atan2 or Object.is on state),
   // so the snapshot and the live state hash and behave identically.
   const values = (snap.values as number[]).map((v) => (v === 0 ? 0 : v));
-  const space = seed.spaceLength, repairAt = 1 + space + n, roundAt = repairAt + 3, helmAt = roundAt + 4, interiorAt = helmAt + 2;
+  const space = seed.spaceLength, repairAt = 1 + space + n, roundAt = repairAt + 3, helmAt = roundAt + 4, powerAt = helmAt + 2, interiorAt = powerAt + POWER_VALUES;   // Engineering spike spec §7: power after helm
   if (values.length !== interiorAt + crew.interiorCount) throw new Error('duel snapshot length does not match the layout and map');
   if (values[0] !== SIM_VERSION) throw new Error('duel snapshot sim version does not match its values');
   if (values[2] !== h.seed) throw new Error('duel snapshot seed does not match its values');
@@ -176,6 +177,7 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   // Feel-ii (spec §1.1): the held heading, −1 or a heading index 0..255.
   const holdHeading = values[helmAt + 1]!;
   if (!validHoldHeading(holdHeading)) throw new Error(`duel snapshot held heading ${holdHeading} is invalid`);
+  validatePowerValues(values.slice(powerAt, interiorAt));   // Engineering spike spec §7: heat, coolant, failed
   const interior = values.slice(interiorAt);
   validateCanonicalValues(layout, derived, n, interior);
   // The identity values unflatten checks (flatten.ts), required here so nothing is allocated for a snapshot it would refuse.

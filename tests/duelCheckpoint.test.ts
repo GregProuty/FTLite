@@ -29,7 +29,7 @@ const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
  *  torpedoes; at SPLIT 5108). Seed 4 before that: a crew loss at tick 8859 with SPLIT 5193 (SIM_VERSION 45, the Hunter's grace; now a crew win at 9346); seed 7 before that: a crew loss at tick 8069 (8311 before Artemis-ii, SIM_VERSION 43; 7282 before duel health, SIM_VERSION 41; 8832 before duel fire), short enough to run to its end twice.
  *  SPLIT is the first tick from 5000 on that ends with a missile in flight, a damaged crew room and a repair in
  *  progress (found by stepping the scripted duel; the test asserts all three). */
-const SEED = 2, SPLIT = 7195;
+const SEED = 2, SPLIT = 6104;   // Engineering spike (SIM 55): was 7195 (the 1-layer shield start moved the run; first qualifying tick from 5000 on for seed 2)
 function runToEnd(h: DuelCore, driver: ReturnType<typeof createDriver>, hashes: string[], frames: ReplayFrame[] = [], until = Infinity) {
   while (h.state.duel.tactical.outcome === Outcome.Running && duelRules.tick(h.state) < until) {   // to the round's decision (H-2: the run itself never ends)
     for (const frame of stepScripted(h, driver)) { frames.push(frame); if (frame.action.kind === 'tick') hashes.push(frame.after!.hash); }
@@ -61,7 +61,7 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
         expect(resumed.state.summary).toEqual(end);
         expect(resumed.core.captureCheckpoint().modeMemory, 'the final telemetry accumulator of the restored run').toEqual(reference.core.captureCheckpoint().modeMemory);
         expect(end).toMatchObject({ outcome: Outcome.EnemyWins, ticks: referenceHashes.length,
-          terminal: [['laser'], []], laserReleases: [13, 24], laserHits: [22, 24], missilesLaunched: [6, 7], missileHits: [3, 3], repairsFinished: [3, 9] });   // seed 2 (SIM_VERSION 53, spike ii, the fan split at r 13)
+          terminal: [['laser'], []], laserReleases: [2, 20], laserHits: [3, 20], missilesLaunched: [1, 3], missileHits: [0, 2], repairsFinished: [10, 9] });   // Engineering spike (SIM 55): was releases [13, 24], hits [22, 24], launched [6, 7], missile hits [3, 3], repairs [3, 9]
         expect(Object.isFrozen(end)).toBe(true);
         expect(referenceHashes.length).toBeGreaterThan(SPLIT);
         console.log(`continuation proof: seed ${SEED}, ${SPLIT} + ${referenceHashes.length - SPLIT} ticks; summary ${JSON.stringify(end)}`);
