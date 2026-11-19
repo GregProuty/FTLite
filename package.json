@@ -24,6 +24,7 @@
     "test:internet-app-runtime": "tsx scripts/network/internet-app-smoke.ts",
     "test:bg-tab": "tsx scripts/web/bg-tab/run.ts",
     "test:web-net": "electron-vite build && tsx scripts/web/net/web-net-smoke.ts",
+    "test:web-live-local": "tsx scripts/web/live/local-smoke.ts",
     "package:candidate": "electron-builder --win --dir --publish never -c.win.signAndEditExecutable=false",
     "test:signalling": "npm --prefix services/signalling test",
     "typecheck:signalling": "npm --prefix services/signalling run typecheck",

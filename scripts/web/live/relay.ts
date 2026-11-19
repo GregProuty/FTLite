@@ -60,11 +60,13 @@ export const UI_READ_SOURCE = `(() => {
 
 const PHASES = ['idle', 'creating', 'joining', 'lobby', 'connecting', 'syncing', 'running', 'paused', 'reconnecting', 'saved', 'saving', 'rehosting', 'ended', 'error'];
 /** The session page prints the phase name (menuMessage), the lobby its title; an error replaces the status with its
- *  text, and the session page's `home` button (shown only for phase idle or error, SessionPage.tsx) then marks it (L-9). */
+ *  text, and the session page's `home` button (shown only for phase idle or error, SessionPage.tsx) then marks it (L-9).
+ *  Before the first status arrives the page prints "Connecting" and also shows `home` (status null), so that is not an error. */
 export function uiPhase(v: UiView): string {
   if (v.title === 'Lobby') return 'lobby';
   const s = (v.status ?? '').replace(/…$/, '');
   if (PHASES.includes(s)) return s;
+  if (s === 'Connecting') return 'connecting';
   if (v.retry || v.sessionHome || s.startsWith('Online stopped')) return 'error';
   if (v.home && s === 'Choose how to play.') return 'home';
   return 'other';

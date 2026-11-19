@@ -57,6 +57,9 @@ describe('the menu phase and the room code', () => {
     // A known-message error screen (menuMessage prints the ERRORS text) shows the session page's Return to menu button.
     expect(uiPhase(view({ status: 'Room not found. Check the code.', sessionHome: true }))).toBe('error');
     expect(uiPhase(view({ status: 'idle', sessionHome: true }))).toBe('idle');
+    // Before the first status the session page prints "Connecting" and shows Return to menu (status null): not an error.
+    expect(uiPhase(view({ status: 'Connecting…', sessionHome: true }))).toBe('connecting');
+    expect(uiPhase(view({ status: 'Connecting', sessionHome: true }))).toBe('connecting');
   });
   it('reads the room code from the lobby key or the strip', () => {
     expect(roomCodeOf(view({ roomCode: 'K7Q2MX' }))).toBe('K7Q2MX');

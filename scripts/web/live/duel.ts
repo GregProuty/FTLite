@@ -1,16 +1,21 @@
 // Web-iii live smoke, the duel (web build spec §8 "The live check"): a Chromium host and a Firefox guest (a second
 // Chromium context when Firefox is not installed, plan L-7) open the live site, pass the passcode form as a friend
 // would, host and join by code through the real menu with TURN forced (plan L-1), play 60 s (L-3) and leave. Relay is
-// proven from getStats (L-2). Not run in CI: it needs the owner's live deploy and passcode.
-import { chromium, firefox, type Browser, type BrowserContext, type Page } from 'playwright';
+// proven from getStats (L-2). Not run in CI: it needs the owner's live deploy and passcode. `mode: 'local'` (the
+// test:web-live-local smoke) drives the same menu against a local --test build with loopback ICE: no gate, no relay
+// hook, no relay verdict.
+import { chromium, firefox, type Browser, type BrowserContext, type LaunchOptions, type Page } from 'playwright';
 import { WRONG_PASSCODE_TEXT } from '../../../src/web/passcode';
 import { bounded, type GateKey } from '../net/players';
+import { LOOPBACK_CHROMIUM, LOOPBACK_FIREFOX } from '../net/stack';
 import { clip } from './headers';
 import { PEER_STATS_SOURCE, playStep, RELAY_INIT_SCRIPT, RELAY_SAMPLE_MS, relayVerdict, roomCodeOf, UI_READ_SOURCE, uiPhase,
   type LiveDuelReport, type PeerSample, type PlayState, type UiView } from './relay';
 
 /** Plan L-7: only Playwright's missing-browser error means "Firefox not installed". */
 const FIREFOX_MISSING = /Executable doesn't exist|npx playwright install/;
+/** Shown in place of a relay verdict when the local smoke skips it (loopback ICE has no relay to prove). */
+export const RELAY_NOT_CHECKED = 'not checked (local smoke, loopback ICE)';
 
 interface LivePlayer { readonly name: string; readonly page: Page; readonly context: BrowserContext; readonly errors: string[] }
 const delay = (ms: number) => new Promise<void>(done => setTimeout(done, ms));
@@ -40,46 +45,66 @@ async function until(p: LivePlayer, ok: (phase: string, view: UiView) => boolean
   }
   throw Error(`${p.name} ${label} timeout (last status: ${last?.status ?? 'none'})`);
 }
+/** Back to the home menu by whichever way out the page offers: Leave while the session runs, Return to menu once it is
+ *  idle or in error (a host whose guest left may pause with peer-lost and offer only that). */
+async function leaveToHome(p: LivePlayer, ms: number): Promise<void> {
+  const end = performance.now() + ms;
+  let last: UiView | null = null;
+  while (performance.now() < end) {
+    const v = await read(p); last = v;
+    if (v.home) return;
+    // A button can go between the read and the click as the session moves on; the next read decides again.
+    if (v.leave !== null) await click(p, 'leave', 2000).catch(() => {});
+    else if (v.sessionHome) await click(p, 'home', 2000).catch(() => {});
+    await delay(500);
+  }
+  throw Error(`${p.name} leave timeout (last status: ${last?.status ?? 'none'})`);
+}
 
-async function openPlayer(browser: Browser, name: string, url: string, passcode: string): Promise<LivePlayer> {
+async function openPlayer(browser: Browser, name: string, url: string, passcode: string, live: boolean): Promise<LivePlayer> {
   const context = await bounded(browser.newContext({ viewport: { width: 1280, height: 800 } }), 15000, `${name} context`);
-  await bounded(context.addInitScript({ content: RELAY_INIT_SCRIPT }), 4000, `${name} relay hook`);
+  if (live) await bounded(context.addInitScript({ content: RELAY_INIT_SCRIPT }), 4000, `${name} relay hook`);
   const page = await bounded(context.newPage(), 15000, `${name} page`), errors: string[] = [];
   page.on('pageerror', error => { if (errors.length < 20) errors.push(clip(String(error.message), [passcode], 200)); });
   const player: LivePlayer = { name, page, context, errors };
   const first = await bounded(page.goto(`${url}/`), 30000, `${name} load`);
-  if (first?.status() !== 401) throw Error(`${name}: the site answered ${first?.status() ?? 'nothing'} before the passcode (expected 401)`);
-  await bounded(page.fill('#code', passcode, { timeout: 5000 }), 6000, `${name} passcode field`);
-  await bounded(page.click('button[type="submit"]', { timeout: 5000 }), 6000, `${name} passcode submit`);
+  if (live) {
+    if (first?.status() !== 401) throw Error(`${name}: the site answered ${first?.status() ?? 'nothing'} before the passcode (expected 401)`);
+    await bounded(page.fill('#code', passcode, { timeout: 5000 }), 6000, `${name} passcode field`);
+    await bounded(page.click('button[type="submit"]', { timeout: 5000 }), 6000, `${name} passcode submit`);
+  } else if (first?.status() !== 200) throw Error(`${name}: the local page answered ${first?.status() ?? 'nothing'} (expected 200)`);
   const end = performance.now() + 30000;
   for (;;) {
     const v = await read(player).catch(() => null);   // the form posts and redirects: a read can land mid-navigation
     if (v?.home) break;
+    const unsupported = await bounded(page.evaluate(() => document.querySelector('[data-testid="online-unsupported"]')?.textContent ?? null), 4000, `${name} support`).catch(() => null);
+    if (unsupported !== null) throw Error(`${name}: the menu says online play is unsupported here: ${clip(unsupported.trim(), [passcode], 200)}`);
     const text = await bounded(page.evaluate(() => document.body?.innerText ?? ''), 4000, `${name} text`).catch(() => '');
-    if (text.includes(WRONG_PASSCODE_TEXT)) throw Error(`${name}: the passcode was refused (${WRONG_PASSCODE_TEXT})`);
-    if (performance.now() > end) throw Error(`${name}: the menu did not appear after the passcode`);
+    if (live && text.includes(WRONG_PASSCODE_TEXT)) throw Error(`${name}: the passcode was refused (${WRONG_PASSCODE_TEXT})`);
+    if (performance.now() > end) throw Error(`${name}: the menu did not appear${live ? ' after the passcode' : ''}`);
     await delay(250);
   }
-  if (!(await bounded(page.evaluate(() => typeof (globalThis as any).__ftliteLive === 'object'), 4000, `${name} relay check`)))
+  if (live && !(await bounded(page.evaluate(() => typeof (globalThis as any).__ftliteLive === 'object'), 4000, `${name} relay check`)))
     throw Error(`${name}: the relay hook did not load, so TURN would not be forced`);
   return player;
 }
 
-export async function runLiveDuel(o: { url: string; passcode: string; step(label: string): void; aborted(): boolean }): Promise<LiveDuelReport> {
-  const browsers: Browser[] = [], contexts: BrowserContext[] = [];
+export async function runLiveDuel(o: { url: string; passcode: string; step(label: string): void; aborted(): boolean; mode?: 'live' | 'local' }): Promise<LiveDuelReport> {
+  const live = (o.mode ?? 'live') === 'live', browsers: Browser[] = [], contexts: BrowserContext[] = [];
+  const launch = (loopback: LaunchOptions): LaunchOptions => live ? { headless: true } : loopback;
   try {
     o.step('browsers');
-    const chrome = await bounded(chromium.launch({ headless: true }), 60000, 'chromium launch'); browsers.push(chrome);
+    const chrome = await bounded(chromium.launch(launch(LOOPBACK_CHROMIUM)), 60000, 'chromium launch'); browsers.push(chrome);
     let fox: Browser | null = null;
-    try { fox = await bounded(firefox.launch({ headless: true }), 60000, 'firefox launch'); browsers.push(fox); }
+    try { fox = await bounded(firefox.launch(launch(LOOPBACK_FIREFOX)), 60000, 'firefox launch'); browsers.push(fox); }
     catch (error) {
       const text = String((error as Error)?.message ?? error);
       if (!FIREFOX_MISSING.test(text)) throw Error(`firefox launch failed (not a missing install): ${clip(text, [o.passcode], 300)}`);
       fox = null;
     }
-    o.step('passcode');
-    const host = await openPlayer(chrome, 'chromium-host', o.url, o.passcode); contexts.push(host.context);
-    const guest = await openPlayer(fox ?? chrome, `${fox ? 'firefox' : 'chromium'}-guest`, o.url, o.passcode); contexts.push(guest.context);
+    o.step(live ? 'passcode' : 'open');
+    const host = await openPlayer(chrome, 'chromium-host', o.url, o.passcode, live); contexts.push(host.context);
+    const guest = await openPlayer(fox ?? chrome, `${fox ? 'firefox' : 'chromium'}-guest`, o.url, o.passcode, live); contexts.push(guest.context);
 
     o.step('host and join');
     await click(host, 'multiplayer'); await click(host, 'host'); await click(host, 'crew-2'); await click(host, 'create-room');
@@ -97,8 +122,11 @@ export async function runLiveDuel(o: { url: string; passcode: string; step(label
     const sample = async (): Promise<void> => { samples.host.push(await stats(host)); samples.guest.push(await stats(guest)); };
     await sample();
     // The duel smoke's routes (best effort: a production page exposes no seat state): host to Weapons, guest to the Helm, then thrust.
-    for (const [key, ms] of [['KeyD', 3000], ['KeyW', 1500], ['KeyA', 300], ['KeyE', 120]] as const) await press(host, key, ms);
-    for (const [key, ms] of [['KeyD', 3000], ['KeyE', 120], ['KeyW', 2000]] as const) await press(guest, key, ms);
+    const script = async (p: LivePlayer, keys: readonly (readonly [GateKey, number])[]): Promise<void> => {
+      for (const [key, ms] of keys) { if (o.aborted()) throw Error('launcher timeout'); await press(p, key, ms); }
+    };
+    await script(host, [['KeyD', 3000], ['KeyW', 1500], ['KeyA', 300], ['KeyE', 120]]);
+    await script(guest, [['KeyD', 3000], ['KeyE', 120], ['KeyW', 2000]]);
     const play: PlayState = { endedAtMs: null };
     let endedEarly = false, nextSample = began + RELAY_SAMPLE_MS, phases = { host: 'running', guest: 'running' };
     for (;;) {
@@ -115,12 +143,12 @@ export async function runLiveDuel(o: { url: string; passcode: string; step(label
     const playedMs = Math.round(performance.now() - began);
 
     o.step('leave');
-    await click(guest, 'leave'); await until(guest, (phase, v) => v.home || phase === 'idle', 'left', 20000);
-    await click(host, 'leave'); await until(host, (phase, v) => v.home || phase === 'idle', 'left', 20000);
+    await leaveToHome(guest, 20000);
+    await leaveToHome(host, 20000);
 
-    const relay = { host: relayVerdict(samples.host), guest: relayVerdict(samples.guest) };
+    const relay = live ? { host: relayVerdict(samples.host), guest: relayVerdict(samples.guest) } : { host: RELAY_NOT_CHECKED, guest: RELAY_NOT_CHECKED };
     const pageErrors = [...host.errors, ...guest.errors];
-    const problems = [...(relay.host ? [`host relay: ${relay.host}`] : []), ...(relay.guest ? [`guest relay: ${relay.guest}`] : []),
+    const problems = [...(live && relay.host ? [`host relay: ${relay.host}`] : []), ...(live && relay.guest ? [`guest relay: ${relay.guest}`] : []),
       ...(pageErrors.length ? [`page errors: ${pageErrors.slice(0, 3).join(' | ')}`] : [])];
     return { hostBrowser: 'chromium', guestBrowser: fox ? 'firefox' : 'chromium (Firefox not installed)', playedMs, endedEarly, phases, samples, relay, pageErrors, problems };
   } finally {
