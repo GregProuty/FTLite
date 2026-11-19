@@ -1,0 +1,564 @@
+{
+  "simVersion": 60,
+  "switches": {
+    "massCube": true,
+    "softEdge": true,
+    "clusterTumble": true,
+    "rocheBreak": true
+  },
+  "feel": {
+    "seed": 2026,
+    "allOn": {
+      "rows": [
+        {
+          "rock": 29,
+          "r": 44.9,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 1,
+          "massShare": 1,
+          "turned": 2,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        },
+        {
+          "rock": 22,
+          "r": 44.4,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 1,
+          "massShare": 1,
+          "turned": 3,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        },
+        {
+          "rock": 17,
+          "r": 44.4,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 2,
+          "massShare": 1,
+          "turned": 2,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        },
+        {
+          "rock": 25,
+          "r": 44.3,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 2,
+          "massShare": 1,
+          "turned": 3,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        },
+        {
+          "rock": 26,
+          "r": 44.1,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 0,
+          "massShare": 1,
+          "turned": 2,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        },
+        {
+          "rock": 50,
+          "r": 44,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 2,
+          "massShare": 1,
+          "turned": 4,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": true
+          },
+          "pass": false
+        },
+        {
+          "rock": 21,
+          "r": 44,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 2,
+          "massShare": 1,
+          "turned": 2,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        },
+        {
+          "rock": 19,
+          "r": 43.5,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 3,
+          "massShare": 1,
+          "turned": 2,
+          "crit": {
+            "a": true,
+            "b": true,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        },
+        {
+          "rock": 52,
+          "r": 42.3,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 1,
+          "massShare": 1,
+          "turned": 3,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        },
+        {
+          "rock": 33,
+          "r": 41.7,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 1,
+          "massShare": 1,
+          "turned": 3,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        }
+      ],
+      "passing": 0,
+      "perCriterion": {
+        "a": 10,
+        "b": 1,
+        "c": 10,
+        "d": 1
+      },
+      "gatePass": false
+    },
+    "allOff": {
+      "rows": [
+        {
+          "rock": 29,
+          "r": 44.9,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 1,
+          "massShare": 1,
+          "turned": 2,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        },
+        {
+          "rock": 22,
+          "r": 44.4,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 2,
+          "massShare": 1,
+          "turned": 4,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": true
+          },
+          "pass": false
+        },
+        {
+          "rock": 17,
+          "r": 44.4,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 1,
+          "massShare": 1,
+          "turned": 2,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        },
+        {
+          "rock": 25,
+          "r": 44.3,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 3,
+          "massShare": 1,
+          "turned": 3,
+          "crit": {
+            "a": true,
+            "b": true,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        },
+        {
+          "rock": 26,
+          "r": 44.1,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 0,
+          "massShare": 1,
+          "turned": 2,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        },
+        {
+          "rock": 50,
+          "r": 44,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 2,
+          "massShare": 1,
+          "turned": 4,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": true
+          },
+          "pass": false
+        },
+        {
+          "rock": 21,
+          "r": 44,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 1,
+          "massShare": 1,
+          "turned": 2,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        },
+        {
+          "rock": 19,
+          "r": 43.5,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 5,
+          "massShare": 1,
+          "turned": 2,
+          "crit": {
+            "a": true,
+            "b": true,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        },
+        {
+          "rock": 52,
+          "r": 42.3,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 1,
+          "massShare": 1,
+          "turned": 3,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        },
+        {
+          "rock": 33,
+          "r": 41.7,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 1,
+          "massShare": 1,
+          "turned": 3,
+          "crit": {
+            "a": true,
+            "b": false,
+            "c": true,
+            "d": false
+          },
+          "pass": false
+        }
+      ],
+      "passing": 0,
+      "perCriterion": {
+        "a": 10,
+        "b": 2,
+        "c": 10,
+        "d": 2
+      },
+      "gatePass": false
+    }
+  },
+  "stress": {
+    "seeds": 20,
+    "ticks": 4000,
+    "restoreTicks": 1000,
+    "failures": [],
+    "safety": {
+      "edgeDust": 0,
+      "slotDust": 0,
+      "capHits": 0
+    },
+    "refused": {
+      "laneFar": 54
+    },
+    "gridChecks": 1320,
+    "safetyPass": true,
+    "tidalBreaks": 8,
+    "tidalPieces": 16,
+    "rejoins": {
+      "lane": 12,
+      "group": 0,
+      "own": 0
+    },
+    "stepDuelMs": {
+      "median": 0.0873,
+      "p99": 0.2787
+    },
+    "freeEvery10sMax": [
+      12,
+      15,
+      26,
+      25,
+      38,
+      43
+    ]
+  },
+  "cost": {
+    "flying": {
+      "seeds": [
+        1,
+        2,
+        3
+      ],
+      "ticks": 2000,
+      "liveMedian": 246,
+      "liveMin": 239,
+      "stepDuelMs": {
+        "median": 0.1911,
+        "p99": 0.516
+      },
+      "p99GateMs": 0.5,
+      "p99Pass": false
+    },
+    "settled": {
+      "seeds": [
+        1,
+        2,
+        3
+      ],
+      "ticks": 2000,
+      "liveMedian": 247,
+      "liveMin": 242,
+      "stepDuelMs": {
+        "median": 1.9956,
+        "p99": 3.9028
+      },
+      "p99GateMs": 0.5,
+      "p99Pass": false
+    },
+    "p99Pass": false
+  },
+  "idle": {
+    "seeds": 20,
+    "seconds": 600,
+    "freed": 0,
+    "perSeed": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "freedPass": true,
+    "deltas": [
+      {
+        "seed": 1,
+        "mine": [
+          860,
+          863,
+          863
+        ],
+        "master": [
+          860,
+          863,
+          863
+        ],
+        "pass": true
+      },
+      {
+        "seed": 2,
+        "mine": [
+          860,
+          863,
+          863
+        ],
+        "master": [
+          860,
+          863,
+          863
+        ],
+        "pass": true
+      },
+      {
+        "seed": 3,
+        "mine": [
+          860,
+          863,
+          863
+        ],
+        "master": [
+          860,
+          863,
+          863
+        ],
+        "pass": true
+      }
+    ],
+    "deltaPass": true
+  },
+  "burst": {
+    "rows": [
+      {
+        "seed": 1,
+        "peakFree": 44,
+        "backToTenAtS": -1,
+        "freeAt270": 17,
+        "deltaMedian": 1921,
+        "pass": false
+      },
+      {
+        "seed": 2,
+        "peakFree": 34,
+        "backToTenAtS": -1,
+        "freeAt270": 19,
+        "deltaMedian": 1775,
+        "pass": false
+      },
+      {
+        "seed": 3,
+        "peakFree": 41,
+        "backToTenAtS": -1,
+        "freeAt270": 17,
+        "deltaMedian": 1691,
+        "pass": false
+      }
+    ],
+    "gatePass": false
+  },
+  "burstWhy": [
+    {
+      "seed": 1,
+      "freeAtEnd": 17,
+      "refusedBy": {
+        "laneFar": 28,
+        "sweepCluster": 2070,
+        "sweepLane": 318,
+        "snap": 351,
+        "sweepRail": 11,
+        "overlap": 2
+      }
+    },
+    {
+      "seed": 2,
+      "freeAtEnd": 19,
+      "refusedBy": {
+        "laneFar": 42,
+        "sweepCluster": 1586,
+        "snap": 248,
+        "sweepLane": 125
+      }
+    },
+    {
+      "seed": 3,
+      "freeAtEnd": 17,
+      "refusedBy": {
+        "overlap": 30,
+        "laneFar": 203,
+        "sweepCluster": 1506,
+        "sweepLane": 277,
+        "snap": 304,
+        "sweepRail": 69
+      }
+    }
+  ]
+}
