@@ -2,7 +2,7 @@
 // on a damaging rock-rock contact, at most six a second, the boom first.
 import { describe, expect, it } from 'vitest';
 import type { ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
-import { ROCK_BOOM, ROCK_CRACK, ROCK_CRUNCH, ROCK_KNOCK, ROCK_SOUNDS_PER_S, rockSounds } from '../src/renderer/src/audio/rockSounds';
+import { ROCK_BOOM, ROCK_CRACK, ROCK_CRUNCH, ROCK_KNOCK, ROCK_SOUNDS_PER_S, ROCK_TOUCH, rockSounds } from '../src/renderer/src/audio/rockSounds';
 
 const pan = () => 0.1;
 const ev = (what: 'hit' | 'split' | 'dust' | 'blast' | 'bump', by: 'laser' | 'torpedo' | 'collision' | 'ram' | 'planet', rock = 1): ViewEvent =>
@@ -27,5 +27,8 @@ describe('rock sounds (spec §7 item 8)', () => {
     const evicted: ViewEvent = { ...ev('dust', 'laser'), evicted: true } as ViewEvent;
     expect(rockSounds(null, [lost, evicted], pan, 0).sounds).toEqual([]);
     expect(rockSounds(null, [ev('dust', 'laser')], pan, 0).sounds).toEqual([{ ...ROCK_CRUNCH, pan: 0.1 }]);
+  });
+  it('a touch plays the soft knock (asteroids-iii §5.6)', () => {
+    expect(rockSounds(null, [{ kind: 'rock', what: 'touch', by: 'collision', rock: 1, other: 2, x: 0, y: 0, r: 10, vx: 0, vy: 0, speed: 9 } as ViewEvent], pan, 0).sounds).toEqual([{ ...ROCK_TOUCH, pan: 0.1 }]);
   });
 });

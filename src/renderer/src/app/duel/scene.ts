@@ -27,7 +27,8 @@ import { countSit, createSitTracker, frameZoom, sitCard, trackSit, type SitSeat 
 import { shakeScale } from '../../render/shake';
 import { flashesFor, pushHits } from '../../render/tactical/hitModel';
 import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
-import { pushRockFx, pushRockShakes } from '../../render/tactical/rockFx';
+import { createRockTrack, resetRockTrack, updateRockTrack } from '../../render/tactical/rockTrack';
+import { holdFrame, pushRockFx, pushRockShakes } from '../../render/tactical/rockFx';
 import { hullFor } from '../../render/tactical/hullModel';
 import { interpolatedShip, pickContact, pickRock, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
 import { combatModel } from '../../render/tactical/weaponsModel';
@@ -206,6 +207,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
   root.addChild(scene);
   renderer.app.stage.addChild(root);
   const fx = createFx();
+  const rockTrack = createRockTrack();   // asteroids-iii §7.1: smooth motion and trails
   const sound = options.audio ? createDuelAudio(options.audio) : null;   // Audio-i spec section 4b: both modes, so Single player is no longer silent
   let epoch: number | null = null;
   // Feel-i (console feel spec §1, §3): the seat the local character sat at and when (presentation seconds), whether it has
@@ -226,7 +228,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       if (epoch === null) { epoch = source.epoch(); lastOutcome = source.duel.tactical.outcome; if (source.seed !== options.seed) layer.reseed(source.seed); }   // the online duel learns its seed from the first publication; a round already decided on attach is no kill to show
       if (source.epoch() !== epoch) {   // a new round (a restart before H-2): every view-owned cache starts again
         epoch = source.epoch();
-        resetFx(fx); layer.reset(); layer.reseed(source.seed); sound?.reset();   // the next round's star field; a fresh audio baseline
+        resetFx(fx); resetRockTrack(rockTrack); layer.reset(); layer.reseed(source.seed); sound?.reset();   // the next round's star field; a fresh audio baseline
         lastOutcome = Outcome.Running; pings.length = 0; refused = null;
         fires = null; flashUntil = 0;
         options.requests?.resetLaserAim();   // W-2: a new round's MANUAL laser aims along the nose until the pointer gives an aim
@@ -344,6 +346,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const vent = source.helmVent?.() ?? d.helmVent;   // §6: the puffs and the hiss
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       ({ watch: fires, flashUntil } = fireWatch(fires, d, t, flashUntil));   // own ship window spec §4
+      const holding = holdFrame(fx, dt);   // asteroids-iii §5.6: hit-stop (it holds from the frame after the burst; plan deviation 10)
       const events = source.drainEvents();
       pushMapEffects(fx, events, d.tactical);   // Engineering spike §10.4: under the fog
       if (cam) {   // spike ii §7 item 6: a blast or a break on this screen shakes it
@@ -380,7 +383,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       }
       // Paused, or a frozen online copy (a lost link): the callouts, flashes, heal motes and the charge pulse hold (polish i review).
       const frozen = source.paused() || source.live?.() === false;
-      stepFx(fx, frozen ? 0 : fxDt(fx, dt));   // Feel-i: the kill's slow motion is render time only
+      stepFx(fx, frozen || holding ? 0 : fxDt(fx, dt));   // Feel-i: the kill's slow motion is render time only
       stepPings(pings, frozen ? 0 : dt);
       trackSolution(fx, linedUp(laserSituation(d.tactical, fx.sinceShot, gunnerPresent(d))), frozen ? 0 : dt);
       recordTrails(fx, d.tactical, source.missilePrev, alpha);
@@ -392,8 +395,9 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         const point = aimed !== null ? options.pointer?.() ?? null : null, pickAt = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, fog: fogView };
         const hoverRock = point ? rockHoverAt(pickAt, point) : null;
         // Step 4: the map keeps its arrows and info line clear of the window while it is shown.
+        updateRockTrack(rockTrack, d.tactical);
         const input = {
-          state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, console: camKey!, axes: source.axes(),
+          rockTrack, state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, console: camKey!, axes: source.axes(),
           ships: fx.kill || !fogView.seen.enemy ? [0] : [0, 1], fog: fogView, paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: { left: TABS_RIGHT, right: SIDE.x } } : { reserveRight: READOUT_COLUMN }), ...(onMap ? { avoid: OWN_SHIP } : {}), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
           holdHeading: view === 'flight' ? -1 : preview ?? d.holdHeading, holdPreview: preview !== null, crewHull: hullFor(true, d.interior.layout.hull), gravity: camKey === 'helm', flight: view === 'flight', alert, pings,   // Feel-ii; Valkyrn spec §4.5: the crew hull
           pewPointer: station === 'weapons' && view === 'weapons' ? options.pointer?.() ?? null : null,   // W-1: the pew's aim line follows the pointer on the Weapons map
@@ -403,7 +407,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting
-        layer.draw(model, combatModel({ ...input, t: frozen ? 0 : t, enemyArrow: model.arrows.find((a) => a.target === 'enemy') ?? null, goal: onConsole && seat === 'helm' && !goalUsed }), t);   // the blinks run on the presentation clock, paused or not
+        if (!holding) layer.draw(model, combatModel({ ...input, t: frozen ? 0 : t, enemyArrow: model.arrows.find((a) => a.target === 'enemy') ?? null, goal: onConsole && seat === 'helm' && !goalUsed }), t);   // the blinks run on the presentation clock, paused or not
         overlayView = mapOverlayOf(model.overlay);
       }
       // Sci-1 spec §7.3: Science's hover readout, from the crew ship's drawn position to the cursor.

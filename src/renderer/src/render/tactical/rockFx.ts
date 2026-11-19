@@ -1,7 +1,7 @@
 // Spike ii §7 (docs/superpowers/specs/2026-11-18-asteroids-ii-design.md): the rock feedback, view-owned and never hashed,
 // driven by each tick's events: chips thrown back along a laser shot that met a rock, a burst sized by the rock and a
 // ring of specks for a break, a puff for dust, a shockwave, core flash and heavy spray for a torpedo blast, a spark for a
-// damaging rock-rock contact; the shakes for a blast and a break on screen; and their screen draws. On the CRT ramp only.
+// damaging rock-rock contact; asteroids-iii §5.6: shards, puffs, the touch spark, the hit-stop; the shakes for a blast and a break on screen; and their screen draws. On the CRT ramp only.
 import type { Point } from './camera';
 import { CRT } from './crtTheme';
 import { BURST, BURST_S, FLARE_S, fxRandom, SPARK_S, startShake, type FxItem, type FxState, type ViewEvent } from './fxModel';
@@ -17,6 +17,17 @@ export const CHIP_R_U = 2.5, SPECK_R_U = 2;
 export const CHIP_MIN_PX = 2, CHIP_TAIL_MIN_PX = 6, SPECK_MIN_PX = 1.5, CORE_MIN_PX = 10, FLARE_MIN_PX = 8, SHOCK_WIDTH_MIN_PX = 2;
 /** §7 item 6: a blast on screen shakes strongly, falling with distance from the crew ship (to 0 at `fade` u); a break lightly. */
 export const BLAST_SHAKE = { px: 8, s: 0.35, fade: 1500 } as const, BREAK_SHAKE = { px: 2, s: 0.12 } as const;
+
+/** Asteroids-iii §5.6: a burst split throws SHARD_COUNT shards at SHARD_SPEED u/s living SHARD_LIFE s, and holds the
+ *  tactical drawing for HIT_STOP_S; a fan split or a dust puffs PUFF_COUNT; a touch sparks for TOUCH_SPARK_S. */
+export const SHARD_COUNT = 16, SHARD_SPEED = [150, 250] as const, SHARD_LIFE = [1, 2] as const, PUFF_COUNT = 6, TOUCH_SPARK_S = 0.18, HIT_STOP_S = 0.08;
+/** §5.6: whether this frame holds the tactical drawing (hit-stop), spending `dt` of it. Effects and positions hold; after
+ *  it the drawing snaps to the live state. The sim never pauses. */
+export function holdFrame(fx: FxState, dt: number): boolean {
+  if (fx.hold <= 0) return false;
+  fx.hold = Math.max(0, fx.hold - dt);
+  return true;
+}
 
 /** An integer lo..hi from the view's random. */
 const between = (fx: FxState, lo: number, hi: number): number => lo + Math.floor(fxRandom(fx) * (hi - lo + 1));
@@ -39,16 +50,19 @@ export function pushRockFx(fx: FxState, events: readonly ViewEvent[]): void {
     if (e.kind !== 'rock') continue;
     if (e.what === 'split' || e.what === 'dust') {   // §7 item 4 and §3.5
       fx.items.push({ kind: 'burst', age: 0, life: BURST_S * 2, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: BURST, size: e.r });
-      if (e.what === 'split') for (let n = between(fx, 10, 16), j = 0; j < n; j++) fling(fx, 'speck', SPECK_S, e.x, e.y, (2 * Math.PI * j) / n, 0.25, 80, 200, e.vx, e.vy, CRT.main);
-      else {
+      if (e.what === 'split' && e.burst) {
+        for (let j = 0; j < SHARD_COUNT; j++) fling(fx, 'speck', SHARD_LIFE[0] + fxRandom(fx) * (SHARD_LIFE[1] - SHARD_LIFE[0]), e.x, e.y, (2 * Math.PI * j) / SHARD_COUNT, 0.2, SHARD_SPEED[0], SHARD_SPEED[1], e.vx, e.vy, CRT.main);
+        fx.hold = HIT_STOP_S;
+      } else {
         const moving = Math.hypot(e.vx, e.vy) > 1, along = moving ? Math.atan2(e.vy, e.vx) : 0;
-        for (let n = between(fx, 6, 9); n > 0; n--) fling(fx, 'speck', PUFF_S, e.x, e.y, along, moving ? 0.8 : Math.PI, 20, 90, e.vx, e.vy, CRT.mid);
+        for (let n = 0; n < PUFF_COUNT; n++) fling(fx, 'speck', PUFF_S, e.x, e.y, along, moving ? 0.8 : Math.PI, 20, 90, e.vx, e.vy, CRT.mid);
       }
     } else if (e.what === 'blast') {   // §7 item 5
       fx.items.push({ kind: 'shock', age: 0, life: SHOCK_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.hot, size: e.r },
         { kind: 'core', age: 0, life: CORE_FLASH_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.hot, size: e.r * 0.3 });
       for (let n = between(fx, 18, 24), j = 0; j < n; j++) fling(fx, 'speck', BLAST_SPECK_S, e.x, e.y, (2 * Math.PI * j) / n, 0.3, 150, 320, 0, 0, CRT.hot);
     } else if (e.what === 'bump' && e.by === 'collision') fx.items.push({ kind: 'spark', age: 0, life: SPARK_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.hot });   // §7 item 7
+    else if (e.what === 'touch') fx.items.push({ kind: 'spark', age: 0, life: TOUCH_SPARK_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.mid });   // §5.6: a slow billiard's cue
   }
 }
 
