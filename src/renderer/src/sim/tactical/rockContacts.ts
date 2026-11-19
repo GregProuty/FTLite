@@ -88,6 +88,7 @@ export function moveFreeSlot(v: Float64Array, b: number, T1: number, soft = ROCK
   return capped;
 }
 
+const contactNear: number[] = [];   // stepRocks part 2 rocksNear scratch (resolveRockPair and breakRock never call rocksNear)
 export function stepRocks(s: TacticalState): void {
   const v = s.rocks, n = rockSlots(s), T1 = rockPhase(s);
   for (let k = 0; k < n; k++) {   // part 1: motion
@@ -103,7 +104,9 @@ export function stepRocks(s: TacticalState): void {
     if (v[A] !== RockKind.Free || s.rockBorn[a] === 1) continue;
     const x = v[A + 1]!, y = v[A + 2]!, r = v[A + 5]!, planet = touching(x, y, r, p.x, p.y, p.r);
     if (planet || x * x + y * y > far * far) { dustRock(s, a, planet ? 'planet' : 'edge'); s.rockDone[a] = 1; continue; }
-    for (const o of rocksNear(s, x, y, r)) {
+    const cn = rocksNear(s, x, y, r, contactNear);
+    for (let ci = 0; ci < cn; ci++) {
+      const o = contactNear[ci]!;
       if (o === a || !rockAlive(s, o) || s.rockBorn[o] === 1 || s.rockDone[o] === 1) continue;
       if (!touching(v[A + 1]!, v[A + 2]!, v[A + 5]!, rockX(s, o), rockY(s, o), v[o * ROCK_STRIDE + 5]!)) continue;
       resolveRockPair(s, a, o);

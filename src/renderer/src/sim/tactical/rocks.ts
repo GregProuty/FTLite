@@ -140,16 +140,18 @@ export function beginRockTick(s: TacticalState): void {
 export function rockBorn(s: TacticalState, k: number): boolean { return s.rockBorn[k] === 1; }
 
 /** Slots of every live rock whose bounding box (at its accessor position) may overlap the square around (x, y) of
- *  half-size h, ascending, no repeats: a scan of every slot (§6.1: the readers outside a step). */
-export function rocksNearScan(s: TacticalState, x: number, y: number, h: number): number[] {
-  const v = s.rocks, out: number[] = [];
-  for (let k = 0, n = rockSlots(s); k < n; k++) {
+ *  half-size h, written ascending, no repeats, into the caller's `out` (grown only as needed, never shrunk): the count.
+ *  A scan of every slot (§6.1: the readers outside a step). */
+export function rocksNearScan(s: TacticalState, x: number, y: number, h: number, out: number[]): number {
+  const v = s.rocks;
+  let n = 0;
+  for (let k = 0, m = rockSlots(s); k < m; k++) {
     const b = k * ROCK_STRIDE;
     if (v[b] === RockKind.Gone) continue;
     const r = v[b + 5]!;
-    if (Math.abs(rockX(s, k) - x) <= h + r && Math.abs(rockY(s, k) - y) <= h + r) out.push(k);
+    if (Math.abs(rockX(s, k) - x) <= h + r && Math.abs(rockY(s, k) - y) <= h + r) out[n++] = k;
   }
-  return out;
+  return n;
 }
 /** §6.1: the grid rebuilt from every live rock's accessor position (allocation-free after the first build). */
 export function rebuildRockGrid(s: TacticalState): void {
@@ -163,21 +165,23 @@ export function regridRock(s: TacticalState, k: number): void {
 }
 /** rocksNearScan's answer from the grid (its box widened by ROCK_R_MAX and the pad, then the exact bounding-box rule at the
  *  accessor positions); a scan when there is no grid of this pool's size. */
-export function rocksNearGrid(s: TacticalState, x: number, y: number, h: number): number[] {
+export function rocksNearGrid(s: TacticalState, x: number, y: number, h: number, out: number[]): number {
   const g = peekRockGrid(s);
-  if (!g || g.next.length !== rockSlots(s)) return rocksNearScan(s, x, y, h);
-  const v = s.rocks, out: number[] = [], count = queryRockGrid(g, x, y, h + ROCK_R_MAX + ROCK_GRID_PAD);
+  if (!g || g.next.length !== rockSlots(s)) return rocksNearScan(s, x, y, h, out);
+  const v = s.rocks, count = queryRockGrid(g, x, y, h + ROCK_R_MAX + ROCK_GRID_PAD);
+  let n = 0;
   for (let i = 0; i < count; i++) {
     const k = g.scratch[i]!, b = k * ROCK_STRIDE;
     if (v[b] === RockKind.Gone) continue;
     const r = v[b + 5]!;
-    if (Math.abs(rockX(s, k) - x) <= h + r && Math.abs(rockY(s, k) - y) <= h + r) out.push(k);
+    if (Math.abs(rockX(s, k) - x) <= h + r && Math.abs(rockY(s, k) - y) <= h + r) out[n++] = k;
   }
-  return out;
+  return n;
 }
-/** The broad phase every caller uses: ascending, no repeats; the grid inside a step, a scan of every slot outside (§6.1). */
-export function rocksNear(s: TacticalState, x: number, y: number, h: number): number[] {
-  return inRockStep(s) ? rocksNearGrid(s, x, y, h) : rocksNearScan(s, x, y, h);
+/** The broad phase every caller uses: ascending, no repeats, written to out[0..count) (the caller owns `out`, one scratch
+ *  per call site, so a query allocates nothing after warm-up); the grid inside a step, a scan of every slot outside (§6.1). */
+export function rocksNear(s: TacticalState, x: number, y: number, h: number, out: number[]): number {
+  return inRockStep(s) ? rocksNearGrid(s, x, y, h, out) : rocksNearScan(s, x, y, h, out);
 }
 
 /** Write slot k's eight values (a rail: its centre in x, y and its offset in vx, vy); t defaults to the phase tick. */
@@ -198,13 +202,16 @@ export function segmentEntry(ax: number, ay: number, bx: number, by: number, cx:
   return t <= 1 ? t : -1;
 }
 
+const blockerNear: number[] = [];   // firstBlocker's rocksNear scratch (one per call site; the loop body never re-enters it)
 /** The first solid body along a → b: the planet (−1), a rock slot (≥ 0), or null; with the entry t. */
 export function firstBlocker(s: TacticalState, ax: number, ay: number, bx: number, by: number): { rock: number; t: number } | null {
   let best: { rock: number; t: number } | null = null;
   const p = s.map.planet, tp = segmentEntry(ax, ay, bx, by, p.x, p.y, p.r);
   if (tp >= 0) best = { rock: -1, t: tp };
   const half = Math.max(Math.abs(bx - ax), Math.abs(by - ay)) / 2;
-  for (const k of rocksNear(s, (ax + bx) / 2, (ay + by) / 2, half)) {
+  const n = rocksNear(s, (ax + bx) / 2, (ay + by) / 2, half, blockerNear);
+  for (let i = 0; i < n; i++) {
+    const k = blockerNear[i]!;
     if (s.rockBorn[k] === 1) continue;   // spike ii §6.2: a piece made earlier this tick is not in the way
     const a = rockAt(s, k), t = segmentEntry(ax, ay, bx, by, a.x, a.y, a.r);
     if (t >= 0 && (!best || t < best.t)) best = { rock: k, t };   // ascending k: a tie keeps the lower slot (the planet wins ties)

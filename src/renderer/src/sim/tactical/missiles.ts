@@ -125,6 +125,7 @@ function land(state: TacticalState, m: Missile, k: number): void {
   end(state, m, 'ship', k, room);
 }
 
+const missileNear: number[] = [];   // resolveMissiles rocksNear scratch (the detonation comes after its loop)
 /** Missile contacts in spec §4 order, per missile in owner order: statics and the edge, then active ships by slot, then
  *  the other missiles in owner order. Then a missile that survived its life's last tick self-destructs (after that
  *  tick's move and contacts). */
@@ -135,8 +136,10 @@ export function resolveMissiles(state: TacticalState): void {
     if (!m) continue;
     const def = classOf(state, i).slots.missile, p = state.map.planet;
     if (touches(m, def.radius, p.x, p.y, p.r)) { end(state, m, 'planet'); continue; }
-    const rock = rocksNear(state, m.x, m.y, def.radius).find((k) => { if (state.rockBorn[k] === 1) return false; const a = rockAt(state, k); return touches(m, def.radius, a.x, a.y, a.r); });
-    if (rock !== undefined) {   // spike ii §4.2: it detonates on the first rock it touches (on purpose or not)
+    let rock = -1;
+    const nr = rocksNear(state, m.x, m.y, def.radius, missileNear);
+    for (let ii = 0; ii < nr; ii++) { const k = missileNear[ii]!; if (state.rockBorn[k] === 1) continue; const a = rockAt(state, k); if (touches(m, def.radius, a.x, a.y, a.r)) { rock = k; break; } }
+    if (rock >= 0) {   // spike ii §4.2: it detonates on the first rock it touches (on purpose or not)
       detonateTorpedo(state, m.owner, m.x, m.y, m.vx, m.vy, rock); end(state, m, 'asteroid'); continue;
     }
     if (m.x * m.x + m.y * m.y > R_MAP * R_MAP) { end(state, m, 'edge'); continue; }

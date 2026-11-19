@@ -8,12 +8,14 @@ import { MISSILE_RADIUS, type FlightTuning } from './tuning';
 
 export interface PathPoint { x: number; y: number }
 
+const solidNear: number[] = [];   // touchesSolid's rocksNear scratch
 export function touchesSolid(state: TacticalState, x: number, y: number, r: number): boolean {
   const p = state.map.planet;
   const pd = r + p.r;
   if ((x - p.x) * (x - p.x) + (y - p.y) * (y - p.y) < pd * pd) return true;
-  for (const k of rocksNear(state, x, y, r)) {
-    const a = rockAt(state, k), d = r + a.r;
+  const n = rocksNear(state, x, y, r, solidNear);
+  for (let i = 0; i < n; i++) {
+    const a = rockAt(state, solidNear[i]!), d = r + a.r;
     if ((x - a.x) * (x - a.x) + (y - a.y) * (y - a.y) < d * d) return true;
   }
   return false;

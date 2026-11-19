@@ -11,10 +11,13 @@ import { classOf, type TacticalState } from './state';
 /** §4.2: the fall-off for a surface distance d: 1 − d / BLAST_RADIUS inside the radius, 0 at and beyond it. */
 export function blastFall(d: number): number { return d < BLAST_RADIUS ? 1 - d / BLAST_RADIUS : 0; }
 
+const blastNear: number[] = [];   // detonateTorpedo's rocksNear scratch (its loop only reads; the breaks come after it)
 /** §4.2: ship `owner`'s torpedo at (x, y), velocity (mvx, mvy), touched rock `rock`. */
 export function detonateTorpedo(s: TacticalState, owner: number, x: number, y: number, mvx: number, mvy: number, rock: number): void {
   const near: number[] = [];
-  for (const k of rocksNear(s, x, y, BLAST_RADIUS)) {   // taken once, ascending, before the direct hit's pieces exist
+  const nn = rocksNear(s, x, y, BLAST_RADIUS, blastNear);   // taken once, ascending, before the direct hit's pieces exist
+  for (let ii = 0; ii < nn; ii++) {
+    const k = blastNear[ii]!;
     if (k === rock || !rockAlive(s, k) || s.rockBorn[k] === 1) continue;
     const a = rockAt(s, k), dx = a.x - x, dy = a.y - y;
     if (Math.max(0, Math.sqrt(dx * dx + dy * dy) - a.r) < BLAST_RADIUS) near.push(k);

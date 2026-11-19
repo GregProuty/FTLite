@@ -103,7 +103,7 @@ describe('rock-rock pairs (spec §3.3)', () => {
     for (let t = 0; t < 400; t++) {
       if (t % 50 === 0) for (let q = 0; q < 40; q++) {
         const x = -2600 + ((q * 977) % 5200), y = -2600 + ((q * 571) % 5200), h = 20 + (q % 7) * 60;
-        const got = rocksNear(st, x, y, h).filter((k) => { const a = rockAt(st, k); return Math.abs(a.x - x) <= h + a.r && Math.abs(a.y - y) <= h + a.r; });
+        const found: number[] = [], count = rocksNear(st, x, y, h, found), got = found.slice(0, count).filter((k) => { const a = rockAt(st, k); return Math.abs(a.x - x) <= h + a.r && Math.abs(a.y - y) <= h + a.r; });
         expect(got).toEqual(brute(x, y, h));
       }
       stepDuel(st, IDLE_INPUT);

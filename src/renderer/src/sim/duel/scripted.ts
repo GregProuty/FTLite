@@ -100,6 +100,7 @@ function turnToward(heading: number, dx: number, dy: number): number { return si
 
 function len(x: number, y: number): number { return Math.sqrt(x * x + y * y); }
 
+const avoidNear: number[] = [];   // hazardAway rocksNear scratch
 /** Rule 1 (spec §3): the heading away from the first hazard on the predicted path, as a direction, or null. */
 export function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } | null {
   const t = d.tactical, s = t.ships[0], p = t.map.planet, keep = SHIP_RADIUS + AVOID_MARGIN;
@@ -107,7 +108,9 @@ export function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } |
     if (len(q.x - p.x, q.y - p.y) < p.r + keep) return { x: s.x - p.x, y: s.y - p.y };
     if (len(q.x, q.y) > t.map.rMap - AVOID_MARGIN) return { x: -s.x, y: -s.y };
     let best = -1, bestClear = 0;
-    for (const k of rocksNear(t, q.x, q.y, keep)) {
+    const nn = rocksNear(t, q.x, q.y, keep, avoidNear);
+    for (let ii = 0; ii < nn; ii++) {
+      const k = avoidNear[ii]!;
       const a = rockAt(t, k), dist = len(q.x - a.x, q.y - a.y);
       if (dist < a.r + keep && (best < 0 || dist - a.r < bestClear)) { best = k; bestClear = dist - a.r; }   // ascending k: ties keep the lower index
     }

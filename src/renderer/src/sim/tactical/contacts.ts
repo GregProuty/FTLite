@@ -49,12 +49,14 @@ function shipShip(state: TacticalState, i: number, j: number): void {
 export function hitStatics(state: TacticalState, i: number): void {
   const { map } = state, s = state.ships[i]!;
   if (hitStatic(state, i, map.planet.x, map.planet.y, map.planet.r, 0, PLANET_CONTACT_HULL)) s.planetHits++;
-  for (const k of rocksNear(state, s.x, s.y, classOf(state, i).radius)) {
-    const a = rockAt(state, k), still = isRail(a.kind);
+  const n = rocksNear(state, s.x, s.y, classOf(state, i).radius, staticsNear);
+  for (let ii = 0; ii < n; ii++) {
+    const k = staticsNear[ii]!, a = rockAt(state, k), still = isRail(a.kind);
     if (hitStatic(state, i, a.x, a.y, a.r, k + 1, ASTEROID_CONTACT_HULL, still ? 0 : a.vx, still ? 0 : a.vy)) s.asteroidHits++;
   }
 }
 
+const staticsNear: number[] = [], duelNear: number[] = [];   // rocksNear scratches, one per call site (neither loop body re-enters its own site)
 /** Spike ii §5.1: a moving rock's hull cost for an impact vc · mk / (mk + ms). */
 export function ramHull(impact: number): number { return Math.min(RAM_HULL_MAX, 1 + Math.floor(Math.max(0, impact - RAM_HULL_FREE) / RAM_HULL_STEP)); }
 
@@ -96,7 +98,9 @@ function shipRock(state: TacticalState, i: number, k: number): void {
 function duelStatics(state: TacticalState, i: number): void {
   const { map } = state, s = state.ships[i]!;
   if (hitStatic(state, i, map.planet.x, map.planet.y, map.planet.r, 0, PLANET_CONTACT_HULL)) s.planetHits++;
-  for (const k of rocksNear(state, s.x, s.y, classOf(state, i).radius)) {
+  const n = rocksNear(state, s.x, s.y, classOf(state, i).radius, duelNear);
+  for (let ii = 0; ii < n; ii++) {
+    const k = duelNear[ii]!;
     if (!rockAlive(state, k) || state.rockBorn[k] === 1) continue;
     shipRock(state, i, k);
   }

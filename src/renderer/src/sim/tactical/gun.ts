@@ -108,6 +108,7 @@ function gunHit(state: TacticalState, owner: number, k: number, ox: number, oy: 
   state.events.push({ kind: 'gunHit', ship: k, room, stripped: false, hull, level, x, y });
 }
 
+const roundNear: number[] = [];   // stepRounds rocksNear scratch (the loop body never re-enters it)
 /**
  * Every round in flight, in pool order (spec §7.2): it flies straight one tick (no gravity, no drag; it also moves on
  * its spawn tick) and ages; its segment from the old to the new position is swept against every other active ship's
@@ -131,7 +132,9 @@ export function stepRounds(state: TacticalState): void {
       if (t >= 0 && t < best) { best = t; ship = k; }
     });
     const half = Math.max(Math.abs(r.x - ox), Math.abs(r.y - oy)) / 2;
-    for (const k of rocksNear(state, (ox + r.x) / 2, (oy + r.y) / 2, half)) {
+    const nn = rocksNear(state, (ox + r.x) / 2, (oy + r.y) / 2, half, roundNear);
+    for (let ii = 0; ii < nn; ii++) {
+      const k = roundNear[ii]!;
       if (state.rockBorn[k] === 1) continue;   // as firstBlocker: a piece made earlier this tick is not in the way
       const a = rockAt(state, k), t = segmentEntry(ox, oy, r.x, r.y, a.x, a.y, a.r);
       if (t >= 0 && t < best) { best = t; ship = -1; }

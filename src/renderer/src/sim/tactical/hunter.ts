@@ -62,12 +62,15 @@ function faceTurn(heading: number, dx: number, dy: number): number {
   return pursuitTurn(heading, dx, dy);
 }
 
+const threatNear: number[] = [];   // threatAhead's rocksNear scratch
 /** The first solid body ship i's straight-line path over the lookahead comes within its radius + margin of, or null. */
 function threatAhead(state: TacticalState, i: number): { x: number; y: number } | null {
   const s = state.ships[i]!, ex = s.x + s.vx * HUNTER_LOOKAHEAD_S, ey = s.y + s.vy * HUNTER_LOOKAHEAD_S, p = state.map.planet;
   if (segmentNear(s.x, s.y, ex, ey, p.x, p.y, p.r + HUNTER_AVOID_MARGIN)) return p;
   const half = Math.max(Math.abs(ex - s.x), Math.abs(ey - s.y)) / 2 + HUNTER_AVOID_MARGIN;
-  for (const k of rocksNear(state, (s.x + ex) / 2, (s.y + ey) / 2, half)) {
+  const n = rocksNear(state, (s.x + ex) / 2, (s.y + ey) / 2, half, threatNear);
+  for (let i = 0; i < n; i++) {
+    const k = threatNear[i]!;
     const a = rockAt(state, k);
     if (segmentNear(s.x, s.y, ex, ey, a.x, a.y, a.r + HUNTER_AVOID_MARGIN)) return a;
   }
