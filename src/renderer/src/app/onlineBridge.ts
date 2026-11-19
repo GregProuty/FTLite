@@ -1,24 +1,24 @@
-import { copyOnlinePortDescriptor, copyOnlineStatus, ONLINE_PORT_SOURCE, validateOnlinePortEnvelope, validateOnlineStatusEnvelope,
+import { copyOnlinePortDescriptor, copyOnlineStatus, validateOnlinePortDescriptor, validateOnlineStatusEnvelope,
   type OnlinePortDescriptor, type OnlinePreloadApi, type OnlineStatus, type Unsubscribe } from '../../../shared/onlineSession';
 
-/** Page messages can offer local data only; every privileged operation stays on the named preload API. */
-export function createOnlineBridge(window: Window, api: OnlinePreloadApi) {
-  let disposed = false, epoch = 0, portListener: ((descriptor: OnlinePortDescriptor, port: MessagePort) => void) | undefined;
+export type OnlinePortListener = (descriptor: OnlinePortDescriptor, port: MessagePort) => void;
+/** The page's online facade (app/online/pageSession.ts): the former preload API plus direct game-port delivery. */
+export interface PageOnlineApi extends OnlinePreloadApi { onPort(callback: OnlinePortListener): Unsubscribe }
+/** The UI's view of the page session: validated status, one game-port owner, and the named online actions only. */
+export function createOnlineBridge(api: PageOnlineApi) {
+  let disposed = false, epoch = 0, portListener: OnlinePortListener | undefined;
   const removers = new Set<Unsubscribe>();
-  const receive = (event: MessageEvent) => {
-    if (event.data?.source !== ONLINE_PORT_SOURCE) return;
-    const close = () => { for (const port of event.ports) { try { port.close(); } catch {} } };
-    const { source: _source, ...envelope } = event.data;
-    if (disposed || event.source !== window || event.ports.length !== 1 || !validateOnlinePortEnvelope(envelope)
-      || envelope.descriptor.epoch <= epoch) { close(); return; }
-    epoch = envelope.descriptor.epoch;
+  const offPort = api.onPort((descriptor, port) => {
+    const close = () => { try { port.close(); } catch { /* detached */ } };
+    if (disposed || !validateOnlinePortDescriptor(descriptor) || descriptor.epoch <= epoch) { close(); return; }
+    epoch = descriptor.epoch;
     if (!portListener) { close(); return; }
-    try { portListener(copyOnlinePortDescriptor(envelope.descriptor), event.ports[0]!); } catch { close(); }
-  };
-  window.addEventListener('message', receive);
+    try { portListener(copyOnlinePortDescriptor(descriptor), port); } catch { close(); }
+  });
+  const { host, join, ready, removeSeat, viewState, reconnect, rehost, start, retry, leave, forgetSeat, readStatus, linkStats } = api;
   return {
-    ...api,
-    onPort(callback: (descriptor: OnlinePortDescriptor, port: MessagePort) => void): Unsubscribe {
+    host, join, ready, removeSeat, viewState, reconnect, rehost, start, retry, leave, forgetSeat, readStatus, linkStats,
+    onPort(callback: OnlinePortListener): Unsubscribe {
       if (disposed) return () => {};
       if (portListener) throw Error('invalid-port');
       portListener = callback;
@@ -39,7 +39,7 @@ export function createOnlineBridge(window: Window, api: OnlinePreloadApi) {
       removers.add(remove); return remove;
     },
     dispose(): void {
-      if (disposed) return; disposed = true; window.removeEventListener('message', receive); portListener = undefined;
+      if (disposed) return; disposed = true; offPort(); portListener = undefined;
       for (const off of [...removers]) off(); removers.clear();
     }
   };

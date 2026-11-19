@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { createOnlineSession } from '../src/main/network/onlineSession';
-import { sectorCompatibility, sectorInit } from '../src/main/network/onlineSector';
+import { createOnlineSession } from '../src/network/online/onlineSession';
+import { sectorCompatibility, sectorInit } from '../src/network/online/onlineSector';
 import { initialOnlineCheckpoint } from './helpers/onlineCheckpoint';
 import { createAuthority, type Checkpoint } from '../src/renderer/src/authority/authority';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import hound from '../src/renderer/src/sim/ship/hound.json';
 import type { RoomSnapshot } from '../src/shared/roomSession';
-import type { SessionMirror } from '../src/main/network/mirrorStore';
+import type { SessionMirror } from '../src/network/online/mirrorStore';
 const deferred = <T>() => { let resolve!: (v: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; };
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0)) await cleanup(); vi.useRealTimers(); });
@@ -250,5 +250,15 @@ describe('manual committed-session recovery', () => {
     await p.owner.suspend(); expect(p.host.invalidateLease).toHaveBeenCalledWith('suspended');
     expect(p.host.invalidateLease.mock.invocationCallOrder[0]).toBeLessThan(p.host.dispose.mock.invocationCallOrder[0]!);
     await p.owner.resume(); expect(p.host.completeBootstrap).not.toHaveBeenCalled(); expect(p.host.request.mock.calls.map((c: any) => c[0].kind)).toEqual(['restore']);
+  });
+  it('an un-awaited suspend then resume on an active host (clock jump) invalidates with suspended then the retire fence, disposes the old host once and reconnects once', async () => {
+    const r = room(), p = r.player(); await p.owner.dispatch({ type: 'reconnect' }); await p.owner.dispatch({ type: 'rehost' });
+    p.host.invalidateLease.mockClear(); p.host.dispose.mockClear(); p.service.join.mockClear();
+    void p.owner.suspend(); void p.owner.resume();
+    await vi.waitFor(() => expect(p.service.join).toHaveBeenCalled());
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(p.host.invalidateLease.mock.calls.map((c: any) => c[0])).toEqual(['suspended', 'service-fenced']); // resume finds the host already retired, so no 'resumed' invalidation is queued; the retire fences it
+    expect(p.host.dispose).toHaveBeenCalledOnce();
+    expect(p.service.join).toHaveBeenCalledOnce();
   });
 });

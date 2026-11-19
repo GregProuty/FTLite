@@ -35,7 +35,7 @@ describe('console layout (spec §2)', () => {
   it('the status table ends above the station block at its longest (every crew room damaged)', () => {
     const d = createSeatedDuel(layout, 5); d.tactical.systems[0].rooms = [2, 1, 1];
     for (const mode of ['helm', 'weapons'] as const) {
-      const rows = readoutRows({ duel: d, mode, active: 0, other: 'AT WEAPONS', console: true });
+      const rows = readoutRows({ duel: d, mode, active: 0, console: true });
       expect(STATUS.y + PAD + LINE * rows.length + PAD).toBeLessThanOrEqual(stationTop(mode));
     }
     disposeDuel(d);
@@ -69,10 +69,10 @@ describe('console layout (spec §2)', () => {
 describe('readout rows on a console (spec §2)', () => {
   it('drop the view heading and, on Weapons, the LASER block; unchanged without the flag', () => {
     const d = createSeatedDuel(layout, 5);
-    const w = readoutRows({ duel: d, mode: 'weapons', active: 1, other: 'AT HELM', console: true }).map((r) => r.label);
+    const w = readoutRows({ duel: d, mode: 'weapons', active: 1, console: true }).map((r) => r.label);
     expect(w[0]).toBe('CUTTER');
     for (const gone of ['LASER', 'LOCK', 'CHARGE', 'MAG']) expect(w).not.toContain(gone);
-    const plain = readoutRows({ duel: d, mode: 'weapons', active: 1, other: 'AT HELM' }).map((r) => r.label);
+    const plain = readoutRows({ duel: d, mode: 'weapons', active: 1 }).map((r) => r.label);
     expect(plain[0]).toBe('WEAPONS'); expect(plain).toContain('CHARGE');
     disposeDuel(d);
   });
@@ -115,7 +115,7 @@ describe('station panels', () => {
     const w = model(d, { me: 1 })!.weapons!;
     expect(w.lock).toBe(d.tactical.systems[0].lock); expect(w.canLaunch).toBe(canLaunch(d.tactical, 0)); expect(w.missileFlying).toBe(false);
     expect(w.magazine).toMatch(/^\d+\/\d+$/);
-    expect([w.charge.label, w.charge.value]).toEqual(['CHARGE', readoutRows({ duel: d, mode: 'weapons', active: 1, other: 'AT HELM' }).find((r) => r.label === 'CHARGE')!.value]);
+    expect([w.charge.label, w.charge.value]).toEqual(['CHARGE', readoutRows({ duel: d, mode: 'weapons', active: 1 }).find((r) => r.label === 'CHARGE')!.value]);
     while (!canLaunch(d.tactical, 0)) step(d, 1, null);
     step(d, 1, { kind: 'missileLaunch' });
     const after = model(d, { me: 1 })!.weapons!; expect(after.missileFlying).toBe(true); expect(after.canLaunch).toBe(false);

@@ -110,6 +110,18 @@ export function pushEvents(fx: FxState, events: readonly ViewEvent[]): void {
   }
 }
 
+/** Valkyrn spec §7.4: the gun's hits: a tick flash at the hit point; the shield pop when the hit stripped a layer (the
+ *  event's `stripped`); `-1` when the hit took a hull point (the event's `hull`, Part ii review fix to Part i: exact, so two
+ *  room hits in one frame float exactly their hull steps). The online view's gap events carry neither, so online only sparks. */
+export function pushGunHits(fx: FxState, events: readonly ViewEvent[]): void {
+  for (const e of events) {
+    if (e.kind !== 'gunHit') continue;
+    fx.items.push({ kind: 'spark', age: 0, life: SPARK_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.hot });
+    if (e.room < 0 && e.stripped) fx.items.push({ kind: 'pop', age: 0, life: POP_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.hot });
+    if (e.hull) float(fx, '-1', e.x, e.y);
+  }
+}
+
 /** Feel-i: the enemy destroyed at (x, y) heading h (its drawn place): the explosion, the break-apart, the slow motion, a
  *  big shake and TARGET DESTROYED over it. Once per kill: a second call while one runs does nothing. */
 export function pushKill(fx: FxState, x: number, y: number, h: number): void {

@@ -1,0 +1,21 @@
+{
+  "browser": "chromium",
+  "valid": true,
+  "invalid": [],
+  "pass": true,
+  "failures": [],
+  "figures": {
+    "minTicksPerWindow": 598,
+    "windows": 60,
+    "relayP99HiddenMs": 10.7001953125,
+    "relayP99VisibleMs": 9.86669921875,
+    "maxLeaseGapMs": 5010.399999976158,
+    "leaseCompletions": 121,
+    "controlTabPeriodMs": 1916.9455149502453,
+    "testPageControlPeriodMs": 1000.0003333334128,
+    "maxTickLatenessMs": 52.300000071525574
+  },
+  "minutes": 10,
+  "visibleSeconds": 60,
+  "recordedAt": "2026-11-18T20:38:18.845Z"
+}

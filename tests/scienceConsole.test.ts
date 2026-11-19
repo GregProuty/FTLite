@@ -81,13 +81,13 @@ describe('the console model (spec §7.3, §7.4)', () => {
   it('the consoles\' readout carries the hostility line right after the HUNTER heading; the plain readout does not', () => {
     const d = createDuel(CUTTER, 5);
     try {
-      const labels = readoutRows({ duel: d, mode: 'helm', active: 0, other: 'WALKING', console: true }).map((r) => r.label);
+      const labels = readoutRows({ duel: d, mode: 'helm', active: 0, console: true }).map((r) => r.label);
       expect(labels[labels.indexOf('CONTACT') + 1]).toBe('INCOMING SCAN');
-      expect(readoutRows({ duel: d, mode: 'helm', active: 0, other: 'WALKING' }).map((r) => r.label)).not.toContain('INCOMING SCAN');
-      const row = readoutRows({ duel: d, mode: 'helm', active: 0, other: 'WALKING', console: true }).find((r) => r.label === 'INCOMING SCAN')!;
+      expect(readoutRows({ duel: d, mode: 'helm', active: 0 }).map((r) => r.label)).not.toContain('INCOMING SCAN');
+      const row = readoutRows({ duel: d, mode: 'helm', active: 0, console: true }).find((r) => r.label === 'INCOMING SCAN')!;
       expect(row.emphasis).toBe('alert');
       d.tactical.systems[0].shields = 3;   // the Shield loot's extra layer shows as a third pip
-      expect(readoutRows({ duel: d, mode: 'helm', active: 0, other: 'WALKING', console: true }).find((r) => r.label === 'SHIELD')!.pips).toMatchObject({ n: 3, max: 3 });
+      expect(readoutRows({ duel: d, mode: 'helm', active: 0, console: true }).find((r) => r.label === 'SHIELD')!.pips).toMatchObject({ n: 3, max: 3 });
     } finally { disposeDuel(d); }
   });
 });
@@ -98,7 +98,7 @@ describe('the layout (spec §7.3, §7.4)', () => {
     const d = createDuel(CUTTER, 5);
     try {
       d.tactical.systems[0].rooms = [2, 1, 1];
-      const rows = readoutRows({ duel: d, mode: 'weapons', active: 0, other: 'AT HELM', console: true });
+      const rows = readoutRows({ duel: d, mode: 'weapons', active: 0, console: true });
       expect(STATUS.y + PAD + LINE * rows.length + PAD).toBeLessThanOrEqual(stationTop('weapons'));
     } finally { disposeDuel(d); }
   });

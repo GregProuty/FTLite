@@ -2,7 +2,6 @@
 import { createPortLink } from '../../src/network/portLink';
 import { browserPortEndpoint } from '../../src/network/transport/bridge';
 import { classifyStreamPacket, decodeControl, decodeOpaquePacket, decodeState, decodeStatePacket, encodeOpaquePacket, ImageStore, inspectState } from '../../src/network/state/imageCodec';
-import type { MessagePortMain } from 'electron';
 import { createSectorRemoteClient, imageToPublication } from '../../src/network/modes/sectorStream';
 import { translateTick, pauseActions } from '../../src/renderer/src/clientControl/cardController';
 import { NEUTRAL_FRAME } from '../../src/renderer/src/clientControl/inputFrame';
@@ -33,11 +32,8 @@ function notification(bytes: Uint8Array): WireNotification | undefined {
 }
 
 /** Sacrificial fragmentation probe over the real generic PortLink/RTC bridge. */
-export function createProbe(port: MessagePortMain) {
-  const link = createPortLink({ postMessage: data => port.postMessage(data), start: () => port.start(), close: () => port.close(),
-    onMessage(cb) { const receive = (event: { data: unknown }) => cb(event.data); port.on('message', receive); return () => { port.off('message', receive); }; },
-    onClose(cb) { port.on('close', cb); return () => { port.off('close', cb); }; }
-  }, 'probe', { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });
+export function createProbe(port: MessagePort) {
+  const link = createPortLink(browserPortEndpoint(port), 'probe', { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });
   return { send: () => link.send('reliable-ordered', encodeOpaquePacket('checkpoint', 'probe', 1, new Uint8Array(40000))), close: link.close };
 }
 

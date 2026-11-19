@@ -3,6 +3,7 @@
 // hunter, and any other active slot is uncrewed.
 import { hunterThink } from './hunter';
 import { flyMissile, resolveMissiles } from './missiles';
+import { stepRounds } from './gun';
 import { flySlot } from './physics';
 import { hostilityStep, salvageStep, scanStep } from './science';
 import { resolveContacts } from './contacts';
@@ -19,7 +20,7 @@ export function hunterSlot(state: TacticalState): number {
 
 /**
  * Order, fixed (Sci-1 spec §4.6): think (the hunter reads the state as it stands), weapon commands (every active ship, in slot order),
- * ships fly, missiles fly, ship contacts, missile contacts, weapon clocks, hostility, scan progress (the crew input's scanner), salvage, outcome, tick. The crew wins when every other
+ * ships fly, missiles fly, ship contacts, missile contacts, gun rounds (Valkyrn spec §7.2), weapon clocks, hostility, scan progress (the crew input's scanner), salvage, outcome, tick. The crew wins when every other
  * active ship's hull is gone. Does nothing once the duel has ended.
  */
 export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTuning = DEFAULT_FLIGHT): void {
@@ -35,6 +36,7 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTu
   stepRocks(state);   // SPIKE (destructible asteroids): fragments fly and meet the planet and the other rocks
   resolveContacts(state, true);   // spike ii §5.1: rocks are bodies in the duel
   resolveMissiles(state);
+  stepRounds(state);   // Valkyrn spec §7.2: after the ships fly and contacts resolve, so a round also moves on its spawn tick
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) tickWeapons(state, i, inputs[i]!);
   hostilityStep(state, hunter);
   scanStep(state, crew.scanner);

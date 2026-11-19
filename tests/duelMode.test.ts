@@ -9,7 +9,7 @@ import { sectorMode } from '../src/network/modes/sector';
 import { duelMode } from '../src/network/modes/duel';
 import { duelPublicationToImage, imageToDuelPublication, type DuelPublication } from '../src/network/modes/duelStream';
 import { createUtilityHost } from '../src/network/utilityHost';
-import { authorityModes } from '../src/utility/authorityModes';
+import { authorityModes } from '../src/worker/authorityModes';
 import { readFileSync } from 'node:fs';
 import type { ModeDefinition, ModeHostDeps } from '../src/network/modes/contracts';
 import type { HostCommandInput } from '../src/shared/netSession';
@@ -131,15 +131,16 @@ describe('the duel mode over Net-3 (hostRuntime level)', () => {
     const duel = harness(duelMode), sector = harness(sectorMode);
     expect(duel.command({ kind: 'start', initBytes: encode(sectorInit()) }).ok).toBe(false);
     expect(sector.command({ kind: 'start', initBytes: encode(duelInit(1)) }).ok).toBe(false);
-    expect(duel.command({ kind: 'start', initBytes: encode({ ...duelInit(1), playerCount: 3 }) }).ok).toBe(false);
+    expect(duel.command({ kind: 'start', initBytes: encode({ ...duelInit(1), playerCount: 5 }) }).ok).toBe(false);
+    expect(duel.command({ kind: 'start', initBytes: encode({ ...duelInit(1), playerCount: 3 }) }).ok).toBe(true);   // Sci-2: a crew of three starts
     expect(duel.command({ kind: 'start', initBytes: encode(duelInit(1)) }).ok).toBe(true);
     expect(duel.command({ kind: 'restore', checkpointBytes: encode({ bad: true }) }).ok).toBe(false);
     expect(duel.command({ kind: 'checkpoint' }).ok).toBe(true);
   });
   it('the authority utility\'s own registry runs the duel: initialize, start, capture, restore, same hashes; and the sector', async () => {
-    // authorityHost.ts is the utility's Electron entry point (it needs process.parentPort), so the test drives the
-    // registry it is built from, and checks that it is built from exactly that registry.
-    expect(readFileSync('src/utility/authorityHost.ts', 'utf8')).toMatch(/createUtilityHost\(authorityModes, \{/);
+    // authorityWorkerMain.ts is the host Worker's entry body (web build spec §3.2); the test drives the registry it is
+    // built from, and checks that it is built from exactly that registry.
+    expect(readFileSync('src/worker/authorityWorkerMain.ts', 'utf8')).toMatch(/createUtilityHost\(authorityModes, \{/);
     // The registry stores a frozen copy of each definition, so its entries are the definitions' own members.
     for (const mode of [duelMode, sectorMode]) {
       expect(authorityModes.get(mode.modeId)).toEqual(mode);

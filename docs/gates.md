@@ -744,7 +744,7 @@ Spec `docs/superpowers/specs/2026-11-16-art-ii-bought-art-design.md`, plan `docs
 - [ ] Automated (Art-ii): `npm test` passes, including the palette builder (determinism, kept explosion colours, overrides, k = 48 minus kept, 48 kept colours failing), the LimeZu crew (facing fold, slot pick, foot anchor and carry offset, downed rotation and reset, seated facing, callout lift), the Maru consoles (names, one-frame outputs, wall-face placement on even units, quarter turns, look tints, no strip or cursor), the Pimen blasts (one per hit room, one spark per opening, cap 4, frames from the presentation clock, cleared on reset) and each feature's fallback; `npx tsc -b` clean.
 - [ ] Owner-local palette check (needs the packs in `C:\Users\djuar\FTLite-assets`): `npm run art:palette` then `npm run art:import` leaves `git diff --exit-code -- src/renderer/src/render/palette.json art public/assets/manifest.json` clean.
 - [ ] Owner check before any public release: the Maru-98 (https://maru-98.itch.io/) and Pimen (https://pimen.itch.io/explosion-effect) packs ship no licence text; read their store pages' terms (commercial use, credit, redistribution inside a built game) and record them here. LimeZu's `LICENSE.txt` (read 2026-11-16) allows commercial use and editing, forbids resale and redistribution of the asset itself, and requires credit; the credits screen carries all three credit lines.
-- [ ] **2-Minute Tabletop Hound art and Deep Space (Red) backdrop (CC BY-NC 4.0)**: the duel ship's painting and the space backdrop behind both ship views are non-commercial. Before any sale, get a commercial licence from 2-Minute Tabletop or replace the art. (Art-iv, 2026-11-16; Art-v extends it to the Diver-Class pack's Deep Space (Red), 2026-11-16)
+- [ ] **2-Minute Tabletop Hound and Valkyrn art and Deep Space (Red) backdrop (CC BY-NC 4.0)**: the duel ships' paintings and the space backdrop behind both ship views are non-commercial. Before any sale, get a commercial licence from 2-Minute Tabletop or replace the art. (Art-iv, 2026-11-16; Art-v extends it to the Diver-Class pack's Deep Space (Red), 2026-11-16) The Valkyrn (solo test ship, Valkyrn spec §4.1, 2026-11-18) is the same licence and needs the same permission.
 - [ ] Owner look gate (`npm run dev`, and the screenshots in `C:\Users\djuar\FTLite-shots\art-ii\`): the crew, the consoles and the hits; does the interior now look like a game? Date and notes: pending.
 
 ## Art-iii: set dressing (2026-11-17)
@@ -895,3 +895,27 @@ Spec `docs/superpowers/specs/2026-11-17-ftl-targeting-design.md`.
   - [ ] Master, Music and Effects each work and persist across a restart; an old single volume carried over as Master.
   - [ ] Loop seams: the battle loop (`BATTLE_LOOP_START_S`/`BATTLE_LOOP_END_S` in `src/renderer/src/audio/musicState.ts`) and the hum loop. Tune those constants, and any sample choice in `SFX` (`src/renderer/src/audio/soundBank.ts`), by ear.
   - Date and notes: pending owner.
+
+## Menu CRT (2026-11-18): the main menu in amber CRT
+
+The main menu takes the console screens' amber phosphor look: every colour is a `CRT` tone (`render/tactical/crtTheme.ts`), and the overlay panel is a small CRT screen with glow, scanlines and a vignette at the CRT setting's strength (`menuCss` in `src/renderer/src/ui/menu/styles.ts`; off keeps the amber and drops the effects; no flicker). The in-game strip takes the colours only.
+
+- [x] `tests/menuCrt.test.tsx`: colours from the ramp, hover and chosen-option inverse bar, effects scaled by setting and absent when off, the stylesheet follows the setting.
+- [x] Screenshots in `C:\Users\djuar\FTLite-shots\menu-crt\` (Home at full, subtle and off; hover; Settings top and scrolled; Multiplayer).
+- [ ] Owner look check, including the in-game strip during an online duel (not screenshotted: it needs a live room).
+  - Date and notes: pending owner.
+
+## Web-i: the online stack in the page (2026-11-18)
+
+Electron's online stack (service client, RTC, lease owner) now runs in the page, and the host authority in a module Web Worker. `src/main` and `src/preload` keep no online code.
+
+- **Redeploy the signalling service before building any Electron candidate from master.** An Electron candidate built at or after commit `31c498d8` (Task 8, the signalling change) needs the service deployed from that revision or later. Until then Electron hosting and joining against the deployed service fail: the page now sends an `Origin` (`null`, or `file://` on the socket), the deployed service rejects `Origin: file://` on the socket, and it throws when setting CORS headers on Durable Object responses (socket, checkpoint, turn).
+  - The change is backward compatible: older Electron builds called the service from main with no `Origin`, so the new branches never run for them. It needs no `ALLOWED_ORIGINS` change for `null`/`file://`. Redeploying early (before Web-iii) is safe.
+  - Redeploy from `services/signalling`: `npx wrangler deploy` (the service has no deploy script; `npm run build:signalling` is only the dry run). Owner step: the deployment needs the owner's Wrangler login and secrets.
+- [ ] Redeploy the signalling service before building any Electron candidate from master.
+- [x] Web-i gate (Task 13), head 38f30b75, Electron 37.10.3: all pass. `typecheck`; `npm test` (only the known director soak load flake, passes alone); `test:determinism` (Node, Electron and Firefox UA); `test:signalling`, `typecheck:signalling`, `test:worker-boot`, `test:host-runtime`, `lease-smoke`, `rtc-config-smoke`, `test:rtc-runtime`, `test:room-service-runtime`, `test:online-app-runtime` (2-seat and 4-seat), `test:online-recovery-runtime` (hound-2), `test:duel-app-runtime`. No SIM_VERSION change. Details in the plan, `docs/superpowers/plans/2026-11-18-web-i-online-in-page.md` (Task 13 results).
+- [x] Packaged check (impl review R1-F2): the module Worker boots from inside `app.asar` in the `package:candidate` build (`node scripts/network/worker-boot-packaged.cjs`, Electron 37.10.3): WORKER BOOT PASS. No `asarUnpack` needed.
+- [ ] Open items (none blocks the merge):
+  - [ ] Firefox background-tab valid run (optional; the plan's path B).
+  - [ ] D-9: the `stale` recovery scenario is deferred (needs Worker-target evidence).
+  - [ ] D-10: the duel host's leave to idle is not asserted by the duel gate.

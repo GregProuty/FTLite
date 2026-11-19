@@ -10,6 +10,7 @@ import { CALLOUT_COLOUR, CHARGE_COLOUR } from '../src/renderer/src/render/tactic
 import { createTacticalLayer } from '../src/renderer/src/render/tactical/tacticalLayer';
 import { ringDraw, type ShipDraw, type TacticalDraw } from '../src/renderer/src/render/tactical/tacticalModel';
 import type { CombatDraw } from '../src/renderer/src/render/tactical/weaponsModel';
+import type { GunSightDraw } from '../src/renderer/src/render/duel/leadModel';
 
 const vp = { w: 1280, h: 720 };
 const ship = (patch: Partial<ShipDraw>): ShipDraw => ({ index: 0, x: 500, y: 360, angle: 0.4, scale: 0.9, chevron: false, crew: true, hull: 'hound', rooms: [1, 2, 0], shields: 2, ...patch });
@@ -21,7 +22,7 @@ function fullFrame(console: 'helm' | 'weapons', inRange = true): { d: TacticalDr
     grid: { spacing: 250, lines: [{ x1: 100, y1: 0, x2: 100, y2: 720, major: true }, { x1: 0, y1: 200, x2: 1280, y2: 200, major: false }], columns: [{ text: 'H', x: 100, y: 4 }], rows: [{ text: '9', x: 4, y: 200 }] },
     contours: [{ accel: 40, x: 900, y: 500, r: 120 }], edge: { x: 900, y: 500, r: 400 }, planet: { x: 900, y: 500, r: 40 },
     asteroids: [{ index: 3, x: 300, y: 600, r: 14, dot: false }, { index: 4, x: 320, y: 640, r: 1, dot: true }, { index: 5, x: 360, y: 600, r: 18, dot: false, wear: 0.8 }, { index: 6, x: 400, y: 600, r: 12, dot: false, streak: { x: 380, y: 610, alpha: 0.7 } }],   // SPIKE: a worn rock's cracks
-    ships: [ship({}), ship({ index: 1, x: 760, y: 260, crew: false, hull: 'scout', rooms: [2, 1, 0], shields: 1 }), ship({ index: 2, x: 200, y: 200, chevron: true }), ship({ index: 3, x: 220, y: 240, chevron: true, crew: false, hull: 'scout' }), ship({ index: 4, x: 420, y: 520, rooms: [0, 1, 2] }), ship({ index: 5, x: 640, y: 560, crew: false, hull: 'scout', rooms: [0, 1, 2], shields: 0 })],
+    ships: [ship({}), ship({ index: 1, x: 760, y: 260, crew: false, hull: 'scout', rooms: [2, 1, 0], shields: 1 }), ship({ index: 2, x: 200, y: 200, chevron: true }), ship({ index: 3, x: 220, y: 240, chevron: true, crew: false, hull: 'scout' }), ship({ index: 4, x: 420, y: 520, rooms: [0, 1, 2], hull: 'valkyrn' }), ship({ index: 5, x: 640, y: 560, crew: false, hull: 'scout', rooms: [0, 1, 2], shields: 0 })],
     helm: console === 'helm' ? { path: [{ x: 520, y: 340 }, { x: 560, y: 300 }, { x: 610, y: 280 }], origin: { x: 500, y: 360 }, velocity: { x: 560, y: 330 }, headingFrom: { x: 510, y: 340 }, headingTo: { x: 530, y: 300 }, thrust: 1, turn: -1, ring,
       // Feel-ii: the collision X and tag, the held heading's chevron and line, SLINGSHOT
       collision: { x: 610, y: 280, from: { x: 560, y: 300 }, seconds: 1.2, label: { text: 'COLLISION 1.2s', x: 620, y: 258 } },
@@ -109,5 +110,15 @@ describe('roomLook (enemy ship window spec §6.3: the map\'s room damage table, 
   });
   it('roomLevel maps a room damage value to the table row: 0, 1, else 2', () => {
     expect([0, 1, 2, 3].map(roomLevel)).toEqual([0, 1, 2, 2]);
+  });
+});
+
+describe('the Valkyrn marks draw only the ramp (Valkyrn spec §10)', () => {
+  const sight = (on: boolean, locked: boolean): GunSightDraw => ({ cross: { x: 640, y: 200 }, pip: { x: 660, y: 210, on, enemy: { x: 700, y: 230 } },
+    heat: { x: 620, y: 214, w: 40, fill: 0.6, locked, label: { text: locked ? 'OVERHEAT' : 'HEAT', x: 640, y: 222 } } });
+  for (const [on, locked] of [[true, false], [false, true]] as const) it(`gun sight on ${on}, locked ${locked}, tracers, the Valkyrn hull`, () => {
+    const layer = createTacticalLayer({ fontFamily: 'm5x7', viewport: vp }), { d, c } = fullFrame('helm');
+    layer.draw(d, { ...c, gunSight: sight(on, locked), rounds: [{ x1: 600, y1: 300, x2: 610, y2: 295 }] }, 0);
+    for (const colour of colours(layer.container)) expect(CRT_RAMP, colour.toString(16)).toContain(colour);
   });
 });

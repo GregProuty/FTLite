@@ -17,11 +17,17 @@ export interface ContactState { contact: ContactId; aim: boolean }
 /** One frame's facts for the closing rules: `shown` is the console shown on a map view (Helm, Weapons or Science);
  *  `station` the console's station, null while it is hidden; `target` the enemy's ship slot (the crew laser's target);
  *  `active` whether a slot's ship is active; `epoch` the round; `enemyKnown` the enemy's scan level (absent: 2). */
-export interface ContactSync { shown: boolean; station: ConsoleStation | null; target: number; active: (slot: number) => boolean; epoch: number; enemyKnown?: number; designated?: number }
+export interface ContactSync {
+  shown: boolean; station: ConsoleStation | null; target: number; active: (slot: number) => boolean; epoch: number; enemyKnown?: number; designated?: number;
+  /** Valkyrn spec §5.1: the crew class has a laser (absent: true); the Flight seat picks it up only then. */
+  laser?: boolean;
+}
 /** What the clicks and keys asked the duel mode to send since the last take: a designation (−1, 0 or 1) and a scan.
  *  `torpStep` (present only when non-zero, FTL targeting spec §1): E and Q while the torpedo is picked up step its own
  *  target room this many times (+ next, − previous; see stepTorpRoom). */
-export interface ContactRequests { designate: number | null; scan: ContactId | null; torpStep?: number; rockLock?: { weapon: Weapon; rock: number } }
+export interface ContactRequests { designate: number | null; scan: ContactId | null; torpStep?: number; rockLock?: { weapon: Weapon; rock: number };
+  /** Valkyrn spec §6.1 (present only when true): 1 was pressed on the Flight seat of a class without a laser. */
+  noLaser?: true }
 export interface ContactController {
   state(): ContactState | null;
   /** A map click: on Helm or Weapons open on the contact, switch to it (disarmed), or close when it is the shown one; on
@@ -70,9 +76,9 @@ export interface ContactController {
 export type ContactActions = Pick<ContactController, 'close' | 'arm' | 'cancelAim' | 'pick' | 'scan' | 'pickUp'>;
 
 export function createContactController(): ContactController {
-  let st: ContactState | null = null, designate: number | null = null, scanned: ContactId | null = null, weapon: Weapon = 'laser', torpStep = 0, rockLock: { weapon: Weapon; rock: number } | null = null;
+  let st: ContactState | null = null, designate: number | null = null, scanned: ContactId | null = null, weapon: Weapon = 'laser', torpStep = 0, rockLock: { weapon: Weapon; rock: number } | null = null, noLaser = false;
   // What the last sync recorded (the last drawn frame).
-  let allowed = false, station: ConsoleStation | null = null, epoch: number | null = null, enemyKnown = 2;
+  let allowed = false, station: ConsoleStation | null = null, epoch: number | null = null, enemyKnown = 2, laserFit = true;
   const science = (): boolean => station === 'science';
   const select = (next: ContactId | null): void => { st = next === null ? null : { contact: next, aim: false }; designate = next ?? -1; };
   const c: ContactController = {
@@ -107,6 +113,7 @@ export function createContactController(): ContactController {
     sync(s) {
       if (epoch !== null && s.epoch !== epoch) st = null;                        // a new round
       enemyKnown = s.enemyKnown ?? 2;
+      laserFit = s.laser ?? true;
       if (st && s.shown && s.station === 'science' && st.contact === 0 && !s.active(s.target)) { st = null; designate = -1; }   // Science's enemy is gone: undesignate it
       if (st && (!s.shown || (st.contact === 0 && !s.active(s.target)))) st = null;   // hidden, SHIP, paused, decided, or the enemy is gone
       if (st && s.station === 'science' && station !== 'science') designate = st.contact;   // a contact carried to Science is its selection: designate it
@@ -128,11 +135,12 @@ export function createContactController(): ContactController {
     intercept(code) {
       if (code === 'Escape') return allowed && st !== null ? c.escape() : false;
       if (!allowed) return false;
-      if (code === 'KeyT' && (station === 'helm' || station === 'weapons' || station === 'science')) { c.toggle(); return true; }
+      if (code === 'KeyT' && (station === 'helm' || station === 'weapons' || station === 'science' || station === 'flight')) { c.toggle(); return true; }
       if (code === 'KeyS' && science()) { c.scan(); return true; }
       const w = WEAPON_CODES[code];
-      if (w && station === 'weapons') { c.pickUp(w); return true; }
-      if ((code === 'KeyE' || code === 'KeyQ') && st?.aim && station === 'weapons') {
+      if (w && (station === 'weapons' || (station === 'flight' && (w === 'torpedo' || laserFit)))) { c.pickUp(w); return true; }   // Valkyrn spec §5.1: 1 only with the laser fit
+      if (w === 'laser' && station === 'flight') { noLaser = true; return true; }   // §6.1: without it, the refusal flash reads NO LASER
+      if ((code === 'KeyE' || code === 'KeyQ') && st?.aim && (station === 'weapons' || station === 'flight')) {
         if (weapon === 'torpedo') { torpStep += code === 'KeyE' ? 1 : -1; return true; }   // the torpedo stays picked up
         st = { ...st, aim: false };   // the laser's pick-up drops; the key steps the laser's target
         return false;
@@ -140,8 +148,8 @@ export function createContactController(): ContactController {
       return false;
     },
     takeRequests() {
-      const out: ContactRequests = { designate, scan: scanned, ...(torpStep !== 0 ? { torpStep } : {}), ...(rockLock ? { rockLock } : {}) };
-      designate = null; scanned = null; torpStep = 0; rockLock = null;
+      const out: ContactRequests = { designate, scan: scanned, ...(torpStep !== 0 ? { torpStep } : {}), ...(rockLock ? { rockLock } : {}), ...(noLaser ? { noLaser: true as const } : {}) };
+      designate = null; scanned = null; torpStep = 0; rockLock = null; noLaser = false;
       return out;
     }
   };

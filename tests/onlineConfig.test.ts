@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveOnlineConfig } from '../src/main/network/onlineConfig';
+import { DISABLED_PAGE_ONLINE_CONFIG, resolveOnlineConfig, sessionConfigOf, toPageOnlineConfig, validatePageOnlineConfig } from '../src/shared/onlineConfig';
 
 describe('development online configuration', () => {
   it.each(['http://localhost:8787', 'http://127.0.0.1:8787/', 'http://[::1]:8787'])('enables explicitly configured HTTP loopback %s', localServiceUrl => {
@@ -31,4 +31,28 @@ it('rejects conflicting sources and development overrides of packaged configurat
   expect(resolveOnlineConfig({ packaged: false, serviceUrl: 'https://service.example', localServiceUrl: 'http://localhost:8787' })).toEqual({ enabled: false });
   expect(resolveOnlineConfig({ packaged: true, serviceUrl: 'https://service.example' })).toEqual({ enabled: false });
   expect(resolveOnlineConfig({ packaged: true, packagedServiceOrigin: 'https://service.example', localServiceUrl: 'http://localhost:8787' })).toEqual({ enabled: false });
+});
+
+describe('page online config (web build spec §3.3)', () => {
+  const loopback = resolveOnlineConfig({ packaged: false, localServiceUrl: 'http://127.0.0.1:8787' });
+  it('carries the resolved origin and honours test-only fields only when unpackaged', () => {
+    expect(toPageOnlineConfig(loopback, { packaged: false, sectorOnlineTest: '1', duelTestSeed: '42', testProbe: '1' })).toEqual({
+      serviceOrigin: 'http://127.0.0.1:8787', iceMode: 'loopback', allowInsecureLocalhost: true, packaged: false, sectorOnlineTest: true, duelTestSeed: 42, testProbe: true });
+    const turn = resolveOnlineConfig({ packaged: true, packagedServiceOrigin: 'https://service.example' });
+    expect(toPageOnlineConfig(turn, { packaged: true, sectorOnlineTest: '1', duelTestSeed: '42', testProbe: '1' })).toEqual({
+      serviceOrigin: 'https://service.example', iceMode: 'turn', allowInsecureLocalhost: false, packaged: true, sectorOnlineTest: false, duelTestSeed: null, testProbe: false });
+  });
+  it('parses the duel test seed exactly as main did and disables a disabled config', () => {
+    for (const seed of ['', 'x', '-1', '4294967296', '12345678901']) expect(toPageOnlineConfig(loopback, { packaged: false, duelTestSeed: seed }).duelTestSeed).toBeNull();
+    expect(toPageOnlineConfig(loopback, { packaged: false, duelTestSeed: '4294967295' }).duelTestSeed).toBe(4294967295);
+    expect(toPageOnlineConfig({ enabled: false }, { packaged: false })).toEqual(DISABLED_PAGE_ONLINE_CONFIG);
+  });
+  it('validates by the same origin rules and maps back to the session config', () => {
+    const page = toPageOnlineConfig(loopback, { packaged: false });
+    expect(validatePageOnlineConfig(page)).toBe(true); expect(sessionConfigOf(page)).toEqual(loopback);
+    expect(validatePageOnlineConfig(DISABLED_PAGE_ONLINE_CONFIG)).toBe(true); expect(sessionConfigOf(DISABLED_PAGE_ONLINE_CONFIG)).toEqual({ enabled: false });
+    for (const bad of [{ ...page, serviceOrigin: 'http://evil.example' }, { ...page, iceMode: 'turn' }, { ...page, allowInsecureLocalhost: false },
+      { ...page, packaged: true, sectorOnlineTest: true }, { ...page, packaged: true, testProbe: true }, { ...page, duelTestSeed: 1.5 }, { ...page, extra: 1 }, null, 'x'])
+      expect(validatePageOnlineConfig(bad)).toBe(false);
+  });
 });

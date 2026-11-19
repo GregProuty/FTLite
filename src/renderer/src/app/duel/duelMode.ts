@@ -26,6 +26,8 @@ export interface DuelModeDeps {
   ui: DuelSink;
   /** The duel ship (the Hound). */
   layout: ShipLayout;
+  /** Valkyrn spec §8: the crew class (the laser fit), or absent for the layout's own. */
+  cls?: number;
   /** The preload bridge's suspend and resume hooks, when present; their unsubscribes run on dispose. */
   lifecycle?: { onSuspend(cb: () => void): (() => void) | void; onResume(cb: () => void): (() => void) | void };
   /** Inside the app (main menu spec): M while paused or on the end screen calls this, and the banners show the key. The
@@ -59,12 +61,13 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
   const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => {
     const rect = canvas.getBoundingClientRect(), lb = computeLetterbox(rect.width, rect.height, INTERNAL_W, INTERNAL_H);
     return { x: (cx - rect.left - lb.offsetX) / lb.scale, y: (cy - rect.top - lb.offsetY) / lb.scale };
-  });
+  }, window as unknown as EventSource);   // Valkyrn spec §5.1: a release off the canvas or a blur ends the gun
   const runtime = createDuelRuntime({
     now: () => performance.now(),
     scheduler: { schedule(delay, cb) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } },
     sampleKeys: () => keyboard.sample(), samplePointer: () => pointer.sample(),
     takeContactRequests: () => contact.takeRequests(), takeHeading: () => requests.takeHeading(),
+    cls: deps.cls, takeSteer: () => requests.takeSteer(), takeLaunches: () => requests.takeLaunches(), gunHeld: () => pointer.leftHeld(),   // Valkyrn spec §5.1, §8
     clearKeys: () => { keyboard.clear(); pointer.clear(); },
     seed: deps.seed, viewport, layout: deps.layout, onRound: (summary) => { void Promise.resolve(deps.recordDuel?.(solo.record(summary))).catch(() => {}); }
   });

@@ -21,7 +21,14 @@ export const HOUND_REPAIR_POINTS: readonly { tacticalRoom: number; room: string;
   { tacticalRoom: Room.Engines, room: 'E', tile: [4, 2] }
 ];
 /** Repair points by layout id; a duel on any other layout throws. */
-export const DUEL_REPAIR_POINTS: Readonly<Record<string, typeof CUTTER_REPAIR_POINTS>> = { cutter: CUTTER_REPAIR_POINTS, hound: HOUND_REPAIR_POINTS };
+/** Valkyrn spec §4.3: the Valkyrn's repair points, one per tactical Room, each on an open floor tile: Weapons in Ops (as the
+ *  Hound's), Shields in the missile bay's rack half, Engines on its ramp half. */
+export const VALKYRN_REPAIR_POINTS: readonly { tacticalRoom: number; room: string; tile: readonly [number, number] }[] = [
+  { tacticalRoom: Room.Weapons, room: 'O', tile: [13, 4] },
+  { tacticalRoom: Room.Shields, room: 'R', tile: [6, 3] },
+  { tacticalRoom: Room.Engines, room: 'E', tile: [2, 3] }
+];
+export const DUEL_REPAIR_POINTS: Readonly<Record<string, typeof CUTTER_REPAIR_POINTS>> = { cutter: CUTTER_REPAIR_POINTS, hound: HOUND_REPAIR_POINTS, valkyrn: VALKYRN_REPAIR_POINTS };
 
 /** Duel fire (duel-fire spec §1). Only the crew ship burns. A laser hit by the enemy rolls DUEL_FIRE_CHANCE_LASER and a
  *  missile hit on the crew ship DUEL_FIRE_CHANCE_MISSILE (rng.hazards, one draw per hit, none for a burning room); a fire

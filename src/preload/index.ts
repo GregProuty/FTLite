@@ -1,65 +1,40 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { copyOnlinePortDescriptor, DUEL_RECORD_CHANNEL, ONLINE_CHANNELS, ONLINE_LINK_STATS_CHANNEL, ONLINE_PORT_CHANNEL, ONLINE_PORT_SOURCE, ONLINE_STATUS_CHANNEL, WINDOW_FULLSCREEN_CHANNEL,
-  validateOnlineAction, validateOnlineLinkStats, validateOnlinePortEnvelope, validateOnlineResult, validateOnlineStatusEnvelope,
-  type FtlitePreloadApi, type OnlineAction, type OnlineResult, type Unsubscribe } from '../shared/onlineSession';
+import { APP_PREPARE_EXIT_CHANNEL, APP_RESUME_CHANNEL, APP_SUSPEND_CHANNEL, DUEL_RECORD_CHANNEL, ONLINE_CONFIG_CHANNEL, WINDOW_FULLSCREEN_CHANNEL,
+  type FtlitePreloadApi, type Unsubscribe } from '../shared/onlineSession';
+import { DISABLED_PAGE_ONLINE_CONFIG, validatePageOnlineConfig, type PageOnlineConfig } from '../shared/onlineConfig';
 
-async function action(value: OnlineAction): Promise<OnlineResult> {
-  if (!validateOnlineAction(value)) return { ok: false, code: 'invalid-action' };
-  try {
-    const result: unknown = await ipcRenderer.invoke(ONLINE_CHANNELS[value.type], value);
-    return validateOnlineResult(result) ? result : { ok: false, code: 'invalid-status' };
-  } catch { return { ok: false, code: 'unavailable' }; }
-}
-function lifecycle(channel: 'app:suspend' | 'app:resume', callback: () => void): Unsubscribe {
+function lifecycle(channel: typeof APP_SUSPEND_CHANNEL | typeof APP_RESUME_CHANNEL, callback: () => void): Unsubscribe {
   const listener = () => callback(); ipcRenderer.on(channel, listener);
   return () => { ipcRenderer.off(channel, listener); };
 }
-let lastEpoch = 0;
-ipcRenderer.on(ONLINE_PORT_CHANNEL, (event, value: unknown) => {
-  const close = () => { for (const port of event.ports) { try { port.close(); } catch {} } };
-  if (event.ports.length !== 1 || !validateOnlinePortEnvelope(value) || value.descriptor.epoch <= lastEpoch) { close(); return; }
+/** Main's resolved online configuration (web build spec §3.3), read once and frozen. Anything malformed is disabled. */
+function readOnlineConfig(): PageOnlineConfig {
   try {
-    window.postMessage({ source: ONLINE_PORT_SOURCE, version: 1, descriptor: copyOnlinePortDescriptor(value.descriptor) }, '*', event.ports);
-    lastEpoch = value.descriptor.epoch;
-  } catch { close(); }
+    const value: unknown = ipcRenderer.sendSync(ONLINE_CONFIG_CHANNEL);
+    if (validatePageOnlineConfig(value)) return Object.freeze({ ...value });
+  } catch { /* disabled below */ }
+  return Object.freeze({ ...DISABLED_PAGE_ONLINE_CONFIG });
+}
+// The close handshake: main pushes a request number; the page's handler runs; the same number is answered.
+let exitHandler: (() => Promise<void>) | undefined;
+ipcRenderer.on(APP_PREPARE_EXIT_CHANNEL, (_event, request: unknown) => {
+  if (!Number.isSafeInteger(request) || (request as number) <= 0) return;
+  const handler = exitHandler;
+  void Promise.resolve().then(() => handler?.()).catch(() => {}).finally(() => { void ipcRenderer.invoke(APP_PREPARE_EXIT_CHANNEL, request).catch(() => {}); });
 });
 const api: FtlitePreloadApi = {
-  onSuspend: callback => lifecycle('app:suspend', callback),
-  onResume: callback => lifecycle('app:resume', callback),
+  onlineConfig: readOnlineConfig(),
+  onSuspend: callback => lifecycle(APP_SUSPEND_CHANNEL, callback),
+  onResume: callback => lifecycle(APP_RESUME_CHANNEL, callback),
+  onPrepareExit(handler) {
+    if (typeof handler !== 'function') return () => {};
+    exitHandler = handler;
+    return () => { if (exitHandler === handler) exitHandler = undefined; };
+  },
   async recordDuel(record) { try { return (await ipcRenderer.invoke(DUEL_RECORD_CHANNEL, structuredClone(record))) === true; } catch { return false; } },
   window: {
     async isFullScreen() { try { return (await ipcRenderer.invoke(WINDOW_FULLSCREEN_CHANNEL)) === true; } catch { return false; } },
     async setFullScreen(on) { try { return (await ipcRenderer.invoke(WINDOW_FULLSCREEN_CHANNEL, on === true)) === true; } catch { return false; } }
-  },
-  online: {
-    host: sector => action(sector ? { type: 'host', mode: 'sector', capacity: sector.capacity } : { type: 'host', mode: 'duel' }),
-    join: (code, mode) => action(mode ? { type: 'join', code, mode } : { type: 'join', code }),
-    ready: ready => action({ type: 'ready', ready }),
-    removeSeat: seatId => action({ type: 'remove-seat', seatId }),
-    viewState: (epoch, phase) => action({ type: 'view-state', epoch, phase }),
-    reconnect: () => action({ type: 'reconnect' }),
-    rehost: () => action({ type: 'rehost' }),
-    start: helmPlayer => action(helmPlayer === undefined ? { type: 'start' } : { type: 'start', helmPlayer }),
-    retry: () => action({ type: 'retry' }),
-    leave: () => action({ type: 'leave' }),
-    forgetSeat: () => action({ type: 'forget-seat' }),
-    async readStatus() {
-      try {
-        const value: unknown = await ipcRenderer.invoke(ONLINE_STATUS_CHANNEL);
-        if (validateOnlineStatusEnvelope(value)) return value;
-        if (validateOnlineResult(value) && !value.ok) return value;
-        return { ok: false, code: 'invalid-status' };
-      } catch { return { ok: false, code: 'unavailable' }; }
-    },
-    async linkStats() {
-      try { const value: unknown = await ipcRenderer.invoke(ONLINE_LINK_STATS_CHANNEL); return validateOnlineLinkStats(value) ? { route: value.route, rttMs: value.rttMs } : null; }
-      catch { return null; }
-    },
-    onStatus(callback) {
-      const listener = (_event: unknown, value: unknown) => { if (validateOnlineStatusEnvelope(value)) callback(value); };
-      ipcRenderer.on(ONLINE_STATUS_CHANNEL, listener);
-      return () => { ipcRenderer.off(ONLINE_STATUS_CHANNEL, listener); };
-    }
   }
 };
 contextBridge.exposeInMainWorld('ftlite', api);

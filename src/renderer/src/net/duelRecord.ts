@@ -12,7 +12,8 @@ export const DUEL_RECORD_MAX_MS = 3_600_000;
 export interface LatencyFigure { count: number; median: number | null; p95: number | null; max: number | null }
 export interface DuelPlaytestRecord {
   version: 1; session: 'solo' | 'online'; role: 'host' | 'guest'; transport: 'loopback' | 'lan' | 'internet' | null;
-  seat: 0 | 1; helmPlayer: 0 | 1; seed: number; round: number; startedAtIso: string;
+  /** `seat` and `helmPlayer` are player ids 0..3 (Sci-2 spec §4.3). */
+  seat: number; helmPlayer: number; seed: number; round: number; startedAtIso: string;
   summary: DuelRoundRecord;
   latency: { held: LatencyFigure; command: LatencyFigure; rttMs: number | null };
   /** Publication inter-arrival: the standard deviation against the expected 50 ms, over `count` gaps. */
@@ -22,19 +23,20 @@ export interface DuelPlaytestRecord {
 
 const uint = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), ms = z.number().finite().min(0).max(DUEL_RECORD_MAX_MS);
 const pair = z.tuple([uint, uint]);
+const crew = z.array(uint).min(1).max(4);   // Valkyrn spec §4.4: Single player's crew of one; Sci-2 spec §4.3: one per player, n long
 const causes = z.array(z.enum(TERMINAL_CAUSES)).max(TERMINAL_CAUSES.length);
 const losses = z.object(Object.fromEntries(MISSILE_LOSSES.map((k) => [k, uint])) as Record<(typeof MISSILE_LOSSES)[number], typeof uint>).strict();
 const figure = z.object({ count: uint, median: ms.nullable(), p95: ms.nullable(), max: ms.nullable() }).strict();
 const summary = z.object({
   outcome: z.number().int().min(1).max(3), ticks: uint, terminal: z.tuple([causes, causes]),
-  laserReleases: pair, laserHits: pair, missilesLaunched: pair, missileHits: pair, repairsFinished: pair, laserMisses: pair, layersStripped: pair,
+  laserReleases: pair, laserHits: pair, missilesLaunched: pair, missileHits: pair, repairsFinished: crew, laserMisses: pair, layersStripped: pair,
   missileLosses: z.tuple([losses, losses]), planetContacts: pair, asteroidContacts: pair, baits: uint, consoleSwaps: uint,
-  helmEmptyTicks: uint, weaponsEmptyTicks: uint, enemyInArcTicks: uint, weaponsIdleTicks: uint, repairsStarted: pair, walkingTicks: pair, repairingTicks: pair,
+  helmEmptyTicks: uint, weaponsEmptyTicks: uint, enemyInArcTicks: uint, weaponsIdleTicks: uint, repairsStarted: crew, walkingTicks: crew, repairingTicks: crew,
   round: uint, seed: z.number().int().min(0).max(0xffffffff), baseTick: uint
 }).strict();
 export const duelRecordSchema = z.object({
   version: z.literal(1), session: z.enum(['solo', 'online']), role: z.enum(['host', 'guest']), transport: z.enum(['loopback', 'lan', 'internet']).nullable(),
-  seat: z.union([z.literal(0), z.literal(1)]), helmPlayer: z.union([z.literal(0), z.literal(1)]), seed: z.number().int().min(0).max(0xffffffff), round: uint,
+  seat: z.number().int().min(0).max(3), helmPlayer: z.number().int().min(0).max(3), seed: z.number().int().min(0).max(0xffffffff), round: uint,
   startedAtIso: z.string().max(32).regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/),
   summary, latency: z.object({ held: figure, command: figure, rttMs: ms.nullable() }).strict(),
   jitter: z.object({ count: uint, stdMs: ms.nullable() }).strict(), disconnects: uint, pauses: uint
@@ -58,7 +60,7 @@ export function latencyFigure(samples: readonly number[]): LatencyFigure {
 }
 /** Single player's record of a decided round (H-2 spec §8, Helm §11a): the same record with session 'solo'. One machine
  *  and no link: role 'host', no transport, no latency samples, no jitter and no disconnects. */
-export function soloDuelRecord(summary: DuelRoundRecord, at: { seat: 0 | 1; helmPlayer: 0 | 1; startedAtIso: string; pauses: number }): DuelPlaytestRecord {
+export function soloDuelRecord(summary: DuelRoundRecord, at: { seat: number; helmPlayer: number; startedAtIso: string; pauses: number }): DuelPlaytestRecord {
   return { version: 1, session: 'solo', role: 'host', transport: null, seat: at.seat, helmPlayer: at.helmPlayer, seed: summary.seed, round: summary.round,
     startedAtIso: at.startedAtIso, summary, latency: { held: latencyFigure([]), command: latencyFigure([]), rttMs: null }, jitter: arrivalJitter([]), disconnects: 0, pauses: at.pauses };
 }

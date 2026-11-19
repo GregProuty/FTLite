@@ -1,5 +1,5 @@
 // The duel's producer manager (H-2 spec §6), the duel's equivalent of sectorProducers.ts. The duel's producers are its
-// two humans; a seat with no human attachment, or whose attachment has gone, gets one away steward instead. The steward
+// n humans (Sci-2 spec §4.4: n = init.playerCount, 2..4); a seat with no human attachment, or whose attachment has gone, gets one away steward instead. The steward
 // is a loopback producer: at a completed boundary while the run is running it sends `presence {present: false}` once
 // through the normal ledger, and otherwise nothing; it keeps no memory. When a remote human's attachment goes (a lost
 // peer), the manager pauses the run with 'peer-lost' once the steward's presence has an applied result, so the pause
@@ -14,9 +14,10 @@ import { createLoopbackHarness } from '../../renderer/src/net/loopback';
 import type { AuthorityMessage, CommandId, Link, PublishedState, Unsubscribe } from '../../renderer/src/net/contracts';
 import type { DuelSnapshot } from '../../renderer/src/sim/duel/snapshot';
 import { SIM_VERSION } from '../../renderer/src/sim/tuning';
+import { DUEL_CREW_MAX, DUEL_CREW_MIN } from '../../renderer/src/sim/duel/state';
 
 export type AttachmentOrigin = 'local' | 'remote';
-interface DuelProducerOptions { authority: Authority<DuelTypes>; runId: string; contentDigest: string; pause(reason: string): void }
+interface DuelProducerOptions { authority: Authority<DuelTypes>; runId: string; contentDigest: string; playerCount: number; pause(reason: string): void }
 interface Human { link: Link; players: readonly number[]; options: AttachOptions<DuelSnapshot>; origin?: AttachmentOrigin; detach?: Unsubscribe; offClose?: Unsubscribe }
 /** One away steward: its loopback link, what it last saw, its presence command, and whether a lost peer awaits its pause. */
 interface Steward {
@@ -24,13 +25,13 @@ interface Steward {
   publication: PublishedState<DuelSnapshot> | null; results: AuthorityMessage<DuelSnapshot>[];
   pending: CommandId | null; done: boolean; rejected: number; lost: boolean; lastSequence: number;
 }
-const PLAYERS = 2;
-const codec = duelCodec(PLAYERS);
+const codec = duelCodec(DUEL_CREW_MAX);   // Sci-2 spec §4.3: built once at the room limit
 
 export function createDuelProducers(options: DuelProducerOptions) {
-  const { authority, runId, contentDigest } = options;
+  const { authority, runId, contentDigest, playerCount } = options;
+  if (!Number.isInteger(playerCount) || playerCount < DUEL_CREW_MIN || playerCount > DUEL_CREW_MAX) throw Error('invalid duel producer');
   const transport = createLoopbackHarness({ protocolVersion: 1, simVersion: SIM_VERSION, contentDigest });
-  const desired: (Human | undefined)[] = [undefined, undefined];
+  const desired: (Human | undefined)[] = Array.from({ length: playerCount });   // Sci-2: a seat with no human gets the steward (an empty seat at Start)
   const humans = new Set<Human>(), stewards = new Map<number, Steward>(), lost = new Set<number>();
   let disposed = false;
   function bindSteward(player: number): Steward {
@@ -98,7 +99,7 @@ export function createDuelProducers(options: DuelProducerOptions) {
       if (disposed || !wanted(human)) { human.detach(); retire(human); }
     }
     if (disposed) return;
-    for (let player = 0; player < PLAYERS; player++) if (!desired[player] && !stewards.has(player)) {
+    for (let player = 0; player < playerCount; player++) if (!desired[player] && !stewards.has(player)) {
       const s = bindSteward(player);
       if (disposed || desired[player]) { s.detach(); s.close(); } else stewards.set(player, s);
       if (disposed) return;
@@ -109,7 +110,7 @@ export function createDuelProducers(options: DuelProducerOptions) {
   }
   return {
     attachHuman(link: Link, players: readonly number[], attachOptions: AttachOptions<DuelSnapshot>, origin?: AttachmentOrigin): Unsubscribe {
-      if (disposed || !players.length || players.some(p => !Number.isInteger(p) || p < 0 || p >= PLAYERS)
+      if (disposed || !players.length || players.some(p => !Number.isInteger(p) || p < 0 || p >= playerCount)
         || new Set(players).size !== players.length || [...humans].some(h => h.link === link)
         || (attachOptions.admissionPolicy !== undefined && attachOptions.admissionPolicy !== 'strict' && attachOptions.admissionPolicy !== 'receive-time'))
         throw Error('invalid duel producer');

@@ -386,3 +386,25 @@ The spike is accepted for the owner's play when all of these hold:
    spike only.
 5. **Duel gates**: pieces flying into ships may shorten rounds; if `duelGates` fails, tune `BLAST_SHIP_PUSH`, the hull
    cost thresholds or `ROCK_FLING` within the spike and say so in the report.
+
+## 12. As built: the merge with master (Valkyrn, Sci-2, Web-i, CRT menu; SIM 54, 2026-11-18)
+
+- **Gun rounds and rocks.** The Valkyrn's minigun rounds (`sim/tactical/gun.ts` `stepRounds`) sweep the live rock pool
+  `state.rocks` as it stands when the sweep runs (after `stepRocks` moved the rocks this tick, the same post-move moment
+  the round tests the ships at), found with `rocksNear` as the laser's `firstBlocker` does, ties by ascending slot, and,
+  like `firstBlocker`, a piece born this tick is not in the way. A gone seeded rock no longer stops a round. A round that
+  meets a rock is **absorbed**: it ends, as on master, and the rock takes nothing (no push, no wear, no `rock` event, no
+  `rockHits`). A laser-style chip was rejected: the gun fires 10 rounds a second, and a full laser hit each (2 damage,
+  `LASER_ROCK_PUSH`) would shred the belt; a fractional chip needs a per-rock wear field (a new rock stride and hashed
+  state) for a spike. Test: `tests/valkyrnRoundsRocks.test.ts`.
+- **A class without a laser** (Valkyrn spec §6.1): `rockLock(laser)` is rejected `unavailable` at admission, as
+  `laserLock` and `laserCharge` are, and `applyWeaponsInput` ignores a laser rock target for such a class; the rock
+  helpers (`rockOnTarget`, `laserRockTarget`, `inLaserReach`, the laser's rock situation) answer "no" without a laser.
+  `rockLock(torpedo)` works on every class. The Flight seat forwards a card's rock clear (`rockTo`) and a contact-window
+  rock request to `rockLock` (the laser's only on the laser fit); map clicks on the Flight seat stay the gun's, so a rock
+  drop on the map is from the Weapons seat only.
+- **Hash and snapshot.** The systems record carries both sides' fields: the four rock fields, then the gun's eight, then
+  `rooms` and `gunRoomWear`; the space module has the round pool after the missiles and the rock pool and its counters
+  last. Validation and the compile-time completeness checks cover both.
+- **Tuning.** No rock knob moved; this spec's gates pass unchanged. The Valkyrn gate needed one pilot retune
+  (`PILOT_ORBIT_R` 1850 → 2200, Valkyrn spec §12).

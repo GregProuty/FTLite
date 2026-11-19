@@ -18,7 +18,7 @@ export const FEATURE_NAMES: Readonly<Record<Feature, string[]>> = {
   consoleArt: [...CONSOLE_ART_NAMES],   // Art-ii spec section 2: the Maru consoles, one per station kind
   blastArt: [...BLAST_NAMES],           // Art-ii spec section 3: the Pimen blasts
   propArt: [...PROP_ART_NAMES],         // Art-iii spec section 1: the Maru set dressing
-  battlemap: ['ship.hound.map'],   // Art-iv spec section 4: the Hound painting
+  battlemap: ['ship.hound.map', 'ship.valkyrn.map'],   // Art-iv spec section 4, Valkyrn spec §4.1: the painted ships
   backdrop: ['space.backdrop'],    // Art-v spec section 1: the Deep Space (Red) painting
   glyphs: ['prompt.kb.E', 'prompt.kb.F', 'prompt.kb.Q', 'prompt.kb.Enter', 'prompt.kb.ShiftRight', 'prompt.kb.Backspace', 'prompt.pad.A', 'prompt.pad.X', 'prompt.pad.B']
 };

@@ -82,7 +82,7 @@ function turnToward(heading: number, dx: number, dy: number): number { return si
 function len(x: number, y: number): number { return Math.sqrt(x * x + y * y); }
 
 /** Rule 1 (spec §3): the heading away from the first hazard on the predicted path, as a direction, or null. */
-function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } | null {
+export function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } | null {
   const t = d.tactical, s = t.ships[0], p = t.map.planet, keep = SHIP_RADIUS + AVOID_MARGIN;
   for (const q of predictPath(t, 0, axes, AVOID_TICKS, 4)) {
     if (len(q.x - p.x, q.y - p.y) < p.r + keep) return { x: s.x - p.x, y: s.y - p.y };
@@ -117,11 +117,18 @@ function helmAxes(pair: ScriptedPair, d: DuelState): Axes & { face?: boolean } {
   const ex = e.x - s.x, ey = e.y - s.y;
   if (laserFull(t, 0) && t.systems[0].laserTargeted && ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE && !inArc(s.heading, ex, ey, LASER_ARC_COS))
     return { turn: autoFaceTurn(t, 0), thrust: 0, face: true };
-  // Orbit: t is the prograde tangent (the way the ship already circles, clockwise at rest); tilt it toward the planet
-  // when outside the radius and away when inside, by at most 30°.
+  const o = orbitSteer(d, pair.orbitR);
+  return { turn: o.turn, thrust: o.thrust };
+}
+
+/** The Helm's orbit (spec §3), shared with the Valkyrn pilot (sim/duel/scriptedPilot.ts): the desired direction (dx, dy),
+ *  unit, and the turn and thrust that fly it. t is the prograde tangent (the way the ship already circles, clockwise at
+ *  rest); tilt it toward the planet when outside `orbitR` and away when inside, by at most 30°. */
+export function orbitSteer(d: DuelState, orbitR: number): Axes & { dx: number; dy: number } {
+  const s = d.tactical.ships[0];
   const r = len(s.x, s.y), ux = r > 0 ? s.x / r : 0, uy = r > 0 ? s.y / r : -1;
   const cw = s.x * s.vy - s.y * s.vx >= 0, tx = cw ? -uy : uy, ty = cw ? ux : -ux;
-  const tilt = Math.max(-TAN_30, Math.min(TAN_30, ORBIT_GAIN * (r - pair.orbitR)));
+  const tilt = Math.max(-TAN_30, Math.min(TAN_30, ORBIT_GAIN * (r - orbitR)));
   let dx = tx - ux * tilt, dy = ty - uy * tilt;
   const dl = len(dx, dy); dx /= dl; dy /= dl;
   const nose = hx(s.heading) * dx + hy(s.heading) * dy;
@@ -131,7 +138,7 @@ function helmAxes(pair: ScriptedPair, d: DuelState): Axes & { face?: boolean } {
   if (nose < COS_45) thrust = 0;
   else if (speed > vc + SPEED_SLACK) thrust = -1;
   else if (speed < vc - SPEED_SLACK || s.vx * dx + s.vy * dy < COS_10 * speed) thrust = 1;
-  return { turn, thrust };
+  return { turn, thrust, dx, dy };
 }
 
 // --- Walking (spec §3): a BFS over the Cutter's walkable tiles, doors held open, four-way only. ---
@@ -188,7 +195,7 @@ function walkToward(d: DuelState, pid: number, next: number): HeldInput {
   return { moveX: 0, moveY: clamp(ny - y), interactHeld: false };
 }
 /** Held stick that walks pid toward the nearest goal tile, settling on its centre; neutral when none is reachable. */
-function walkTo(d: DuelState, pid: number, goals: ReadonlySet<number>): HeldInput {
+export function walkTo(d: DuelState, pid: number, goals: ReadonlySet<number>): HeldInput {
   const st = d.interior, eid = st.crew[pid]!, w = st.derived.width;
   const from = Math.floor(Position.y[eid]!) * w + Math.floor(Position.x[eid]!);
   const path = bfsPath(d, from, goals);
@@ -205,7 +212,7 @@ function walkDistance(d: DuelState, pid: number, goals: ReadonlySet<number>): nu
 
 /** As the sim's sit check (and app/duel/controls consoleInReach): pid standing in the console's room, in reach of its
  *  tile, with no member of its group occupied and one online. */
-function canSit(d: DuelState, pid: number, i: number): boolean {
+export function canSit(d: DuelState, pid: number, i: number): boolean {
   const st = d.interior, eid = st.crew[pid]!;
   if (Seated.station[eid]! >= 0 || Life.state[eid] !== LifeState.Conscious) return false;
   const g = st.derived.stationGroup[i], members = g !== undefined && g >= 0 ? st.derived.groupStations[g]! : [i];
@@ -214,7 +221,7 @@ function canSit(d: DuelState, pid: number, i: number): boolean {
 }
 
 /** As the sim's repair rule: pid standing in the room's repair room and in reach of its point. */
-function inRepairReach(d: DuelState, pid: number, room: number): boolean {
+export function inRepairReach(d: DuelState, pid: number, room: number): boolean {
   const st = d.interior, eid = st.crew[pid]!, p = d.points.find((q) => q.tacticalRoom === room)!;
   return Seated.station[eid]! < 0 && roomAt(st, Position.x[eid]!, Position.y[eid]!) === p.room && inReachOfTile(st, eid, p.tile);
 }
@@ -249,7 +256,7 @@ function reviveTiles(d: DuelState, pid: number): Set<number> {
 }
 
 /** The non-solid tiles of an interior room. */
-function roomTiles(d: DuelState, room: number): Set<number> {
+export function roomTiles(d: DuelState, room: number): Set<number> {
   const st = d.interior, w = st.derived.width, out = new Set<number>();
   for (let i = 0; i < st.derived.roomOfTile.length; i++) if (st.derived.roomOfTile[i] === room && !solidAt(st, i % w, Math.floor(i / w))) out.add(i);
   return out;

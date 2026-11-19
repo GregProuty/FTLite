@@ -67,7 +67,7 @@ export const HelmStation = memo(function HelmStation({ helm }: { helm: HelmPanel
       <Button name="auto-face" label="AUTO-FACE" hint="SPC" x={rx} y={y0 + 100} w={148} h={24} lit={h.fire} flash={flash('auto-face')} onHold={(on) => actions.console.hold('Space', on)} />
       {hint('auto-face', 'HOLD: NOSE ON ENEMY', y0 + 128)}
       {hint('throttle', 'W/S  THROTTLE', y0 + 152)}
-      {hint('heading', 'R-CLICK MAP: HEADING', y0 + 170)}
+      {hint('heading', helm.flight ? 'MOUSE: STEER' : 'R-CLICK MAP: HEADING', y0 + 170)}   {/* Valkyrn spec §5.1: no click-to-heading on Flight */}
     </>
   );
 });

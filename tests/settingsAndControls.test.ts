@@ -11,11 +11,11 @@ describe('settings store (Audio-i spec section 6)', () => {
   it('persists the three volumes and falls back to the default on missing, malformed or unknown data', () => {
     const { map, storage } = memory();
     expect(loadSettings(storage)).toEqual(DEFAULT_SETTINGS);
-    expect(DEFAULT_SETTINGS).toEqual({ version: 2, master: 1, music: 0.5, effects: 1, shake: 'full' });   // music at half (owner 2026-11-17); Feel-i: full shake
-    saveSettings(storage, { version: 2, master: 0.25, music: 0.5, effects: 0, shake: 'low' }); expect(loadSettings(storage)).toEqual({ version: 2, master: 0.25, music: 0.5, effects: 0, shake: 'low' });
+    expect(DEFAULT_SETTINGS).toEqual({ version: 2, master: 1, music: 0.5, effects: 1, shake: 'full', soloShip: 'hound', valkyrnLaserFit: false });   // music at half (owner 2026-11-17); Feel-i: full shake
+    saveSettings(storage, { version: 2, master: 0.25, music: 0.5, effects: 0, shake: 'low', soloShip: 'hound', valkyrnLaserFit: false }); expect(loadSettings(storage)).toEqual({ version: 2, master: 0.25, music: 0.5, effects: 0, shake: 'low', soloShip: 'hound', valkyrnLaserFit: false });
     for (const bad of ['{', '[]', 'null', '{"version":3,"master":0}', '{"version":"2"}']) { map.set(SETTINGS_KEY, bad); expect(loadSettings(storage)).toEqual(DEFAULT_SETTINGS); }
     map.set(SETTINGS_KEY, '{"version":2,"master":0.3,"music":"1","effects":0.75}');
-    expect(loadSettings(storage)).toEqual({ version: 2, master: 1, music: 0.5, effects: 0.75, shake: 'full' });   // field by field (no shake: full)
+    expect(loadSettings(storage)).toEqual({ version: 2, master: 1, music: 0.5, effects: 0.75, shake: 'full', soloShip: 'hound', valkyrnLaserFit: false });   // field by field (no shake: full)
     map.set(SETTINGS_KEY, '{"version":2,"master":1,"music":1,"effects":1,"shake":"wild"}'); expect(loadSettings(storage).shake).toBe('full');
     map.set(SETTINGS_KEY, '{"version":2,"master":1,"music":1,"effects":1,"shake":"off"}'); expect(loadSettings(storage).shake).toBe('off');
     const throwing = { getItem: () => { throw Error('denied'); }, setItem: () => { throw Error('denied'); } };
@@ -24,7 +24,7 @@ describe('settings store (Audio-i spec section 6)', () => {
   });
   it('migrates a version 1 record: its volume becomes Master, and Music starts at its default half and Effects full', () => {
     const { map, storage } = memory();
-    map.set(SETTINGS_KEY, '{"version":1,"volume":0.25}'); expect(loadSettings(storage)).toEqual({ version: 2, master: 0.25, music: 0.5, effects: 1, shake: 'full' });
+    map.set(SETTINGS_KEY, '{"version":1,"volume":0.25}'); expect(loadSettings(storage)).toEqual({ version: 2, master: 0.25, music: 0.5, effects: 1, shake: 'full', soloShip: 'hound', valkyrnLaserFit: false });
     map.set(SETTINGS_KEY, '{"version":1,"volume":0}'); expect(loadSettings(storage).master).toBe(0);
     for (const bad of ['{"version":1,"volume":0.3}', '{"version":1,"volume":"1"}', '{"version":1}']) { map.set(SETTINGS_KEY, bad); expect(loadSettings(storage)).toEqual(DEFAULT_SETTINGS); }
   });
@@ -33,10 +33,10 @@ describe('settings store (Audio-i spec section 6)', () => {
 describe('the controls list', () => {
   it('names every bound key from the input tables, with no gamepad or second keyboard', () => {
     const sections = controlSections(), all = sections.flatMap(s => s.rows.map(r => r.keys)).join(' | ');
-    expect(sections.map(s => s.title)).toEqual(['Single player', 'Multiplayer', 'Anywhere']);
+    expect(sections.map(s => s.title)).toEqual(['Single player', 'Single player: Valkyrn', 'Multiplayer', 'Anywhere']);
     for (const code of Object.keys(PRESS_CODES)) expect(all).toContain(keyLabel(code));
     for (const code of [...Object.values(MOVE_CODES), INTERACT_HELD, FIRE_HELD]) expect(all).toContain(keyLabel(code));
-    const sector = sections[1]!.rows.map(r => r.keys).join(' ');
+    const sector = sections.find(s => s.title === 'Multiplayer')!.rows.map(r => r.keys).join(' ');
     for (const code of [SECTOR_KEYS.up, SECTOR_KEYS.left, SECTOR_KEYS.down, SECTOR_KEYS.right, SECTOR_KEYS.interact, SECTOR_KEYS.confirm, SECTOR_KEYS.cancel, SECTOR_KEYS.callout]) expect(sector).toContain(keyLabel(code));
     expect(sections[0]!.rows.find(r => r.keys === 'M')!.action).toContain('main menu');
     expect(all).not.toMatch(/pad|stick|arrow/i);

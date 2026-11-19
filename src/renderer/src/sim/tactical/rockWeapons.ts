@@ -12,6 +12,7 @@ import { classOf, type TacticalState } from './state';
 export function rockOnTarget(state: TacticalState, i: number, k: number): boolean {
   if (k < 0 || !rockAlive(state, k)) return false;
   const a = state.ships[i]!, r = rockAt(state, k), laser = classOf(state, i).slots.laser, dx = r.x - a.x, dy = r.y - a.y;
+  if (!laser) return false;   // Valkyrn spec §6.1: a class without a laser
   return Math.sqrt(dx * dx + dy * dy) - r.r <= laser.range && inArc(a.heading, dx, dy, laser.arcCos);
 }
 

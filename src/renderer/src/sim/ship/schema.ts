@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { reachableTiles } from './reachability';
+import { HULL_IDS } from './fleet';
+import { SHIP_CLASSES } from '../tactical/defs';
 import { STATION_IDS, StationKind } from '../stationKinds';
 import { STATION_MAX, REACTOR_CAPACITY } from '../tuning';
 
@@ -24,9 +26,21 @@ const shipSchema = z.object({
   spawns: z.array(tile).min(4),
   airlocks: z.array(z.object({ room: z.string().length(1), tile })).default([]),   // hull doors to space (spec Demo-vii section 1)
   magazine: tile.optional(),   // the torpedo magazine, a floor tile (spec Coop-ii section 2); without one the tube loads itself
-  consoleGroups: z.array(z.object({ tile, kinds: z.array(z.string()) })).default([])   // combined consoles: every listed kind's station on one tile, one seat, tabs (spec Demo-x-a section 1)
+  consoleGroups: z.array(z.object({ tile, kinds: z.array(z.string()) })).default([]),   // combined consoles: every listed kind's station on one tile, one seat, tabs (spec Demo-x-a section 1)
+  // Valkyrn spec §3.1, each optional and absent on the Hound: the crew slot's class id (a SHIP_CLASSES id, resolved by
+  // createDuel; absent = the Cutter), a fixed crew size (absent = any the caller asks for), whether the crew ship flies
+  // its throttle and held heading with the Helm empty (absent = false), and the console-map silhouette (absent = the Hound's).
+  shipClass: z.string().min(1).optional(),
+  crew: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
+  helmHoldsUnattended: z.boolean().optional(),
+  hull: z.enum(HULL_IDS).optional()
 }).superRefine((s, ctx) => {
   const fail = (message: string): void => { ctx.addIssue({ code: z.ZodIssueCode.custom, message }); };
+  if (s.shipClass !== undefined) {   // Valkyrn spec §3.1: a crew class id in SHIP_CLASSES (not the Hunter's, not a typo)
+    const cls = SHIP_CLASSES.find((c) => c.id === s.shipClass);
+    if (!cls) return fail(`shipClass: unknown ship class ${s.shipClass}`);
+    if (cls.ai !== 'crew') return fail(`shipClass: ${s.shipClass} is not a crew ship class`);
+  }
   if (s.rows.length !== s.height) return fail(`rows: expected ${s.height} rows (height)`);
   for (let y = 0; y < s.height; y++) if (s.rows[y]!.length !== s.width) return fail(`rows[${y}]: expected width ${s.width}`);
   const roomIds = new Set(s.rooms.map((r) => r.id));

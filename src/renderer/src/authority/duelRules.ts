@@ -28,10 +28,10 @@ function session(duel: DuelState, telemetry: DuelTelemetry): DuelSession {
 export const duelRules: EncounterRules<DuelTypes> = {
   modeId: 'duel',
   validateInit: (value, contentDigest, resolveLayout) => validateDuelInit(resolveLayout((value as DuelInit | null)?.layoutId as string), value, contentDigest),
-  create(init, resolveLayout) { const duel = createDuel(resolveLayout(init.layoutId), init.seed, init.helmPlayer); return session(duel, createTelemetry(duel)); },
+  create(init, resolveLayout) { const duel = createDuel(resolveLayout(init.layoutId), init.seed, init.helmPlayer, init.playerCount); return session(duel, createTelemetry(duel)); },
   dispose: (s) => disposeDuel(s.duel),
   assertLive: (s) => assertSimStateLive(s.duel.interior),
-  playerCount: () => 2,
+  playerCount: (s) => s.duel.interior.playerCount,   // Sci-2 spec §4.3: the run's crew
   tick: (s) => s.duel.interior.tick,
   step(s, input) {
     // The duel codec admits only duel kinds, and the core handles setPaused before the step.

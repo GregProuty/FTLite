@@ -1,4 +1,4 @@
-import { resolveOnlineConfig } from '../../src/main/network/onlineConfig';
+import { resolveOnlineConfig } from '../../src/shared/onlineConfig';
 
 export function isCanonicalServiceOrigin(value:unknown):value is string {
   if(typeof value!=='string')return false;

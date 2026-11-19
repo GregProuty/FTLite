@@ -12,12 +12,21 @@ import type { DuelState } from './state';
 /** Who is at the keyboard (spec §8 "present or away"). */
 export const presenceModule: SimModule<DuelState> = {
   id: 'presence',
-  fields: () => PRESENCE,
+  fields: (d) => presenceFields(d.interior.playerCount),
   notSnapshotted: {},
   commands: ['presence'],
   reasons: ['stale-tick', 'malformed']
 };
-const PRESENCE: ModuleField<DuelState>[] = [0, 1].map((p) => flag(`present.${p}`, (d) => d.present[p as 0 | 1], (d, v) => { d.present[p as 0 | 1] = v; }));
+/** One flag per player, `present.0` .. `present.(n−1)` (Sci-2 spec §4.1), built once per crew size. */
+const PRESENCE_BY_CREW = new Map<number, ModuleField<DuelState>[]>();
+function presenceFields(n: number): ModuleField<DuelState>[] {
+  let fields = PRESENCE_BY_CREW.get(n);
+  if (!fields) {
+    fields = Array.from({ length: n }, (_, p) => flag<DuelState>(`present.${p}`, (d) => d.present[p]!, (d, v) => { d.present[p] = v; }));
+    PRESENCE_BY_CREW.set(n, fields);
+  }
+  return fields;
+}
 
 /** Repair progress per tactical Room, in REPAIR_UNITS. */
 export const repairModule: SimModule<DuelState> = {
@@ -40,7 +49,7 @@ export const roundModule: SimModule<DuelState> = {
 };
 const ROUND: ModuleField<DuelState>[] = [
   scalar('round', (d) => d.round, (d, v) => { d.round = v; }),
-  scalar('helmPlayer', (d) => d.helmPlayer, (d, v) => { d.helmPlayer = v as 0 | 1; }),
+  scalar('helmPlayer', (d) => d.helmPlayer, (d, v) => { d.helmPlayer = v; }),
   scalar('baseTick', (d) => d.baseTick, (d, v) => { d.baseTick = v; }),
   scalar('decidedTick', (d) => d.decidedTick, (d, v) => { d.decidedTick = v; })
 ];
@@ -85,6 +94,7 @@ export const DUEL_NOT_SNAPSHOTTED: Readonly<Record<string, string>> = {
   nav: 'the Navigation station index, from the layout',
   weapons: 'the Weapons station index, from the layout',
   science: 'the Science station index, from the layout',
+  crewClass: 'the crew slot\'s class: hashed and snapshotted as the ship module\'s systems.0.cls, and in the snapshot header (Valkyrn spec §6.1)',
   events: 'per-tick repair events, cleared every tick'
 };
 

@@ -1,5 +1,7 @@
-// TEST ONLY passive utility-side stream observation. No coordinator or input source.
-import { writeFileSync, renameSync } from 'node:fs';
+// TEST ONLY passive Worker-side stream observation (Web-i: the recovery gate's Worker prelude; formerly the utility
+// process observer). No coordinator or input source. Built twice by online-observer-build.ts: as utility.cjs (Node, for
+// reconciledMemory only; the installer below never runs outside a Worker) and as the iife recovery-worker.js that
+// online-app-smoke.cjs prepends to the exactly-instrumented production Worker chunk.
 import { classifyStreamPacket, decodeOpaquePacket, decodeState, decodeStatePacket, ImageStore, inspectState } from '../../src/network/state/imageCodec';
 import { imageToPublication } from '../../src/network/modes/sectorStream';
 import { decodeMessage } from '../../src/renderer/src/net/codec';
@@ -19,9 +21,12 @@ export function reconciledMemory(checkpoint:any) {
     next.players.forEach((p:any,i:number)=>{p.nextSequence=checkpoint.commandHighWater[i]+1;p.heldSequence=checkpoint.heldHighWater[i];});return next;
   }); } finally { disposeSimState(state); }
 }
-export function observeUtility(parent: any, path: string) {
+function observeWorker() {
+  // (a) Registered before anything else: the page probe posts this port before the owner's initialize.
+  let report: MessagePort | undefined;
+  self.addEventListener('message', (event: MessageEvent) => { if (event.data?.kind === '__recovery-evidence') { event.stopImmediatePropagation(); report = event.ports[0]; } });
   const layouts = [parseShip(skiff),parseShip(cutter),parseShip(hound)], requests = new Map<string,number>(), grants = new Map<number,number>();
-  const evidence: any = { pid:process.pid, requests:0, grants:0, tick:0, phase:'paused', lastAdvanceMs:0, afterDeadlineInputs:0, unavailableResults:0, lateReplyRejected:0, errors:0 };
+  const evidence: any = { requests:0, grants:0, tick:0, phase:'paused', lastAdvanceMs:0, afterDeadlineInputs:0, unavailableResults:0, lateReplyRejected:0, errors:0 };
   (globalThis as any).__recoveryLease = (event:any) => {
     if(event.kind==='request') {
       requests.set(event.nonce,event.startedMs); evidence.requests++;
@@ -38,37 +43,32 @@ export function observeUtility(parent: any, path: string) {
     if(event.allowed) { boundary.allowed++; boundary.lastAllowedMs=event.atMs; if(event.atMs>=evidence.deadlineMs) boundary.postDeadlineAllowed++; }
     else boundary.denied++;
   };
-  const save = () => {
-    try { writeFileSync(path+'.tmp',JSON.stringify(evidence)); renameSync(path+'.tmp',path); }
-    catch(error) {
-      // Windows can deny replacement while the launcher has the prior sample open.
-      // Retain one latest sample and retry on the next observation; never stall authority.
-      if(!['EPERM','EACCES','EBUSY'].includes((error as any)?.code)) throw error;
-      evidence.observationWriteRetries=(evidence.observationWriteRetries??0)+1;
-    }
-  };
-  const send = parent.postMessage.bind(parent);
-  parent.postMessage = (message: any) => {
-    if(message.kind==='response' && grants.has(message.response.requestId)) {
+  // (d) Every evidence write is a copy posted to the page probe; main writes the latest to <role>-utility-<index>.json.
+  const save = () => { try { report?.postMessage(structuredClone(evidence)); } catch { evidence.errors++; } };
+  // (b) The Worker's own postMessage (its replies to the page owner).
+  const send = self.postMessage.bind(self) as (m: any, t?: Transferable[]) => void;
+  (self as any).postMessage = (message: any, transfer?: Transferable[]) => {
+    if(message?.kind==='response' && grants.has(message.response.requestId)) {
       const start = grants.get(message.response.requestId)!; grants.delete(message.response.requestId);
       if(message.response.ok) { evidence.grants++; if(!evidence.acceptedLease || evidence.acceptedLease.startedMs!==start) evidence.errors++; }
-      else if(performance.now()>=start+12000) { evidence.lateReplyRejected++; writeFileSync(path+'.late.json',JSON.stringify(evidence)); }
+      else if(performance.now()>=start+12000) evidence.lateReplyRejected++;
       save();
     }
-    return send(message);
+    return send(message, transfer ?? []);
   };
-  parent.on('message',(event:any)=>{
+  // (c) The messages the page owner sends the Worker.
+  self.addEventListener('message',(event:MessageEvent)=>{
     const message=event.data;
-    if(message.kind==='lease-grant') {
+    if(message?.kind==='lease-grant') {
       const started=requests.get(message.request.nonce);
       if(started===undefined) evidence.errors++;
       else grants.set(message.requestId,started);
     }
-    if(message.kind==='initialize') { evidence.utilityEpoch=message.sessionLease.utilityEpoch; evidence.hostGeneration=message.hostGeneration; save(); }
-    if(message.kind!=='attach') return;
-    const port=event.ports[0], post=port.postMessage.bind(port), images=new ImageStore();
-    port.on('message',(event:any)=>{ try { const d=event.data; if(d?.type==='data' && classifyStreamPacket(new Uint8Array(d.bytes)).class==='input' && performance.now()>=evidence.deadlineMs) { evidence.afterDeadlineInputs++; save(); } } catch { evidence.errors++; save(); } });
-    port.postMessage=(frame:any)=>{
+    if(message?.kind==='initialize') { evidence.utilityEpoch=message.sessionLease?.utilityEpoch; evidence.hostGeneration=message.hostGeneration; save(); }
+    if(message?.kind!=='attach') return;
+    const port=event.ports[0]!, post=port.postMessage.bind(port), images=new ImageStore();
+    port.addEventListener('message',(event:MessageEvent)=>{ try { const d=event.data; if(d?.type==='data' && classifyStreamPacket(new Uint8Array(d.bytes)).class==='input' && performance.now()>=evidence.deadlineMs) { evidence.afterDeadlineInputs++; save(); } } catch { evidence.errors++; save(); } });
+    (port as any).postMessage=(frame:any, transfer?: any)=>{
       try {
         if(frame?.type==='data') {
           const bytes=new Uint8Array(frame.bytes), meta=classifyStreamPacket(bytes);
@@ -83,10 +83,12 @@ export function observeUtility(parent: any, path: string) {
           }
         }
       } catch { evidence.errors++; save(); }
-      return post(frame);
+      return post(frame, transfer);
     };
-    port.on('close',()=>images.clear());
+    port.addEventListener('close',()=>images.clear());
   });
-  const timer=setInterval(()=>{ evidence.observedMs=performance.now(); save(); },100);
-  timer.unref(); save();
+  setInterval(()=>{ evidence.observedMs=performance.now(); save(); },100);
+  save();
 }
+// Only inside a dedicated Worker: the Node build (utility.cjs) loads this module for reconciledMemory alone.
+if (typeof (globalThis as any).WorkerGlobalScope === 'function' && globalThis instanceof (globalThis as any).WorkerGlobalScope) observeWorker();

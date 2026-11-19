@@ -84,7 +84,7 @@ export interface ContactModelInput {
   aim: boolean;
   /** The weapon the armed aim carries (FTL targeting spec §1); default the laser. */
   weapon?: 'laser' | 'torpedo';
-  station: 'helm' | 'weapons' | 'science';
+  station: 'helm' | 'weapons' | 'science' | 'flight';
   /** Presentation seconds, for the blinks. */
   t: number;
   /** The Weapons station block's panel (its charge row), or null elsewhere. */
@@ -130,8 +130,8 @@ export function contactModel(i: ContactModelInput): ContactView | null {
   if (!body || !body.active) return null;
   const level = state.known[Contact.Enemy];
   const crewSys = state.systems[CREW_SLOT], weapon = i.weapon ?? 'laser';
-  const weaponRows = (): ContactView['weapons'] => i.station === 'weapons' && i.weapons
-    ? { laser: { label: i.weapons.charge.label, value: i.weapons.charge.value, fill: i.weapons.charge.bar?.fill ?? 0, lit: i.aim && weapon === 'laser', enabled: true, note: null },
+  const weaponRows = (): ContactView['weapons'] => (i.station === 'weapons' || i.station === 'flight') && i.weapons   // Valkyrn spec §5: Flight's rows too
+    ? { laser: { label: i.weapons.charge.label, value: i.weapons.charge.value, fill: i.weapons.charge.bar?.fill ?? 0, lit: i.aim && weapon === 'laser', enabled: classOf(state, CREW_SLOT).slots.laser !== null, note: null },
         missile: { magazine: crewSys.magazine, lit: i.aim && weapon === 'torpedo' } }
     : null;
   if (level < 1) {
@@ -177,7 +177,7 @@ export function contactModel(i: ContactModelInput): ContactView | null {
   if (hostile) lines.push(line(hostile.text, hostile.alert ? alert : CRT.main));
   if (full) {   // Level 2's readings (presentation of the hunter's existing state)
     lines.push(line(`WEAK FREQ ${FREQ_NAMES[state.weakFreq] ?? ''}`));
-    lines.push(line('ENEMY LASER', CRT.main, Math.min(1, sys.laserCharge / cls.slots.laser.chargeUnits)));
+    lines.push(line('ENEMY LASER', CRT.main, cls.slots.laser ? Math.min(1, sys.laserCharge / cls.slots.laser.chargeUnits) : 0));
     const ready = sys.magazine > 0 && missileOf(state, slot) === null && state.tick - state.hunter.lastLaunch >= HUNTER_MISSILE_COOLDOWN_TICKS;
     lines.push(line(ready ? 'TORPEDO READY' : 'RELOADING'));
   }

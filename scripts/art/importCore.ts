@@ -21,7 +21,10 @@ const output = z.object({
   /** Remap to the house palette (default). false keeps the pixels and alpha as bought: a painted battlemap (Art-iv). */
   remap: z.boolean().default(true),
   /** Mirror the packed sheet left-right (Art-iv: the Hound's dome faces right). */
-  flipX: z.boolean().default(false)
+  flipX: z.boolean().default(false),
+  /** Rotate the packed sheet clockwise by this many degrees before any flip (Valkyrn spec §4.1: its nose, up in the
+   *  source, faces right). */
+  rotate: z.union([z.literal(0), z.literal(90)]).default(0)
 });
 export const importConfig = z.object({ $comment: z.string().optional(), outputs: z.array(output) });
 export type ImportConfig = z.infer<typeof importConfig>;
@@ -107,6 +110,16 @@ export function flipImageX(img: Image): void {
   }
 }
 
+/** Rotate an image 90° clockwise: the source pixel (x, y) lands at (height − 1 − y, x) of a height × width image. */
+export function rotateImage90(img: Image): Image {
+  const out = blank(img.height, img.width);
+  for (let y = 0; y < img.height; y++) for (let x = 0; x < img.width; x++) {
+    const s = (y * img.width + x) * 4, d = (x * out.width + (img.height - 1 - y)) * 4;
+    out.data.set(img.data.subarray(s, s + 4), d);
+  }
+  return out;
+}
+
 /** Every output at 2x, stacked top to bottom with a 4 px gap, on the palette's background role. */
 export function contactSheet(sheets: readonly Image[], background: number): Image {
   const gap = 4, width = Math.max(...sheets.map((s) => s.width * 2)), height = sheets.reduce((n, s) => n + s.height * 2, 0) + gap * (sheets.length - 1);
@@ -150,7 +163,8 @@ export function runImport(run: ImportRun): ImportResult {
   if (problems.length) return { problems, written: [] };
   const remap = createRemap(palette.colours), written: string[] = [], sheets: Image[] = [];
   parsed.data.outputs.forEach((o, i) => {
-    const sheet = packSheet(sources[i]!, o);
+    let sheet = packSheet(sources[i]!, o);
+    if (o.rotate === 90) sheet = rotateImage90(sheet);   // Valkyrn spec §4.1
     if (o.flipX) flipImageX(sheet);
     if (o.remap) { remapPixels(sheet.data, remap); sheets.push(sheet); }   // raw outputs stay off the contact sheet (a 2100 px painting would swamp it)
     const path = resolve(run.repoRoot, o.output); mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, encodePng(sheet)); written.push(path);

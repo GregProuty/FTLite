@@ -73,7 +73,7 @@ function drive(st: TacticalState): ShipInput {
     if (k >= 0) input.rockLock.torpedo = k;
   }
   if (sys.laserBurst === 0 && laserFull(st, 0) && sys.laserRock < 0) {
-    const k = nearest(st, (a) => Math.hypot(a.x - me.x, a.y - me.y) - a.r, classOf(st, 0).slots.laser.range);
+    const k = nearest(st, (a) => Math.hypot(a.x - me.x, a.y - me.y) - a.r, classOf(st, 0).slots.laser!.range);
     if (k >= 0) { const a = rockAt(st, k); me.heading = headingTo(me.x, me.y, a.x, a.y); me.headingAcc = 0; input.rockLock.laser = k; }
   }
   return input;

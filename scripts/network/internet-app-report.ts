@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { resolveOnlineConfig } from '../../src/main/network/onlineConfig';
+import { resolveOnlineConfig } from '../../src/shared/onlineConfig';
 import { validateOnlineRecoveryReport } from './online-recovery-report';
 import { isCanonicalServiceOrigin } from './internet-app-manifest';
 import { SIM_VERSION } from '../../src/renderer/src/sim/tuning';
-export const INTERNET_ARTIFACTS = ['out/main/index.js','out/main/authorityHost.js','out/main/hostProcess.js','out/main/transportWindow.js','out/main/rtcTransport.js','out/preload/index.js','out/preload/networkTransport.js','out/renderer/index.html','out/renderer/networkTransport.html'];
+export const INTERNET_ARTIFACTS = ['out/main/index.js','out/preload/index.js','out/renderer/index.html','out/renderer/assets/authorityWorker.js'];
 /** All executable output, including dynamically named renderer/main chunks. */
 export function executableRuntimeArtifacts(artifacts:Record<string,string>):Record<string,string> {
   return Object.fromEntries(Object.entries(artifacts).filter(([path])=>/^out\/.*\.(?:[cm]?js|html|wasm|node)$/.test(path)).sort(([a],[b])=>a.localeCompare(b)));
@@ -14,7 +14,7 @@ const identity=z.object({serviceOrigin:z.string().max(200).refine(isCanonicalSer
 const runId=z.string().regex(/^[a-f0-9]{32}$/);
 const checkpoint=z.object({runId,hostGeneration:pos,checkpointSequence:pos,capturedTick:nat,payloadSha256:sha}).strict();
 const publication=z.object({runId,sequence:pos,tick:nat,hash:z.string().regex(/^[a-f0-9]{8}$/),phase:z.enum(['running','paused']),commandHighWater:z.array(nat).length(2),heldHighWater:z.array(nat).length(2)}).strict();
-const cleanup=z.object({pid:pos,exited:z.literal(true),exitCode:z.literal(0),utilities:nat,utilityExits:nat,utilityPids:z.array(pos).max(8),windows:z.literal(0),ports:z.literal(0),listeners:z.literal(0),peers:z.literal(0),nativeWindows:pos,nativeWindowExits:pos,nativePeersObserved:pos,nativePeerCloses:nat,nativePeersEndedWithWindow:nat,observedMainPorts:pos,shutdownComplete:z.literal(true).optional(),shutdownElapsedMs:z.number().finite().nonnegative().max(5000).optional(),exitCommitDelayMs:z.number().finite().nonnegative().max(5000).optional(),exitCommitAcknowledged:z.literal(true).optional()}).strict();
+const cleanup=z.object({pid:pos,exited:z.literal(true),exitCode:z.literal(0),workers:nat,workerExits:nat,workerErrors:nat.optional(),workerIds:z.array(nat).max(8),windows:z.literal(0),ports:z.literal(0),listeners:z.literal(0),peers:z.literal(0),nativePeersObserved:pos,nativePeerCloses:nat,nativePeersEndedWithPage:nat,observedPagePorts:pos,shutdownComplete:z.literal(true).optional(),shutdownElapsedMs:z.number().finite().nonnegative().max(5000).optional(),exitCommitDelayMs:z.number().finite().nonnegative().max(5000).optional(),exitCommitAcknowledged:z.literal(true).optional()}).strict();
 const peer=z.object({role:z.enum(['host','guest']),seat:z.union([z.literal(0),z.literal(1)]),runId,hostGeneration:pos,checkpoint,errors:z.literal(0),fullReceipts:pos,firstAckOrder:pos,firstInputOrder:pos,
   inputs:z.array(z.object({player:nat,sequence:pos,order:pos,command:label.optional()}).strict()).min(1).max(512),
   results:z.array(z.object({id:z.object({player:nat,sequence:pos}).strict(),status:z.literal('applied')}).strict()).min(1).max(128),
@@ -42,8 +42,8 @@ function checkAgreement(peers:z.infer<typeof peer>[]) {
   if(peers.some(p=>p.results.some(r=>!common.some(s=>s.commandHighWater[r.id.player]!>=r.id.sequence))))fail();
 }
 function checkCleanup(c:z.infer<typeof cleanup>) {
-  if(c.utilities!==c.utilityExits || c.utilityPids.length!==c.utilities || new Set(c.utilityPids).size!==c.utilities
-    || c.nativeWindows!==c.nativeWindowExits || c.nativePeersObserved!==c.nativePeerCloses+c.nativePeersEndedWithWindow)fail();
+  if(c.workers!==c.workerExits || c.workerIds.length!==c.workers || new Set(c.workerIds).size!==c.workers
+    || c.nativePeersObserved!==c.nativePeerCloses+c.nativePeersEndedWithPage)fail();
 }
 /** A duel record carries latency samples; the host's reads loopback; the guest's carries an RTT and its route ('internet' under forced relay). */
 function checkRecord(x:z.infer<typeof duelRecord>,forceRelay:boolean) {

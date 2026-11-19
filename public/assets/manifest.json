@@ -1223,6 +1223,19 @@
     "name": "ship.hound.map"
   },
   {
+    "title": "Valkyrn",
+    "author": "2-Minute Tabletop",
+    "source": "https://www.patreon.com/2minutetabletop",
+    "license": "CC-BY-NC-4.0",
+    "retrieved": "2026-11-18",
+    "modifications": "rotated 90° clockwise by npm run art:import",
+    "editedBy": "FTLite art import",
+    "credit": "Valkyrn by 2-Minute Tabletop (2minutetabletop.com), CC BY-NC 4.0",
+    "required": false,
+    "file": "paid/2mt/valkyrn.png",
+    "name": "ship.valkyrn.map"
+  },
+  {
     "title": "Deep Space (Red)",
     "author": "2-Minute Tabletop",
     "source": "https://www.patreon.com/2minutetabletop",

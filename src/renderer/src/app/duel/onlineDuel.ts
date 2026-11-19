@@ -154,7 +154,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   function record(summary: DuelRoundRecord): void {
     const d = state(); if (!d || !descriptor) return;
     const r: DuelPlaytestRecord = { version: 1, session: 'online', role: status?.role === 'host' ? 'host' : 'guest', transport: transport(),
-      seat: descriptor.seatId as 0 | 1, helmPlayer: d.helmPlayer, seed: summary.seed, round: summary.round, startedAtIso,
+      seat: descriptor.seatId, helmPlayer: d.helmPlayer, seed: summary.seed, round: summary.round, startedAtIso,
       // The RTT is the median of the round's samples from the RTC window's stats (null when main reported none).
       summary, latency: { held: latencyFigure(heldSamples), command: latencyFigure(commandSamples), rttMs: latencyFigure(roundRtt.splice(0)).median },
       // Per round: the disconnects and pauses since the last record (the first attach is not a disconnect).
@@ -312,7 +312,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       // Subscribe before the client, which releases its replica on close: keep the last view frozen.
       offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; });
       client = createDuelRemoteClient(link, [next.seatId], { runId: next.runId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout, clock: { nowMs: deps.now } });
-      source = createOnlineDuelSource({ client: { state, publication, live }, seat: next.seatId as 0 | 1, now: deps.now, viewport: { w: INTERNAL_W, h: INTERNAL_H } });
+      source = createOnlineDuelSource({ client: { state, publication, live }, seat: next.seatId, now: deps.now, viewport: { w: INTERNAL_W, h: INTERNAL_H } });
     },
     setStatus(next: OnlineStatus): void {
       status = next;

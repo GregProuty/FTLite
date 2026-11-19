@@ -109,3 +109,56 @@ Confirmed: the plan's `activeHeld` sent `moveX`/`face` regardless of `shipView`.
 
 ---
 
+# Round 2 (delta, reviewing 21b41758, effort medium, 55 s, 326336 in / 279965 cached / 4946 out)
+
+Verdict: ready
+
+## Findings
+
+### [P3] R2-F1 Task 4 Step 16 still carries the old conditional git-add note for duelRecord.ts
+Step 16's `git add` now always lists `src/renderer/src/net/duelRecord.ts` and `tests/duelInput.test.ts`. The note below it still reads "(Add src/renderer/src/net/duelRecord.ts and any fake-pointer test file if Steps 4 or 13 changed them.)". That is a leftover of the conditional that R1-F7 removed, and it contradicts the self-review line saying no step depends on how a sibling turned out. · plan Task 4 Step 16, git add line (now includes net/duelRecord.ts and tests/duelInput.test.ts) and the parenthetical directly after the commit block; plan Self-review 'Placeholders' line (L2463) · It is harmless, but it tells executors to probe for a change that Step 13 now always makes. · Delete the parenthetical. If other fake PointerSource objects outside tests/duelInput.test.ts get `leftHeld`, name those files explicitly instead.
+
+## Prior findings
+- R1-F1: resolved — The Step 5 listing keeps HULL_IDS as its last export. hullModel derives HullId from it through an `import type`, which TypeScript allows in a typeof position. hullModel.ts and fleet.ts are both in the literal test's ALLOWED set (plan L545). Decision 6 now states Part i's layout as fact, and the z.string fallback is gone.
+- R1-F2: resolved — Task 8 Step 8 rewrites line 39 to find the 'Multiplayer' section, and the Files line lists :36,39.
+- R1-F3: resolved — pushGunHits pops on e.stripped. Part i's DuelEvent has `stripped: boolean` (Part i plan L1662), and ViewEvent = DuelEvent | ContactEvent (fxModel.ts:14), so the typed test array compiles without `as never`. The expected sequence spark, spark, pop, spark with one '-1' matches the code. The hull heuristic and its limit are documented.
+- R1-F4: resolved — Step 4 leaves Part i's laserSituation guard alone. Step 5 keeps only chargeRow. hitModel, contactModel and consoleModel are dropped from Files, git add and the file table.
+- R1-F5: resolved — leadPipFor(state, i) is added and tested. targetOf exists (state.ts:213) and ships carry `active` (state.ts:22). The current Part iii plan no longer contains leadPip at all, so the remaining cross-plan wiring is outside this subject.
+- R1-F6: resolved — The optional `release` source gets pointerup and blur listeners and removes them in destroy. It matches EventSource's (e: never) signature (input.ts:84-87), and destroy's single loop (input.ts:260) can take the extra calls. duelMode passes window. The new test uses the existing fakeTarget's fire and count and the existing `half`.
+- R1-F7: resolved — Decision 6's conditional and the gunLocked note are removed. Step 13 is an unconditional `.min(1)` edit, and duelRecord.ts is in Files and git add. One stale parenthetical in Step 16 is raised above as a P3.
+- R1-F8: resolved — Decision 11 picks a rule. The runtime's `look` flag zeroes moveX and drops face. The rig exposes `hold` (plan L803, L807), and the test asserts moveX 0 and no face.
+
+## Verified
+- createPointerSource at .worktrees/sci-2/src/renderer/src/app/duel/input.ts:204-262 has the `on` loop, destroy and clear that Task 4's edits anchor on
+- tests/duelInput.test.ts:5-11 fakeTarget provides fire() and count() as the new left-button test uses them
+- fxModel.ts:14 ViewEvent includes DuelEvent; Part i plan L1662 gunHit carries stripped
+- state.ts:213 targetOf(state, i) exported; state.ts:22 active: boolean on bodies, as leadPipFor reads
+- plan L545 ALLOWED includes render/tactical/hullModel.ts and sim/ship/fleet.ts, so the HullId comment's quoted ids and HULL_IDS are allowed
+- plan L803/L807 rig returns hold, used by the revised ship-view test
+
+## Not verified
+- Whether other test files construct a PointerSource object literal that needs `leftHeld`. I did not search beyond duelInput.test.ts.
+- How the current Part iii plan reads the lead pip. It no longer references leadPip, and I did not review it beyond that grep.
+
+---
+
+# Round 2 response (plan revised)
+
+Reviewed `round-2.json` against the subject at `30abe756`. 1 accepted, 0 rejected, 0 deferred. The reviewer confirmed R1-F1 to R1-F8 as resolved.
+
+## R2-F1 [P3]: Task 4 Step 16 still carries the old conditional git-add note for duelRecord.ts
+
+Confirmed. The parenthetical after Task 4 Step 16's commit block was a leftover of the removed conditional, and it is deleted. I checked the fake-pointer half too. `grep PointerSource` over `.worktrees/sci-2/tests` finds only tests that call `createPointerSource` on a fake target (duelInput, duelModeAudio, duelModeDispose, feelIiInput, scienceInput), and none builds a `PointerSource` object by hand. Step 4's "Any test object typed `PointerSource` gains `leftHeld`" line now says so, so no file needs naming.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-18-valkyrn-ii-ship-and-views.md
+
+<!-- end -->
+
+---
+

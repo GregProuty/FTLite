@@ -1,0 +1,60 @@
+{
+  "id": "valkyrn",
+  "version": 1,
+  "shipClass": "valkyrn",
+  "crew": 1,
+  "helmHoldsUnattended": true,
+  "hull": "valkyrn",
+  "width": 19,
+  "height": 7,
+  "rows": [
+    "#############      ",
+    "#EEE#RRR#LLL#######",
+    "#EEE#RRR#LLL#O#BBB#",
+    "#EEE+RRR+LLL+O+BBB#",
+    "#EEE#RRR##+##O#BBB#",
+    "#EEE#RRR#MMM#######",
+    "#############      "
+  ],
+  "rooms": [
+    { "id": "B", "name": "Cockpit", "system": "navigation" },
+    { "id": "O", "name": "Ops", "system": "science" },
+    { "id": "M", "name": "Quarters (bunk)", "system": "medbay" },
+    { "id": "L", "name": "Quarters (galley)", "system": "lifeSupport" },
+    { "id": "E", "name": "Missile Bay (ramp)", "system": "engineering" },
+    { "id": "R", "name": "Missile Bay (racks)", "system": "reactor" }
+  ],
+  "edges": [
+    { "a": "E", "b": "R", "kind": "door", "tile": [4, 3], "width": 1 },
+    { "a": "R", "b": "L", "kind": "door", "tile": [8, 3], "width": 1 },
+    { "a": "L", "b": "M", "kind": "door", "tile": [10, 4], "width": 1 },
+    { "a": "L", "b": "O", "kind": "door", "tile": [12, 3], "width": 1 },
+    { "a": "O", "b": "B", "kind": "door", "tile": [14, 3], "width": 1 }
+  ],
+  "breachSites": [
+    { "room": "B", "tile": [18, 3], "width": 1 },
+    { "room": "O", "tile": [13, 1], "width": 1 },
+    { "room": "M", "tile": [10, 6], "width": 1 },
+    { "room": "L", "tile": [11, 0], "width": 1 },
+    { "room": "E", "tile": [2, 0], "width": 1 },
+    { "room": "R", "tile": [6, 6], "width": 1 }
+  ],
+  "stations": [
+    { "id": "navigation", "room": "B", "tile": [17, 3], "allocation": 1 },
+    { "id": "weapons", "room": "B", "tile": [17, 3], "allocation": 2 },
+    { "id": "science", "room": "O", "tile": [13, 2], "allocation": 1 },
+    { "id": "engineering", "room": "O", "tile": [13, 2], "allocation": 1 },
+    { "id": "doors", "room": "O", "tile": [13, 2], "allocation": 1 },
+    { "id": "lifeSupport", "room": "L", "tile": [11, 1], "allocation": 1 },
+    { "id": "medbay", "room": "M", "tile": [9, 5], "allocation": 1 }
+  ],
+  "consoleGroups": [
+    { "tile": [17, 3], "kinds": ["navigation", "weapons"] },
+    { "tile": [13, 2], "kinds": ["science", "engineering", "doors"] }
+  ],
+  "spawns": [[13, 3], [9, 3], [10, 3], [11, 3]],
+  "airlocks": [
+    { "room": "E", "tile": [0, 3] },
+    { "room": "L", "tile": [10, 0] }
+  ]
+}

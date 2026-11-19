@@ -38,14 +38,14 @@ describe('duel fire views (spec §2)', () => {
       d.tactical.systems[0].rooms[Room.Shields] = 1;
       igniteRoom(d.interior, roomOf(d, Room.Shields));
       for (const mode of ['helm', 'weapons', 'interior'] as ReadoutMode[]) {
-        const rows = readoutRows({ duel: d, mode, active: 0, other: 'WALKING' });
+        const rows = readoutRows({ duel: d, mode, active: 0 });
         const r = rows.find((x) => x.label === 'SHIELDS')!;
         expect(r).toMatchObject({ value: 'FIRE', valueTint: WARN, emphasis: 'alert' });
         expect(r.bar).toBeUndefined();
         expect(rows.find((x) => x.label === 'WEAPONS' && x.value !== '')!.value).toBe('OK');
       }
       d.interior.rooms.fireRepair[roomOf(d, Room.Shields)] = 0.5;
-      expect(readoutRows({ duel: d, mode: 'helm', active: 0, other: 'WALKING' }).find((x) => x.label === 'SHIELDS')!.bar).toEqual({ fill: 0.5, colour: GOOD });
+      expect(readoutRows({ duel: d, mode: 'helm', active: 0 }).find((x) => x.label === 'SHIELDS')!.bar).toEqual({ fill: 0.5, colour: GOOD });
     } finally { disposeDuel(d); }
   });
   it('the interior help says HOLD E REPAIR/EXTINGUISH', () => {

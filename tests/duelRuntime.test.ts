@@ -9,6 +9,7 @@ import { REPAIR_RATE_SOLO } from '../src/renderer/src/sim/duel/tuning';
 import { emptyPresses, NO_HELD_FLAGS, type KeyAction, type KeySample, type PointerSample } from '../src/renderer/src/app/duel/input';
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import type { ContactRequests } from '../src/renderer/src/app/duel/contactController';
+import { crewStatus } from '../src/renderer/src/render/duel/readoutModel';
 import { createContactController } from '../src/renderer/src/app/duel/contactController';
 import { followingSeed } from '../src/renderer/src/sim/duel/seeds';
 import { ZOOM_DEFAULT, ZOOM_STEP } from '../src/renderer/src/render/tactical/camera';
@@ -77,7 +78,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     tick();
     expect(rt.lastResults().map((r) => [r.id.player, r.id.sequence, r.tick, r.status])).toEqual([[1, 0, 0, 'applied']]);
     expect(d.present).toEqual([true, false]);
-    expect(rt.otherStatus()).toBe('STANDING BY');   // the away partner on foot reads STANDING BY, not WALKING
+    expect(crewStatus(rt.duel, 1)).toBe('AWAY');   // the away partner on foot reads AWAY, not ON FOOT
     rt.dispose();
   });
   it('seated solo: player 0 at the Helm; player 1 goes away on tick 0, ahead of any other command', () => {
@@ -105,7 +106,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     const presence = rt.lastResults().filter((r) => r.status === 'applied').map((r) => [r.id.player, r.tick]);
     expect(presence).toEqual([[1, 1]]);   // the one taken; the Helm player, seated, stays present (Feel-i review)
     expect(rt.duel.present).toEqual([true, true]);
-    expect([rt.active(), rt.view(), rt.otherStatus()]).toEqual([1, 'weapons', 'AT HELM']);
+    expect([rt.active(), rt.view(), crewStatus(rt.duel, 0)]).toEqual([1, 'weapons', 'HELM']);
     expect(cleared()).toBe(1);
     expect(rt.held()).toEqual([{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }]);
     expect(rt.axes()).toEqual({ turn: 0, thrust: 1 });   // the Helm stays attended: its throttle keeps flying, with no turn
@@ -118,7 +119,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     tick();
     press('switch'); tick(); press('stand'); tick();   // player 1 stands up from Weapons
     press('switch'); tick();                           // back to the Helm: player 1, on foot, goes away
-    expect([rt.active(), rt.duel.present, rt.otherStatus()]).toEqual([0, [true, false], 'STANDING BY']);
+    expect([rt.active(), rt.duel.present, crewStatus(rt.duel, 1)]).toEqual([0, [true, false], 'AWAY']);
     rt.dispose();
   });
   it('X stands into the interior; E sits again at the role console in reach', () => {
@@ -173,7 +174,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     hold({ interactHeld: true }); press('interact'); tick();
     expect(rt.view()).toBe('interior');                // no sit: holding E repairs
     expect(rt.duel.repair[Room.Weapons]).toBe(REPAIR_RATE_SOLO);
-    expect(rt.otherStatus()).toBe('AT HELM');
+    expect(crewStatus(rt.duel, 0)).toBe('HELM');
     ticks(9);
     expect(rt.duel.repair[Room.Weapons]).toBe(10 * REPAIR_RATE_SOLO);
     hold({ interactHeld: false }); rt.duel.tactical.systems[0].rooms[Room.Weapons] = 0;

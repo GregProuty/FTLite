@@ -12,7 +12,7 @@ import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
-import { MISSILE_KEYS, flattenTactical, scienceModule, shipModule, spaceModule, TACTICAL_MODULES, unflattenTactical } from '../src/renderer/src/sim/tactical/hash';
+import { MISSILE_KEYS, ROUND_KEYS, flattenTactical, scienceModule, shipModule, spaceModule, TACTICAL_MODULES, unflattenTactical } from '../src/renderer/src/sim/tactical/hash';
 import { cloneTactical, createTacticalState, placeMissile, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -36,7 +36,8 @@ function uncovered(root: object, names: ReadonlySet<string>, excluded: Readonly<
 const names = <S>(m: SimModule<S>, s: S) => new Set(m.fields(s).map((f) => f.name));
 /** A missile pool entry is one field per member (active, owner) plus `flight` for its flight values. */
 const tacticalNames = (s: TacticalState) => new Set([...TACTICAL_MODULES.flatMap((m) => [...names(m, s)]),
-  ...s.missiles.flatMap((_, k) => MISSILE_KEYS.map((key) => `missiles.${k}.${key}`))]);
+  ...s.missiles.flatMap((_, k) => MISSILE_KEYS.map((key) => `missiles.${k}.${key}`)),
+  ...s.rounds.flatMap((_, k) => ROUND_KEYS.map((key) => `rounds.${k}.${key}`))]);   // Valkyrn-i: a round pool entry as a missile's
 const tacticalExcluded = { ...spaceModule.notSnapshotted, ...shipModule.notSnapshotted, ...scienceModule.notSnapshotted };
 const duelNames = (d: DuelState) => new Set([presenceModule, repairModule, roundModule, helmModule, interiorModule].flatMap((m) => [...names(m, d)]));
 function played(seed: number, ticks: number): DuelState {
@@ -49,8 +50,12 @@ function bothFlying(s: TacticalState): void {
   placeMissile(s, 0, { x: 100, y: -200, vx: 3, vy: 4, heading: 7, headingAcc: 0.25, age: 30 });
   placeMissile(s, 1, { x: -100, y: 200, vx: -3, vy: -4, heading: 9, headingAcc: -0.25, age: 40 });
 }
+/** Every round pool entry in flight (Valkyrn-i), so every round field holds values a writer accepts when changed. */
+function allRoundsFlying(s: TacticalState): void {
+  s.rounds.forEach((r, k) => Object.assign(r, { active: true, owner: k % 2, x: 10 + k, y: -20, vx: 700, vy: 0, age: 1 + (k % 50) }));
+}
 /** A changed first value: flags and 0/1 members flip, everything else moves by one. */
-const changedFirst = (name: string, v: number): number => (/\.(active|released|fireHeld|laserTargeted)$/.test(name) || /^derelict\.(trapped|salvaged)$/.test(name) || name.startsWith('present.') || name === 'hunter.working' ? 1 - v : v + 1);
+const changedFirst = (name: string, v: number): number => (/\.(active|released|fireHeld|laserTargeted|gunLocked)$/.test(name) || /^derelict\.(trapped|salvaged)$/.test(name) || name.startsWith('present.') || name === 'hunter.working' ? 1 - v : v + 1);
 const IDENTITY = new Set(['map.asteroids.length', 'ships.length']);
 
 describe('the duel modules (spec §6 module contract)', () => {
@@ -97,6 +102,7 @@ describe('the duel modules (spec §6 module contract)', () => {
     const d = played(2, 900);
     try {
       bothFlying(d.tactical);
+      allRoundsFlying(d.tactical);
       const base = hashDuel(d);
       for (const { module, state } of DUEL_MODULES.slice(0, 5)) {
         const m = module as SimModule<unknown>, s = state(d);

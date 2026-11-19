@@ -81,6 +81,16 @@ describe('the derived rules', () => {
     const ready = { ...lobby, snapshot: { ...lobby.snapshot!, seats: [{ seatId: 0, occupied: true, connected: true, ready: true }] } } as OnlineStatus;
     expect(startAllowed(view({}, ready))).toBe(true);
   });
+  it('labels duel seats EMPTY, JOINED, READY and DISCONNECTED, and allows Start with an empty seat (Sci-2 spec §5.3)', () => {
+    const seats = [{ seatId: 0, occupied: true, connected: true, ready: true }, { seatId: 1, occupied: true, connected: true, ready: false },
+      { seatId: 2, occupied: true, connected: false, ready: false }, { seatId: 3, occupied: false, connected: false, ready: false }];
+    const lobby: OnlineStatus = { ...idle, phase: 'lobby', role: 'host', ownSeat: 0, actions: ['start', 'ready'],
+      snapshot: { capacity: 4, joinCode: 'ABCDEFGH', seats, compatibility: { modeId: 'duel' } } as never };
+    expect([0, 1, 2, 3].map((pid) => seatLabel(lobby, pid))).toEqual([' P1: READY ', ' P2: JOINED ', ' P3: DISCONNECTED ', ' P4: EMPTY ']);
+    expect(startAllowed(view({}, lobby))).toBe(false);   // a claimed seat must be connected and ready
+    const ready = { ...lobby, snapshot: { ...lobby.snapshot!, seats: [seats[0]!, { ...seats[1]!, ready: true }, { seatId: 2, occupied: false, connected: false, ready: false }, seats[3]!] } } as OnlineStatus;
+    expect(startAllowed(view({}, ready))).toBe(true);    // empty seats do not hold up the start
+  });
   it('words the checkpoint receipt and the countdown', () => {
     const s = { ...idle, mirror: { ...idle.mirror, committed: { capturedTick: 1800 } as never, receivedAgeMs: 4000 } };
     expect(receiptText(s, 1000, 1000)).toBe('Last mirrored checkpoint: tick 1800, received 4s ago.');
@@ -97,10 +107,10 @@ describe('createUiStore', () => {
   it('starts at home with no status and the given settings', () => {
     const s = createUiStore({ onlineAvailable: true, settings: { master: 0.5, music: 0.25, effects: 1, fullscreenAvailable: true, controls: [] } }).getState();
     expect(s.menu).toEqual(INITIAL_MENU); expect(s.online).toEqual({ available: true, status: null, receivedAt: 0 });
-    expect(s.settings).toEqual({ available: true, master: 0.5, music: 0.25, effects: 1, fullscreenAvailable: true, controls: [], shake: 'full' });   // Feel-i: shake defaults full
+    expect(s.settings).toEqual({ available: true, master: 0.5, music: 0.25, effects: 1, fullscreenAvailable: true, controls: [], shake: 'full', ships: [], soloShip: '', valkyrnLaserFit: false });   // Feel-i: shake defaults full; Valkyrn spec §9: no ships until main fills them
     expect(s.layout).toEqual({ stripHeight: 0, scale: 1, offsetX: 0, offsetY: 0, dpr: 1 });
   });
   it('marks settings unavailable without them', () => {
-    expect(createUiStore({ onlineAvailable: false }).getState().settings).toEqual({ available: false, master: 1, music: 1, effects: 1, fullscreenAvailable: false, controls: [], shake: 'full' });
+    expect(createUiStore({ onlineAvailable: false }).getState().settings).toEqual({ available: false, master: 1, music: 1, effects: 1, fullscreenAvailable: false, controls: [], shake: 'full', ships: [], soloShip: '', valkyrnLaserFit: false });
   });
 });

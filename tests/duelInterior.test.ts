@@ -4,7 +4,7 @@ import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { Life, LifeState, Position, Stable } from '../src/renderer/src/sim/components';
 import type { HeldInput } from '../src/renderer/src/net/contracts';
-import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { createDuel, disposeDuel, DUEL_CREW_MAX, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { Room } from '../src/renderer/src/sim/tactical/state';
@@ -85,7 +85,7 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
     expect((kids[3] as Container).blendMode).toBe('multiply');                                // the battlemap, tiles, the props (Art-iii), then the grade
     const lights = kids.findIndex((k) => k.blendMode === 'add');
     expect(lights).toBe(12);                                                                   // after effects.above (the station badges, start-aboard spec §2, sit after the desks)
-    expect(kids.length - lights - 1).toBe(10);                                                 // the marks, the three marker labels, the two downed labels (duel-health), the healing marks and two REVIVED labels (duel polish i spec §D) and the badge labels above the lights
+    expect(kids.length - lights - 1).toBe(14);                                                 // the marks, the three marker labels, the four downed labels (duel-health; one per player of the largest crew, Sci-2 spec §7), the healing marks and four REVIVED labels (duel polish i spec §D) and the badge labels above the lights
     view.draw(d, crewAt(d), 1, 1 / 60);
     expect([view.world.x, view.world.y]).toEqual([66, 173]);
     const hit = { kind: 'laser', ship: 1, hit: true, x1: 0, y1: 0, x2: 1, y2: 1 } as unknown as ViewEvent;
@@ -123,7 +123,8 @@ describe('healing and revive feedback in the interior (duel polish i spec §D)',
       Life.state[e1] = LifeState.Downed;
       view.draw(d, crewAt(d), 1, 1 / 60);
       const n0 = count(view.container);
-      expect(revived()).toHaveLength(2); expect(revived().every((t) => !t.visible)).toBe(true);
+      expect(revived()).toHaveLength(DUEL_CREW_MAX);   // one per player of the largest crew (Sci-2 spec §7)
+      expect(revived().every((t) => !t.visible)).toBe(true);
       Life.state[e1] = LifeState.Conscious; d.tactical.tick += 1;
       view.draw(d, crewAt(d), 1, 1 / 60);
       const shown = revived().filter((t) => t.visible);

@@ -26,6 +26,11 @@ export function Settings() {
           {SHAKE_SETTINGS.map((s) => <option key={s} value={s}>{SHAKE_LABELS[s]}</option>)}
         </select>
       </label>
+      <label>
+        <input type="checkbox" data-testid="valkyrn-laser-fit" aria-label="Valkyrn: fit laser instead of gun" checked={settings.valkyrnLaserFit} disabled={!settings.available}
+          onChange={(e) => actions.setLaserFit(e.target.checked)} />
+        Valkyrn: fit laser instead of gun
+      </label>
       <MenuButton id="fullscreen" text={`Fullscreen: ${fullscreen === null ? '…' : fullscreen ? 'On' : 'Off'}`} onClick={actions.toggleFullscreen}
         enabled={settings.fullscreenAvailable && fullscreen !== null} />
       <p data-testid="fullscreen-note">{`${FULLSCREEN_KEY} also toggles fullscreen.`}</p>

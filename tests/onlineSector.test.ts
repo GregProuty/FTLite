@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { sectorCompatibility, sectorInit, sectorJoinCompatibilities, validateCommittedSectorStart, validateSectorMirror } from '../src/main/network/onlineSector';
+import { sectorCompatibility, sectorInit, sectorJoinCompatibilities, validateCommittedSectorStart, validateSectorMirror } from '../src/network/online/onlineSector';
 import { initialOnlineCheckpoint } from './helpers/onlineCheckpoint';
 import type { RoomSnapshot } from '../src/shared/roomSession';
 import { deriveLayout } from '../src/renderer/src/sim/ship/derived';

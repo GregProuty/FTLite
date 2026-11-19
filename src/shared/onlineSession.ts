@@ -1,5 +1,6 @@
 import { SERVICE_ERROR_RETRYABLE, isRoomId, validateCompatibility, validateRoomSnapshot, validateCheckpointMetadata, type SessionCheckpointMetadata, type RoomCompatibility, type RoomSnapshot, type ServiceErrorCode } from './roomSession';
 import { rtcKeys, rtcRecord } from './rtcSession';
+import type { PageOnlineConfig } from './onlineConfig';
 
 /** Fixed public outcomes only. Provider messages and credential material stay in main. */
 export const ONLINE_ERROR_CODES = [
@@ -16,8 +17,10 @@ export function isOnlineErrorCode(value: unknown): value is OnlineErrorCode {
 /** The online modes a room can run (H-2 spec §2). The menu offers only the duel; the sector forms are a test-only entry
  *  the main process honours only when it was started for it (unpackaged and FTLITE_SECTOR_ONLINE_TEST=1). */
 export type OnlineMode = 'duel' | 'sector';
+/** A duel room's crew size (Sci-2 spec §2.1): the host picks 2, 3 or 4. */
+export type DuelCrewSize = 2 | 3 | 4;
 export type OnlineAction =
-  | { type: 'host'; mode: 'duel' }
+  | { type: 'host'; mode: 'duel'; capacity: DuelCrewSize }
   | { type: 'host'; mode: 'sector'; capacity: number }
   | { type: 'join'; code: string; mode?: OnlineMode }
   | { type: 'ready'; ready: boolean }
@@ -25,8 +28,8 @@ export type OnlineAction =
   | { type: 'view-state'; epoch: number; phase: 'synced' | 'running' | 'paused' | 'ended' }
   | { type: 'reconnect' }
   | { type: 'rehost' }
-  /** `helmPlayer`: the duel host's seat choice (spec §2), 0 when absent; the sector ignores it. */
-  | { type: 'start'; helmPlayer?: 0 | 1 }
+  /** `helmPlayer`: the duel host's own seat (spec §2; Sci-2: 0..3), 0 when absent; the sector ignores it. */
+  | { type: 'start'; helmPlayer?: number }
   | { type: 'retry' }
   | { type: 'leave' }
   | { type: 'forget-seat' };
@@ -74,12 +77,12 @@ const phases: readonly OnlinePhase[] = ['idle', 'creating', 'joining', 'lobby', 
 export function validateOnlineAction(value: unknown): value is OnlineAction {
   if (!rtcRecord(value)) return false;
   switch (value.type) {
-    case 'host': return value.mode === 'duel' ? rtcKeys(value, ['type', 'mode'])
+    case 'host': return value.mode === 'duel' ? rtcKeys(value, ['type', 'mode', 'capacity']) && (value.capacity === 2 || value.capacity === 3 || value.capacity === 4)
       : value.mode === 'sector' && rtcKeys(value, ['type', 'mode', 'capacity']) && positive(value.capacity) && value.capacity <= 4;
     case 'join': return (rtcKeys(value, ['type', 'code']) || rtcKeys(value, ['type', 'code', 'mode']) && (value.mode === 'duel' || value.mode === 'sector'))
       && typeof value.code === 'string' && value.code.length <= 32
       && /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/.test(value.code.trim().toUpperCase());
-    case 'start': return rtcKeys(value, ['type']) || rtcKeys(value, ['type', 'helmPlayer']) && (value.helmPlayer === 0 || value.helmPlayer === 1);
+    case 'start': return rtcKeys(value, ['type']) || rtcKeys(value, ['type', 'helmPlayer']) && seatId(value.helmPlayer);
     case 'ready': return rtcKeys(value, ['type', 'ready']) && typeof value.ready === 'boolean';
     case 'remove-seat': return rtcKeys(value, ['type', 'seatId']) && seatId(value.seatId);
     case 'view-state': return rtcKeys(value, ['type', 'epoch', 'phase']) && positive(value.epoch)
@@ -126,35 +129,22 @@ export function validateOnlineResult(value: unknown): value is OnlineResult {
 }
 
 export type Unsubscribe = () => void;
-export const ONLINE_CHANNELS = {
-  host: 'online:host', join: 'online:join', ready: 'online:ready', 'remove-seat': 'online:remove-seat',
-  'view-state': 'online:view-state', reconnect: 'online:reconnect', rehost: 'online:rehost', start: 'online:start', retry: 'online:retry',
-  leave: 'online:leave', 'forget-seat': 'online:forget-seat',
-} as const satisfies Record<OnlineAction['type'], string>;
-export const ONLINE_STATUS_CHANNEL = 'online:status';
-export const ONLINE_PORT_CHANNEL = 'online:port';
-export const ONLINE_PORT_SOURCE = 'ftlite:online:main';
-/** The link figures channel (H-2 spec §8): no argument; answers OnlineLinkStats or null. */
-export const ONLINE_LINK_STATS_CHANNEL = 'online:link-stats';
 export interface OnlineStatusEnvelope { version: 1; revision: number; status: OnlineStatus }
 export function validateOnlineStatusEnvelope(value: unknown): value is OnlineStatusEnvelope {
   return rtcRecord(value) && rtcKeys(value, ['version', 'revision', 'status']) && value.version === 1
     && positive(value.revision) && validateOnlineStatus(value.status);
 }
-export function validateOnlinePortEnvelope(value: unknown): value is { version: 1; descriptor: OnlinePortDescriptor } {
-  return rtcRecord(value) && rtcKeys(value, ['version', 'descriptor']) && value.version === 1 && validateOnlinePortDescriptor(value.descriptor);
-}
-/** Ordinary contextBridge API. MessagePorts use the renderer-owned facade instead. */
+/** The page online facade's API (web build spec §3.3): the shape of the former preload online API. */
 export interface OnlinePreloadApi {
-  /** Host a duel room; `{ mode: 'sector', capacity }` is the test-only sector entry (spec §10). */
-  host(sector?: { mode: 'sector'; capacity: number }): Promise<OnlineResult>;
+  /** Host a duel room for a crew of 2, 3 or 4 (Sci-2 spec §4.5); `{ mode: 'sector', capacity }` is the test-only sector entry (spec §10). */
+  host(room: { mode: 'duel'; capacity: DuelCrewSize } | { mode: 'sector'; capacity: number }): Promise<OnlineResult>;
   join(code: string, mode?: OnlineMode): Promise<OnlineResult>;
   ready(ready: boolean): Promise<OnlineResult>;
   removeSeat(seatId: number): Promise<OnlineResult>;
   viewState(epoch: number, phase: Extract<OnlineAction, { type: 'view-state' }>['phase']): Promise<OnlineResult>;
   reconnect(): Promise<OnlineResult>;
   rehost(): Promise<OnlineResult>;
-  start(helmPlayer?: 0 | 1): Promise<OnlineResult>;
+  start(helmPlayer?: number): Promise<OnlineResult>;
   retry(): Promise<OnlineResult>;
   leave(): Promise<OnlineResult>;
   forgetSeat(): Promise<OnlineResult>;
@@ -169,13 +159,23 @@ export const DUEL_RECORD_CHANNEL = 'duel:record';
 export const WINDOW_FULLSCREEN_CHANNEL = 'app:fullscreen';
 /** The key the main process toggles fullscreen on (its before-input-event handler); Settings lists it from here. */
 export const FULLSCREEN_KEY = 'F11';
+/** OS sleep and wake, pushed by main from powerMonitor (web build spec §3.3 job 5). */
+export const APP_SUSPEND_CHANNEL = 'app:suspend';
+export const APP_RESUME_CHANNEL = 'app:resume';
+/** The close handshake (spec §3.3 job 6): main pushes a request number; the page answers it by invoke when its exit save is done. */
+export const APP_PREPARE_EXIT_CHANNEL = 'app:prepare-exit';
+/** The page's online configuration, read once by the preload (spec §3.3 job 7). */
+export const ONLINE_CONFIG_CHANNEL = 'app:online-config';
 export interface WindowPreloadApi {
   isFullScreen(): Promise<boolean>;
   /** Resolves with the requested state once asked, or the current one when the request is refused. */
   setFullScreen(on: boolean): Promise<boolean>;
 }
 export interface FtlitePreloadApi {
-  online: OnlinePreloadApi;
+  /** Main's resolved online configuration, frozen; the page builds its own session from it (web build spec §3.3). */
+  onlineConfig: PageOnlineConfig;
+  /** Register the page's exit save for the close handshake; one handler at a time. */
+  onPrepareExit?(handler: () => Promise<void>): Unsubscribe;
   /** Append one duel playtest record (shared/duelRecord.ts) to this machine's playtest log (H-2 spec §8). */
   recordDuel?(record: unknown): Promise<boolean>;
   onSuspend(callback: () => void): Unsubscribe;

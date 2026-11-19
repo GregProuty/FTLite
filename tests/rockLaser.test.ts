@@ -111,7 +111,7 @@ describe('the laser with a rock target (spec §6.2)', () => {
     st.systems[0].laserRock = 100;
     applyWeaponsInput(st, 0, IDLE_INPUT);
     expect(st.systems[0].laserRock).toBe(-1);
-    for (let t = 0; t < classOf(st, 0).slots.laser.burstGapTicks; t++) { st.events = []; applyWeaponsInput(st, 0, IDLE_INPUT); }
+    for (let t = 0; t < classOf(st, 0).slots.laser!.burstGapTicks; t++) { st.events = []; applyWeaponsInput(st, 0, IDLE_INPUT); }
     const second = laserEvent(st);
     expect(second).toBeDefined();
     expect(second!.rock).toBeUndefined();

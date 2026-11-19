@@ -33,8 +33,6 @@ export interface RtcAttemptOptions {
   localTicket: string; expectedRemoteTicket: string; ticketExpiresAtEpochMs: number;
   iceServers: readonly RtcIceServerConfig[]; iceTransportPolicy?: 'all' | 'relay';
 }
-export const RTC_REQUEST_CHANNEL = 'net:rtc-request';
-export const RTC_RESPONSE_CHANNEL = 'net:rtc-response';
 export const RTC_MAX_ATTEMPTS = 4;
 export const RTC_OWNER_ATTEMPT_LIMIT = 4096;
 export type RtcRequest = { version: 1; hostGeneration: number; requestId: number } & (

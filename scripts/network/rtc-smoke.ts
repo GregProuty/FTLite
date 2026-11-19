@@ -41,7 +41,11 @@ async function main() {
     await build({ configFile: false, logLevel: 'warn', define: { __GAMEPLAY_CONTENT_DIGEST__: JSON.stringify(digest) },
       build: { outDir: join(temporary, 'client'), emptyOutDir: false, lib: { name: 'RtcSmoke', entry: resolve('scripts/network/rtc-smoke-client.ts'),
         formats: ['cjs', 'iife'], fileName: format => `rtc-smoke-client.${format === 'cjs' ? 'cjs' : 'js'}` } } });
-    writeFileSync(join(temporary, 'client/index.html'), '<!doctype html><meta charset="utf-8"><title>FTLite native RTC gate</title><p>Visible guest producer — native local RTC regression gate</p><script src="rtc-smoke-client.js"></script>');
+    // The endpoint page (Web-i): production page transports and the Worker owner, bundled by Vite; one page per endpoint.
+    await build({ configFile: false, logLevel: 'warn', root: resolve('scripts/network'), base: './', worker: { format: 'es' },
+      define: { __GAMEPLAY_CONTENT_DIGEST__: JSON.stringify(digest) },
+      build: { outDir: join(temporary, 'page'), emptyOutDir: true, rollupOptions: { input: { rtc: resolve('scripts/network/rtc-page.html') } } } });
+    if (!existsSync(resolve('out/renderer/assets/authorityWorker.js'))) throw Error('built production Worker missing (run npm run build)');
     if (typeof electron !== 'string') throw Error('Electron executable missing');
     const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.CHROME_CRASHPAD_PIPE_NAME; delete env.ELECTRON_RENDERER_URL;
     child = spawn(electron, [resolve('scripts/network/rtc-smoke.cjs'), `--rtc-smoke-dir=${temporary}`, `--user-data-dir=${join(temporary, 'profile')}`, ...process.argv.slice(2)],

@@ -25,7 +25,7 @@ describe('generic host import boundary', () => {
   ])('rejects a mode dependency even through a type/export/require: %s', source => {
     expect(forbiddenDependencies(source)).toHaveLength(1);
   });
-  for (const file of [...walk('src/network').filter(file => !['modes/sector.ts', 'modes/sectorStream.ts', 'modes/sectorProducers.ts', 'modes/encounterMode.ts', 'modes/streamBinding.ts', 'modes/duel.ts', 'modes/duelStream.ts', 'modes/remoteClient.ts', 'modes/duelProducers.ts'].includes(relative('src/network', file).replaceAll('\\', '/'))),
+  for (const file of [...walk('src/network').filter(file => !['modes/sector.ts', 'modes/sectorStream.ts', 'modes/sectorProducers.ts', 'modes/encounterMode.ts', 'modes/streamBinding.ts', 'modes/duel.ts', 'modes/duelStream.ts', 'modes/remoteClient.ts', 'modes/duelProducers.ts', 'online/onlineSector.ts', 'online/onlineDuel.ts'].includes(relative('src/network', file).replaceAll('\\', '/'))),
     ...walk('src/main/network').filter(file => !['onlineSector.ts', 'onlineDuel.ts', 'duelRecords.ts'].includes(relative('src/main/network', file).replaceAll('\\', '/')))]) {   // the main modes' adapters may read renderer contracts (H-2)
     it(`${relative(resolve('.'), resolve(file))} imports only generic runtime contracts`, () => {
       expect(forbiddenDependencies(readFileSync(file, 'utf8'))).toEqual([]);

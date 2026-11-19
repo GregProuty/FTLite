@@ -37,7 +37,7 @@ const checkpointSchema = z.object({
   eventSequence: uint, publicationSequence: uint, controlRevision: uint, receiveOrder: uint, lifecycleOrdinal: uint,
   botControllers: z.array(uiSchema).max(MAX_PLAYERS), paused: z.boolean(), phase: z.enum(['running', 'paused', 'ended']),
   pauseOwner: uint.max(MAX_PLAYERS - 1).nullable(), pauseReason: text.nullable(), heldHighWater: z.array(uint).min(1).max(MAX_PLAYERS),
-  held: z.array(z.object({ moveX: z.number().finite().min(-1).max(1), moveY: z.number().finite().min(-1).max(1), interactHeld: z.boolean(), face: z.boolean().optional() }).strict()).min(1).max(MAX_PLAYERS)
+  held: z.array(z.object({ moveX: z.number().finite().min(-1).max(1), moveY: z.number().finite().min(-1).max(1), interactHeld: z.boolean(), face: z.boolean().optional(), aim: z.number().int().min(-1).max(255).optional(), gunHeld: z.boolean().optional() }).strict()).min(1).max(MAX_PLAYERS)
 }).strict();
 export function validateRunInit(layout: ShipLayout, value: unknown, contentDigest: string): RunInit {
   const init = runInitSchema.parse(value);

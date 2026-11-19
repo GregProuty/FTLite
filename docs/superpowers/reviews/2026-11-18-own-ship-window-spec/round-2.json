@@ -1,0 +1,98 @@
+{
+  "verdict": "ready",
+  "findings": [
+    {
+      "severity": "P3",
+      "title": "'Console views pass OWN_SHIP' is gated differently from the window itself",
+      "claim": "In \u00a74 the window is built only when `onMap` is true. In \u00a73 the arrow `avoid` goes to 'console views', and in the scene the console arrow reserves are chosen by `onConsole`, which is `!hidden && view !== 'interior'` and ignores the seat. A standing player (consoleStation 'ship') on a map view has `onConsole` true but `onMap` false. An implementer who adds `avoid` next to the existing reserves would then steer arrows around a window that is not drawn.",
+      "evidence": "spec L76-77 ('Console views pass OWN_SHIP'), L153-154 (ownShip only when onMap); scene.ts:L176 (onConsole), L179 (onMap), L266 (reserves keyed on onConsole); consoleModel.ts:L87-89 (standing maps to 'ship')",
+      "why": "It is a small ambiguity. It only misplaces arrows when the window is absent, but two implementers could pick different flags.",
+      "fix": "Say that `avoid: OWN_SHIP` is passed exactly when `ownShip` is built (`onMap`). Add a line to the scene test: no `avoid` when `ownShip` is null."
+    },
+    {
+      "severity": "P3",
+      "title": "An on-screen object in A's margin band, which is not covered by the window, still gets an arrow",
+      "claim": "A is OWN_SHIP grown by ARROW_MARGIN (28 px) on the right and bottom. An object whose screen point is in that band (x 468-496 or y 212-240) is visible on the map, but under the rule at L81-82 it also gets an avoid-edge arrow. L82 justifies the arrow as 'the object is hidden or its arrow would sit on the window', and neither is true here.",
+      "evidence": "spec L78, L81-82; tacticalModel.ts:L258 (today an on-screen point never gets an arrow)",
+      "why": "The enemy or planet can show twice, as the drawn object and as an arrow right beside it. It is cosmetic and rare.",
+      "fix": "For the on-screen case (edgePoint null), test the screen point against the ungrown `avoid` rect. Keep the grown A only for the edgePoint point. Or state that the double display is accepted."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "Spec L153-154 gates ownShip on the existing `onMap` flag, which matches scene.ts:L179 (view !== 'interior' and the seat in the four). L14-16 states the rule for a seated player Tabbed to SHIP. The scene test is at L208."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "Spec L81-86 uses the object's screen point when edgePoint returns null, so an object hidden under the window gets an arrow on A's boundary. The ray entry k = max(kx, ky) is correct for entering the up-left quadrant region from C. frameZoom gains an avoid cap at L93-99. Tests are at L195-203."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "The slide is replaced by a placement inside arrow(). The corner counts as right (L85). ArrowDraw.edge is at L87. spreadArrows takes avoid, groups by edge, and the top and left groups' bounds exclude A (L88-92). Tests cover the corner, two arrows on the same avoid edge, and the after-spread bound (L195-201)."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "The own look table at L30-35 replaces roomLook. Fire overrides damage (L37-38). Damage never uses CRT.hot and fire never hatches (L39). The off phase is CRT.mid. Only level \u2265 1 rooms are damaged. Tests at L186-190 cover fire at level 1 and level 2."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "L18-23 gives row y values and x offsets. Row 2 is at y+20 with a 16 px line, so it ends at y+36, before OWN_SHIP_BOX.y = y+40 (L65). The bar runs to x0+192, inside right = x0+224. The component test is at L214."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "`hull.block` (L114) carries the resolved CRT.hot/CRT.main phase. L24-26 says the model resolves it. The test is at L191."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "L27-28 and L133-134 now agree: walls and doors are not drawn, and edges are drawn per room colour. A room's rectangle is its tile bounding box, with a rectangle test over hound, scout and valkyrn (L131-132, L183). The bar exists only at progress > 0 (L42-43, L118)."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "L44-45: a 3\u00d73 CRT.hot dot inside 5\u00d75 CRT.glass, and the downed look is a 5\u00d75 hot outline."
+    },
+    {
+      "id": "R1-F9",
+      "result": "resolved",
+      "note": "L100-101 adds OWN_SHIP to flightPointer BLOCKS. This matches flightPointer.ts:L11-16 (always-on blocks, no shown gate needed). The test is at L206."
+    },
+    {
+      "id": "R1-F10",
+      "result": "resolved",
+      "note": "L72-74 sets the draw order (sit card and banners on top) and accepts the ~15 px overlap. This matches the round-1 arithmetic: card left about 453 against the window's right edge at 468."
+    },
+    {
+      "id": "R1-F11",
+      "result": "resolved",
+      "note": "L159-168: the watch updates every drawn frame whatever the view. It re-baselines on no watch, on an epoch reset, and on a stale tick by HIT_FRESH_TICKS or a length change, which mirrors interiorSounds.ts:L33-35. HIT_FRESH_TICKS exists at impactModel.ts:L14. The tests are at L192-194."
+    },
+    {
+      "id": "R1-F12",
+      "result": "resolved",
+      "note": "L152 gives `ownShip?: OwnShipView | null`. L124-128 renames the tile index to `k` and the grid width to `gw`."
+    }
+  ],
+  "verified": [
+    "Arrow geometry: edgePoint's inset centre is ((256 + r)/2, 382). r = 1096 with CONSOLE_RESERVE.right (156), giving C = (676, 382), or r = 928 with CONTACT_RESERVE (324), giving C = (592, 382). Either way C lies right of and below A's corner (496, 240), so spec L79-80 holds even though it names only the closed-contact value (tacticalModel.ts:L256-261; consoleLayout.ts:L31, L33, L38; scene.ts:L266).",
+    "Ray entry k = max(kx, ky) with dx, dy < 0 is the first point inside A's up-left region. For an off-screen target whose edgePoint lies on the top edge inside A, the entry is below y 72, so the arrow stays inside the inset rect (spec L83-86).",
+    "frameZoom cap arithmetic: (640 - 468 - 110)/|dx| = 62/|dx| and (360 - 212 - 110)/|dy| = 38/|dy|. Their max clears the window on at least one axis. The 0.25 floor can override it for far enemies, and then the arrow rule covers the hidden case (spec L95-98; sitModel.ts:L48-51).",
+    "Helpers the spec names exist with matching shapes: hatchSegments(poly, spacing, angle) at dashModel.ts:L59; HATCH_SPACING and HATCH_ANGLE at crtTheme.ts:L11; DAMAGE_BLINK_HZ and ALERT_BLINK_HZ at crtTheme.ts:L14; blink at crtTheme.ts:L17; roomLevel at crtTheme.ts:L40; HIT_FRESH_TICKS at impactModel.ts:L14.",
+    "flightPointer BLOCKS is an always-applied list, separate from the shown-gated CONTACT check, so adding OWN_SHIP fits (flightPointer.ts:L11-24).",
+    "The interiorSounds freshness rule (tick back, a jump > HIT_FRESH_TICKS, a length change) is copied faithfully at spec L162-164 (interiorSounds.ts:L33-35).",
+    "Header fit: row 2 at y+20 with FONT_NATIVE 16 ends at y+36, before OWN_SHIP_BOX.y = y+40. The box is 224\u00d7122, matching L68."
+  ],
+  "not_verified": [
+    "Whether Position.x/y is tile-centred (e.g. x + 0.5) or a tile corner. If it is a corner, 'origin + position * s' puts the crew dot at the tile's corner, not its centre (spec L129-130; interiorModel.ts:L42 only shows the \u00d7 TILE_PX scaling).",
+    "The maximum shield layer count for any crew class: SHLD pips at x0+36 + k*12 collide with the HULL label at x0+100 only from 6 layers up. The class table was not checked.",
+    "Whether a standing player can actually have a map view with onConsole true. It is the case behind the first P3; I did not trace consoleHidden or the Tab rules.",
+    "The size of the inverse hull block around the value is not given (spec L24-26). I left this as a judgement call, not a finding."
+  ]
+}

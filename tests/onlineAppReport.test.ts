@@ -4,7 +4,7 @@ import { ONLINE_APP_ARTIFACTS, validateOnlineAppReport } from '../scripts/networ
 const fixture = () => ({ version: 1, source: { revision: 'a'.repeat(40), digest: 'b'.repeat(16), dirty: true, artifactHashes: Object.fromEntries(ONLINE_APP_ARTIFACTS.map(k => [k, 'c'.repeat(64)])) },
   runtime: { electron: '37.10.3', workerd: '1.20261023.1', workerExit: true, temporaryRemoved: true },
   processes: [{ pid: 12, profile: 'host', exited: true, termination:'shutdown',exitCode:0,cleanup:{} }, { pid: 13, profile: 'guest', exited: true,termination:'restart',exitCode:1,resourcesBeforeForcedExit:{} }, { pid: 14, profile: 'guest', exited: true,termination:'shutdown',exitCode:0,cleanup:{} }],
-  cleanup: { utilities: 1, utilityExits: 1, windows: 0, ports: 0, listeners: 0, peers: 0,nativeWindows:2,nativeWindowExits:2,nativePeersObserved:2,nativePeerCloses:1,nativePeersEndedWithWindow:1,observedMainPorts:8 },
+  cleanup: { workers: 1, workerExits: 1, windows: 0, ports: 0, listeners: 0, peers: 0, nativePeersObserved: 2, nativePeerCloses: 1, nativePeersEndedWithPage: 1, observedPagePorts: 8 },
   scenarios: [{ capacity: 2, seat: 1, layout: 'hound', fullReceipts: 2, acks: 2, commands: 2, matched: 2, ownership: true,
     mirrors: { initialCommittedTick: 0, initialBeforeBootstrap: true, periodicCapturedTick: 300, periodicCommittedTick: 300, guestReceived: true }, ackBeforeInput: true, generationBefore: 1, generationAfter: 2, botTakeover: true, pausedReconnect: true, blurNeutral: true },
     { capacity: 4, seat: 2, layout: 'hound', fullReceipts: 2, acks: 2, commands: 2, matched: 2, ownership: true,
@@ -45,7 +45,9 @@ describe('actual online app report admission', () => {
   it('rejects shared processes', () => { const r = fixture(); r.processes[1]!.pid = 12; expect(() => validateOnlineAppReport(r)).toThrow(); });
   it('rejects unchanged seat generation', () => { const r = fixture(); r.scenarios[0]!.generationAfter = 1; expect(() => validateOnlineAppReport(r)).toThrow(); });
   it('rejects an unexpected process exit',()=>{const r=fixture();r.processes[0]!.exitCode=1;expect(()=>validateOnlineAppReport(r)).toThrow();});
-  it('rejects unobserved native window exits',()=>{const r=fixture();r.cleanup.nativeWindowExits=1;expect(()=>validateOnlineAppReport(r)).toThrow();});
+  it('rejects an unobserved Worker exit',()=>{const r=fixture();r.cleanup.workerExits=0;expect(()=>validateOnlineAppReport(r)).toThrow();});
+it('rejects a page MessagePort left open',()=>{const r=fixture();r.cleanup.ports=1;expect(()=>validateOnlineAppReport(r)).toThrow();});
+it('rejects a run that observed no page MessagePorts',()=>{const r=fixture();r.cleanup.observedPagePorts=0;expect(()=>validateOnlineAppReport(r)).toThrow();});
   it('rejects native peers with no closure or owning-window destruction',()=>{const r=fixture();r.cleanup.nativePeerCloses=0;expect(()=>validateOnlineAppReport(r)).toThrow();});
 });
 

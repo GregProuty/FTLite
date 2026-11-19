@@ -160,6 +160,8 @@ Allowed differences: Navigation and Weapons are one combined seat (§5); rooms w
 
 There is no click-to-heading on the Flight seat: the right button is the torpedo, so the Flight seat never sends
 `heading`, and the view has no HDG marker (the aim bearing is the cursor).
+While a weapon is picked up (2, or the card), the right button only cancels the pick-up, as FTL's right-click does, and
+launches nothing.
 
 ## 6. Flight (sim)
 
@@ -323,3 +325,95 @@ the `gunHits` counter, for completeness (the Valkyrn is not online).
 
 - The Valkyrn online; bots; a gimbal; Valkyrn-only features beyond its data (§3). Asteroid destruction stays on its spike
   branch.
+
+## 12. As built (Part iii, 2026-11-18)
+
+- **Scripted pilot:** `sim/duel/scriptedPilot.ts`. It sits at the Flight seat and steers by `aim` only: avoid, dodge, orbit
+  at 1850 u until the Hunter is within 900 u, then attacks the lead (`sim/tactical/lead.ts`, pinned equal to the
+  view's pip). It holds the gun in bursts (release at 80% heat, resume when cold), launches a torpedo when it can at most
+  every 1500 ticks, and stands for a level-2 Room (Weapons, Shields, Engines), repairs it to 0 and sits again. It walks to
+  the seat and the repair points by the pair's `goalTiles` less the tiles on the very edge of reach: a walker settles on
+  a tile centre only to about 1e-14, and from x = 15 the Flight seat read 1.5000000000000071 tiles away, out of reach.
+- **Chosen numbers:** `GUN_HITS_PER_LAYER` 8 (kept at the start value), `GUN_HITS_PER_HULL` 12 (start 3),
+  `GUN_HITS_PER_LEVEL` 6 (kept at the start value), `VALKYRN_HULL` 30 (kept at the start value). The pilot's numbers: as
+  started (`PILOT_ORBIT_R` 1850, `PILOT_ENGAGE_RANGE` 900, `PILOT_STAND_RANGE` 300, `PILOT_CLOSE_GAIN` 0.5,
+  `PILOT_MAX_CLOSE` 120, `PILOT_FIRE_RANGE` 560, `PILOT_HEAT_RELEASE` 800, `PILOT_MISSILE_GAP` 1500).
+- **Measured** (the Valkyrn gate, `tests/duelGates.test.ts`, seeds 1 to 10, cap 15 min): median 229.8 s, crew wins 9,
+  Hunter wins 1 (seed 2, 271.8 s: asteroid contacts, 11 of them, while the pilot was away repairing), draws 0, none at the
+  cap; gun hit rate 83.6% (5583 of 6677). Seeds 1, 9 and 10 end with the Hunter hitting the planet (167.0, 179.8 and
+  138.3 s), none under 30 s. The pilot is a near-perfect shot (about 84% of rounds hit), so the counters, not the aim,
+  set the round length; the Hunter rarely hurts the Valkyrn (at most 6 hull in a round the crew wins), which is why
+  `VALKYRN_HULL` barely moves the gate.
+- **Sweep** (`npx tsx scripts/valkyrn-telemetry.ts sweep …`). Stage A, `--hull 2,3,4,5 --vhull 24,30,36,40`: no line passed;
+  `vhull` changed nothing at any `hull`:
+  ```
+  hull=2  median  86.6 s  crew 10 hunter 0  gun hit 84.3%   (every vhull)
+  hull=3  median 100.2 s  crew 10 hunter 0  gun hit 84.3%   (every vhull; the start values)
+  hull=4  median 119.7 s  crew 10 hunter 0  gun hit 84.7%   (every vhull)
+  hull=5  median 131.4 s  crew 10 hunter 0  gun hit 85.6%   (every vhull)
+  ```
+  Stage B, `--hull 5 --vhull 24 --layer 6,8,10,12 --level 4,6,8`: no line passed:
+  ```
+  layer=6 hull=5 level=4 vhull=24  median 132.4 s  crew 10 hunter 0 draw 0 cap 0  gun hit 86.1%  FAIL: median 132.4 s < 180; hunter wins 0 < 1
+  layer=6 hull=5 level=6 vhull=24  median 130.4 s  crew 9 hunter 1 draw 0 cap 0  gun hit 86.1%  FAIL: median 130.4 s < 180
+  layer=6 hull=5 level=8 vhull=24  median 131.8 s  crew 9 hunter 1 draw 0 cap 0  gun hit 84.8%  FAIL: median 131.8 s < 180
+  layer=8 hull=5 level=4 vhull=24  median 131.6 s  crew 9 hunter 1 draw 0 cap 0  gun hit 84.6%  FAIL: median 131.6 s < 180
+  layer=8 hull=5 level=6 vhull=24  median 131.4 s  crew 10 hunter 0 draw 0 cap 0  gun hit 85.6%  FAIL: median 131.4 s < 180; hunter wins 0 < 1
+  layer=8 hull=5 level=8 vhull=24  median 137.0 s  crew 10 hunter 0 draw 0 cap 0  gun hit 85.3%  FAIL: median 137.0 s < 180; hunter wins 0 < 1
+  layer=10 hull=5 level=4 vhull=24  median 137.3 s  crew 10 hunter 0 draw 0 cap 0  gun hit 83.4%  FAIL: median 137.3 s < 180; hunter wins 0 < 1
+  layer=10 hull=5 level=6 vhull=24  median 139.0 s  crew 8 hunter 2 draw 0 cap 0  gun hit 84.5%  FAIL: median 139.0 s < 180
+  layer=10 hull=5 level=8 vhull=24  median 140.9 s  crew 9 hunter 1 draw 0 cap 0  gun hit 83.7%  FAIL: median 140.9 s < 180
+  layer=12 hull=5 level=4 vhull=24  median 138.2 s  crew 10 hunter 0 draw 0 cap 0  gun hit 83.7%  FAIL: median 138.2 s < 180; hunter wins 0 < 1
+  layer=12 hull=5 level=6 vhull=24  median 140.5 s  crew 10 hunter 0 draw 0 cap 0  gun hit 84.6%  FAIL: median 140.5 s < 180; hunter wins 0 < 1
+  layer=12 hull=5 level=8 vhull=24  median 140.6 s  crew 10 hunter 0 draw 0 cap 0  gun hit 83.6%  FAIL: median 140.6 s < 180; hunter wins 0 < 1
+  ```
+  The pilot's numbers, one at a time at `layer=10 hull=5 level=6 vhull=24` (plan Task 4 Step 4): none reached 180 s, so
+  they stay as started:
+  ```
+  PILOT_MISSILE_GAP=900    median 133.0 s  crew 9 hunter 1   gun hit 85.7%
+  PILOT_MISSILE_GAP=2100   median 142.8 s  crew 9 hunter 1   gun hit 86.2%
+  PILOT_STAND_RANGE=250    median 124.6 s  crew 9 hunter 1   gun hit 89.1%
+  PILOT_STAND_RANGE=340    median 143.8 s  crew 9 hunter 1   gun hit 81.4%
+  PILOT_ENGAGE_RANGE=700   median 134.3 s  crew 10 hunter 0  gun hit 86.6%
+  PILOT_ENGAGE_RANGE=1200  median 141.4 s  crew 7 hunter 3   gun hit 84.9%
+  ```
+  Stage A repeated once with `--hull` extended upward (the plan's reading rule: too short, raise `--hull`; 5 was the top
+  of the listed range), `--hull 6,7,8,9,10,12 --vhull 24,30`, then the neighbours `--hull 9,10,11 --vhull 16,20` and
+  `--hull 11,13,14 --vhull 30` (layer 8, level 6 throughout; `vhull` again changed nothing from 16 to 30):
+  ```
+  hull=6   median 148.0 s  crew 10 hunter 0  FAIL: median < 180; hunter wins 0
+  hull=7   median 162.9 s  crew 10 hunter 0  FAIL: median < 180; hunter wins 0
+  hull=8   median 174.5 s  crew 10 hunter 0  FAIL: median < 180; hunter wins 0
+  hull=9   median 186.5 s  crew 10 hunter 0  FAIL: hunter wins 0
+  hull=10  median 199.5 s  crew 10 hunter 0  FAIL: hunter wins 0
+  hull=11  median 217.5 s  crew 10 hunter 0  FAIL: hunter wins 0
+  hull=12  median 229.8 s  crew 9 hunter 1   gun hit 83.6%  PASS   (vhull 24 and 30)
+  hull=13  median 236.8 s  crew 9 hunter 1   gun hit 83.4%  PASS
+  hull=14  median 247.1 s  crew 9 hunter 1   gun hit 83.3%  PASS
+  ```
+  At `hull=12`, `--vhull 5,10,24`: 5 gives median 162.9 s, crew 5 hunter 5 (FAIL); 10 and 24 equal 30. The pick is the
+  PASS line closest to the start values: `hull=12 vhull=30` (distance 3.0).
+- **Hound unchanged:** `duel-oracle.ts same` and `canonical-trace.ts same` pass at SIM_VERSION 53. The tuning moves only gun
+  rounds and the Valkyrn class, so there is no version bump (Valkyrn iii plan Decision 11).
+
+### 12.1 As built: the merge with asteroids-ii (billiard rocks; SIM 54, 2026-11-18)
+
+- **Rounds and rocks.** Rounds now sweep the live rock pool (`state.rocks`, via `rocksNear`) as it stands when
+  `stepRounds` runs, after the rocks moved this tick; a piece born this tick is not in the way (as the laser's
+  `firstBlocker`). A round that meets a rock is absorbed: it ends as before, and the rock takes no push, wear or event
+  (asteroids-ii spec §12 gives the reasons). Test: `tests/valkyrnRoundsRocks.test.ts`.
+- **No laser, no laser rock target:** `rockLock(laser)` is rejected `unavailable` for a class without a laser.
+- **Gate retune.** With billiard rocks the gate fell to median 150.5 s, crew 7 Hunter 3 (six rounds ended on the
+  planet). `GUN_HITS_PER_HULL` 13 to 18 changed nothing (151.0 to 152.0 s), since the planet, not the gun, ended the
+  rounds. The pilot's orbit radius did change it (`PILOT_ORBIT_R`, seeds 1 to 10):
+  ```
+  1500  median 172.0 s  crew 7 hunter 3  FAIL
+  1950  median 173.9 s  crew 8 hunter 2  FAIL
+  2000  median 196.3 s  crew 9 hunter 1  PASS
+  2100  median 195.1 s  crew 8 hunter 2  PASS
+  2200  median 218.7 s  crew 8 hunter 2  PASS   (chosen: the middle of the passing run 2100..2300, the most slack)
+  2300  median 190.3 s  crew 8 hunter 2  PASS
+  2400  median 166.1 s  crew 9 hunter 1  FAIL
+  2600  median 197.4 s  crew 9 hunter 1  PASS
+  ```
+  The other numbers are unchanged (`GUN_HITS_PER_LAYER` 8, `GUN_HITS_PER_HULL` 12, `GUN_HITS_PER_LEVEL` 6, `VALKYRN_HULL` 30).

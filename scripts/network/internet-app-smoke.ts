@@ -4,7 +4,7 @@ import { copyFileSync,existsSync,mkdtempSync,mkdirSync,readdirSync,readFileSync,
 import { tmpdir } from 'node:os';
 import { basename,dirname,join,resolve,sep } from 'node:path';
 import electron from 'electron';
-import { resolveOnlineConfig } from '../../src/main/network/onlineConfig';
+import { resolveOnlineConfig } from '../../src/shared/onlineConfig';
 import { createLauncherDeadline,removeOwnedDirectory,stopOwnedProcess } from './lease-smoke-lifecycle';
 import { startOnlineAppRuntime,waitForAppRequest } from './online-app-runtime';
 import { INTERNET_ARTIFACTS,validateInternetRun,validateLocalInternetDriverRun } from './internet-app-report';
@@ -59,7 +59,7 @@ async function main() {
   async function launch(kind:'host'|'guest'|'duel-host'|'duel-guest',dir=directory) {
     if(typeof electron!=='string')throw Error('native-failed');
     const role=kind.replace('duel-',''),duel=kind!==role;
-    const env={...process.env,FTLITE_SERVICE_URL:config.enabled?config.baseUrl:'',NODE_PATH:resolve('node_modules'),...(duel?{FTLITE_DUEL_TEST_SEED:String(DUEL_TEST_SEED)}:{FTLITE_SECTOR_ONLINE_TEST:'1'})};
+    const env={...process.env,FTLITE_SERVICE_URL:config.enabled?config.baseUrl:'',FTLITE_ONLINE_TEST_PROBE:'1',NODE_PATH:resolve('node_modules'),...(duel?{FTLITE_DUEL_TEST_SEED:String(DUEL_TEST_SEED)}:{FTLITE_SECTOR_ONLINE_TEST:'1'})};
     for(const key of ['FTLITE_LOCAL_SERVICE_URL','FTLITE_PACKAGED_SERVICE_ORIGIN','ELECTRON_RUN_AS_NODE','ELECTRON_RENDERER_URL','CHROME_CRASHPAD_PIPE_NAME',duel?'FTLITE_SECTOR_ONLINE_TEST':'FTLITE_DUEL_TEST_SEED'])delete (env as NodeJS.ProcessEnv)[key];
     if(local){delete (env as NodeJS.ProcessEnv).FTLITE_SERVICE_URL;(env as NodeJS.ProcessEnv).FTLITE_LOCAL_SERVICE_URL=runtime!.baseUrl;}
     const p=own(electron,[resolve('scripts/network/online-app-smoke.cjs'),`--online-app-dir=${dir}`,`--online-app-role=${role}`,`--user-data-dir=${join(dir,role)}`,...(args.has('--force-relay')?['--internet-force-relay']:[])],kind,env);p.child.stdout?.resume();
@@ -106,7 +106,7 @@ async function main() {
     await preparation(process.execPath,['--import','tsx',resolve('scripts/network/internet-observer-worker.ts'),dir,identity.digest,'duel']);
     const host=await launch('duel-host',dir),guest=await launch('duel-guest',dir);
     const both=async()=>[latest(await host.request!('status')),latest(await guest.request!('status'))];
-    await host.request!('open-multiplayer');await click(host,'host');await click(host,'create-room');const lobby=await phase(host,'lobby');
+    await host.request!('open-multiplayer');await click(host,'host');await click(host,'crew-2');await click(host,'create-room');const lobby=await phase(host,'lobby');
     await guest.request!('open-multiplayer');await click(guest,'join');await guest.request!('type',{id:'join-code',text:lobby.status.snapshot.joinCode});await click(guest,'join-room');await phase(guest,'lobby');
     await click(host,'ready');await click(guest,'ready');await until(()=>host.request!('status'),v=>v.status.actions.includes('start'));await click(host,'start');
     await phase(host,'running');await phase(guest,'running');
@@ -145,7 +145,7 @@ async function main() {
     await preparation(process.execPath,['--import','tsx',resolve('scripts/network/internet-observer-worker.ts'),dir,identity.digest,'duel']);
     const app=await launch(kind==='host'?'duel-host':'duel-guest',dir),now=async()=>latest(await app.request!('status'));
     await app.request!('open-multiplayer');
-    if(kind==='host'){await click(app,'host');await click(app,'create-room');await phase(app,'lobby');console.log('Duel lobby open: give the guest operator the ROOM code shown in this app. Keep off the keyboard until the sector run starts.');}
+    if(kind==='host'){await click(app,'host');await click(app,'crew-2');await click(app,'create-room');await phase(app,'lobby');console.log('Duel lobby open: give the guest operator the ROOM code shown in this app. Keep off the keyboard until the sector run starts.');}
     else {console.log(`Save the host's duel ROOM code in ${codeFile}. Keep off the keyboard until the sector run starts.`);await click(app,'join');await app.request!('type',{id:'join-code',text:await readCode()});await click(app,'join-room');await phase(app,'lobby');}
     await click(app,'ready');
     if(kind==='host'){await until(()=>app.request!('status'),v=>v.status.actions.includes('start'),CODE_WAIT_MS);await click(app,'start');}

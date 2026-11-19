@@ -2,7 +2,7 @@
 // fire at the locked target, and ship classes and weapons as definitions. Storage only: an extra inactive slot changes
 // nothing about the duel's two, and today's numbers are the cutter's and hunter's entries.
 import { describe, expect, it } from 'vitest';
-import { CUTTER_CLASS, DUEL_CLASSES, HUNTER_CLASS, HUNTER_LASER, LASER, MISSILE, SHIP_CLASSES, ShipClass } from '../src/renderer/src/sim/tactical/defs';
+import { CUTTER_CLASS, DUEL_CLASSES, HUNTER_CLASS, HUNTER_LASER, LASER, MISSILE, SHIP_CLASSES, ShipClass, VALKYRN_CLASS, VALKYRN_LASER_CLASS } from '../src/renderer/src/sim/tactical/defs';
 import { hunterSlot, stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { launchMissile, resolveMissiles } from '../src/renderer/src/sim/tactical/missiles';
 import { stepFlight } from '../src/renderer/src/sim/tactical/physics';
@@ -33,9 +33,9 @@ const quiet = (s: TacticalState): void => { Object.assign(s.ships[1], { x: 2600,
 
 describe('ship classes and weapons as definitions (spec §5)', () => {
   it('today\'s numbers are the cutter and hunter entries and the laser and missile weapons', () => {
-    expect(SHIP_CLASSES).toEqual([CUTTER_CLASS, HUNTER_CLASS]);
+    expect(SHIP_CLASSES).toEqual([CUTTER_CLASS, HUNTER_CLASS, VALKYRN_CLASS, VALKYRN_LASER_CLASS]);   // Valkyrn-i appends its two
     expect(DUEL_CLASSES).toEqual([ShipClass.Cutter, ShipClass.Hunter]);
-    for (const c of SHIP_CLASSES) {
+    for (const c of [CUTTER_CLASS, HUNTER_CLASS]) {   // the duel's two; the Valkyrn's flight differs (tests/valkyrnClasses.test.ts)
       expect(c).toMatchObject({ radius: SHIP_RADIUS, thrust: THRUST, turnStepsPerTick: TURN_STEPS_PER_TICK, engineFactor: ENGINE_FACTOR, power: null });
       expect(c.shields.layers).toBe(SHIELD_LAYERS);
       expect(c.slots.missile).toBe(MISSILE);

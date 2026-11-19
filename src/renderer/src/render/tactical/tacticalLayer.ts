@@ -17,6 +17,7 @@ import type { ArcDraw, CombatDraw, MissileDraw } from './weaponsModel';
 import type { Viewport } from './camera';
 import { CALLOUT_MAX } from './hitModel';
 import { FLOATS_MAX } from './fxModel';
+import { CROSS_PX, PIP_PX } from '../duel/leadModel';
 
 export { CREW_SHIP, ENEMY_SHIP, SHIELD_RING } from './shipColours';
 
@@ -27,8 +28,9 @@ const GRID_LABELS = 12, RING_LABELS = 12, ARROWS = 4;
 /** Sci-1: the contact marks (at most the enemy and the derelict); Science's ring turns at this many radians a second;
  *  the designation bracket pulses at this rate. */
 const MARKS = 2, LOCK_RING_SPEED = 0.8, DESIGNATE_PULSE_HZ = 1;
-/** Feel-ii: the pool of small map words (2 gravity labels, COLLISION, SLINGSHOT, EVADE and up to 6 pings, with room). */
-const NOTES = 12;
+/** Feel-ii: the pool of small map words (2 gravity labels, COLLISION, SLINGSHOT, EVADE and up to 6 pings, with room), and
+ *  the gun's HEAT word (Valkyrn spec §7.4). */
+const NOTES = 13;
 /** The enemy's blinking marker ring (moved to hullModel.ts so the pure model and its test need no Pixi). */
 export { ENEMY_RING };
 
@@ -352,6 +354,28 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       for (const pg of c?.pings ?? []) {
         combat.circle(pg.x, pg.y, pg.r).stroke({ width: 2, color: CRT.hot, alpha: pg.alpha }).circle(pg.x, pg.y, pg.inner).stroke({ width: 1, color: CRT.main, alpha: Math.min(1, pg.alpha + 0.3) });
         words.push({ text: pg.label.text, x: pg.label.x - textPx(pg.label.text, 1) / 2, y: pg.label.y - 8, tint: CRT.hot, alpha: Math.min(1, pg.alpha + 0.3) });
+      }
+      // Valkyrn spec §7.4: the gun's tracers, the crosshair at its reach, the lead pip (a diamond with a thin line to the enemy;
+      // hot with brackets on target) and the heat bar under the crosshair, all on the ramp.
+      for (const r of c?.rounds ?? []) combat.moveTo(r.x1, r.y1).lineTo(r.x2, r.y2).stroke({ width: 1, color: CRT.main });
+      const gs = c?.gunSight ?? null;
+      if (gs) {
+        const { x, y } = gs.cross, k = CROSS_PX;
+        combat.moveTo(x - k, y).lineTo(x - 3, y).moveTo(x + 3, y).lineTo(x + k, y).moveTo(x, y - k).lineTo(x, y - 3).moveTo(x, y + 3).lineTo(x, y + k).stroke({ width: 1, color: CRT.mid });
+        const pp = gs.pip;
+        if (pp) {
+          combat.moveTo(pp.enemy.x, pp.enemy.y).lineTo(pp.x, pp.y).stroke({ width: 1, color: CRT.mid, alpha: 0.6 });
+          combat.poly([pp.x, pp.y - PIP_PX, pp.x + PIP_PX, pp.y, pp.x, pp.y + PIP_PX, pp.x - PIP_PX, pp.y]).stroke({ width: 2, color: pp.on ? CRT.hot : CRT.mid });
+          if (pp.on) {
+            const r = PIP_PX + 6, q = 4;
+            for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const)
+              combat.moveTo(pp.x + sx * r, pp.y + sy * (r - q)).lineTo(pp.x + sx * r, pp.y + sy * r).lineTo(pp.x + sx * (r - q), pp.y + sy * r).stroke({ width: 2, color: CRT.hot });
+          }
+        }
+        const hb = gs.heat;
+        combat.rect(hb.x, hb.y, hb.w, 4).stroke({ width: 1, color: CRT.dim });
+        if (hb.fill > 0) combat.rect(hb.x, hb.y, hb.w * hb.fill, 4).fill(hb.locked ? CRT.hot : CRT.main);
+        if (hb.label) words.push({ text: hb.label.text, x: hb.label.x - textPx(hb.label.text, 1) / 2, y: hb.label.y, tint: hb.locked ? CRT.hot : CRT.mid });
       }
       notes.forEach((tx, k) => {
         const wd2 = words[k];

@@ -81,7 +81,7 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
     expect(t.players[1]).toMatchObject({ repairsStarted: 1, repairsFinished: 2, repairingTicks: 480, walkingTicks: 1 });
     ship.rooms[Room.Weapons] = 1;                                           // a new hit while still holding: the same work goes on
     for (let k = 0; k < 10; k++) step(d, t, [], [NONE, HOLD]);
-    expect(t.players[1].repairsStarted).toBe(1);
+    expect(t.players[1]!.repairsStarted).toBe(1);
     step(d, t);                                                             // let go for one tick, then resume: a new start
     for (let k = 0; k < 230; k++) step(d, t, [], [NONE, HOLD]);
     expect(t.players[1]).toMatchObject({ repairsStarted: 2, repairsFinished: 3 });
