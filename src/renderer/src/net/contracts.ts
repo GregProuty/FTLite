@@ -33,7 +33,9 @@ export interface Session {
  *  (Valkyrn spec §6.2): the Flight seat's mouse aim, a heading index 0..255, −1 or absent for none (the sim counts any
  *  other value as none). `gunHeld` (Valkyrn spec §7.1): the gun's trigger; absent means false. Only the duel reads them:
  *  `face` and `aim` from the Helm's attendant (A/D, moveX, overrides both), `gunHeld` from Weapons'. */
-export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean; aim?: number; gunHeld?: boolean }
+/** Playtest2feedback §7: `throttleHeld` (1 W, −1 S), `rcsX` (−1 port, 1 starboard) and `rcsY` (−1 aft, 1 forward) are the
+ *  crew Helm's held throttle and thrusters, each an integer −1..1; absent means 0. */
+export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean; aim?: number; gunHeld?: boolean; throttleHeld?: number; rcsX?: number; rcsY?: number }
 export interface HeldFrame { runId: RunId; player: PlayerId; tick: number; sequence: number; held: HeldInput }
 export interface LifecyclePause { paused: boolean; reason: string }
 export interface CommandId { player: PlayerId; sequence: number }

@@ -149,7 +149,9 @@ const { uint, positive, index, player, text, u32 } = prims;
 const axis = z.number().finite().min(-1).max(1).transform((n) => n === 0 ? 0 : n);
 const pingCoord = z.number().finite().min(-1e6).max(1e6);   // Feel-ii §2.7: a ping's world point
 const id = z.object({ player, sequence: positive }).strict();
-const held = z.object({ moveX: axis, moveY: axis, interactHeld: z.boolean(), face: z.boolean().optional(), aim: z.number().int().min(-1).max(255).optional(), gunHeld: z.boolean().optional() }).strict();   // face: Feel-i's auto-face; aim, gunHeld: Valkyrn spec §6.2, §7.1
+const heldAxis = z.number().int().min(-1).max(1).optional();   // playtest2feedback §7: absent means 0
+const held = z.object({ moveX: axis, moveY: axis, interactHeld: z.boolean(), face: z.boolean().optional(), aim: z.number().int().min(-1).max(255).optional(), gunHeld: z.boolean().optional(),
+  throttleHeld: heldAxis, rcsX: heldAxis, rcsY: heldAxis }).strict();   // face: Feel-i's auto-face; aim, gunHeld: Valkyrn spec §6.2, §7.1; the crew Helm's throttle and thrusters: playtest2feedback §7
 const frame = z.object({ runId: text, player, tick: uint, sequence: positive, held }).strict();
 const commandSchema = z.discriminatedUnion('kind', wire.commands(prims));
 const envelope = z.object({ runId: text, id, requestedTick: uint, command: commandSchema }).strict();
