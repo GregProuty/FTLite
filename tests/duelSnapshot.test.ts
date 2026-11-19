@@ -87,7 +87,8 @@ describe('the duel snapshot (spec §6)', () => {
         [`${free}.flight`, 2, 0.25, /a free entry holds values/], [`${free}.owner`, 0, 1, /a free entry holds values/],
         ['ships.0.headingAcc', 0, 1e300, /ships\.0\.headingAcc/], ['ships.1.headingAcc', 0, -1, /ships\.1\.headingAcc/],
         ['ships.1.skidBudget', 0, -0.5, /ships\.1\.skidBudget/], ['ships.0.graceUntil', 0, 2147483648, /ships\.0\.graceUntil/],
-        ['systems.0.cls', 0, 1, /duel slot identity/], ['systems.1.cls', 0, 0, /duel slot identity/],
+        ['systems.0.cls', 0, 1, /duel slot identity/],
+        ['systems.1.cls', 0, 0, /systems\.1\.pewCharge: out of range/],   // Task 6 review: the Hunter's charge (above the Cutter's full 180) is now bounded by the claimed class first; the identity case alone is below
         ['systems.0.target', 0, 0, /duel slot identity/], ['systems.1.target', 0, 1, /duel slot identity/]
       ];
       const created = vi.spyOn(duelState, 'createDuel');
@@ -95,6 +96,10 @@ describe('the duel snapshot (spec §6)', () => {
         const snap = structuredClone(good); snap.values[names.get(name)! + k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
         expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST), `${name}[${k}] = ${value}`).toThrow(error);
       }
+      const cutterHunter = structuredClone(good);   // the Hunter slot claiming the Cutter with a charge the Cutter can hold: the identity check
+      cutterHunter.values[names.get('systems.1.cls')!] = 0; cutterHunter.values[names.get('systems.1.pewCharge')!] = 0;
+      cutterHunter.header.hash = hashF64(Float64Array.from(cutterHunter.values));
+      expect(() => validateDuelSnapshot(CUTTER, cutterHunter, DIGEST)).toThrow(/duel slot identity/);
       const empty = structuredClone(good);   // slot 1 inactive and zeros, no missiles: internally consistent, but not the duel
       for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) if (/^(ships|systems)\.1\.|^missiles\./.test(f.name)) empty.values.fill(0, names.get(f.name)!, names.get(f.name)! + f.count);
       empty.header.hash = hashF64(Float64Array.from(empty.values));

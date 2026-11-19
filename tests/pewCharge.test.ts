@@ -162,7 +162,11 @@ describe('the pew state in the modules (spec §4)', () => {
       expect(() => validateTacticalValues(shape, x), `${name}[${k}] = ${v}`).toThrow(why);
     };
     const flying = st.pew.findIndex((e) => e.active), free = st.pew.findIndex((e) => !e.active);
-    bad('systems.0.pewCharge', 0, PEW_SHOTS * Math.max(PEW_RECHARGE_TICKS, HUNTER_PEW_RECHARGE_TICKS) + 1, /out of range/);   // the bound is the fullest class's (FULL + 1 before Task 6 gave the Hunter its own recharge)
+    // Task 6 review: the bound is the slot's own class's full pew (it was the fullest class's).
+    bad('systems.0.pewCharge', 0, FULL + 1, /out of range/);   // the Cutter: 181 refused
+    bad('systems.1.pewCharge', 0, PEW_SHOTS * HUNTER_PEW_RECHARGE_TICKS + 1, /out of range/);
+    const hunterFull = [...values]; hunterFull[offsetOf(st, 'systems.1.pewCharge')] = PEW_SHOTS * HUNTER_PEW_RECHARGE_TICKS;
+    expect(validateTacticalValues(shape, hunterFull)).toBe(values.length);   // the Hunter: its full 360 accepted
     bad('systems.1.pewCharge', 0, -1, /out of range/);
     bad('systems.0.pewShots', 0, -1, /out of range/);
     bad('systems.1.pewHits', 0, 0.5, /out of range/);
@@ -172,5 +176,11 @@ describe('the pew state in the modules (spec §4)', () => {
     bad(`pew.${flying}.owner`, 0, 2, /owner is not an active ship slot/);
     bad(`pew.${free}.flight`, 0, 5, /a free entry holds values/);
     bad(`pew.${free}.active`, 0, 2, /not 0 or 1/);
+  });
+  it('a class without the pew holds no charge: the Valkyrn slot is bounded at 0 (Task 6 review)', () => {
+    const st = createTacticalState(5, 2, ShipClass.Valkyrn), shape = createTacticalState(5, 2, ShipClass.Valkyrn), values = Array.from(flattenTactical(st));
+    expect(validateTacticalValues(shape, values)).toBe(values.length);
+    const x = [...values]; x[offsetOf(st, 'systems.0.pewCharge')] = 1;
+    expect(() => validateTacticalValues(shape, x)).toThrow(/systems\.0\.pewCharge: out of range/);
   });
 });

@@ -231,9 +231,14 @@ const systemsRules = (slots: number): Readonly<Record<string, (v: number) => boo
   gunHeat: within(0, most((c) => c.slots.gun?.heatMax)), gunLocked: flagBit, gunCooldown: within(0, most((c) => c.slots.gun?.intervalTicks)), gunMuzzle: within(0, 1),
   gunWear: within(0, most((c) => c.slots.gun?.hitsPerLayer) - 1), gunHull: within(0, most((c) => c.slots.gun?.hitsPerHull) - 1),
   gunRoomWear: within(0, most((c) => c.slots.gun?.hitsPerLevel) - 1), gunShots: count, gunHits: count,
-  // W-1 (pew pew spec §4): the charge 0..a full pew, the counters ≥ 0.
-  pewCharge: within(0, most((c) => (c.slots.pew ? c.slots.pew.shots * c.slots.pew.rechargeTicks : null))), pewShots: count, pewHits: count
+  // W-1 (pew pew spec §4): the counters ≥ 0; the charge is checked against the slot's own class (pewChargeRule).
+  pewShots: count, pewHits: count
 });
+/** W-1 (pew pew spec §4; Task 6 review): a slot's pew charge, 0..its own class's full pew (0 for a class without one). */
+const pewChargeRule = (cls: number): ((v: number) => boolean) => {
+  const pew = SHIP_CLASSES[cls]?.slots.pew;
+  return within(0, pew ? pew.shots * pew.rechargeTicks : 0);
+};
 // Built on first use: state.ts imports this file for cloneTactical, so its enums are read lazily.
 const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
   tick: count, seed: within(0, 0xffffffff), 'rng.s': within(0, 0xffffffff), outcome: within(Outcome.Running, Outcome.Draw),
@@ -256,7 +261,7 @@ const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
  *  the offset after the values. */
 export function validateTacticalValues(shape: TacticalState, values: ArrayLike<number>, offset = 0): number {
   let at = offset;
-  const top = topRules(), slots = shape.ships.length, sys = systemsRules(slots), inactive = new Set<number>(), owners = new Set<number>();
+  const top = topRules(), slots = shape.ships.length, sys = systemsRules(slots), inactive = new Set<number>(), owners = new Set<number>(), clsOf = new Map<number, number>();
   for (const m of TACTICAL_MODULES) for (const f of m.fields(shape)) {
     const slice = Array.from({ length: f.count }, (_, k) => values[at + k]!);
     const bad = (why: string): never => { throw new Error(`duel snapshot tactical ${f.name}: ${why} (${slice.slice(0, 8).join(', ')})`); };
@@ -268,7 +273,11 @@ export function validateTacticalValues(shape: TacticalState, values: ArrayLike<n
       const i = Number(ship[2]), key = ship[3]!;
       if (ship[1] === 'ships' && key === 'active' && slice[0] === 0) inactive.add(i);
       if (inactive.has(i)) { if (slice.some((v) => v !== 0)) bad('an inactive slot holds values'); }
-      else { const rule = ship[1] === 'ships' ? BODY_RULES[key] : sys[key]; if (rule && !slice.every(rule)) bad('out of range'); }
+      else {
+        const rule = ship[1] === 'ships' ? BODY_RULES[key] : key === 'pewCharge' ? pewChargeRule(clsOf.get(i) ?? -1) : sys[key];
+        if (rule && !slice.every(rule)) bad('out of range');
+        if (ship[1] === 'systems' && key === 'cls') clsOf.set(i, slice[0]!);   // validated above; read by pewCharge later in the record
+      }
     } else if (missile) {
       const key = missile[2]!, active = values[at - (key === 'active' ? 0 : key === 'owner' ? 1 : 2)]!;
       if (key === 'active' && !flagBit(slice[0]!)) bad('active is not 0 or 1');
