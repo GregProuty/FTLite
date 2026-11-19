@@ -7,6 +7,7 @@ import { classOf, Contact, missileOf, Outcome, targetOf } from '../../sim/tactic
 import { predictMissile } from '../../sim/tactical/predict';
 import { laserEligible, manualLaserReady, torpedoInRange } from '../../sim/tactical/weapons';
 import { clampAim } from '../../sim/tactical/pew';
+import { pointSeen } from '../../sim/tactical/science';
 import { AIM_STEPS, HEADING_COUNT, LASER_ARC_COS, LASER_ARC_STEPS, LASER_RANGE, MISSILE_RADIUS, MISSILE_RANGE, PEW_ARC, PEW_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { ROOM_NAMES } from '../duel/interiorModel';
 import { alertSentence, evadeDir, gunReason, gunSentence, laserSituation, linedUp, type FlightAlert } from '../duel/situationModel';
@@ -294,7 +295,9 @@ export function combatModel(input: CombatModelInput): CombatDraw {
     const a = (clampAim(heading, aim, LASER_ARC_STEPS) / AIM_STEPS) * 2 * Math.PI;
     laserAim = { x1: ownS.x, y1: ownS.y, x2: ownS.x + Math.sin(a) * r, y2: ownS.y - Math.cos(a) * r };
   }
-  const pewRounds: Segment[] = state.pew.filter((q) => q.active).map((q) => {
+  // Engineering spike §10.4 (merge decision 1d): under the fog another ship's pew round at an unseen point is hidden; the
+  // crew's own rounds are always shown.
+  const pewRounds: Segment[] = state.pew.filter((q) => q.active && (q.owner === 0 || !input.fog || pointSeen(state, q.x, q.y))).map((q) => {
     const a = toS(q.x - q.vx * PEW_STREAK_S, q.y - q.vy * PEW_STREAK_S), b = toS(q.x, q.y);
     return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
   });

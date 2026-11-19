@@ -131,12 +131,17 @@ export function fogPan(t: TacticalState, pan: (x: number, y: number) => number):
 
 /** Engineering spike §10.4 (final review): the events the map effects may draw. An unseen ship's contact spark goes (it
  *  sits at the ship's real place); another ship's laser fired from an unseen point loses its beam (and a rock's chips back
- *  along it); another ship's torpedo ending at an unseen point loses its burst. The crew's own weapons and ship keep all. */
+ *  along it); another ship's torpedo ending at an unseen point loses its burst. Merge decision 1d (W-1's pew pew): another
+ *  ship's pew round fired from an unseen point loses its muzzle flash, and its hit at an unseen point its spark (a hit on
+ *  the crew ship is always at a seen point). The crew's own weapons and ship keep all (the MANUAL beam and torpedo are the
+ *  crew's laser and missileEnd events). */
 export function fogEvents(t: TacticalState, events: readonly ViewEvent[]): ViewEvent[] {
   return events.filter((e) => {
     if (e.kind === 'contact') return e.ship === CREW_SLOT || shipSeen(t, e.ship);
     if (e.kind === 'laser') return e.ship === CREW_SLOT || pointSeen(t, e.x1, e.y1);
     if (e.kind === 'missileEnd') return e.ship === CREW_SLOT || pointSeen(t, e.x, e.y);
+    if (e.kind === 'pewFire') return e.ship === CREW_SLOT || pointSeen(t, e.x, e.y);
+    if (e.kind === 'pewHit') return e.owner === CREW_SLOT || e.ship === CREW_SLOT || pointSeen(t, e.x, e.y);
     return true;
   });
 }

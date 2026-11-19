@@ -34,6 +34,8 @@ import { fogEvents, fogPan, pushMapEffects, rockHoverAt, torpedoTone } from '../
 import { createFx, type ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import { worldToScreen } from '../src/renderer/src/render/tactical/camera';
 import { arena, mover } from './helpers/rockArena';
+import { combatModel, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
+import { placeRound } from '../src/renderer/src/sim/tactical/gun';
 
 const vp = { w: 1280, h: 720 };
 const assets: GameAssets = {
@@ -246,5 +248,43 @@ describe('no fog leaks through the map effects, final review (spec §10.4)', () 
       expect(kinds([{ kind: 'missileEnd', ship: 1, cause: 'expired', target: -1, room: -1, x: e.x, y: e.y }], t).kinds).toEqual(seen ? ['burst'] : []);
       expect(kinds([{ kind: 'missileEnd', ship: 0, cause: 'expired', target: -1, room: -1, x: e.x, y: e.y }], t).kinds).toEqual(['burst']);
     }
+  });
+});
+
+// Merge decision 1d: W-1's pew rounds and W-2's / W-3's MANUAL weapons under the Part ii fog rules: an enemy round at an
+// unseen point is hidden (its fire flash and its hit spark too); the crew's own are always shown, MANUAL or not.
+describe('the fog on pew rounds and the MANUAL weapons (merge decision 1d)', () => {
+  const vpc = { w: 1280, h: 720 };
+  const FOG = { range: 900, seen: { enemy: false, derelict: false, missile: false }, ghosts: [] };
+  const combatIn = (st: ReturnType<typeof createTacticalState>, fog: typeof FOG | null): CombatModelInput => ({
+    state: st, prev: st.ships.map((s) => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc })), alpha: 1, camera: createCamera(st.ships[0]!.x, st.ships[0]!.y, 0.25), viewport: vpc,
+    console: 'weapons', axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: 236, missilePrev: [null, null], fx: createFx(), ...(fog ? { fog } : {}) });
+  it('an enemy pew round at an unseen point is not drawn; at a seen point it is; the crew\'s own always; no fog draws all', () => {
+    const t = createTacticalState(5), own = t.ships[0]!, r = sensorRange(t.systems[0]!);
+    placeRound(t, { x: own.x + r * 2, y: own.y, vx: -900, vy: 0, age: 0, owner: 1 }, t.pew);    // the Hunter's, unseen
+    placeRound(t, { x: own.x + r / 2, y: own.y, vx: -900, vy: 0, age: 0, owner: 1 }, t.pew);    // the Hunter's, seen
+    placeRound(t, { x: own.x + r * 2, y: own.y + 50, vx: 900, vy: 0, age: 0, owner: 0 }, t.pew);   // the crew's, past the range
+    const cam = createCamera(own.x, own.y, 0.25), tipX = (x: number, y: number) => worldToScreen(cam, vpc, x, y).x;
+    expect(combatModel(combatIn(t, FOG)).pewRounds!.map((s) => s.x2)).toEqual([tipX(own.x + r / 2, own.y), tipX(own.x + r * 2, own.y + 50)]);
+    expect(combatModel(combatIn(t, null)).pewRounds).toHaveLength(3);   // the flight view: no fog
+  });
+  it('an enemy pew fire or hit at an unseen point is dropped from the map effects; the crew\'s and a hit on the crew stay', () => {
+    for (const seen of [false, true]) {
+      const t = createTacticalState(5), own = t.ships[0]!, e = t.ships[1]!, r = sensorRange(t.systems[0]!);
+      Object.assign(e, { x: own.x + (seen ? r / 2 : r * 2), y: own.y, active: true });
+      const enemyFire: ViewEvent = { kind: 'pewFire', ship: 1, x: e.x, y: e.y }, crewFire: ViewEvent = { kind: 'pewFire', ship: 0, x: own.x, y: own.y };
+      const crewHitsEnemy: ViewEvent = { kind: 'pewHit', ship: 1, owner: 0, stripped: false, hull: true, x: e.x, y: e.y };
+      const enemyHitsCrew: ViewEvent = { kind: 'pewHit', ship: 0, owner: 1, stripped: true, hull: false, x: own.x, y: own.y };
+      expect(fogEvents(t, [enemyFire, crewFire, crewHitsEnemy, enemyHitsCrew])).toEqual(seen ? [enemyFire, crewFire, crewHitsEnemy, enemyHitsCrew] : [crewFire, crewHitsEnemy, enemyHitsCrew]);
+    }
+  });
+  it('the crew\'s MANUAL beam and MANUAL torpedo are always shown, at an unseen point too', () => {
+    const t = createTacticalState(5), own = t.ships[0]!, r = sensorRange(t.systems[0]!);
+    t.systems[0].laserManual = true; t.systems[0].torpManual = true;
+    const beam: ViewEvent = { kind: 'laser', ship: 0, hit: false, stripped: false, room: -1, x1: own.x, y1: own.y, x2: own.x + r * 2, y2: own.y };
+    const blast: ViewEvent = { kind: 'missileEnd', ship: 0, cause: 'expired', target: -1, room: -1, x: own.x + r * 2, y: own.y };
+    expect(fogEvents(t, [beam, blast])).toEqual([beam, blast]);
+    placeMissile(t, 0, { x: own.x + r * 2, y: own.y, vx: 0, vy: 0, heading: 64, headingAcc: 0, age: 40 }, true);
+    expect(combatModel(combatIn(t, FOG)).missiles.filter((m) => m.crew)).toHaveLength(1);
   });
 });
