@@ -388,7 +388,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     const a = rockAt(state, index), r = a.r * z;
     if (r < DOT_MIN_PX || !onScreen(a.x, a.y, a.r)) continue;
     const p = toS(a.x, a.y), speed = Math.hypot(a.vx, a.vy);
-    const tail = a.kind === RockKind.Moving && speed > STREAK_MIN_SPEED ? Math.min(STREAK_MAX_U, speed * STREAK_S) / speed : 0;
+    const tail = a.kind === RockKind.Free && speed > STREAK_MIN_SPEED ? Math.min(STREAK_MAX_U, speed * STREAK_S) / speed : 0;
     const streak = tail > 0 ? { ...toS(a.x - a.vx * tail, a.y - a.vy * tail), alpha: Math.min(1, (speed - STREAK_MIN_SPEED) / 120) } : null;
     asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX, wear: Math.max(0, Math.min(1, 1 - a.hp / rockHpMax(a.r))), ...(streak ? { streak } : {}) });
   }

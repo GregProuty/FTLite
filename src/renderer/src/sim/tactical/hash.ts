@@ -10,7 +10,8 @@ import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, typ
 import { DUEL_SYSTEM_COUNT, SYSTEM_SLOTS, WEAPON_BAR_MAX, WEAPON_SLOTS } from './bars';
 import { pewFullCharge, SHIP_CLASSES, type ShipClassDef } from './defs';
 import { AIM_STEPS, DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, GUN_POOL, HEADING_COUNT, HUNTER_PEW_GAP, HUNTER_TRAIL_TICKS, PEW_POOL, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
-import { rockCapacity, ROCK_RESERVE, ROCK_STRIDE } from './rocks';
+import { RockKind, rockCapacity, ROCK_RESERVE, ROCK_STRIDE } from './rocks';
+import { RAIL_OFFSET_MAX, ROCK_MIN_R, ROCK_R_MAX, ROCK_RAIL_MIN } from './rockTuning';
 import { CREW_SLOT, emptyMissile, emptyRound, HunterMode, Outcome, type GunRound, type Missile, type MissileFlight, type Ship, type ShipSystems, type TacticalState } from './state';
 
 /** Values per missile pool entry: active, owner, then the flight x, y, vx, vy, heading, headingAcc, age, then (W-3) the
@@ -112,9 +113,9 @@ function spaceFields(asteroids: number, slots: number): ModuleField<TacticalStat
     ? flag('hunter.working', (s) => s.hunter.working, (s, v) => { s.hunter.working = v; })
     : scalar(`hunter.${key}`, (s) => s.hunter[key] as number, (s, v) => { (s.hunter as unknown as Record<string, number>)[key] = v; }));
   fields.push(vector('hunter.trail', 2 * HUNTER_TRAIL_TICKS, (s) => s.hunter.trail));
-  // Spike ii (§8): the rock pool and its six counters, last in the space module.
+  // Spike ii (§8), asteroids-iii §3.1: the rock pool (8 values a slot) and its nine counters, last in the space module.
   fields.push(vector('rocks', (asteroids + ROCK_RESERVE) * ROCK_STRIDE, (s) => s.rocks),
-    ...(['rockHits', 'rockSplits', 'rockDust', 'rockBlasts', 'rockCollisions', 'rockEvictions'] as const).map((k) => scalar<TacticalState>(k, (s) => s[k], (s, v) => { s[k] = v; })));
+    ...(['rockHits', 'rockSplits', 'rockDust', 'rockBlasts', 'rockCollisions', 'rockEvictions', 'rockTouches', 'rockSlotDust', 'rockCapHits'] as const).map((k) => scalar<TacticalState>(k, (s) => s[k], (s, v) => { s[k] = v; })));
   spaceCache.set(key, fields);
   return fields;
 }
@@ -145,7 +146,8 @@ export const spaceModule: SimModule<TacticalState> = {
     grid: 'the broad-phase grid, rebuilt from the map',
     events: 'per-tick events for the views, cleared every tick',
     rockBorn: 'spike ii §3.1: slots written with a new piece this tick; cleared at the start and the end of every stepDuel tick',
-    rockDone: 'spike ii §3.3: slots that had their contact turn this tick; cleared at the start and the end of every stepDuel tick'
+    rockDone: 'spike ii §3.3: slots that had their contact turn this tick; cleared at the start and the end of every stepDuel tick',
+    rockTouched: 'asteroids-iii §3.4: slots freed, pushed, hit or in a contact this tick; cleared at the start and the end of every stepDuel tick'
   },
   commands: [],
   reasons: []
@@ -203,7 +205,7 @@ export function hashTactical(s: TacticalState): string { return hashF64(flattenT
  *  The map and the broad-phase grid are immutable after creation and are shared; the per-tick events are copied. −0 is kept. */
 export function cloneTacticalFromModule(s: TacticalState): TacticalState {
   const copy: TacticalState = { ...s, rng: { s: 0 }, rocks: new Float64Array(s.rocks.length),
-    rockBorn: new Uint8Array(s.rockBorn.length), rockDone: new Uint8Array(s.rockDone.length),
+    rockBorn: new Uint8Array(s.rockBorn.length), rockDone: new Uint8Array(s.rockDone.length), rockTouched: new Uint8Array(s.rockTouched.length),
     ships: s.ships.map((b) => ({ ...b, graceUntil: new Int32Array(b.graceUntil.length) })) as TacticalState['ships'],
     systems: s.systems.map((y) => ({ ...y, rooms: [0, 0, 0], gunRoomWear: [0, 0, 0], bars: [0, 0, 0, 0, 0], weaponPower: [0, 0, 0] })) as TacticalState['systems'],
     missiles: s.missiles.map(emptyMissile) as TacticalState['missiles'],
@@ -261,7 +263,7 @@ const pewChargeRule = (cls: number): ((v: number) => boolean) => {
 };
 // Built on first use: state.ts imports this file for cloneTactical, so its enums are read lazily.
 const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
-  rockHits: count, rockSplits: count, rockDust: count, rockBlasts: count, rockCollisions: count, rockEvictions: count,
+  rockHits: count, rockSplits: count, rockDust: count, rockBlasts: count, rockCollisions: count, rockEvictions: count, rockTouches: count, rockSlotDust: count, rockCapHits: count,
   tick: count, seed: within(0, 0xffffffff), 'rng.s': within(0, 0xffffffff), outcome: within(Outcome.Running, Outcome.Draw),
   'hunter.mode': within(HunterMode.Hunt, HunterMode.Repair), 'hunter.room': room, 'hunter.timer': int, 'hunter.working': flagBit,
   'hunter.fireAt': (v) => Number.isInteger(v) && v >= -1, 'hunter.lastLaunch': int, 'hunter.trailHead': within(0, HUNTER_TRAIL_TICKS - 1), 'hunter.trail': any,
@@ -273,20 +275,41 @@ const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
   'derelict.phase': within(0, HEADING_COUNT - 1), 'derelict.loot': within(0, 2), 'derelict.trapped': flagBit, 'derelict.salvage': count, 'derelict.salvaged': flagBit
 });
 
+/** Asteroids-iii §3.1, §13.1: what is wrong with rock slot values v[b .. b + 7] against the state's tick, or null: kind 0..3; a
+ *  Gone slot holds zeros; otherwise t a whole tick in 0..tick, r in [ROCK_MIN_R, ROCK_R_MAX], hp > 0, and a rail's (Rail
+ *  or Tumble) |centre| at least ROCK_RAIL_MIN and |offset| at most RAIL_OFFSET_MAX. */
+function rockSlotProblem(v: readonly number[], b: number, tick: number): string | null {
+  const kind = v[b]!;
+  if (kind !== RockKind.Gone && kind !== RockKind.Rail && kind !== RockKind.Free && kind !== RockKind.Tumble) return 'kind is not 0, 1, 2 or 3';
+  if (kind === RockKind.Gone) { for (let j = 1; j < ROCK_STRIDE; j++) if (v[b + j] !== 0) return 'a gone slot holds values'; return null; }
+  const t = v[b + 7]!, r = v[b + 5]!, hp = v[b + 6]!;
+  if (!Number.isInteger(t) || t < 0 || t > tick) return 't is not a whole tick in 0..tick';
+  if (!(r >= ROCK_MIN_R && r <= ROCK_R_MAX)) return 'r out of range';
+  if (!(hp > 0)) return 'hp is not above 0';
+  if (kind === RockKind.Rail || kind === RockKind.Tumble) {
+    const cx = v[b + 1]!, cy = v[b + 2]!, ox = v[b + 3]!, oy = v[b + 4]!;
+    if (Math.sqrt(cx * cx + cy * cy) < ROCK_RAIL_MIN) return 'a rail centre inside ROCK_RAIL_MIN';
+    if (Math.sqrt(ox * ox + oy * oy) > RAIL_OFFSET_MAX) return 'a rail offset past RAIL_OFFSET_MAX';
+  }
+  return null;
+}
+
 /** Check tactical values (the space then the ship module's) against their field bounds and slot invariants without
  *  writing them anywhere: heading indices, integer counters, room levels 0..2, shields, the laser and the magazine
  *  against the largest class, the hunter's and the outcome's enums, the map's asteroid count and the slot count; an
  *  inactive ship slot holds only zeros; each missile pool entry: active 0 or 1, a free entry holds only zeros, a missile's
  *  owner is an active slot with no other missile in flight, its heading index and age. Each round pool entry likewise: active 0 or 1, a free entry holds only zeros, an owner that is an active slot, an age within the longest gun life (the gun's round pool and the pew's alike, W-1). W-2: only the crew slot's laser is MANUAL, and a slot's laserAim is −1 unless a burst shot is pending. W-3: only the crew slot's torpedo mode is MANUAL, and only the crew's torpedo is manual. `shape` is any tactical state made
  *  from the same seed and slot count (only its map and slot count are read). Throws naming the first bad field; returns
- *  the offset after the values. */
+ *  the offset after the values. Asteroids-iii §3.1: every rock slot by rockSlotProblem against the tick. */
 export function validateTacticalValues(shape: TacticalState, values: ArrayLike<number>, offset = 0): number {
-  let at = offset;
+  let at = offset, tickSeen = 0;
   const top = topRules(), slots = shape.ships.length, sys = systemsRules(slots, rockCapacity(shape.map)), inactive = new Set<number>(), owners = new Set<number>(), clsOf = new Map<number, number>(), burstOf = new Map<number, number>();
   for (const m of TACTICAL_MODULES) for (const f of m.fields(shape)) {
     const slice = Array.from({ length: f.count }, (_, k) => values[at + k]!);
     const bad = (why: string): never => { throw new Error(`duel snapshot tactical ${f.name}: ${why} (${slice.slice(0, 8).join(', ')})`); };
     if (slice.some((v) => typeof v !== 'number' || !Number.isFinite(v))) bad('not finite');
+    if (f.name === 'tick') tickSeen = slice[0]!;
+    if (f.name === 'rocks') for (let k = 0; k * ROCK_STRIDE < slice.length; k++) { const why = rockSlotProblem(slice, k * ROCK_STRIDE, tickSeen); if (why) bad(`slot ${k}: ${why}`); }
     const ship = /^(ships|systems)\.(\d+)\.(.+)$/.exec(f.name), missile = /^missiles\.(\d+)\.(.+)$/.exec(f.name), round = /^(rounds|pew)\.(\d+)\.(.+)$/.exec(f.name);
     if (f.name === 'map.asteroids.length') { if (slice[0] !== shape.map.asteroids.length) bad('does not match the map'); }
     else if (f.name === 'ships.length') { if (slice[0] !== slots) bad('does not match the slot count'); }

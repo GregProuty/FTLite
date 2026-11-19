@@ -4,8 +4,6 @@ import { DT } from './tuning';
 
 /** §3.1: hp at birth (and hpMax for the cracks) is ceil(r / ROCK_HP_PER): 2 to 6 for the seeded rocks. */
 export const ROCK_HP_PER = 10;
-/** §3.1: a static rock wakes on a rock-rock contact or a ship's ram only above this closing speed (u/s). */
-export const ROCK_WAKE_SPEED = 40;
 
 /** §3.4: a piece under this radius is dust instead. */
 export const ROCK_MIN_R = 8;

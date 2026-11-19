@@ -114,7 +114,7 @@ describe('flatten key guard', () => {
     const st = createTacticalState(1);
     expect(Object.keys(st.ships[0]).sort()).toEqual(['active', 'asteroidHits', 'graceUntil', 'heading', 'headingAcc', 'planetHits', 'released', 'shipHits', 'skidBudget', 'skidSign', 'vx', 'vy', 'x', 'y']);
     expect(Object.keys(st.systems[0]).sort()).toEqual(['bars', 'cls', 'fireHeld', 'freq', 'gunCooldown', 'gunHeat', 'gunHits', 'gunHull', 'gunLocked', 'gunMuzzle', 'gunRoomWear', 'gunShots', 'gunWear', 'hull', 'laserAim', 'laserBurst', 'laserBurstClock', 'laserCharge', 'laserHits', 'laserHold', 'laserManual', 'laserRock', 'laserTargeted', 'layersStripped', 'lock', 'magazine', 'magazineClock', 'missileHits', 'missilesLaunched', 'missilesLost', 'pewCharge', 'pewHits', 'pewShots', 'rocksBroken', 'rooms', 'shieldClock', 'shields', 'shots', 'target', 'torpLock', 'torpManual', 'torpRock', 'torpRockFlying', 'torpRoom', 'weaponPower']);
-    expect(Object.keys(st).sort()).toEqual(['derelict', 'designated', 'events', 'grid', 'hostileAt', 'hunter', 'known', 'map', 'missiles', 'outcome', 'pew', 'rng', 'rockBlasts', 'rockBorn', 'rockCollisions', 'rockDone', 'rockDust', 'rockEvictions', 'rockHits', 'rockSplits', 'rocks', 'rounds', 'scan', 'seed', 'ships', 'startTick', 'systems', 'tick', 'weakFreq']);
+    expect(Object.keys(st).sort()).toEqual(['derelict', 'designated', 'events', 'grid', 'hostileAt', 'hunter', 'known', 'map', 'missiles', 'outcome', 'pew', 'rng', 'rockBlasts', 'rockBorn', 'rockCapHits', 'rockCollisions', 'rockDone', 'rockDust', 'rockEvictions', 'rockHits', 'rockSlotDust', 'rockSplits', 'rockTouched', 'rockTouches', 'rocks', 'rounds', 'scan', 'seed', 'ships', 'startTick', 'systems', 'tick', 'weakFreq']);
     expect(Object.keys(st.hunter).sort()).toEqual(['fireAt', 'lastLaunch', 'mode', 'pewBurst', 'pewClock', 'room', 'timer', 'trail', 'trailHead', 'working']);
     const launched = createTacticalState(1);
     launchMissile(launched, 0);                                          // a missile as the launcher makes it
@@ -127,6 +127,7 @@ describe('flatten key guard', () => {
     // and 3 pew scalars per slot. W-2: the laser mode and the burst aim, 2 more per slot. W-3: the torpedo mode, 1 more per slot,
     // and the manual bit in each missile entry (MISSILE_SLOT). So a systems record is 41 scalars and 6 vector values; Engineering
     // spike spec §2: per slot the 5 bars and the 3 weaponPower values (spec §10.3).
-    expect(flattenTactical(st).length).toBe(6 + 2 * (13 + st.map.asteroids.length + ROCK_RESERVE + 2) + 2 * MISSILE_SLOT + GUN_POOL * ROUND_SLOT + PEW_POOL * ROUND_SLOT + 9 + st.hunter.trail.length + (st.map.asteroids.length + ROCK_RESERVE) * ROCK_STRIDE + 6 + 2 * 55 + 17);
+    // Asteroids-iii: 8 values a rock slot (ROCK_STRIDE), ROCK_RESERVE 160 in the graceUntil bodies, three more counters (rockTouches, rockSlotDust, rockCapHits).
+    expect(flattenTactical(st).length).toBe(6 + 2 * (13 + st.map.asteroids.length + ROCK_RESERVE + 2) + 2 * MISSILE_SLOT + GUN_POOL * ROUND_SLOT + PEW_POOL * ROUND_SLOT + 9 + st.hunter.trail.length + (st.map.asteroids.length + ROCK_RESERVE) * ROCK_STRIDE + 9 + 2 * 55 + 17);
   });
 });

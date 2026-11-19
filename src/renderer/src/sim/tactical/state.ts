@@ -160,21 +160,24 @@ export type DuelEvent =
   | { kind: 'scanDone'; contact: number; level: number }
   /** The derelict was salvaged: its loot, and whether it was trapped. */
   | { kind: 'salvage'; loot: number; trapped: boolean }
-  /** Spike ii §8: rock slot `rock` was hit, split (its `pieces`, piece 0 in its own slot), turned to dust (`rock` −1: a
-   *  piece that found no slot), was the torpedo's detonation (`blast`: x, y the blast point, r the radius), or took a
-   *  damaging contact (`bump`: x, y the contact point; `other` the second rock of a rock-rock contact). `ship`: the ship
-   *  whose laser, torpedo or ram caused it (absent for collisions, the planet, the edge and eviction). */
-  | { kind: 'rock'; what: 'hit' | 'split' | 'dust' | 'blast' | 'bump'; by: RockCause; rock: number; x: number; y: number; r: number; vx: number; vy: number; ship?: number; pieces?: number[]; other?: number; evicted?: true };
+  /** Spike ii §8: rock slot `rock` was hit, split (its `pieces`, piece 0 in its own slot; `burst` for a torpedo's direct
+   *  hit), turned to dust (`rock` −1: a piece that found no slot), blasted (x, y the blast point, r its radius) or bumped
+   *  in a damaging contact (`bump`: x, y the contact point; `other` the second rock of a rock-rock contact). Asteroids-iii
+   *  §5.4: `touch`, two rocks of different clocks met closing above TOUCH_MIN (`other`, the contact point, `speed` the
+   *  closing speed); §13.2: `rejoin`, a free rock went back on a rail (`how`: a lane capture, a rigid group or its own orbit;
+   *  by 'settle'). `ship`: the ship whose weapon, ram or break caused it (absent for collisions, eviction and lost pieces). */
+  | { kind: 'rock'; what: 'hit' | 'split' | 'dust' | 'blast' | 'bump' | 'touch' | 'rejoin'; by: RockCause; rock: number; x: number; y: number; r: number; vx: number; vy: number; ship?: number; pieces?: number[]; other?: number; evicted?: true; burst?: true; speed?: number; how?: 'lane' | 'group' | 'own' };
 
 /** Spike ii §8: what caused a rock event. */
-export type RockCause = 'laser' | 'torpedo' | 'collision' | 'ram' | 'planet' | 'edge';
+export type RockCause = 'laser' | 'torpedo' | 'collision' | 'ram' | 'planet' | 'edge' | 'tidal' | 'settle';
 
 export interface TacticalState {
   tick: number; seed: number; rng: RngState; map: MapDef; grid: BroadPhase;
-  /** Spike ii (rocks.ts): the mutable rock pool and its counters (§8), then the per-tick transient masks (§3.1, §3.3: not
-   *  hashed, not snapshotted, cleared at the start and the end of every stepDuel tick). */
-  rocks: Float64Array; rockHits: number; rockSplits: number; rockDust: number; rockBlasts: number; rockCollisions: number; rockEvictions: number;
-  rockBorn: Uint8Array; rockDone: Uint8Array;
+  /** Spike ii (rocks.ts): the mutable rock pool and its counters (§8; asteroids-iii §5.4 rockTouches, §5.5 rockSlotDust,
+   *  §13.3 rockCapHits), then the per-tick transient masks (not hashed, not snapshotted, cleared at the start and the end
+   *  of every stepDuel). */
+  rocks: Float64Array; rockHits: number; rockSplits: number; rockDust: number; rockBlasts: number; rockCollisions: number; rockEvictions: number; rockTouches: number; rockSlotDust: number; rockCapHits: number;
+  rockBorn: Uint8Array; rockDone: Uint8Array; rockTouched: Uint8Array;
   /** Each slot's body in space. */
   ships: Slots<Ship>;
   /** Each slot's systems record (the ship module's, sim/tactical/hash.ts). */
@@ -278,8 +281,8 @@ export function createTacticalState(seed: number, slots = DUEL_CLASSES.length, c
   const science = scienceDraws(rng, map);   // Sci-1 spec §4.5: right after the map, before anything else reads the rng
   const bodies = rockCapacity(map) + slots, extra = Array.from({ length: slots - 2 });
   return {
-    tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap), rocks: initRocks(map), rockHits: 0, rockSplits: 0, rockDust: 0, rockBlasts: 0, rockCollisions: 0, rockEvictions: 0,
-    rockBorn: new Uint8Array(rockCapacity(map)), rockDone: new Uint8Array(rockCapacity(map)),
+    tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap), rocks: initRocks(map), rockHits: 0, rockSplits: 0, rockDust: 0, rockBlasts: 0, rockCollisions: 0, rockEvictions: 0, rockTouches: 0, rockSlotDust: 0, rockCapHits: 0,
+    rockBorn: new Uint8Array(rockCapacity(map)), rockDone: new Uint8Array(rockCapacity(map)), rockTouched: new Uint8Array(rockCapacity(map)),
     ships: [shipAt(map.spawns[0], bodies), shipAt(map.spawns[1], bodies), ...extra.map(() => emptyShip(bodies))],
     systems: [systemsFor(crewClass, 1, true),systemsFor(DUEL_CLASSES[1]!, 0), ...extra.map(emptySystems)],
     missiles: [emptyMissile(), emptyMissile(), ...extra.map(emptyMissile)],

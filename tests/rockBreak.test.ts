@@ -31,7 +31,7 @@ describe('the fan (laser, blast-secondary, collision, ram; spec §3.4)', () => {
       expect(pieces[0]).toBe(100);
       pieces.forEach((slot, j) => {
         const p = rockAt(st, slot), a = deg(angles[j]!);
-        expect(p.kind).toBe(RockKind.Moving);
+        expect(p.kind).toBe(RockKind.Free);
         expect(p.r).toBeCloseTo(rp, 12);
         expect(p.hp).toBe(Math.ceil(rp / 10));
         expect(p.x).toBeCloseTo(0.6 * r * Math.cos(a), 9);
@@ -148,15 +148,20 @@ describe('damage, push and dust (spec §3.4, §3.5)', () => {
     hitRock(st, 150, 5, 1, 0, 'laser', 0);
     expect(st.rockHits).toBe(2);
   });
-  it('pushRock wakes a static rock and adds Δv; dustRock clears the slot with a dust event', () => {
+  it('pushRock frees a rail rock and adds Δv to its rail velocity; dustRock clears the slot with a dust event', () => {
     const st = arena();
     seeded(st, 0);
+    const rail0 = rockAt(st, 0);
     pushRock(st, 0, 3, 4);
-    expect(rockAt(st, 0)).toMatchObject({ kind: RockKind.Moving, vx: 3, vy: 4 });
+    const p = rockAt(st, 0);
+    expect([p.kind, p.x, p.y]).toEqual([RockKind.Free, rail0.x, rail0.y]);
+    expect(p.vx).toBeCloseTo(rail0.vx + 3, 12); expect(p.vy).toBeCloseTo(rail0.vy + 4, 12);
     dustRock(st, 0, 'edge');
     expect(rockAlive(st, 0)).toBe(false);
-    expect(rockEvents(st, 'dust')).toMatchObject([{ rock: 0, by: 'edge', vx: 3, vy: 4 }]);
-    expect(rockEvents(st, 'dust')[0]).not.toHaveProperty('ship');
+    const dust = rockEvents(st, 'dust');
+    expect(dust).toMatchObject([{ rock: 0, by: 'edge' }]);
+    expect(dust[0]!.vx).toBeCloseTo(rail0.vx + 3, 12);
+    expect(dust[0]).not.toHaveProperty('ship');
     expect(st.rockDust).toBe(1);
   });
 });

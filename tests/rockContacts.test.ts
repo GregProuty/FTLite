@@ -81,20 +81,6 @@ describe('rock-rock pairs (spec §3.3)', () => {
     expect(rockAt(st, b!.pieces![0]!).vx).toBeGreaterThan(0);
     expect(a!.vx).toBeCloseTo(-80, 9);   // the parent velocity is the post-bounce one
   });
-  it('a static rock touched at vc ≤ 40 stays static and does not move; above 40 it wakes and takes the impulse', () => {
-    for (const [speed, wakes] of [[40, false], [41, true]] as const) {
-      const st = arena();
-      seeded(st, 0);
-      const a0 = st.map.asteroids[0]!, before = rockAt(st, 0);
-      mover(st, 100, a0.x - (a0.r + 10) + 1, a0.y, speed, 0, 10, 10);
-      resolveRockPair(st, 100, 0);
-      if (wakes) { expect(rockKind(st, 0)).toBe(RockKind.Moving); expect(rockAt(st, 0).vx).toBeGreaterThan(0); continue; }
-      const after = rockAt(st, 0);
-      expect([after.kind, after.x, after.y, after.vx, after.vy]).toEqual([RockKind.Static, before.x, before.y, 0, 0]);
-      expect(after.hp).toBeLessThan(before.hp);   // cracked (vc 40 > 30), never moved
-      expect(rockAt(st, 100).vx).toBeCloseTo(-32, 9);   // all of the bounce to the mover
-    }
-  });
   it('a pair is resolved once per tick', () => {
     const st = arena();
     mover(st, 100, -30, 2000, 60, 0, 20, 10); mover(st, 101, 5, 2000, -60, 0, 20, 10);
@@ -118,19 +104,16 @@ describe('rock-rock pairs (spec §3.3)', () => {
     expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(39);   // left overlapping: resolved once, not twice
     expect([st.rockDone[100], st.rockDone[101], st.rockDone[102]]).toEqual([1, 1, 1]);
   });
-  it('a static rock woken at a higher slot takes its own turn in the same pass', () => {
+  it('a rail rock met by a free rock is freed at its rail position and velocity and, at a higher slot, takes its own turn in the same pass', () => {
     const st = arena();
     seeded(st, 5);
-    const a5 = st.map.asteroids[5]!;
-    mover(st, 2, a5.x - (a5.r + 10) + 3, a5.y, 100, 0, 10, 10);
+    const a5 = rockAt(st, 5);
+    mover(st, 2, a5.x - (a5.r + 10) + 3, a5.y, a5.vx + 100, a5.vy, 10, 10);
     stepRocks(st);
-    expect(rockKind(st, 5)).toBe(RockKind.Moving);
+    expect(rockKind(st, 5)).toBe(RockKind.Free);
     expect(st.rockDone[5]).toBe(1);
-    expect(rockAt(st, 5).vx).toBeGreaterThan(0);
+    expect(rockAt(st, 5).vx).toBeGreaterThan(a5.vx);
   });
-});
-
-describe('the broad phase (spec §9.2)', () => {
   it('rocksNear matches brute force while seeded rocks move and pieces fly', () => {
     const st = createTacticalState(4);
     const brute = (x: number, y: number, h: number): number[] => {

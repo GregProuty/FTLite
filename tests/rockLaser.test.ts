@@ -1,4 +1,4 @@
-// Spike ii §4.1, §6.2, §6.3: a laser shot on a rock (push J / m, then 2 damage, a static rock wakes), the rock target's
+// Spike ii §4.1, §6.2, §6.3: a laser shot on a rock (push J / m, then 2 damage, a rail rock is freed), the rock target's
 // on-target rule, the shot line (the planet misses, a rock in the way takes it), the fan break, the burst re-aims,
 // firstBlocker skips born slots, AUTO_DIG is off, and the Weapons card's words.
 import { describe, expect, it } from 'vitest';
@@ -9,7 +9,7 @@ import { AUTO_DIG } from '../src/renderer/src/sim/tactical/rockTuning';
 import { rockOnTarget } from '../src/renderer/src/sim/tactical/rockWeapons';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
 import { laserCardReason, laserSituation, statusSentence } from '../src/renderer/src/render/duel/situationModel';
-import { arena, mover, rockEvents, seeded } from './helpers/rockArena';
+import { arena, mover, rail, rockEvents, seeded } from './helpers/rockArena';
 import { lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
 
 /** The arena with the crew facing east (heading 64) at (0, −2500), its laser full and targeted (the round's opener). */
@@ -30,16 +30,18 @@ describe('a laser shot on a rock (spec §4.1)', () => {
     expect(shot.x2).toBeCloseTo(170, 9);
     expect(st.systems[0].shots).toBe(1);
   });
-  it('wakes a static rock', () => {
+  it('frees a rail rock: Free, its rail velocity plus J / m along the shot, 2 damage', () => {
     const st = east();
-    seeded(st, 0);
-    const a = st.map.asteroids[0]!;
-    Object.assign(st.ships[0], { x: a.x - 200, y: a.y });
-    st.systems[0].laserRock = 0;
+    rail(st, 100, 200, -2500, 30, 3);
+    const before = rockAt(st, 100);
+    st.systems[0].laserRock = 100;
     applyWeaponsInput(st, 0, IDLE_INPUT);
-    expect(rockAt(st, 0).kind).toBe(RockKind.Moving);
-    expect(rockAt(st, 0).vx).toBeCloseTo(4000 / (a.r * a.r), 12);
-    expect(rockAt(st, 0).hp).toBe(Math.ceil(a.r / 10) - 2);
+    const after = rockAt(st, 100);
+    expect(after.kind).toBe(RockKind.Free);
+    expect([after.x, after.y]).toEqual([before.x, before.y]);   // freed where its rail had it (outside a step: tick 0)
+    expect(after.vx).toBeCloseTo(before.vx + 4000 / 900, 12);
+    expect(after.vy).toBeCloseTo(before.vy, 12);
+    expect(after.hp).toBe(1);
   });
   it('a laser break on r 42 gives 3 pieces, on r 30 and r 20 and r 13 gives 2, on r 12 dust; the target clears and the tally counts', () => {
     for (const [r, n] of [[42, 3], [30, 2], [20, 2], [13, 2], [12, 0]] as const) {

@@ -6,7 +6,7 @@
 // piece that is not born this tick and not a body of the contact being resolved, else the piece is dust. Every slot
 // cleared or rewritten clears the rock targets that named it. A slot born this tick takes no damage, push or break.
 import { FAN_SPLIT_MIN_R, FAN_TRIPLE_MIN_R, ROCK_BLAST_FLING, ROCK_CRUSH_SPEED, ROCK_CRUSH_STEP, ROCK_FLING, ROCK_MIN_R } from './rockTuning';
-import { rockAlive, rockAt, rockHp, RockKind, rockSlots, ROCK_STRIDE, wakeRock, writeRock } from './rocks';
+import { freeRock, markTouched, restartClock, rockAlive, rockAt, rockHp, RockKind, rockSlots, ROCK_STRIDE, writeRock } from './rocks';
 import type { RockCause, TacticalState } from './state';
 
 export type BreakPattern = 'fan' | 'burst';
@@ -50,16 +50,18 @@ export function dustRock(s: TacticalState, k: number, by: RockCause, ship = -1, 
   s.rockDust++;
   vacate(s, k);
 }
-/** §3.1, §4: add (dvx, dvy) to rock k's velocity, waking a static rock (a push always wakes it). Born or gone: nothing. */
+/** Asteroids-iii §3.4, §5.3: add (dvx, dvy) to rock k's velocity: a Rail is freed first; the push restarts its clock and
+ *  touches it. Born or gone: nothing. */
 export function pushRock(s: TacticalState, k: number, dvx: number, dvy: number): void {
   if (!rockAlive(s, k) || s.rockBorn[k] === 1) return;
-  wakeRock(s, k);
+  freeRock(s, k); markTouched(s, k); restartClock(s, k);
   const b = k * ROCK_STRIDE;
   s.rocks[b + 3]! += dvx; s.rocks[b + 4]! += dvy;
 }
 /** Take dmg off rock k's hp (born or gone: nothing, false); true when it is now at or below 0 (the caller breaks it). */
 export function wearRock(s: TacticalState, k: number, dmg: number): boolean {
   if (!rockAlive(s, k) || s.rockBorn[k] === 1) return false;
+  markTouched(s, k);
   const b = k * ROCK_STRIDE + 6;
   s.rocks[b]! -= dmg;
   return s.rocks[b]! <= 0;
@@ -81,7 +83,7 @@ function allocate(s: TacticalState, rp: number, exclude: readonly number[], by: 
   let best = -1;
   for (let j = 0; j < n; j++) {
     const b = j * ROCK_STRIDE;
-    if (v[b] !== RockKind.Moving || s.rockBorn[j] === 1 || exclude.includes(j) || v[b + 5]! >= rp) continue;
+    if (v[b] !== RockKind.Free || s.rockBorn[j] === 1 || exclude.includes(j) || v[b + 5]! >= rp) continue;
     if (best < 0 || v[b + 5]! < v[best * ROCK_STRIDE + 5]!) best = j;
   }
   if (best < 0) return -1;
@@ -114,7 +116,7 @@ export function breakRock(s: TacticalState, k: number, ux: number, uy: number, b
       s.rockDust++;
       return;
     }
-    writeRock(s, slot, RockKind.Moving, px, py, vx, vy, rp, rockHp(rp));
+    writeRock(s, slot, RockKind.Free, px, py, vx, vy, rp, rockHp(rp));
     s.rockBorn[slot] = 1;
     for (const body of s.ships) body.graceUntil[slot + 1] = 0;   // a new rock: no contact grace on any ship
     pieces.push(slot);
