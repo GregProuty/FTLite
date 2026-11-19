@@ -439,6 +439,28 @@ weapons, in slot order:
     bars, where the 300 range still covers it.
 - The Hunter's AI has no fog.
 
+## 11. Amendment 3 (owner, 2026-11-18): pew pew is the W-1 weapon
+
+Owner: "its shot per click, with each shot taking a third of the bar". Pew pew is the W-1 skill-shot weapon
+(`docs/superpowers/specs/2026-11-18-pew-pew-weapons-design.md`, built on branch `w1-pew-pew`), not §10.3's FTL burst
+laser. To avoid building it twice, the Engineering spike builds no pew pew of its own. **This section overrides
+§10.3's pew pew column.**
+
+- **Weapon slots stay three** (pew pew, beam, torpedo), with the officer's allocation, `weaponPower`, the trim order,
+  the 9-bar budget and the round start `[1, 0, 1]`, all as in §10.3.
+- **On this spike branch, pew pew's slot holds bars that have no effect.** The Weapons console shows the PEW PEW card
+  with its bars and the note "ARRIVES WITH W-1". The beam and the torpedo follow §10.3's table. The laser commands get
+  no `weapon` field. There is no pew pew charge bar, no pew pew lock, and no pew pew in the targeting flow.
+- **The plug-in at merge.** Whichever of the two branches merges second wires pew pew's bars into W-1's recharge:
+  - the ticks per third (W-1's PEW_RECHARGE_TICKS 60) become `PEW_TICKS_BY_BARS = [none, 60, 45, 30]` (0 bars: no
+    recharge; the overdrive bar: 24);
+  - the Weapons room's damage acts only through the Weapons capacity and the trim.
+- **The bots.** The beam starts dark and pew pew does nothing on this branch. So in the round's first tick the
+  scripted gunner moves its pew pew bar to the beam (`weaponPower` pew −1, then beam +1), and then fights with the
+  beam and the torpedo as today. Human players keep the owner's start. After the merge, the bots' use of pew pew is
+  W-1's.
+- The report notes that pew pew wasn't playable in this spike.
+
 ## Out of scope
 
 Presets, Artemis's DamCon teams (the players are the repair crew), sealed doors, Medbay and Doors power, a Hunter

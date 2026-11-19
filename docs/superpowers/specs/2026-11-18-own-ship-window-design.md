@@ -95,7 +95,7 @@ That is x 228 to 468 and y 42 to 212; the box is x 236 to 460 and y 82 to 204.
 - **Sit-down framing** (`render/duel/sitModel.ts` `frameZoom`, called at the `scene.ts` sit-down): it gains an optional
   `avoid` rect.
   - When the enemy is up and to the left (`dx < 0 && dy < 0`), the zoom is also capped at
-    `max((vp.w / 2 - (avoid.x + avoid.w) - FRAME_MARGIN) / |dx|, (vp.h / 2 - (avoid.y + avoid.h) - FRAME_MARGIN) / |dy|)`.
+    `max((vp.w / 2 - (avoid.x + avoid.w) - AVOID_MARGIN) / |dx|, (vp.h / 2 - (avoid.y + avoid.h) - AVOID_MARGIN) / |dy|)` with `AVOID_MARGIN = 28` (the arrow margin; the owner chose it on 2026-11-18 over `FRAME_MARGIN`, which zoomed out far too much).
     The framed enemy then clears the window on at least one axis.
   - The existing 0.25 to 1 clamp still applies last.
   - The scene passes `OWN_SHIP`.

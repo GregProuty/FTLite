@@ -12,6 +12,7 @@ import { createCamera } from '../src/renderer/src/render/tactical/camera';
 import { createFx } from '../src/renderer/src/render/tactical/fxModel';
 import { gravityAccel } from '../src/renderer/src/sim/tactical/physics';
 import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
+import { initRocks } from '../src/renderer/src/sim/tactical/rocks';
 import { predictFlight, predictMissile, predictPath } from '../src/renderer/src/sim/tactical/predict';
 import { classOf, createTacticalState, missileOf, Outcome, placeMissile, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { canCharge, canLaunch } from '../src/renderer/src/sim/tactical/weapons';
@@ -39,9 +40,10 @@ const input = (st: TacticalState, console: 'helm' | 'weapons', extra: Record<str
 function rock(st: TacticalState, x: number, y: number, r: number): void {
   st.map = { ...st.map, asteroids: [...st.map.asteroids, { x, y, r } as TacticalState['map']['asteroids'][number]] };
   st.grid = buildGrid(st.map.asteroids, st.map.rMap);
+  st.rocks = initRocks(st.map);   // SPIKE (destructible asteroids): the live rock pool is what the sim and the models read
 }
-/** No asteroids (the map and its broad phase both). */
-function clearRocks(st: TacticalState): void { st.map = { ...st.map, asteroids: [] }; st.grid = buildGrid([], st.map.rMap); }
+/** No asteroids (the map, its broad phase and the live rock pool). */
+function clearRocks(st: TacticalState): void { st.map = { ...st.map, asteroids: [] }; st.grid = buildGrid([], st.map.rMap); st.rocks = initRocks(st.map); }
 
 describe('the collision warning (Feel-ii §1.2)', () => {
   it('predictFlight is predictPath plus the contact: its point and tick, null when the path runs clear', () => {

@@ -8,6 +8,7 @@ import { dirBetween } from './direction';
 import { buildGrid, type BroadPhase } from './grid';
 import { generateMap, type MapDef, type Spawn } from './map';
 import { cloneTacticalFromModule } from './hash';
+import { initRocks, rockCapacity } from './rocks';
 import { DERELICT_FAR_MIN, DERELICT_NEAR_MIN, DERELICT_PHASE_DRAWS, DERELICT_SPAWN_CLEAR, GUN_POOL, HEADING_COUNT, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_TRAIL_TICKS } from './tuning';
 
 /** Tactical rooms (spec §5); the index into ShipSystems.rooms. */
@@ -56,6 +57,10 @@ export interface ShipSystems {
   freq: number;
   /** Missiles in the magazine and the regain clock in ticks (spec §7b). */
   magazine: number; magazineClock: number;
+  /** Spike ii §6.1: the laser's rock target (a slot, −1 none); the next torpedo's rock target (a slot, −1 none, a single
+   *  shot like torpLock); the flying torpedo's rock (a slot, −1 none: today's rules, −2 its rock broke: unguided). §8:
+   *  the rocks this ship broke this round (its laser, its torpedo's direct hit or blast, its ram). */
+  laserRock: number; torpRock: number; torpRockFlying: number; rocksBroken: number;
   /** Telemetry counters (spec §13). */
   shots: number; laserHits: number; layersStripped: number; missilesLaunched: number; missileHits: number; missilesLost: number;
   /** Valkyrn spec §7.1, §7.2 (the gun; all zero on a class without one and on a ship nobody fires at): its heat
@@ -111,8 +116,9 @@ export function idleScan(): Scan { return { contact: -1, level: 0, progress: 0, 
 
 /** Per-tick events for the views (shots and missile endings). Reset every tick and not hashed. */
 export type DuelEvent =
-  /** A laser release. `stripped`: it took a shield layer; `room`: the Room it struck (its level may already have been 2), or −1 (a miss or a stripped layer). */
-  | { kind: 'laser'; ship: number; hit: boolean; stripped: boolean; room: number; x1: number; y1: number; x2: number; y2: number }
+  /** A laser release. `stripped`: it took a shield layer; `room`: the Room it struck (its level may already have been 2), or −1 (a miss or a stripped layer).
+   *  SPIKE: `rock`, the rock slot the shot struck instead (x2, y2 the impact point), when present and ≥ 0. */
+  | { kind: 'laser'; ship: number; hit: boolean; stripped: boolean; room: number; x1: number; y1: number; x2: number; y2: number; rock?: number }
   /** A missile ended. `target`: the ship it landed on (its own ship for a self-hit), or −1; `room`: the Room it struck, or −1. */
   | { kind: 'missileEnd'; ship: number; cause: 'ship' | 'planet' | 'asteroid' | 'edge' | 'expired' | 'missile'; target: number; room: number; x: number; y: number }
   /** Sci-1 spec §4.6: the enemy turned hostile this tick, and why (laser before gun before missile before clock; Valkyrn spec §7.2). */
@@ -125,10 +131,22 @@ export type DuelEvent =
   /** A scan finished: `contact` is now known to `level`. */
   | { kind: 'scanDone'; contact: number; level: number }
   /** The derelict was salvaged: its loot, and whether it was trapped. */
-  | { kind: 'salvage'; loot: number; trapped: boolean };
+  | { kind: 'salvage'; loot: number; trapped: boolean }
+  /** Spike ii §8: rock slot `rock` was hit, split (its `pieces`, piece 0 in its own slot), turned to dust (`rock` −1: a
+   *  piece that found no slot), was the torpedo's detonation (`blast`: x, y the blast point, r the radius), or took a
+   *  damaging contact (`bump`: x, y the contact point; `other` the second rock of a rock-rock contact). `ship`: the ship
+   *  whose laser, torpedo or ram caused it (absent for collisions, the planet, the edge and eviction). */
+  | { kind: 'rock'; what: 'hit' | 'split' | 'dust' | 'blast' | 'bump'; by: RockCause; rock: number; x: number; y: number; r: number; vx: number; vy: number; ship?: number; pieces?: number[]; other?: number; evicted?: true };
+
+/** Spike ii §8: what caused a rock event. */
+export type RockCause = 'laser' | 'torpedo' | 'collision' | 'ram' | 'planet' | 'edge';
 
 export interface TacticalState {
   tick: number; seed: number; rng: RngState; map: MapDef; grid: BroadPhase;
+  /** Spike ii (rocks.ts): the mutable rock pool and its counters (§8), then the per-tick transient masks (§3.1, §3.3: not
+   *  hashed, not snapshotted, cleared at the start and the end of every stepDuel tick). */
+  rocks: Float64Array; rockHits: number; rockSplits: number; rockDust: number; rockBlasts: number; rockCollisions: number; rockEvictions: number;
+  rockBorn: Uint8Array; rockDone: Uint8Array;
   /** Each slot's body in space. */
   ships: Slots<Ship>;
   /** Each slot's systems record (the ship module's, sim/tactical/hash.ts). */
@@ -155,7 +173,7 @@ export const NO_AXES: Axes = { turn: 0, thrust: 0 };
 export const CREW_SLOT = 0;
 
 /** Body id of ship slot k in ship i's graceUntil: after the planet and the asteroids, the other slots in slot order. */
-export function shipBody(map: MapDef, i: number, k: number): number { return map.asteroids.length + 1 + (k < i ? k : k - 1); }
+export function shipBody(map: MapDef, i: number, k: number): number { return rockCapacity(map) + 1 + (k < i ? k : k - 1); }
 
 function shipAt(s: Spawn, bodies: number): Ship {
   return { active: true, x: s.x, y: s.y, vx: s.vx, vy: s.vy, heading: s.heading, headingAcc: 0, graceUntil: new Int32Array(bodies),
@@ -174,13 +192,13 @@ function systemsFor(cls: number, target: number, crew = false): ShipSystems {
   return {
     cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: crew && laser ? laser.chargeUnits : 0, laserHold: 0, fireHeld: false, lock: Room.Shields,
     laserTargeted: crew && laser !== null, torpLock: -1, torpRoom: -1, laserBurst: 0, laserBurstClock: 0, freq: 0,
-    magazine: c.slots.missile.magazine, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
+    magazine: c.slots.missile.magazine, magazineClock: 0, laserRock: -1, torpRock: -1, torpRockFlying: -1, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
     gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0
   };
 }
 function emptySystems(): ShipSystems {
   return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, laserTargeted: false, torpLock: 0, torpRoom: 0, laserBurst: 0, laserBurstClock: 0, freq: 0,
-    magazine: 0, magazineClock: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
+    magazine: 0, magazineClock: 0, laserRock: 0, torpRock: 0, torpRockFlying: 0, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
     gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0 };
 }
 /** A free missile pool entry. */
@@ -219,9 +237,10 @@ export function createTacticalState(seed: number, slots = DUEL_CLASSES.length, c
   const rng = createRng(seed);
   const map = generateMap(rng);
   const science = scienceDraws(rng, map);   // Sci-1 spec §4.5: right after the map, before anything else reads the rng
-  const bodies = map.asteroids.length + slots, extra = Array.from({ length: slots - 2 });
+  const bodies = rockCapacity(map) + slots, extra = Array.from({ length: slots - 2 });
   return {
-    tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap),
+    tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap), rocks: initRocks(map), rockHits: 0, rockSplits: 0, rockDust: 0, rockBlasts: 0, rockCollisions: 0, rockEvictions: 0,
+    rockBorn: new Uint8Array(rockCapacity(map)), rockDone: new Uint8Array(rockCapacity(map)),
     ships: [shipAt(map.spawns[0], bodies), shipAt(map.spawns[1], bodies), ...extra.map(() => emptyShip(bodies))],
     systems: [systemsFor(crewClass, 1, true),systemsFor(DUEL_CLASSES[1]!, 0), ...extra.map(emptySystems)],
     missiles: [emptyMissile(), emptyMissile(), ...extra.map(emptyMissile)],

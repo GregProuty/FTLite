@@ -1,0 +1,113 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "\u00a73.3 pass order breaks down when a rock wakes or a piece is born mid-pass",
+      "claim": "The spec never says whether the outer loop 'for each moving rock a in ascending slot' uses the movers captured at the start of the pass or re-reads kinds as it goes. Both readings fail. (1) With a captured list (today's code), a static rock b woken mid-pass by a lower slot is never processed as `a`. When a later mover c > b then meets b, the skip rule 'both moving and b < a' drops the pair, so (b, c) is never resolved. (2) With a live loop, pieces written into higher empty slots by a break in this pass get processed as `a`, against L99. L99 only stops born pieces being tested against each other; it does not say whether they meet older rocks this tick. It also does not say what happens to the rest of a's contact list once a itself breaks and its slot holds a new piece somewhere else. Also unstated: whether the planet/edge dust check (\u00a73.2) runs before contacts or inside the same loop, and who takes the separation when a moving-apart pair (vc \u2264 0) involves a kind-1 rock, which L73 says is not moved.",
+      "evidence": "spec L69-L71 (outer loop and skip rule), L73 (kind-1 moved only if it wakes), L80 (vc \u2264 0 only separates), L99 (born pieces); rocks.ts:L126 (movers captured once), L133-L135 (only skips broken slots), L142 (rocksNear list taken before the inner loop)",
+      "why": "Two implementers would resolve different pairs in ordinary play: any blast or laser push wakes belt rocks mid-pass. That is hashed state, and the twin-run gate in \u00a79.1 cannot catch it because both twins run the same wrong code.",
+      "fix": "Specify the following. Keep a per-tick transient 'born this tick' mask (not hashed, cleared at tick start). The outer loop is live: process slot a when it is kind 2 and not born this tick. Replace the skip rule with 'skip b < a when b was kind 2 and not born at the moment the loop passed slot b'; simplest is a per-tick 'processed as a' mask. Skip born slots as b. When a breaks, stop a's inner loop. Do the planet/edge check for a before its contacts. When b is kind 1 and does not wake, a takes the whole separation."
+    },
+    {
+      "severity": "P1",
+      "title": "Eviction can reuse the collision partner's slot before its damage lands",
+      "claim": "In a rock-rock contact, damage goes to a and then to b (L77-L78). If a breaks and the pool is full, eviction turns the smallest moving rock smaller than the new piece into dust (L102-L104). That rock can be b itself, or a rock still waiting in the blast list (L131) or in a ship's precomputed rocksNear list. b's damage then lands on a's new piece sitting in b's old slot, or the blast or ship contact meets a piece born this tick. The same thing happens in a ram, which breaks a rock inside the ship's precomputed list.",
+      "evidence": "spec L77-L79 (a then b), L102-L104 (eviction: smallest moving rock, any slot), L131 (blast ascending slot, born pieces excluded only); contacts.ts:L48-L50 (ship's rocksNear list taken once); rocks.ts:L80-L81 (damageRock only checks that the slot is alive, not its identity)",
+      "why": "A near-full pool is the expected state in the stress script (blasts every 10 s, 96 reserve slots). Damage landing on the wrong body changes hashed state in a way the spec never meant.",
+      "fix": "Rule that eviction never picks a slot born this tick, the other body of the pair or ram being resolved, or a slot still pending in the current blast list. Alternatively, work out both rocks' damage first and then apply both breaks, so b is already resolved before any eviction. State that a damage or contact on a slot born this tick is skipped."
+    },
+    {
+      "severity": "P1",
+      "title": "\u00a75.1 two-body contact with an un-woken kind-1 rock is self-contradictory and changes today's bounce",
+      "claim": "L146 applies the impulse 'to both'. But a kind-1 rock at vc \u2264 40 does not wake, and a kind-1 rock never moves (L53-L56). So either the rock silently gains velocity while still kind 1, which breaks the invariant, or it is treated as infinitely heavy, which the spec does not say. If its finite mass mk = r\u00b2 is used for the ship's share, a ship at 40 u/s into a static r 15 rock gets about 12 u/s back instead of today's full 1.5\u00b7vn reflection (contacts.ts:L16). With a rock that never moves, that weaker bounce turns into repeated push-outs. The hull impact formula (L148) has the same question: does it use mk for a rock that does not move? A ship at 200 into a static r 45 rock costs 3 with finite mass and 4 with infinite mass. Also unstated: whether the wake test happens before the separation choice in L143 (shared or full push-out), and the break direction u for a ram (L86, L88, L151). Finally, L53-L54 says any ram wakes a rock, which contradicts the 40 u/s rule.",
+      "evidence": "spec L53-L56, L141-L151, L86; contacts.ts:L14-L16 (today: full push-out, infinite-mass reflection); physics.ts:L67-L79 (stepFlight and stepSoloFlight call the same contacts but never stepRocks, so a woken rock there keeps a velocity that is never integrated)",
+      "why": "This writes ship and rock state in every belt scrape. Implementers would pick different effective masses and orders. It also changes existing ship-vs-static behaviour beyond a re-bless, which the duelGates and \u00a74 flight tests rely on.",
+      "fix": "State the rule: test the wake first. If the rock stays kind 1, treat it as infinite mass (full push-out, \u0394v_ship = (1+e)\u00b7vc\u00b7n, impact = vc) exactly as today. Otherwise use the two-body rules with shared separation. Define the ram break direction as u = \u2212n (from ship to rock). Fix L53-L54 to name the 40 u/s condition. Say whether stepFlight and stepSoloFlight get stepRocks or keep rocks kind 1 (for example, no waking in those paths)."
+    },
+    {
+      "severity": "P1",
+      "title": "Rock-targeted torpedo: launch, lifetime of torpRock and fallback contradict each other",
+      "claim": "Several rules do not fit together. (a) A rock break clears torpRock (L168-L169). Homing reads the rock only 'while torpRock \u2265 0' (L191), so after a break homingTurn falls back to the enemy ship through systems.target (missiles.ts:L47). That contradicts L193's 'flies on unguided'. (b) The spec never says how a rock-targeted torpedo launches. Today, auto-launch fires on torpLock \u2265 0 (weapons.ts:L180), and launchMissile clears torpLock as a single shot (missiles.ts:L25). Does rockLock torpedo auto-launch? Is torpRock cleared at launch, which would kill the homing, or kept, which would re-launch at the same rock once the torpedo ends? (c) canLaunch and torpedoInRange read systems.target (weapons.ts:L43-L53), and step.ts validates missileLaunch with canLaunch (step.ts:L187). The spec does not say whether 'distance to the rock' (L192) means centre or surface, or whether it replaces the ship test in canLaunch. (d) It does not say what a rockLock torpedo sent while a torpedo is already flying does.",
+      "evidence": "spec L162-L169, L191-L194; missiles.ts:L25, L31, L47-L48; weapons.ts:L43-L53, L180; step.ts:L187",
+      "why": "This is hashed missile and systems state on the main new player action. Two implementers would build different launch and homing behaviour.",
+      "fix": "Add an in-flight field such as torpRockFlying, the way torpRoom works: copy torpRock into it at launch and clear torpRock (single shot). Homing reads the in-flight field. A break of that rock sets it to \u22122, meaning unguided, so it does not fall back to the enemy. Missile end clears it. Specify that rockLock torpedo auto-launches when canLaunch holds, and that canLaunch with torpRock \u2265 0 tests the rock's centre distance against MISSILE_RANGE instead of the ship. A rockLock while a torpedo flies sets only the next shot's target."
+    },
+    {
+      "severity": "P1",
+      "title": "rockLock command: order, folding, laserTargeted and right-click are undefined",
+      "claim": "The new command is not placed in the fixed WEAPON_ORDER (step.ts:L29). The spec does not say whether it folds into ShipInput or writes systems directly (as designate does, step.ts:L217). So a same-tick laserLock(room) plus rockLock(laser) has no defined winner, even though L166-L167 makes them interact. It also does not say whether rockLock(laser) sets laserTargeted. Crew auto-fire requires laserTargeted (weapons.ts:L175), so 'the crew auto-fire when lined up' (L177) may never trigger. The right-click text (L202-L203, 'sends rockLock with \u22121 and the room lock as it was') contradicts 'as today'. Today the right-click sends lock(-1) (WeaponsStation.tsx:L36), which sets laserTargeted false (weapons.ts:L160) and stops auto-fire. Sending a room lock instead sets laserTargeted true (L159) and restarts auto-fire at the enemy. The 'malformed' bound is not exact (integer? \u22121 to rockSlots \u2212 1?), and the codec schema (codec.ts:L117 pattern) and DUEL_KINDS (step.ts:L31) are not named as changes.",
+      "evidence": "spec L164-L167, L177, L202-L203; step.ts:L29, L31, L179-L189, L217; weapons.ts:L158-L162, L175; WeaponsStation.tsx:L36; codec.ts:L117",
+      "why": "These are hashed systems fields and command results. Two implementers would disagree on same-tick precedence and on whether the laser auto-fires at a rock.",
+      "fix": "Place rockLock in WEAPON_ORDER right after torpLock. Fold it into ShipInput.rockLock {weapon, rock} | null, applied in applyWeaponsInput after laserLock and torpLock and before stepBurst, so a later rockLock beats a same-tick room lock. rockLock(laser, k \u2265 0) sets laserTargeted = true. rockLock(laser, \u22121) clears laserRock and sets laserTargeted = false, which is today's right-click. Define malformed as not an integer, or outside \u22121 to rockSlots \u2212 1. List the codec, DuelEnvelope type and DUEL_KINDS additions."
+    },
+    {
+      "severity": "P2",
+      "title": "Rock-rock waking has no speed threshold, so gravity creep can wake the belt",
+      "claim": "Any rock-rock touch with vc > 0 wakes a kind-1 rock (L75). A woken belt rock never comes to rest under ROCK_GRAVITY 1.0 (L64-L65), so it drifts into its neighbours at a few u/s and wakes each one, and they do the same. Ships get a 40 u/s wake threshold for exactly this reason (L146-L147), but rocks get none.",
+      "evidence": "spec L53-L54, L64-L65, L75, L146-L147, L279-L280",
+      "why": "It is a likely mechanism for belt collapse in a long round, and it raises the mover count past what the \u00a79.5 budget assumes.",
+      "fix": "Apply ROCK_WAKE_SPEED to rock-rock contacts too: below it, the kind-1 rock is infinitely heavy and does not wake. Or name the cascade explicitly as a measured risk in \u00a711.1 with a moving-count-over-time log."
+    },
+    {
+      "severity": "P2",
+      "title": "Belt rocks are always under r 45, so the 6-piece burst and 3-piece split never happen in the belt",
+      "claim": "Belt radii are 15 + u\u00b730 with u < 1, so r < 45 (map.ts:L76). The 6-piece torpedo burst and the 3-piece laser split (r \u2265 45) only happen in the 12 to 21 cluster rocks. The \u00a79.4 proxy ('10 largest belt rocks \u2026 at least 4 pieces') is therefore met by the direct-hit burst alone. It also leaves the ship's placement open ('300 u away' in which direction, Hunter present, hostility), so two scripts would log different numbers.",
+      "evidence": "spec L89, L94, L255-L258; map.ts:L76 (belt r), L96 (cluster r 20 to 55); tuning.ts:L18-L20, L28-L29",
+      "why": "It weakens the owner's 'torpedoes \u2026 explode in multiple pieces' check and makes the proxy floor trivially true.",
+      "fix": "Lower the thresholds (for example 6 pieces at r \u2265 35 and 3 at r \u2265 35) or say belt rocks give 4. Make the proxy count pieces from the direct hit plus secondary breaks. Fix the setup: ship at rock centre plus 300 u along the outward radial, Hunter inactive, collisions counted only among slots descended from the blast."
+    },
+    {
+      "severity": "P2",
+      "title": "\u00a79.5 states a p99 gate and also says there is no gate",
+      "claim": "\u00a79.5 requires p99 under 0.5 ms, then says 'No pass threshold beyond the existing publication budgets'. \u00a711.3 says the p99 'decides whether a moving-rock grid is needed', which treats a miss as a trigger to build something, not a failed acceptance.",
+      "evidence": "spec L259-L262, L283-L284",
+      "why": "An implementer cannot tell whether a 0.6 ms p99 blocks acceptance or starts building the grid.",
+      "fix": "Say: p99 < 0.5 ms is a pass gate. If it fails, build a moving-rock grid (ascending output, same rocksNear contract) and re-measure. Remove the 'no pass threshold' wording or limit it to the image sizes."
+    },
+    {
+      "severity": "P2",
+      "title": "Rock shots and torpedoes turn the Hunter hostile, and rocksBroken counting is undefined",
+      "claim": "Any crew shot or launch ends the hold (science.ts:L37: crew.shots or missilesLaunched > 0). Deliberately lasering a rock during the 30 s hold therefore provokes the Hunter, and the spec does not say whether that is intended. The hashed counter rocksBroken (L227-L228, L238) is also not defined case by case. Does a torpedo direct hit count as one, plus each secondary blast break? Does dust from a small rock hit count? Do chain collisions started by a crew shot count? A ram by the crew?",
+      "evidence": "spec L227-L228, L235, L238; science.ts:L34-L40; weapons.ts:L109 (shots++ for every shot, rock or not)",
+      "why": "Hostility timing changes every round. rocksBroken is hashed, so a counting difference splits twin implementations.",
+      "fix": "State it: rock shots and launches count as hostile acts, as today, or are exempt (for example, a separate rockShots counter). Define rocksBroken as +1 per break or dust event whose `ship` field is the crew. Define `ship` as set for the crew's laser hit, its torpedo's direct hit and blast breaks, and its rams, and absent for collision-caused breaks."
+    },
+    {
+      "severity": "P2",
+      "title": "UI drop-on-rock needs controller interfaces that do not exist",
+      "claim": "The controller's only drop path is pick(room, lock) (contactController.ts:L56, L114-L118). pickUp always opens the enemy window armed and requests the enemy's Level 1 scan when it is unknown (L90-L91). click(contact) toggles the window (L76-L80). The spec's 'click on a rock drops the weapon; the contact window closes' (L198-L199) needs a new rock pick and highlight method. It does not say whether picking up a weapon to aim at a rock still starts an enemy scan, which wins when a rock and a contact are both under the pointer, or that a drop from the Helm map is rejected not-at-weapons by the seat rule (L165).",
+      "evidence": "spec L196-L204; contactController.ts:L36-L40, L56, L76-L80, L87-L92, L114-L118",
+      "why": "The new interface is not named as new, and two UI builds would behave differently (scan side effect, click priority).",
+      "fix": "Name a new controller method such as pickRock(slot, lockRock), which sends rockLock, disarms and closes the window. Set contact priority over a rock under the pointer. Do not request a scan when the drop is on a rock, or say that the scan request stands. State that a Helm-seat drop is rejected not-at-weapons, or that the Helm view shows the bracket only."
+    },
+    {
+      "severity": "P3",
+      "title": "Numeric and wording nits",
+      "claim": "(1) L101 lists the allowed Math functions without floor, yet \u00a75.1 uses floor. The guard does allow floor, round, sign and imul. (2) L127-L128: r 15 at fall 1 gets 60000/225 \u2248 267 u/s, which is not 'capped at 300', and the cap is applied only in the next stepRocks (L60-L61). (3) L283-L284 use 86 asteroids, but maps have 82 to 91 (70 belt plus 3 clusters of 4 to 7). (4) The blast-to-rock direction when the distance is 0 has no fallback; damageRock's north fallback could be named.",
+      "evidence": "spec L101, L127-L128, L149, L283-L284, L127; tests/helpers/determinismGuard.ts:L3; tuning.ts:L18, L24-L27",
+      "why": "Small inaccuracies in a spec meant to be followed literally.",
+      "fix": "Correct the guard list. Fix the r 15 example and say the cap applies at the next motion step. Use '82 to 91 (seed-dependent)'. Name the zero-distance fallback (north, as in damageRock)."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "\u00a75.1 hull-cost examples are arithmetically right: r 15 at 200 gives impact 40, cost 1; r 30 at 200 gives 100, cost 2; r 45 at 250 gives about 173, cost 4 (spec L149-L150)",
+    "\u00a74.1 laser push examples: 4000/225 \u2248 17.8 and 4000/2025 \u2248 2.0 (spec L116-L117). \u00a74.2 r 45 blast push: 60000/2025 \u2248 29.6 (L127)",
+    "Total piece area n\u00b7(0.9r/\u221an)\u00b2 = 0.81r\u00b2 \u2264 r\u00b2, so the \u00a79.3 area check holds by construction (spec L90, L252)",
+    "Fan angles (\u00b130\u00b0, \u221240/0/+40\u00b0, multiples of 90\u00b0 and 60\u00b0) are fixed fractions of a turn, so a literal cos/sin table plus multiply-add rotation by u fits the guard. The guard allows abs, ceil, floor, round, min, max, sign, imul and sqrt (tests/helpers/determinismGuard.ts:L3)",
+    "Grid invariant: no rule in \u00a73 to \u00a75 writes kind 1. Pieces (including into seeded slots) are always kind 2 and dust is kind 0, so rocksNear's 'grid hit only while kind 1' filter (rocks.ts:L60) stays correct for reused seeded slots",
+    "rocksNear's bounding test uses h + r (rocks.ts:L66), so querying with h = BLAST_RADIUS finds every rock whose surface is within 120 (spec L124)",
+    "Seeded asteroids never overlap: ASTEROID_GAP = 10 (tuning.ts:L33), so no static-static contact exists at round start",
+    "Spike i's firstBlocker, segmentEntry, damageRock and breakRock exist as the spec describes (rocks.ts:L80-L179). laserRockTarget and AUTO_DIG exist (weapons.ts:L90-L101)"
+  ],
+  "not_verified": [
+    "That master is at SIM_VERSION 51 and how the \u00a72 merge changes step.ts, weapons.ts or the contacts code. I had read and grep tools only, no git, so I reviewed the spike i code in this worktree",
+    "The hash, snapshot and clone wiring for the new systems fields (sim/tactical/hash.ts is not in the manifest)",
+    "Solo seat rules: whether the single player can send Weapons commands from the Helm map view",
+    "The codec's MAX_INDEX bound for a rock slot index (codec.ts read only by grep at L117)",
+    "How the scene routes map clicks to contactController, and whether ContactWindow blocks map clicks under it",
+    "gravityAccel's edge term and whether ROCK_GRAVITY 1.0 belt drift is about 1.7 u/s\u00b2 (physics.ts gravity not read)",
+    "Files read outside the manifest, for these findings: map.ts (grep, belt radii), science.ts (grep, hostility), WeaponsStation.tsx L1-L45 (right-click), physics.ts L55-L80 (stepFlight and stepSoloFlight), tests/helpers/determinismGuard.ts (grep)"
+  ]
+}

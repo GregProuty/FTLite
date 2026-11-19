@@ -1,0 +1,108 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "The unattended crew Helm's rule assumes a flight branch the Hound layout doesn't have",
+      "claim": "\u00a73 says that with no Helm attendant, the crew Helm's throttle returns to 0 and the ship coasts, and that 'a held heading still turns it'. \u00a74 says the compressor runs unattended. But today an unattended Helm on a layout without helmHoldsUnattended (the Hound/Cutter) leaves crew.helm false, so stepDuel flies NO_AXES. The ship isn't turned by a held heading at all, and the per-mille ramp-down would never reach flyShip. The spec doesn't say whether a newtonianHelm class now sets crew.helm = true while unattended. It also doesn't say which axes that slot flies: the heading turn, the boost from helmBoost(d, NO_HELD), and crewThrust(thrMille) while it returns to 0. The two mirrors of the sim's rule aren't named either.",
+      "evidence": "spec L140, L106-L107, L166; step.ts:L279-L287 (only `st.layout.helmHoldsUnattended === true` sets crew.helm and flies a heading turn and throttle; the comment says 'any other (the Hound's) flies zero axes as before'); tactical/duel.ts:L32 (`inputs[i]!.helm ? inputs[i]!.axes : NO_AXES`); situationModel.ts:L109 and runtime.ts:L322 (both return NO_AXES for an unattended non-Valkyrn Helm).",
+      "why": "Implementer A keeps today's branch. A pilot who stands up then gets an instant cut of the main thrust and no held-heading turn, so the 'returns to 0 over 30 ticks' ramp is invisible. Implementer B adds a newtonianHelm unattended branch that thrusts down the ramp, turns onto the held heading and may spend boost gas. That gives different trajectories and goldens, and the drawn path and sentAxes disagree with whichever the sim does.",
+      "fix": "State the rule for an unattended crew Helm in \u00a73 and \u00a77's step order. Recommended: for a newtonianHelm class with no attendant, the step sets crew.helm = true and flies `{ turn: running && holdHeading >= 0 ? headingTurn(...) : 0, turnBoost: helmBoost(d, NO_HELD), thrust: crewThrust(thrMille), rcsX: 0, rcsY: 0 }`. Apply the same rule in situationModel.stateAxes (L109) and runtime.ts sentAxes (L322), and add an \u00a78 test that a crew ship whose Helm stands at thrMille 1000 thrusts down the 30-tick return and turns onto its held heading. Otherwise, keep NO_AXES and delete 'A held heading still turns it' and the returning-thrust claim."
+    },
+    {
+      "severity": "P2",
+      "title": "HELM_BARS as a createDuel option, helmVent and helmPower aren't fitted to the module contract or the rematch",
+      "claim": "\u00a75 and \u00a78 take HELM_BARS 'from the duel's options (createDuel)', but createDuel takes positional arguments and has no options object. startRound rebuilds the next round with createDuel and passes only the layout, seed, helm player, crew and class, so a test's HELM_BARS reverts to 4 at the rematch. The spec calls HELM_BARS 'not state' and d.helmVent 'unsnapshotted', but tests/duelModules.test.ts fails on any DuelState member that isn't a field or listed in DUEL_NOT_SNAPSHOTTED. The helm module's `commands` (['throttle','heading']) and `reasons` lists must also gain helmPower and 'unavailable'. A test pins the full kind list.",
+      "evidence": "spec L216, L300, L174-L175, L326, L121, L230-L231; state.ts:L84 (`createDuel(layout, seed, helmPlayer = 0, crew = DUEL_CREW_MIN, cls?)`); step.ts:L125 (startRound's createDuel call); modules.ts:L59-L65 (helm module commands/reasons), L92 (DUEL_NOT_SNAPSHOTTED); tests/duelModules.test.ts:L68-L70, L150-L151.",
+      "why": "A subagent adding these will hit failing module-contract tests or guess a createDuel signature. A HELM_BARS that is lost on the rematch makes a round-2 test silently run at 4 bars.",
+      "fix": "Name the interface: a sixth createDuel parameter (or an `opts: { helmBars?: number }` object) stored as `d.helmBars`. startRound passes `d.helmBars` through. List `helmBars` and `helmVent` in DUEL_NOT_SNAPSHOTTED with their reasons. Add 'helmPower' to helmModule.commands and 'unavailable' to its reasons, and update the duelModules.test.ts L150 list. For the online authority and client, state that both use the default."
+    },
+    {
+      "severity": "P3",
+      "title": "The auto-face boost band isn't wider than the boosted step, and the settle test names the wrong function",
+      "claim": "\u00a74a says 'far' is 'outside a band wider than the boosted step'. But sin 5\u00b0 is 5 \u00d7 256/360 \u2248 3.556 index units, the same as the boosted step (2 \u00d7 1.778), and with headingAcc carried a boosted tick can step 4 whole indices. So a boosted auto-face can step up to about 0.44 index past the target. That lands inside AUTO_FACE_SIN's \u00b11.78 band, so the nose doesn't chatter, but the stated rule is wrong. \u00a78's settle test checks '`aimTurn` returns 0 for 10 straight ticks' for the held heading and auto-face too, but those go through headingTurn and autoFaceTurn.",
+      "evidence": "spec L197-L201, L357-L358; tuning.ts:L127 (AUTO_FACE_SIN = sin 2.5\u00b0); hunter.ts:L41-L46; step.ts:L112-L115.",
+      "why": "It's a small inconsistency, but a subagent may write the test against aimTurn for every case, or 'fix' the band to match the text.",
+      "fix": "Use BOOST_FACE_SIN = sin 6\u00b0 (\u22484.27 indices > 4), or reword the rule to 'any overshoot stays inside AUTO_FACE_SIN'. Phrase the test as 'helmTurn returns 0 for 10 straight ticks'."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "spec L113-L119: flyShip rounds to thousandths and reverse is proportional, with crewThrust defined. With |q| = 1, the product `\u2026\u00b7|q|\u00b7f` is bit-identical to today's physics.ts L53, and quarters round-trip exactly through /1000."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "spec L56-L69 adds the newtonianHelm gate and the Valkyrn keep-list. The throttle command is kept for the Valkyrn only (L121)."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "spec L183-L187 keeps step.ts L283 for every class. Only the moveX clear at L282 is gated, and there's a Valkyrn test (L359)."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "spec L78-L86: flightFor is used by stepDuel and as predict.ts's default (a TS default parameter can read state and shipIndex). The callers are listed."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "spec L88-L96 gives the exact algorithm, only on the drag-0 path, and the test is reworded (L340)."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "spec L190-L206: the 'far' rule is decided before the step by helmBoost. The aim and heading margin |d| > 4 can't overshoot (at most 4 whole steps from |d| \u2265 5). The auto-face band wording is a separate P3 above."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "spec L275-L285 adds the three schemas, the expiry check, the pause clear and the 105/120 bound (15 \u00d7 7 and 15 \u00d7 8), and \u00a78 tests them. It matches core.ts L329 and L435."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "\u00a73 L130-L138, \u00a74a L207-L211, \u00a76 L250-L271 and \u00a77 L288-L289 cover the listed consumers. d.helmVent replaces the post-step sentAxes recompute."
+    },
+    {
+      "id": "R1-F9",
+      "result": "still open",
+      "note": "(a)-(c) are fixed (spec L239-L246). But the losing-bars rule at L237-L238, `compressor = min(compressor, HELM_BARS, 3)`, now takes lost bars from ENGINE first. At 4 bars with compressor 1, losing one gives compressor 1 and ENGINE 2, a 50 % cap. That reverses the earlier 'bars come off COMPRESSOR first' and the round-1 fix asked for (compressor drops while > 0). Either write `compressor = max(0, min(3, compressor \u2212 lost, HELM_BARS))` or mark ENGINE-first as an owner decision."
+    },
+    {
+      "id": "R1-F10",
+      "result": "resolved",
+      "note": "spec L156-L167 and L294-L298: gas \u2265 8, the exact accumulator, the reset at full and the unattended compressor are all stated, along with the bounds. The refill arithmetic checks: 60000/50 = 1200 ticks, 600 and 400."
+    },
+    {
+      "id": "R1-F11",
+      "result": "resolved",
+      "note": "The test setups are stated at spec L326-L334, with the 750 start cap and ENGINE 0 via HELM_BARS 3 / compressor 3. The missing createDuel option interface is raised as a new P2."
+    },
+    {
+      "id": "R1-F12",
+      "result": "resolved",
+      "note": "spec L186-L189: the sim ignores moveX turning for newtonianHelm classes (an authority rule), the scripted crew moves to aim or face, and \u00a78 L355 tests it."
+    }
+  ],
+  "verified": [
+    "physics.ts:L32 and L53: the whole-axis bit-identity claim (spec L117-L118) holds, since x\u00b71 is exact and quarters are exact in /1000.",
+    "The admission order fits the existing pattern: step.ts L262-L268 checks stale-tick, then invalid-seat, then unavailable.",
+    "core.ts L329 and L435 are the expiry and pause lists the spec names (spec L281-L282).",
+    "predict.ts:L23 and L29: predictPath and predictFlight take (state, shipIndex), so `flightFor(state, shipIndex)` works as a default (spec L84).",
+    "situationModel.ts:L116 is a predictFlight caller for CREW_SLOT, as spec L86 says.",
+    "runtime.ts:L238: isConsoleCommand exists, as spec L289 says.",
+    "tactical/duel.ts:L24 and L32: one tuning per call, so the override-only semantics (spec L82-L83) are a clean change.",
+    "The arithmetic in spec L108, L110, L167, L171 and L283-L284 checks: ceil(1000/7) = 143, ceil(1000/34) = 30, 1000/8 = 125, 15\u00d77 = 105, 15\u00d78 = 120.",
+    "AUTO_FACE_SIN (tuning.ts:L127) is sin 2.5\u00b0, about 1.78 indices, so a boosted overshoot of at most 0.44 index stays inside it."
+  ],
+  "not_verified": [
+    "Whether Digit1 and Digit2 (input.ts:L20 WEAPON_CODES) are seat-gated so they don't clash with \u00a75's 1/2 helmPower keys. \u00a75's key text is unchanged since round 1, so I didn't pursue it.",
+    "Whether Q/E as thruster keys clash with existing seat or interact bindings (the \u00a74 key list is unchanged).",
+    "authority/checkpoint.ts L40 and duelCheckpoint.ts L73: I didn't re-read them this round and relied on round 1's citations.",
+    "Whether the Hunter and the dev flight view only ever pass whole thrust axes (spec L117): I relied on round 1's statement."
+  ]
+}

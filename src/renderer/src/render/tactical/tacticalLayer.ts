@@ -253,10 +253,33 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         bodies.circle(p.x, p.y, Math.max(1, p.r)).stroke({ width: 1, color: CRT.mid, alpha: 0.6 });
       }
       for (const a of d.asteroids) {
+        if (a.streak) {   // spike ii §7 item 3: a moving rock's fading streak behind it
+          const mx = (a.x + a.streak.x) / 2, my = (a.y + a.streak.y) / 2;
+          bodies.moveTo(a.x, a.y).lineTo(mx, my).stroke({ width: Math.max(1, Math.min(3, a.r * 0.5)), color: CRT.mid, alpha: a.streak.alpha });
+          bodies.moveTo(mx, my).lineTo(a.streak.x, a.streak.y).stroke({ width: 1, color: CRT.dim, alpha: a.streak.alpha * 0.6 });
+        }
         if (a.dot) { bodies.rect(Math.round(a.x) - 1, Math.round(a.y) - 1, 2, 2).fill(CRT.mid); continue; }
         const shape = asteroidShape(a.index), pts: number[] = [];
         shape.forEach((m, k) => { const ang = (k / shape.length) * Math.PI * 2; pts.push(a.x + Math.cos(ang) * a.r * m, a.y + Math.sin(ang) * a.r * m); });
-        bodies.poly(pts).fill(CRT.dim).stroke({ width: 1, color: CRT.mid });
+        const wear = a.wear ?? 0;   // SPIKE: cracks and a dimmer fill as the rock wears down
+        bodies.poly(pts).fill(wear >= 0.5 ? CRT.faint : CRT.dim).stroke({ width: 1, color: wear > 0 ? CRT.main : CRT.mid });
+        const cracks = wear > 0 ? Math.min(5, 1 + Math.floor(wear * 4)) : 0;
+        for (let k = 0; k < cracks; k++) {
+          const ang = k * 2.39996 + shape[k]! * 3, r1 = a.r * 0.15, r2 = a.r * shape[(k + 3) % shape.length]! * 0.95;
+          const bend = ang + 0.35 * (k % 2 ? 1 : -1), mid = (r1 + r2) / 2;
+          bodies.moveTo(a.x + Math.cos(ang) * r1, a.y + Math.sin(ang) * r1).lineTo(a.x + Math.cos(bend) * mid, a.y + Math.sin(bend) * mid).lineTo(a.x + Math.cos(ang) * r2, a.y + Math.sin(ang) * r2)
+            .stroke({ width: 1.5, color: CRT.hot, alpha: 0.9 });
+        }
+      }
+
+      // Spike ii §6.5: rock brackets: the laser's four hot corners, the torpedo's dashed main ring; a hover mark in mid.
+      for (const m of d.rockMarks ?? []) {
+        const colour = m.hover ? CRT.mid : m.weapon === 'laser' ? CRT.hot : CRT.main;
+        if (m.weapon === 'laser') {
+          const k = Math.max(4, m.r * 0.45);
+          for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const)
+            marks.moveTo(m.x + sx * m.r, m.y + sy * (m.r - k)).lineTo(m.x + sx * m.r, m.y + sy * m.r).lineTo(m.x + sx * (m.r - k), m.y + sy * m.r).stroke({ width: 2, color: colour });
+        } else segments(marks, dashCircle(m.x, m.y, m.r, DASH, GAP, seg), 2, colour);
       }
 
       // Weapons update spec §2: the torpedo's range circle, dashed, mid while the target is in range at Weapons, else dim.
@@ -411,7 +434,17 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
             .circle(e.x1, e.y1, e.r * 0.3).fill({ color: colour, alpha: e.alpha * 0.5 });
         }
         else if (e.kind === 'burst') combat.circle(e.x1, e.y1, e.r).stroke({ width: 3, color: colour, alpha: e.alpha }).circle(e.x1, e.y1, e.r * 0.4).fill({ color: colour, alpha: e.alpha * 0.6 });
+        else if (e.kind === 'chip') continue;   // drawn after the loop, on top of the beams
+        else if (e.kind === 'speck') combat.circle(e.x1, e.y1, e.r).fill({ color: colour, alpha: e.alpha });
+        else if (e.kind === 'shock') combat.circle(e.x1, e.y1, Math.max(1, e.r)).stroke({ width: e.width ?? 2, color: colour, alpha: e.alpha });
+        else if (e.kind === 'core') combat.circle(e.x1, e.y1, e.r).fill({ color: CRT.hot, alpha: e.alpha });
         else for (let k = 0; k < 4; k++) { const a = (k * Math.PI) / 2 + Math.PI / 4; combat.moveTo(e.x1, e.y1).lineTo(e.x1 + Math.cos(a) * e.r, e.y1 + Math.sin(a) * e.r).stroke({ width: 2, color: colour, alpha: e.alpha }); }
+      }
+
+      for (const e of c?.effects ?? []) {   // spike ii: the rock chips, a tail and a hot head, over the beams and the rock outlines
+        if (e.kind !== 'chip') continue;
+        const colour = e.alpha > 0.5 ? e.colour : CRT.mid;
+        combat.moveTo(e.x1, e.y1).lineTo(e.x2, e.y2).stroke({ width: e.r, color: colour, alpha: e.alpha }).circle(e.x1, e.y1, e.r).fill({ color: colour, alpha: e.alpha });
       }
 
       // Duel polish i spec §A: the Hunter's charge, a faint full track under an arc from 12 o'clock clockwise; at a full

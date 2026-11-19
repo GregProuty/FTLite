@@ -55,6 +55,7 @@ export function createUiActions(deps: UiActionDeps) {
     hold: (code, on) => consoleInput?.hold(code, on),
     lock: (room) => consoleInput?.lock(room),
     torpLock: (room) => consoleInput?.torpLock(room),
+    rockLock: (weapon, rock) => consoleInput?.rockLock?.(weapon, rock),
     throttle: (level) => consoleInput?.throttle(level),
     frequency: (freq) => consoleInput?.frequency(freq)
   };

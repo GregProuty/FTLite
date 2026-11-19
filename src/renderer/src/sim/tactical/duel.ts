@@ -7,6 +7,8 @@ import { stepRounds } from './gun';
 import { flySlot } from './physics';
 import { hostilityStep, salvageStep, scanStep } from './science';
 import { resolveContacts } from './contacts';
+import { beginRockTick } from './rocks';
+import { stepRocks } from './rockContacts';
 import { classOf, CREW_SLOT, NO_AXES, Outcome, type TacticalState } from './state';
 import { DEFAULT_FLIGHT, type FlightTuning } from './tuning';
 import { applyWeaponsInput, tickWeapons, UNCREWED_INPUT, type ShipInput } from './weapons';
@@ -23,7 +25,7 @@ export function hunterSlot(state: TacticalState): number {
  */
 export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTuning = DEFAULT_FLIGHT): void {
   if (state.outcome !== Outcome.Running) return;
-  state.events = [];
+  state.events = []; beginRockTick(state);   // spike ii §3.1: the transient masks start empty every tick
   const hunter = hunterSlot(state), n = state.ships.length;
   const inputs = state.ships.map((s, i) => (!s.active ? UNCREWED_INPUT : i === CREW_SLOT ? crew : i === hunter ? hunterThink(state, i) : UNCREWED_INPUT));
   const hunterLaunches = hunter >= 0 ? state.systems[hunter]!.missilesLaunched : 0;
@@ -31,7 +33,8 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTu
   if (hunter >= 0 && state.systems[hunter]!.missilesLaunched > hunterLaunches) state.hunter.lastLaunch = state.tick;   // a refused launch costs no cooldown
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) flySlot(state, i, inputs[i]!.helm ? inputs[i]!.axes : NO_AXES, tuning);
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) flyMissile(state, i);   // homing torpedo spec: it steers itself, attended or not
-  resolveContacts(state);
+  stepRocks(state);   // SPIKE (destructible asteroids): fragments fly and meet the planet and the other rocks
+  resolveContacts(state, true);   // spike ii §5.1: rocks are bodies in the duel
   resolveMissiles(state);
   stepRounds(state);   // Valkyrn spec §7.2: after the ships fly and contacts resolve, so a round also moves on its spawn tick
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) tickWeapons(state, i, inputs[i]!);
@@ -42,5 +45,6 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTu
   const crewDown = down(CREW_SLOT), others = state.ships.map((s, i) => i).filter((i) => i !== CREW_SLOT && state.ships[i]!.active);
   const enemyDown = others.length > 0 && others.every(down);
   state.outcome = crewDown && enemyDown ? Outcome.Draw : crewDown ? Outcome.EnemyWins : enemyDown ? Outcome.CrewWins : Outcome.Running;
+  beginRockTick(state);   // impl review R1-F1: and end empty, so a read between ticks sees what a clone or restore sees
   state.tick++;
 }
