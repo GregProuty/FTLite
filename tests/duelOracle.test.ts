@@ -91,6 +91,14 @@ describe('the per-tick record', () => {
     const short = (d: Parameters<typeof duelSchema>[0]) => { const s = duelSchema(d); return { names: s.names.slice(0, -1), counts: s.counts.slice(0, -1) }; };
     expect(() => recordRun({ ...SHORT, cap: 2 }, undefined, short)).toThrow(/the duel schema names \d+ values, flattenDuel writes \d+ after SIM_VERSION/);
   }, 30_000);
+  it('frozen additions (Valkyrn-i): a declared-added field that moves during the run is a problem', () => {
+    const was = recordRun(SHORT).run;
+    const freeze = (re: RegExp): Migration => ({ ...none, added: [re], frozen: true });
+    // space.ships.0.x first moves on tick 265 (the test above), inside SHORT's 300 ticks.
+    expect(recordRun(SHORT, { names: was.names, counts: was.counts, migration: freeze(/^space\.ships\.0\.x$/) }).problems)
+      .toEqual(['added field space.ships.0.x changed during the run (declared added at the same version, it must hold its first recorded value)']);
+    expect(recordRun(SHORT, { names: was.names, counts: was.counts, migration: { ...freeze(/^space\.ships\.0\.x$/), frozen: false } }).problems).toEqual([]);
+  }, 30_000);
 });
 
 describe('the judge', () => {
@@ -173,5 +181,15 @@ describe('the judge', () => {
     const prob = judgeDuelOracle(trace({ runs }), () => ({ problems: ['old field a is unmapped'], run: runs[0]! }), '/repo', 'same', 37);
     expect(prob.ok).toBe(false);
     expect(prob.message).toMatch(/scripted-1: old field a is unmapped/);
+  });
+  it('the added mode (Valkyrn-i): the same version, through the declared additions only', () => {
+    const runs = ORACLE_RUNS.map((s) => okRun(s.id)), seen: (string | undefined)[] = [], additions = { 37: { ...none, change: 'R-added' } };
+    const r = judgeDuelOracle(trace({ runs }), (spec, schema) => { seen.push(schema.migration?.change); return { problems: [], run: runs.find((x) => x.id === spec.id)! }; },
+      '/repo', 'added', 37, { 37: { ...none, change: 'R-test' } }, undefined, undefined, additions);
+    expect(r.ok).toBe(true);
+    expect(r.message).toMatch(/with the fields declared added at 37 \(R-added\), sim version 37 → 37/);
+    expect(seen).toEqual(ORACLE_RUNS.map(() => 'R-added'));
+    expect(judgeDuelOracle(trace({ runs }), rerun, '/repo', 'added', 38, {}, undefined, undefined, additions).message).toMatch(/use `check` for a bump/);
+    expect(judgeDuelOracle(trace({ runs }), rerun, '/repo', 'added', 37, {}, undefined, undefined, {}).message).toMatch(/no same-version additions are declared at sim version 37/);
   });
 });

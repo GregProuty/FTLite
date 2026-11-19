@@ -64,11 +64,11 @@ function updateRepair(state: TacticalState, i: number): void {
   if (h.mode === HunterMode.Repair) {
     if (--h.timer > 0) return;
     if (!h.working) { h.working = true; h.timer = REPAIR_WORK_TICKS; return; }
-    me.rooms[h.room as 0 | 1 | 2] = Math.max(0, me.rooms[h.room]! - 1);
+    me.rooms[h.room as 0 | 1 | 2] = Math.max(0, me.rooms[h.room]! - 1); me.gunRoomWear[h.room as 0 | 1 | 2] = 0;   // Valkyrn spec §7.2: a repaired Room's wear goes
     h.mode = HunterMode.Hunt;
     return;
   }
-  const range = classOf(state, i).slots.laser.range, dx = crew.x - self.x, dy = crew.y - self.y, outOfRange = dx * dx + dy * dy > range * range;
+  const laser = classOf(state, i).slots.laser, range = laser ? laser.range : 0, dx = crew.x - self.x, dy = crew.y - self.y, outOfRange = dx * dx + dy * dy > range * range;
   let best = -1;
   for (const room of REPAIR_ORDER) {
     const level = me.rooms[room];
@@ -87,7 +87,7 @@ export function hunterThink(state: TacticalState, i = 1): ShipInput {
   updateRepair(state, i);
   const repairing = h.mode === HunterMode.Repair;
   const helm = !(repairing && h.room === Room.Engines), weapons = !(repairing && h.room !== Room.Engines);
-  const input: ShipInput = { helm, weapons, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, scanner: true };
+  const input: ShipInput = { helm, weapons, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, gunHeld: false, scanner: true };
   if (!enemyHostile(state)) { h.fireAt = -1; return input; }   // the hold before hostility (Sci-1 spec §4.2): it keeps only its drift
 
   if (helm) {

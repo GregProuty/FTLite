@@ -26,8 +26,9 @@ export const CHARGE_COLOUR = CRT.hot;
 export function enemyCharge(state: TacticalState, ship = ENEMY_SLOT): { fill: number; full: boolean } | null {
   const s = state.systems[ship], body = state.ships[ship];
   if (!s || !body?.active || !s.fireHeld || laserOffline(state, ship)) return null;
-  const units = classOf(state, ship).slots.laser.chargeUnits;
-  return { fill: Math.max(0, Math.min(1, s.laserCharge / units)), full: laserFull(state, ship) };
+  const laser = classOf(state, ship).slots.laser;
+  if (!laser) return null;
+  return { fill: Math.max(0, Math.min(1, s.laserCharge / laser.chargeUnits)), full: laserFull(state, ship) };
 }
 /** §A: the full ring's pulse alpha at presentation time t, 0.45 to 1 at 4 Hz. */
 export function chargePulse(t: number): number { return CHARGE_PULSE_MIN + (1 - CHARGE_PULSE_MIN) * (0.5 + 0.5 * Math.cos(t * 2 * Math.PI * CHARGE_PULSE_HZ)); }
@@ -43,7 +44,8 @@ function roomCallout(state: TacticalState, room: number, prefix: string): Callou
 }
 
 /** §B: the callouts for one frame's events, in event order: every crew laser release (ship 0) and every crew missile
- *  that lands on the enemy on a room. The room's level is read from the state the events arrived with. */
+ *  that lands on the enemy on a room, and every crew gun round that raises an enemy Room's level. The room's level is read
+ *  from the state the events arrived with. */
 export function hitCallouts(events: readonly ViewEvent[], state: TacticalState): Callout[] {
   const out: Callout[] = [];
   for (const e of events) {
@@ -52,6 +54,7 @@ export function hitCallouts(events: readonly ViewEvent[], state: TacticalState):
       else if (!e.hit) out.push({ text: 'MISS', colour: CALLOUT_COLOUR.miss, kind: 'miss' });
       else if (e.room >= 0) out.push(roomCallout(state, e.room, ''));
     } else if (e.kind === 'missileEnd' && e.ship === CREW_SLOT && e.target === ENEMY_SLOT && e.room >= 0) out.push(roomCallout(state, e.room, 'TORPEDO: '));
+    else if (e.kind === 'gunHit' && e.ship === ENEMY_SLOT && e.room >= 0 && e.level) out.push(roomCallout(state, e.room, 'GUN: '));   // Valkyrn spec §7.4: only a level change
   }
   return out;
 }
@@ -62,7 +65,7 @@ export interface CalloutItem extends Callout { age: number; stack: number }
 export interface StruckItem { ship: number; room: number; age: number }
 
 /** §B: queue one frame's hits: the callouts (stacked in event order, the oldest dropped past CALLOUT_MAX) and each
- *  struck room (a crew laser hit on its target, a crew missile on any ship, room ≥ 0) restarting its flash. */
+ *  struck room (a crew laser hit on its target, a crew missile or gun round on any other ship, room ≥ 0) restarting its flash. */
 export function pushHits(fx: FxState, events: readonly ViewEvent[], state: TacticalState): void {
   hitCallouts(events, state).forEach((c, stack) => fx.callouts.push({ ...c, age: 0, stack }));
   if (fx.callouts.length > CALLOUT_MAX) fx.callouts.splice(0, fx.callouts.length - CALLOUT_MAX);
@@ -70,6 +73,7 @@ export function pushHits(fx: FxState, events: readonly ViewEvent[], state: Tacti
     let ship = -1, room = -1;
     if (e.kind === 'laser' && e.ship === CREW_SLOT && e.hit && !e.stripped) { ship = targetOf(state, CREW_SLOT); room = e.room; }
     else if (e.kind === 'missileEnd' && e.ship === CREW_SLOT && e.target >= 0 && e.target !== CREW_SLOT) { ship = e.target; room = e.room; }
+    else if (e.kind === 'gunHit' && e.ship !== CREW_SLOT) { ship = e.ship; room = e.room; }   // Valkyrn spec §7.4: the crew gun's round on a Room (only the crew has a gun)
     if (ship < 0 || room < 0) continue;
     const at = fx.struck.findIndex((s) => s.ship === ship && s.room === room);
     if (at >= 0) fx.struck[at]!.age = 0;

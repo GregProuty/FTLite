@@ -199,7 +199,7 @@ async function main() {
     checks.push('incompatible'); await shutdown(incompatible);
     await g.request('delay-next-transport'); await g.request('join-sector',{code:lobby.status.snapshot.joinCode});
     await phase(g,'joining'); await g.request('click',{id:'leave'}); await phase(g,'idle');
-    await g.request('click',{id:'single-player'}); await delay(1300);
+    await g.request('click',{id:'single-player'}); await g.request('click',{id:'ship-hound'}); await delay(1300);
     const cancelled=await g.request('resources'); assert(cancelled.workers.length===0&&cancelled.windows===1&&cancelled.listeners===1&&cancelled.ports===0,'cancel retained transport resources');
     await viewportProof(g, 'single');
     await key(g, 'Escape'); await delay(100); await key(g, 'M');

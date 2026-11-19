@@ -53,6 +53,15 @@ Hound-class Transport Ship by 2-Minute Tabletop (2minutetabletop.com), CC BY-NC 
   Retrieved: 2026-11-16
   Files: paid/2mt/hound.png
 
+Valkyrn by 2-Minute Tabletop (2minutetabletop.com), CC BY-NC 4.0
+  Title: Valkyrn
+  Author: 2-Minute Tabletop
+  Source: https://www.patreon.com/2minutetabletop
+  Licence: CC-BY-NC-4.0 https://creativecommons.org/licenses/by-nc/4.0/
+  Modifications: rotated 90° clockwise by npm run art:import (edited by FTLite art import)
+  Retrieved: 2026-11-18
+  Files: paid/2mt/valkyrn.png
+
 == CC0-1.0 (https://creativecommons.org/publicdomain/zero/1.0/) ==
 
 "1-Bit Input Prompts Pixel 16×" by Kenney (www.kenney.nl), CC0

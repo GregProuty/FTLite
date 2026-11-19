@@ -100,6 +100,17 @@ describe('duel keyboard (H-1 spec §5)', () => {
 describe('pointer source (H-1 spec §5)', () => {
   const half = (x: number, y: number) => ({ x: x / 2, y: y / 2 });   // a 2× letterbox
   const ptr = (clientX: number, clientY: number, button: number, buttons: number) => ({ clientX, clientY, button, buttons, preventDefault: vi.fn() });
+  it('Valkyrn spec §5.1: the left button is held from a canvas press until a release anywhere or a blur', () => {
+    const t = fakeTarget(), w = fakeTarget(), p = createPointerSource(t, half, w);
+    const ev = (button: number, buttons: number) => ({ clientX: 10, clientY: 10, button, buttons, preventDefault: vi.fn() });
+    expect(p.leftHeld()).toBe(false);
+    t.fire('pointerdown', ev(0, 1)); expect(p.leftHeld()).toBe(true);
+    w.fire('pointerup', ev(0, 0)); expect(p.leftHeld()).toBe(false);          // released over the side tools
+    t.fire('pointerdown', ev(0, 1)); w.fire('blur', {}); expect(p.leftHeld()).toBe(false);   // alt-tab
+    t.fire('pointerdown', ev(0, 1)); t.fire('pointerup', ev(0, 0)); expect(p.leftHeld()).toBe(false);
+    t.fire('pointerdown', ev(0, 1)); t.fire('pointermove', ev(-1, 0)); expect(p.leftHeld()).toBe(false);   // a canvas move with the bit clear
+    p.destroy(); expect(w.count()).toBe(0);
+  });
   it('tracks the position in internal pixels and sums the wheel', () => {
     const t = fakeTarget(), p = createPointerSource(t, half);
     expect(p.sample()).toEqual({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0, rightX: 0, rightY: 0 });

@@ -17,12 +17,13 @@ import { LatencyOverlay } from './LatencyOverlay';
 import { MapOverlay } from './MapOverlay';
 import { HelmStation } from './HelmStation';
 import { INTERNAL_W } from '../../../../shared/resolution';
-import { CONSOLE_RESERVE } from '../../render/duel/consoleLayout';
+import { CONSOLE_RESERVE, flightCard } from '../../render/duel/consoleLayout';
 import { ReadoutPanel } from './ReadoutPanel';
 import { SideColumn } from './SideColumn';
 import { TabStrip } from './TabStrip';
 import { ScienceStation } from './ScienceStation';
 import { WeaponsStation } from './WeaponsStation';
+import { FlightStation } from './FlightStation';
 import { ContactWindow } from './ContactWindow';
 import { TargetingLine } from './TargetingLine';
 import { ShipHud } from './ShipHud';
@@ -41,9 +42,11 @@ export function DuelUi() {
           {duel.console?.side && <SideColumn side={duel.console.side} />}
           {duel.console?.helm && <HelmStation helm={duel.console.helm} />}
           {duel.console?.weapons && <WeaponsStation weapons={duel.console.weapons} aim={duel.contact?.aimWeapon ?? null} />}
+          {duel.console?.flight && <FlightStation flight={duel.console.flight} aim={duel.contact?.aimWeapon ?? null} />}
           {duel.console?.science && <ScienceStation science={duel.console.science} />}
           {duel.contact && <ContactWindow contact={duel.contact} />}
-          {duel.contact?.aimWeapon && duel.console?.weapons && <TargetingLine contact={duel.contact} seed={duel.pointer ?? null} />}
+          {duel.contact?.aimWeapon && (duel.console?.weapons || duel.console?.flight) && <TargetingLine contact={duel.contact} seed={duel.pointer ?? null}
+            from={duel.console?.flight ? flightCard(duel.contact.aimWeapon === 'torpedo' ? 1 : 0).anchor : undefined} />}
           {duel.hud && <ShipHud hud={duel.hud} />}
           {duel.sitCard && <SitCard card={duel.sitCard} />}
           <Banners banners={duel.banners} cx={duel.console && duel.console.station !== 'ship' ? (CONSOLE_RESERVE.left + INTERNAL_W - CONSOLE_RESERVE.right) / 2 : undefined} />

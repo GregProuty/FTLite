@@ -6,8 +6,9 @@
 //                                                    through MIGRATIONS and SIM_VERSION is the baseline's plus 1
 //   npx tsx scripts/golden/duel-oracle.ts same       after a change that keeps SIM_VERSION: exits 1 unless every run
 //                                                    matches field for field
+//   npx tsx scripts/golden/duel-oracle.ts added      after an additive change that keeps SIM_VERSION: exits 1 unless every run matches with only ADDITIONS' fields new
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { oracleCounts, oracleTrace, ORACLE_FILE, verifyDuelOracle, verifyDuelUnchanged } from './duelOracle';
+import { oracleCounts, oracleTrace, ORACLE_FILE, verifyDuelAdditive, verifyDuelOracle, verifyDuelUnchanged } from './duelOracle';
 import { dir } from './versionOnly';
 
 const mode = process.argv[2];
@@ -16,8 +17,8 @@ if (mode === 'baseline') {
   const t = oracleTrace();
   writeFileSync(ORACLE_FILE, JSON.stringify(t));
   console.log(`duel oracle baseline at sim version ${t.simVersion}: ${oracleCounts(t)}; written to ${ORACLE_FILE}`);
-} else if (mode === 'check' || mode === 'same') {
-  const r = mode === 'check' ? verifyDuelOracle() : verifyDuelUnchanged();
+} else if (mode === 'check' || mode === 'same' || mode === 'added') {
+  const r = mode === 'check' ? verifyDuelOracle() : mode === 'same' ? verifyDuelUnchanged() : verifyDuelAdditive();
   if (!r.ok) { console.error(r.message); process.exit(1); }
   console.log(r.message);
-} else throw Error('usage: npx tsx scripts/golden/duel-oracle.ts baseline|check|same');
+} else throw Error('usage: npx tsx scripts/golden/duel-oracle.ts baseline|check|same|added');

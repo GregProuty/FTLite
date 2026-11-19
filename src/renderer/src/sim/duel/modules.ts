@@ -94,6 +94,7 @@ export const DUEL_NOT_SNAPSHOTTED: Readonly<Record<string, string>> = {
   nav: 'the Navigation station index, from the layout',
   weapons: 'the Weapons station index, from the layout',
   science: 'the Science station index, from the layout',
+  crewClass: 'the crew slot\'s class: hashed and snapshotted as the ship module\'s systems.0.cls, and in the snapshot header (Valkyrn spec §6.1)',
   events: 'per-tick repair events, cleared every tick'
 };
 

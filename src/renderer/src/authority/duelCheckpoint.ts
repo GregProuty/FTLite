@@ -14,6 +14,7 @@ import { DUEL_CREW_MAX, DUEL_CREW_MIN, type DuelCrew } from '../sim/duel/state';
 import { roundSeed } from '../sim/duel/seeds';
 import type { DuelTelemetry, MissileLoss } from '../sim/duel/telemetry';
 import { TERMINAL_CAUSES } from '../sim/duel/summary';
+import { classIndexById, ShipClass } from '../sim/tactical/defs';
 import { SIM_VERSION } from '../sim/tuning';
 import { createLedger } from './ledger';
 import type { ResolveLayout } from './rules';
@@ -69,7 +70,7 @@ export function decodeDuelMemory(memory: DuelMemory): DuelTelemetry {
   return { ...t, prev: { ...t.prev, grace: [Int32Array.from(t.prev.grace[0]), Int32Array.from(t.prev.grace[1])] } } as DuelTelemetry;
 }
 
-const held = z.object({ moveX: z.number().finite().min(-1).max(1), moveY: z.number().finite().min(-1).max(1), interactHeld: z.boolean(), face: z.boolean().optional() }).strict();
+const held = z.object({ moveX: z.number().finite().min(-1).max(1), moveY: z.number().finite().min(-1).max(1), interactHeld: z.boolean(), face: z.boolean().optional(), aim: z.number().int().min(-1).max(255).optional(), gunHeld: z.boolean().optional() }).strict();
 const checkpointSchema = z.object({
   checkpointVersion: z.literal(2), init: z.unknown(), snapshot: z.unknown(),
   commandHighWater: crewList(uint), recentResults: z.array(z.unknown()).max(DUEL_CREW_MAX * 256),
@@ -99,6 +100,8 @@ export function validateDuelCheckpoint(value: unknown, contentDigest: string, re
   const r = duelRoundOf(cp.snapshot), decided = r.outcome !== 0, tick = cp.snapshot.header.tick;
   if (cp.snapshot.header.seed !== roundSeed(cp.init.seed, r.round)) throw new Error('inconsistent duel checkpoint seed');   // the round's seed
   if (r.helmPlayer !== cp.init.helmPlayer) throw new Error('inconsistent duel checkpoint helm player');
+  // Valkyrn spec §8: online, the crew class is the layout's own (no laser fit there); the local snapshot path keeps cls free.
+  if (cp.snapshot.header.crewClass !== (layout.shipClass ? classIndexById(layout.shipClass) : ShipClass.Cutter)) throw new Error('inconsistent duel checkpoint crew class');
   if (cp.phase === 'ended' && !decided) throw new Error('inconsistent checkpoint terminal phase');   // a decided round may be running or paused
   if (cp.admissionTick > tick || cp.paused !== (cp.phase === 'paused')) throw new Error('inconsistent checkpoint');
   // Sci-2 spec §4.3: the snapshot's crew is the init's, and every per-player array is that long.

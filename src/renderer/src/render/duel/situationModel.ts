@@ -39,6 +39,7 @@ export function laserSituation(t: TacticalState, sinceShot = Infinity, gunner = 
   const me = t.ships[CREW_SLOT], target = targetOf(t, CREW_SLOT), e = t.ships[target], sys = t.systems[CREW_SLOT];
   if (!e || !e.active || target === CREW_SLOT) return { kind: 'none' };
   const laser = classOf(t, CREW_SLOT).slots.laser, dx = e.x - me.x, dy = e.y - me.y, range = Math.round(Math.sqrt(dx * dx + dy * dy));
+  if (!laser) return { kind: 'none' };   // Valkyrn-i: Part ii adds the gun's reasons (spec §6.1)
   if (dx * dx + dy * dy > laser.range * laser.range) return { kind: 'range', range, reach: laser.range };
   if (!inArc(me.heading, dx, dy, laser.arcCos)) return { kind: 'arc', turn: (sideOf(me.heading, dx, dy) || 1) > 0 ? 'RIGHT' : 'LEFT' };
   if (!lineOfSight(t, me.x, me.y, e.x, e.y)) return { kind: 'blocked' };
@@ -103,8 +104,9 @@ export const COLLISION_TICKS = Math.round(COLLISION_WARN_S * TICK_HZ);
 /** The Helm's axes as the duel state alone tells them (an online seat away from the Helm sees no held A/D or Space): the
  *  held heading's turn and the throttle's thrust while the Helm is attended, else none (the sim flies no axes then). */
 export function stateAxes(d: DuelState): Axes {
-  const pid = d.interior.stations.occupant[d.nav]!;
-  if (pid < 0 || !d.present[pid] || d.tactical.outcome !== Outcome.Running) return NO_AXES;
+  if (d.tactical.outcome !== Outcome.Running) return NO_AXES;
+  const pid = d.interior.stations.occupant[d.nav]!, attended = pid >= 0 && d.present[pid] === true;
+  if (!attended && d.interior.layout.helmHoldsUnattended !== true) return NO_AXES;   // Valkyrn spec §4.4: the Valkyrn flies on unattended
   return { turn: helmTurn(d, { moveX: 0, moveY: 0, interactHeld: false }), thrust: throttleThrust(d.throttle) };
 }
 
@@ -131,6 +133,20 @@ export function alertSentence(alert: FlightAlert, s: LaserSituation): { text: st
   return { text: statusSentence(s), tone: sentenceTone(s) };
 }
 
+/** Valkyrn spec §6.1: why the crew's gun cannot fire, or null: WEAPONS OFFLINE (Weapons at 2), then GUN OVERHEAT (locked).
+ *  Null too for a class without a gun or a decided round. */
+export function gunReason(t: TacticalState): string | null {
+  const sys = t.systems[CREW_SLOT];
+  if (!sys || !classOf(t, CREW_SLOT).slots.gun || t.outcome !== Outcome.Running) return null;
+  if (sys.rooms[Room.Weapons] >= 2) return 'WEAPONS OFFLINE';
+  return sys.gunLocked === true ? 'GUN OVERHEAT' : null;
+}
+/** Valkyrn spec §6.1: a gun class's sentence: the flight alerts first (as alertSentence), then the gun's reason, else none. */
+export function gunSentence(alert: FlightAlert, reason: string | null): { text: string; tone: 'hot' | 'main' | 'mid' } {
+  if (alert) return alertSentence(alert, { kind: 'none' });
+  return reason ? { text: reason, tone: 'main' } : { text: '', tone: 'mid' };
+}
+
 /** How far ahead (world units) the EVADE side looks for room, in EVADE_STEP steps. */
 export const EVADE_LOOK = 600, EVADE_STEP = 50;
 /** Feel-ii §1.6: the unit direction the crew ship should dodge an inbound enemy torpedo: perpendicular to its approach (its
@@ -155,7 +171,9 @@ export function evadeDir(t: TacticalState): { x: number; y: number } | null {
 }
 
 /** The console controls a refusal can name (the buttons, and their keys). */
-export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading';
+export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser';
+/** Valkyrn spec §6.1: the reason a laser key (1, 3/4/5) gives on a class without a laser (the `laser` control, Flight only). */
+export const NO_LASER = 'NO LASER';
 /** Feel-ii §2.8: why the sim would refuse a control's command (or do nothing with it), or null when it would act. FIRE is
  *  laserCharge (the gunner, then canCharge: no torpedo flying, then Weapons offline, where it is admitted to no effect);
  *  LAUNCH is missileLaunch (the gunner, then canLaunch's checks in its order: flying, the magazine, Weapons, range); the
@@ -164,6 +182,7 @@ export function refusal(d: DuelState, control: RefusedControl): string | null {
   const t = d.tactical, sys = t.systems[CREW_SLOT];
   if (control === 'fire' || control === 'launch') {
     if (!gunnerPresent(d)) return 'NO GUNNER';
+    if (control === 'fire' && classOf(t, CREW_SLOT).slots.laser === null) return gunReason(t);   // Valkyrn spec §6.1: the gun's reasons
     if (missileOf(t, CREW_SLOT)) return 'TORPEDO FLYING';
     if (control === 'fire') return laserOffline(t, CREW_SLOT) ? 'WEAPONS OFFLINE' : null;
     if (sys.magazine <= 0) return 'NO TORPEDOES';

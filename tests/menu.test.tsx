@@ -48,8 +48,8 @@ describe('multiplayer', () => {
     act(() => actions.setStatus({ ...idle, persistent: false, actions: ['forget-seat'] })); click('multiplayer');
     expect(text('online-availability')).toContain('configured local service'); expect(text('online-availability')).toContain('Single player is available');
     expect((screen.getByTestId('host') as HTMLButtonElement).disabled).toBe(true);
-    click('back'); click('single-player'); expect(deps.single).toHaveBeenCalledOnce();
-    act(() => actions.leaveSingle()); click('single-player'); expect(deps.single).toHaveBeenCalledTimes(2);
+    click('back'); click('single-player'); click('ship-hound'); expect(deps.single).toHaveBeenCalledOnce();
+    act(() => actions.leaveSingle()); click('single-player'); click('ship-hound'); expect(deps.single).toHaveBeenCalledTimes(2);
   });
   it('shows the different-build wording and Retry for an incompatible error', () => {
     const { actions } = renderUi();
@@ -97,7 +97,7 @@ const hiddenRoot = (): boolean => { const el = screen.getByTestId('session-menu'
 describe('single player', () => {
   it('hides the menu root (empty, display:none) during single player and returns home', () => {
     const { actions } = renderUi();
-    click('single-player'); expect(hiddenRoot()).toBe(true);
+    click('single-player'); click('ship-hound'); expect(hiddenRoot()).toBe(true);
     act(() => actions.setStatus({ ...idle, phase: 'reconnecting', actions: ['leave'] })); expect(hiddenRoot()).toBe(true);
     act(() => actions.leaveSingle()); expect(screen.getByTestId('session-menu').getAttribute('data-layout')).toBe('overlay');
   });

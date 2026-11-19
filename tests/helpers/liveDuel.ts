@@ -4,7 +4,7 @@
 import { createEncounterCore } from '../../src/renderer/src/authority/core';
 import { duelRules, type DuelSession, type DuelTypes } from '../../src/renderer/src/authority/duelRules';
 import type { DuelCheckpoint, DuelInit } from '../../src/renderer/src/authority/duelCheckpoint';
-import type { CheckpointOf } from '../../src/renderer/src/authority/rules';
+import type { CheckpointOf, ResolveLayout } from '../../src/renderer/src/authority/rules';
 import type { CaptureCause } from '../../src/shared/sessionCheckpoint';
 import { duelCodec } from '../../src/renderer/src/net/codec';
 import type { AuthorityMessage, CommandId, CommandResult, DuelCommand, HeldInput, Link } from '../../src/renderer/src/net/contracts';
@@ -26,12 +26,12 @@ export interface LiveDuel {
   tickNow(): number;
 }
 
-export function liveDuel(init: DuelInit, prepare?: (s: DuelSession) => void, restored?: DuelCheckpoint): LiveDuel {
+export function liveDuel(init: DuelInit, prepare?: (s: DuelSession) => void, restored?: DuelCheckpoint, resolveLayout: ResolveLayout = resolveCutter): LiveDuel {
   let now = 0, ordinal = 0;
   const sent: AuthorityMessage<DuelSnapshot>[] = [], captures: LiveDuel['captures'] = [], listeners = new Set<(kind: 'reliable-ordered' | 'unreliable-latest', bytes: Uint8Array) => void>();
-  const state = restored ? duelRules.restore(restored.snapshot, resolveCutter, restored.modeMemory) : duelRules.create(init, resolveCutter);
+  const state = restored ? duelRules.restore(restored.snapshot, resolveLayout, restored.modeMemory) : duelRules.create(init, resolveLayout);
   prepare?.(state);
-  const core = createEncounterCore(duelRules, { init, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout: resolveCutter,
+  const core = createEncounterCore(duelRules, { init, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout,
     clock: { nowMs: () => now }, scheduler: { schedule: () => () => {} }, onCrash(record) { throw Error(record.error); },
     onCheckpoint: (checkpoint, cause) => { captures.push({ checkpoint: checkpoint as DuelCheckpoint, cause }); } }, state, restored as CheckpointOf<DuelTypes> | undefined);
   ownTestCleanup(() => core.dispose());

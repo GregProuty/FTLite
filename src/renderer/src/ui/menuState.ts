@@ -4,7 +4,7 @@ import type { DuelCrewSize, OnlineErrorCode, OnlineStatus } from '../../../share
 import type { ControlSection } from '../app/controlsList';
 import type { Volumes } from '../app/audio';
 
-export type Page = 'home' | 'multiplayer' | 'settings' | 'host' | 'join' | 'session' | 'single';
+export type Page = 'home' | 'multiplayer' | 'settings' | 'host' | 'join' | 'session' | 'single' | 'ship';
 export type MenuAction = OnlineStatus['actions'][number];
 
 export interface MenuState {
@@ -24,7 +24,13 @@ export interface MenuState {
 export interface OnlineSlice { available: boolean; status: OnlineStatus | null; receivedAt: number }
 /** Audio-i spec section 6: the three volumes, each one of VOLUME_STEPS. */
 /** Feel-i: `shake`, the console maps' screen shake setting. */
-export interface SettingsSlice extends Volumes { available: boolean; fullscreenAvailable: boolean; controls: readonly ControlSection[]; shake: import('../render/shake').ShakeSetting }
+/** Valkyrn spec §9: one Single player ship as the picker shows it (filled by main.ts from the fleet's solo list). */
+export interface ShipChoice { id: string; name: string; line: string }
+/** Valkyrn spec §8, §9: `ships` the picker's list, `soloShip` the remembered choice, `valkyrnLaserFit` the developer switch. */
+export interface SettingsSlice extends Volumes {
+  available: boolean; fullscreenAvailable: boolean; controls: readonly ControlSection[]; shake: import('../render/shake').ShakeSetting;
+  ships: readonly ShipChoice[]; soloShip: string; valkyrnLaserFit: boolean;
+}
 /** The canvas's place (React UI spec §4): the strip above it, the letterbox scale and offsets, the device pixel ratio. */
 export interface LayoutSlice { stripHeight: number; scale: number; offsetX: number; offsetY: number; dpr: number }
 export interface UiState {
@@ -71,7 +77,7 @@ export function menuMessage(v: MenuView): string {
     : m.recovering && status?.phase === 'paused' && status.mirror.committed ? `Restored at tick ${status.mirror.committed.capturedTick}. Paused.` : null;
   return m.localError || phaseMessage || (status?.error ? ERRORS[status.error] ?? `Online stopped (${status.error}). Retry or leave.`
     : m.page === 'session' ? `${status?.phase ?? 'Connecting'}${m.pending ? '…' : ''}`
-    : m.page === 'multiplayer' ? 'Host a crew or join one with its room code.' : m.page === 'settings' ? '' : 'Choose how to play.');
+    : m.page === 'multiplayer' ? 'Host a crew or join one with its room code.' : m.page === 'ship' ? 'Choose your ship.' : m.page === 'settings' ? '' : 'Choose how to play.');
 }
 
 export function availabilityText(v: MenuView): string {
