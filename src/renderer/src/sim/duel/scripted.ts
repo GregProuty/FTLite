@@ -38,9 +38,13 @@ export const ORBIT_GAIN = 0.004;
 /** The orbit radius is drawn once per duel in [ORBIT_MIN, ORBIT_MAX] (spec: ≥ BELT_OUTER + 200, ≤ R_MAP − 600). */
 export const ORBIT_MIN = 1500;
 export const ORBIT_MAX = 2200;
-/** Speed band around the circular speed inside which the Helm neither thrusts nor brakes (u/s). playtest2feedback (SIM 55):
- *  8 → 10 from the gate (median 223.4 s, 5 wins, 5 losses). */
-export const SPEED_SLACK = 10;
+/** Speed band around the circular speed inside which the Helm neither thrusts nor brakes (u/s): the Valkyrn's pair and
+ *  pilot (scriptedPilot.ts), unchanged so the Valkyrn stays bit-identical. */
+export const SPEED_SLACK = 8;
+/** The same band for a newtonianHelm crew (the Cutter's held throttle). Playtest2feedback (SIM 55): 10 from the gate (median
+ *  223.4 s, 5 wins, 5 losses); the merge with the Engineering spike (owner 2026-11-19) split it from SPEED_SLACK, which the
+ *  Valkyrn pilot shares, so the Valkyrn flies as on master. */
+export const CREW_SPEED_SLACK = 10;
 /** The Helm dodges the enemy's torpedo inside this range with a hard full-thrust turn across its path (homing torpedo
  *  spec §1: a hard turn can beat it). 350 from the telemetry gate (tests/duelGates.test.ts): without a dodge the
  *  homing Hunter torpedo cut the median duel to 136 s. */
@@ -163,11 +167,11 @@ export function orbitSteer(d: DuelState, orbitR: number): Axes & { dx: number; d
   const dl = len(dx, dy); dx /= dl; dy /= dl;
   const nose = hx(s.heading) * dx + hy(s.heading) * dy;
   const turn = nose >= COS_STEP ? 0 : turnToward(s.heading, dx, dy);
-  const speed = len(s.vx, s.vy), vc = circularSpeed(r);
+  const speed = len(s.vx, s.vy), vc = circularSpeed(r), slack = classOf(d.tactical, 0).newtonianHelm ? CREW_SPEED_SLACK : SPEED_SLACK;
   let thrust = 0;
   if (nose < COS_45) thrust = 0;
-  else if (speed > vc + SPEED_SLACK) thrust = -1;
-  else if (speed < vc - SPEED_SLACK || s.vx * dx + s.vy * dy < COS_10 * speed) thrust = 1;
+  else if (speed > vc + slack) thrust = -1;
+  else if (speed < vc - slack || s.vx * dx + s.vy * dy < COS_10 * speed) thrust = 1;
   return { turn, thrust, dx, dy };
 }
 
