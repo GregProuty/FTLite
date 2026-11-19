@@ -120,3 +120,236 @@ d6b574eb. It was outcome 1 (the crew wins) at 15403 ticks. The rematch golden's 
 then 8592 ticks with outcome 2 (final c2704648). They were 15403 ticks with outcome 1, then 5842 ticks with outcome 1.
 `tests/golden/basic.json` is re-blessed (120 checkpoints, final 9f41241a). The bless re-executed
 `tests/fixtures/determinism-v2.json` (1800 samples and 330 boundaries), and the file did not change.
+
+## What was built (Parts i and ii)
+
+- FTL reactor bars (10) over five systems (Shields 4, Weapons 9, Engines 4, Sensors 3, Oxygen 2). Every system except
+  Oxygen has an overdrive slot. There is heat and a pool of 8 shared coolant. Damage knocks out slots, and an overheated
+  system fails until it cools.
+- Each station spends its own bars (spec §10):
+  - 1 Engines bar is 25 % throttle.
+  - The Weapons officer spreads the Weapons bars over pew pew (W-1's weapon; its bars do nothing yet), the beam and the
+    torpedo.
+  - Sensors sets the sensor range, and every crew map has a fog of war with fading ghosts.
+- Oxygen is tracked per room. Hits make breaches, airlocks vent, fire needs air and spreads through open doors, and low
+  air hurts.
+- The ship view is the Engineering station. It has an amber CRT panel (left click adds a bar, right click removes one, a
+  pip click cycles coolant), and anyone can click doors and airlocks on the interior from anywhere.
+
+## Summary numbers
+
+From Part i's sections above:
+- The Hound duel's flattened values went 2915 → 2946.
+- ms per tick went 0.0978 → 0.0385. The drop is machine-load noise, not a speed-up.
+
+After Part ii:
+- `duel-oracle same` and `canonical-trace same`: 21 runs, 206472 ticks, 581 fields. Part ii changed no sim.
+- `npm run test:duel-app-runtime` exit 0, in 164 s. Its step 5 now gives the beam a bar through the Weapons pips and
+  fires it on both screens.
+- Full suite: 5326 tests passing, 1 skipped (the duelGates median, kind c).
+
+## App smoke and screenshots (Part ii)
+
+`node smoke.mjs` printed nine ok lines, then `smoke passed`:
+- the round starts on the ship view;
+- round-start bars 2/2/3/1/1;
+- right clicks took Sensors and Oxygen to 0;
+- two left clicks overdrive Engines to 5;
+- a pip click gives Engines one coolant;
+- a door click holds the Ops-Quarters door open;
+- an airlock click opens the Hold to space;
+- the Hold is below a quarter air;
+- seated at Weapons.
+
+The script needed two fixes along the way:
+- The walk to Weapons failed on the plan's route. I took the online smoke's route instead (D 3000 ms, W 1500 ms,
+  A 300 ms, then E).
+- In the fog shot, the Hunter charged inside the 300 ring before the picture. I pinned it 1200 ahead every 50 ms for
+  that shot.
+
+Neither fix touched the game. The screenshots:
+- `C:\Users\djuar\FTLite-shots\engineering\1-hud-round-start.png`: the panel at round start.
+- `C:\Users\djuar\FTLite-shots\engineering\2-overdriven-heating.png`: Engines overdriven and heating, with a door held open.
+- `C:\Users\djuar\FTLite-shots\engineering\3-hold-venting.png`: the Hold venting through its airlock.
+- `C:\Users\djuar\FTLite-shots\engineering\4-weapons-three-weapons.png`: the Weapons console's pew pew, beam and torpedo.
+- `C:\Users\djuar\FTLite-shots\engineering\5-fog-ghost-fading.png`: the fog, showing the sensor ring and a ghost fading.
+
+## Tests Part ii updated (Tasks 7 to 10)
+
+- Task 7: no pre-existing test changed.
+- tests/feelIiModels.test.ts (Task 8): WEAPONS OFFLINE comes from zeroing the weapon bars instead of Weapons Room
+  level 2. The restore uses todaysCrewWeapons' [0,2,1].
+- tests/feelIiUi.test.tsx :47 and :52, tests/feelUi.test.tsx :40 and :45, tests/uiConsole.test.tsx :51 (Task 8): the
+  card is now named BEAM instead of LASER.
+- tests/flightConsole.test.tsx:39 (Task 8): the Valkyrn laser fit's burst is 0 at the start. The test then powers the
+  beam and checks it is above 0.
+- tests/contactScene.test.ts and tests/feelIiModels.test.ts (Task 9): the enemy is moved 600 from the crew ship, inside
+  the 900 start range, before the first draw.
+- tests/duelWeaponsView.test.ts (Task 9): adds a 600 case. Beyond the sensor range, now derived from `sensorRange`,
+  there is no status sentence.
+- tests/feelIiInput.test.ts, tests/duelReadout.test.ts and tests/crtReadout.test.ts (Task 9's fix): the enemy is moved
+  to 600, because the readout hides an unseen enemy's range and bearing.
+- scripts/network/duel-app-smoke.ts and scripts/network/online-app-smoke.cjs (Task 10): step 5 powers the beam
+  through the pips, then fires it on both screens. The driver gained a right-click and a fallback for zero-height test
+  ids.
+
+## Feel (owner to fill after playing)
+
+- Does Engineering feel like a full-time job for the 4th seat, or for whoever is on foot?
+- Does it change how Helm and Weapons fight? Shields start at 1 layer, the throttle at 75 %, and the beam is dark until
+  Engineering moves bars.
+- Is spreading the Weapons bars over the beam and the torpedo a real choice? (Pew pew comes with W-1.) Is the fog's
+  900 start range right?
+- Can you read power, heat, air, fire and breaches at a glance?
+- Is the 1-layer shield start right? The 25 % air line? The 20 s cool-down after an overheat?
+
+## Known limits and candidates
+
+- The panel may cover the Hound's lower-left rooms at the zoom-0 fit. Zoom or pan to reach a covered door.
+- The Helm's locked notches and the Science strip's range are covered by jsdom tests, not screenshots. The owner sees
+  them on a console.
+- Pew pew is not playable in this spike (spec §11). It is the W-1 skill-shot weapon from branch `w1-pew-pew`. Its slot
+  takes bars that do nothing until the merge wires them into W-1's recharge.
+- Sensors and Oxygen take no weapon damage, because they have no tactical Room.
+- Fire spread, overheat ignitions and breaches push no events, so there is no sound cue or callout yet.
+- Look check: the Hold's low-air tint reads amber rather than clearly red in screenshot 3.
+- Small fog leaks still open:
+  - the TORPEDO card's OUT OF RANGE / IN RANGE line shows for an unseen enemy, which only matters between 300 and 360
+    at 0 Sensors bars;
+  - the Weapons hint still says `1 LASER`;
+  - distant rock sounds are centred.
+- An overheated, failed Weapons system shows `WEAPONS OFFLINE: POWER A WEAPON`, not an overheat message.
+- The balance has moved a long way from the old numbers. The crew wins 2 of 10 gate seeds and the median duel is
+  166.6 s, but the bots never move bars, so these numbers say little about a human crew.
+- Candidates: Artemis presets (SHIFT+number), sealed doors, a refusal flash on a full reactor, keys for the panel.
+- Part i's two "until Part ii" limits are now closed:
+  - far-enemy clicks are refused, and the fog shows the enemy as a ghost or CONTACT LOST;
+  - the beam can be powered from the Weapons pips, and the app smoke fires it on both screens.
+
+## Recommendation
+
+**Provisional call: ship a simpler version, after the owner plays it.**
+
+Mechanically the spike works end to end. Every gate passes, determinism holds over a seed sweep and a snapshot reload,
+and the panel, the door clicks and venting, the console strips, the three-weapon console and the fog all behave in the
+real app.
+
+The open question is load. Engineering now gates all three other roles at once: shields at 1 layer, a 75 % throttle,
+a dark beam and a 900 sensor range. The old game balance has collapsed, because the bots never move bars, but a human
+Engineer would.
+
+Before shipping, the owner's playtest should decide whether to:
+- keep all three station budgets, or start with fewer of them (for example the throttle cap and the Weapons split, with
+  shields and fog left lighter);
+- fold the panel down for crews without a dedicated Engineer.
+
+Merging with W-1 (pew pew's recharge) and the Helm spike's ENGINE/COMPRESSOR split is the next integration step either
+way.
+
+## What was built (Parts i and ii)
+
+- **Reactor:** FTL-style reactor bars (10) over five systems: Shields 4, Weapons 9, Engines 4, Sensors 3, Oxygen 2.
+  - Every system except Oxygen has an overdrive slot.
+  - Overdrive builds heat, and 8 coolant units are shared between the systems.
+  - Damage knocks out slots, and an overheated system fails until it cools.
+- **Station budgets (spec §10):** each station spends its own bars.
+  - Each Engines bar is 25 % throttle.
+  - The Weapons officer spreads the Weapons bars over pew pew (W-1's weapon, whose bars do nothing yet), the beam and the torpedo.
+  - Sensors sets the sensor range, and every crew map has a fog of war with fading ghosts.
+- **Interior:** oxygen per room, breaches from hits, airlocks that vent, fire that needs air and spreads through open doors, and damage from low air.
+- **Ship view:** it is the Engineering station. Anyone can use it, from anywhere:
+  - an amber CRT panel: left click adds a bar, right click removes one, and a pip click cycles coolant;
+  - door and airlock clicks on the interior.
+
+## Summary numbers
+
+From Part i's sections above:
+- The Hound duel's flattened values went from 2915 to 2946.
+- Milliseconds per tick went from 0.0978 to 0.0385. That drop is machine-load noise, not a speed-up.
+
+After Part ii:
+- `duel-oracle same` and `canonical-trace same` both passed on 21 runs, 206472 ticks and 581 fields. Part ii changed no sim.
+- `npm run test:duel-app-runtime` exited 0 in 164 s. Its step 5 now gives the beam a bar through the Weapons pips and fires it on both screens.
+- The full suite has 5326 tests passing and 1 skipped (the duelGates median, kind c).
+
+## App smoke and screenshots (Part ii)
+
+`node smoke.mjs` printed nine ok lines, then `smoke passed`:
+1. The round starts on the ship view.
+2. Round-start bars are 2/2/3/1/1.
+3. Right clicks took Sensors and Oxygen to 0.
+4. Two left clicks overdrive Engines to 5.
+5. A pip click gives Engines one coolant.
+6. A door click holds the Ops-Quarters door open.
+7. An airlock click opens the Hold to space.
+8. The Hold is below a quarter air.
+9. Seated at Weapons.
+
+The script needed two fixes, neither touching the game:
+- The walk to Weapons failed on the plan's route, so I used the online smoke's route instead (D 3000 ms, W 1500 ms, A 300 ms, then E).
+- In the fog shot the Hunter charged inside the 300 ring before the picture, so I pinned it 1200 ahead every 50 ms for that shot.
+
+The screenshots:
+- `C:\Users\djuar\FTLite-shots\engineering\1-hud-round-start.png`: the panel at round start.
+- `C:\Users\djuar\FTLite-shots\engineering\2-overdriven-heating.png`: Engines overdriven and heating, with a door held open.
+- `C:\Users\djuar\FTLite-shots\engineering\3-hold-venting.png`: the Hold venting through its airlock.
+- `C:\Users\djuar\FTLite-shots\engineering\4-weapons-three-weapons.png`: the Weapons console's pew pew, beam and torpedo.
+- `C:\Users\djuar\FTLite-shots\engineering\5-fog-ghost-fading.png`: the fog, with the sensor ring and a ghost fading.
+
+## Tests Part ii updated (Tasks 7 to 10)
+
+- **Task 7:** no pre-existing test changed.
+- **Task 8:**
+  - tests/feelIiModels.test.ts: WEAPONS OFFLINE now comes from zeroing the weapon bars instead of Weapons Room level 2. The restore uses todaysCrewWeapons' [0,2,1].
+  - tests/feelIiUi.test.tsx :47 and :52, tests/feelUi.test.tsx :40 and :45, and tests/uiConsole.test.tsx :51: the card is now named BEAM instead of LASER.
+  - tests/flightConsole.test.tsx:39: the Valkyrn laser fit's burst is 0 at the start. The test now powers the beam and checks the burst is above 0.
+- **Task 9:**
+  - tests/contactScene.test.ts and tests/feelIiModels.test.ts: the enemy is moved to 600 from the crew ship, inside the 900 start range, before the first draw.
+  - tests/duelWeaponsView.test.ts: adds a 600 case. Beyond the sensor range, now taken from `sensorRange`, there is no status sentence.
+- **Task 9's fix:** tests/feelIiInput.test.ts, tests/duelReadout.test.ts and tests/crtReadout.test.ts move the enemy to 600, because the readout hides an unseen enemy's range and bearing.
+- **Task 10:** scripts/network/duel-app-smoke.ts and scripts/network/online-app-smoke.cjs. Step 5 powers the beam through the pips, then fires it on both screens. The driver gained a right click and a fallback for zero-height test ids.
+
+## Feel (owner to fill after playing)
+
+- Does Engineering feel like a full-time job for the 4th seat, or for whoever is on foot?
+- Does it change how Helm and Weapons fight? Shields start at 1 layer, the throttle at 75 %, and the beam stays dark until Engineering moves bars.
+- Is spreading the Weapons bars over the beam and the torpedo a real choice? (Pew pew comes with W-1.)
+- Is the fog's 900 start range right?
+- Can you read power, heat, air, fire and breaches at a glance?
+- Is the 1-layer shield start right? The 25 % air line? The 20 s cool-down after an overheat?
+
+## Known limits and candidates
+
+- At the zoom-0 fit, the panel may cover the Hound's lower-left rooms. Zoom or pan to reach a covered door.
+- The Helm's locked notches and the Science strip's range are covered by jsdom tests, not by screenshots. The owner sees them on a console.
+- Pew pew isn't playable in this spike (spec §11). It's the W-1 skill-shot weapon from branch `w1-pew-pew`. Its slot takes bars that do nothing until the merge wires them into W-1's recharge.
+- Sensors and Oxygen take no weapon damage, because they have no tactical Room.
+- Fire spread, overheat ignitions and breaches push no events, so there's no sound cue or callout for them yet.
+- Look check: in screenshot 3 the Hold's low-air tint reads amber rather than clearly red.
+- Small fog leaks still open:
+  - The TORPEDO card's OUT OF RANGE or IN RANGE line still shows for an unseen enemy. This only matters between 300 and 360 with Sensors at 0 bars.
+  - The Weapons hint still says `1 LASER`.
+  - Distant rock sounds are centred.
+- An overheated, failed Weapons system shows `WEAPONS OFFLINE: POWER A WEAPON`, not an overheat message.
+- The balance has moved a long way. The crew wins 2 of 10 gate seeds, and the median duel is 166.6 s. The bots never move bars, so these numbers say little about a human crew.
+- Candidates: Artemis presets (SHIFT+number), sealed doors, a refusal flash on a full reactor, and keys for the panel.
+- Part i's two "until Part ii" limits are now closed:
+  - Far-enemy clicks are refused, and the fog shows the enemy as a ghost or as CONTACT LOST.
+  - The beam can be powered from the Weapons pips, and the app smoke fires it on both screens.
+
+## Recommendation
+
+**Provisional call: ship a simpler version, after the owner plays it.**
+
+Mechanically the spike works end to end:
+- Every gate passes.
+- Determinism holds over a seed sweep and a snapshot reload.
+- The panel, door clicks and venting, console strips, three-weapon console and fog all behave in the real app.
+
+The open question is load. Engineering now gates all three other roles at once: shields at 1 layer, a 75 % throttle, a dark beam and a 900 sensor range. The old balance has collapsed, but only because the bots never move bars, and a human Engineer would.
+
+The owner's playtest should decide two things:
+- Keep all three station budgets, or start with fewer. One option is the throttle cap and the Weapons split, with lighter shields and fog.
+- Whether to fold the panel down for crews without a dedicated Engineer.
+
+The next integration step either way is merging with W-1 (pew pew's recharge) and with the Helm spike's ENGINE/COMPRESSOR split.
