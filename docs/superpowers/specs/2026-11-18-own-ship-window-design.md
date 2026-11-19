@@ -73,13 +73,15 @@ That is x 228 to 468 and y 42 to 212; the box is x 236 to 460 and y 82 to 204.
   `Banners`. The sit card (centred at x 676) and the banners can overlap the window's right edge by up to about 15 px
   for the longest Weapons title. They are short-lived and draw on top. This overlap is accepted and not tested.
 - **Off-screen arrows** (`render/tactical/tacticalModel.ts`): the tactical view input gains an optional
-  `avoid?: { x: number; y: number; w: number; h: number }`. Console views pass `OWN_SHIP`; every other view passes
-  nothing, which changes nothing.
+  `avoid?: { x: number; y: number; w: number; h: number }`. The scene passes `OWN_SHIP` exactly when it builds
+  `ownShip` (`onMap`, §4); otherwise it passes nothing, which changes nothing.
   - Let `A` be `avoid` grown by `ARROW_MARGIN` on its right and bottom sides, and let `C` be the centre of
     `edgePoint`'s inset rectangle. On a console, `C` is always right of and below `A`: C is about (676, 382) and A's
     corner is (496, 240).
   - In `arrow()`, let `q` be `edgePoint`'s point, or the object's screen point when `edgePoint` returns null (the object
-    is on screen). If `q` lies inside `A`, the object is hidden or its arrow would sit on the window.
+    is on screen). The arrow moves onto the window's boundary when `edgePoint`'s point lies inside `A`, or when the
+    on-screen point lies inside the ungrown `avoid` (it is hidden under the window). An on-screen object in A's margin
+    band is visible and gets no arrow, as today.
   - The arrow is then placed where the ray from `C` toward the object enters `A`, at parameter `k = max(kx, ky)`, with
     `kx = (A.right - C.x) / dx` and `ky = (A.bottom - C.y) / dy`.
   - It sits on A's right edge when `kx >= ky` (a corner counts as right), and on A's bottom edge otherwise. The angle
@@ -205,7 +207,8 @@ All pure view-model plus one display component, following the contact window's p
 - `frameZoom` test: an up-left enemy is framed clear of `avoid` on at least one axis; without `avoid` the result is
   unchanged.
 - `flightPointer` test: a point inside `OWN_SHIP` is not open map.
-- Scene test: seated at Helm with `view === 'interior'`, `ownShip` is null; seated at Helm on the map, it is set.
+- Scene test: seated at Helm with `view === 'interior'`, `ownShip` is null and no `avoid` is passed; seated at Helm on
+  the map, both are set; standing on a map view, neither is.
 - Layout test: `OWN_SHIP` lies inside the stage and is clear of `TABS`, the status column, every `STATION` block,
   `FLIGHT`, `SIDE` and `CONTACT`; `OWN_SHIP_BOX` lies inside `OWN_SHIP`.
 - Component test, in the existing `contactWindow.test.tsx` harness:
