@@ -212,7 +212,7 @@ describe('crew pings (Feel-ii §2.7)', () => {
 
 describe('never a dead click (Feel-ii §2.8): the reasons are the sim\'s own checks', () => {
   it('FIRE: NO GUNNER, TORPEDO FLYING (canCharge), WEAPONS OFFLINE; LAUNCH: canLaunch\'s order; the Helm: ENGINES OFFLINE', () => {
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     try {
       const t = d.tactical, sys = t.systems[0], me = t.ships[0], e = t.ships[1];
       todaysCrewWeapons(t);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
