@@ -103,7 +103,9 @@ function len(x: number, y: number): number { return Math.sqrt(x * x + y * y); }
 const avoidRocks: number[] = [];   // hazardAway's live-rock scratch: slot, r, x, y, vx, vy
 /** Rule 1 (spec 3; asteroids-iii 6.3): the heading away from the first hazard on the predicted path, as a direction, or
  *  null. Each path point (taken every 4 ticks, the last at the first contact) is tested against each rock moved along its
- *  own velocity to that tick, so the sweep is relative to the rock: a co-orbiting belt is no hazard, a crossing rock is. */
+ *  own velocity to that tick, so the sweep is relative to the rock: a co-orbiting belt is no hazard, a crossing rock is.
+ *  Rails are extrapolated in a straight line on purpose (at most 2 u of error over the 1.5 s look); predictFlight's own
+ *  contact test uses railPos. */
 export function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } | null {
   const t = d.tactical, s = t.ships[0], p = t.map.planet, keep = SHIP_RADIUS + AVOID_MARGIN, every = 4;
   const flight = predictFlight(t, 0, axes, AVOID_TICKS, every), pts = flight.points;

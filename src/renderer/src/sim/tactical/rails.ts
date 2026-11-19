@@ -27,20 +27,31 @@ export function circularVelocity(x: number, y: number): [number, number] {
 export function escapeSpeed(rho: number): number {
   return Math.sqrt((2 * GM) / Math.sqrt(rho * rho + EPS2));
 }
-export function seriesStep(th: number): [number, number] {
+/** A (cos, sin) pair written in place: the out-parameter of the allocation-free variants below. */
+export interface Pair { c: number; s: number }
+/** seriesStep into `out`: the same operations in the same order. */
+export function seriesStepOut(th: number, out: Pair): void {
   const t2 = th * th, t4 = t2 * t2, t6 = t4 * t2, t8 = t4 * t4;
-  return [1 - t2 / 2 + t4 / 24 - t6 / 720 + t8 / 40320, th * (1 - t2 / 6 + t4 / 120 - t6 / 5040 + t8 / 362880)];
+  out.c = 1 - t2 / 2 + t4 / 24 - t6 / 720 + t8 / 40320;
+  out.s = th * (1 - t2 / 6 + t4 / 120 - t6 / 5040 + t8 / 362880);
 }
+export function seriesStep(th: number): [number, number] {
+  const o = { c: 0, s: 0 }; seriesStepOut(th, o); return [o.c, o.s];
+}
+export function railStepOut(rhoW: number, out: Pair): void { seriesStepOut(orbitRate(rhoW) * DT, out); }
 export function railStep(rhoW: number): [number, number] { return seriesStep(orbitRate(rhoW) * DT); }
-/** (c + i s)^n for a whole n ≥ 0 (a 3-hour game, about 648,000 ticks, takes at most about 39 products). */
-export function turnPower(c: number, s: number, n: number): [number, number] {
+/** (c + i s)^n for a whole n ≥ 0 (a 3-hour game, about 648,000 ticks, takes at most about 39 products), into `out`. */
+export function turnPowerOut(c: number, s: number, n: number, out: Pair): void {
   let rc = 1, rs = 0, bc = c, bs = s, k = n;
   while (k > 0) {
     if (k % 2 === 1) { const a = rc * bc - rs * bs; rs = rc * bs + rs * bc; rc = a; }
     k = Math.floor(k / 2);
     if (k > 0) { const a = bc * bc - bs * bs; bs = 2 * bc * bs; bc = a; }
   }
-  return [rc, rs];
+  out.c = rc; out.s = rs;
+}
+export function turnPower(c: number, s: number, n: number): [number, number] {
+  const o = { c: 0, s: 0 }; turnPowerOut(c, s, n, o); return [o.c, o.s];
 }
 /** §13.2: the lane whose zone holds orbital radius ρ (0 inner, 1 main, 2 outer), or −1 outside [1092, 1308]. */
 export function laneZone(rho: number): number {
@@ -58,6 +69,30 @@ export function lanePull(x: number, y: number, k: number): [number, number] {
   const f = (-LANE_PULL * (rho - LANES[zone]!.rho) * (k / SETTLE_K_MAX)) / rho;
   return [f * x, f * y];
 }
+const pStep: Pair = { c: 0, s: 0 }, pTurn: Pair = { c: 0, s: 0 }, pSpin: Pair = { c: 0, s: 0 }, pSpinN: Pair = { c: 0, s: 0 };
+/** railPos with ρ = |centre|, ω = orbitRate(ρ) and (c, s) = railStep(ρ) given (a caller that holds them across many ticks;
+ *  c, s are unread at n = 0), n = T − t ≥ 0. Allocation-free; the operations are railPos's, in its order. */
+export function railPosFrom(cx: number, cy: number, ox: number, oy: number, n: number, tumble: boolean, rc: number, w: number, c: number, s: number, out: RailOut): void {
+  let Cx = cx, Cy = cy, Ox = ox, Oy = oy;
+  if (n > 0) {
+    turnPowerOut(c, s, n, pTurn);
+    const pc = pTurn.c, ps = pTurn.s;
+    const wx = pc * cx - ps * cy, wy = ps * cx + pc * cy, m = Math.sqrt(wx * wx + wy * wy);
+    Cx = (rc * wx) / m; Cy = (rc * wy) / m;
+    if (ox !== 0 || oy !== 0) {
+      let qc = pc, qs = ps;
+      if (tumble) {
+        seriesStepOut(SPIN_RATE * DT, pSpin); turnPowerOut(pSpin.c, pSpin.s, n, pSpinN);
+        const sc = pSpinN.c, ss = pSpinN.s; qc = pc * sc - ps * ss; qs = pc * ss + ps * sc;
+      }
+      const ro = Math.sqrt(ox * ox + oy * oy), ux = qc * ox - qs * oy, uy = qs * ox + qc * oy, mo = Math.sqrt(ux * ux + uy * uy);
+      Ox = (ro * ux) / mo; Oy = (ro * uy) / mo;
+    }
+  }
+  out.x = Cx + Ox; out.y = Cy + Oy;
+  if (tumble) { const ws = w + SPIN_RATE; out.vx = -w * Cy - ws * Oy; out.vy = w * Cx + ws * Ox; }
+  else { out.vx = -w * out.y; out.vy = w * out.x; }
+}
 /**
  * §13.1: a rail slot at tick T ≥ t. Its centre (cx, cy) and offset (ox, oy) are those at tick t; ρω = |centre|. Both are
  * turned by P = railStep(ρω)^(T − t), a Tumble's offset also by S = seriesStep(SPIN_RATE·DT)^(T − t); each is rescaled to
@@ -68,19 +103,6 @@ export function lanePull(x: number, y: number, k: number): [number, number] {
 export function railPos(cx: number, cy: number, ox: number, oy: number, t: number, T: number, tumble: boolean, out: RailOut): void {
   const n = T - t, rc = Math.sqrt(cx * cx + cy * cy), w = orbitRate(rc);
   if (n < 0) throw new Error(`railPos: tick ${T} is before the rail's anchor tick ${t}`);
-  let Cx = cx, Cy = cy, Ox = ox, Oy = oy;
-  if (n > 0) {
-    const [c, s] = railStep(rc), [pc, ps] = turnPower(c, s, n);
-    const wx = pc * cx - ps * cy, wy = ps * cx + pc * cy, m = Math.sqrt(wx * wx + wy * wy);
-    Cx = (rc * wx) / m; Cy = (rc * wy) / m;
-    if (ox !== 0 || oy !== 0) {
-      let qc = pc, qs = ps;
-      if (tumble) { const [sc0, ss0] = seriesStep(SPIN_RATE * DT), [sc, ss] = turnPower(sc0, ss0, n); qc = pc * sc - ps * ss; qs = pc * ss + ps * sc; }
-      const ro = Math.sqrt(ox * ox + oy * oy), ux = qc * ox - qs * oy, uy = qs * ox + qc * oy, mo = Math.sqrt(ux * ux + uy * uy);
-      Ox = (ro * ux) / mo; Oy = (ro * uy) / mo;
-    }
-  }
-  out.x = Cx + Ox; out.y = Cy + Oy;
-  if (tumble) { const ws = w + SPIN_RATE; out.vx = -w * Cy - ws * Oy; out.vy = w * Cx + ws * Ox; }
-  else { out.vx = -w * out.y; out.vy = w * out.x; }
+  if (n > 0) railStepOut(rc, pStep);
+  railPosFrom(cx, cy, ox, oy, n, tumble, rc, w, pStep.c, pStep.s, out);
 }

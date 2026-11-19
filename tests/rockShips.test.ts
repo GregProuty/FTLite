@@ -4,8 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { ramHull, resolveContacts } from '../src/renderer/src/sim/tactical/contacts';
 import { stepSoloFlight } from '../src/renderer/src/sim/tactical/physics';
-import { rockAlive, rockAt, RockKind, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
-import { ROCK_SEPARATE_MAX, SHIP_MASS } from '../src/renderer/src/sim/tactical/rockTuning';
+import { rockAlive, rockAt, rockMass, RockKind, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
+import { RAM_SOFT, ROCK_SEPARATE_MAX, SHIP_MASS } from '../src/renderer/src/sim/tactical/rockTuning';
 import { arena, mover, rail, rockEvents, seeded, withSwitches } from './helpers/rockArena';
 
 /** A moving rock of radius r touching the crew ship (at rest at (0, −2500), radius 20) from the east, closing at `speed`. */
@@ -106,5 +106,15 @@ describe('soft ship contacts (asteroids-iii §6.2)', () => {
     resolveContacts(st, true);
     expect(rockAt(st, 100).x).toBeCloseTo(10 + ROCK_SEPARATE_MAX, 9);
     expect(rockAt(st, 100).x - st.ships[0].x).toBeCloseTo(35, 9);   // fully separated
+  });
+  it('pins the boundary on the mass-weighted impact: just under RAM_SOFT is soft, RAM_SOFT itself costs hull and stamps grace', () => {
+    const mk = rockMass(15), speedFor = (impact: number) => (impact * (mk + SHIP_MASS)) / mk;
+    for (const [impact, soft] of [[RAM_SOFT - 0.1, true], [RAM_SOFT, false], [RAM_SOFT + 0.1, false]] as const) {
+      const st = incoming(15, speedFor(impact)), hull = st.systems[0].hull;
+      resolveContacts(st, true);
+      expect(hull - st.systems[0].hull, `impact ${impact}`).toBe(soft ? 0 : ramHull(impact));
+      expect(st.ships[0].asteroidHits, `impact ${impact}`).toBe(soft ? 0 : 1);
+      expect(st.ships[0].graceUntil[101]! > 0, `impact ${impact}`).toBe(!soft);
+    }
   });
 });
