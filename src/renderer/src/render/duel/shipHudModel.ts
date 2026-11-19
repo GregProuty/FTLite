@@ -4,11 +4,14 @@
 import type { DuelState } from '../../sim/duel/state';
 import { medbayOnline } from '../../sim/duel/health';
 import { classOf, CREW_SLOT, Room } from '../../sim/tactical/state';
+import { SHIP_HULL } from '../../sim/tactical/tuning';
 
 /** The highest room damage level (2: offline); a room's capacity is `ROOM_LEVELS − level` bars (§E). */
 export const ROOM_LEVELS = 2;
-/** One hull segment per HULL_PER_SEGMENT hull (`SHIP_HULL` 40: 20 segments). */
-export const HULL_PER_SEGMENT = 2;
+/** The Cutter's hull bar in HULL_SEGMENTS segments, one per HULL_PER_SEGMENT hull. W-1: derived from `SHIP_HULL` so the
+ *  bar keeps its 20 segments (and its laid-out width) when the duel hull moved 40 → 70 (3.5 hull a segment). */
+export const HULL_SEGMENTS = 20;
+export const HULL_PER_SEGMENT = SHIP_HULL / HULL_SEGMENTS;
 
 /** The layout in internal px (§E): inside the interior band, left of the readout column, below the tab strip. */
 export const HUD = {
@@ -41,7 +44,7 @@ function roomSystem(key: HudSystemKey, name: string, level: number): HudSystem {
   return { key, name, bars: ROOM_LEVELS, lit: ROOM_LEVELS - l, damaged: l, look: l >= ROOM_LEVELS ? 'offline' : 'normal' };
 }
 
-/** The crew ship's HUD (§E): hull segments `ceil(hull / 2)` of `ceil(max / 2)`, the shield layers, and left to right
+/** The crew ship's HUD (§E): hull segments `ceil(hull / HULL_PER_SEGMENT)` of `ceil(max / HULL_PER_SEGMENT)`, the shield layers, and left to right
  *  Helm (the Engines room), Weapons, Shields and the Medbay (one bar, lit while `medbayOnline`). */
 export function shipHud(d: DuelState): ShipHudView {
   const t = d.tactical, sys = t.systems[CREW_SLOT]!, cls = classOf(t, CREW_SLOT), hull = Math.max(0, Math.min(cls.hull, sys.hull));

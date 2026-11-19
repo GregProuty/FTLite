@@ -1,6 +1,7 @@
 // W-1 pew pew (spec 2026-11-18-pew-pew-weapons-design §1, §5): the Hunter's pew. Attack: only with the crew inside its
-// cone and 450, aimed with lead and a seeded error, in bursts of up to 3 rounds 12 ticks apart, then a wait for a full
-// charge. Defence: a crew torpedo within 300 inside its cone is tried for once a tick at 0.5 a second; defence first.
+// cone and 450, aimed with lead and a seeded error, in bursts of up to 3 rounds HUNTER_PEW_GAP ticks apart, then a wait
+// for a full charge (a third per HUNTER_PEW_RECHARGE_TICKS). Defence: a crew torpedo within 300 inside its cone is tried for once
+// a tick at HUNTER_PD_CHANCE a second; defence first. The values are Task 6's tuning (tests/duelGates.test.ts).
 import { describe, expect, it } from 'vitest';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { hunterThink } from '../src/renderer/src/sim/tactical/hunter';
@@ -8,7 +9,7 @@ import { pewLead } from '../src/renderer/src/sim/tactical/pew';
 import { createTacticalState, missileOf, placeMissile, type DuelEvent, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import { DT } from '../src/renderer/src/sim/tuning';
-import { AIM_STEPS, HUNTER_PD_CHANCE, HUNTER_PD_ODDS, HUNTER_PEW_ERROR, HUNTER_PEW_ERROR_STEPS, HUNTER_PEW_GAP } from '../src/renderer/src/sim/tactical/tuning';
+import { AIM_STEPS, HUNTER_PD_CHANCE, HUNTER_PD_ODDS, HUNTER_PEW_ERROR, HUNTER_PEW_ERROR_STEPS, HUNTER_PEW_GAP, HUNTER_PEW_RECHARGE_TICKS, PEW_SHOTS } from '../src/renderer/src/sim/tactical/tuning';
 import { UNCREWED_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { makeHostile } from './helpers/hostile';
 
@@ -24,12 +25,13 @@ const hunterShots = (events: readonly DuelEvent[]) => events.filter((e) => e.kin
 /** The fine difference a − b in −AIM_STEPS/2..AIM_STEPS/2. */
 const fineDiff = (a: number, b: number) => ((a - b + AIM_STEPS + AIM_STEPS / 2) % AIM_STEPS) - AIM_STEPS / 2;
 /** The first seed (1..60) whose crew torpedo the Hunter shoots down, pinned from the defence test's console line (Step 5);
- *  Task 6 re-pins it by the same rule if it moves HUNTER_PEW_ERROR, HUNTER_PEW_GAP or HUNTER_PD_CHANCE. */
+ *  Task 6 re-pins it by the same rule if it moves HUNTER_PEW_ERROR, HUNTER_PEW_GAP or HUNTER_PD_CHANCE. Re-pinned at Task 6's
+ *  tuning (error 8, gap 20, PD 0.3, recharge 120, duel hull ×1.75): still 4, 7 of 60 shot (12 of 60 at the start values). */
 const PD_SEED = 4;
 
 describe('the Hunter attacks (spec §1)', () => {
   it('aims at the crew\'s lead point with an error within ±HUNTER_PEW_ERROR', () => {
-    // Derived from the knobs, so Task 6's tuning moves them without breaking this test (728 and 120 at the start values).
+    // Derived from the knobs, so Task 6's tuning moves them without breaking this test (1456 and 200 at Task 6's tuning; 728 and 120 at the start values).
     expect(HUNTER_PEW_ERROR_STEPS).toBe(Math.floor((HUNTER_PEW_ERROR / 360) * AIM_STEPS));
     expect(HUNTER_PD_ODDS).toBe(Math.round(1 / (HUNTER_PD_CHANCE * DT)));
     for (let seed = 1; seed <= 20; seed++) {
@@ -44,11 +46,12 @@ describe('the Hunter attacks (spec §1)', () => {
     st.ships[0].vx = 200;   // moving east across the Hunter's nose
     expect(fineDiff(pewLead(st, 1, st.ships[0].x, st.ships[0].y, 200, 0), 0)).toBeGreaterThan(0);   // clockwise of north
   });
-  it('fires in bursts of 3, 12 ticks apart, then waits for a full charge', () => {
-    const st = facing(5, 250), at: number[] = [];
-    for (let k = 0; k < 260; k++) { stepDuel(st, UNCREWED_INPUT); if (hunterShots(st.events) > 0) at.push(k); }
+  it('fires in bursts of 3, HUNTER_PEW_GAP ticks apart, then waits for a full charge', () => {
+    // Task 6: 600 ticks (260 before) and the refill derived from the knobs (≥ 150 before: 180 − 2 · 12 at the start values).
+    const st = facing(5, 250), at: number[] = [], refill = PEW_SHOTS * HUNTER_PEW_RECHARGE_TICKS - (PEW_SHOTS - 1) * HUNTER_PEW_GAP;
+    for (let k = 0; k < 600; k++) { stepDuel(st, UNCREWED_INPUT); if (hunterShots(st.events) > 0) at.push(k); }
     expect(at.slice(0, 3)).toEqual([at[0], at[0]! + HUNTER_PEW_GAP, at[0]! + 2 * HUNTER_PEW_GAP]);
-    expect(at[3]! - at[2]!).toBeGreaterThanOrEqual(150);   // a full refill from about 24 ticks of charge
+    expect(at[3]! - at[2]!).toBeGreaterThanOrEqual(refill - 6);   // a full refill from the 2 · HUNTER_PEW_GAP ticks of charge kept
   });
   it('fires only with the crew inside its cone and within 450', () => {
     // 20 ticks: the Hunter turns toward the crew at 150°/s, so a crew 135° off is still outside the cone (about 84° off).
@@ -78,7 +81,6 @@ describe('the Hunter defends (spec §1, §5)', () => {
   }
   it('sometimes shoots a crew torpedo down: a known seed, and a rate over 60 seeds within a band', () => {
     const runs = Array.from({ length: 60 }, (_, k) => torpedoRun(k + 1));
-    console.log(`defence: ${runs.map((c, k) => `${k + 1}:${c}`).join(' ')}`);
     expect(runs[PD_SEED - 1]).toBe('shot');
     const rate = runs.filter((c) => c === 'shot').length / runs.length;
     expect(rate).toBeGreaterThanOrEqual(0.02);

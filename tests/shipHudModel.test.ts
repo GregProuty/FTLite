@@ -5,7 +5,7 @@ import { medbayOnline } from '../src/renderer/src/sim/duel/health';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { Room } from '../src/renderer/src/sim/tactical/state';
 import { SHIELD_LAYERS, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
-import { HUD, hullSegX, hullTone, shipHud, sysBarY, sysColumnX, sysIconY } from '../src/renderer/src/render/duel/shipHudModel';
+import { HUD, HULL_PER_SEGMENT, hullSegX, hullTone, shipHud, sysBarY, sysColumnX, sysIconY } from '../src/renderer/src/render/duel/shipHudModel';
 import { INTERIOR_BAND } from '../src/renderer/src/render/duel/interiorModel';
 import { TABS } from '../src/renderer/src/render/duel/consoleLayout';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -15,8 +15,8 @@ describe('shipHud (spec §E)', () => {
     const d = createDuel(CUTTER, 5);
     try {
       const h = shipHud(d);
-      expect(h.hull).toEqual({ segments: SHIP_HULL / 2, lit: SHIP_HULL / 2, tone: 'good' });
-      expect(h.hull.segments).toBe(20);
+      expect(h.hull).toEqual({ segments: SHIP_HULL / HULL_PER_SEGMENT, lit: SHIP_HULL / HULL_PER_SEGMENT, tone: 'good' });
+      expect(h.hull.segments).toBe(20);   // W-1: duel hull ×1.75 to hold the 180 s floor with the pew (70 hull, 3.5 a segment; 40 hull, 2 a segment before)
       expect(h.shields).toEqual({ layers: SHIELD_LAYERS, up: SHIELD_LAYERS });
       expect(h.systems.map((s) => [s.key, s.name])).toEqual([['helm', 'HELM'], ['weapons', 'WEAP'], ['shields', 'SHLD'], ['medbay', 'MED']]);
       for (const s of h.systems.slice(0, 3)) expect(s).toMatchObject({ bars: 2, lit: 2, damaged: 0, look: 'normal' });
@@ -25,14 +25,15 @@ describe('shipHud (spec §E)', () => {
       expect(JSON.parse(JSON.stringify(h))).toEqual(h);   // JSON-plain, so the sink's replaceEqualDeep can share it
     } finally { disposeDuel(d); }
   });
-  it('lights ceil(hull / 2) segments and takes its colour at the thresholds', () => {
+  it('lights ceil(hull / HULL_PER_SEGMENT) segments and takes its colour at the thresholds', () => {
     const d = createDuel(CUTTER, 5), sys = d.tactical.systems[0];
     try {
       const at = (hull: number) => { sys.hull = hull; return shipHud(d).hull; };
-      expect(at(21)).toMatchObject({ lit: 11, tone: 'good' });
-      expect(at(20)).toMatchObject({ lit: 10, tone: 'warn' });    // half is amber
-      expect(at(10)).toMatchObject({ lit: 5, tone: 'warn' });     // a quarter is amber
-      expect(at(9)).toMatchObject({ lit: 5, tone: 'alert' });     // below a quarter is red
+      // W-1: duel hull ×1.75 to hold the 180 s floor with the pew (hull 70; at hull 40: 21 → 11 good, 20 → 10 warn, 10 → 5 warn, 9 → 5 alert).
+      expect(at(36)).toMatchObject({ lit: 11, tone: 'good' });
+      expect(at(35)).toMatchObject({ lit: 10, tone: 'warn' });    // half is amber
+      expect(at(18)).toMatchObject({ lit: 6, tone: 'warn' });     // a quarter (17.5) and above is amber
+      expect(at(17)).toMatchObject({ lit: 5, tone: 'alert' });    // below a quarter is red
       expect(at(1)).toMatchObject({ lit: 1, tone: 'alert' });
       expect(at(0)).toMatchObject({ segments: 20, lit: 0, tone: 'alert' });
       expect(at(-3).lit).toBe(0);

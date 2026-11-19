@@ -36,10 +36,13 @@ export const SPAWN_CLEARANCE = 300;            // no asteroid surface within thi
 
 // Ships (§5)
 export const SHIP_RADIUS = 20;
-export const SHIP_HULL = 40;                  // H-0c-ii-a: 30 → 40 so the scripted duels last 3 to 5 minutes
+/** W-1: duel hull ×1.75 to hold the 180 s floor with the pew (40 → 70; Task 6, controller's knob 8, one factor on every
+ *  duel class's hull); the duel gates (tests/duelGates.test.ts): Hound median 224.1 s, 7 crew wins, 3 losses; Valkyrn median 183.1 s, 7 Hunter wins. */
+export const SHIP_HULL = 70;                  // H-0c-ii-a: 30 → 40 so the scripted duels last 3 to 5 minutes; W-1: 40 → 70
 /** Weapons update spec §3: the Hunter's hull, raised so the scripted duels still last 3 to 5 minutes against the crew's
- *  double laser (tests/duelGates.test.ts). */
-export const HUNTER_HULL = 70;
+ *  double laser (tests/duelGates.test.ts). W-1: duel hull ×1.75 to hold the 180 s floor with the pew (70 → 123, 122.5
+ *  rounded up). */
+export const HUNTER_HULL = 123;
 /** Engines damage level 0 / 1 / 2 scales thrust and turn rate (§5). Level 2 shuts the Engines off (owner 2026-11-17,
  *  FTL-style): no thrust, no turning; the ship drifts under gravity, drag and the idle stabilise. */
 export const ENGINE_FACTOR: readonly number[] = [1, 0.6, 0];
@@ -149,8 +152,9 @@ export const DERELICT_SPAWN_CLEAR = 600, DERELICT_PHASE_DRAWS = 16;
 /** Valkyrn spec §6.1, §12: the Valkyrn's hull. 30, kept at the start value; the Valkyrn gate (tests/duelGates.test.ts):
  *  median 229.8 s, 9 crew wins, 1 Hunter win over seeds 1 to 10. At hull 12 the gate does not move from 10 to 30: the
  *  Hunter takes at most 6 hull in the rounds the crew wins, and its one win (seed 2) is asteroid contacts. 5 gave
- *  5 Hunter wins and a 162.9 s median. */
-export const VALKYRN_HULL = 30;
+ *  5 Hunter wins and a 162.9 s median. W-1: duel hull ×1.75 to hold the 180 s floor with the pew (30 → 53, 52.5 rounded
+ *  up): with the Hunter's pew at hull 30 the Valkyrn median was 109.7 s, 10 Hunter wins. */
+export const VALKYRN_HULL = 53;
 export const VALKYRN_THRUST = 160;                 // u/s²
 export const VALKYRN_TURN_DEG_PER_S = 200;
 export const VALKYRN_TURN_STEPS_PER_TICK = (VALKYRN_TURN_DEG_PER_S / 360) * HEADING_COUNT * DT;   // about 2.37
@@ -202,13 +206,19 @@ export const PEW_ARC_STEPS = Math.floor((PEW_ARC / 360) * AIM_STEPS);   // 10922
 export const PEW_ARC_COS = 0.5;
 /** A round's reach: PEW_SPEED · PEW_LIFE · DT (450). The Hunter attacks inside it. */
 export const PEW_RANGE = PEW_SPEED * PEW_LIFE * DT;
-/** W-1 (pew pew spec §1): the Hunter's ticks between two rounds of one attack burst. */
-export const HUNTER_PEW_GAP = 12;
-/** W-1 (pew pew spec §1): the Hunter's seeded aim error, ±HUNTER_PEW_ERROR degrees, in fine heading units (rounded down). */
-export const HUNTER_PEW_ERROR = 4;
-export const HUNTER_PEW_ERROR_STEPS = Math.floor((HUNTER_PEW_ERROR / 360) * AIM_STEPS);   // 728
+/** W-1 (pew pew spec §1): the Hunter's ticks between two rounds of one attack burst. 20 (was 12), Task 6 tuning; the duel gates (tests/duelGates.test.ts): Hound median 224.1 s, 7 crew wins, 3 losses; Valkyrn median 183.1 s, 7 Hunter wins. */
+export const HUNTER_PEW_GAP = 20;
+/** W-1 (pew pew spec §1; Task 6's extended tuning ladder): the Hunter's own pew recharge, ticks per third, so it can refill
+ *  slower than the crew's PEW_RECHARGE_TICKS (60). 120 (the best of 120 / 150 / 180 at the old hulls, none passing alone);
+ *  with the hull ×1.75, the duel gates (tests/duelGates.test.ts): Hound median 224.1 s, 7 crew wins, 3 losses; Valkyrn median 183.1 s, 7 Hunter wins (.superpowers/sdd/task-6-report.md). */
+export const HUNTER_PEW_RECHARGE_TICKS = 120;
+/** W-1 (pew pew spec §1): the Hunter's seeded aim error, ±HUNTER_PEW_ERROR degrees, in fine heading units (rounded down:
+ *  HUNTER_PEW_ERROR_STEPS). 8 (was 4), Task 6 tuning; the duel gates (tests/duelGates.test.ts): Hound median 224.1 s, 7 crew wins, 3 losses; Valkyrn median 183.1 s, 7 Hunter wins. */
+export const HUNTER_PEW_ERROR = 8;
+export const HUNTER_PEW_ERROR_STEPS = Math.floor((HUNTER_PEW_ERROR / 360) * AIM_STEPS);
 /** Point defence: a crew torpedo within HUNTER_PD_RANGE inside the cone is tried for with HUNTER_PD_CHANCE a second, one
- *  roll a tick that succeeds 1 in HUNTER_PD_ODDS (120 at 60 Hz). */
+ *  roll a tick that succeeds 1 in HUNTER_PD_ODDS (200 at 60 Hz). HUNTER_PD_CHANCE 0.3 (was 0.5), Task 6 tuning;
+ *  the duel gates (tests/duelGates.test.ts): Hound median 224.1 s, 7 crew wins, 3 losses; Valkyrn median 183.1 s, 7 Hunter wins. */
 export const HUNTER_PD_RANGE = 300;
-export const HUNTER_PD_CHANCE = 0.5;
+export const HUNTER_PD_CHANCE = 0.3;
 export const HUNTER_PD_ODDS = Math.round(1 / (HUNTER_PD_CHANCE * DT));
