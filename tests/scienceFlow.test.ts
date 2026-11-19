@@ -20,6 +20,7 @@ import { makeHostile } from './helpers/hostile';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { CUTTER } from './helpers/scriptedDuel';
 import { holdInSight } from './helpers/sensorSight';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -28,7 +29,7 @@ const cmd = (d: DuelState, player: number, command: DuelCommand): DuelEnvelope =
 const step = (d: DuelState, commands: DuelEnvelope[] = []) => stepDuelTick(d, { held: [NONE, NONE], commands });
 /** Player 1 at Weapons, the crew at (−600, −300) facing the enemy 300 east, the laser full and held, the enemy at 2 layers. */
 function gunnery(): DuelState {
-  const d = createDuel(CUTTER, 5), t = d.tactical;
+  const d = createDuel(CUTTER, 5, 0, 2, ShipClass.ValkyrnLaser), t = d.tactical;   // W-4 spec §14.1: the beam's rule, on the laser fit
   todaysCrewWeapons(t);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   sitDown(d.interior, 1, d.weapons);
   Object.assign(t.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
