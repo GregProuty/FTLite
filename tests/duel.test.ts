@@ -98,7 +98,7 @@ describe('consoles are roles (spec §8, §13)', () => {
     for (const x of [d, coast, thrust, held]) disposeDuel(x);
   });
   it('accepts weapon commands only from the present player seated at Weapons', () => {
-    const d = createSeatedDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     todaysCrewWeapons(d.tactical);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
     const helmPress = cmd(d, 0, { kind: 'laserCharge', held: true }), gunPress = cmd(d, 1, { kind: 'laserCharge', held: true });
     const results = step(d, [helmPress, gunPress]);
@@ -109,7 +109,7 @@ describe('consoles are roles (spec §8, §13)', () => {
   });
   it('weapon commands take effect lock, then charge, then launch, whatever their envelope order', () => {
     for (const launchFirst of [true, false]) {
-      const d = createSeatedDuel(layout, 5), s = d.tactical.systems[0];
+      const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser), s = d.tactical.systems[0];   // W-4 spec §14.1: the beam's rule, on the laser fit
       todaysCrewWeapons(d.tactical);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
       inTorpedoRange(d.tactical);                                       // weapons update spec §2: a launch needs the target within 360
       s.laserCharge = LASER_CHARGE_UNITS;                               // a full charge
@@ -119,7 +119,7 @@ describe('consoles are roles (spec §8, §13)', () => {
       expect([s.shots, s.missilesLaunched], String(launchFirst)).toEqual([1, 1]);   // the press fired, then the missile launched
     }
     for (const lockFirst of [true, false]) {
-      const d = createSeatedDuel(layout, 5), [s, e] = d.tactical.ships;
+      const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser), [s, e] = d.tactical.ships;   // W-4 spec §14.1: the beam's rule, on the laser fit
       todaysCrewWeapons(d.tactical);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
       Object.assign(e, { x: s.x + hx(s.heading) * 300, y: s.y + hy(s.heading) * 300 }); d.tactical.systems[1].shields = 0;   // dead ahead, shields down
       d.tactical.systems[0].laserCharge = LASER_CHARGE_UNITS;
@@ -129,7 +129,7 @@ describe('consoles are roles (spec §8, §13)', () => {
     }
   });
   it('rejects a bad lock, a charge while a missile flies, and a launch it cannot make', () => {
-    const d = createSeatedDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     expect(step(d, [cmd(d, 1, { kind: 'missileLaunch' })]).map((r) => r.reason)).toEqual(['unavailable']);   // weapons update spec §2: out of range
     inTorpedoRange(d.tactical);
     const lock = cmd(d, 1, { kind: 'laserLock', room: 1.5 }), launch = cmd(d, 1, { kind: 'missileLaunch' });
@@ -157,7 +157,7 @@ describe('consoles are roles (spec §8, §13)', () => {
     expect(d.interior.stations.occupant[d.nav]).toBe(0);
   });
   it('rejects sitting at a scenery console, unknown kinds, and stale ticks', () => {
-    const d = createSeatedDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     step(d, [cmd(d, 0, { kind: 'stand' })]);
     const medbay = d.interior.derived.stationOfKind[StationKind.Medbay]!, sit = cmd(d, 0, { kind: 'sit', station: medbay });
     const stale: DuelEnvelope = { ...cmd(d, 1, { kind: 'laserCharge', held: true }), requestedTick: d.interior.tick - 1 };
@@ -168,7 +168,7 @@ describe('consoles are roles (spec §8, §13)', () => {
 describe('weapon commands need a present gunner (spec §13)', () => {
   it('a command claiming player −1 is refused when Weapons is empty or its occupant is away', () => {
     for (const vacate of ['stand', 'away'] as const) {
-      const d = createSeatedDuel(layout, 5), s = d.tactical.systems[0];
+      const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser), s = d.tactical.systems[0];   // W-4 spec §14.1: the beam's rule, on the laser fit
       step(d, [vacate === 'stand' ? cmd(d, 1, { kind: 'stand' }) : cmd(d, 1, { kind: 'presence', present: false })]);
       const ghost = [cmd(d, -1, { kind: 'laserLock', room: Room.Engines }), cmd(d, -1, { kind: 'laserCharge', held: true }), cmd(d, -1, { kind: 'missileLaunch' })];
       expect(step(d, ghost).map((r) => r.reason), vacate).toEqual(['not-at-weapons', 'not-at-weapons', 'not-at-weapons']);
@@ -179,7 +179,7 @@ describe('weapon commands need a present gunner (spec §13)', () => {
 
 describe('present or away (spec §8, §11a)', () => {
   it('an away player\’s console is empty: the laser freezes and their commands are refused', () => {
-    const d = createSeatedDuel(layout, 5), s = d.tactical.systems[0];
+    const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser), s = d.tactical.systems[0];   // W-4 spec §14.1: the beam's rule, on the laser fit
     s.laserCharge = 0;
     step(d, [cmd(d, 1, { kind: 'laserCharge', held: true })]);   // below full: a press does nothing (FTL targeting spec §2)
     step(d, [cmd(d, 1, { kind: 'presence', present: false })]);
@@ -270,7 +270,7 @@ describe('the duel tick', () => {
 
 describe('the interior stays quiet (spec §17 risk 7)', () => {
   it('starts no breach, boarder or event in 3,600 busy ticks, and fire only where an enemy hit set it (duel-fire spec)', () => {
-    const d = createSeatedDuel(layout, 5), st = d.interior, event0 = st.run.event, started = new Set<number>();
+    const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser), st = d.interior, event0 = st.run.event, started = new Set<number>();   // W-4 spec §14.1: the beam's rule, on the laser fit
     for (let t = 0; t < 3600; t++) {
       const cmds = t === 10 ? [cmd(d, 0, { kind: 'stand' })] : t % 120 === 0 ? [cmd(d, 1, { kind: 'laserCharge', held: true })] : t % 120 === 60 ? [cmd(d, 1, { kind: 'laserCharge', held: false })] : [];
       step(d, cmds, [{ moveX: t % 40 < 20 ? 1 : -1, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }]);
