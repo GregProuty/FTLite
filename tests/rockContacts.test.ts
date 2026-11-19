@@ -103,6 +103,21 @@ describe('rock-rock pairs (spec §3.3)', () => {
     expect(st.rockCollisions).toBe(1);
     expect([st.rockDone[100], st.rockDone[101]]).toEqual([1, 1]);
   });
+  it('a pair is resolved once per tick, even when a later turn pushes the two back into each other', () => {
+    // a (100) and b (102) bounce on a's turn; heavy c (101, r 60) then shoves b back into a on c's turn. b's own turn
+    // must not resolve (b, a) again: a second resolution would separate them once more.
+    const st = arena();
+    mover(st, 100, -30, 2000, 60, 0, 20, 10); mover(st, 102, 5, 2000, -60, 0, 20, 10); mover(st, 101, 77.5, 2000, 0, 0, 60, 10);
+    stepRocks(st);
+    const a = rockAt(st, 100), b = rockAt(st, 102);
+    expect(rockEvents(st, 'bump').map((e) => [e.rock, e.other])).toEqual([[100, 102], [101, 102]]);
+    // Motion puts a at −29 and b at 4 (overlap 7); a's turn moves each 3.5 apart, and nothing moves a again. A second
+    // (b, a) resolution would push a out to −37 and leave b and c overlapping again.
+    expect(a.x).toBeCloseTo(-32.5, 4);
+    expect(rockAt(st, 101).x).toBeCloseTo(78.5, 4);
+    expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(39);   // left overlapping: resolved once, not twice
+    expect([st.rockDone[100], st.rockDone[101], st.rockDone[102]]).toEqual([1, 1, 1]);
+  });
   it('a static rock woken at a higher slot takes its own turn in the same pass', () => {
     const st = arena();
     seeded(st, 5);
