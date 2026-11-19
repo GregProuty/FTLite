@@ -2,6 +2,7 @@
 // line for line from render/sessionMenu.ts. Components only call these; each change is one store setState.
 import type { ConsoleInput } from '../app/duel/input';
 import type { ContactActions } from '../app/duel/contactController';
+import type { ShipCommand } from '../render/duel/shipControls';
 import type { DuelCrewSize, OnlinePreloadApi, OnlineResult, OnlineStatus } from '../../../shared/onlineSession';
 import { applyStatus, failureText, helmPlayerOf, isDuel, ROOM_CODE, type MenuState } from './menuState';
 import type { UiStore } from './store';
@@ -53,7 +54,16 @@ export function createUiActions(deps: UiActionDeps) {
     torpLock: (room) => consoleInput?.torpLock(room),
     rockLock: (weapon, rock) => consoleInput?.rockLock?.(weapon, rock),
     throttle: (level) => consoleInput?.throttle(level),
-    frequency: (freq) => consoleInput?.frequency(freq)
+    frequency: (freq) => consoleInput?.frequency(freq),
+    ship: (command) => consoleInput?.ship?.(command)
+  };
+  // Engineering spike §6: the ship view's HUD clicks, through the same console slot (the duel keyboard queues them).
+  const send = (command: ShipCommand): void => consoleInput?.ship?.(command);
+  const shipActions = {
+    power: (system: number, delta: 1 | -1): void => send({ kind: 'shipPower', system, delta }),
+    coolant: (system: number): void => send({ kind: 'shipCoolant', system }),
+    door: (edge: number): void => send({ kind: 'shipDoor', edge }),
+    airlock: (index: number): void => send({ kind: 'shipAirlock', index })
   };
 
   // The contact window's clicks (enemy ship window spec §6.6) go to the duel mode's contact controller while one is set;
@@ -73,6 +83,7 @@ export function createUiActions(deps: UiActionDeps) {
   return {
     console: consoleActions,
     contact: contactActions,
+    ship: shipActions,
     setConsole(input: ConsoleInput | null): void { consoleInput = input; },
     setContact(controller: ContactActions | null): void { contactInput = controller; },
     setStatus(next: OnlineStatus): void {
