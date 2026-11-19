@@ -99,4 +99,16 @@ describe('main RTC transport owner', () => {
     h.reply(req, 'port-ready'); h.reply(req, 'ready', { latestPayloadLimit: 16088 }); await ready;
     await vi.advanceTimersByTimeAsync(31000); await rejected; expect(h.dispose).not.toHaveBeenCalled(); await h.owner.dispose();
   });
+  it('tells the far end of a retired attempt\'s port it closed before closing it (Web-ii Task 11: peer loss never reached the host Worker)', async () => {
+    // The page transport hands the owner's port to the controller as the same object, so a port the owner closes first
+    // swallows the controller's later portLink close frame; browsers fire no MessagePort close event at the far end.
+    const h = harness(), { port1, port2 } = new MessageChannel(), frames: unknown[] = [];
+    const received = new Promise<void>(done => { port2.onmessage = event => { frames.push((event as MessageEvent).data); done(); }; });
+    const ready = h.owner.startAttempt(config('live'), port1 as never), request = h.requests[0]!;
+    h.reply(request, 'port-ready'); h.reply(request, 'ready', { latestPayloadLimit: 16088 }); await ready;
+    const closing = h.owner.closeAttempt('live'); h.reply(h.requests.at(-1)!, 'closed'); await closing;
+    await Promise.race([received, new Promise(done => setTimeout(done, 200))]);
+    expect(frames).toEqual([{ version: 1, type: 'close', reason: 'rtc-cancelled' }]);
+    port2.close(); await h.owner.dispose();
+  });
 });
