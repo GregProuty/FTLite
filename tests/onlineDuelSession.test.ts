@@ -169,7 +169,7 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
     r.dispose();
   });
   it('sends a held frame every pump, quantised to −1, 0 and 1 by Math.sign', () => {
-    const r = rig(0), c = r.attach();
+    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();
     r.key('keydown', 'KeyD'); r.key('keydown', 'KeyW');   // the diagonal: the keyboard gives ±1/√2
     const before = c.helds().length;
     r.pump(); r.pump(); r.pump();
@@ -451,7 +451,7 @@ describe('the online Helm heading (Feel-ii §1.1)', () => {
     r.dispose();
   });
   it('A held at the Helm clears the base: the same heading asked for again is sent while the replica still shows the old hold', () => {
-    const r = rig(0), c = r.attach();
+    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();
     r.d.holdHeading = 77; c.publish(r.d); r.pump();
     ask(r, 77);
     expect(headings(c)).toEqual([]);   // the replica holds it already

@@ -204,7 +204,7 @@ describe('the online source follows the throttle (Artemis spec §5.3, §6.1)', (
     } finally { disposeDuel(d); c.dispose(); }
   });
   it('the end card flies nothing: axes() is NO_AXES on a decided round whatever the throttle', () => {
-    const d = createSeatedDuel(CUTTER, 3), c = confirmed();
+    const d = createSeatedDuel(CUTTER, 3, 0, 2, ShipClass.Valkyrn), c = confirmed();
     const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });
     try {
       d.throttle = 3; c.publish(d); source.observe();

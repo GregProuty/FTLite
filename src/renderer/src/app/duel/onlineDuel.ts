@@ -23,9 +23,9 @@ import { endModel } from '../../render/duel/endModel';
 import { createKeyToggle, latencyOverlayLines, type KeyTarget } from '../../render/duel/latencyOverlay';
 import { snapBack } from '../../render/tactical/camera';
 import type { Renderer } from '../../render/renderer';
-import { CONTACT_MAX_LEVEL, missileOf } from '../../sim/tactical/state';
+import { classOf, CONTACT_MAX_LEVEL, missileOf } from '../../sim/tactical/state';
 import { consoleInReach, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
-import { createDuelKeyboard, createPointerSource, emptyPresses, NO_HELD_FLAGS, PING_CODE, throttleRequest, type ConsoleInput, type EventSource, type HeldFlags, type KeySample } from './input';
+import { crewHelmHeld, createDuelKeyboard, createPointerSource, emptyPresses, NO_HELD_FLAGS, PING_CODE, throttleRequest, type ConsoleInput, type EventSource, type HeldFlags, type KeySample } from './input';
 import { createMapRequests } from './mapRequests';
 import { pingAllowed, type PingRequest } from '../../render/duel/pingModel';
 import { refusal } from '../../render/duel/situationModel';
@@ -57,6 +57,18 @@ const NOTICE_MS = 3000;
 export const LINK_POLL_MS = 1000, LIVE_SAMPLES = 300;
 /** The camera's presses: the zoom keys, and C, which only the interior's camera reads here (the consoles' C is in play()). */
 const keysOnly = (k: KeySample): KeySample => ({ ...k, presses: { ...emptyPresses(), zoomIn: k.presses.zoomIn, zoomOut: k.presses.zoomOut, camera: k.presses.camera } });
+/** Playtest2feedback Decision 14: the most unacknowledged held frames the local throttle prediction counts. */
+export const UNACKED_MAX = 30;
+/** Playtest2feedback §3, §4, §4a: this seat's held frame. At the crew Helm (a newtonianHelm class): moveX 0, the held
+ *  throttle and thrusters and the left button's steer (crewHelmHeld). Elsewhere, and on any other class: quantised to -1,
+ *  0 and 1 (H-2 spec §3), with Space at the Helm as auto-face (Feel-i). */
+export function sessionHeld(k: KeySample, d: DuelState, me: number, steer: number): HeldInput {
+  const seat = seatOf(d, me), crewHelm = seat === 'helm' && classOf(d.tactical, 0).newtonianHelm;
+  return { moveX: crewHelm ? 0 : Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld,
+    ...(k.fireHeld && seat === 'helm' ? { face: true } : {}), ...(crewHelm ? crewHelmHeld(k, steer) : {}) };
+}
+const heldChanged = (a: HeldInput, b: HeldInput): boolean => a.moveX !== b.moveX || a.moveY !== b.moveY || a.interactHeld !== b.interactHeld || a.face !== b.face
+  || a.aim !== b.aim || a.throttleHeld !== b.throttleHeld || a.rcsX !== b.rcsX || a.rcsY !== b.rcsY;
 /** The session phases a Leave passes through, which show "LEAVING…" over the frozen view rather than CONNECTION LOST. */
 const LEAVING_PHASES: readonly string[] = ['saving', 'idle', 'ended'];
 /** The end card's leave prompt: open, and the round it was opened on. */
@@ -98,7 +110,12 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   let lastPhase = '', noticeUntil = 0, notice: string | null = null, lastFrame = 0, cameraKeys = keysOnly(sampleIdle());
   let attaches = 0, pauses = 0, roundAttaches = 1, roundPauses = 0, startedAtIso = new Date().toISOString(), cancel = () => {}, offClose = () => {};
   let lastHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false }, lastFlags: HeldFlags = NO_HELD_FLAGS;
+  // Playtest2feedback §4, §4a: the crew Helm's held steer, its left button and thrusters on the last pump, and the last held sequence sent.
+  let steer = -1, steerPrev = false, rcsPrev = { x: 0, y: 0 }, lastHeldSequence = 0;
   const requests0 = (): number | null => requests.takeHeading();   // Feel-ii §1.1: drained every pump
+  // Playtest2feedback §4a: the map's steer bearing, drained every pump beside the heading. Inside pump the name `requests`
+  // is shadowed by contact.takeRequests() (a ContactRequests, which has no takeSteer), so it is read through this closure.
+  const takeSteer0 = (): number | null => requests.takeSteer();
   // Artemis spec §5.4: the throttle this seat last asked for, until its result comes back; the base W, S and the console build on.
   let throttleSent: { level: number; sequence: number; round: number } | null = null;
   // Feel-ii §1.1: the heading this seat last asked for, until its result comes back (as throttleSent); the dedupe's base.
@@ -196,6 +213,26 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     }
     if (p.stand > 0) { throttleSent = null; headingSent = null; send({ kind: 'stand' }); return; }
     if (requests.scan !== null && d.tactical.known[requests.scan] < CONTACT_MAX_LEVEL[requests.scan]) send({ kind: 'contactScan', contact: requests.scan });   // Sci-1 spec §5
+    if (seat === 'helm' && classOf(d.tactical, 0).newtonianHelm) {   // playtest2feedback §3-§5: the held frame carries the rest
+      if (p.camera > 0 && source) snapBack(source.cameras.helm);
+      if (k.fireHeld) headingSent = { heading: -1, sequence: null, round: d.round };   // only auto-face clears the hold here
+      if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== (headingSent ? headingSent.heading : d.holdHeading)) {
+        const id = send({ kind: 'heading', heading }); if (id) headingSent = { heading, sequence: id.sequence, round: d.round };
+      }
+      const power = k.power ?? 0;
+      for (let n = 0; n < Math.abs(power); n++) send({ kind: 'helmPower', delta: power > 0 ? 1 : -1 });
+      const off = refusal(d, 'turn'), held = k.held ?? NO_HELD_FLAGS, steering = pointer.leftHeld();
+      if (off) {
+        if (steering && !steerPrev) source?.refuse('turn', off);
+        if (held.fire && !prevHeld.fire) source?.refuse('auto-face', off);
+        if ((held.up && !prevHeld.up) || (held.down && !prevHeld.down)) source?.refuse('throttle', off);
+        if (heading !== null && heading >= 0) source?.refuse('heading', off);
+      }
+      const rx = k.rcsX ?? 0, ry = k.rcsY ?? 0, gas = refusal(d, 'thrusters');
+      if (gas && ((rx !== 0 && rcsPrev.x === 0) || (ry !== 0 && rcsPrev.y === 0))) source?.refuse('thrusters', gas);
+      steerPrev = steering; rcsPrev = { x: rx, y: ry };
+      return;
+    }
     if (seat === 'helm') {
       if (p.camera > 0 && source) snapBack(source.cameras.helm);
       const level = throttleRequest(throttleSent ? throttleSent.level : d.throttle, p, k.throttleTo);   // Artemis spec §5.4
@@ -249,7 +286,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   function pump(): void {
     if (disposed) return;
     observe(); pollLink();
-    const k = keyboard.sample(), requests = contact.takeRequests(), heading = requests0();
+    const k = keyboard.sample(), requests = contact.takeRequests(), heading = requests0(), steerTaken = takeSteer0();   // drained before any early return, so a steer never goes stale
     const prevHeld = lastFlags; lastFlags = k.held ?? NO_HELD_FLAGS;
     source?.heldFlags(k.held ?? NO_HELD_FLAGS);
     cameraKeys = { ...cameraKeys, presses: { ...cameraKeys.presses, zoomIn: cameraKeys.presses.zoomIn + k.presses.zoomIn, zoomOut: cameraKeys.presses.zoomOut + k.presses.zoomOut, camera: cameraKeys.presses.camera + k.presses.camera } };
@@ -270,9 +307,15 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     else play(k, d, me, requests, heading, prevHeld);
     // Held input every pump, quantised to −1, 0 and 1 (spec §3); a change is stamped for the held delay.
     // Feel-i (console feel spec §2): Space held at the Helm is auto-face, sent only from the Helm, as the sim admits it.
-    const held: HeldInput = { moveX: Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld, ...(k.fireHeld && seatOf(d, me) === 'helm' ? { face: true } : {}) };
+    // Playtest2feedback §4a: the crew Helm steers by the map's bearing only while the left button is held (Decision 9's rule
+    // for the player: let go, no aim goes out and the sim holds the last one).
+    const steerNow = steerTaken, crewHelmSeat = seatOf(d, me) === 'helm' && classOf(d.tactical, 0).newtonianHelm;
+    steer = crewHelmSeat && pointer.leftHeld() ? steerNow ?? steer : -1;
+    const held: HeldInput = sessionHeld(k, d, me, steer);
     const sequence = client.held(me, decided ? { moveX: 0, moveY: 0, interactHeld: false } : held);
-    if (sequence !== null && !decided && (held.moveX !== lastHeld.moveX || held.moveY !== lastHeld.moveY || held.interactHeld !== lastHeld.interactHeld || held.face !== lastHeld.face)) {
+    if (sequence !== null) lastHeldSequence = sequence;
+    source?.unacked(Math.min(UNACKED_MAX, Math.max(0, lastHeldSequence - (p.heldHighWater[me] ?? 0))));   // Decision 14
+    if (sequence !== null && !decided && heldChanged(held, lastHeld)) {
       heldStamps.push({ sequence, at: deps.now() }); if (heldStamps.length > 64) heldStamps.shift();
     }
     if (!decided) { lastHeld = held; source?.sent(held); }
@@ -297,7 +340,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       observe(); release();
       // This round's gaps before the re-attach stay in its record (the reconnect time itself is never one).
       if (source) { roundGaps.push(...source.takeArrivals()); if (roundGaps.length > 4096) roundGaps.splice(0, roundGaps.length - 4096); }
-      descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; throttleSent = null; headingSent = null; attaches++;
+      descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; throttleSent = null; headingSent = null; steer = -1; steerPrev = false; rcsPrev = { x: 0, y: 0 }; lastHeldSequence = 0; attaches++;
       heldStamps.length = 0; commandStamps.clear();   // the new client restarts its sequences: an old stamp would match a new frame
       // Spec §6.2: a map click counts only while this window has focus and input is not blocked; otherwise it is drained and dropped.
       scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED', ui: deps.ui, audio: deps.audio, contact,
@@ -305,6 +348,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
         pointer: () => (focused && !blocked ? pointer.position() : null),
         // Feel-ii §1.1, §2.7: the Helm's right-button aim, and the pings (out on the cosmetic channel, back as events).
         takeAim: () => { const aim = pointer.takeAim(); return focused && !blocked ? aim : null; }, requests,
+        leftHeld: () => focused && !blocked && pointer.leftHeld(),   // playtest2feedback §4a: the crew Helm's steer
         takePingAt: () => { const key = pingKey ? pointer.position() : null, click = pointer.takeMiddleClick(); pingKey = false; return focused && !blocked ? click ?? key : null; },
         sendPing: (p) => { const now = deps.now(); if (!client || !descriptor || !pingAllowed(lastPing, now)) return; lastPing = now; client.ping(descriptor.seatId, p.x, p.y, p.target); },
         takePings: () => pingsIn.splice(0) });
