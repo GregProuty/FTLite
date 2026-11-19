@@ -122,3 +122,60 @@ Confirmed and corrected.
 
 ---
 
+# Round 2 (delta, reviewing 003bdba5, effort medium, 163 s, 1011669 in / 913483 cached / 11411 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R2-F1 The new sit-down zoom test reads cam.zoom on the same frame zoomTo is called, so it passes with or without the fog gate
+Task 9's 'sitting at the Helm frames the enemy only when it is seen' checks `rt.cameras.helm.zoom` right after the sitting `scene.draw`, and runs no later frame. zoomTo only sets `targetZoom` (and `zoomFrom` and `zoomT = 0`). `zoom` itself only moves in updateCamera, which the runtime's frame calls, not the scene. So `zoom === z0` holds whether or not the `fogView.seen.enemy` gate is in, and the test can't catch the leak R1-F5 asked it to cover. · plan L2446-2450 (reads `rt.cameras.helm.zoom` after the second draw, with no later `rt.frame`). camera.ts:61-65: zoomTo sets `cam.targetZoom = target` and leaves `cam.zoom` alone. camera.ts:90-91: `zoomT += dt` eases `zoom` inside updateCamera. runtime.ts:150 and :534 call updateCamera. scene.ts:250 calls zoomTo inside draw. · The sit-zoom leak would come back unnoticed. A test written against R1-F5 that can't fail gives false assurance. · Assert on `rt.cameras.helm.targetZoom` (read z0 from targetZoom as well). Add a converse case: move the Hunter to `own.x + 600`, sit again (or use a fresh runtime), and expect `targetZoom` to differ from z0. Then the test fails without the gate and passes with it.
+
+## Prior findings
+- R1-F1: resolved — Every quote now matches master input.ts: :37-38 (the rockLock member, with the ship? member inserted before the closing brace), :59 (freqTo), :105 (the let line, rockTo included), :125 (clear, rockTo kept), :140 (frequency) and :148-149 (sample's out and reset, rockTo kept). The only additions are ship and ship = [].
+- R1-F2: resolved — Step 10's file keeps targetText(room, rock), WEAPONS_HINT (same string), the Card with the rock-aware right-click clear (master's structure, so rockTargetUi's card() firstElementChild still finds the hit Box), TGT ROCK on both cards and ROCKS at y0+134 on the right. tests/rockTargetUi.test.tsx is in Step 11's run, and its assertions (L38-62) hold against the new file.
+- R1-F3: resolved — The WeaponsPanel quote matches consoleModel.ts:39-40. Both laserOffline sites are quoted with their following line, which makes each unique: situationModel.ts:46-47 (rock branch) and :59-60 (enemy branch). The test now resets t.rocks = initRocks(t.map), as feelIiModels' clearRocks does (feelIiModels.test.ts:46), and initRocks is imported.
+- R1-F4: resolved — `git grep -nF "THROTTLE_CAP_BY_BARS: readonly number[] = [0, 1, 2, 3, 4, 4]"` is a fixed-string match for Part i's declaration (Part i plan L2021).
+- R1-F5: resolved — The pickShip and pickContact quotes match tacticalModel.ts:471-475, :485 and :493, and targetOf is already imported there (:7). The scene edits match scene.ts:184, :203 and :250. Step 8b's quote matches situationModel.ts:53, and shipSeen(t, i) is a Part i export (Part i plan L69, L2922). With START_BARS Sensors 1, the range is 900 (SENSOR_RANGE_BY_BARS[1]), so the laser test's 1200 → none and 600 → range hold. The pick and laser tests are sound. The zoom test is vacuous; see the new finding.
+- R1-F6: resolved — Every refusal is drawn at x0, and FREE is right-aligned at `right`. STATION is x 12, w 300 (consoleLayout.ts:10), so x0 = 20 and right = 304. At about 6 px a glyph, the widest listed reason, 'BEAM: OUT OF ARC: HELM TURN RIGHT', ends near 226 against right − FREE 9 ≈ 268. The new width test mirrors rockTargetUi's textPx check.
+- R1-F7: resolved — L26 now says 55, L74 and L2943 cite scene.ts:305, and Decision 11 gives the header at y 529 and the backing at 557–712.
+
+## Verified
+- input.ts quotes against master: :36-38, :59, :105, :124-125, :140 and :148-149 all match the plan's Replace blocks (plan L509-560).
+- WeaponsStation.tsx master (:30, :37-60, :63, :72, :86, :96, :100, :108) against the plan's rewrite: every asteroids-ii feature is kept.
+- tests/rockTargetUi.test.tsx:13-62 still passes against the rewritten file. Its card() helper reads the Box inside console-card-*, and the Card component keeps that structure.
+- tests/feelIiUi.test.tsx:47/:52, feelUi.test.tsx:40/:45 and uiConsole.test.tsx:51 hold the exact LASER strings Step 11 names. uiConsole's position tests (:84, :90-91, :112-113) read weaponCard, not literals.
+- consoleModel.ts:36-40 matches the new WeaponsPanel quote.
+- situationModel.ts:46-47, :53 and :59-60 match Task 8 Step 6 and Task 9 Step 8b.
+- tacticalModel.ts:471-475, :485 and :493 match the pick edits, and targetOf and derelictPos are already imported (:6-7).
+- scene.ts:184, :203 and :250 match the Step 8 replacement strings.
+- Part i provides shipSeen, sensorRange, contactSeen, pointSeen, SENSOR_RANGE_BY_BARS [300,900,…], ShipSystems.bars and weaponPower (Part i plan L66-69, L2367-2382, L2902-2929).
+- camera.ts:61-65 and runtime.ts:150/:534: zoomTo only sets targetZoom, and updateCamera runs in the runtime frame (the basis of the new finding).
+
+## Not verified
+- Whether tests outside Step 9's run list break when laserSituation returns none for an enemy beyond 900 at round start. feelIiModels.test.ts:83 expects 'ENEMY OUT OF RANGE' on open()'s state, and it is in the run list, so Step 9's move-within-900 recipe covers it. I did not check every other runtime-driven test (for example feelPresentation, which places the enemy at 612 and looks safe). Task 10's full gate should surface any others.
+- The exact m5x7 glyph advances. Widths are estimated at about 6 px a glyph, as rockTargetUi budgets them, without running textPx.
+- Whether seatDuelCrew followed by one rt.frame registers a new sit in the scene's tracker in the zoom test. This matters only once the test reads targetZoom.
+
+---
+
+# Round 2 response (plan revised)
+
+Reviewed `round-2.json` against the subject at `2a97a5aa`. 1 accepted, 0 rejected, 0 deferred. Every R1 ID is confirmed resolved.
+
+## R2-F1 [P2]: Zoom test passes with or without the gate
+
+Confirmed: camera.ts:61-65 (zoomTo sets targetZoom), :90-91 (zoom eases in updateCamera). The test now asserts targetZoom, and a converse case with the enemy seen at 600 expects targetZoom to change.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-18-engineering-spike-ii-hud.md
+
+<!-- end -->
+
+---
+
