@@ -192,7 +192,7 @@ describe('the online source follows the throttle (Artemis spec §5.3, §6.1)', (
     const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });
     try {
       d.throttle = 2; c.publish(d); source.observe();
-      source.sent({ moveX: 1, moveY: -1 });
+      source.sent({ moveX: 1, moveY: -1, interactHeld: false });
       expect([source.axes(), source.throttle()]).toEqual([{ turn: 1, thrust: 0.5 }, 2]);
       source.throttleBase(4);
       expect([source.throttle(), source.axes().thrust]).toEqual([4, 0.5]);   // the drawn path follows the replica

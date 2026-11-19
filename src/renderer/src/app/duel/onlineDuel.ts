@@ -150,11 +150,14 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (id && command.kind !== 'presence') commandStamps.set(id.sequence, deps.now());
     return id;
   }
+  /** The authority's held frame is neutral once input stops, so the local prediction (throttle ramp, vent, puffs) drops too. */
+  function neutralSource(): void { source?.sent({ moveX: 0, moveY: 0, interactHeld: false }); source?.unacked(0); }
   function stopInput(): void {
     if (client && descriptor && producing) {
       client.neutralize(descriptor.seatId);   // FTL targeting spec §2: the crew's Space is a single press, so there is no held charge to let go of
     }
     producing = false; keyboard.clear(); pointer.clear();
+    neutralSource();
   }
   function release(): void {
     stopInput(); offClose(); offClose = () => {};
@@ -301,8 +304,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     leaveConfirm = keys.prompt;
     if (keys.send) send(keys.send);
     if (keys.leave) deps.leave();
-    if (leaveConfirm.open || keys.leave) { producing = true; client.held(me, { moveX: 0, moveY: 0, interactHeld: false }); return; }
-    if (p.phase !== 'running') return;
+    if (leaveConfirm.open || keys.leave) { producing = true; client.held(me, { moveX: 0, moveY: 0, interactHeld: false }); neutralSource(); return; }
+    if (p.phase !== 'running') { neutralSource(); return; }
     if (decided) { if (k.presses.confirm > 0) send({ kind: 'rematch' }); }
     else play(k, d, me, requests, heading, prevHeld);
     // Held input every pump, quantised to −1, 0 and 1 (spec §3); a change is stamped for the held delay.

@@ -129,7 +129,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   }
   const duel = (): DuelState => client.state()!;
   const source: DuelViewSource & {
-    observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: Omit<HeldInput, 'interactHeld'> & { interactHeld?: boolean }): void; heldFlags(flags: HeldFlags): void;
+    observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: HeldInput): void; heldFlags(flags: HeldFlags): void;
     thrMille(): number; helmVent(): HelmVent; unacked(n: number): void;
     throttleBase(level: number | null): void;
     refuse(control: Refusal['control'], reason: string): void;

@@ -51,7 +51,7 @@ function stubClient() {
 type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
   clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null; notice?: string | null }[], overlay: [] as (readonly string[] | null)[],
-  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void } }[], disposes: { n: 0 }
+  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void } }[], disposes: { n: 0 }, source: null as null | { helmVent(): { x: number; y: number; boosted: boolean }; thrMille(): number }
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
 vi.mock('../src/network/portLink', () => ({
@@ -67,7 +67,8 @@ vi.mock('../src/renderer/src/app/duel/scene', () => ({
   createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void } }) => {
     h.sceneOpts.push(opts);
     return {
-      draw: (_source: unknown, _dt: number, o: { banner: string | null; notice?: string | null }) => {
+      draw: (source: unknown, _dt: number, o: { banner: string | null; notice?: string | null }) => {
+        h.source = source as typeof h.source;
         h.draws.push({ banner: o.banner, notice: o.notice });
         opts.ui.frame({ readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null });
       },
@@ -432,6 +433,40 @@ describe('the online Helm throttle (Artemis spec §5.4)', () => {
     c2.results.push({ id: lastThrottleId(c2), tick: 3, status: 'noop' } as never); r.pump();
     tap(r, 'KeyW');
     expect(throttles(c2).at(-1)).toEqual({ kind: 'throttle', level: 1 });   // a noop hands the base back too
+    r.dispose();
+  });
+});
+
+describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () => {
+  const headings = (c: Stub) => c.commands().filter((x) => x.kind === 'heading');
+  const ask = (r: ReturnType<typeof rig>, heading: number): void => { (h.sceneOpts.at(-1) as unknown as { requests: { heading(n: number): void } }).requests.heading(heading); r.pump(); };
+  it('held W rides the frame as throttleHeld and one Digit1 press sends exactly one helmPower +1', () => {
+    const r = rig(0), c = r.attach();
+    r.key('keydown', 'KeyW'); r.key('keydown', 'Digit1'); r.pump(); r.pump(); r.pump();
+    r.key('keyup', 'Digit1'); r.pump();
+    expect(c.helds().at(-1)!.throttleHeld).toBe(1);
+    expect(c.helds().slice(-3).every((x) => x.throttleHeld === 1)).toBe(true);
+    expect(c.commands().filter((x) => x.kind === 'helmPower')).toEqual([{ kind: 'helmPower', delta: 1 }]);
+    r.dispose();
+  });
+  it('A is a thruster here: it does not clear the held heading, so the same heading asked again is deduped', () => {
+    const r = rig(0), c = r.attach();
+    r.d.holdHeading = 77; c.publish(r.d); r.pump();
+    ask(r, 77);
+    expect(headings(c)).toEqual([]);
+    r.key('keydown', 'KeyA'); r.pump(); r.key('keyup', 'KeyA'); r.pump();
+    ask(r, 77);
+    expect(headings(c)).toEqual([]);
+    r.dispose();
+  });
+  it('blur drops the local prediction: the vent and thrMille fall back to the replica state', () => {
+    const r = rig(0), c = r.attach();
+    r.d.rcsGas = 100; c.publish(r.d); r.pump(); r.session.frame();
+    r.key('keydown', 'ArrowUp'); r.pump(); r.pump();
+    expect(h.source!.helmVent()).not.toEqual({ x: 0, y: 0, boosted: false });
+    r.session.setFocused(false); r.pump();
+    expect(h.source!.helmVent()).toEqual({ x: 0, y: 0, boosted: false });
+    expect(h.source!.thrMille()).toBe(c.state()!.thrMille);
     r.dispose();
   });
 });
