@@ -2,7 +2,7 @@
 // over the console blocks or the shown contact window, and the right button launches only when no weapon is picked up.
 import { describe, expect, it } from 'vitest';
 import { flightPointer, onFlightMap } from '../src/renderer/src/app/duel/flightPointer';
-import { CONTACT, FLIGHT, SIDE, STATION, stationTop, TABS } from '../src/renderer/src/render/duel/consoleLayout';
+import { CONTACT, FLIGHT, OWN_SHIP, SIDE, STATION, stationTop, TABS } from '../src/renderer/src/render/duel/consoleLayout';
 import { headingOf } from '../src/renderer/src/render/tactical/tacticalModel';
 
 const ship = { x: 640, y: 360 }, open = { x: 640, y: 200 };
@@ -26,6 +26,11 @@ describe('the Flight pointer (Valkyrn spec §6.2)', () => {
     const p = mid(CONTACT);
     expect(at(p, true).steer).toBeNull();
     expect(at(p, false).steer).toBe(headingOf(p.x - ship.x, p.y - ship.y));
+  });
+  it('own ship window spec §3: a pointer inside OWN_SHIP sends no steer, shown contact or not', () => {
+    const p = mid(OWN_SHIP);
+    expect(onFlightMap(p, false)).toBe(false); expect(onFlightMap(p, true)).toBe(false);
+    expect(at(p).steer).toBeNull();
   });
   it('no pointer, off the screen or on the ship: no steer', () => {
     expect(at(null).steer).toBeNull();
