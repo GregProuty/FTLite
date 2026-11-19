@@ -15,6 +15,7 @@ import { scanCommand } from '../tactical/science';
 import { HEADING_COUNT, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
 import { classOf, CONTACT_MAX_LEVEL, Outcome } from '../tactical/state';
 import { canCharge, canLaunch, validTarget, type ShipInput } from '../tactical/weapons';
+import { pewReady, validAim } from '../tactical/pew';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
 import { extinguishWork, firePhase, pointBurning } from './fire';
 import { applyHitDamage, healthPhase } from './health';
@@ -26,10 +27,10 @@ import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
 export interface DuelInput { held: readonly HeldInput[]; commands: readonly DuelEnvelope[] }
 
 const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
-/** The fixed order weapon commands take effect in within one tick. */
-const WEAPON_ORDER = ['laserLock', 'torpLock', 'laserCharge', 'missileLaunch'] as const;
+/** The fixed order weapon commands take effect in within one tick (W-1: the pew last, as applyWeaponsInput fires it). */
+const WEAPON_ORDER = ['laserLock', 'torpLock', 'laserCharge', 'missileLaunch', 'pewFire'] as const;
 /** Every duel command kind the step handles; any other kind is rejected not-in-duel. */
-const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'torpLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency'];
+const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'torpLock', 'laserCharge', 'missileLaunch', 'pewFire', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency'];
 
 function resetScratch(d: DuelState): void {
   const sc = d.interior.scratch;
@@ -203,20 +204,27 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
 
   // Tactical commands, against the seats as they now stand. Within a tick they take effect in a fixed order, lock, then
   // the torpedo's target (FTL targeting spec §2), then charge, then launch (the order applyWeaponsInput applies them), whatever their envelope order; admission is checked
-  // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins.
+  // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins. W-1: pewFire last; only the first in a tick fires (the rest noop).
   const helm = attendant(d, d.nav), gunner = attendant(d, d.weapons);
   const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false,
     gunHeld: gunner >= 0 && (input.held[gunner] ?? NO_HELD).gunHeld === true, pewAim: -1, scanner: true };   // Valkyrn spec §7.1: the trigger of Weapons' attendant; W-1: pewFire sets pewAim (Task 4)
   for (const e of WEAPON_ORDER.flatMap((kind) => input.commands.filter((x) => x.command.kind === kind))) {
     const c = e.command;
-    if (c.kind !== 'laserLock' && c.kind !== 'torpLock' && c.kind !== 'laserCharge' && c.kind !== 'missileLaunch') continue;
+    if (c.kind !== 'laserLock' && c.kind !== 'torpLock' && c.kind !== 'laserCharge' && c.kind !== 'missileLaunch' && c.kind !== 'pewFire') continue;
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }   // −1 is the empty-seat value, never a player
     if ((c.kind === 'laserLock' || c.kind === 'laserCharge') && classOf(d.tactical, 0).slots.laser === null) { result(e, 'unavailable'); continue; }   // Valkyrn spec §6.1: no laser
+    if (c.kind === 'pewFire' && classOf(d.tactical, 0).slots.pew === null) { result(e, 'unavailable'); continue; }   // W-1: no pew (the Valkyrn)
     if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.laserLock = c.room; }   // −1 clears the target
     else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.torpLock = c.room; }
     else if (c.kind === 'laserCharge') { if (!canCharge(d.tactical, 0)) { result(e, 'missile-in-flight'); continue; } crew.laserCharge = c.held; }
-    else { if (!canLaunch(d.tactical, 0)) { result(e, 'unavailable'); continue; } crew.missileLaunch = true; }
+    else if (c.kind === 'missileLaunch') { if (!canLaunch(d.tactical, 0)) { result(e, 'unavailable'); continue; } crew.missileLaunch = true; }
+    else {   // W-1 (pew pew spec §1, §4): the aim, then one round a tick (the first wins), then a third stored (NO CHARGE)
+      if (!validAim(c.aim, c.aimAcc)) { result(e, 'malformed'); continue; }
+      if (crew.pewAim >= 0) { result(e, undefined, 'noop'); continue; }
+      if (!pewReady(d.tactical, 0)) { result(e, 'unavailable'); continue; }
+      crew.pewAim = c.aim * HEADING_COUNT + c.aimAcc;
+    }
     result(e);
   }
   // The Helm's throttle (Artemis spec §5.2), against the seats as they now stand: stale, then the Helm attendant, then

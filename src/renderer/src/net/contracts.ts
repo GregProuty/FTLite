@@ -93,6 +93,9 @@ export type DuelCommand =
   | { kind: 'designate'; contact: number }
   /** Weapons tunes the crew laser to frequency 0..2 (A..C). */
   | { kind: 'laserFrequency'; freq: number }
+  /** W-1 (pew pew spec §1, §4): Weapons fires the pew along heading index `aim` 0..255 plus `aimAcc` 0..255 256ths of a
+   *  step, clamped into the cone by the sim. Any integers pass the codec; the sim answers an out-of-range one malformed. */
+  | { kind: 'pewFire'; aim: number; aimAcc: number }
   /** On a decided round's end card: start the next round (H-2 spec §7). */
   | { kind: 'rematch' }
   | { kind: 'setPaused'; paused: boolean };
