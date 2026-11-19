@@ -177,7 +177,7 @@ async function command(message) {
       writeFileSync(message.path, bytes); return { bytes: bytes.length };
     }
     case 'resources': return resources();
-    case 'resource-counts': { const r = await resources(); return { workers: r.workers, windows: r.windows, ports: r.ports, listeners: r.listeners, rendererPid: r.rendererPid }; }
+    case 'resource-counts': { const r = await resources(); return { workers: r.workers, windows: r.windows, ports: r.ports, portsCreated: await js('window.onlineProbe.counts().observedPagePorts'), listeners: r.listeners, rendererPid: r.rendererPid }; }
     // Only --inject-transport-failure uses this; the run must then fail. Every native peer connection in the page closes.
     case 'transport-death': return js('window.rtcNative.closeAll()');
     // The next lobby request waits 1.2 s: the window the old slow hidden-window load gave the cancel case.
