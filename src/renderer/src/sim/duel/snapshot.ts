@@ -18,11 +18,12 @@ import { validateMap } from '../tactical/map';
 import { createTacticalState, Outcome, type TacticalState } from '../tactical/state';
 import { DUEL_CLASSES, SHIP_CLASSES, ShipClass } from '../tactical/defs';
 import { TACTICAL_MODULES, hashTactical, tacticalLength, validateTacticalValues } from '../tactical/hash';
-import { REPAIR_UNITS } from './tuning';
+import { COMPRESSOR_MAX, RCS_TANK, REPAIR_UNITS, THR_MAX, THR_MIN } from './tuning';
 import { SIM_VERSION } from '../tuning';
 import { flattenDuel, hashDuel, mapHash } from './hash';
 import { unflattenDuelModules } from './modules';
 import { createDuel, disposeDuel, DUEL_CREW_MAX, LOCAL_CREW_MIN, type DuelState } from './state';
+import { noVent } from './helmFlight';
 import { validHoldHeading, validThrottle } from './throttle';
 
 export const DUEL_SNAPSHOT_FORMAT = 1;
@@ -146,7 +147,7 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   // -0 is written as 0 (flattenDuel and here): no sim path distinguishes the two zeros (no 1/x, atan2 or Object.is on state),
   // so the snapshot and the live state hash and behave identically.
   const values = (snap.values as number[]).map((v) => (v === 0 ? 0 : v));
-  const space = seed.spaceLength, repairAt = 1 + space + n, roundAt = repairAt + 3, helmAt = roundAt + 4, interiorAt = helmAt + 2;
+  const space = seed.spaceLength, repairAt = 1 + space + n, roundAt = repairAt + 3, helmAt = roundAt + 4, interiorAt = helmAt + 6;   // playtest2feedback §7: the helm module holds six values
   if (values.length !== interiorAt + crew.interiorCount) throw new Error('duel snapshot length does not match the layout and map');
   if (values[0] !== SIM_VERSION) throw new Error('duel snapshot sim version does not match its values');
   if (values[2] !== h.seed) throw new Error('duel snapshot seed does not match its values');
@@ -176,6 +177,14 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   // Feel-ii (spec §1.1): the held heading, −1 or a heading index 0..255.
   const holdHeading = values[helmAt + 1]!;
   if (!validHoldHeading(holdHeading)) throw new Error(`duel snapshot held heading ${holdHeading} is invalid`);
+  // Playtest2feedback §7: the crew Helm's held throttle −250..1000, the tank 0..RCS_TANK, its sixtieths 0..59 and the
+  // COMPRESSOR share 0..3, each an integer.
+  const whole = (v: number, lo: number, hi: number): boolean => Number.isInteger(v) && v >= lo && v <= hi;
+  const [thrMille, rcsGas, rcsAcc, compressor] = values.slice(helmAt + 2, interiorAt) as [number, number, number, number];
+  if (!whole(thrMille, THR_MIN, THR_MAX)) throw new Error(`duel snapshot thrMille ${thrMille} is invalid`);
+  if (!whole(rcsGas, 0, RCS_TANK)) throw new Error(`duel snapshot rcsGas ${rcsGas} is invalid`);
+  if (!whole(rcsAcc, 0, 59)) throw new Error(`duel snapshot rcsAcc ${rcsAcc} is invalid`);
+  if (!whole(compressor, 0, COMPRESSOR_MAX)) throw new Error(`duel snapshot compressor ${compressor} is invalid`);
   const interior = values.slice(interiorAt);
   validateCanonicalValues(layout, derived, n, interior);
   // The identity values unflatten checks (flatten.ts), required here so nothing is allocated for a snapshot it would refuse.
@@ -216,5 +225,5 @@ export function restoreDuelSnapshot(d: DuelState, snapshot: DuelSnapshot, conten
   if (h.layoutId !== d.interior.layout.id || h.layoutHash !== d.interior.derived.layoutHash || h.seed !== d.tactical.seed || h.playerCount !== d.interior.playerCount || h.crewClass !== d.crewClass)
     throw new Error('duel snapshot is for another layout, seed, crew or class: load it instead');
   writeBack(d, snapshot);
-  d.events = []; d.tactical.events = [];   // not snapshotted: a restore holds no per-tick events, as a fresh load
+  d.events = []; d.tactical.events = []; d.helmVent = noVent();   // not snapshotted: a restore holds no per-tick events or vent, as a fresh load
 }

@@ -22,6 +22,7 @@ import { applyHitDamage, healthPhase } from './health';
 import { followingSeed } from './seeds';
 import { throttleThrust, validHoldHeading, validThrottle } from './throttle';
 import { createDuel, disposeDuel, type DuelState } from './state';
+import { noVent } from './helmFlight';
 import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
 
 export interface DuelInput { held: readonly HeldInput[]; commands: readonly DuelEnvelope[] }
@@ -123,7 +124,7 @@ export function helmTurn(d: DuelState, h: HeldInput): number {
  * launch. A round started at `tick` behaves as a fresh duel started at 0 (tests/duelRounds.test.ts).
  */
 function startRound(d: DuelState, tick: number): void {
-  const next = createDuel(d.interior.layout, followingSeed(d.tactical.seed), d.helmPlayer, d.interior.playerCount, d.crewClass);   // Valkyrn spec §6.1: the class carries over
+  const next = createDuel(d.interior.layout, followingSeed(d.tactical.seed), d.helmPlayer, d.interior.playerCount, d.crewClass, { helmBars: d.helmBars });   // Valkyrn spec §6.1: the class carries over; playtest2feedback §5: so does the bar budget
   next.present = d.present.slice();   // Sci-2 spec §7: an empty seat stays away in the next round
   next.round = d.round + 1; next.baseTick = tick; next.decidedTick = -1;
   next.interior.tick = tick; next.tactical.tick = tick;
@@ -143,7 +144,7 @@ function stepDecided(d: DuelState, input: DuelInput): DuelResult[] {
     results.push(reason ? { id: env.id, tick, status: 'rejected', reason } : { id: env.id, tick, status });
   };
   resetScratch(d);
-  d.events = []; d.tactical.events = [];
+  d.events = []; d.tactical.events = []; d.helmVent = noVent();   // playtest2feedback §4: the end card vents nothing
   const presentBefore = d.present.slice();
   let rematch = false;
   for (const e of input.commands) {
