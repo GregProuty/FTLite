@@ -18,6 +18,7 @@ import { createOnlineBridge } from './app/onlineBridge';
 import { createPageOnline } from './app/online/pageSession';
 import { watchHostVisibility } from './app/online/hostVisibility';
 import { versionPollActive, watchVersion } from './app/web/versionWatch';
+import { inMatch, installPageGuards } from './app/web/pageGuards';
 import { validatePageOnlineConfig } from '../../shared/onlineConfig';
 import { createOnlineRendererSession } from './app/onlineSession';
 import { createOnlineModeSession } from './app/onlineModeSession';
@@ -95,6 +96,7 @@ async function startApp(): Promise<void> {
   const store = createUiStore({ onlineAvailable: !!bridge, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, fullscreenAvailable: !!win, controls: controlSections(),
     ships: SOLO_SHIPS.map(({ id, name, line }) => ({ id, name, line })), soloShip: settings.soloShip, valkyrnLaserFit: settings.valkyrnLaserFit } });   // Valkyrn spec §9
   bootCrt(renderer, store);
+  const offGuards = installPageGuards(window, () => inMatch(store.getState().menu));   // web build spec §7.1 (harmless in Electron)
   const hud = createHudSink(store, perf), duelSink = createDuelSink(store, perf), latencySink = createLatencySink(store, perf);
   const session = createSessionRouter({ resetInput: keyboard.reset,
     single: () => {
@@ -173,7 +175,7 @@ async function startApp(): Promise<void> {
   renderer.app.ticker.add(() => session.frame());
   renderer.app.ticker.add(() => audio.tick(performance.now() / 1000));   // Audio-i spec section 5: the music, the hum and the fire loop
   window.addEventListener('beforeunload', () => {
-    offPrepareExit?.(); offVisibility?.(); offPort?.(); offStatus?.(); offStrip(); setBlocked(true); offBlocked(); actions.dispose(); unmountUi();
+    offPrepareExit?.(); offVisibility?.(); offGuards(); offPort?.(); offStatus?.(); offStrip(); setBlocked(true); offBlocked(); actions.dispose(); unmountUi();
     session.dispose(); bridge?.dispose(); keyboard.destroy();
   }, { once: true });
 }
