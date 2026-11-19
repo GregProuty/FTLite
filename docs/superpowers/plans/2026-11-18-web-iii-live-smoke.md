@@ -19,7 +19,7 @@ Every task's requirements implicitly include this section.
 - **Stage files by explicit path only.** Never `git add -A`, `git add .` or `git commit -a`.
 - **Every commit message ends with** `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - **Use the Write tool** for new files and multi-line content, because bash heredocs have failed on this machine. Shell examples are Git Bash.
-- **Secrets:** the passcode is read **only** from `FTLITE_LIVE_PASSCODE`; a `--passcode` argument is refused. Neither the passcode nor the minted `ftlite_pass` cookie may appear in any console line, error text or the report. Every outgoing string passes through `redact` with the raw, URL-encoded and form-encoded variants. With `DEBUG` containing `pw:`, the run is refused, because Playwright's API log would print `fill()` values.
+- **Secrets:** the passcode is read **only** from `FTLITE_LIVE_PASSCODE`; a `--passcode` argument is refused. Neither the passcode nor the minted `ftlite_pass` cookie may appear in any console line, error text or the report. Every outgoing string passes through `redact` with the raw, URL-encoded, form-encoded and JSON-escaped variants, and always **before** it is cut (`clip`). The run is refused when `DEBUG` could enable a Playwright namespace: any non-negated pattern that contains `*` or starts with `pw` (so `*`, `pw*`, `foo,*` and `vite:*` are all refused). It is also refused when `DEBUG_FILE` or `PWDEBUG` is non-empty. Playwright's api, channel and protocol logs print `fill()` values and skip `redact`.
 - **Page code passed to `page.evaluate` as a function must be anonymous and inline.** tsx keeps function names, so a named inner function (`const f = () => …`) compiles to a `__name(...)` call that does not exist in the page. Longer page code is passed as a **string** (`UI_READ_SOURCE`, `PEER_STATS_SOURCE`, `RELAY_INIT_SCRIPT`).
 - **Every page call has an explicit time limit** (`bounded` from `scripts/web/net/players.ts`, Web-ii gate lesson).
 - **Exact texts (spec and code, verbatim):** `Wrong passcode` (`WRONG_PASSCODE_TEXT`), passcode form `action="/__pass"`, cookie `ftlite_pass=<value>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`. `cache-control` is `private, no-cache` for the game (Web-ii W-2) and `no-store` for `/version.json`. The 503 page says `FTLite is not configured.`
@@ -29,12 +29,13 @@ Every task's requirements implicitly include this section.
 
 - **L-1 Drive the real UI; force relay with an init script, not a product switch.** A production build has `packaged: true` and no test probe (Web-ii W-1, Web-i D-1), so the Web-ii `createBrowserPlayer` cannot be reused: it reads `window.__ftliteOnlineTest` and `window.onlineAppObservation`. The live driver clicks the same `data-testid` controls the Web-ii scenario clicks (`multiplayer`, `host`, `crew-2`, `create-room`, `join`, `join-code`, `join-room`, `ready`, `start`, `leave`). It reads the phase from the menu's `status` line: on the session page, `menuMessage` prints the phase name, and the lobby shows the title `Lobby`. It reads the join code from `room-code`. `onlinePeers.ts:110` hard-codes `iceTransportPolicy: 'all'`, so a Playwright `addInitScript` replaces `globalThis.RTCPeerConnection` with a subclass that forces `'relay'` in the constructor and in `setConfiguration`, and keeps every instance for `getStats`. `peer.ts` builds its connection with `new RTCPeerConnection(config)` at call time, so the subclass is used. Nothing ships to players.
 - **L-2 Relay proof.** It is sampled every 10 s on both pages. Each sample covers every connected `RTCPeerConnection`: its `iceTransportPolicy`, the selected pair's local and remote `candidateType`, and the bytes. The pair is found three ways: Chromium's `transport.selectedCandidatePairId`, else Firefox's `candidate-pair.selected`, else `nominated && state 'succeeded'`. A side passes when at least two samples had a connected peer, every connected peer is `policy 'relay'` with local candidate `relay`, and at least 1,024 bytes arrived between the first and the last such sample. The remote type is recorded but not required: the local type alone proves this side went through TURN.
-- **L-3 "Play 60 s".** Both players walk the duel smoke's routes (host to Weapons, guest to the Helm, then the guest holds thrust 2 s). This is best effort, because a production page exposes no seat state. Then both phases must stay `running` until 60 s after the round started. If the round ends first (`ended`), the play stops early and `endedEarly: true` is recorded. That still passes when the relay proof holds. `paused`, `error` or anything else fails.
+- **L-3 "Play 60 s".** Both players walk the duel smoke's routes (host to Weapons, guest to the Helm, then the guest holds thrust 2 s). This is best effort, because a production page exposes no seat state. Then both phases must stay `running` until 60 s after the round started. Each tick's decision is the pure, unit-tested `playStep` in `relay.ts`. An early end is accepted only when **both** sides read `ended` within `END_AGREE_MS` (5 s) of each other, and only after at least `MIN_EARLY_END_MS` (2 × the 10 s sample interval, so relay has two samples). The play then stops, and `endedEarly: true` is recorded with both phases. A one-sided `ended`, `paused`, `error` or anything else fails. `validateLiveReport` re-checks the same rules.
 - **L-4 Reused from Web-ii:** `bounded` and the `GateKey` type (`scripts/web/net/players.ts`); the key-press pattern (bring to front, blur, down/up); the duel routes, the 1280×800 viewport and the two-context isolation (own IndexedDB and Web Lock); `validVersion` (`scripts/web/web-output.ts`, newly exported); and the `OPTIONS /v2/rooms` preflight shape from `web-net-smoke.ts`.
-- **L-5 The site-is-up check (the `vercel.json` question).** The root `vercel.json` `buildCommand` exits 1 for source builds only; `vercel deploy --prebuilt` runs no build. The live smoke proves that the prebuilt output is what is served: with the cookie, `/` answers 200 with HTML that contains `<script` and not the passcode form, and `/version.json` is a valid `{ build, sim, digest }`, whose `build` and `sim` go into the report. The gates doc also has the owner confirm that `deploy:web` printed the production URL and that `npx vercel ls` shows the deployment **Ready**.
+- **L-5 The site-is-up check (the `vercel.json` question).** The root `vercel.json` `buildCommand` exits 1 for source builds only; `vercel deploy --prebuilt` runs no build. The live smoke proves that the prebuilt output is what is served: with the cookie, `/` answers 200 with HTML that contains `<script` and not the passcode form, and `/version.json` is a valid `{ build, sim, digest }`, whose `build` and `sim` go into the report. When `.vercel/output/static/version.json` exists in the working directory (`deploy:web` writes it), the live `version.json` must be deep-equal to it, or the run fails with `the live site is not the build in .vercel/output`. When it is absent, the report records `versionCompared: false`. This tells this deploy apart from an older production deployment. The gates doc also has the owner confirm that `deploy:web` printed the production URL and that `npx vercel ls` shows the deployment **Ready**.
 - **L-6 The service preflight is optional.** When `FTLITE_WEB_SERVICE_ORIGIN` (or `--service-origin=`) is set, as it already is from the deploy step, the smoke sends the page's `OPTIONS /v2/rooms` with `Origin: <live url>`. It needs a 2xx with `access-control-allow-origin` equal to the live origin. A refusal names the `wrangler secret put ALLOWED_ORIGINS` fix and skips the duel.
-- **L-7 Firefox is optional.** If `firefox.launch` fails because the browser is not installed, the guest is a second Chromium context, and the report says `chromium (Firefox not installed)`.
-- **L-8 Header failures skip the duel and say "roll back".** If the paid art or the Worker might be reachable without the cookie, the run stops before any duel and prints the rollback command.
+- **L-7 Firefox is optional only when it is not installed.** If `firefox.launch` fails with Playwright's missing-executable error (`/Executable doesn't exist|npx playwright install/`), the guest is a second Chromium context, and the report says `chromium (Firefox not installed)`. Any other Firefox launch error fails the run.
+- **L-8 Header failures skip the duel and say how to take the deploy down.** If the paid art or the Worker might be reachable without the cookie, the run stops before any duel. On the **first** deploy there is nothing to roll back to, so it says to delete the deployment: `npx vercel rm <deployment URL printed by deploy:web> --yes`, or Dashboard → Deployments → Delete. On **later** deploys it says `npx vercel rollback`.
+- **L-9 Error screens fail fast.** An online error whose message is a known ERRORS text prints that text and not a phase word, and the session page then shows its `home` ("Return to menu") button. `UI_READ_SOURCE` reads that button as `sessionHome`, and `uiPhase` returns `error` when it is present and the status is not a phase word.
 
 ## File structure
 
@@ -70,7 +71,9 @@ Every task's requirements implicitly include this section.
   - `runHeaderChecks(o: { url: string; passcode: string; paidPath: string; fetch: FetchLike }): Promise<HeaderResult>`
   - `checkServiceOrigin(o: { serviceOrigin: string; pageOrigin: string; fetch: FetchLike }): Promise<ServiceCheck>`
   - `firstPaidPath(root: string): string | null`
-  - `secretVariants(secrets: readonly string[]): string[]`, `redact(text: string, secrets: readonly string[]): string`
+  - `secretVariants(secrets: readonly string[]): string[]`, `redact(text: string, secrets: readonly string[]): string`, `clip(text: string, secrets: readonly string[], max: number): string` (redact, then cut)
+  - `debugCouldLogPasscode(env: Record<string, string | undefined>): boolean`
+  - `compareDeployedVersion(live: LiveVersion | null, localPath: string): { versionCompared: boolean; problem: string | null }`
   - constants `LIVE_REPORT_PATH = 'out/web-iii-live/live-smoke.json'`, `WORKER_PATH`, `VERSION_PATH`, `GAME_CACHE`, `VERSION_CACHE`, `NOT_CONFIGURED_PROBLEM`
 
 - [ ] **Step 1: Write the failing test**
@@ -86,7 +89,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { handlePasscode, isNext, type PasscodeEnv } from '../src/web/passcode';
-import { checkServiceOrigin, firstPaidPath, NOT_CONFIGURED_PROBLEM, parseLiveArgs, redact, runHeaderChecks, type FetchLike } from '../scripts/web/live/headers';
+import { checkServiceOrigin, clip, compareDeployedVersion, firstPaidPath, NOT_CONFIGURED_PROBLEM, parseLiveArgs, redact, runHeaderChecks, type FetchLike } from '../scripts/web/live/headers';
 
 const PASSCODE = 'correct horse battery staple', SECRET = Buffer.alloc(32, 7).toString('base64');
 const VERSION = { build: { version: '0.1.0', rev: 'abc1234', sim: 54 }, sim: 54, digest: 'a'.repeat(64) };
@@ -121,7 +124,13 @@ describe('parseLiveArgs', () => {
     expect(() => parseLiveArgs([], { ...env, FTLITE_LIVE_URL: `${URL_}/game` })).toThrow(/https origin/);
     expect(() => parseLiveArgs([], { FTLITE_LIVE_PASSCODE: PASSCODE })).toThrow(/FTLITE_LIVE_URL/);
     expect(() => parseLiveArgs(['--paid-path=/assets/other.png'], env)).toThrow(/paid-path/);
-    expect(() => parseLiveArgs([], { ...env, DEBUG: 'pw:api' })).toThrow(/unset DEBUG/);
+  });
+  it('refuses any DEBUG pattern that could enable a Playwright namespace, and DEBUG_FILE or PWDEBUG', () => {
+    for (const DEBUG of ['pw:api', '*', 'pw*', 'foo,*', 'vite:*', 'express pw:protocol'])
+      expect(() => parseLiveArgs([], { ...env, DEBUG }), DEBUG).toThrow(/unset DEBUG/);
+    expect(() => parseLiveArgs([], { ...env, DEBUG_FILE: 'out/debug.log' })).toThrow(/unset DEBUG/);
+    expect(() => parseLiveArgs([], { ...env, PWDEBUG: '1' })).toThrow(/unset DEBUG/);
+    for (const DEBUG of ['', 'express', 'vite:config', '-pw:*', '-*']) expect(parseLiveArgs([], { ...env, DEBUG }).url, DEBUG).toBe(URL_);
   });
 });
 
@@ -184,6 +193,28 @@ describe('firstPaidPath and redact', () => {
       .toBe('a [redacted] b [redacted] c code=[redacted]');
     expect(redact('nothing', ['', 'zz'])).toBe('nothing');
   });
+  it('redacts a passcode with a quote or backslash inside JSON text', () => {
+    const odd = 'say "hi" \\ now';
+    expect(redact(JSON.stringify({ failure: `x ${odd} y` }), [odd])).toBe('{"failure":"x [redacted] y"}');
+  });
+  it('clip redacts before it cuts, so a secret across the cut leaves no fragment', () => {
+    const out = clip('x'.repeat(695) + PASSCODE + ' tail', [PASSCODE], 700);
+    expect(out).toBe('x'.repeat(695) + '[reda'); expect(out).not.toContain('corr');
+  });
+});
+
+describe('compareDeployedVersion', () => {
+  let dir = '';
+  afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); dir = ''; });
+  it('needs the live version.json to equal the local build output when there is one', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ftlite-live-version-'));
+    const path = join(dir, 'version.json');
+    expect(compareDeployedVersion(VERSION, path)).toEqual({ versionCompared: false, problem: null });
+    writeFileSync(path, JSON.stringify(VERSION));
+    expect(compareDeployedVersion(VERSION, path)).toEqual({ versionCompared: true, problem: null });
+    expect(compareDeployedVersion({ ...VERSION, digest: 'b'.repeat(64) }, path)).toEqual({ versionCompared: true, problem: 'the live site is not the build in .vercel/output' });
+    expect(compareDeployedVersion(null, path).problem).toBe('the live site is not the build in .vercel/output');
+  });
 });
 ```
 
@@ -205,8 +236,9 @@ Create `scripts/web/live/headers.ts`:
 // duel. Pure apart from the injected fetch. The passcode comes only from FTLITE_LIVE_PASSCODE; it and the minted
 // cookie are returned as secrets for redaction and never written into a check.
 import { randomBytes } from 'node:crypto';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { PASS_COOKIE, PASS_MAX_AGE_S, PASS_PATH, WRONG_PASSCODE_TEXT } from '../../../src/web/passcode';
 import { validVersion } from '../web-output';
 
@@ -230,10 +262,17 @@ function httpsOrigin(value: string | undefined, what: string): string {
   return new URL(value).origin;
 }
 
+/** The debug module enables a namespace for any non-negated pattern that is a wildcard or starts with pw (pw:api,
+ *  pw:channel, pw:protocol print fill() values); DEBUG_FILE and PWDEBUG turn Playwright's logging on by themselves. */
+export function debugCouldLogPasscode(env: Record<string, string | undefined>): boolean {
+  const risky = (env.DEBUG ?? '').split(/[\s,]+/).some(p => p.length > 0 && !p.startsWith('-') && (p.includes('*') || p.startsWith('pw')));
+  return risky || !!env.DEBUG_FILE || !!env.PWDEBUG;
+}
+
 export function parseLiveArgs(argv: readonly string[], env: Record<string, string | undefined>): LiveArgs {
   const value = (name: string): string | undefined => argv.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3);
   if (argv.some(a => a.startsWith('--passcode'))) throw Error('the passcode is read only from FTLITE_LIVE_PASSCODE, never from the command line');
-  if (/pw:/.test(env.DEBUG ?? '')) throw Error("unset DEBUG: Playwright's debug log would print the passcode");
+  if (debugCouldLogPasscode(env)) throw Error("unset DEBUG, DEBUG_FILE and PWDEBUG: Playwright's debug log would print the passcode");
   const url = httpsOrigin(value('url') ?? env.FTLITE_LIVE_URL, 'FTLITE_LIVE_URL (or --url=)');
   const passcode = env.FTLITE_LIVE_PASSCODE ?? '';
   if (!passcode) throw Error('set FTLITE_LIVE_PASSCODE to the passcode friends type');
@@ -253,13 +292,25 @@ export function firstPaidPath(root: string): string | null {
   return first === undefined ? null : '/assets/paid/' + relative(base, first).split(/[\\/]/).map(encodeURIComponent).join('/');
 }
 
-/** Each secret as typed, URL-encoded and form-encoded (spaces as +), longest first; empty strings dropped. */
+/** Each secret as typed, URL-encoded, form-encoded (spaces as +) and JSON-escaped (the report is redacted as JSON
+ *  text), longest first; empty strings dropped. */
 export function secretVariants(secrets: readonly string[]): string[] {
-  const all = secrets.filter(s => s.length > 0).flatMap(s => [s, encodeURIComponent(s), new URLSearchParams({ c: s }).toString().slice(2)]);
+  const all = secrets.filter(s => s.length > 0).flatMap(s => [s, encodeURIComponent(s), new URLSearchParams({ c: s }).toString().slice(2), JSON.stringify(s).slice(1, -1)]);
   return [...new Set(all)].sort((a, b) => b.length - a.length);
 }
 export function redact(text: string, secrets: readonly string[]): string {
   return secretVariants(secrets).reduce((t, s) => t.split(s).join('[redacted]'), text);
+}
+/** Redact first, then cut: a secret across the cut would otherwise survive as an unmatched fragment. */
+export function clip(text: string, secrets: readonly string[], max: number): string {
+  return redact(text, secrets).slice(0, max);
+}
+
+/** Plan L-5: the live version.json must be the build deploy:web just wrote, when that output is present. */
+export function compareDeployedVersion(live: LiveVersion | null, localPath: string): { versionCompared: boolean; problem: string | null } {
+  if (!existsSync(localPath)) return { versionCompared: false, problem: null };
+  let local: unknown; try { local = JSON.parse(readFileSync(localPath, 'utf8')); } catch { local = undefined; }
+  return { versionCompared: true, problem: live !== null && isDeepStrictEqual(local, live) ? null : 'the live site is not the build in .vercel/output' };
 }
 
 function cacheControlOf(response: Response): string | null {
@@ -284,7 +335,7 @@ export async function runHeaderChecks(o: { url: string; passcode: string; paidPa
       if (response.status === 503) notConfigured = true;
       return { response, body: (await response.text()).slice(0, 65536), check };
     } catch (error) {
-      check.problem = `request failed: ${String((error as Error)?.message ?? error).slice(0, 200)}`;
+      check.problem = `request failed: ${clip(String((error as Error)?.message ?? error), [o.passcode, ...secrets], 200)}`;
       return { response: null, body: '', check };
     }
   };
@@ -374,11 +425,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Test: `tests/webLiveRelay.test.ts`
 
 **Interfaces:**
-- Consumes: `bounded(work, ms, label)` and `type GateKey` from `scripts/web/net/players.ts`, and `WRONG_PASSCODE_TEXT` from `src/web/passcode.ts`.
+- Consumes: `bounded(work, ms, label)` and `type GateKey` from `scripts/web/net/players.ts`, `WRONG_PASSCODE_TEXT` from `src/web/passcode.ts`, and `clip` from Task 1's `scripts/web/live/headers.ts`.
 - Produces (in `relay.ts`, pure):
-  - `LIVE_PLAY_MS = 60000`, `MIN_RELAY_BYTES = 1024`, `RELAY_SAMPLE_MS = 10000`
+  - `LIVE_PLAY_MS = 60000`, `MIN_RELAY_BYTES = 1024`, `RELAY_SAMPLE_MS = 10000`, `END_AGREE_MS = 5000`, `MIN_EARLY_END_MS = 2 * RELAY_SAMPLE_MS`
   - `interface PeerSample { state: string; policy: string | null; local: string | null; remote: string | null; bytesReceived: number; bytesSent: number }`
-  - `interface UiView { status: string | null; title: string | null; roomCode: string | null; pause: string | null; leave: string | null; retry: boolean; home: boolean }`
+  - `interface UiView { status: string | null; title: string | null; roomCode: string | null; pause: string | null; leave: string | null; retry: boolean; home: boolean; sessionHome: boolean }`
+  - `interface PlayState { endedAtMs: number | null }`, `type PlayStep = 'continue' | 'done' | 'ended' | { fail: string }`, `playStep(phases: { host: string; guest: string }, elapsedMs: number, state: PlayState): PlayStep` (it updates `state`)
   - `interface LiveDuelReport { hostBrowser: string; guestBrowser: string; playedMs: number; endedEarly: boolean; phases: { host: string; guest: string }; samples: { host: PeerSample[][]; guest: PeerSample[][] }; relay: { host: string | null; guest: string | null }; pageErrors: string[]; problems: string[] }`
   - `RELAY_INIT_SCRIPT: string`, `PEER_STATS_SOURCE: string`, `UI_READ_SOURCE: string`
   - `uiPhase(v: UiView): string`, `roomCodeOf(v: UiView): string | null`, `relayVerdict(samples: readonly (readonly PeerSample[])[]): string | null` (null means relay was proven)
@@ -392,7 +444,8 @@ Create `tests/webLiveRelay.test.ts`:
 // Web-iii live smoke, the page-side pieces run in Node against fakes: the RTCPeerConnection relay hook, the stats read
 // for Chromium- and Firefox-shaped stats, the phase read from the menu, and the relay verdict.
 import { describe, expect, it } from 'vitest';
-import { PEER_STATS_SOURCE, RELAY_INIT_SCRIPT, relayVerdict, roomCodeOf, UI_READ_SOURCE, uiPhase, type PeerSample, type UiView } from '../scripts/web/live/relay';
+import { LIVE_PLAY_MS, MIN_EARLY_END_MS, PEER_STATS_SOURCE, playStep, RELAY_INIT_SCRIPT, relayVerdict, roomCodeOf, UI_READ_SOURCE, uiPhase,
+  type PeerSample, type PlayState, type UiView } from '../scripts/web/live/relay';
 
 class FakePc { config: any; connectionState = 'new'; stats = new Map<string, any>();
   constructor(config?: any) { this.config = config; }
@@ -435,7 +488,7 @@ describe('the peer stats read', () => {
 });
 
 describe('the menu phase and the room code', () => {
-  const view = (v: Partial<UiView>): UiView => ({ status: null, title: null, roomCode: null, pause: null, leave: null, retry: false, home: false, ...v });
+  const view = (v: Partial<UiView>): UiView => ({ status: null, title: null, roomCode: null, pause: null, leave: null, retry: false, home: false, sessionHome: false, ...v });
   it('reads the phase the session page prints', () => {
     expect(uiPhase(view({ title: 'Lobby', status: 'Everyone presses Ready, then the host starts.' }))).toBe('lobby');
     expect(uiPhase(view({ status: 'running' }))).toBe('running');
@@ -444,11 +497,37 @@ describe('the menu phase and the room code', () => {
     expect(uiPhase(view({ status: 'The room is full.', retry: true }))).toBe('error');
     expect(uiPhase(view({ status: 'Choose how to play.', home: true }))).toBe('home');
     expect(uiPhase(view({ status: 'Restoring the mirrored checkpoint…' }))).toBe('other');
+    // A known-message error screen (menuMessage prints the ERRORS text) shows the session page's Return to menu button.
+    expect(uiPhase(view({ status: 'Room not found. Check the code.', sessionHome: true }))).toBe('error');
+    expect(uiPhase(view({ status: 'idle', sessionHome: true }))).toBe('idle');
   });
   it('reads the room code from the lobby key or the strip', () => {
     expect(roomCodeOf(view({ roomCode: 'K7Q2MX' }))).toBe('K7Q2MX');
     expect(roomCodeOf(view({ roomCode: 'ROOM K7Q2MX' }))).toBe('K7Q2MX');
     expect(roomCodeOf(view({}))).toBeNull();
+  });
+});
+
+describe('playStep', () => {
+  const both = (host: string, guest: string) => ({ host, guest });
+  it('continues while both run and is done at 60 s', () => {
+    const s: PlayState = { endedAtMs: null };
+    expect(playStep(both('running', 'running'), 1000, s)).toBe('continue');
+    expect(playStep(both('running', 'running'), LIVE_PLAY_MS, s)).toBe('done');
+  });
+  it('accepts an early end only when both sides read ended within 5 s, after the floor', () => {
+    const s: PlayState = { endedAtMs: null };
+    expect(playStep(both('ended', 'running'), 30000, s)).toBe('continue'); expect(s.endedAtMs).toBe(30000);
+    expect(playStep(both('ended', 'ended'), 33000, s)).toBe('ended');
+    expect(playStep(both('ended', 'ended'), MIN_EARLY_END_MS - 1, { endedAtMs: null })).toEqual({ fail: expect.stringMatching(/ended after only/) });
+  });
+  it('fails a one-sided end, a pause, an error or any other phase', () => {
+    const s: PlayState = { endedAtMs: null };
+    playStep(both('running', 'ended'), 30000, s);
+    expect(playStep(both('running', 'ended'), 35001, s)).toEqual({ fail: expect.stringMatching(/only the guest reads ended/) });
+    expect(playStep(both('ended', 'reconnecting'), 30000, { endedAtMs: null })).toEqual({ fail: expect.stringMatching(/host ended, guest reconnecting/) });
+    expect(playStep(both('paused', 'running'), 5000, { endedAtMs: null })).toEqual({ fail: expect.stringMatching(/left running during play: host paused, guest running/) });
+    expect(playStep(both('running', 'running'), 31000, { endedAtMs: 30000 })).toEqual({ fail: expect.stringMatching(/came back from ended/) });
   });
 });
 
@@ -480,8 +559,12 @@ Create `scripts/web/live/relay.ts`:
 // sources and the pure verdicts. Pure: no Playwright. A production page has no test probe (Web-ii W-1), so the relay is
 // forced by an init script and the phase is read from the menu as a player sees it (plan L-1, L-2).
 export const LIVE_PLAY_MS = 60000, MIN_RELAY_BYTES = 1024, RELAY_SAMPLE_MS = 10000;
+/** Plan L-3: both sides must read `ended` within END_AGREE_MS of each other, and not before MIN_EARLY_END_MS (two relay samples). */
+export const END_AGREE_MS = 5000, MIN_EARLY_END_MS = 2 * RELAY_SAMPLE_MS;
 export interface PeerSample { state: string; policy: string | null; local: string | null; remote: string | null; bytesReceived: number; bytesSent: number }
-export interface UiView { status: string | null; title: string | null; roomCode: string | null; pause: string | null; leave: string | null; retry: boolean; home: boolean }
+export interface UiView { status: string | null; title: string | null; roomCode: string | null; pause: string | null; leave: string | null; retry: boolean; home: boolean; sessionHome: boolean }
+export interface PlayState { endedAtMs: number | null }
+export type PlayStep = 'continue' | 'done' | 'ended' | { fail: string };
 export interface LiveDuelReport {
   hostBrowser: string; guestBrowser: string; playedMs: number; endedEarly: boolean; phases: { host: string; guest: string };
   samples: { host: PeerSample[][]; guest: PeerSample[][] }; relay: { host: string | null; guest: string | null }; pageErrors: string[]; problems: string[];
@@ -528,21 +611,43 @@ export const PEER_STATS_SOURCE = `(async () => {
 export const UI_READ_SOURCE = `(() => {
   const text = id => { const el = document.querySelector('[data-testid="' + id + '"]'); return el ? (el.textContent || '').trim() : null; };
   return { status: text('status'), title: text('page-title'), roomCode: text('room-code'), pause: text('pause'), leave: text('leave'),
-    retry: !!document.querySelector('[data-testid="retry"]'), home: !!document.querySelector('[data-testid="multiplayer"]') };
+    retry: !!document.querySelector('[data-testid="retry"]'), home: !!document.querySelector('[data-testid="multiplayer"]'),
+    sessionHome: !!document.querySelector('[data-testid="home"]') };
 })()`;
 
 const PHASES = ['idle', 'creating', 'joining', 'lobby', 'connecting', 'syncing', 'running', 'paused', 'reconnecting', 'saved', 'saving', 'rehosting', 'ended', 'error'];
-/** The session page prints the phase name (menuMessage), the lobby its title; an error replaces the status with its text. */
+/** The session page prints the phase name (menuMessage), the lobby its title; an error replaces the status with its
+ *  text, and the session page's `home` button (shown only for phase idle or error, SessionPage.tsx) then marks it (L-9). */
 export function uiPhase(v: UiView): string {
   if (v.title === 'Lobby') return 'lobby';
   const s = (v.status ?? '').replace(/…$/, '');
   if (PHASES.includes(s)) return s;
-  if (v.retry || s.startsWith('Online stopped')) return 'error';
+  if (v.retry || v.sessionHome || s.startsWith('Online stopped')) return 'error';
   if (v.home && s === 'Choose how to play.') return 'home';
   return 'other';
 }
 export function roomCodeOf(v: UiView): string | null {
   return v.roomCode === null ? null : v.roomCode.replace(/^ROOM\s+/, '').trim() || null;
+}
+
+/** One tick of the 60 s play (plan L-3); updates `state.endedAtMs` the first time one side reads ended. */
+export function playStep(phases: { host: string; guest: string }, elapsedMs: number, state: PlayState): PlayStep {
+  const { host, guest } = phases, hostEnded = host === 'ended', guestEnded = guest === 'ended';
+  if (hostEnded && guestEnded) {
+    const first = state.endedAtMs ?? elapsedMs;
+    return first < MIN_EARLY_END_MS ? { fail: `the round ended after only ${first} ms (need ${MIN_EARLY_END_MS} for two relay samples)` } : 'ended';
+  }
+  if (hostEnded || guestEnded) {
+    if ((hostEnded ? guest : host) !== 'running') return { fail: `the round ended on one side only: host ${host}, guest ${guest}` };
+    state.endedAtMs ??= elapsedMs;
+    const waited = elapsedMs - state.endedAtMs;
+    return waited > END_AGREE_MS ? { fail: `only the ${hostEnded ? 'host' : 'guest'} reads ended (for ${waited} ms)` } : 'continue';
+  }
+  if (host === 'running' && guest === 'running') {
+    if (state.endedAtMs !== null) return { fail: `a side came back from ended: host ${host}, guest ${guest}` };
+    return elapsedMs >= LIVE_PLAY_MS ? 'done' : 'continue';
+  }
+  return { fail: `the duel left running during play: host ${host}, guest ${guest}` };
 }
 
 /** null when the samples prove TURN: two samples with a connected peer, every connected peer relay-only with a relay
@@ -577,8 +682,12 @@ Create `scripts/web/live/duel.ts`:
 import { chromium, firefox, type Browser, type BrowserContext, type Page } from 'playwright';
 import { WRONG_PASSCODE_TEXT } from '../../../src/web/passcode';
 import { bounded, type GateKey } from '../net/players';
-import { LIVE_PLAY_MS, PEER_STATS_SOURCE, RELAY_INIT_SCRIPT, RELAY_SAMPLE_MS, relayVerdict, roomCodeOf, UI_READ_SOURCE, uiPhase,
-  type LiveDuelReport, type PeerSample, type UiView } from './relay';
+import { clip } from './headers';
+import { PEER_STATS_SOURCE, playStep, RELAY_INIT_SCRIPT, RELAY_SAMPLE_MS, relayVerdict, roomCodeOf, UI_READ_SOURCE, uiPhase,
+  type LiveDuelReport, type PeerSample, type PlayState, type UiView } from './relay';
+
+/** Plan L-7: only Playwright's missing-browser error means "Firefox not installed". */
+const FIREFOX_MISSING = /Executable doesn't exist|npx playwright install/;
 
 interface LivePlayer { readonly name: string; readonly page: Page; readonly context: BrowserContext; readonly errors: string[] }
 const delay = (ms: number) => new Promise<void>(done => setTimeout(done, ms));
@@ -613,7 +722,7 @@ async function openPlayer(browser: Browser, name: string, url: string, passcode:
   const context = await bounded(browser.newContext({ viewport: { width: 1280, height: 800 } }), 15000, `${name} context`);
   await bounded(context.addInitScript({ content: RELAY_INIT_SCRIPT }), 4000, `${name} relay hook`);
   const page = await bounded(context.newPage(), 15000, `${name} page`), errors: string[] = [];
-  page.on('pageerror', error => { if (errors.length < 20) errors.push(String(error.message).slice(0, 200)); });
+  page.on('pageerror', error => { if (errors.length < 20) errors.push(clip(String(error.message), [passcode], 200)); });
   const player: LivePlayer = { name, page, context, errors };
   const first = await bounded(page.goto(`${url}/`), 30000, `${name} load`);
   if (first?.status() !== 401) throw Error(`${name}: the site answered ${first?.status() ?? 'nothing'} before the passcode (expected 401)`);
@@ -639,7 +748,12 @@ export async function runLiveDuel(o: { url: string; passcode: string; step(label
     o.step('browsers');
     const chrome = await bounded(chromium.launch({ headless: true }), 60000, 'chromium launch'); browsers.push(chrome);
     let fox: Browser | null = null;
-    try { fox = await bounded(firefox.launch({ headless: true }), 60000, 'firefox launch'); browsers.push(fox); } catch { fox = null; }
+    try { fox = await bounded(firefox.launch({ headless: true }), 60000, 'firefox launch'); browsers.push(fox); }
+    catch (error) {
+      const text = String((error as Error)?.message ?? error);
+      if (!FIREFOX_MISSING.test(text)) throw Error(`firefox launch failed (not a missing install): ${clip(text, [o.passcode], 300)}`);
+      fox = null;
+    }
     o.step('passcode');
     const host = await openPlayer(chrome, 'chromium-host', o.url, o.passcode); contexts.push(host.context);
     const guest = await openPlayer(fox ?? chrome, `${fox ? 'firefox' : 'chromium'}-guest`, o.url, o.passcode); contexts.push(guest.context);
@@ -662,12 +776,15 @@ export async function runLiveDuel(o: { url: string; passcode: string; step(label
     // The duel smoke's routes (best effort: a production page exposes no seat state): host to Weapons, guest to the Helm, then thrust.
     for (const [key, ms] of [['KeyD', 3000], ['KeyW', 1500], ['KeyA', 300], ['KeyE', 120]] as const) await press(host, key, ms);
     for (const [key, ms] of [['KeyD', 3000], ['KeyE', 120], ['KeyW', 2000]] as const) await press(guest, key, ms);
+    const play: PlayState = { endedAtMs: null };
     let endedEarly = false, nextSample = began + RELAY_SAMPLE_MS, phases = { host: 'running', guest: 'running' };
-    while (performance.now() - began < LIVE_PLAY_MS) {
+    for (;;) {
       if (o.aborted()) throw Error('launcher timeout');
       phases = { host: uiPhase(await read(host)), guest: uiPhase(await read(guest)) };
-      if (phases.host === 'ended' || phases.guest === 'ended') { endedEarly = true; break; }
-      if (phases.host !== 'running' || phases.guest !== 'running') throw Error(`the duel left running during play: host ${phases.host}, guest ${phases.guest}`);
+      const next = playStep(phases, performance.now() - began, play);   // plan L-3, unit-tested in relay.ts
+      if (typeof next === 'object') throw Error(next.fail);
+      if (next === 'ended') { endedEarly = true; break; }
+      if (next === 'done') break;
       if (performance.now() >= nextSample) { await sample(); nextSample += RELAY_SAMPLE_MS; }
       await delay(1000);
     }
@@ -722,7 +839,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: everything Task 1 produces (`parseLiveArgs`, `runHeaderChecks`, `checkServiceOrigin`, `firstPaidPath`, `redact`, `secretVariants`, `HeaderCheck`, `LiveVersion`, `ServiceCheck`, `LiveArgs`); from Task 2, `runLiveDuel`, `LIVE_PLAY_MS` and `LiveDuelReport`.
-- Produces: `interface LiveReport { version: 1; url: string; startedAt: string; elapsedMs: number; headers: { checks: HeaderCheck[]; version: LiveVersion | null; problems: string[] } | null; service: ServiceCheck | null; duel: LiveDuelReport | null; failure: string | null; pass: boolean }`, `validateLiveReport(report: LiveReport, secrets: readonly string[]): string[]`, and the npm entry `test:web-live`.
+- Consumes also: `clip` and `compareDeployedVersion` (Task 1), and `MIN_EARLY_END_MS` (Task 2).
+- Produces: `interface LiveReport { version: 1; url: string; startedAt: string; elapsedMs: number; headers: { checks: HeaderCheck[]; version: LiveVersion | null; versionCompared: boolean; problems: string[] } | null; service: ServiceCheck | null; duel: LiveDuelReport | null; failure: string | null; pass: boolean }`, `validateLiveReport(report: LiveReport, secrets: readonly string[]): string[]`, and the npm entry `test:web-live`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -739,7 +857,7 @@ const PASSCODE = 'correct horse battery staple';
 function passing(): LiveReport {
   return { version: 1, url: 'https://ftlite-test.vercel.app', startedAt: '2026-11-18T20:00:00.000Z', elapsedMs: 95000,
     headers: { checks: [{ label: 'without the cookie: /', method: 'GET', path: '/', cookie: false, status: 401, cacheControl: 'no-store', problem: null }],
-      version: { build: { version: '0.1.0', rev: 'abc1234', sim: 54 }, sim: 54, digest: 'a'.repeat(64) }, problems: [] },
+      version: { build: { version: '0.1.0', rev: 'abc1234', sim: 54 }, sim: 54, digest: 'a'.repeat(64) }, versionCompared: true, problems: [] },
     service: { origin: 'https://sig.example', status: 204, allowOrigin: 'https://ftlite-test.vercel.app', problem: null },
     duel: { hostBrowser: 'chromium', guestBrowser: 'firefox', playedMs: 60400, endedEarly: false, phases: { host: 'running', guest: 'running' },
       samples: { host: [], guest: [] }, relay: { host: null, guest: null }, pageErrors: [], problems: [] },
@@ -748,8 +866,14 @@ function passing(): LiveReport {
 describe('validateLiveReport', () => {
   it('accepts a full pass and a pass whose round ended early', () => {
     expect(validateLiveReport(passing(), [PASSCODE])).toEqual([]);
-    const ended = passing(); ended.duel!.playedMs = 41000; ended.duel!.endedEarly = true;
+    const ended = passing(); ended.duel!.playedMs = 41000; ended.duel!.endedEarly = true; ended.duel!.phases = { host: 'ended', guest: 'ended' };
     expect(validateLiveReport(ended, [PASSCODE])).toEqual([]);
+  });
+  it('refuses an early end that is one-sided or before the floor', () => {
+    const oneSided = passing(); oneSided.duel!.playedMs = 41000; oneSided.duel!.endedEarly = true; oneSided.duel!.phases = { host: 'ended', guest: 'reconnecting' };
+    expect(validateLiveReport(oneSided, [])).toContainEqual(expect.stringMatching(/both sides ended/));
+    const quick = passing(); quick.duel!.playedMs = 12000; quick.duel!.endedEarly = true; quick.duel!.phases = { host: 'ended', guest: 'ended' };
+    expect(validateLiveReport(quick, [])).toContainEqual(expect.stringMatching(/under 20000 ms/));
   });
   it('refuses a pass with a header problem, no version, a short duel, a relay finding or a failure', () => {
     const header = passing(); header.headers!.checks[0]!.problem = 'answered 200 without the cookie';
@@ -794,11 +918,12 @@ Create `scripts/web/live/report.ts`:
 ```ts
 // Web-iii live smoke report (web build spec §8 "The live check"): its shape and the rules a PASS must meet.
 import { secretVariants, type HeaderCheck, type LiveVersion, type ServiceCheck } from './headers';
-import { LIVE_PLAY_MS, type LiveDuelReport } from './relay';
+import { LIVE_PLAY_MS, MIN_EARLY_END_MS, type LiveDuelReport } from './relay';
 
 export interface LiveReport {
   version: 1; url: string; startedAt: string; elapsedMs: number;
-  headers: { checks: HeaderCheck[]; version: LiveVersion | null; problems: string[] } | null;
+  /** versionCompared: the live version.json was compared with .vercel/output's (plan L-5); false when that file was absent. */
+  headers: { checks: HeaderCheck[]; version: LiveVersion | null; versionCompared: boolean; problems: string[] } | null;
   service: ServiceCheck | null; duel: LiveDuelReport | null; failure: string | null; pass: boolean;
 }
 
@@ -819,6 +944,8 @@ export function validateLiveReport(report: LiveReport, secrets: readonly string[
     else {
       if (d.problems.length > 0 || d.relay.host !== null || d.relay.guest !== null) problems.push('a passing report needs relay on both sides and no page errors');
       if (!d.endedEarly && d.playedMs < LIVE_PLAY_MS) problems.push(`a passing duel played under ${LIVE_PLAY_MS} ms`);
+      if (d.endedEarly && (d.phases.host !== 'ended' || d.phases.guest !== 'ended')) problems.push('an early end needs both sides ended');
+      if (d.endedEarly && d.playedMs < MIN_EARLY_END_MS) problems.push(`an early end played under ${MIN_EARLY_END_MS} ms`);
     }
   } else if (typeof report.failure !== 'string' || report.failure.length === 0) problems.push('a failing report must name its failure');
   const text = JSON.stringify(report);
@@ -840,17 +967,21 @@ Create `scripts/web/live-smoke.ts`:
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { runLiveDuel } from './live/duel';
-import { checkServiceOrigin, firstPaidPath, parseLiveArgs, redact, runHeaderChecks, type FetchLike, type LiveArgs } from './live/headers';
+import { checkServiceOrigin, clip, compareDeployedVersion, firstPaidPath, parseLiveArgs, redact, runHeaderChecks, type FetchLike, type LiveArgs } from './live/headers';
 import { validateLiveReport, type LiveReport } from './live/report';
 
-const message = (error: unknown): string => String((error as Error)?.message ?? error).slice(0, 700);
+/** Redact, then cut (review R1-F2): the error text never carries a secret fragment. */
+const message = (error: unknown, secrets: readonly string[]): string => clip(String((error as Error)?.message ?? error), secrets, 700);
+/** Plan L-8: the first deploy has nothing to roll back to, so it is deleted; later deploys roll back. */
+const TAKE_DOWN = 'Take the deploy down now: on the first deploy delete it (npx vercel rm <deployment URL printed by deploy:web> --yes, or Dashboard -> Deployments -> Delete); '
+  + 'on a later deploy run npx vercel rollback. Fix it before redeploying.';
 const liveFetch: FetchLike = (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(15000) });
 
 async function main(): Promise<void> {
   const began = performance.now(), startedAt = new Date().toISOString();
   let args: LiveArgs;
   try { args = parseLiveArgs(process.argv.slice(2), process.env); }
-  catch (error) { console.error(`LIVE SMOKE FAIL: ${redact(message(error), [process.env.FTLITE_LIVE_PASSCODE ?? ''])}`); process.exitCode = 1; return; }
+  catch (error) { console.error(`LIVE SMOKE FAIL: ${message(error, [process.env.FTLITE_LIVE_PASSCODE ?? ''])}`); process.exitCode = 1; return; }
   const secrets: string[] = [args.passcode];
   const report: LiveReport = { version: 1, url: args.url, startedAt, elapsedMs: 0, headers: null, service: null, duel: null, failure: null, pass: false };
   let step = 'header checks', aborted = false;
@@ -861,8 +992,12 @@ async function main(): Promise<void> {
     console.log(`[web-live] ${step} against ${args.url}`);
     const live = await runHeaderChecks({ url: args.url, passcode: args.passcode, paidPath, fetch: liveFetch });
     secrets.push(...live.secrets);
-    report.headers = { checks: live.checks, version: live.version, problems: live.problems };
-    if (live.problems.length) throw Error(`${live.problems.join('; ')}. Roll the deploy back now (npx vercel rollback) and fix it before redeploying.`);
+    report.headers = { checks: live.checks, version: live.version, versionCompared: false, problems: live.problems };
+    if (live.problems.length) throw Error(`${live.problems.join('; ')}. ${TAKE_DOWN}`);
+    // Plan L-5: when deploy:web's output is here, the live version.json must be exactly that build.
+    const deployed = compareDeployedVersion(live.version, resolve('.vercel/output/static/version.json'));
+    report.headers.versionCompared = deployed.versionCompared;
+    if (deployed.problem) { report.headers.problems.push(deployed.problem); throw Error(`${deployed.problem} (an older production deployment is being served, or deploy:web did not finish)`); }
     if (args.serviceOrigin) {
       step = 'service preflight'; console.log(`[web-live] ${step}`);
       report.service = await checkServiceOrigin({ serviceOrigin: args.serviceOrigin, pageOrigin: args.url, fetch: liveFetch });
@@ -872,7 +1007,7 @@ async function main(): Promise<void> {
     report.duel = await runLiveDuel({ url: args.url, passcode: args.passcode, aborted: () => aborted,
       step: label => { step = `duel: ${label}`; console.log(`[web-live] ${step}`); } });
     if (report.duel.problems.length) throw Error(report.duel.problems.join('; '));
-  } catch (error) { report.failure = `${step}: ${message(error)}`; }
+  } catch (error) { report.failure = `${step}: ${message(error, secrets)}`; }
   finally { clearTimeout(watchdog); }
   report.elapsedMs = Math.ceil(performance.now() - began);
   report.pass = report.failure === null;
@@ -913,10 +1048,10 @@ Expected: the first prints `LIVE SMOKE FAIL: FTLITE_LIVE_URL (or --url=) must be
 
 Then run once against an unreachable origin to exercise the report path:
 ```bash
-FTLITE_LIVE_URL=https://ftlite-nonexistent-0.vercel.app FTLITE_LIVE_PASSCODE=dry-run-code npm run test:web-live -- --paid-path=/assets/paid/x.png --report-path=out/web-iii-live/dry.json; echo "exit $?"
+FTLITE_LIVE_URL=https://ftlite-dry-run.invalid FTLITE_LIVE_PASSCODE=dry-run-code npm run test:web-live -- --paid-path=/assets/paid/x.png --report-path=out/web-iii-live/dry.json; echo "exit $?"
 grep -c "dry-run-code" out/web-iii-live/dry.json
 ```
-Expected: `LIVE SMOKE FAIL: header checks: …` (the requests fail or answer 404, so every check has a problem), `exit 1`, and the grep prints `0`.
+Expected: `LIVE SMOKE FAIL: header checks: …` (`.invalid` never resolves (RFC 6761), so every request fails fast with a DNS error and every check has a problem; no traffic leaves for a real host), `exit 1`, and the grep prints `0`.
 
 - [ ] **Step 8: Update `docs/gates.md`**
 
@@ -947,7 +1082,7 @@ Append at the end of the file:
    npx wrangler deploy                        # ships the service at this revision; harmless if already current
    cd ../..
    ```
-4. Deploy: `$env:FTLITE_WEB_SERVICE_ORIGIN='https://<signalling worker origin>'; npm run deploy:web`. It must end by printing the production URL, and `npx vercel ls` must show the deployment **Ready**. The root `vercel.json` `buildCommand` fails only source builds; `--prebuilt` runs no build. The live smoke's with-cookie `/` check (the game's HTML, not the passcode page) and its `version.json` check confirm that the prebuilt output is what is served.
+4. Deploy: `$env:FTLITE_WEB_SERVICE_ORIGIN='https://<signalling worker origin>'; npm run deploy:web`. It must end by printing the production URL, and `npx vercel ls` must show the deployment **Ready**. The root `vercel.json` `buildCommand` fails only source builds; `--prebuilt` runs no build. The live smoke's with-cookie `/` check (the game's HTML, not the passcode page) and its `version.json` check confirm that the prebuilt output is what is served. Run the smoke from the same checkout right after `deploy:web`: the live `version.json` must then equal `.vercel/output/static/version.json`, or it fails with "the live site is not the build in .vercel/output". Without that file, the report shows `versionCompared: false`.
 5. Live smoke, with the passcode typed and not stored in history:
    ```powershell
    $env:FTLITE_LIVE_URL = 'https://<project>.vercel.app'
@@ -956,8 +1091,11 @@ Append at the end of the file:
    npm run test:web-live
    Remove-Item Env:FTLITE_LIVE_PASSCODE
    ```
-   `FTLITE_WEB_SERVICE_ORIGIN`, still set from step 4, adds the service preflight. Do not set `DEBUG=pw:*` (the run refuses it). Expect `LIVE SMOKE PASS`.
-6. **Rollback rule.** If the smoke fails in `header checks` (it says "Roll the deploy back now"), run `npx vercel rollback` at once, or delete the deployment in the dashboard. Fix the cause before redeploying; never leave the paid art reachable without the cookie. A 503 "FTLite is not configured." means the env vars are not reaching the middleware: set both for **Production**, then redeploy. A `service preflight` failure means `ALLOWED_ORIGINS` is missing the live origin; redo step 3 (no rollback: nothing leaks). A `duel` failure (relay, join, page errors) needs no rollback either: the site is safe. Read the report.
+   `FTLITE_WEB_SERVICE_ORIGIN`, still set from step 4, adds the service preflight. Leave `DEBUG`, `DEBUG_FILE` and `PWDEBUG` unset: the run refuses any value that could turn on Playwright's logs. Expect `LIVE SMOKE PASS`.
+6. **Rollback rule.** If the smoke fails in `header checks` (it says "Take the deploy down now"), act at once:
+   - **First deploy** (nothing to roll back to): delete it with `npx vercel rm <deployment URL printed by deploy:web> --yes`, or Dashboard → Deployments → Delete.
+   - **Later deploys:** `npx vercel rollback`, which returns production to the previous deployment.
+   Fix the cause before redeploying; never leave the paid art reachable without the cookie. A 503 "FTLite is not configured." means the env vars are not reaching the middleware: set both for **Production**, then redeploy. A `service preflight` failure means `ALLOWED_ORIGINS` is missing the live origin; redo step 3 (no rollback: nothing leaks). A `duel` failure (relay, join, page errors) needs no rollback either: the site is safe. Read the report.
 7. **Friend playtest (the acceptance, spec §9 "Done means"):** two people on different networks open the `https://<project>.vercel.app` link and pass the passcode. One hosts and the other joins by code. They finish a duel. Rehost works after the host tab closes.
 
 - [ ] Owner: steps 1-3 (Vercel login/link, env vars, `ALLOWED_ORIGINS` and `wrangler deploy`).
@@ -986,3 +1124,13 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - **Spec coverage.** §8 live check: passcode from env (Task 1 `parseLiveArgs`, Task 2 `openPlayer`), two browser profiles with relay forced (Task 2, L-1, L-2), host, join, 60 s, leave (Task 2). Web-ii step-5 header checks, including 401 for paid, Worker and `version.json`, the cookie headers and the 503 hint (Task 1). The site-is-up check (L-5, Task 1 `/` and `version.json`, Task 3 step 4). JSON report, PASS/FAIL, non-zero exit, no secrets (Task 3). The gates owner steps, rollback and the friend acceptance (Task 3 step 8). §6 `ALLOWED_ORIGINS` (gates step 3, plus the optional preflight L-6). No SIM change and no `src/` change.
 - **Placeholders.** None, apart from the `<project>` and `<signalling worker origin>` placeholders the owner fills in, which the spec uses too.
 - **Types.** `FetchLike`, `HeaderCheck`, `LiveVersion`, `ServiceCheck` and `LiveArgs` are defined in Task 1 and used in Task 3. `PeerSample`, `UiView`, `LiveDuelReport` and `LIVE_PLAY_MS` are defined in Task 2 `relay.ts` and used in `duel.ts` and Task 3 `report.ts`. `runLiveDuel`'s signature matches the entry's call. `secretVariants` is defined in Task 1 and used by `report.ts`.
+- **Refine round 1 (8 findings applied).**
+  - F1: `debugCouldLogPasscode`, plus `DEBUG_FILE` and `PWDEBUG`, with tests for `*`, `pw*`, `foo,*` and `vite:*`.
+  - F2: `clip` (redact, then cut) in the entry, in request failures and in page errors; a JSON-escaped variant; tests for a quote and for the 700-character cut.
+  - F3: the pure `playStep`, plus the report's early-end rules, both tested.
+  - F4: `compareDeployedVersion` with `versionCompared`, tested.
+  - F5: the dry run goes to `.invalid`.
+  - F6: delete on the first deploy, rollback later (`TAKE_DOWN`, gates step 6).
+  - F7: the Firefox fallback only on the missing-executable error.
+  - F8: `sessionHome` in the UI read and `uiPhase`, tested.
+  - Types re-checked: `UiView.sessionHome`, `PlayState`, `PlayStep`, `headers.versionCompared` and `clip` are used consistently across Tasks 1-3.
