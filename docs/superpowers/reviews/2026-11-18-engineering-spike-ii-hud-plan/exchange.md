@@ -168,3 +168,39 @@ Confirmed (direction.ts:6-7). The note is removed. The test clears the asteroids
 
 ---
 
+# Round 3 (delta, reviewing 69356fc3, effort medium, 53 s, 202480 in / 168013 cached / 4565 out)
+
+Verdict: ready
+
+## Prior findings
+- R2-F1: resolved — weaponsOffline is now bars-only (plan L2027-2030). The rooms≥2 LAUNCH line is gone (plan L2063-2065), so LAUNCH checks flying, magazine, torpedo trimmed bars, then range. That is the same as Part i canLaunch (Part i L2771-2775: missileOf null, magazine>0, weaponBars(Torpedo)>=1, torpedoInRange). A level-2 room still zeroes bars, because trimmedWeaponPower uses effectiveBars = min(bars, damageCapacity) (Part i L2337, L390-391). The feelIiModels edits are spelled out (plan L2070-2086), the file is in the Step 6 run (L2122) and it is in the Step 11 git add.
+- R2-F2: resolved — The hx/hy note and the seed search are deleted. The test clears asteroids and rebuilds the grid with buildGrid([], t.map.rMap) (grid.ts:12, state.ts:131/224). It then asserts lineOfSight as a precondition (geometry.ts:22) at seed 5 (plan L2102-2104).
+
+## Verified
+- The new refusal agrees with the sim: FIRE falls back to WEAPONS OFFLINE or BEAM UNPOWERED only when the beam is off (laserOffline crew = barrelShots===0, Part i L2784-2785). LAUNCH's checks are the same as canLaunch's (Part i L2771-2775), so the guard at plan L2067 is satisfied by the actual Part i text.
+- feelIiModels L213 replacement: the Cutter crew starts with weaponPower [1,0,1] (Part i L2334, WeaponSlot Pew 0/Beam 1/Torpedo 2 at L2329). The beam is dark and pew pew is lit, so FIRE gives 'BEAM UNPOWERED'. At +2000 the torpedo has 1 bar, so LAUNCH gives 'OUT OF RANGE'. That matches the new expectation at plan L2076.
+- feelIiModels L218 replacement: weaponPower is number[] (Part i L2234, L2360), so fill/splice type-check. With every weapon at 0, FIRE gives WEAPONS OFFLINE. LAUNCH passes magazine 2, hits 0 torpedo bars, and weaponsOffline gives WEAPONS OFFLINE. splice(0,3,1,0,1) puts back [1,0,1] before L219's placeMissile.
+- feelIiModels L233-237 holds unchanged. rooms=2 zeroes the trimmed torpedo bars through effectiveBars, and both canLaunch and refusal read them. The TORPEDO FLYING check (situationModel.ts:186) still comes before the FIRE line, so L237 matches !canCharge (Part i L2760).
+- New test imports exist: hx/hy (direction.ts:6-7), lineOfSight (geometry.ts:22), buildGrid(asteroids, rMap) (grid.ts:12). The TacticalState map/grid fields are at state.ts:131.
+- situationModel.ts:187-189 is the same as the 'replace' block quoted at plan L2057-2059.
+
+## Not verified
+- I did not check whether the planet blocks the line of sight at seed 5 with the Hunter 200 ahead. The plan asserts it as an explicit precondition, so a block would fail loudly rather than silently. No tests were run (read-only review).
+- The doc comment above refusal (situationModel.ts:177-180) still says 'then Weapons offline' and 'the magazine, Weapons, range'. The plan does not say to update it. This is a cosmetic leftover and not a test or tsc issue.
+
+---
+
+# Round 3 response (no subject change)
+
+Reviewed `round-3.json` against the subject at `69356fc3`. 0 accepted, 0 rejected, 0 deferred. R2-F1 and R2-F2 are confirmed resolved.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
