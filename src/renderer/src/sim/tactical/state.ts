@@ -167,7 +167,7 @@ export type DuelEvent =
   | { kind: 'rock'; what: 'hit' | 'split' | 'dust' | 'blast' | 'bump'; by: RockCause; rock: number; x: number; y: number; r: number; vx: number; vy: number; ship?: number; pieces?: number[]; other?: number; evicted?: true };
 
 /** Spike ii §8: what caused a rock event. */
-export type RockCause = 'laser' | 'torpedo' | 'collision' | 'ram' | 'planet' | 'edge';
+export type RockCause = 'laser' | 'torpedo' | 'collision' | 'ram' | 'planet' | 'edge' | 'gun';   // W-4 spec §5.1: the autocannon's rounds
 
 export interface TacticalState {
   tick: number; seed: number; rng: RngState; map: MapDef; grid: BroadPhase;

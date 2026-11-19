@@ -159,7 +159,7 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
       weaponBars: w, weaponFree: weaponBarsUsable(sys) - (w[0]! + w[1]! + w[2]!),
       laserRock: sys.laserRock >= 0, torpRock: sys.torpRock >= 0, torpRockFlying: sys.torpRockFlying >= 0, rocks: sys.rocksBroken,   // spike ii §6.5, §7 item 9
       // W-2 (pew pew spec §2): the mode for the tag; in MANUAL the laser never fires by itself, so no FIRING and no goal glow.
-      laserReason: sys.laserManual ? manualCardReason(reason) : reason, goal: (i.goal ?? false) && !sys.laserTargeted && !sys.laserManual, laserManual: sys.laserManual,
+      laserReason: sys.laserManual ? manualCardReason(reason) : reason, goal: (i.goal ?? false) && classOf(t, 0).slots.laser !== null && !sys.laserTargeted && !sys.laserManual,   /* W-4 spec §2.1: the FTL opener's glow is the laser's */ laserManual: sys.laserManual,
       torpManual: sys.torpManual, torpSteer: flightM?.manual === true && flightM.age > torpDef.boostTicks && flightM.age <= torpDef.fuelTicks, torpCoast: flightM?.manual === true && flightM.age > torpDef.fuelTicks,   // W-3 (pew pew spec §3): canLaunch above reads the mode (no range in MANUAL); the words follow flyMissile's steering window
       refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, pew: pewPips(t) };
   };

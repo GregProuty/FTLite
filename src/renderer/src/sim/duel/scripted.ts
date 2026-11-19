@@ -9,6 +9,7 @@ import { roomAt, solidAt } from '../grid';
 import { inReachOfTile } from '../interact';
 import { stationOnline } from '../stations';
 import { levelWithinCap, weaponBars, WeaponSlot } from '../tactical/bars';
+import { hasTurret } from '../tactical/defs';
 import { hx, hy } from '../tactical/direction';
 import { inArc, sideOf } from '../tactical/geometry';
 import { pewLead, pewReady } from '../tactical/pew';
@@ -328,6 +329,7 @@ function gunnerPew(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void {
  *  so the gunner holds nothing. W-1: it fires the pew by gunnerPew. */
 function gunner(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void {
   const t = d.tactical, target = targetOf(t, 0), sys = t.systems[0];
+  if (hasTurret(classOf(t, 0))) { pair.barMoved = true; return; }   // W-4a: the Hound's gunner is built in Task 8 (houndGunner); until then it sends nothing
   // Engineering spike Decision 20 (spec §11), kept at the merge with W-1 (merge brief decision 2): the beam starts dark and
   // the gunner's laser is AUTO (a laserLock it fires on), and the gates need it to fire, so on its first seated tick the
   // gunner moves pew pew's bar to the beam (−1 then +1, applied in sequence order), then fights with the beam and the

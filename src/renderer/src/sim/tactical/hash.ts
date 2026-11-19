@@ -244,7 +244,7 @@ const systemsRules = (slots: number, rocks: number): Readonly<Record<string, (v:
   // Spike ii §6.1, §8: the rock targets name a pool slot (torpRockFlying also −2, its rock broke); the tally is a count.
   laserRock: within(-1, rocks - 1), torpRock: within(-1, rocks - 1), torpRockFlying: within(-2, rocks - 1), rocksBroken: count,
   // Valkyrn spec §7.3: heat 0..heatMax, cooldown 0..interval, muzzle 0..1, wear below each threshold, counts ≥ 0.
-  gunHeat: within(0, most((c) => c.slots.gun?.heatMax)), gunLocked: flagBit, gunCooldown: within(0, most((c) => c.slots.gun?.intervalTicks)), gunMuzzle: within(0, 1),
+  gunHeat: within(0, most((c) => c.slots.gun?.heatMax)), gunLocked: flagBit, gunCooldown: within(0, most((c) => (c.slots.gun ? Math.max(c.slots.gun.intervalTicks, ...(c.slots.gun.intervalByBars ?? []).flat()) : null))),   /* W-4 spec §13.1: the autocannon's tables (10) */ gunMuzzle: within(0, 1),
   gunWear: within(0, most((c) => c.slots.gun?.hitsPerLayer) - 1), gunHull: within(0, most((c) => c.slots.gun?.hitsPerHull) - 1),
   gunRoomWear: within(0, most((c) => c.slots.gun?.hitsPerLevel) - 1), gunShots: count, gunHits: count,
   // W-1 (pew pew spec §4): the counters ≥ 0; the charge is checked against the slot's own class (pewChargeRule).

@@ -220,6 +220,16 @@ export const PEW_HULL = 1;
 /** The aim cone's half-angle in degrees about the heading, and the same in fine heading units (rounded down). */
 export const PEW_ARC = 60;
 export const PEW_ARC_STEPS = Math.floor((PEW_ARC / 360) * AIM_STEPS);   // 10922
+/** W-4 spec §3.3: the autocannon's arc, ±30° in fine heading steps (5461). */
+export const AUTOCANNON_ARC_STEPS = Math.floor((30 / 360) * AIM_STEPS);
+/** W-4 spec §3.3: each turret's traverse in fine steps a tick, [AUTO, MAN] (MAN +25 %, rounded): pew 120 / 150 °/s,
+ *  the autocannon 90 / 112.4 °/s. */
+export const PEW_TURRET_TRAVERSE: readonly [number, number] = [364, 455];
+export const AUTOCANNON_TURRET_TRAVERSE: readonly [number, number] = [273, 341];
+/** W-4 spec §4.2: the autocannon's AUTO range (a round reaches about 607 u at rest). */
+export const AUTOCANNON_AUTO_RANGE = 600;
+/** W-4 spec §4.3: AUTO stops the autocannon at 80 % heat, so it never locks. */
+export const GUN_AUTO_HEAT_STOP = 800;
 /** cos 60°, for the Hunter's "inside the cone" test by dot product (geometry.ts inArc). */
 export const PEW_ARC_COS = 0.5;
 /** A round's reach: PEW_SPEED · PEW_LIFE · DT (450). The Hunter attacks inside it. */
