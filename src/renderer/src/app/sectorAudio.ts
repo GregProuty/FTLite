@@ -5,7 +5,7 @@ import type { SimState } from '../sim/state';
 import type { Cue } from '../events/audioCues';
 import type { AudioOut } from './audio';
 import { interiorAudioView, interiorSounds, type InteriorWatch } from '../audio/interiorSounds';
-import { chargeSwell, sectorEngaged } from '../audio/sectorSounds';
+import { chargeSwell, sectorMood } from '../audio/sectorSounds';
 
 /** `live`: false while the session draws its frozen copy (the connection is lost); absent means live. */
 export interface SectorAudio { frame(state: SimState, paused: boolean, cues: ReadonlySet<Cue>, live?: boolean): void; reset(): void }
@@ -19,9 +19,9 @@ export function createSectorAudio(out: AudioOut): SectorAudio {
       if (r.sounds.length) out.sounds(r.sounds);
       // The impact cue ducks the music itself (DUCK_CUES), so the report carries no duck. The sector has no thrust: the hum
       // idles and swells while the drive charges.
-      // A frozen copy (the connection lost) holds no battle, hum or crackle.
-      if (!live) { out.status({ engaged: false, paused, duck: false, fires: 0, hum: null }); return; }
-      out.status({ engaged: sectorEngaged(state, cues), paused, duck: false, fires: r.fires, hum: { thrust: 0, speed: 0, charge: chargeSwell(state.run.jumpCharge) } });
+      // A frozen copy (the connection lost) holds no combat track, hum or crackle.
+      if (!live) { out.status({ mood: 'calm', paused, duck: false, fires: 0, hum: null }); return; }
+      out.status({ mood: sectorMood(state, cues, r.fires), paused, duck: false, fires: r.fires, hum: { thrust: 0, speed: 0, charge: chargeSwell(state.run.jumpCharge) } });
     },
     reset() { inside = null; }
   };

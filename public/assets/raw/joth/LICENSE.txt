@@ -1,0 +1,13 @@
+Music by Joth (opengameart.org/users/joth)
+
+Tracks:
+  cyberpunk-moonlight-sonata.ogg  'Cyberpunk Moonlight Sonata' (v2)  https://opengameart.org/content/cyberpunk-moonlight-sonata
+
+License: Creative Commons Zero (CC0 1.0)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Credit:
+  'Cyberpunk Moonlight Sonata' by Joth (opengameart.org/users/joth), CC0 (no credit is required)
+
+Retrieved: 2026-11-19
+Modifications: silence trimmed at both ends, level-matched, re-encoded to OGG Vorbis

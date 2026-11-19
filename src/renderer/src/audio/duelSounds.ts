@@ -5,10 +5,19 @@ import { HIT_FRESH_TICKS } from '../render/impactModel';
 import type { Cue } from '../events/audioCues';
 import type { SoundRequest } from './soundBank';
 import { CUE_RECIPES } from './cueRecipes';
+import type { Mood } from './musicState';
 
 /** Copies of sim constants (types-only imports from sim/), pinned by tests/audioDuel.test.ts: the crew ship's slot and
  *  the outcomes Running and CrewWins. */
 export const CREW = 0, OUTCOME_RUNNING = 0, OUTCOME_CREW_WINS = 1;
+/** The duel's mood (music spike, 2026-11-19), first match wins. A round that is over: adventure after a win, calm after a
+ *  loss. Combat: the Hunter is hostile, or a room is on fire. Intrigue: the scanner is running or a contact has been
+ *  scanned. Otherwise space: the quiet start of a round, before anyone has looked at the contact. */
+export function duelMood(v: { running: boolean; won: boolean; hostile: boolean; scanning: boolean; known: boolean; fires: number }): Mood {
+  if (!v.running) return v.won ? 'adventure' : 'calm';
+  if (v.hostile || v.fires > 0) return 'combat';
+  return v.scanning || v.known ? 'intrigue' : 'space';
+}
 /** A hit lands this long after its shot (seconds). */
 export const IMPACT_DELAY_S = 0.04;
 /** World position to stereo pan (the scene's camera, or the crew-relative fallback on the interior view). */

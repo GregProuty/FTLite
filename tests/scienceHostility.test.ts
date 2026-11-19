@@ -149,17 +149,17 @@ describe('in the duel (the Hunter grace suite, merged)', () => {
       expect(missileOf(d.tactical, 1)).not.toBeNull();
     } finally { disposeDuel(d); }
   });
-  it('the battle music follows hostileAt: calm through the hold, engaged once hostile', () => {
+  it('the combat music follows hostileAt: none through the hold, combat once hostile', () => {
     const d = createDuel(layout, 1), status: AudioStatus[] = [];
     const a = createDuelAudio({ play: () => {}, sounds: () => {}, status: (s) => { status.push(s); } });
     const frame = () => a.frame({ duel: d, events: [], axes: { turn: 0, thrust: 0 }, paused: false, pan: () => 0, me: 0, crew: { health: [100, 100], downed: [false, false] }, dt: 1 / 60, hostile: enemyHostile(d.tactical) });
     try {
       for (let k = 0; k < HOSTILE_AFTER_TICKS - 1; k++) step(d);
       frame();
-      expect(status.at(-1)!.engaged).toBe(false);
+      expect(status.at(-1)!.mood).not.toBe('combat');
       step(d);
       frame();
-      expect(status.at(-1)!.engaged).toBe(true);
+      expect(status.at(-1)!.mood).toBe('combat');
     } finally { disposeDuel(d); }
   });
 });
