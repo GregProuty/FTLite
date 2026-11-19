@@ -9,7 +9,8 @@ import { classOf, CREW_SLOT, missileOf, NO_AXES, Outcome, Room, targetOf, type A
 import type { DuelState } from '../../sim/duel/state';
 import { throttleThrust } from '../../sim/duel/throttle';
 import { helmTurn } from '../../sim/duel/step';
-import { laserEligible, laserFull, laserOffline, torpedoInRange } from '../../sim/tactical/weapons';
+import { pewReady } from '../../sim/tactical/pew';
+import { laserEligible, laserFull, laserOffline, manualLaserReady, torpedoInRange } from '../../sim/tactical/weapons';
 import { TICK_HZ } from '../../sim/tuning';
 import { trimmedWeaponPower, WeaponSlot } from '../../sim/tactical/bars';
 import { pointSeen, shipSeen } from '../../sim/tactical/science';
@@ -116,6 +117,12 @@ export function laserCardReason(s: LaserSituation, offline = false): string | nu
   }
 }
 
+/** W-2 (pew pew spec §2): the LASER card's why-not in MANUAL. It never fires by itself, so a firing solution (FIRING, or
+ *  PICK A ROOM TO FIRE) reads MANUAL: SPACE FIRES; every other reason stands. */
+export function manualCardReason(reason: string | null): string | null {
+  return reason === 'FIRING' || reason === 'PICK A ROOM TO FIRE' ? 'MANUAL: SPACE FIRES' : reason;
+}
+
 // Feel-ii (spec 2026-11-18-feel-ii-design §1.2, §1.6, §2.8): the flight alerts above the laser's words, the EVADE side and
 // the dead-click reasons. Pure reads with the sim's own rules (predictFlight is the Helm's predicted path, the refusals
 // are canCharge's and canLaunch's checks in their order), so the words never disagree with what the sim will do.
@@ -195,8 +202,8 @@ export function evadeDir(t: TacticalState): { x: number; y: number } | null {
   return room(left.x, left.y) > room(right.x, right.y) ? left : right;
 }
 
-/** The console controls a refusal can name (the buttons, and their keys). */
-export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser';
+/** The console controls a refusal can name (the buttons, and their keys). W-1: `pew`, the Weapons map's left click. */
+export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser' | 'pew';
 /** Valkyrn spec §6.1: the reason a laser key (1, 3/4/5) gives on a class without a laser (the `laser` control, Flight only). */
 export const NO_LASER = 'NO LASER';
 /** Engineering spike §10.4 (final review): why the sim refuses a lock on the target ship (a laserLock or torpLock on a
@@ -208,18 +215,25 @@ export function lockRefusal(d: DuelState): string | null {
 /** Feel-ii §2.8: why the sim would refuse a control's command (or do nothing with it), or null when it would act. FIRE is
  *  laserCharge (the gunner, then canCharge: no torpedo flying, then Weapons offline, where it is admitted to no effect);
  *  LAUNCH is missileLaunch (the gunner, then canLaunch's checks in its order: flying, the magazine, Weapons, range); the
- *  Helm's turn, auto-face, throttle and heading fly nothing with 0 effective Engines bars: ENGINES OFFLINE when
- *  the Engines Room is at level 2, else ENGINES UNPOWERED (no bar, or an overheat failure). */
-export function refusal(d: DuelState, control: RefusedControl): string | null {
-  const t = d.tactical, sys = t.systems[CREW_SLOT];
+ *  Helm's turn, auto-face, throttle and heading fly nothing with 0 effective Engines bars: ENGINES OFFLINE when the Engines
+ *  Room is at level 2, else ENGINES UNPOWERED (no bar, or an overheat failure). PEW (W-1) is pewFire: the gunner,
+ *  the pew, then a third stored (NO CHARGE). W-2 (pew pew spec §2): FIRE in MANUAL (`manual`, default the laser's mode) is laserFire: after the same checks, NO CHARGE without
+ *  manualLaserReady. W-3 (pew pew spec §3): LAUNCH in MANUAL (`manual`, default the torpedo's mode) has no range: never OUT OF RANGE. */
+export function refusal(d: DuelState, control: RefusedControl, manual?: boolean): string | null {
+  const t = d.tactical, sys = t.systems[CREW_SLOT], m = manual ?? (control === 'launch' ? sys.torpManual : sys.laserManual);   // W-3: the control's own weapon's mode
+  if (control === 'pew') {   // W-1 (pew pew spec §1): the gunner, then the class, then a third stored
+    if (!gunnerPresent(d)) return 'NO GUNNER';
+    if (classOf(t, CREW_SLOT).slots.pew === null) return 'NO PEW';
+    return pewReady(t, CREW_SLOT) ? null : 'NO CHARGE';
+  }
   if (control === 'fire' || control === 'launch') {
     if (!gunnerPresent(d)) return 'NO GUNNER';
     if (control === 'fire' && classOf(t, CREW_SLOT).slots.laser === null) return gunReason(t);   // Valkyrn spec §6.1: the gun's reasons
     if (missileOf(t, CREW_SLOT)) return 'TORPEDO FLYING';
-    if (control === 'fire') return !laserOffline(t, CREW_SLOT) ? null : weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'BEAM UNPOWERED';   // Space fires the beam (spec §10.3)
+    if (control === 'fire') return laserOffline(t, CREW_SLOT) ? (weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'BEAM UNPOWERED') : m && !manualLaserReady(t, CREW_SLOT) ? 'NO CHARGE' : null;   // Space fires the beam (spec §10.3); W-2: a MANUAL press needs a full charge
     if (sys.magazine <= 0) return 'NO TORPEDOES';
     if (trimmedWeaponPower(sys)[WeaponSlot.Torpedo] === 0) return weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'TORPEDO UNPOWERED';   // a level-2 Weapons Room lands here too
-    return torpedoInRange(t, CREW_SLOT) ? null : 'OUT OF RANGE';
+    return m || torpedoInRange(t, CREW_SLOT) ? null : 'OUT OF RANGE';   // W-3: a MANUAL launch has no range
   }
   if (shipEngineFactor(t, CREW_SLOT) > 0) return null;   // Engineering spike §10.2: the Engines bars, not the Room alone
   return sys.rooms[Room.Engines] >= 2 ? 'ENGINES OFFLINE' : 'ENGINES UNPOWERED';

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-// Engineering spike §10.3, §11: the Weapons block's three cards: PEW PEW (its bars and ARRIVES WITH W-1; no charge, no
-// lock, no pick-up on this branch), BEAM (today's laser) and TORPEDO; each with four bar pips (the fourth the
-// overdrive's, dashed), a left click adding a bar and a right click removing one (weaponPower).
+// Engineering spike §10.3, §11: the Weapons block's three weapons: pew pew (W-1's PEW row: its charge pips; no pick-up),
+// BEAM (today's laser) and TORPEDO; each with four bar pips (the fourth the overdrive's, dashed), a left click adding a bar
+// and a right click removing one (weaponPower). Merge with W-1 (kind a): the PEW row replaces Part ii's PEW PEW card.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { UiContext } from '../src/renderer/src/ui/context';
@@ -19,7 +19,7 @@ afterEach(() => { cleanup(); });
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((c) => c.dataset.text!);
 const all = (attr: string) => Array.from(document.querySelectorAll<HTMLElement>(`[${attr}]`)).map((e) => e.getAttribute(attr));
 const panel: WeaponsPanel = { lock: 1, charge: { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } }, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false,
-  fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: -1, torpTarget: -1, burst: 0, weaponBars: [1, 0, 4], weaponFree: 1 };
+  fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: -1, torpTarget: -1, burst: 0, weaponBars: [1, 0, 4], weaponFree: 1, pew: [1, 1, 1] };
 const weapons: ConsoleView = { station: 'weapons', tabs: { helm: 'locked', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
   helm: null, weapons: panel, science: null, side: null };
 const view = (): DuelUiView => ({ readout: { rows: [{ label: 'CREW', value: '2', labelTint: TEXT, valueTint: TEXT }], help: [] }, end: null,
@@ -33,11 +33,12 @@ function mount() {
 }
 
 describe('the three weapons (spec §10.3, §11)', () => {
-  it('PEW PEW with its bars and the W-1 note, no pick-up; BEAM and TORPEDO as today; the pips by bars', () => {
+  it('the PEW row with its bars, no pick-up; BEAM and TORPEDO as today; the pips by bars', () => {
     const { duel } = mount(); act(() => duel.frame(view()));
-    for (const w of ['PEW PEW', 'ARRIVES', 'WITH W-1', 'BEAM', 'x0', 'TORPEDO', 'MAG 4/4', 'FREE 1']) expect(texts()).toContain(w);
-    expect(all('data-ui-card-frame')).toEqual(['pew', 'laser', 'torpedo']);
-    expect(screen.queryByTestId('console-card-pew')).toBeNull();   // no pick-up on this branch
+    for (const w of ['PEW', 'L-CLICK MAP', 'BEAM', 'x0', 'TORPEDO', 'MAG 4/4', 'FREE 1']) expect(texts()).toContain(w);
+    for (const w of ['PEW PEW', 'ARRIVES', 'WITH W-1']) expect(texts()).not.toContain(w);   // the Part ii placeholder is gone
+    expect(all('data-ui-card-frame')).toEqual(['laser', 'torpedo']);
+    expect(screen.queryByTestId('console-card-pew')).toBeNull();   // the pew fires from the map: no pick-up
     expect(screen.queryByTestId('console-card-laser')).not.toBeNull();
     expect(screen.queryByTestId('console-fire')).not.toBeNull();
     expect(all('data-ui-weapon-pip')).toEqual([

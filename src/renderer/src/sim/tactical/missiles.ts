@@ -2,7 +2,8 @@
 // homing torpedo spec), in the missile pool: at most one in flight per ship, found by its owner (missileOf). A missile
 // homes by itself on its owner's locked target ship while it thrusts, for its fuel time, then coasts unsteered until it
 // expires; it has no drag. Gravity bends it. Missiles are flown and resolved in owner order (ship slot order), as before
-// the pool, whatever pool entry they sit in.
+// the pool, whatever pool entry they sit in. W-3 (pew pew spec §3): a MANUAL missile turns by its ship's Weapons input
+// instead of homing, and strikes the room under its impact point.
 import { hx, hy, wrapHeading } from './direction';
 import { roomAtImpact, sideOf } from './geometry';
 import { rockAlive, rockAt, rocksNear } from './rocks';
@@ -14,14 +15,18 @@ import { DT, MISSILE_CRUISE_SPEED, MISSILE_LEAD_CAP_S, MISSILE_MIN_CLOSING, R_MA
 
 type EndCause = Extract<DuelEvent, { kind: 'missileEnd' }>['cause'];
 
+/** Ship i launches its torpedo from its nose (spec §7b). W-3 (pew pew spec §3): it carries the ship's torpedo mode; a
+ *  MANUAL torpedo homes on nothing and strikes the room under its impact point, so it takes no target room and no rock,
+ *  and it leaves the torpedo's room and rock targets for a later AUTO launch. */
 export function launchMissile(state: TacticalState, i: number): void {
   const s = state.ships[i]!, sys = state.systems[i]!, def = classOf(state, i).slots.missile, h0 = hx(s.heading), h1 = hy(s.heading);
   placeMissile(state, i, {
     x: s.x + h0 * def.spawnOffset, y: s.y + h1 * def.spawnOffset,
     vx: s.vx + h0 * def.launchSpeed, vy: s.vy + h1 * def.launchSpeed,
     heading: s.heading, headingAcc: 0, age: 0
-  });
+  }, sys.torpManual);
   sys.magazine--; sys.missilesLaunched++;
+  if (sys.torpManual) { sys.torpRoom = -1; sys.torpRockFlying = -1; return; }   // W-3: no lock is read or consumed
   // FTL targeting spec §2: the torpedo strikes the room its target names at launch (−1: the lock room as it lands), and
   // a torpedo's target is a single shot, so it clears.
   sys.torpRoom = sys.torpLock; sys.torpLock = -1;
@@ -35,6 +40,13 @@ function end(state: TacticalState, m: Missile, cause: EndCause, target = -1, roo
   state.systems[m.owner]!.torpRoom = -1;
   state.systems[m.owner]!.torpRockFlying = -1;
   Object.assign(m, emptyMissile());
+}
+
+/** W-1 (pew pew spec §1): ship i's torpedo in flight is shot down by a pew round: it ends with cause 'shot' (a loss for
+ *  its owner, its torpedo target cleared), as any other ending. Nothing when none flies. */
+export function shootDown(state: TacticalState, i: number): void {
+  const m = missileOf(state, i);
+  if (m) end(state, m, 'shot');
 }
 
 /** sin of one heading step, from the table: a wanted thrust direction within one step of the nose needs no turn. */
@@ -76,14 +88,15 @@ export function homingTurn(state: TacticalState, i: number, m: Missile): number 
 
 /** One tick of ship i's missile's flight: while it has fuel it thrusts along its nose, and after its boost (weapons update
  *  spec §2: the first boostTicks it flies straight out of the nose, unguided) it turns by homingTurn; then it coasts,
- *  unsteered. */
-export function flyMissile(state: TacticalState, i: number): void {
+ *  unsteered. W-3 (pew pew spec §3): a MANUAL missile turns by `steer` (−1, 0 or 1: its ship's Weapons input, from
+ *  manualTorpTurn) instead, and never homes; its thrust, fuel, boost and coast are an AUTO missile's. */
+export function flyMissile(state: TacticalState, i: number, steer = 0): void {
   const m = missileOf(state, i);
   if (!m) return;
   const def = classOf(state, i).slots.missile;
   m.age++;
   const fuelled = m.age <= def.fuelTicks;
-  if (fuelled && m.age > def.boostTicks) m.headingAcc += homingTurn(state, i, m) * def.turnStepsPerTick;
+  if (fuelled && m.age > def.boostTicks) m.headingAcc += (m.manual ? steer : homingTurn(state, i, m)) * def.turnStepsPerTick;
   while (m.headingAcc >= 1) { m.heading = wrapHeading(m.heading + 1); m.headingAcc -= 1; }
   while (m.headingAcc <= -1) { m.heading = wrapHeading(m.heading - 1); m.headingAcc += 1; }
   let [ax, ay] = gravityAccel(m.x, m.y);
@@ -99,11 +112,12 @@ function touches(m: Missile, radius: number, x: number, y: number, r: number): b
 
 /** Land missile m on ship k: it strikes its owner's torpedo target room (FTL targeting spec §2), else its lock room
  *  (homing torpedo spec §2), but a self-hit strikes the room under the impact point, since a lock names a room on the
- *  target. Shields are bypassed (spec §7b, Q20). */
+ *  target. W-3 (pew pew spec §3): a MANUAL missile always strikes the room under its impact point, whatever the lock.
+ *  Shields are bypassed (spec §7b, Q20). */
 function land(state: TacticalState, m: Missile, k: number): void {
   const target = state.ships[k]!, sys = state.systems[k]!;
   const owner = state.systems[m.owner]!;   // the lock names a room on the owner's target; any other ship takes the impact room
-  const room = (k === owner.target && k !== m.owner ? (owner.torpRoom >= 0 ? owner.torpRoom : owner.lock) : roomAtImpact(target, m.x, m.y)) as 0 | 1 | 2;
+  const room = (!m.manual && k === owner.target && k !== m.owner ? (owner.torpRoom >= 0 ? owner.torpRoom : owner.lock) : roomAtImpact(target, m.x, m.y)) as 0 | 1 | 2;
   const levels = m.owner === CREW_SLOT ? TORPEDO_LEVELS_BY_BARS[weaponBars(owner, WeaponSlot.Torpedo)]! : 1;   // Engineering spike spec §10.3: 3 bars hit 2 levels
   sys.rooms[room] = Math.min(2, sys.rooms[room] + levels);
   sys.hull = Math.max(0, sys.hull - classOf(state, m.owner).slots.missile.hull);

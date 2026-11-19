@@ -1,0 +1,11 @@
+topic=2026-11-18-w2-manual-laser-impl
+subject_kind=impl
+subject=docs/gates.md scripts/golden/duelOracle.ts src/renderer/src/app/controlsList.ts src/renderer/src/app/duel/duelMode.ts src/renderer/src/app/duel/input.ts src/renderer/src/app/duel/mapRequests.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/app/duel/onlineSource.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/scene.ts src/renderer/src/net/codec.ts src/renderer/src/net/contracts.ts src/renderer/src/render/duel/consoleModel.ts src/renderer/src/render/duel/situationModel.ts src/renderer/src/render/tactical/tacticalLayer.ts src/renderer/src/render/tactical/weaponsModel.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/tactical/hunter.ts src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/tactical/tuning.ts src/renderer/src/sim/tactical/weapons.ts src/renderer/src/sim/tuning.ts src/renderer/src/ui/duel/WeaponsStation.tsx tests/duelCheckpoint.test.ts tests/duelModules.test.ts tests/duelSnapshot.test.ts tests/fixtures/determinism-v2.json tests/ftlTargeting.test.ts tests/golden/basic.json tests/golden/duel-1.json tests/golden/duel-rematch.json tests/manualLaserBeam.test.ts tests/manualLaserCommands.test.ts tests/manualLaserInput.test.ts tests/manualLaserMode.test.ts tests/manualLaserScene.test.ts tests/manualLaserUi.test.tsx tests/manualLaserViews.test.ts tests/onlineDuelSession.test.ts tests/rockLock.test.ts tests/settingsAndControls.test.ts tests/tacticalDeterminism.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\w2-manual-laser
+base=fb8c092f
+cap=10
+effort=high
+confirm=0
+verify=npx tsc -b && npx vitest run tests/manualLaserMode.test.ts tests/manualLaserBeam.test.ts tests/manualLaserCommands.test.ts tests/manualLaserViews.test.ts tests/manualLaserScene.test.ts tests/manualLaserInput.test.ts tests/manualLaserUi.test.tsx tests/onlineDuelSession.test.ts tests/duelGolden.test.ts tests/duelRematchGolden.test.ts tests/tacticalWeapons.test.ts tests/weaponsUpdate.test.ts tests/pewInput.test.ts tests/contactScene.test.ts
+created=2026-11-18
+head_at_setup=13344bba

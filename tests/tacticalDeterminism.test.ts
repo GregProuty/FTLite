@@ -7,7 +7,7 @@ import { stepFlight } from '../src/renderer/src/sim/tactical/physics';
 import { flattenTactical, hashTactical, MISSILE_SLOT, ROUND_SLOT } from '../src/renderer/src/sim/tactical/hash';
 import { ROCK_RESERVE, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { predictPath } from '../src/renderer/src/sim/tactical/predict';
-import { GUN_POOL, PLANET_RADIUS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
+import { GUN_POOL, PEW_POOL, PLANET_RADIUS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
 
 /** A fixed input script: both ships turn, thrust, coast and reverse on different beats. */
 function script(t: number): Axes[] {
@@ -113,17 +113,20 @@ describe('flatten key guard', () => {
   it('Ship, ShipSystems and TacticalState fields are exactly those flattenTactical knows', () => {
     const st = createTacticalState(1);
     expect(Object.keys(st.ships[0]).sort()).toEqual(['active', 'asteroidHits', 'graceUntil', 'heading', 'headingAcc', 'planetHits', 'released', 'shipHits', 'skidBudget', 'skidSign', 'vx', 'vy', 'x', 'y']);
-    expect(Object.keys(st.systems[0]).sort()).toEqual(['bars', 'cls', 'fireHeld', 'freq', 'gunCooldown', 'gunHeat', 'gunHits', 'gunHull', 'gunLocked', 'gunMuzzle', 'gunRoomWear', 'gunShots', 'gunWear', 'hull', 'laserBurst', 'laserBurstClock', 'laserCharge', 'laserHits', 'laserHold', 'laserRock', 'laserTargeted', 'layersStripped', 'lock', 'magazine', 'magazineClock', 'missileHits', 'missilesLaunched', 'missilesLost', 'rocksBroken', 'rooms', 'shieldClock', 'shields', 'shots', 'target', 'torpLock', 'torpRock', 'torpRockFlying', 'torpRoom', 'weaponPower']);
-    expect(Object.keys(st).sort()).toEqual(['derelict', 'designated', 'events', 'grid', 'hostileAt', 'hunter', 'known', 'map', 'missiles', 'outcome', 'rng', 'rockBlasts', 'rockBorn', 'rockCollisions', 'rockDone', 'rockDust', 'rockEvictions', 'rockHits', 'rockSplits', 'rocks', 'rounds', 'scan', 'seed', 'ships', 'startTick', 'systems', 'tick', 'weakFreq']);
-    expect(Object.keys(st.hunter).sort()).toEqual(['fireAt', 'lastLaunch', 'mode', 'room', 'timer', 'trail', 'trailHead', 'working']);
+    expect(Object.keys(st.systems[0]).sort()).toEqual(['bars', 'cls', 'fireHeld', 'freq', 'gunCooldown', 'gunHeat', 'gunHits', 'gunHull', 'gunLocked', 'gunMuzzle', 'gunRoomWear', 'gunShots', 'gunWear', 'hull', 'laserAim', 'laserBurst', 'laserBurstClock', 'laserCharge', 'laserHits', 'laserHold', 'laserManual', 'laserRock', 'laserTargeted', 'layersStripped', 'lock', 'magazine', 'magazineClock', 'missileHits', 'missilesLaunched', 'missilesLost', 'pewCharge', 'pewHits', 'pewShots', 'rocksBroken', 'rooms', 'shieldClock', 'shields', 'shots', 'target', 'torpLock', 'torpManual', 'torpRock', 'torpRockFlying', 'torpRoom', 'weaponPower']);
+    expect(Object.keys(st).sort()).toEqual(['derelict', 'designated', 'events', 'grid', 'hostileAt', 'hunter', 'known', 'map', 'missiles', 'outcome', 'pew', 'rng', 'rockBlasts', 'rockBorn', 'rockCollisions', 'rockDone', 'rockDust', 'rockEvictions', 'rockHits', 'rockSplits', 'rocks', 'rounds', 'scan', 'seed', 'ships', 'startTick', 'systems', 'tick', 'weakFreq']);
+    expect(Object.keys(st.hunter).sort()).toEqual(['fireAt', 'lastLaunch', 'mode', 'pewBurst', 'pewClock', 'room', 'timer', 'trail', 'trailHead', 'working']);
     const launched = createTacticalState(1);
     launchMissile(launched, 0);                                          // a missile as the launcher makes it
-    expect(Object.keys(missileOf(launched, 0)!).sort()).toEqual(['active', 'age', 'heading', 'headingAcc', 'owner', 'vx', 'vy', 'x', 'y']);   // MISSILE_SLOT covers these
+    expect(Object.keys(missileOf(launched, 0)!).sort()).toEqual(['active', 'age', 'heading', 'headingAcc', 'manual', 'owner', 'vx', 'vy', 'x', 'y']);   // MISSILE_SLOT covers these (W-3: the manual bit)
     // Space: 6 header values; per slot active, 12 body scalars and one per graceUntil body; a pool entry of MISSILE_SLOT
-    // per slot; hunter 7 scalars + its trail. Ship: per slot 23 scalars (the burst pair, weapons update spec §1; laserTargeted, torpLock and torpRoom, FTL targeting spec §2) and the 3 rooms. Science (Sci-1): 17 values.
+    // per slot; hunter 9 scalars (W-1: the pew burst and clock) + its trail. Ship: per slot 23 scalars (the burst pair, weapons update spec §1; laserTargeted, torpLock and torpRoom, FTL targeting spec §2) and the 3 rooms. Science (Sci-1): 17 values.
     // SPIKE ii: the graceUntil bodies cover the rock pool (asteroids + ROCK_RESERVE); the pool plus 6 counters close the space
     // module; each systems record has 4 more scalars (the rock fields). Valkyrn spec §7.3: the round pool GUN_POOL × ROUND_SLOT
-    // after the missiles; per slot 8 more scalars and the 3 gunRoomWear. So a systems record is 35 scalars and 6 vector values; Engineering spike spec §2: per slot the 5 bars and the 3 weaponPower values (spec §10.3).
-    expect(flattenTactical(st).length).toBe(6 + 2 * (13 + st.map.asteroids.length + ROCK_RESERVE + 2) + 2 * MISSILE_SLOT + GUN_POOL * ROUND_SLOT + 7 + st.hunter.trail.length + (st.map.asteroids.length + ROCK_RESERVE) * ROCK_STRIDE + 6 + 2 * 49 + 17);
+    // after the missiles; per slot 8 more scalars and the 3 gunRoomWear. W-1: the pew pool PEW_POOL × ROUND_SLOT after the gun's,
+    // and 3 pew scalars per slot. W-2: the laser mode and the burst aim, 2 more per slot. W-3: the torpedo mode, 1 more per slot,
+    // and the manual bit in each missile entry (MISSILE_SLOT). So a systems record is 41 scalars and 6 vector values; Engineering
+    // spike spec §2: per slot the 5 bars and the 3 weaponPower values (spec §10.3).
+    expect(flattenTactical(st).length).toBe(6 + 2 * (13 + st.map.asteroids.length + ROCK_RESERVE + 2) + 2 * MISSILE_SLOT + GUN_POOL * ROUND_SLOT + PEW_POOL * ROUND_SLOT + 9 + st.hunter.trail.length + (st.map.asteroids.length + ROCK_RESERVE) * ROCK_STRIDE + 6 + 2 * 55 + 17);
   });
 });

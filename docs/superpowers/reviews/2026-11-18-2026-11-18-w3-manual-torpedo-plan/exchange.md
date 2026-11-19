@@ -1,0 +1,93 @@
+# Codex review exchange: 2026-11-18-w3-manual-torpedo-plan
+
+Subject: `docs/superpowers/plans/2026-11-18-w3-manual-torpedo.md` (plan). Reviewer: Codex CLI via `codex exec`. Responder: controller.
+
+---
+
+# Round 1 (full, reviewing f7692bfb, effort high, 1122 s, 24014985 in / 23663541 cached / 88724 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R1-F1 The Weapons right-button heading ignores last frame's pick-up, so a right click that cancels a picked-up weapon also re-aims the MANUAL torpedo
+Task 5's new block gates only on `(contact?.aimWeapon() ?? null) === null`. The targeting line's own listener drops a pick-up on the right press before the scene draws. So on the frame a right click cancels a picked-up LASER/TORPEDO card, aimWeapon() is already null and the block sends `torpHeading` for that same press. Decision 8 says nothing is asked while a weapon card is picked up. · plan L1708 (gate is `(contact?.aimWeapon() ?? null) === null` only), plan L95-96 (Decision 8: 'Nothing is asked while a weapon card is picked up'), plan L1707 comment ('its right button cancels that'). scene.ts:162 (`lastAimed`: 'the weapon picked up on the last drawn frame (Valkyrn spec §5.1: right button)'), scene.ts:248-249 ('the targeting line's own listener has already dropped it, so the last frame's pick-up counts too'), scene.ts:253 (Flight uses `aimed: lastAimed !== null || (contact?.aimWeapon() ?? null) !== null`), scene.ts:283 (`lastAimed = aimed`). · In ordinary play the gunner picks up a card while a MANUAL torpedo flies, then right-clicks to cancel. That right click also swings the torpedo onto an unintended held heading. Task 5's tests do not cover it. · Add `lastAimed === null &&` to the Weapons block's condition, as the Flight seat does: `... && lastAimed === null && (contact?.aimWeapon() ?? null) === null && onWeaponsMap(...)`. Add a scene test that picks up the laser with a MANUAL torpedo flying, sends a right press that cancels it, and expects `takeTorpHeading()` to be null.
+
+### [P2] R1-F2 Task 8 Step 1's expected oracle line names <F'> = F + 4 fields, but the script prints the baseline's count; the expected arrows are '->' where the scripts print '→'
+judgeDuelOracle prints `${was.runs[0]?.names.length} named fields`, and `was` is the Task 1 baseline. So the 'added' check prints Task 1's <F>, not <F> + 4. Every success message also uses '→'. The plan's expected lines in Task 1 Steps 4-5 and Task 8 Step 1 write '->'. An executor told to compare will see a mismatch on a passing run and may stop. · plan L2605 ('`<F'>` is Task 1's `<F>` + 4: two `torpManual` and two `missiles.<k>.manual`'), plan L171, L174, L191, L2605 ('sim version 56 -> 57' / '57 -> 57'); scripts/golden/duelOracle.ts:386 (`${was.runs[0]?.names.length ?? 0} named fields ... sim version ${was.simVersion} → ${version}`); scripts/golden/versionOnly.ts:125 ('sim version ${was.simVersion} → ${now.simVersion}'); scripts/determinism/bless.ts:56 ('sim version ${from} → ${SIM_VERSION}'). · The plan is executed verbatim by fresh subagents. An expected output that cannot match a correct run invites a false stop, or teaches the executor to ignore the expected lines, which defeats the 'character for character' checks Task 8 relies on. · In Task 8 Step 1, expect `<R> runs, <T> ticks, <F> named fields` with Task 1's <F>, noting that the count is the baseline's. Write the arrows as '→' in Task 1 Steps 4-5 and Task 8 Step 1, or add a note that the scripts print '→'.
+
+### [P3] R1-F3 The card says STEER A/D while A/D cannot steer (the 20-tick boost and the 2 s coast)
+Decision 3 lets a MANUAL torpedo turn only while it is fuelled and past its boost. But Task 7 shows STEER A/D whenever a MANUAL torpedo flies, including ticks 1-20 and ticks 361-480, when A/D and the held heading do nothing. · plan L81 (Decision 3: turns 'only while it is fuelled and past its boost (`boostTicks`, 20)'), plan L942 (`if (fuelled && m.age > def.boostTicks) ...`), plan L2537 (`weapons.torpFlyingManual === true ? 'STEER A/D' : 'FLYING'`); tuning.ts:101-102,108 (fuel 360, life 480, boost 20). · For about a quarter of the flight the card tells the player to steer when steering is dead. It is a small feel issue, but it confuses the first owner playtest of 'is the followed torpedo easy to fly'. · Set `torpFlyingManual` only while `m.age > boostTicks && m.age <= fuelTicks` (or add a `torpSteerable` flag). Otherwise show FLYING, or COASTING after the fuel is spent. Alternatively, state in Decision 11 that the words are deliberately constant.
+
+### [P3] R1-F4 An admitted MANUAL launch is silently skipped when the stored rock target breaks the same tick
+A MANUAL launch leaves `torpRock` stored (Decision 4). applyWeaponsInput still skips every launch when that rock broke this call (`!(torpOnRock && s.torpRock < 0)`), but MANUAL needs no rock. The step admits the MANUAL missileLaunch as 'applied', yet nothing launches. · plan L467 (MANUAL returns before touching torpRock), plan L85; weapons.ts:286 (`const torpOnRock = s.torpRock >= 0`), weapons.ts:306-310 (launch gated on the rock not breaking); step.ts:247-250 (admission via canLaunch, which in MANUAL ignores the rock). · It is a rare edge: a rock target plus a laser burst breaking it on the tick F lands. The press reads 'applied' and does nothing, with no refusal shown. · Gate the skip on AUTO only, e.g. `if (s.torpManual || !(torpOnRock && s.torpRock < 0))`, which keeps AUTO unchanged. Or note it as an accepted edge in Decision 4.
+
+### [P3] R1-F5 Task 8 Step 3's 'gates test unchanged' diff is vacuous if the work is done on master
+The plan names no feature branch, and the stated worktree branch is master. `git diff --stat master -- tests/duelGates.test.ts` then compares the working tree to a HEAD that already holds every W-3 commit, so it is empty whether or not the file was edited. · plan L2636 (`git diff --stat master -- tests/duelGates.test.ts`), plan L2584 ('the merge-ready branch'); the plan has no branch-creation step (no 'checkout -b' or branch name anywhere). · The check meant to prove `tests/duelGates.test.ts` was never edited proves nothing on master. · Diff against the fixed base: `git diff --stat 92733195 -- tests/duelGates.test.ts`, or Task 1's parent `$(git log --grep='chore(w3): SIM_VERSION 56 -> 57' --format=%H -n 1)~1`. Or name the branch to create in Task 1.
+
+## Verified
+- Task 2 state edits compose with state.ts:81,88,208-225,287-291: systemsFor/emptySystems/emptyMissile/placeMissile replacements are valid, and placeMissile's new default `manual = false` keeps every existing caller (tests use 3 args) compiling.
+- Task 2 hash edits against hash.ts: MISSILE_SLOT 9→10; `bit('missiles.k.manual')` appended after flight; MissingMissileKeys gains 'manual'; FLAGS gains torpManual so member() makes it a flag; the validator's active offset for 'manual' is `at - (2 + MISSILE_KEYS.length)` = at-9, and its owner lookup `values[at - 1 - MISSILE_KEYS.length]` = the entry's owner (hash.ts:53-67, 297-307); the free-entry check fires before the manual check.
+- Task 2 test expectations match the validator messages: 'out of range', 'only the crew torpedo has a manual mode', 'manual is not 0 or 1', 'a free entry holds values', 'only the crew flies a manual torpedo'; duelSnapshot.test.ts:80 defines `slot`/`free`, and messages are prefixed 'duel snapshot tactical <name>:' (hash.ts:279).
+- tacticalDeterminism.test.ts:116,121,127-128 updates are right: sorted key lists place 'torpManual' and 'manual' correctly, and the systems record becomes 41 scalars + 6 vector = 47.
+- No other ShipInput or Missile object literal in src/tests/scripts would break tsc: the only full literals are weapons.ts:50,52, hunter.ts:129 and step.ts:210-211, all edited by Task 2; tests use spreads of IDLE_INPUT; no test hard-codes MISSILE_SLOT or missile offsets.
+- AUTO is unchanged: launchMissile's AUTO branch is identical (missiles.ts:16-29); `manual || torpedoInRange` with manual false equals today's canLaunch (weapons.ts:79-82); the auto-launch gains only `!s.torpManual` (weapons.ts:311); flyMissile and land evaluate identically when m.manual is false (missiles.ts:86-117); duel.ts's extra missileOf call is pure (duel.ts:36); headingTurn → holdTurn → faceTurn is the same expression (hunter.ts:38-49); the Hunter's canLaunch default reads its own torpManual (false).
+- Task 3 tests are consistent with the tables: MISSILE_TURN_STEPS_PER_TICK ≈ 1.422 gives floor(10×1.422) = 14 with no float boundary issue; the hold band AUTO_FACE_SIN = sin 2.5° ≈ 1.78 steps keeps 'apart ≤ 2'; fuel 360 / boost 20 / life 480 / arm 60 (tuning.ts:96-108); roomAtImpact gives Engines for a stern hit (geometry.ts:35-41).
+- Task 4 wiring matches the code: WEAPON_ORDER/DUEL_KINDS/kind filter/laserMode branch (step.ts:30-34, 215-226); the `else if (torpMode)` keeps the final `else` narrowed to pewFire; NO_HELD and heldAim exist (step.ts:30, 94); HEADING_COUNT is imported (step.ts:15); results are sorted by player then sequence (step.ts:339).
+- All four strict held schemas have the exact quoted text `gunHeld: z.boolean().optional() }).strict()`: codec.ts:155, duelCheckpoint.ts:73, replay.ts:17, checkpoint.ts:40. core.ts:329 (expiry) and core.ts:435 (pause) match the quoted lines. acceptHeld copies `{ ...frame.held }` (core.ts:316) and duelClient.held spreads its input (duelClient.ts:76), so the new fields survive end to end. Nothing else in authority/net/clientControl rebuilds duel held fields by hand.
+- Task 4 test helpers exist with the assumed shapes: liveDuel(init, prepare) with held/tick/command/core (tests/helpers/liveDuel.ts:17-57); duelInit and resolveCutter (tests/helpers/duelAuthority.ts:19-20); core.captureCheckpoint and core.replay (core.ts:584, 630); validateDuelCheckpoint(value, digest, resolveLayout) (duelCheckpoint.ts:94); parseEncounterReplay(rules, value, digest, resolveLayout) (replay.ts:40); REMOTE_HELD_TIMEOUT_MS exported (receivePolicy.ts:4); setPaused is in DuelCommand (contracts.ts:109); duels start with every player present (duel/state.ts:110).
+- The kind-listing tests the plan edits are the only ones: duelModules.test.ts:152, duelCheckpoint.test.ts:148-151 (the examples record must equal the module kinds), ftlTargeting.test.ts:169, rockLock.test.ts:90; commandUnion/codecModeWire/netCodec/authority tests list no weapon kinds.
+- Task 5 anchors exist: MapRequests (mapRequests.ts:5-41; no other implementers); scene.ts:21 (fxModel import, interpolatedMissile not yet imported), scene.ts:7, 44-45, 219-226 (Helm block and in-scope names); interpolatedMissile returns the live position when missilePrev is null (fxModel.ts:180-188); headingOf maps east to 64 and north to 0 (tacticalModel.ts:178-181); runtime.ts:275, 282, 555-562; onlineSource.ts:17, 104, 116, 179-182; camera API createCamera/pan/snapBack/followBody/Follow (camera.ts:10-83); cameraInput.apply's `aims` subtracts only the right drag (runtime.ts:108-111); takeAim returns the aim every held frame (input.ts:266-270).
+- Task 6 anchors exist: input.ts:9,12,63; DUEL_ACTION is Record<Exclude<KeyAction,'fireUp'>> and Task 6 adds the torpMode entry (controlsList.ts:19-56); the refusal lines (situationModel.ts:201-216); runtime.ts:190, 243, 261, 310, 319, 367, 373, 493-496, 532, 548-550; duelMode.ts:69; onlineDuel.ts:20, 104, 113, 191, 205, 208, 238, 271-273, 289, 295, 311-313, 338-339. V is bound nowhere in src (only KeyE/Q/F/Z/X/C/M/W/S, Tab, Escape, digits and G).
+- onlineDuelSession.test.ts has the stub's ids/results/helds/commands, the sceneOpts annotations at lines 53 and 66, DuelState imported (line 10) and the W-2 describe at line 188, so the new describe fits.
+- Task 7 anchors exist: consoleModel.ts:8, 12, 40, 126, 130 (canLaunch(t, 0) already defaults to the mode); WeaponsStation.tsx:8, 72, 92, 98-106 (the card's hit box renders before the tag); torpedoTone is exported with the quoted line (scene.ts:112-116); FlightStation is a separate component, so the Valkyrn gets no dead tag.
+- Task 8's additive proof is not vacuous: aliasPlan maps every baseline field and fails on any new field not declared added (duelOracle.ts:158-199); `frozen` checks each added field against its first value every tick (duelOracle.ts:260-277); the names `ship.systems.N.torpManual` and `space.missiles.N.manual` match the ADDITIONS[57] patterns (module-id prefix, duelOracle.ts:141); 'added' mode needs the same version and the same cwd (duelOracle.ts:367-370); the ADDITIONS[56] line quoted in the plan is at duelOracle.ts:127-128.
+- The bless sequence fits blessGuard.ts:22-36: Task 1's bump runs both proofs, and Task 8's same-version bless (no stale artifacts) calls neither. The golden counts quoted in the plan match tests/golden/duel-1.json (14687 ticks, outcome 1) and duel-rematch.json (rematch 14687; 14687 then 8785).
+- Spec conformance: V instead of X (X is Stand, C the camera) is stated (plan L19, L75); steering only while fuelled and past the boost is stated (L81-83) and is consistent with 'fuel, life ... unchanged'; the hit strikes the impact room for 3 hull; the camera follows and returns; the Hunter and the Valkyrn stay AUTO; the mode is fixed at launch, with tests for both toggle directions.
+
+## Not verified
+- Task 3's 'keeps the mode it launched with' AUTO-twin case (Hunter moved to (300,1200), 40 ticks): the crew launch makes the Hunter hostile at once (science.ts:38), so its PD pew (HUNTER_PD_RANGE 300) could shoot down, or the torpedo could reach, the Hunter before tick 40. That would make `missileOf(auto,0)?.manual` undefined and fail toBe(false). My rough distance estimate (~330-350 u at tick 40) says it passes, but I did not simulate it.
+- manualTorpedoScene.test.ts: that the test points (marker ±100 px, the Weapons block point) land on and off the open map as assumed, given the camera's framing and WEAPONS_BLOCKS/STATUS geometry; I checked only the onWeaponsMap logic (flightPointer.ts:41-46).
+- The TORPEDO tag's layout claim (x 72..108 clear of the '2' hint 'from 126'): the card width T.w was not read.
+- The duel-telemetry and Valkyrn gate numbers, and the oracle run/tick/field counts quoted from W-2: not run (the suite and scripts were not executed, per the constraints).
+- Whether the online remote client predicts or re-simulates locally with held input (which would need the steering on the replica); I assumed replicas only apply authority snapshots. duelRemoteClient was not read.
+- That determinism-v2.json and the other fixtures are unaffected by the content-digest change in Task 8 (relied on W-2 having executed the same bless sequence cleanly).
+
+---
+
+# Round 1 response (plan revised)
+
+Reviewed `round-1.json` against the subject at the brief commit. 5 accepted, 0 rejected, 0 deferred.
+
+## R1-F1 [P2]: The Weapons right-button heading ignores last frame's pick-up, so a right click that cancels a picked-up weapon also re-aims the MANUAL torpedo
+
+Confirmed against scene.ts:162 and :248-253. The Flight seat already counts `lastAimed`. Task 5 Step 5's block now starts with `lastAimed === null &&`. A new scene test picks up the laser while a MANUAL torpedo flies, cancels it with a right press, and expects `takeTorpHeading()` to be null. Decision 8 is updated.
+
+## R1-F2 [P2]: Task 8 Step 1's expected oracle line names <F'> = F + 4 fields, but the script prints the baseline's count; the expected arrows are '->' where the scripts print '→'
+
+Confirmed against duelOracle.ts:386. Task 8 Step 1 now expects Task 1's `<F>`, the baseline's own count, and says why. The arrows in Task 1 Steps 4-5 and Task 8 Step 1 are now `→`.
+
+## R1-F3 [P3]: The card says STEER A/D while A/D cannot steer (the 20-tick boost and the 2 s coast)
+
+Confirmed. The card now shows STEER A/D only while the torpedo can turn (`age > boostTicks && age <= fuelTicks`), FLYING during the boost, and COASTING after the fuel. `torpSteer` and `torpCoast` replace `torpFlyingManual` in the Global Constraints, Task 7's code and tests, Decision 11 and the self-review.
+
+## R1-F4 [P3]: An admitted MANUAL launch is silently skipped when the stored rock target breaks the same tick
+
+Confirmed against weapons.ts:286-310. Task 2 Step 5(d) now gates the rock-broke skip on AUTO only (`s.torpManual || !(…)`), so AUTO is unchanged. A new test shows a MANUAL launch going out on the tick its stored rock breaks, while AUTO still skips.
+
+## R1-F5 [P3]: Task 8 Step 3's 'gates test unchanged' diff is vacuous if the work is done on master
+
+Confirmed. The Global Constraints now name the branch `w3-manual-torpedo` (from master 92733195), Task 1 Step 1 checks it, and Task 8 Step 3 diffs against the fixed base `92733195`.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-18-w3-manual-torpedo.md
+
+<!-- end -->
+
+---
+

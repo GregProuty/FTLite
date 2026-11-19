@@ -2730,11 +2730,22 @@ git commit -m "docs(web-ii): gate results
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
-## Web-ii gate results (filled in by Task 12)
+## Web-ii gate results (re-run at the post-merge head, impl review R1-F1)
 
 | Gate | Command | Result |
 |---|---|---|
-| (to be filled by Task 12) | | |
+| Typecheck | `npm run typecheck`; `npm run build` | exit 0 |
+| Unit | `npm test` | 419/421 files, 5348/5350 tests; 2 load-flake failures (snapshot mid Build Up, plus one other lost to vitest onTaskUpdate timeouts); snapshot 49/49 alone; director, duelFire, authorityBoundary, authorityIngress, leaseSmokeCleanup, onlineAppRuntime, acceptance, bot, eventList, run: 14 files / 177 tests pass alone |
+| Web output | `npm run test:web-output` | exit 0, WEB OUTPUT PASS: 96 static paths plus `/`, unknown path, query string and HEAD need the cookie |
+| Production refusals | `build:web` with a non-https origin, and without paid art | both refuse (unchanged since b532961f; covered by tests/build-output) |
+| Signalling | `npm run test:signalling` | 15 files / 224 tests pass |
+| Determinism | `npm run test:determinism` (logs restored with git checkout) | exit 0; Node v24.18.0, Electron 37.10.3, Firefox 160 UA: 1800 samples PASS each; SIM_VERSION 54 |
+| Electron | `test:worker-boot`, `test:host-runtime`, `test:rtc-runtime`, `test:room-service-runtime`, `test:online-app-runtime`, `test:online-recovery-runtime`, `test:duel-app-runtime` | all exit 0, PASS (duel-app 154 s) |
+| Browser | `npm run test:web-net` | exit 0, ACTUAL BROWSER NETWORK GATE PASS (105 s): chromium-firefox, firefox-chromium, chromium-electron (electron console watched) |
+| Injection | `web-net-smoke.ts --inject=origin-refused --pairing=chromium-firefox` | exit 1, WEB NET INJECTED FAIL (origin-refused): ... online error unavailable (403 seen) |
+
+Head 4732902d; Node v24.18.0, Electron 37.10.3; SIM_VERSION 54.
+
 
 ---
 

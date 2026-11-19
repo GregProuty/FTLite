@@ -1,0 +1,11 @@
+topic=2026-11-19-w3-manual-torpedo-impl
+subject_kind=impl
+subject=docs/gates.md scripts/golden/duelOracle.ts src/renderer/src/app/controlsList.ts src/renderer/src/app/duel/duelMode.ts src/renderer/src/app/duel/input.ts src/renderer/src/app/duel/mapRequests.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/app/duel/onlineSource.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/scene.ts src/renderer/src/app/duel/torpedoCamera.ts src/renderer/src/authority/checkpoint.ts src/renderer/src/authority/core.ts src/renderer/src/authority/duelCheckpoint.ts src/renderer/src/authority/replay.ts src/renderer/src/net/codec.ts src/renderer/src/net/contracts.ts src/renderer/src/render/duel/consoleModel.ts src/renderer/src/render/duel/situationModel.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/tactical/duel.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/tactical/hunter.ts src/renderer/src/sim/tactical/manualTorpedo.ts src/renderer/src/sim/tactical/missiles.ts src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/tactical/weapons.ts src/renderer/src/sim/tuning.ts src/renderer/src/ui/duel/WeaponsStation.tsx tests/duelCheckpoint.test.ts tests/duelModules.test.ts tests/duelSnapshot.test.ts tests/fixtures/determinism-v2.json tests/ftlTargeting.test.ts tests/golden/basic.json tests/golden/duel-1.json tests/golden/duel-rematch.json tests/manualTorpedoCommands.test.ts tests/manualTorpedoFlight.test.ts tests/manualTorpedoInput.test.ts tests/manualTorpedoMode.test.ts tests/manualTorpedoScene.test.ts tests/manualTorpedoUi.test.tsx tests/onlineDuelSession.test.ts tests/rockLock.test.ts tests/settingsAndControls.test.ts tests/tacticalDeterminism.test.ts tests/torpedoCamera.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\w3-manual-torpedo
+base=e8e37cc4
+cap=10
+effort=high
+confirm=0
+verify=npx tsc -b && npx vitest run tests/manualTorpedoMode.test.ts tests/manualTorpedoFlight.test.ts tests/manualTorpedoCommands.test.ts tests/manualTorpedoInput.test.ts tests/manualTorpedoUi.test.tsx tests/torpedoGuidance.test.ts tests/onlineDuelSession.test.ts tests/duelGolden.test.ts tests/duelRematchGolden.test.ts tests/contactScene.test.ts tests/pewInput.test.ts tests/manualLaserInput.test.ts
+created=2026-11-19
+head_at_setup=c666bd15

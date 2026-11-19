@@ -8,10 +8,13 @@ import { capacityOf, coolantFree, COOLANT_POOL_DUEL, DUEL_SYSTEM_COUNT, DuelSyst
 import { effectiveBars, SHIELD_LAYERS_BY_BARS } from '../../sim/tactical/bars';
 import { sensorRange } from '../../sim/tactical/science';
 import { classOf, CREW_SLOT } from '../../sim/tactical/state';
+import { SHIP_HULL } from '../../sim/tactical/tuning';
 import { HEAT_MAX } from '../../sim/tuning';
 
-/** One hull segment per HULL_PER_SEGMENT hull (`SHIP_HULL` 40: 20 segments). */
-export const HULL_PER_SEGMENT = 2;
+/** The Cutter's hull bar in HULL_SEGMENTS segments, one per HULL_PER_SEGMENT hull. W-1: derived from `SHIP_HULL` so the
+ *  bar keeps its 20 segments (and its laid-out width) when the duel hull moved 40 → 70 (3.5 hull a segment). */
+export const HULL_SEGMENTS = 20;
+export const HULL_PER_SEGMENT = SHIP_HULL / HULL_SEGMENTS;
 
 /** The layout in internal px (§E, Engineering spike §6): inside the interior band, left of the readout column, below the
  *  tab strip. The power panel's columns rest on `power.bottom`: the name, then the coolant pips, the heat bar, and the
@@ -54,7 +57,7 @@ export function powerView(d: DuelState): PowerView {
   return { systems, spare: sparesOf(d), reactor: REACTOR_BARS, coolantFree: coolantFree(d), coolantPool: COOLANT_POOL_DUEL };
 }
 
-/** The crew ship's HUD (§E; Engineering spike §6): hull segments `ceil(hull / 2)` of `ceil(max / 2)`, the shield layers
+/** The crew ship's HUD (§E; Engineering spike §6): hull segments `ceil(hull / HULL_PER_SEGMENT)` of `ceil(max / HULL_PER_SEGMENT)`, the shield layers
  *  up and the bars' layer cap, and the power panel. */
 export function shipHud(d: DuelState): ShipHudView {
   const t = d.tactical, sys = t.systems[CREW_SLOT]!, cls = classOf(t, CREW_SLOT), hull = Math.max(0, Math.min(cls.hull, sys.hull));

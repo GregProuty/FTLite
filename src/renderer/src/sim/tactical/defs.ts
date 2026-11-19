@@ -9,7 +9,7 @@ import {
   GUN_MUZZLE_LATERAL, GUN_SPEED, HUNTER_HULL, HUNTER_LASER_SHOTS, LASER_ARC_COS, LASER_CHARGE_RATE, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, LASER_BURST_GAP_TICKS, LASER_HULL, LASER_RANGE, MAGAZINE, MAGAZINE_REGEN_TICKS,
   MISSILE_ARM_TICKS, MISSILE_FUEL_TICKS, MISSILE_HULL, MISSILE_BOOST_TICKS, MISSILE_LAUNCH_SPEED, MISSILE_LIFE_TICKS, MISSILE_RADIUS, MISSILE_RANGE, MISSILE_SPAWN_OFFSET, MISSILE_THRUST,
   MISSILE_TURN_STEPS_PER_TICK, REVERSE_FRACTION, SHIELD_LAYERS, SHIELD_RATE, SHIELD_RECHARGE_UNITS, SHIP_HULL, SHIP_RADIUS, THRUST, TURN_STEPS_PER_TICK, VALKYRN_HULL, VALKYRN_THRUST,
-  VALKYRN_TURN_STEPS_PER_TICK
+  VALKYRN_TURN_STEPS_PER_TICK, PEW_ARC_STEPS, PEW_HULL, PEW_LIFE, PEW_RECHARGE_TICKS, HUNTER_PEW_RECHARGE_TICKS, PEW_SHOTS, PEW_SPEED
 } from './tuning';
 
 /** The laser (spec §7a): range and arc, charge in whole units per Weapons damage level, the hold before it vents, hull per
@@ -42,7 +42,16 @@ export interface MissileDef {
   readonly thrust: number; readonly turnStepsPerTick: number; readonly fuelTicks: number; readonly lifeTicks: number; readonly armTicks: number;
   readonly hull: number;
 }
-export type WeaponDef = LaserDef | GunDef | MissileDef;
+/** W-1 (pew pew spec §1): the pew pew: shots thirds of charge, a third back every rechargeTicks; a round at `speed` (u/s)
+ *  for lifeTicks from `muzzleForward` ahead of the centre (radius + 1), along an aim clamped to ±arcSteps fine heading
+ *  units about the heading; `hull` per unshielded hit. */
+export interface PewDef {
+  readonly kind: 'pew';
+  readonly shots: number; readonly rechargeTicks: number;
+  readonly speed: number; readonly lifeTicks: number; readonly hull: number;
+  readonly arcSteps: number; readonly muzzleForward: number;
+}
+export type WeaponDef = LaserDef | GunDef | MissileDef | PewDef;
 
 /** A ship class (spec §5): hull, flight, radius, shields, power, weapon slots and its AI profile. */
 export interface ShipClassDef {
@@ -54,8 +63,9 @@ export interface ShipClassDef {
   readonly shields: { readonly layers: number; readonly rechargeUnits: number; readonly rate: readonly number[] };
   /** Reactor power for the interior link; null while interior power is not coupled to the fight (R-2b couples it). */
   readonly power: number | null;
-  /** A laser slot and a gun slot, either of which may be null (Valkyrn spec §6.1), and the missile slot. */
-  readonly slots: { readonly laser: LaserDef | null; readonly gun: GunDef | null; readonly missile: MissileDef };
+  /** A laser slot, a gun slot and a pew slot, any of which may be null (Valkyrn spec §6.1; W-1: the Cutter and the Hunter
+   *  carry the pew), and the missile slot. */
+  readonly slots: { readonly laser: LaserDef | null; readonly gun: GunDef | null; readonly pew: PewDef | null; readonly missile: MissileDef };
   /** Who flies it when no player does: nobody ('crew') or the hunter's state machine (sim/tactical/hunter.ts). */
   readonly ai: 'crew' | 'hunter';
 }
@@ -80,21 +90,29 @@ export const GUN: GunDef = Object.freeze({
   hitsPerLayer: GUN_HITS_PER_LAYER, hitsPerHull: GUN_HITS_PER_HULL, hitsPerLevel: GUN_HITS_PER_LEVEL
 });
 
+/** W-1 (pew pew spec §1): the crew Cutter's and the Hunter's pew pew. */
+export const PEW: PewDef = Object.freeze({
+  kind: 'pew', shots: PEW_SHOTS, rechargeTicks: PEW_RECHARGE_TICKS, speed: PEW_SPEED, lifeTicks: PEW_LIFE, hull: PEW_HULL, arcSteps: PEW_ARC_STEPS, muzzleForward: SHIP_RADIUS + 1
+});
+/** W-1 (Task 6 tuning): the Hunter's pew pew, the crew's but refilling a third every HUNTER_PEW_RECHARGE_TICKS. */
+export const HUNTER_PEW: PewDef = Object.freeze({ ...PEW, rechargeTicks: HUNTER_PEW_RECHARGE_TICKS });
+
 /** A class's flight numbers that differ between classes: forward thrust and turn steps per tick. */
 interface Flight { readonly thrust: number; readonly turnStepsPerTick: number }
 const STANDARD: Flight = { thrust: THRUST, turnStepsPerTick: TURN_STEPS_PER_TICK };
 const FIGHTER: Flight = { thrust: VALKYRN_THRUST, turnStepsPerTick: VALKYRN_TURN_STEPS_PER_TICK };   // Valkyrn spec §6.1
 
-function shipClass(id: string, ai: ShipClassDef['ai'], hull: number, laser: LaserDef | null, gun: GunDef | null = null, flight: Flight = STANDARD): ShipClassDef {
+function shipClass(id: string, ai: ShipClassDef['ai'], hull: number, laser: LaserDef | null, gun: GunDef | null = null, flight: Flight = STANDARD, pew: PewDef | null = null): ShipClassDef {
   return Object.freeze({
     id, hull, radius: SHIP_RADIUS, thrust: flight.thrust, reverseFraction: REVERSE_FRACTION, turnStepsPerTick: flight.turnStepsPerTick, engineFactor: ENGINE_FACTOR,
     shields: Object.freeze({ layers: SHIELD_LAYERS, rechargeUnits: SHIELD_RECHARGE_UNITS, rate: SHIELD_RATE }), power: null,
-    slots: Object.freeze({ laser, gun, missile: MISSILE }), ai
+    slots: Object.freeze({ laser, gun, pew, missile: MISSILE }), ai
   });
 }
-/** The crew's ship and the enemy's: the same numbers but the hull and the laser's shots, told apart by their AI profile. */
-export const CUTTER_CLASS = shipClass('cutter', 'crew', SHIP_HULL, LASER);
-export const HUNTER_CLASS = shipClass('hunter', 'hunter', HUNTER_HULL, HUNTER_LASER);
+/** The crew's ship and the enemy's: the same numbers but the hull and the laser's shots, told apart by their AI profile.
+ *  W-1: both carry the pew pew (the Hunter's refills slower, HUNTER_PEW). */
+export const CUTTER_CLASS = shipClass('cutter', 'crew', SHIP_HULL, LASER, null, STANDARD, PEW);
+export const HUNTER_CLASS = shipClass('hunter', 'hunter', HUNTER_HULL, HUNTER_LASER, null, STANDARD, HUNTER_PEW);
 /** Valkyrn spec §6.1, §8: the solo fighter (the gun and the torpedo, no laser) and its developer laser fit (the Cutter's
  *  double laser and torpedo on the Valkyrn's hull and flight). */
 export const VALKYRN_CLASS = shipClass('valkyrn', 'crew', VALKYRN_HULL, null, GUN, FIGHTER);

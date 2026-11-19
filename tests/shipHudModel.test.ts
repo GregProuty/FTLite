@@ -8,7 +8,7 @@ import { capacityOf, DUEL_SYSTEM_COUNT, REACTOR_BARS, SYSTEM_MAX, SYSTEM_SLOTS }
 import { Room } from '../src/renderer/src/sim/tactical/state';
 import { SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
 import { HEAT_MAX } from '../src/renderer/src/sim/tuning';
-import { coolantY, heatY, HUD, hullSegX, hullTone, overdriveSlot, POWER_NAMES, powerBarY, powerColumnX, powerNameY, powerPanel, shipHud, slotState, type PowerColumn } from '../src/renderer/src/render/duel/shipHudModel';
+import { coolantY, heatY, HUD, HULL_PER_SEGMENT, hullSegX, hullTone, overdriveSlot, POWER_NAMES, powerBarY, powerColumnX, powerNameY, powerPanel, shipHud, slotState, type PowerColumn } from '../src/renderer/src/render/duel/shipHudModel';
 import { INTERIOR_BAND } from '../src/renderer/src/render/duel/interiorModel';
 import { TABS } from '../src/renderer/src/render/duel/consoleLayout';
 
@@ -19,7 +19,8 @@ describe('shipHud (spec §E; Engineering spike §6)', () => {
     const d = createDuel(HOUND, 5);
     try {
       const h = shipHud(d);
-      expect(h.hull).toEqual({ segments: SHIP_HULL / 2, lit: SHIP_HULL / 2, tone: 'good' });
+      expect(h.hull).toEqual({ segments: SHIP_HULL / HULL_PER_SEGMENT, lit: SHIP_HULL / HULL_PER_SEGMENT, tone: 'good' });
+      expect(h.hull.segments).toBe(20);   // W-1: duel hull ×1.75 (70 hull, 3.5 a segment; 40 hull, 2 a segment before)
       expect(h.shields.cap).toBe(1);   // 2 Shields bars hold one layer (spec §2)
       expect(h.power.systems.map((c) => [c.system, c.name, c.bars, c.capacity, c.slots, c.max])).toEqual([
         [0, 'SHLD', 2, 5, 5, 4], [1, 'WEAP', 2, 10, 10, 9], [2, 'ENG', 3, 5, 5, 4], [3, 'SENS', 1, 4, 4, 3], [4, 'O2', 1, 2, 2, 2]

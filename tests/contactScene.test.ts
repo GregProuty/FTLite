@@ -8,17 +8,19 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import type { GameAssets } from '../src/renderer/src/render/assets';
 import { FEATURE_NAMES } from '../src/renderer/src/render/fallback';
 import { DEFAULT_FEEL } from '../src/renderer/src/render/feel';
-import { worldToScreen } from '../src/renderer/src/render/tactical/camera';
-import { interpolatedShip } from '../src/renderer/src/render/tactical/tacticalModel';
+import { screenToWorld, worldToScreen } from '../src/renderer/src/render/tactical/camera';
+import { fineHeadingOf, interpolatedShip } from '../src/renderer/src/render/tactical/tacticalModel';
 import { emptyPresses, type KeyAction, type KeySample } from '../src/renderer/src/app/duel/input';
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import { seatDuelCrew } from './helpers/duelSeat';
 import { createDuelScene } from '../src/renderer/src/app/duel/scene';
 import { createContactController } from '../src/renderer/src/app/duel/contactController';
+import { createMapRequests } from '../src/renderer/src/app/duel/mapRequests';
 import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import { createUiStore } from '../src/renderer/src/ui/store';
 import { RockKind, rockSlots, writeRock } from '../src/renderer/src/sim/tactical/rocks';
 import { resetSits } from '../src/renderer/src/render/duel/sitModel';
+import { CONTACT, STATION, stationTop, TABS } from '../src/renderer/src/render/duel/consoleLayout';
 
 const layout = parseShip(cutter);
 const assets: GameAssets = {
@@ -46,26 +48,26 @@ function rig() {
   const tick = (): void => { rt.frame(1 / 60); now += 1000 / 60; tasks.sort((a, b) => a.at - b.at); while (tasks[0] && tasks[0].at <= now) tasks.shift()!.cb(); rt.frame(1 / 60); };
   const stage = new Container();
   const renderer = { app: { stage }, assets, stageScale: () => 1, feel: () => DEFAULT_FEEL, crt: () => 'off' as const };
-  const store = createUiStore({ onlineAvailable: false } as never), contact = createContactController(), clicks: { x: number; y: number }[] = [];
-  const scene = createDuelScene(renderer as never, { seed: 5, pauseText: 'PAUSED', ui: createDuelSink(store), contact, takeClick: () => clicks.shift() ?? null });
+  const store = createUiStore({ onlineAvailable: false } as never), contact = createContactController(), clicks: { x: number; y: number }[] = [], requests = createMapRequests();
+  const scene = createDuelScene(renderer as never, { seed: 5, pauseText: 'PAUSED', ui: createDuelSink(store), contact, requests, takeClick: () => clicks.shift() ?? null });
   // The old seated start (createDuel now leaves both standing): player 0 at the Helm, player 1 at Weapons; Tab takes the gunner.
   seatDuelCrew(rt.duel);
   const sh = rt.duel.tactical.ships; sh[1]!.x = sh[0]!.x + 600; sh[1]!.y = sh[0]!.y;   // Engineering spike §10.4: inside the 900 start range
   press('switch'); tick(); tick();
   const enemyOnScreen = () => { const b = interpolatedShip(rt.duel.tactical, rt.prev, rt.alpha(), 1); return worldToScreen(rt.cameras.weapons, vp, b.x, b.y); };
   const view = () => store.getState().duel?.contact;
-  return { rt, store, contact, clicks, scene, enemyOnScreen, view };
+  return { rt, store, contact, clicks, requests, press, tick, scene, enemyOnScreen, view };
 }
 
 describe('the scene and the contact window (spec §6.5)', () => {
-  it('a click over the enemy at the Weapons console opens the contact view; a pause clears it on that frame', () => {
+  it('T over the enemy at the Weapons console opens the contact view; a pause clears it on that frame', () => {
     const r = rig();
     try {
       expect(r.rt.view()).toBe('weapons');
       r.rt.duel.tactical.known[0] = 2;   // Sci-1: the full window needs the enemy at Level 2
       r.scene.draw(r.rt, 1 / 60, LIVE);
       expect(r.view()).toBeNull();
-      r.clicks.push(r.enemyOnScreen()); r.scene.draw(r.rt, 1 / 60, LIVE);
+      r.contact.toggle(); r.scene.draw(r.rt, 1 / 60, LIVE);   // W-1: at Weapons the map click is the pew; T opens the window
       expect(r.contact.state()).toEqual({ contact: 0, aim: false });
       expect(r.view()?.title).toBe('ENEMY SHIP');
       expect(r.view()?.weapons?.laser.enabled).toBe(true);
@@ -80,12 +82,99 @@ describe('the scene and the contact window (spec §6.5)', () => {
       expect(r.view()).toBeNull(); expect(r.contact.state()).toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
-  it('with the console hidden a click over the enemy opens nothing, and the click is not kept for later', () => {
+  it('W-1: a left click over the enemy at Weapons asks for the pew at its bearing and opens nothing', () => {
+    const r = rig();
+    try {
+      const e = interpolatedShip(r.rt.duel.tactical, r.rt.prev, r.rt.alpha(), 1), cam = r.rt.cameras.weapons;
+      cam.follow = 'free'; cam.centreX = e.x - 100; cam.centreY = e.y;   // the enemy on the open map, off the ship
+      r.clicks.push(r.enemyOnScreen()); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.contact.state()).toBeNull();
+      expect(r.requests.takePew()).not.toBeNull();
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+  it('W-1: a click over the Weapons block (the PEW row, the cards) or the tab strip queues no pew', () => {
+    const r = rig();
+    try {
+      for (const p of [{ x: STATION.x + 20, y: stationTop('weapons') + 10 }, { x: STATION.x + 20, y: stationTop('weapons') + 100 }, { x: TABS.x + 5, y: TABS.y + 5 }]) {
+        r.clicks.push(p); r.scene.draw(r.rt, 1 / 60, LIVE);
+        expect(r.requests.takePew(), `click at ${p.x},${p.y}`).toBeNull();
+      }
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+  it('W-1: with the default follow camera the pew aim is the click bearing from the own ship marker, split into aim and aimAcc', () => {
+    const r = rig();
+    try {
+      const b = interpolatedShip(r.rt.duel.tactical, r.rt.prev, r.rt.alpha(), 0), m = worldToScreen(r.rt.cameras.weapons, vp, b.x, b.y);
+      expect(r.rt.cameras.weapons.follow).toBe('ship');
+      const at = (dx: number, dy: number) => { r.clicks.push({ x: m.x + dx, y: m.y + dy }); r.scene.draw(r.rt, 1 / 60, LIVE); return r.requests.takePew(); };
+      expect(at(0, -100)).toBe(0);                 // straight up: heading 0
+      expect(at(100, 0)).toBe(16384);              // east: a quarter turn of 65536
+      expect(at(0, 100)).toBe(32768);              // south
+      const odd = at(63, -41), want = fineHeadingOf(63, -41);
+      expect(odd).toBe(want);
+      expect([Math.floor(odd! / 256), odd! % 256]).toEqual([Math.floor(want / 256), want % 256]);
+      const w = screenToWorld(r.rt.cameras.weapons, vp, m.x + 63, m.y - 41);
+      expect(fineHeadingOf(w.x - b.x, w.y - b.y)).toBe(want);   // the world and screen bearings agree
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+  it('W-1: with a weapon card picked up a map click queues no pew and keeps its old meaning', () => {
+    const r = rig();
+    try {
+      r.contact.pickUp('laser'); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.contact.aimWeapon()).toBe('laser');
+      r.clicks.push({ x: 700, y: 250 }); r.scene.draw(r.rt, 1 / 60, LIVE);   // empty map: today's contact.click does nothing
+      expect(r.requests.takePew()).toBeNull();
+      expect(r.contact.state()).toEqual({ contact: 0, aim: true });
+      r.clicks.push(r.enemyOnScreen()); r.scene.draw(r.rt, 1 / 60, LIVE);   // the enemy marker (off screen here, still picked): the old click, no pew
+      expect(r.requests.takePew()).toBeNull();
+      expect(r.contact.state()).toBeNull();   // the window's own click closed the shown contact, as before
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+  it('W-1: with the contact window open a click inside it queues no pew; one on the open map still does', () => {
+    const r = rig();
+    try {
+      r.contact.toggle(); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.contact.state()).not.toBeNull();
+      r.clicks.push({ x: CONTACT.x + 20, y: CONTACT.y + 20 }); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.requests.takePew()).toBeNull();
+      r.clicks.push({ x: 700, y: 250 }); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.requests.takePew()).not.toBeNull();
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+  it('W-1 review F4: at Weapons a click over a console block opens nothing and does not close an open window; one inside the window still reaches it', () => {
+    const r = rig();
+    try {
+      const e = interpolatedShip(r.rt.duel.tactical, r.rt.prev, r.rt.alpha(), 1), cam = r.rt.cameras.weapons;
+      const blocks = [{ x: STATION.x + 20, y: stationTop('weapons') + 10 }, { x: TABS.x + 5, y: TABS.y + 5 }];
+      cam.follow = 'free'; cam.centreX = e.x; cam.centreY = e.y;
+      const w = screenToWorld(cam, vp, blocks[0]!.x, blocks[0]!.y); cam.centreX += e.x - w.x; cam.centreY += e.y - w.y;   // the enemy marker drawn under the first block
+      for (const p of blocks) { r.clicks.push(p); r.scene.draw(r.rt, 1 / 60, LIVE); expect(r.contact.state(), `closed, click at ${p.x},${p.y}`).toBeNull(); }
+      r.contact.toggle(); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.contact.state()).not.toBeNull();
+      for (const p of blocks) { r.clicks.push(p); r.scene.draw(r.rt, 1 / 60, LIVE); expect(r.contact.state(), `open, click at ${p.x},${p.y}`).not.toBeNull(); }
+      r.clicks.push({ x: CONTACT.x + 20, y: CONTACT.y + 20 }); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.requests.takePew()).toBeNull();
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+  it('W-1: at the Helm a map click over the enemy still opens its window and asks for no pew', () => {
+    const r = rig();
+    try {
+      r.press('switch'); r.tick(); r.tick();
+      expect(r.rt.view()).toBe('helm');
+      r.scene.draw(r.rt, 1 / 60, LIVE);
+      const b = interpolatedShip(r.rt.duel.tactical, r.rt.prev, r.rt.alpha(), 1);
+      r.clicks.push(worldToScreen(r.rt.cameras.helm, vp, b.x, b.y)); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.contact.state()).toEqual({ contact: 0, aim: false });
+      expect(r.requests.takePew()).toBeNull();
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+  it('with the console hidden a click over the enemy opens nothing and fires nothing, and the click is not kept for later', () => {
     const r = rig();
     try {
       r.clicks.push(r.enemyOnScreen()); r.scene.draw(r.rt, 1 / 60, PAUSED);
       expect(r.contact.state()).toBeNull(); expect(r.view()).toBeNull();
       expect(r.clicks).toHaveLength(0);
+      expect(r.requests.takePew()).toBeNull();
       r.scene.draw(r.rt, 1 / 60, LIVE);
       expect(r.contact.state()).toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }

@@ -90,7 +90,7 @@ describe('rockLock effects and order (spec §6.1)', () => {
 
 describe('the wire and the module (spec §6.1)', () => {
   it('the ship module owns rockLock right after torpLock, and the duel codec carries it', () => {
-    expect(shipModule.commands).toEqual(['laserLock', 'torpLock', 'rockLock', 'laserCharge', 'missileLaunch']);
+    expect(shipModule.commands).toEqual(['laserMode', 'torpMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire']);   // W-1 merge: the pew last; W-2: the laser mode first; W-3: the torpedo mode second
     const codec = duelCodec(2), envelope = (command: unknown) => ({ kind: 'command' as const, envelope: { runId: 'r', id: { player: 0, sequence: 1 }, requestedTick: 0, command } as CommandEnvelope });
     for (const command of [{ kind: 'rockLock', weapon: 'laser', rock: 0 }, { kind: 'rockLock', weapon: 'torpedo', rock: -1 }, { kind: 'rockLock', weapon: 'laser', rock: 181 }])
       expect(codec.decodeMessage(codec.encodeMessage(envelope(command)))).toEqual(envelope(command));

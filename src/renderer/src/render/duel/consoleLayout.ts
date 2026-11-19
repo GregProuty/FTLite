@@ -7,17 +7,26 @@ export const EDGE = 12;
 export const TABS = { x: 12, y: 8, w: 96, gap: 4, h: 26 } as const;
 export const TABS_RIGHT = TABS.x + 4 * TABS.w + 3 * TABS.gap;   // HELM, WEAPONS, SCIENCE, SHIP (Sci-1)
 export const STATUS = { x: 12, y: 42, w: READOUT_W } as const;
-export const STATION = { x: 12, w: 300, h: { helm: 200, weapons: 216, science: 96 } } as const;   // the frequency row takes the old steer row's place (Sci-1 spec §7.4)
+export const STATION = { x: 12, w: 300, h: { helm: 200, weapons: 268, science: 96 } } as const;   // the frequency row takes the old steer row's place (Sci-1 spec §7.4); W-1: the PEW row on top (+28); Engineering spike §10.3: the bar pips (+12 on the PEW row, +12 under the cards)
 export function stationTop(s: 'helm' | 'weapons' | 'science'): number { return INTERNAL_H - EDGE - STATION.h[s]; }
-/** FTL targeting spec §1, Engineering spike §10.3, §11: the Weapons block's three weapon cards, PEW PEW, BEAM ('laser')
- *  and TORPEDO, side by side at its top. `hit` is the card's clickable part (the beam's and the torpedo's pick-up; PEW
- *  PEW has none on this branch); `pipsY` the bar pips under it (left click adds a bar, right click removes one); FIRE /
- *  LAUNCH sits below them; the targeting line starts at `anchor` (the card's right edge mid-height of `hit`). */
-export type CardWeapon = 'pew' | 'laser' | 'torpedo';
-export const CARD_ORDER: readonly CardWeapon[] = ['pew', 'laser', 'torpedo'];
-export function weaponCard(weapon: CardWeapon): { x: number; y: number; w: number; h: number; hitH: number; pipsY: number; anchor: { x: number; y: number } } {
-  const x0 = STATION.x + 8, y = stationTop('weapons') + 6, w = 90, h = 104, hitH = 60, x = x0 + CARD_ORDER.indexOf(weapon) * (w + 6);
+/** W-1 (pew pew spec 1): the PEW row at the top of the Weapons block (its label, three charge pips and the click hint);
+ *  Engineering spike §10.3: and its bar pips under the charge pips (+12). */
+export const PEW_ROW_H = 40;
+/** Engineering spike §10.3: the bar pips' row under each card's clickable part, above its FIRE / LAUNCH button. */
+export const CARD_PIPS_H = 12;
+/** FTL targeting spec §1: the Weapons block's two weapon cards, BEAM (the laser) then TORPEDO, side by side under the PEW
+ *  row; `hit` is the card's clickable part above its bar pips (`pipsY`, Engineering spike §10.3) and its FIRE / LAUNCH
+ *  button, and the targeting line starts at `anchor` (the card's right edge mid-height of `hit`). */
+export function weaponCard(weapon: 'laser' | 'torpedo'): { x: number; y: number; w: number; h: number; hitH: number; pipsY: number; anchor: { x: number; y: number } } {
+  const x0 = STATION.x + 8, y = stationTop('weapons') + 6 + PEW_ROW_H, w = 138, h = 104 + CARD_PIPS_H, hitH = 72, x = weapon === 'laser' ? x0 : x0 + w + 8;
   return { x, y, w, h, hitH, pipsY: y + hitH + 2, anchor: { x: x + w, y: y + hitH / 2 } };
+}
+/** Engineering spike §10.3, §11: where a weapon slot's bar pips start: pew pew's (slot 0) on the PEW row under its charge
+ *  pips, the beam's (1) and the torpedo's (2) under their cards' clickable parts. */
+export function weaponPips(slot: 0 | 1 | 2): { x: number; y: number } {
+  if (slot === 0) return { x: STATION.x + 8 + 44, y: stationTop('weapons') + 24 };
+  const c = weaponCard(slot === 1 ? 'laser' : 'torpedo');
+  return { x: c.x + 6, y: c.pipsY };
 }
 /** Valkyrn spec §5: the Flight seat's weapon block, beside the Helm block at the bottom: two cards (GUN or the laser fit's
  *  LASER, then TORPEDO), the reason line and, with the laser fit, the frequency row. */
@@ -47,3 +56,10 @@ export const STATUS_RESERVE = 44;
  *  the slots in a row (10 fit: the Weapons system's, spec §10.1) and the heat bar. */
 export const POWER_STRIP = { x: STATION.x + STATION.w + EDGE, w: 236, h: 54, slotW: 18, slotH: 14, slotGap: 2 } as const;
 export function stripTop(): number { return INTERNAL_H - EDGE - POWER_STRIP.h; }
+/** Own ship window spec §3: top left, right of the status table, mirroring CONTACT across the map (x 228 to 468, y 42 to 212). */
+export const OWN_SHIP = { x: STATUS.x + STATUS.w + EDGE, y: STATUS.y, w: 240, h: 170 } as const;
+/** Its drawing box under the two header rows (x 236 to 460, y 82 to 204). */
+export const OWN_SHIP_BOX = { x: OWN_SHIP.x + 8, y: OWN_SHIP.y + 40, w: OWN_SHIP.w - 16, h: OWN_SHIP.h - 48 } as const;
+/** Spec §2: the header's left and right text edges, the title row and the SHLD / HULL row. */
+export const OWN_SHIP_X0 = OWN_SHIP.x + 8, OWN_SHIP_RIGHT = OWN_SHIP.x + OWN_SHIP.w - 8;
+export const OWN_SHIP_TITLE_Y = OWN_SHIP.y + 4, OWN_SHIP_STATUS_Y = OWN_SHIP.y + 20;

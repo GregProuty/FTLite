@@ -6,11 +6,12 @@ import { clampThrottle, THROTTLE_MAX } from '../../sim/duel/throttle';
 import type { ShipCommand } from '../../render/duel/shipControls';
 
 /** Press-edge actions (spec §5 table). H-1a uses pause, camera and the zoom keys; H-1b adds the duel ones; Artemis-ii
- *  adds the Helm's throttle notches on W and S (spec 2026-11-17-artemis-consoles §5.4). */
-export type KeyAction = 'interact' | 'prevLock' | 'fireDown' | 'fireUp' | 'launch' | 'stand' | 'switch' | 'pause' | 'camera' | 'zoomIn' | 'zoomOut' | 'confirm' | 'menu' | 'throttleUp' | 'throttleDown';
+ *  adds the Helm's throttle notches on W and S (spec 2026-11-17-artemis-consoles §5.4); W-2 adds Z, the laser's AUTO / MANUAL toggle at Weapons (pew pew spec §2);
+ *  W-3 adds V, the torpedo's (pew pew spec §3: the spec's X is Stand and C the camera, so V). */
+export type KeyAction = 'interact' | 'prevLock' | 'fireDown' | 'fireUp' | 'launch' | 'laserMode' | 'torpMode' | 'stand' | 'switch' | 'pause' | 'camera' | 'zoomIn' | 'zoomOut' | 'confirm' | 'menu' | 'throttleUp' | 'throttleDown';
 
 export const PRESS_CODES: Readonly<Record<string, KeyAction>> = {
-  KeyE: 'interact', KeyQ: 'prevLock', Space: 'fireDown', KeyF: 'launch', KeyX: 'stand', Tab: 'switch', Escape: 'pause', KeyC: 'camera',
+  KeyE: 'interact', KeyQ: 'prevLock', Space: 'fireDown', KeyF: 'launch', KeyZ: 'laserMode', KeyV: 'torpMode', KeyX: 'stand', Tab: 'switch', Escape: 'pause', KeyC: 'camera',
   Equal: 'zoomIn', NumpadAdd: 'zoomIn', Minus: 'zoomOut', NumpadSubtract: 'zoomOut', Enter: 'confirm', NumpadEnter: 'confirm', KeyM: 'menu',
   KeyW: 'throttleUp', KeyS: 'throttleDown'
 };
@@ -70,7 +71,7 @@ export interface KeySample {
 }
 
 export function emptyPresses(): Record<KeyAction, number> {
-  return { interact: 0, prevLock: 0, fireDown: 0, fireUp: 0, launch: 0, stand: 0, switch: 0, pause: 0, camera: 0, zoomIn: 0, zoomOut: 0, confirm: 0, menu: 0, throttleUp: 0, throttleDown: 0 };
+  return { interact: 0, prevLock: 0, fireDown: 0, fireUp: 0, launch: 0, laserMode: 0, torpMode: 0, stand: 0, switch: 0, pause: 0, camera: 0, zoomIn: 0, zoomOut: 0, confirm: 0, menu: 0, throttleUp: 0, throttleDown: 0 };
 }
 
 /** The flight dev view's held axes from a key sample: A/D turn (D clockwise), W thrusts forward, S reverses (W gives moveY −1). The duel's Helm thrusts by its throttle instead (Artemis spec §5.3). */

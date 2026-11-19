@@ -33,8 +33,17 @@ export interface SettingsSlice extends Volumes {
 }
 /** The canvas's place (React UI spec §4): the strip above it, the letterbox scale and offsets, the device pixel ratio. */
 export interface LayoutSlice { stripHeight: number; scale: number; offsetX: number; offsetY: number; dpr: number }
+/** Browser-only menu facts (web build spec §5.4, §7.4, §7.5, §7.7); all off in Electron. `unsupported` replaces Home's
+ *  Multiplayer button, `note` is the Safari line, `onlineBlocked` the Multiplayer screen's one-tab text, `playtestLog`
+ *  shows Settings' Download playtest log and `playtestLogText` its last result. `web`: the page runs in a browser (no
+ *  preload), where F11 is the browser's own fullscreen (review R1-F7). */
+export interface BrowserSlice { web: boolean; update: boolean; unsupported: string | null; note: string | null; onlineBlocked: string | null; playtestLog: boolean; playtestLogText: string }
+export const INITIAL_BROWSER: BrowserSlice = { web: false, update: false, unsupported: null, note: null, onlineBlocked: null, playtestLog: false, playtestLogText: '' };
+export const NO_PLAYTEST_RECORDS_TEXT = 'No playtest records yet.', PLAYTEST_LOG_FAILED_TEXT = 'The playtest log could not be read.';
+/** Settings' fullscreen note in a browser (R1-F7): F11 there is the browser's fullscreen, which the toggle cannot see. */
+export const BROWSER_F11_TEXT = "F11 is the browser's own fullscreen; this switch does not follow it.";
 export interface UiState {
-  menu: MenuState; online: OnlineSlice; settings: SettingsSlice; layout: LayoutSlice;
+  menu: MenuState; online: OnlineSlice; settings: SettingsSlice; layout: LayoutSlice; browser: BrowserSlice;
   duel: import('./views').DuelUiView | null; flight: import('./views').FlightUiView | null;
   hud: import('../render/hudModel').HudModel | null;
   /** The online duel's F3 latency overlay lines (H-2b); null while hidden. */
@@ -70,12 +79,16 @@ export function inputBlockedOf(s: Pick<UiState, 'menu'>): boolean { return !isPl
 export function can(v: MenuView, action: MenuAction): boolean { return v.online.available && !!v.online.status?.actions.includes(action) && !v.menu.pending; }
 export function failureText(code: string): string { return ERRORS[code as OnlineErrorCode] ?? `Online request failed (${code}). Try again.`; }
 
+/** The lobby's status line (owner 2026-11-18: the bare phase word read as a bug). */
+export const LOBBY_MESSAGE = 'Everyone presses Ready, then the host starts.';
+
 export function menuMessage(v: MenuView): string {
   const m = v.menu, status = v.online.status;
   const phaseMessage = status?.phase === 'rehosting' ? 'Restoring the mirrored checkpoint…'
     : status?.phase === 'saving' ? 'Saving the final checkpoint…'
     : m.recovering && status?.phase === 'paused' && status.mirror.committed ? `Restored at tick ${status.mirror.committed.capturedTick}. Paused.` : null;
   return m.localError || phaseMessage || (status?.error ? ERRORS[status.error] ?? `Online stopped (${status.error}). Retry or leave.`
+    : m.page === 'session' && status?.phase === 'lobby' && !m.pending ? LOBBY_MESSAGE
     : m.page === 'session' ? `${status?.phase ?? 'Connecting'}${m.pending ? '…' : ''}`
     : m.page === 'multiplayer' ? 'Host a crew or join one with its room code.' : m.page === 'ship' ? 'Choose your ship.' : m.page === 'settings' ? '' : 'Choose how to play.');
 }

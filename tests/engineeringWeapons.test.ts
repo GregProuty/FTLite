@@ -6,7 +6,7 @@ import hound from '../src/renderer/src/sim/ship/hound.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { consoleModel } from '../src/renderer/src/render/duel/consoleModel';
-import { CARD_ORDER, STATION, weaponCard } from '../src/renderer/src/render/duel/consoleLayout';
+import { PEW_ROW_H, STATION, stationTop, weaponCard, weaponPips } from '../src/renderer/src/render/duel/consoleLayout';
 import { laserSituation, refusal, statusSentence, weaponsOffline } from '../src/renderer/src/render/duel/situationModel';
 import { createDuelKeyboard, NO_HELD_FLAGS, type EventSource } from '../src/renderer/src/app/duel/input';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
@@ -32,12 +32,14 @@ describe('the Weapons panel (spec §10.3, §11)', () => {
       expect(panel()).toMatchObject({ weaponBars: [1, 2, 1], weaponFree: 0, burst: 2 });
     } finally { disposeDuel(d); }
   });
-  it('three cards side by side in slot order, inside the block', () => {
-    expect(CARD_ORDER).toEqual(['pew', 'laser', 'torpedo']);
-    const [p, l, t] = CARD_ORDER.map((c) => weaponCard(c));
-    expect(l!.x).toBeGreaterThan(p!.x + p!.w); expect(t!.x).toBeGreaterThan(l!.x + l!.w);
-    expect(t!.x + t!.w).toBeLessThanOrEqual(STATION.x + STATION.w - 8);
-    expect(p!.pipsY).toBe(p!.y + p!.hitH + 2);
+  // Merge with W-1 (SIM 58), replaced rule (kind a): W-1's PEW row stands in for Part ii's PEW PEW card (pew pew spec §1,
+  // merge brief decision 4), so pew pew's bar pips sit on the PEW row and the beam's and the torpedo's under their cards.
+  it('pew pew pips on the PEW row, the beam and torpedo pips under their cards, in slot order, inside the block', () => {
+    const l = weaponCard('laser'), t = weaponCard('torpedo'), p0 = weaponPips(0), p1 = weaponPips(1), p2 = weaponPips(2);
+    expect(t.x).toBeGreaterThan(l.x + l.w); expect(t.x + t.w).toBeLessThanOrEqual(STATION.x + STATION.w - 8);
+    expect(p0.y).toBeGreaterThan(stationTop('weapons')); expect(p0.y + 10).toBeLessThanOrEqual(stationTop('weapons') + 6 + PEW_ROW_H);   // on the PEW row, above the cards
+    expect(p1).toEqual({ x: l.x + 6, y: l.y + l.hitH + 2 }); expect(p2).toEqual({ x: t.x + 6, y: t.y + t.hitH + 2 });
+    expect(l.pipsY + 14 + 24).toBeLessThanOrEqual(l.y + l.h);   // FIRE / LAUNCH under the pips, inside the card
   });
   it('weaponPower rides the keyboard\'s ship queue', () => {
     const kb = createDuelKeyboard(quiet);

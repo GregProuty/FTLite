@@ -4,6 +4,7 @@
 // neutralising without a pause, Enter's rematch on a decided round and the leave prompt, a release swallowed by a pause
 // re-sent after resume, CONNECTION LOST right after a link close, and each record's own disconnects, pauses and jitter.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import type { CommandResult, DuelCommand, HeldInput } from '../src/renderer/src/net/contracts';
 import type { DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
@@ -11,6 +12,7 @@ import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
+import { placeMissile } from '../src/renderer/src/sim/tactical/state';
 import { sitDown, standUp } from '../src/renderer/src/sim/stations';
 import type { OnlinePortDescriptor, OnlineStatus } from '../src/shared/onlineSession';
 import { duelCompatibility } from '../src/network/online/onlineDuel';
@@ -50,7 +52,7 @@ function stubClient() {
 type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
   clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null; notice?: string | null }[], overlay: [] as (readonly string[] | null)[],
-  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void } }[], disposes: { n: 0 }
+  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void; torpHeading(h: number): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 }
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
 vi.mock('../src/network/portLink', () => ({
@@ -63,10 +65,11 @@ vi.mock('../src/network/portLink', () => ({
 vi.mock('../src/network/transport/bridge', () => ({ browserPortEndpoint: () => ({}) }));
 vi.mock('../src/renderer/src/app/duel/scene', () => ({
   // Mirrors the real scene: draw hands the UI a frame, dispose clears the sink (scene.ts dispose: options.ui.clear()).
-  createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void } }) => {
+  createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void; torpHeading(h: number): void } }) => {
     h.sceneOpts.push(opts);
     return {
-      draw: (_source: unknown, _dt: number, o: { banner: string | null; notice?: string | null }) => {
+      draw: (source: unknown, _dt: number, o: { banner: string | null; notice?: string | null }) => {
+        h.sources.push(source as never);
         h.draws.push({ banner: o.banner, notice: o.notice });
         opts.ui.frame({ readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null });
       },
@@ -98,7 +101,7 @@ const nextRound = (d: DuelState): void => {
 };
 
 let win: ReturnType<typeof target>;
-beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; h.sceneOpts.length = 0; h.disposes.n = 0; });
+beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; h.sceneOpts.length = 0; h.sources.length = 0; h.disposes.n = 0; });
 afterEach(() => { delete (globalThis as { window?: unknown }).window; });
 
 function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame() {}, clear() {} }, api: object = {}, extra: object = {}) {
@@ -148,6 +151,132 @@ describe('the online duel session clears its UI on leave (React UI spec §2)', (
     r.dispose();
     expect(h.disposes.n).toBe(1);
     expect(store.getState().duel).toBeNull();
+  });
+});
+
+describe('the online pew (W-1 review F2)', () => {
+  const pewCommands = (c: Stub) => c.commands().filter((x) => x.kind === 'pewFire');
+  const refusals = () => h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'pew');
+  it('sends the click even when the replica shows no charge; an unavailable answer from the authority shows NO CHARGE', () => {
+    const r = rig(1);
+    r.d.tactical.systems[0]!.pewCharge = 0;   // the lagging replica: empty
+    const c = r.attach();
+    r.session.frame();
+    h.sceneOpts[0]!.requests!.pew(1234); r.pump();
+    expect(pewCommands(c)).toHaveLength(1);
+    r.session.frame(); expect(refusals()).toEqual([]);   // nothing is shown before the authority answers
+    const id = c.ids[c.commands().map((x) => x.kind).lastIndexOf('pewFire')]!;
+    c.results.push({ id, tick: 3, status: 'rejected', reason: 'unavailable' }); r.pump();
+    r.session.frame();
+    expect(refusals()).toEqual([{ control: 'pew', reason: 'NO CHARGE' }]);
+    c.results.push({ id: { ...id, sequence: id.sequence + 99 }, tick: 4, status: 'rejected', reason: 'unavailable' }); r.pump(); r.session.frame();
+    expect(refusals()).toEqual([]);   // only a pewFire this seat sent
+    r.dispose();
+  });
+  it('an applied pew shows nothing; a seat that is not the gunner refuses locally and sends nothing', () => {
+    const r = rig(1), c = r.attach();
+    r.session.frame();
+    h.sceneOpts[0]!.requests!.pew(1234); r.pump();
+    c.results.push({ id: c.ids[c.commands().map((x) => x.kind).lastIndexOf('pewFire')]!, tick: 3, status: 'applied' }); r.pump(); r.session.frame();
+    expect(refusals()).toEqual([]);
+    r.dispose();
+    const h0 = rig(0), c0 = h0.attach();   // seat 0 flies: not the Weapons seat
+    h0.session.frame(); h.sceneOpts.at(-1)!.requests!.pew(1234); h0.pump();
+    expect(pewCommands(c0)).toHaveLength(0);
+    h0.dispose();
+  });
+});
+
+describe('the online manual laser (W-2)', () => {
+  const sent = (c: Stub, kind: string) => c.commands().filter((x) => x.kind === kind);
+  const fireRefusals = () => h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'fire');
+  it('Z sends laserMode from the mode in flight, else the replica\'s', () => {
+    const r = rig(1), c = r.attach();
+    r.session.frame();
+    r.key('keydown', 'KeyZ'); r.key('keyup', 'KeyZ'); r.pump();
+    r.key('keydown', 'KeyZ'); r.key('keyup', 'KeyZ'); r.pump();
+    expect(sent(c, 'laserMode')).toEqual([{ kind: 'laserMode', manual: true }, { kind: 'laserMode', manual: false }]);
+    r.dispose();
+  });
+  it('in MANUAL Space sends laserFire along the map aim even on an uncharged replica; an unavailable answer shows NO CHARGE', () => {
+    const r = rig(1);
+    todaysCrewWeapons(r.d.tactical);   // merge with the Engineering spike (kind a): the beam needs a bar (spec §10.3)
+    r.d.tactical.systems[0]!.laserManual = true;
+    r.d.tactical.systems[0]!.laserCharge = 0;   // the lagging replica: empty
+    const c = r.attach();
+    r.session.frame();
+    h.sceneOpts[0]!.requests!.aimLaser(1234);
+    r.key('keydown', 'Space'); r.key('keyup', 'Space'); r.pump();
+    expect(sent(c, 'laserFire')).toEqual([{ kind: 'laserFire', aim: 4, aimAcc: 210 }]);
+    expect(sent(c, 'laserCharge')).toEqual([]);
+    r.session.frame(); expect(fireRefusals()).toEqual([]);   // nothing is shown before the authority answers
+    const id = c.ids[c.commands().map((x) => x.kind).lastIndexOf('laserFire')]!;
+    c.results.push({ id, tick: 3, status: 'rejected', reason: 'unavailable' }); r.pump();
+    r.session.frame();
+    expect(fireRefusals()).toEqual([{ control: 'fire', reason: 'NO CHARGE' }]);
+    r.dispose();
+  });
+});
+
+describe('the online manual torpedo (W-3)', () => {
+  const sent = (c: Stub, kind: string) => c.commands().filter((x) => x.kind === kind);
+  const launchRefusals = () => h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'launch');
+  /** The crew far from the enemy (out of torpedo range). */
+  const apart = (d: DuelState): void => { Object.assign(d.tactical.ships[0], { x: 0, y: 1500, vx: 0, vy: 0 }); Object.assign(d.tactical.ships[1], { x: 0, y: -1500, vx: 0, vy: 0 }); };
+  it('V sends torpMode from the mode in flight, else the replica\'s', () => {
+    const r = rig(1), c = r.attach();
+    r.session.frame();
+    r.key('keydown', 'KeyV'); r.key('keyup', 'KeyV'); r.pump();
+    r.key('keydown', 'KeyV'); r.key('keyup', 'KeyV'); r.pump();
+    expect(sent(c, 'torpMode')).toEqual([{ kind: 'torpMode', manual: true }, { kind: 'torpMode', manual: false }]);
+    r.dispose();
+  });
+  it('in MANUAL F is sent out of range and on an empty replica magazine; an unavailable answer names NO TORPEDOES', () => {
+    const r = rig(1);
+    apart(r.d);
+    r.d.tactical.systems[0]!.torpManual = true;
+    r.d.tactical.systems[0]!.magazine = 0;   // the lagging replica: empty
+    const c = r.attach();
+    r.session.frame();
+    r.key('keydown', 'KeyF'); r.key('keyup', 'KeyF'); r.pump();
+    expect(sent(c, 'missileLaunch')).toEqual([{ kind: 'missileLaunch' }]);
+    r.session.frame(); expect(launchRefusals()).toEqual([]);   // nothing is shown before the authority answers
+    const id = c.ids[c.commands().map((x) => x.kind).lastIndexOf('missileLaunch')]!;
+    c.results.push({ id, tick: 3, status: 'rejected', reason: 'unavailable' }); r.pump();
+    r.session.frame();
+    expect(launchRefusals()).toEqual([{ control: 'launch', reason: 'NO TORPEDOES' }]);
+    r.dispose();
+  });
+  it('in AUTO F out of range is not sent and says OUT OF RANGE', () => {
+    const r = rig(1);
+    apart(r.d);
+    const c = r.attach();
+    r.session.frame();
+    r.key('keydown', 'KeyF'); r.key('keyup', 'KeyF'); r.pump();
+    expect(sent(c, 'missileLaunch')).toEqual([]);
+    r.session.frame();
+    expect(launchRefusals()).toEqual([{ control: 'launch', reason: 'OUT OF RANGE' }]);
+    r.dispose();
+  });
+  it('while the replica shows the MANUAL torpedo flying, A/D are torpTurn and the right button\'s heading is torpHeading', () => {
+    const r = rig(1);
+    apart(r.d);
+    r.d.tactical.systems[0]!.torpManual = true;
+    placeMissile(r.d.tactical, 0, { x: 0, y: 1300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 30 }, true);
+    const c = r.attach();
+    r.session.frame();
+    r.key('keydown', 'KeyD'); r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ torpTurn: 1 });
+    r.key('keyup', 'KeyD');
+    h.sceneOpts[0]!.requests!.torpHeading(40); r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ torpHeading: 40 });
+    expect('torpTurn' in c.helds().at(-1)!).toBe(false);
+    r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ torpHeading: 40 });   // re-sent while it holds
+    r.key('keydown', 'KeyA'); r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ torpTurn: -1 });
+    expect('torpHeading' in c.helds().at(-1)!).toBe(false);
+    r.dispose();
   });
 });
 

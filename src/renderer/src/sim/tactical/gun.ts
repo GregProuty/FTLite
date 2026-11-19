@@ -10,12 +10,12 @@ import { classOf, emptyRound, Room, type GunRound, type TacticalState } from './
 import { DT } from './tuning';
 import type { ShipInput } from './weapons';
 
-/** Put a round in the pool (spec §7.2): the lowest free entry, else the active round with the highest age, the lowest
- *  index on a tie. Returns its entry. */
-export function placeRound(state: TacticalState, r: Omit<GunRound, 'active'>): GunRound {
-  let k = state.rounds.findIndex((e) => !e.active);
-  if (k < 0) { k = 0; for (let j = 1; j < state.rounds.length; j++) if (state.rounds[j]!.age > state.rounds[k]!.age) k = j; }
-  const e = state.rounds[k]!;
+/** Put a round in a pool (spec §7.2; W-1: the gun's `state.rounds` by default, or the pew's `state.pew`): the lowest free
+ *  entry, else the active round with the highest age, the lowest index on a tie. Returns its entry. */
+export function placeRound(state: TacticalState, r: Omit<GunRound, 'active'>, pool: GunRound[] = state.rounds): GunRound {
+  let k = pool.findIndex((e) => !e.active);
+  if (k < 0) { k = 0; for (let j = 1; j < pool.length; j++) if (pool[j]!.age > pool[k]!.age) k = j; }
+  const e = pool[k]!;
   Object.assign(e, { x: r.x, y: r.y, vx: r.vx, vy: r.vy, age: r.age, owner: r.owner, active: true });
   return e;
 }
@@ -52,9 +52,9 @@ export function tickGun(state: TacticalState, i: number, input: ShipInput): void
   fireRound(state, i, g);
 }
 
-/** The entry parameter t in [0, 1] of the segment (ox, oy) → (nx, ny) into the circle at (cx, cy) of radius r: 0 when
+/** W-1: shared with the pew's rounds (pew.ts). The entry parameter t in [0, 1] of the segment (ox, oy) → (nx, ny) into the circle at (cx, cy) of radius r: 0 when
  *  it starts inside, −1 when it misses. */
-function segmentEntry(ox: number, oy: number, nx: number, ny: number, cx: number, cy: number, r: number): number {
+export function segmentEntry(ox: number, oy: number, nx: number, ny: number, cx: number, cy: number, r: number): number {
   const fx = ox - cx, fy = oy - cy, c = fx * fx + fy * fy - r * r;
   if (c <= 0) return 0;
   const ex = nx - ox, ey = ny - oy, a = ex * ex + ey * ey;

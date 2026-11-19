@@ -106,7 +106,7 @@ function duelSummaryShape({ uint }: Primitives) {
     repairsStarted: crew, walkingTicks: crew, repairingTicks: crew };
 }
 /** The duel's wire (engine refactor spec §6): its own command kinds plus the core's setPaused, and the duel snapshot
- *  header (sim/duel/snapshot.ts). H-2 adds `rematch` and the `round` event; Artemis-ii adds `throttle`; Feel-ii adds `heading`; the Engineering spike adds shipPower, shipCoolant, shipDoor and shipAirlock. */
+ *  header (sim/duel/snapshot.ts). H-2 adds `rematch` and the `round` event; Artemis-ii adds `throttle`; Feel-ii adds `heading`; W-1 adds `pewFire`; W-2 adds `laserMode` and `laserFire`; W-3 adds `torpMode`; the Engineering spike adds shipPower, shipCoolant, shipDoor, shipAirlock and weaponPower. */
 export const duelWire: ModeWire<DuelSnapshot> = {
   commands({ index }) {
     return [
@@ -124,6 +124,10 @@ export const duelWire: ModeWire<DuelSnapshot> = {
       z.object({ kind: z.literal('contactScan'), contact: z.number().int() }).strict(),
       z.object({ kind: z.literal('designate'), contact: z.number().int() }).strict(),
       z.object({ kind: z.literal('laserFrequency'), freq: z.number().int() }).strict(),
+      z.object({ kind: z.literal('pewFire'), aim: z.number().int(), aimAcc: z.number().int() }).strict(),   // W-1: the pew's aim
+      z.object({ kind: z.literal('laserMode'), manual: z.boolean() }).strict(),   // W-2: the laser's AUTO / MANUAL mode
+      z.object({ kind: z.literal('laserFire'), aim: z.number().int(), aimAcc: z.number().int() }).strict(),   // W-2: the MANUAL laser's aim
+      z.object({ kind: z.literal('torpMode'), manual: z.boolean() }).strict(),   // W-3: the torpedo's AUTO / MANUAL mode
       z.object({ kind: z.literal('rematch') }).strict(),
       // Engineering spike spec §7: integers; the sim answers an out-of-range one malformed.
       z.object({ kind: z.literal('shipPower'), system: z.number().int(), delta: z.number().int() }).strict(),
@@ -155,7 +159,8 @@ const { uint, positive, index, player, text, u32 } = prims;
 const axis = z.number().finite().min(-1).max(1).transform((n) => n === 0 ? 0 : n);
 const pingCoord = z.number().finite().min(-1e6).max(1e6);   // Feel-ii §2.7: a ping's world point
 const id = z.object({ player, sequence: positive }).strict();
-const held = z.object({ moveX: axis, moveY: axis, interactHeld: z.boolean(), face: z.boolean().optional(), aim: z.number().int().min(-1).max(255).optional(), gunHeld: z.boolean().optional() }).strict();   // face: Feel-i's auto-face; aim, gunHeld: Valkyrn spec §6.2, §7.1
+const held = z.object({ moveX: axis, moveY: axis, interactHeld: z.boolean(), face: z.boolean().optional(), aim: z.number().int().min(-1).max(255).optional(), gunHeld: z.boolean().optional(),
+  torpTurn: z.number().int().min(-1).max(1).optional(), torpHeading: z.number().int().min(-1).max(255).optional() }).strict();   // face: Feel-i's auto-face; aim, gunHeld: Valkyrn spec §6.2, §7.1; torpTurn, torpHeading: W-3
 const frame = z.object({ runId: text, player, tick: uint, sequence: positive, held }).strict();
 const commandSchema = z.discriminatedUnion('kind', wire.commands(prims));
 const envelope = z.object({ runId: text, id, requestedTick: uint, command: commandSchema }).strict();

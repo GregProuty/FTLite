@@ -39,12 +39,12 @@ describe('the Valkyrn classes (spec §6.1)', () => {
     expect(['cutter', 'hunter', 'valkyrn', 'valkyrnLaser'].map(classIndexById)).toEqual([0, 1, 2, 3]);
     expect(() => classIndexById('skiff')).toThrow(/unknown ship class skiff/);
   });
-  it('the Valkyrn: hull 30, thrust 160, 200°/s, the gun and the torpedo, no laser; the laser fit has the Cutter\'s laser and no gun', () => {
-    expect([VALKYRN_HULL, VALKYRN_THRUST, VALKYRN_TURN_DEG_PER_S]).toEqual([30, 160, 200]);
-    expect(VALKYRN_CLASS).toMatchObject({ id: 'valkyrn', ai: 'crew', hull: 30, thrust: 160, radius: SHIP_RADIUS, turnStepsPerTick: (VALKYRN_TURN_DEG_PER_S / 360) * HEADING_COUNT * DT });
-    expect(VALKYRN_CLASS.slots).toEqual({ laser: null, gun: GUN, missile: MISSILE });
-    expect(VALKYRN_LASER_CLASS).toMatchObject({ id: 'valkyrnLaser', ai: 'crew', hull: 30, thrust: 160, turnStepsPerTick: VALKYRN_CLASS.turnStepsPerTick });
-    expect(VALKYRN_LASER_CLASS.slots).toEqual({ laser: LASER, gun: null, missile: MISSILE });
+  it('the Valkyrn: hull 53, thrust 160, 200°/s, the gun and the torpedo, no laser; the laser fit has the Cutter\'s laser and no gun', () => {
+    expect([VALKYRN_HULL, VALKYRN_THRUST, VALKYRN_TURN_DEG_PER_S]).toEqual([53, 160, 200]);   // W-1: duel hull ×1.75 to hold the 180 s floor with the pew (30 before)
+    expect(VALKYRN_CLASS).toMatchObject({ id: 'valkyrn', ai: 'crew', hull: 53, thrust: 160, radius: SHIP_RADIUS, turnStepsPerTick: (VALKYRN_TURN_DEG_PER_S / 360) * HEADING_COUNT * DT });
+    expect(VALKYRN_CLASS.slots).toEqual({ laser: null, gun: GUN, pew: null, missile: MISSILE });
+    expect(VALKYRN_LASER_CLASS).toMatchObject({ id: 'valkyrnLaser', ai: 'crew', hull: 53, thrust: 160, turnStepsPerTick: VALKYRN_CLASS.turnStepsPerTick });
+    expect(VALKYRN_LASER_CLASS.slots).toEqual({ laser: LASER, gun: null, pew: null, missile: MISSILE });
     expect([CUTTER_CLASS.slots.gun, HUNTER_CLASS.slots.gun]).toEqual([null, null]);
     expect(VALKYRN_CLASS.shields).toEqual(CUTTER_CLASS.shields);
     for (const c of SHIP_CLASSES) expect(c.turnStepsPerTick, c.id).toBeLessThan(3);   // spec §6.2: the aim band is three indices

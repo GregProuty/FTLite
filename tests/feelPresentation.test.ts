@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { gunnerPresent, laserCardReason, laserSituation, linedUp, SOLUTION_HOLD_S, statusSentence } from '../src/renderer/src/render/duel/situationModel';
 import { countSit, createSitTracker, FRAME_ZOOM_MAX, FRAME_ZOOM_MIN, frameZoom, resetSits, SIT_CARD_S, sitCard, trackSit } from '../src/renderer/src/render/duel/sitModel';
 import { consoleModel } from '../src/renderer/src/render/duel/consoleModel';
+import { OWN_SHIP } from '../src/renderer/src/render/duel/consoleLayout';
 import { createFx, FLOAT_STEP_PX, fxDt, KILL_SLOWMO_RATE, KILL_SLOWMO_S, pushEvents, pushKill, ROOM_SHAKE, shakeOffset, stepFx, TORPEDO_SHAKE, trackSolution, type ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import { combatModel, INFO_Y, STATUS_Y } from '../src/renderer/src/render/tactical/weaponsModel';
 import { createCamera } from '../src/renderer/src/render/tactical/camera';
@@ -202,6 +203,7 @@ describe('sitting down (spec §1)', () => {
     expect(countSit('weapons')).toBe(true);
     expect(sitCard('helm', 0.5, false)).toMatchObject({ title: 'HELM: POINT AT THE ENEMY', keys: ['A/D  TURN', 'W/S  THROTTLE', 'HOLD SPACE  AUTO-FACE'], alpha: 1, top: false });
     expect(sitCard('weapons', 0.5, false, true)).toMatchObject({ title: 'WEAPONS: CLICK A WEAPON, THEN A ROOM OR ROCK', top: true });
+    expect(sitCard('weapons', 0.5, false, true)?.keys).toContain('L-CLICK MAP  PEW');   // W-1
     expect(sitCard('helm', SIT_CARD_S - 0.25, false)!.alpha).toBeCloseTo(0.5, 6);
     expect([sitCard('helm', SIT_CARD_S, false), sitCard('helm', 1, true)]).toEqual([null, null]);
   });
@@ -225,5 +227,19 @@ describe('sitting down (spec §1)', () => {
     expect(640 + 600 * z).toBeLessThanOrEqual(1280 - 156);
     const zl = frameZoom(-600, 300, vp, 228, 156);
     expect(640 - 600 * zl).toBeGreaterThanOrEqual(228); expect(360 + 300 * zl).toBeLessThanOrEqual(720);
+  });
+  it('own ship window spec §3 (owner 2026-11-18): the avoid cap uses the 28 px arrow margin, so (-200, -200) frames at 0.72', () => {
+    const vp = { w: 1280, h: 720 };
+    expect(frameZoom(-200, -200, vp, 228, 156, OWN_SHIP)).toBeCloseTo((640 - 468 - 28) / 200, 9);
+  });
+  it('own ship window spec §3: an up-left enemy is framed clear of the window on at least one axis; without avoid, unchanged', () => {
+    const vp = { w: 1280, h: 720 };
+    for (const [dx, dy] of [[-300, -250], [-500, -120], [-150, -400]] as const) {
+      const z = frameZoom(dx, dy, vp, 228, 156, OWN_SHIP), sx = vp.w / 2 + dx * z, sy = vp.h / 2 + dy * z;
+      expect(sx >= OWN_SHIP.x + OWN_SHIP.w || sy >= OWN_SHIP.y + OWN_SHIP.h || z === FRAME_ZOOM_MIN, `${dx},${dy}`).toBe(true);
+      expect(z).toBeLessThanOrEqual(frameZoom(dx, dy, vp, 228, 156));
+    }
+    expect(frameZoom(300, -250, vp, 228, 156, OWN_SHIP)).toBe(frameZoom(300, -250, vp, 228, 156));   // up-right: no cap
+    expect(frameZoom(-300, 250, vp, 228, 156, OWN_SHIP)).toBe(frameZoom(-300, 250, vp, 228, 156));   // down-left: no cap
   });
 });

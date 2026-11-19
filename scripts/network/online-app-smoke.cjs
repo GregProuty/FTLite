@@ -2,7 +2,8 @@
 // stack happens in the page (page-probe.js, injected before any page script) and is read back here.
 const electron = require('electron');
 const { app, BrowserWindow, ipcMain, powerMonitor, session } = electron;
-// Local debugging only (FTL_DEBUG=1, never set by the gates): raw diagnostics on stderr. Without it every diagnostic is a
+// FTL_DEBUG=1 prints raw diagnostics on stderr. The web-net gate (scripts/web/net/players.ts) sets it and parses the 'DBG console' and
+// 'DBG loaded' lines as a contract (page errors, and proof the console is watched): do not change those formats casually. Without it every diagnostic is a
 // fixed category with validated context (tests/onlineAppDiagnostics.test.ts).
 const debug = !!process.env?.FTL_DEBUG;
 process.on('uncaughtException', e => { if (debug) console.error('APP_DRIVER_UNCAUGHT', e); else console.error('APP_DRIVER_UNCAUGHT'); app.exit(1); });
@@ -186,7 +187,7 @@ async function command(message) {
       writeFileSync(message.path, bytes); return { bytes: bytes.length };
     }
     case 'resources': return resources();
-    case 'resource-counts': { const r = await resources(); return { workers: r.workers, windows: r.windows, ports: r.ports, listeners: r.listeners, rendererPid: r.rendererPid }; }
+    case 'resource-counts': { const r = await resources(); return { workers: r.workers, windows: r.windows, ports: r.ports, portsCreated: await js('window.onlineProbe.counts().observedPagePorts'), listeners: r.listeners, rendererPid: r.rendererPid }; }
     // Only --inject-transport-failure uses this; the run must then fail. Every native peer connection in the page closes.
     case 'transport-death': return js('window.rtcNative.closeAll()');
     // The next lobby request waits 1.2 s: the window the old slow hidden-window load gave the cancel case.

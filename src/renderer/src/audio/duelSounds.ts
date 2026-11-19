@@ -34,6 +34,12 @@ export function duelEventSounds(events: readonly ViewEvent[], pan: Pan): EventSo
     } else if (e.kind === 'gunHit') {   // Valkyrn spec §7.4: a click per hit, at most one per frame (the gun fires every 6 ticks)
       combat = true;
       if (!clicked) { clicked = true; sounds.push({ key: 'impactMetal', gain: 0.35, rate: 1.6, pan: pan(e.x, e.y) }); }
+    } else if (e.kind === 'pewFire') {   // W-1 (pew pew spec 1): the pew's crack, the existing pitch variation
+      combat = true;
+      sounds.push({ key: 'pew', gain: e.ship === CREW ? 0.55 : 0.4, rate: 1.5, dur: 0.18, pan: pan(e.x, e.y) });
+    } else if (e.kind === 'pewHit') {   // the existing hit sounds: a stripped layer's field, else metal
+      combat = true;
+      sounds.push(e.stripped ? { key: 'forceField', gain: 0.4, dur: 0.3, pan: pan(e.x, e.y) } : { key: 'impactMetal', gain: 0.5, rate: 1.3, pan: pan(e.x, e.y) });
     }
     if (hitsCrew(e)) { duck = true; sounds.push({ key: 'lowBoom', gain: 0.8, pan: 0 }); }
   }

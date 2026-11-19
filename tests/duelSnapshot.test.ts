@@ -67,14 +67,14 @@ describe('the duel snapshot (spec §6)', () => {
     } finally { disposeDuel(d); }
   });
   it('rejects tactical, presence and repair values the module writers would refuse, even rehashed, before allocating', () => {
-    const { d } = scriptedDuel(4, 6276);   // Engineering spike (SIM 55): was 6146 (the full spike's rules moved the run; seeds 1 to 3, 6 and 8 to 10 qualify at 6226, 8190, 6169, 6059, 7380, 6107 and 6283, seeds 5 and 7 have none); was seed 4 tick 6156 (the 1-layer shield start moved the run). A missile in flight, a damaged crew room and a repair in progress: the first such tick from 5000 on (SIM_VERSION 53, spike ii with the fan split at r 13: seed 4 tick 6146; seeds 1 to 3, 5 and 7 to 10 have none, seed 6 does at 6055; seed 1 tick 6472 before, SIM_VERSION 53 with the fan split at r 25, when seeds 2 to 5 and 7 to 10 had none and seed 6 did at 9888; seed 5 tick 7011 before, SIM_VERSION 50; seed 3 tick 5395 before FTL targeting, SIM_VERSION 49; seed 6 tick 6249 before the weapons update, SIM_VERSION 48; seed 9 tick 5108 before Sci-1's merge, SIM_VERSION 47; seed 4 tick 5193 before homing torpedoes, SIM_VERSION 46)
+    const { d } = scriptedDuel(4, 5050);   // a missile in flight, a damaged crew room and a repair in progress: the first such tick from 5000 on (merge of the Engineering spike with W-1, W-2 and W-3: seed 4 tick 5050; the spike alone at SIM 55: seed 4 tick 6276; still seed 4 tick 6156 at SIM_VERSION 55 on master, W-1's pew merged with asteroids-ii; seed 6 tick 5000 on the W-1 branch, SIM_VERSION 54; SIM_VERSION 53, spike ii with the fan split at r 13: seed 4 tick 6156; seeds 1 to 3, 5 and 7 to 10 have none, seed 6 does at 6055; seed 1 tick 6472 before, SIM_VERSION 53 with the fan split at r 25, when seeds 2 to 5 and 7 to 10 had none and seed 6 did at 9888; seed 5 tick 7011 before, SIM_VERSION 50; seed 3 tick 5395 before FTL targeting, SIM_VERSION 49; seed 6 tick 6249 before the weapons update, SIM_VERSION 48; seed 9 tick 5108 before Sci-1's merge, SIM_VERSION 47; seed 4 tick 5193 before homing torpedoes, SIM_VERSION 46)
     try {
       // The fixture's precondition first, so a trajectory change fails here by name rather than further down.
       const flying = d.tactical.missiles.findIndex((m) => m.active);
-      expect(flying, 'one missile in flight at seed 4 tick 6276').toBeGreaterThanOrEqual(0);
-      expect(d.tactical.missiles[1 - flying]!.active, 'only one missile in flight at seed 4 tick 6276').toBe(false);
-      expect(d.tactical.systems[0].rooms.some((r) => r > 0), 'a damaged crew room at seed 4 tick 6276').toBe(true);
-      expect(d.repair.some((r) => r > 0), 'a repair in progress at seed 4 tick 6276').toBe(true);
+      expect(flying, 'one missile in flight at seed 4 tick 5050').toBeGreaterThanOrEqual(0);
+      expect(d.tactical.missiles[1 - flying]!.active, 'only one missile in flight at seed 4 tick 5050').toBe(false);
+      expect(d.tactical.systems[0].rooms.some((r) => r > 0), 'a damaged crew room at seed 4 tick 5050').toBe(true);
+      expect(d.repair.some((r) => r > 0), 'a repair in progress at seed 4 tick 5050').toBe(true);
       const good = saveDuelSnapshot(d, DIGEST), names = new Map<string, number>();
       let at = 1;
       for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) { names.set(f.name, at); at += f.count; }
@@ -92,7 +92,12 @@ describe('the duel snapshot (spec §6)', () => {
         [`${free}.flight`, 2, 0.25, /a free entry holds values/], [`${free}.owner`, 0, 1, /a free entry holds values/],
         ['ships.0.headingAcc', 0, 1e300, /ships\.0\.headingAcc/], ['ships.1.headingAcc', 0, -1, /ships\.1\.headingAcc/],
         ['ships.1.skidBudget', 0, -0.5, /ships\.1\.skidBudget/], ['ships.0.graceUntil', 0, 2147483648, /ships\.0\.graceUntil/],
-        ['systems.0.cls', 0, 1, /duel slot identity/], ['systems.1.cls', 0, 0, /duel slot identity/],
+        ['systems.0.cls', 0, 1, /duel slot identity/],
+        ['systems.1.cls', 0, 0, /systems\.1\.pewCharge: out of range/],   // Task 6 review: the Hunter's charge (above the Cutter's full 180) is now bounded by the claimed class first; the identity case alone is below
+        ['systems.1.laserManual', 0, 1, /systems\.1\.laserManual: only the crew laser has a manual mode/],   // W-2: the Hunter is always AUTO
+        ['systems.0.laserAim', 0, 65536, /systems\.0\.laserAim: out of range/],   // W-2: a fine aim 0..65535, or −1
+        ['systems.1.torpManual', 0, 1, /systems\.1\.torpManual: only the crew torpedo has a manual mode/],   // W-3: the Hunter is always AUTO
+        [`${slot}.manual`, 0, 2, /manual is not 0 or 1/], [`${free}.manual`, 0, 1, /a free entry holds values/],   // W-3: the per-torpedo mode
         ['systems.0.target', 0, 0, /duel slot identity/], ['systems.1.target', 0, 1, /duel slot identity/]
       ];
       const created = vi.spyOn(duelState, 'createDuel');
@@ -100,8 +105,12 @@ describe('the duel snapshot (spec §6)', () => {
         const snap = structuredClone(good); snap.values[names.get(name)! + k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
         expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST), `${name}[${k}] = ${value}`).toThrow(error);
       }
-      const empty = structuredClone(good);   // slot 1 inactive and zeros, no missiles: internally consistent, but not the duel
-      for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) if (/^(ships|systems)\.1\.|^missiles\./.test(f.name)) empty.values.fill(0, names.get(f.name)!, names.get(f.name)! + f.count);
+      const cutterHunter = structuredClone(good);   // the Hunter slot claiming the Cutter with a charge the Cutter can hold: the identity check
+      cutterHunter.values[names.get('systems.1.cls')!] = 0; cutterHunter.values[names.get('systems.1.pewCharge')!] = 0;
+      cutterHunter.header.hash = hashF64(Float64Array.from(cutterHunter.values));
+      expect(() => validateDuelSnapshot(CUTTER, cutterHunter, DIGEST)).toThrow(/duel slot identity/);
+      const empty = structuredClone(good);   // slot 1 inactive and zeros, no missiles and no rounds (W-1 merge: a Hunter pew round may be in flight here): internally consistent, but not the duel
+      for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) if (/^(ships|systems)\.1\.|^missiles\.|^rounds\.|^pew\./.test(f.name)) empty.values.fill(0, names.get(f.name)!, names.get(f.name)! + f.count);
       empty.header.hash = hashF64(Float64Array.from(empty.values));
       expect(() => validateDuelSnapshot(CUTTER, empty, DIGEST)).toThrow(/duel slot identity/);
       const twice = structuredClone(good);   // the free entry claims the flying missile's owner: two missiles for one ship

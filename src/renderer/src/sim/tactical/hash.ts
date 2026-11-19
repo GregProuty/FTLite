@@ -9,12 +9,13 @@ import { hashF64 } from '../../../../shared/hash';
 import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
 import { DUEL_SYSTEM_COUNT, SYSTEM_SLOTS, WEAPON_BAR_MAX, WEAPON_SLOTS } from './bars';
 import { SHIP_CLASSES, type ShipClassDef } from './defs';
-import { DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, GUN_POOL, HEADING_COUNT, HUNTER_TRAIL_TICKS, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
+import { AIM_STEPS, DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, GUN_POOL, HEADING_COUNT, HUNTER_PEW_GAP, HUNTER_TRAIL_TICKS, PEW_POOL, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
 import { rockCapacity, ROCK_RESERVE, ROCK_STRIDE } from './rocks';
-import { emptyMissile, emptyRound, HunterMode, Outcome, type GunRound, type Missile, type MissileFlight, type Ship, type ShipSystems, type TacticalState } from './state';
+import { CREW_SLOT, emptyMissile, emptyRound, HunterMode, Outcome, type GunRound, type Missile, type MissileFlight, type Ship, type ShipSystems, type TacticalState } from './state';
 
-/** Values per missile pool entry: active, owner, then the flight x, y, vx, vy, heading, headingAcc, age (zeros when free). */
-export const MISSILE_SLOT = 9;
+/** Values per missile pool entry: active, owner, then the flight x, y, vx, vy, heading, headingAcc, age, then (W-3) the
+ *  manual flag (zeros when free). */
+export const MISSILE_SLOT = 10;
 
 /** A ship body's scalar fields in canonical order after `active`; `graceUntil` closes the body. */
 const BODY = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'planetHits', 'asteroidHits', 'shipHits', 'released', 'skidBudget', 'skidSign'] as const satisfies readonly (keyof Ship)[];
@@ -22,11 +23,11 @@ const BODY = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'planetHits', 'aste
 const SYSTEMS_HEAD = ['cls', 'target', 'hull'] as const satisfies readonly (keyof ShipSystems)[];
 const SYSTEMS_TAIL = ['shields', 'shieldClock', 'laserCharge', 'laserHold', 'fireHeld', 'lock', 'freq', 'laserTargeted', 'torpLock', 'torpRoom', 'laserBurst', 'laserBurstClock', 'magazine', 'magazineClock',
   'shots', 'laserHits', 'layersStripped', 'missilesLaunched', 'missileHits', 'missilesLost', 'laserRock', 'torpRock', 'torpRockFlying', 'rocksBroken',   // the rock targets, spike ii §8
-  'gunHeat', 'gunLocked', 'gunCooldown', 'gunMuzzle', 'gunWear', 'gunHull', 'gunShots', 'gunHits'] as const satisfies readonly (keyof ShipSystems)[];   // the gun's, Valkyrn spec §7.3; gunRoomWear closes the record
-const FLAGS = new Set<string>(['released', 'fireHeld', 'laserTargeted', 'gunLocked']);
+  'gunHeat', 'gunLocked', 'gunCooldown', 'gunMuzzle', 'gunWear', 'gunHull', 'gunShots', 'gunHits', 'pewCharge', 'pewShots', 'pewHits', 'laserManual', 'laserAim', 'torpManual'] as const satisfies readonly (keyof ShipSystems)[];   // the gun's, Valkyrn spec §7.3; the pew's, W-1; the laser mode and burst aim, W-2; the torpedo mode, W-3; gunRoomWear closes the record
+const FLAGS = new Set<string>(['released', 'fireHeld', 'laserTargeted', 'gunLocked', 'laserManual', 'torpManual']);
 export const MISSILE_KEYS = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'age'] as const satisfies readonly (keyof MissileFlight)[];
 /** Compile-time completeness: a `Missile` member missing from these keys makes this `never` assignment fail typecheck. */
-type MissingMissileKeys = Exclude<keyof Missile, (typeof MISSILE_KEYS)[number] | 'active' | 'owner'>;
+type MissingMissileKeys = Exclude<keyof Missile, (typeof MISSILE_KEYS)[number] | 'active' | 'owner' | 'manual'>;   // W-3: manual is its own bit
 const missileKeysComplete: MissingMissileKeys extends never ? true : never = true;
 void missileKeysComplete;
 /** Values per round pool entry: active, owner, then x, y, vx, vy, age (zeros when free); Valkyrn spec §7.3. */
@@ -36,7 +37,7 @@ export const ROUND_KEYS = ['x', 'y', 'vx', 'vy', 'age'] as const satisfies reado
 type MissingRoundKeys = Exclude<keyof GunRound, (typeof ROUND_KEYS)[number] | 'active' | 'owner'>;
 const roundKeysComplete: MissingRoundKeys extends never ? true : never = true;
 void roundKeysComplete;
-const HUNTER_HEAD = ['mode', 'room', 'timer', 'working', 'fireAt', 'lastLaunch', 'trailHead'] as const;
+const HUNTER_HEAD = ['mode', 'room', 'timer', 'working', 'fireAt', 'lastLaunch', 'trailHead', 'pewBurst', 'pewClock'] as const;
 
 type Numeric<T> = { [K in keyof T]: T[K] extends number | boolean ? K : never }[keyof T];
 function member(name: string, key: string, get: (s: TacticalState) => object): ModuleField<TacticalState> {
@@ -63,20 +64,22 @@ function missileFields(k: number): ModuleField<TacticalState>[] {
         if (!m.active && (m.owner !== 0 || MISSILE_KEYS.some((_, j) => values[offset + j] !== 0))) throw new Error(`missiles.${k}: a free entry holds values`);
         MISSILE_KEYS.forEach((key, j) => { m[key] = values[offset + j]!; });
       }
-    }
+    },
+    bit(`missiles.${k}.manual`, (s) => s.missiles[k]!.manual, (s, v) => { s.missiles[k]!.manual = v; })   // W-3 (pew pew spec §4): the mode copied at launch
   ];
 }
-/** Round pool entry k (Valkyrn spec §7.3): active, owner, then its flight; a free entry holds only zeros. */
-function roundFields(k: number): ModuleField<TacticalState>[] {
+/** Round pool entry k of `pool` (Valkyrn spec §7.3: the gun's `rounds`; W-1: the pew's `pew`): active, owner, then its
+ *  flight; a free entry holds only zeros. */
+function roundFields(pool: 'rounds' | 'pew', k: number): ModuleField<TacticalState>[] {
   return [
-    bit(`rounds.${k}.active`, (s) => s.rounds[k]!.active, (s, v) => { s.rounds[k]!.active = v; }),
-    scalar(`rounds.${k}.owner`, (s) => s.rounds[k]!.owner, (s, v) => { s.rounds[k]!.owner = v; }),
+    bit(`${pool}.${k}.active`, (s) => s[pool][k]!.active, (s, v) => { s[pool][k]!.active = v; }),
+    scalar(`${pool}.${k}.owner`, (s) => s[pool][k]!.owner, (s, v) => { s[pool][k]!.owner = v; }),
     {
-      name: `rounds.${k}.flight`, count: ROUND_KEYS.length,
-      read(s, out) { const r = s.rounds[k]!; for (const key of ROUND_KEYS) out.push(r[key]); },
+      name: `${pool}.${k}.flight`, count: ROUND_KEYS.length,
+      read(s, out) { const r = s[pool][k]!; for (const key of ROUND_KEYS) out.push(r[key]); },
       write(s, values, offset) {
-        const r = s.rounds[k]!;
-        if (!r.active && (r.owner !== 0 || ROUND_KEYS.some((_, j) => values[offset + j] !== 0))) throw new Error(`rounds.${k}: a free entry holds values`);
+        const r = s[pool][k]!;
+        if (!r.active && (r.owner !== 0 || ROUND_KEYS.some((_, j) => values[offset + j] !== 0))) throw new Error(`${pool}.${k}: a free entry holds values`);
         ROUND_KEYS.forEach((key, j) => { r[key] = values[offset + j]!; });
       }
     }
@@ -103,7 +106,8 @@ function spaceFields(asteroids: number, slots: number): ModuleField<TacticalStat
     fields.push(vector(`ships.${i}.graceUntil`, asteroids + ROCK_RESERVE + slots, (s) => s.ships[i]!.graceUntil));
   }
   for (let k = 0; k < slots; k++) fields.push(...missileFields(k));
-  for (let k = 0; k < GUN_POOL; k++) fields.push(...roundFields(k));   // Valkyrn spec §7.3: the round pool, after the missiles
+  for (let k = 0; k < GUN_POOL; k++) fields.push(...roundFields('rounds', k));   // Valkyrn spec §7.3: the round pool, after the missiles
+  for (let k = 0; k < PEW_POOL; k++) fields.push(...roundFields('pew', k));      // W-1 (pew pew spec §4): the pew pool, after the gun's
   for (const key of HUNTER_HEAD) fields.push(key === 'working'
     ? flag('hunter.working', (s) => s.hunter.working, (s, v) => { s.hunter.working = v; })
     : scalar(`hunter.${key}`, (s) => s.hunter[key] as number, (s, v) => { (s.hunter as unknown as Record<string, number>)[key] = v; }));
@@ -151,7 +155,7 @@ export const shipModule: SimModule<TacticalState> = {
   id: 'ship',
   fields: (s) => shipFields(s.systems.length),
   notSnapshotted: {},
-  commands: ['laserLock', 'torpLock', 'rockLock', 'laserCharge', 'missileLaunch'],
+  commands: ['laserMode', 'torpMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire'],
   reasons: ['not-at-weapons', 'missile-in-flight', 'malformed', 'stale-tick', 'unavailable']
 };
 /** The `science` module (Sci-1 spec §6.2): round-relative time and hostility, what each contact is known to, the ship's
@@ -204,6 +208,7 @@ export function cloneTacticalFromModule(s: TacticalState): TacticalState {
     systems: s.systems.map((y) => ({ ...y, rooms: [0, 0, 0], gunRoomWear: [0, 0, 0], bars: [0, 0, 0, 0, 0], weaponPower: [0, 0, 0] })) as TacticalState['systems'],
     missiles: s.missiles.map(emptyMissile) as TacticalState['missiles'],
     rounds: s.rounds.map(emptyRound),
+    pew: s.pew.map(emptyRound),
     hunter: { ...s.hunter, trail: new Float64Array(s.hunter.trail.length) }, events: s.events.map((e) => ({ ...e })),
     known: [0, 0], scan: { ...s.scan }, derelict: { ...s.derelict } };   // fresh science containers; the values are written below
   const values: number[] = [];
@@ -240,15 +245,27 @@ const systemsRules = (slots: number, rocks: number): Readonly<Record<string, (v:
   gunHeat: within(0, most((c) => c.slots.gun?.heatMax)), gunLocked: flagBit, gunCooldown: within(0, most((c) => c.slots.gun?.intervalTicks)), gunMuzzle: within(0, 1),
   gunWear: within(0, most((c) => c.slots.gun?.hitsPerLayer) - 1), gunHull: within(0, most((c) => c.slots.gun?.hitsPerHull) - 1),
   gunRoomWear: within(0, most((c) => c.slots.gun?.hitsPerLevel) - 1), gunShots: count, gunHits: count,
+  // W-1 (pew pew spec §4): the counters ≥ 0; the charge is checked against the slot's own class (pewChargeRule).
+  pewShots: count, pewHits: count,
+  // W-2 (pew pew spec §4): the mode a bit, the burst aim a fine aim or −1 (validateTacticalValues adds the crew-only and burst checks).
+  laserManual: flagBit, laserAim: within(-1, AIM_STEPS - 1),
+  // W-3 (pew pew spec §4): the torpedo mode a bit (validateTacticalValues adds the crew-only check).
+  torpManual: flagBit,
   bars: within(0, Math.max(...SYSTEM_SLOTS)),   // Engineering spike spec §2, §10.1: 0..10 per system
   weaponPower: within(0, WEAPON_BAR_MAX + 1)   // spec §10.3
 });
+/** W-1 (pew pew spec §4; Task 6 review): a slot's pew charge, 0..its own class's full pew (0 for a class without one). */
+const pewChargeRule = (cls: number): ((v: number) => boolean) => {
+  const pew = SHIP_CLASSES[cls]?.slots.pew;
+  return within(0, pew ? pew.shots * pew.rechargeTicks : 0);
+};
 // Built on first use: state.ts imports this file for cloneTactical, so its enums are read lazily.
 const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
   rockHits: count, rockSplits: count, rockDust: count, rockBlasts: count, rockCollisions: count, rockEvictions: count,
   tick: count, seed: within(0, 0xffffffff), 'rng.s': within(0, 0xffffffff), outcome: within(Outcome.Running, Outcome.Draw),
   'hunter.mode': within(HunterMode.Hunt, HunterMode.Repair), 'hunter.room': room, 'hunter.timer': int, 'hunter.working': flagBit,
   'hunter.fireAt': (v) => Number.isInteger(v) && v >= -1, 'hunter.lastLaunch': int, 'hunter.trailHead': within(0, HUNTER_TRAIL_TICKS - 1), 'hunter.trail': any,
+  'hunter.pewBurst': within(0, most((c) => c.slots.pew?.shots)), 'hunter.pewClock': within(0, HUNTER_PEW_GAP),   // W-1
   // Sci-1 spec §6.2 (known is checked per value in validateTacticalValues).
   startTick: count, hostileAt: (v) => Number.isInteger(v) && v >= -1, 'scan.contact': within(-1, 1), 'scan.level': within(0, 2), 'scan.progress': count,
   'scan.rate': (v) => v === 0 || v === SCAN_RATE_OTHER || v === SCAN_RATE_SCIENCE, 'scan.by': count, designated: within(-1, 1), weakFreq: within(0, 2),
@@ -260,26 +277,36 @@ const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
  *  writing them anywhere: heading indices, integer counters, room levels 0..2, shields, the laser and the magazine
  *  against the largest class, the hunter's and the outcome's enums, the map's asteroid count and the slot count; an
  *  inactive ship slot holds only zeros; each missile pool entry: active 0 or 1, a free entry holds only zeros, a missile's
- *  owner is an active slot with no other missile in flight, its heading index and age. Each round pool entry likewise: active 0 or 1, a free entry holds only zeros, an owner that is an active slot, an age within the longest gun life. `shape` is any tactical state made
+ *  owner is an active slot with no other missile in flight, its heading index and age. Each round pool entry likewise: active 0 or 1, a free entry holds only zeros, an owner that is an active slot, an age within the longest gun life (the gun's round pool and the pew's alike, W-1). W-2: only the crew slot's laser is MANUAL, and a slot's laserAim is −1 unless a burst shot is pending. W-3: only the crew slot's torpedo mode is MANUAL, and only the crew's torpedo is manual. `shape` is any tactical state made
  *  from the same seed and slot count (only its map and slot count are read). Throws naming the first bad field; returns
  *  the offset after the values. */
 export function validateTacticalValues(shape: TacticalState, values: ArrayLike<number>, offset = 0): number {
   let at = offset;
-  const top = topRules(), slots = shape.ships.length, sys = systemsRules(slots, rockCapacity(shape.map)), inactive = new Set<number>(), owners = new Set<number>();
+  const top = topRules(), slots = shape.ships.length, sys = systemsRules(slots, rockCapacity(shape.map)), inactive = new Set<number>(), owners = new Set<number>(), clsOf = new Map<number, number>(), burstOf = new Map<number, number>();
   for (const m of TACTICAL_MODULES) for (const f of m.fields(shape)) {
     const slice = Array.from({ length: f.count }, (_, k) => values[at + k]!);
     const bad = (why: string): never => { throw new Error(`duel snapshot tactical ${f.name}: ${why} (${slice.slice(0, 8).join(', ')})`); };
     if (slice.some((v) => typeof v !== 'number' || !Number.isFinite(v))) bad('not finite');
-    const ship = /^(ships|systems)\.(\d+)\.(.+)$/.exec(f.name), missile = /^missiles\.(\d+)\.(.+)$/.exec(f.name), round = /^rounds\.(\d+)\.(.+)$/.exec(f.name);
+    const ship = /^(ships|systems)\.(\d+)\.(.+)$/.exec(f.name), missile = /^missiles\.(\d+)\.(.+)$/.exec(f.name), round = /^(rounds|pew)\.(\d+)\.(.+)$/.exec(f.name);
     if (f.name === 'map.asteroids.length') { if (slice[0] !== shape.map.asteroids.length) bad('does not match the map'); }
     else if (f.name === 'ships.length') { if (slice[0] !== slots) bad('does not match the slot count'); }
     else if (ship) {
       const i = Number(ship[2]), key = ship[3]!;
       if (ship[1] === 'ships' && key === 'active' && slice[0] === 0) inactive.add(i);
       if (inactive.has(i)) { if (slice.some((v) => v !== 0)) bad('an inactive slot holds values'); }
-      else { const rule = ship[1] === 'ships' ? BODY_RULES[key] : sys[key]; if (rule && !slice.every(rule)) bad('out of range'); }
+      else {
+        const rule = ship[1] === 'ships' ? BODY_RULES[key] : key === 'pewCharge' ? pewChargeRule(clsOf.get(i) ?? -1) : sys[key];
+        if (rule && !slice.every(rule)) bad('out of range');
+        if (ship[1] === 'systems' && key === 'cls') clsOf.set(i, slice[0]!);   // validated above; read by pewCharge later in the record
+        if (ship[1] === 'systems' && key === 'laserBurst') burstOf.set(i, slice[0]!);   // W-2: read by laserAim later in the record
+        if (ship[1] === 'systems' && key === 'laserManual' && i !== CREW_SLOT && slice[0] !== 0) bad('only the crew laser has a manual mode');   // W-2: the Hunter is always AUTO
+        if (ship[1] === 'systems' && key === 'laserAim' && i !== CREW_SLOT && slice[0] !== -1) bad('only the crew laser has a manual aim');   // W-2: the Hunter is always AUTO
+        if (ship[1] === 'systems' && key === 'laserAim' && slice[0] !== -1 && (burstOf.get(i) ?? 0) === 0) bad('a manual aim with no burst pending');   // W-2: it waits only for a burst's next shot
+        if (ship[1] === 'systems' && key === 'torpManual' && i !== CREW_SLOT && slice[0] !== 0) bad('only the crew torpedo has a manual mode');   // W-3: the Hunter is always AUTO
+      }
     } else if (missile) {
-      const key = missile[2]!, active = values[at - (key === 'active' ? 0 : key === 'owner' ? 1 : 2)]!;
+      // W-3: the manual bit closes the entry, after the flight's MISSILE_KEYS.length values.
+      const key = missile[2]!, active = values[at - (key === 'active' ? 0 : key === 'owner' ? 1 : key === 'flight' ? 2 : 2 + MISSILE_KEYS.length)]!;
       if (key === 'active' && !flagBit(slice[0]!)) bad('active is not 0 or 1');
       if (active === 0 && slice.some((v) => v !== 0)) bad('a free entry holds values');
       if (active === 1 && key === 'owner') {
@@ -288,13 +315,17 @@ export function validateTacticalValues(shape: TacticalState, values: ArrayLike<n
         if (owners.has(o)) bad(`ship ${o} has two missiles in flight`);
         owners.add(o);
       }
+      if (active === 1 && key === 'manual') {   // W-3 (pew pew spec §3, §4): a bit, and only the crew flies a MANUAL torpedo
+        if (!flagBit(slice[0]!)) bad('manual is not 0 or 1');
+        if (slice[0] === 1 && values[at - 1 - MISSILE_KEYS.length] !== CREW_SLOT) bad('only the crew flies a manual torpedo');   // the entry's owner
+      }
       if (active === 1 && key === 'flight') { const [, , , , head, headAcc, age] = slice as number[]; if (!heading(head!) || !acc(headAcc!) || !count(age!)) bad('heading, headingAcc or age out of range'); }
-    } else if (round) {   // Valkyrn spec §7.3: a round's entry as a missile's, its age within the longest gun life
-      const key = round[2]!, active = values[at - (key === 'active' ? 0 : key === 'owner' ? 1 : 2)]!;
+    } else if (round) {   // Valkyrn spec §7.3: a round's entry as a missile's, its age within the longest gun life; W-1: a pew round's within the longest pew life
+      const key = round[3]!, active = values[at - (key === 'active' ? 0 : key === 'owner' ? 1 : 2)]!;
       if (key === 'active' && !flagBit(slice[0]!)) bad('active is not 0 or 1');
       if (active === 0 && slice.some((v) => v !== 0)) bad('a free entry holds values');
       if (active === 1 && key === 'owner' && (!within(0, slots - 1)(slice[0]!) || inactive.has(slice[0]!))) bad('its owner is not an active ship slot');
-      if (active === 1 && key === 'flight' && !within(0, most((c) => c.slots.gun?.lifeTicks))(slice[4]!)) bad('age out of range');
+      if (active === 1 && key === 'flight' && !within(0, round[1] === 'pew' ? most((c) => c.slots.pew?.lifeTicks) : most((c) => c.slots.gun?.lifeTicks))(slice[4]!)) bad('age out of range');
     } else if (f.name === 'known') { if (!within(0, 2)(slice[0]!) || !within(0, 1)(slice[1]!)) bad('out of range'); }   // the enemy 0..2, the derelict 0..1
     else { const rule = top[f.name]; if (rule && !slice.every(rule)) bad('out of range'); }
     at += f.count;

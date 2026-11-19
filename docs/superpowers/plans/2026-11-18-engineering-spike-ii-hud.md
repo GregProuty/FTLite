@@ -2444,10 +2444,28 @@ describe('no fog leaks (spec §10.4)', () => {
     const scene = createDuelScene(renderer as never, { seed: 5, pauseText: 'PAUSED', ui: createDuelSink(store) });
     try {
       rt.frame(1 / 60); scene.draw(rt, 1 / 60, { banner: null, layerPaused: false, end: null });
-      const z0 = rt.cameras.helm.zoom;
+      const z0 = rt.cameras.helm.targetZoom;   // zoomTo sets targetZoom; zoom only eases in updateCamera (camera.ts:61-65, :90-91)
       seatDuelCrew(rt.duel); rt.frame(1 / 60); now += 1000 / 60;
       scene.draw(rt, 1 / 60, { banner: null, layerPaused: false, end: null });   // the sit: the Hunter is far beyond 900
-      expect(rt.cameras.helm.zoom).toBe(z0);
+      expect(rt.cameras.helm.targetZoom).toBe(z0);
+    } finally { scene.dispose(); rt.dispose(); }
+  });
+  it('sitting at the Helm frames a seen enemy (the converse of the fog gate)', () => {
+    let now = 0;
+    const keys: KeySample = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() };
+    const rt = createDuelRuntime({ now: () => now, seed: 5, viewport: vp, layout: parseShip(hound), scheduler: { schedule() { return () => {}; } },
+      sampleKeys: () => keys, samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }), clearKeys: () => {} });
+    const stage = new Container(), store = createUiStore({ onlineAvailable: false } as never);
+    const renderer = { app: { stage }, assets, stageScale: () => 1, feel: () => DEFAULT_FEEL, crt: () => 'off' as const };
+    const scene = createDuelScene(renderer as never, { seed: 5, pauseText: 'PAUSED', ui: createDuelSink(store) });
+    try {
+      const t = rt.duel.tactical, own = t.ships[0]!;
+      Object.assign(t.ships[1]!, { x: own.x + 600, y: own.y });   // inside the start range of 900
+      rt.frame(1 / 60); scene.draw(rt, 1 / 60, { banner: null, layerPaused: false, end: null });
+      const z0 = rt.cameras.helm.targetZoom;
+      seatDuelCrew(rt.duel); rt.frame(1 / 60); now += 1000 / 60;
+      scene.draw(rt, 1 / 60, { banner: null, layerPaused: false, end: null });
+      expect(rt.cameras.helm.targetZoom).not.toBe(z0);
     } finally { scene.dispose(); rt.dispose(); }
   });
 });

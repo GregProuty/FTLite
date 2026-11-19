@@ -1393,7 +1393,7 @@
     "modifications": "none",
     "credit": "\"Sci-fi Sounds\" by Kenney (www.kenney.nl), CC0",
     "required": false,
-    "name": "sfx.laserSmall.3"
+    "name": "sfx.pew.0"
   },
   {
     "file": "raw/kenney-sci-fi-sounds/laserSmall_004.ogg",
@@ -1407,7 +1407,7 @@
     "modifications": "none",
     "credit": "\"Sci-fi Sounds\" by Kenney (www.kenney.nl), CC0",
     "required": false,
-    "name": "sfx.laserSmall.4"
+    "name": "sfx.pew.1"
   },
   {
     "file": "raw/kenney-sci-fi-sounds/laserLarge_000.ogg",

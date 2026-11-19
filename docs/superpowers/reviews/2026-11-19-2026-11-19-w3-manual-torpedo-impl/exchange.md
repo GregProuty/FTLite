@@ -1,0 +1,63 @@
+# Codex review exchange: 2026-11-19-w3-manual-torpedo-impl
+
+Subject: `docs/gates.md scripts/golden/duelOracle.ts src/renderer/src/app/controlsList.ts src/renderer/src/app/duel/duelMode.ts src/renderer/src/app/duel/input.ts src/renderer/src/app/duel/mapRequests.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/app/duel/onlineSource.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/scene.ts src/renderer/src/app/duel/torpedoCamera.ts src/renderer/src/authority/checkpoint.ts src/renderer/src/authority/core.ts src/renderer/src/authority/duelCheckpoint.ts src/renderer/src/authority/replay.ts src/renderer/src/net/codec.ts src/renderer/src/net/contracts.ts src/renderer/src/render/duel/consoleModel.ts src/renderer/src/render/duel/situationModel.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/tactical/duel.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/tactical/hunter.ts src/renderer/src/sim/tactical/manualTorpedo.ts src/renderer/src/sim/tactical/missiles.ts src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/tactical/weapons.ts src/renderer/src/sim/tuning.ts src/renderer/src/ui/duel/WeaponsStation.tsx tests/duelCheckpoint.test.ts tests/duelModules.test.ts tests/duelSnapshot.test.ts tests/fixtures/determinism-v2.json tests/ftlTargeting.test.ts tests/golden/basic.json tests/golden/duel-1.json tests/golden/duel-rematch.json tests/manualTorpedoCommands.test.ts tests/manualTorpedoFlight.test.ts tests/manualTorpedoInput.test.ts tests/manualTorpedoMode.test.ts tests/manualTorpedoScene.test.ts tests/manualTorpedoUi.test.tsx tests/onlineDuelSession.test.ts tests/rockLock.test.ts tests/settingsAndControls.test.ts tests/tacticalDeterminism.test.ts tests/torpedoCamera.test.ts` (impl). Reviewer: Codex CLI via `codex exec`. Responder: controller.
+
+---
+
+# Round 1 (full, reviewing 5d91aa69, effort high, 404 s, 5086793 in / 4876292 cached / 30546 out)
+
+Verdict: ready
+
+## Findings
+
+### [P3] R1-F1 The card's STEER A/D / COASTING words run one tick behind the sim's steering window at both ends
+`flyMissile` increments `m.age` and then turns only if the new age is in (boostTicks, fuelTicks]. So from a shown state of age a, the next tick turns exactly when boostTicks <= a < fuelTicks. The panel instead shows STEER A/D for boostTicks < a <= fuelTicks. At a = boostTicks the card says FLYING, but A/D already turns the torpedo on the next tick. At a = fuelTicks it says STEER A/D, but the next tick coasts. · diff L1873-L1876 (missiles.ts flyMissile: `m.age++; const fuelled = m.age <= def.fuelTicks; if (fuelled && m.age > def.boostTicks) ...`); diff L1332 (consoleModel.ts `torpSteer: ... flightM.age > torpDef.boostTicks && flightM.age <= torpDef.fuelTicks`, `torpCoast: ... flightM.age > torpDef.fuelTicks`); plan L120 uses the same literal condition; tests/manualTorpedoUi.test.tsx diff L3155-L3158 pins age = boostTicks as FLYING. · The gap is about 16 ms and invisible in play. The plan's stated intent, though, is that the words 'follow what the torpedo can do' (plan L120), and the panel reads the state before the next turn decision. · Optional. Judge the next tick: `torpSteer = manual && age >= boostTicks && age < fuelTicks`, `torpCoast = manual && age >= fuelTicks`, and move the UI test's edge ages to match. Or leave it as the plan wrote it.
+
+## Verified
+- AUTO flight unchanged: duel.ts passes `steer` only when `m && m.manual && input.weapons` (diff L1533-L1537). flyMissile uses `m.manual ? steer : homingTurn(...)`, so an AUTO missile ignores steer (diff L1876). The thrust, fuel, boost and gravity lines are untouched (diff L1879-L1882).
+- holdTurn is exactly the old headingTurn body. Before: `faceTurn(state.ships[i]!.heading, hx(h), hy(h))`. After: headingTurn calls `holdTurn(state.ships[i]!.heading, h)` = `faceTurn(heading, hx(h), hy(h))` (diff L1741-L1751).
+- canLaunch: `(manual || torpedoInRange(...))`, where manual defaults to `systems[i].torpManual`. That is false for every AUTO slot and always false for the Hunter, so AUTO admission is unchanged (diff L2068-L2071). The step's missileLaunch admission calls canLaunch after torpMode has already been applied in WEAPON_ORDER (step.ts:L229-L262).
+- applyWeaponsInput: the rock-broke skip is bypassed only when `s.torpManual`, and the auto-launch is gated by `!s.torpManual`. Both are identical to before when torpManual is false (diff L2116-L2123).
+- launchMissile copies `sys.torpManual` through placeMissile, and in MANUAL it sets torpRoom and torpRockFlying to -1 without consuming torpLock or torpRock. The AUTO branch is unchanged (diff L1834-L1849). land() strikes roomAtImpact for a manual missile, then raises the room one level and takes the def's hull, as before (diff L1895-L1904).
+- The mode is fixed at launch: the toggle changes only `sys0.torpManual` (step.ts:L234-L238), and the flight reads `m.manual`. The mid-flight toggle test covers both directions, including an AUTO twin's identical homing (diff L2576-L2593).
+- State and hash: `torpManual` is in SYSTEMS_TAIL and FLAGS, and a `missiles.k.manual` bit closes each missile entry, so MISSILE_SLOT is 10 (diff L1563-L1578, L1605-L1606). The validator's offset arithmetic for `manual` is right: active sits at at-(2+7) and the owner at at-1-7. A free entry must be 0, and only CREW_SLOT may own a manual torpedo or have torpManual set (diff L1699-L1716). emptyMissile, emptySystems and systemsFor set false (diff L1960-L1973). cloneTactical and the snapshot derive from the module fields.
+- No other src/network/services/scripts code indexes missile values by a fixed stride: a grep finds MISSILE_SLOT and MISSILE_KEYS only in hash.ts.
+- The held schemas gained torpTurn (int -1..1) and torpHeading (int -1..255) in net/codec.ts, authority/checkpoint.ts, duelCheckpoint.ts and replay.ts (diff L1038, L1115, L1142, L1213-L1214). core.ts expiry counts them as non-neutral, and a pause deletes them (diff L1065, L1088). The other held literals (core.ts:L321, L548, L622) build fresh neutral objects.
+- Only the Weapons attendant steers: `steer = gunner >= 0 ? heldTorpSteer(input.held[gunner]) : {0,-1}` (diff L1454), and heldTorpSteer sanitises NaN, non-integers and out-of-range values (diff L1426-L1429). The Hunter, IDLE and UNCREWED inputs carry 0 and -1 (diff L1773, L2039-L2042).
+- Online: torpMode follows laserMode's pattern (torpModeSent, cleared on its result, on a new round, on sit, stand and attach). MANUAL F refuses NO GUNNER, TORPEDO FLYING and WEAPONS OFFLINE locally, sends past NO TORPEDOES, and records the sequence in a separate torpSent set. An 'unavailable' answer maps to `refusal(d,'launch',true) ?? 'NO TORPEDOES'`, which can never be OUT OF RANGE. AUTO keeps `canLaunch(..., false)` with its OUT OF RANGE words (diff L392-L394, L436-L455, L524-L527).
+- Single player and online build torpTurn and torpHeading with the same rule: steering only at 'weapons' while manualTorpedoFlying; A/D clears the hold; a request of -1 clears it; the hold is re-sent every frame or pump (diff L496-L499 vs L863-L869). The Single player launch is judged in the queued mode (diff L752-L764, L818-L823).
+- Input: V is bound to torpMode, with X still Stand and C still the camera (diff L229). The Flight seat branch ignores torpMode, so the Valkyrn stays AUTO (runtime.ts:L420-L448). Seated crew do not walk (movement.ts:L62), so A/D at Weapons only steers.
+- Right button: asked only at the Weapons view, while running, unpaused and a MANUAL torpedo flies, with lastAimed null and no pick-up, inside onWeaponsMap; the bearing is from the interpolated missile marker, and -1 inside pickRadius (scene.ts:L233-L240). Panning is suppressed through `aims` only while the MANUAL torpedo flies, in both the runtime and the online source (diff L612-L613, L875). takeAim yields every held frame (input.ts:L267-L271).
+- Camera: trackManualTorpedo remembers the follow mode and centre at the flight's start, follows the missile, and restores only if the camera still follows the missile. It runs before the follow loop in both modes, with a fresh memo every round (diff L987-L1021, L590, L614, L730, L877).
+- UI: the torp-mode Button is a sibling of the Card, not a child, so a click on it does not reach the card's pick-up handler (WeaponsStation.tsx:L58, L103). torpedoTone is locked only when !torpManual (diff L942). predictMissile calls flyMissile(copy, i) with steer 0, so a MANUAL path shows unsteered, as plan L126 says (predict.ts:L43-L53).
+- Oracle: ADDITIONS[57] declares `ship.systems.N.torpManual` and `space.missiles.N.manual` as frozen. recordRun checks every declared field at every tick, and 'added' mode refuses when a version has no additions, so the proof cannot pass with nothing to check (duelOracle.ts:L264-L300, L374).
+- Determinism: manualTorpedo.ts and heldTorpSteer use only Math.sign, Number.isInteger, comparisons and holdTurn (sqrt plus the hx/hy tables). The torpedo's turn rate (about 1.42 steps a tick) cannot cross the ±AUTO_FACE_SIN band of about 3 heading indices, so the hold converges without oscillating (tuning.ts:L100, L130).
+
+## Not verified
+- `npx tsc -b` and the test suite were not run, per the constraints. That online scene usage such as `source.missilePrev` on the online source typechecks is taken from the implementer's report that tsc is clean.
+- That the blessed goldens and the oracle baseline were really produced by the plan's Task 1 version-only bless and the Task 8 same-version `added` run. The JSON diffs were excluded and the oracle was not re-run.
+- That the duel gate numbers (Hound median 208.8 s, Valkyrn 210.9 s) are unchanged. This comes from docs/gates.md (diff L78) and was not re-measured.
+- Whether the authority's held ingestion while paused (core.ts:L316 path) could re-admit torpTurn or torpHeading before resume. It follows the existing face/aim/gunHeld pattern and was not traced further.
+- The online behaviour after a window blur: torpHold is kept while unfocused (stopInput sends neutral), so the hold resumes on refocus if the torpedo still flies. This looks benign and matches the existing held fields, but was not checked against the plan's wording.
+- Beyond the manifest I read src files to trace findings: step.ts L225-L349, runtime.ts L98-L121 and L400-L534, onlineDuel.ts L180-L270, scene.ts L170-L299, input.ts L160-L282, movement.ts L50-L70 and predict.ts L43-L53. I also ran greps over src, scripts/golden and the ui folder.
+
+---
+
+# Round 1 response (no subject change)
+
+Reviewed `round-1.json` against the subject at `5d91aa69`. 0 accepted, 0 rejected, 1 deferred.
+
+## R1-F1 [P3]: The card's STEER A/D / COASTING words run one tick behind the sim's steering window at both ends
+
+Deferred, and confirmed against missiles.ts. `flyMissile` increments age before testing the window, so the label flips one tick (about 17 ms) away from the sim's edge. At 60 Hz the player cannot see the gap, and the label matches the plan as written (plan L120). It goes into the follow-up list: judge the next tick (`age >= boostTicks && age < fuelTicks`) and move the UI test's edge ages to match.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+

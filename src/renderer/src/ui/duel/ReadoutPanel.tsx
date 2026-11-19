@@ -5,7 +5,7 @@
 // `warn` hot, `alert` an inverse bar blinking main/hot, `enemy` an inverse bar, crew pips solid hot, enemy pips hollow.
 import { Fragment, memo } from 'react';
 import { INTERNAL_W } from '../../../../shared/resolution';
-import { READOUT_MARGIN, READOUT_ROWS, READOUT_W, type ReadoutRow } from '../../render/duel/readoutModel';
+import { READOUT_MARGIN, READOUT_ROWS, READOUT_W, readoutPanelHeight, type ReadoutRow } from '../../render/duel/readoutModel';
 import { BAR_OFF, DIM, FONT_NATIVE, FONT_SIZE, LINE, PAD, textPx } from '../../render/theme';
 import { ALERT_BLINK_HZ, blink, CRT } from '../../render/tactical/crtTheme';
 import { STATUS } from '../../render/duel/consoleLayout';
@@ -44,7 +44,7 @@ export const ReadoutPanel = memo(function ReadoutPanel(props: { rows: readonly R
   const l = useUi((s) => s.layout), hairline = Math.max(1, Math.round(l.scale * l.dpr)) / l.dpr;   // Pixi's 1-internal-px pip stroke, scaled like Panel's border
   const { crt, now } = useCrt();
   const n = Math.min(props.rows.length, READOUT_ROWS), h = status ? 0 : Math.min(props.help.length, HELP_LINES);
-  const helpY = PAD + LINE * n + PAD, height = helpY + h * HELP_LINE + PAD;
+  const helpY = PAD + LINE * n + PAD, height = readoutPanelHeight(n, h, HELP_LINE);
   return (
     <>
       <Panel x={X} y={Y} w={READOUT_W} h={height} />

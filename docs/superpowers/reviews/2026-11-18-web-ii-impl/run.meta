@@ -1,0 +1,11 @@
+topic=web-ii-impl
+subject_kind=impl
+subject=.gitignore build/rendererConfig.ts build/webBuild.ts docs/gates.md docs/superpowers/plans/2026-11-18-web-ii-web-build.md electron.vite.config.ts package-lock.json package.json scripts/network/online-app-smoke.cjs scripts/web/build-web.ts scripts/web/check-output.ts scripts/web/net/players.ts scripts/web/net/scenario.ts scripts/web/net/web-net-smoke.ts scripts/web/web-output.ts src/main/network/duelRecords.ts src/network/online/recordStore.ts src/network/transport/owner.ts src/renderer/index.html src/renderer/src/app/audioUnlock.ts src/renderer/src/app/online/pageSession.ts src/renderer/src/app/web/browserFullscreen.ts src/renderer/src/app/web/browserSupport.ts src/renderer/src/app/web/download.ts src/renderer/src/app/web/duelRecordStore.ts src/renderer/src/app/web/leavePrompt.ts src/renderer/src/app/web/onlineLock.ts src/renderer/src/app/web/pageGuards.ts src/renderer/src/app/web/versionWatch.ts src/renderer/src/main.ts src/renderer/src/net/duelRecord.ts src/renderer/src/net/env.d.ts src/renderer/src/ui/actions.ts src/renderer/src/ui/menu/Home.tsx src/renderer/src/ui/menu/Menu.tsx src/renderer/src/ui/menu/Multiplayer.tsx src/renderer/src/ui/menu/Settings.tsx src/renderer/src/ui/menuState.ts src/renderer/src/ui/store.ts src/web/middleware.ts src/web/passcode.ts tests/pageBoundary.test.ts tests/recordStore.test.ts tests/rtcTransportOwner.test.ts tests/webBanner.test.tsx tests/webBuildPlan.test.ts tests/webDeployScripts.test.ts tests/webDuelRecords.test.ts tests/webFullscreen.test.ts tests/webLeavePrompt.test.ts tests/webNetScenario.test.ts tests/webOutput.test.ts tests/webPageGuards.test.ts tests/webPasscode.test.ts tests/webPlaytestLogUi.test.tsx tests/webStartup.test.ts tests/webStartupUi.test.tsx tests/webVersionWatch.test.ts tsconfig.node.json tsconfig.web.json vite.web.config.ts vitest.config.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\web-ii
+base=master
+cap=3
+effort=high
+confirm=0
+verify=npm run typecheck && npm test
+created=2026-11-18
+head_at_setup=67d6534d

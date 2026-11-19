@@ -96,7 +96,7 @@ describe('hits (spec §7.2)', () => {
     expect(eighth[0]).toMatchObject({ kind: 'gunHit', ship: 1, room: -1, stripped: true });
     expect(eighth[0]!.x).toBeCloseTo(H.x, 6);
     expect(eighth[0]!.y).toBeCloseTo(H.y, 6);
-    expect([st.systems[1].shields, st.systems[1].shieldClock, st.systems[1].gunWear, st.systems[1].hull, st.systems[0].layersStripped]).toEqual([1, 0, 0, 70, 0]);
+    expect([st.systems[1].shields, st.systems[1].shieldClock, st.systems[1].gunWear, st.systems[1].hull, st.systems[0].layersStripped]).toEqual([1, 0, 0, 123, 0]);   // W-1: duel hull ×1.75 to hold the 180 s floor with the pew (hull 70 before)
   });
   it('any strip zeroes the wear: a laser strip of the crew ship', () => {
     const st = range(2);
@@ -142,7 +142,8 @@ describe('hits (spec §7.2)', () => {
     const expectAfter = (): void => {
       const level = Math.min(2, Math.floor(onWeapons / perLevel));
       expect([s.hull, s.gunHull, s.rooms[Room.Weapons], s.gunRoomWear[Room.Weapons]], `after ${hits} hits`)
-        .toEqual([70 - Math.floor(hits / perHull), hits % perHull, level, level < 2 ? onWeapons % perLevel : 0]);
+        .toEqual([123 - Math.floor(hits / perHull),   // W-1: duel hull ×1.75 (70 before)
+         hits % perHull, level, level < 2 ? onWeapons % perLevel : 0]);
     };
     // On Weapons from level 0, past a hull point and past level 2.
     while (hits < Math.max(perHull + 1, 2 * perLevel + 1)) {

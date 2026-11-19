@@ -12,7 +12,7 @@ import { hostilityLine } from './scienceModel';
 import { Health, Life, LifeState } from '../../sim/components';
 import { HEALTH_MAX } from '../../sim/tuning';
 import { LASER_CHARGE_UNITS, MAGAZINE, SHIELD_LAYERS } from '../../sim/tactical/tuning';
-import { AMBER, DIM, TEXT, WARN, GOOD } from '../theme';
+import { AMBER, DIM, GOOD, LINE, PAD, TEXT, WARN } from '../theme';
 import { CREW_SHIP, ENEMY_SHIP } from '../tactical/shipColours';
 import { bearingDeg } from '../tactical/weaponsModel';
 import { READOUT_COLUMN, ROOM_NAMES } from './interiorModel';
@@ -169,7 +169,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
 /** Key help under the rows, per screen (spec §5 table). */
 export function readoutHelp(mode: ReadoutMode): string[] {
   if (mode === 'helm') return ['W/S THROTTLE   A/D TURN', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];
-  if (mode === 'weapons') return ['1/2 PICK WEAPON, CLICK ROOM', 'SPACE FIRE   F TORPEDO', 'E/Q LASER TARGET   C CAMERA', 'X STAND   TAB SWITCH', 'ESC PAUSE'];   // FTL targeting spec §1
+  if (mode === 'weapons') return ['1/2 PICK WEAPON, CLICK ROOM', 'L-CLICK MAP PEW   F TORPEDO', 'SPACE FIRE   E/Q TARGET', 'C CAMERA   X STAND', 'TAB SWITCH   ESC PAUSE'];   // FTL targeting spec §1; W-1: the pew's left click
   if (mode === 'science') return ['S SCAN   T NEXT CONTACT', 'CLICK A CONTACT: DESIGNATE', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];
   return ['WASD WALK', 'E SIT   HOLD E REPAIR/EXTINGUISH', 'STAND BY DOWNED TO REVIVE', 'WHEEL ZOOM  DRAG PAN  C FOLLOW', 'TAB SWITCH   ESC PAUSE'];
 }
@@ -177,3 +177,10 @@ export function readoutHelp(mode: ReadoutMode): string[] {
 /** Rows the readout pool holds (Sci-2 spec §5.2): the longest list (standing, Helm and Weapons empty, a torpedo inbound,
  *  a crew of four: three crew rows) is 22, with one to spare. */
 export const READOUT_ROWS = 23;
+/** The height of a readout panel: PAD, LINE a row (at most READOUT_ROWS), PAD, then `helpLines` of `helpLine` px and a closing PAD
+ *  when there are help lines. The one source for ReadoutPanel's drawn panel and the Weapons map's status-table hit rect. */
+export function readoutPanelHeight(rows: number, helpLines = 0, helpLine = 0): number {
+  return PAD + LINE * Math.min(rows, READOUT_ROWS) + PAD + helpLines * helpLine + PAD;
+}
+/** The console's status table (placement 'status': no help lines): 3 PADs plus a LINE a row. */
+export const statusPanelHeight = (rows: number): number => readoutPanelHeight(rows);
