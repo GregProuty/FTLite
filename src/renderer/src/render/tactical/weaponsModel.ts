@@ -15,6 +15,7 @@ import { pingDraws, type Ping, type PingDraw } from '../duel/pingModel';
 import { CRT } from './crtTheme';
 import { FONT_NATIVE, FONT_SIZE, textPx } from '../theme';
 import { worldToScreen, type Point } from './camera';
+import { rockEffectDraw } from './rockFx';
 import { CORE_S, FLOAT_RISE_PX, FLOAT_S, FLOAT_STEP_PX, interpolatedMissile, KILL_S, type FxState } from './fxModel';
 import {
   BEARING_RING_ZOOM, fineHeadingOf, headingAngle, interpolatedShip, drawnScale, ringDraw, SHIP_CHEVRON_PX, type Label, type PrevBody, type RingDraw,
@@ -59,7 +60,7 @@ export interface MissileDraw { x: number; y: number; r: number; crew: boolean; t
 export const TORPEDO_DOT_PX = 4;
 /** `width` the stroke (Feel-i: a crew beam 5, else 3); `core` a crew beam's white-hot core while it lasts. A `shard` is
  *  one edge of the destroyed enemy's hull flying apart (x1, y1 to x2, y2). */
-export interface EffectDraw { kind: 'beam' | 'burst' | 'spark' | 'flare' | 'pop' | 'boom' | 'shard'; x1: number; y1: number; x2: number; y2: number; r: number; colour: number; alpha: number; width?: number; core?: boolean }
+export interface EffectDraw { kind: 'beam' | 'burst' | 'spark' | 'flare' | 'pop' | 'boom' | 'shard' | 'chip' | 'speck' | 'shock' | 'core'; x1: number; y1: number; x2: number; y2: number; r: number; colour: number; alpha: number; width?: number; core?: boolean }
 /** Duel polish i spec §A: the Hunter's held charge as a ring about its drawn marker, the arc from 12 o'clock clockwise
  *  `fill` of the way round; at a full charge the whole ring at the pulse `alpha` and the label FIRING. */
 export interface ChargeDraw { x: number; y: number; r: number; fill: number; full: boolean; alpha: number; colour: number; label: Label }
@@ -193,7 +194,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   // The bracket closes about the enemy's drawn marker, or its edge arrow off screen, while the shot is lined up.
   let solution: SolutionDraw | null = null;
   const enemyShown = input.ships.includes(target) && state.ships[target]?.active === true;
-  if (lined && input.fx.solutionAge >= 0 && enemyShown && input.console !== 'science') {
+  if (lined && input.fx.solutionAge >= 0 && enemyShown && input.console !== 'science' && state.systems[0]!.laserRock < 0) {   // spike ii: no enemy bracket while the laser aims at a rock
     const k = Math.min(1, input.fx.solutionAge / SOLUTION_CLOSE_S), ease = 1 - (1 - k) * (1 - k), base = Math.max(18, SHIP_RADIUS * drawnScale(z) * 2.2);
     const at = input.enemyArrow ?? (onScreen(enemyS, base) ? enemyS : null);
     if (at) {
@@ -211,6 +212,8 @@ export function combatModel(input: CombatModelInput): CombatDraw {
 
   const shieldR = SHIP_RADIUS * drawnScale(z) * 1.9;   // the enemy's shield bubble's drawn size (tacticalLayer: 1.6 + 0.25 a layer)
   const effects: EffectDraw[] = input.fx.items.map((it) => {
+    const rockDraw = rockEffectDraw(it, toS, z);   // spike ii §7: chips, specks, the shockwave, the core flash, sized bursts
+    if (rockDraw) return rockDraw;
     const k = Math.min(1, it.age / it.life), a = toS(it.x1, it.y1), b = toS(it.x2, it.y2);
     if (it.kind === 'beam' && it.crew) {   // Feel-i: thicker, the burst's beams side by side, a white-hot core at first
       const dx = b.x - a.x, dy = b.y - a.y, n = Math.hypot(dx, dy) || 1, off = 3 * (it.side ?? 0), ox = (-dy / n) * off, oy = (dx / n) * off;

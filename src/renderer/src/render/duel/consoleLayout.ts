@@ -41,3 +41,10 @@ export const CONTACT_RESERVE = INTERNAL_W - CONTACT.x + EDGE;
 /** Feel-ii: the top px of a console map the off-screen arrows keep clear of: the status sentence (y 12, FONT_SIZE) and the
  *  Weapons info line under it (y 44, FONT_NATIVE), so an arrow never sits on their words. */
 export const STATUS_RESERVE = 44;
+/** Own ship window spec §3: top left, right of the status table, mirroring CONTACT across the map (x 228 to 468, y 42 to 212). */
+export const OWN_SHIP = { x: STATUS.x + STATUS.w + EDGE, y: STATUS.y, w: 240, h: 170 } as const;
+/** Its drawing box under the two header rows (x 236 to 460, y 82 to 204). */
+export const OWN_SHIP_BOX = { x: OWN_SHIP.x + 8, y: OWN_SHIP.y + 40, w: OWN_SHIP.w - 16, h: OWN_SHIP.h - 48 } as const;
+/** Spec §2: the header's left and right text edges, the title row and the SHLD / HULL row. */
+export const OWN_SHIP_X0 = OWN_SHIP.x + 8, OWN_SHIP_RIGHT = OWN_SHIP.x + OWN_SHIP.w - 8;
+export const OWN_SHIP_TITLE_Y = OWN_SHIP.y + 4, OWN_SHIP_STATUS_Y = OWN_SHIP.y + 20;

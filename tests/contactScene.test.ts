@@ -18,6 +18,7 @@ import { createContactController } from '../src/renderer/src/app/duel/contactCon
 import { createMapRequests } from '../src/renderer/src/app/duel/mapRequests';
 import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import { createUiStore } from '../src/renderer/src/ui/store';
+import { RockKind, rockSlots, writeRock } from '../src/renderer/src/sim/tactical/rocks';
 import { resetSits } from '../src/renderer/src/render/duel/sitModel';
 import { CONTACT, STATION, stationTop, TABS } from '../src/renderer/src/render/duel/consoleLayout';
 
@@ -183,6 +184,17 @@ describe('the scene and the contact window (spec §6.5)', () => {
       const e = r.enemyOnScreen();
       r.clicks.push({ x: e.x + 200, y: e.y + 200 }); r.scene.draw(r.rt, 1 / 60, LIVE);
       expect(r.contact.state()).toBeNull(); expect(r.view()).toBeNull();
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+  it('spike ii §6.5: with a weapon picked up, a click on a rock (no ship under it) drops it there: a rockLock request, the window closes', () => {
+    const r = rig();
+    try {
+      const t = r.rt.duel.tactical, me = t.ships[0], slot = rockSlots(t) - 1;
+      writeRock(t, slot, RockKind.Moving, me.x + 150, me.y, 0, 0, 25, 3);
+      r.contact.pickUp('laser'); r.scene.draw(r.rt, 1 / 60, LIVE);
+      r.clicks.push(worldToScreen(r.rt.cameras.weapons, vp, me.x + 150, me.y)); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.contact.takeRequests().rockLock).toEqual({ weapon: 'laser', rock: slot });
+      expect(r.contact.state()).toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
 });

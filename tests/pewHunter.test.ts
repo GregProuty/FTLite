@@ -26,8 +26,9 @@ const hunterShots = (events: readonly DuelEvent[]) => events.filter((e) => e.kin
 const fineDiff = (a: number, b: number) => ((a - b + AIM_STEPS + AIM_STEPS / 2) % AIM_STEPS) - AIM_STEPS / 2;
 /** The first seed (1..60) whose crew torpedo the Hunter shoots down, pinned from the defence test's console line (Step 5);
  *  Task 6 re-pins it by the same rule if it moves HUNTER_PEW_ERROR, HUNTER_PEW_GAP or HUNTER_PD_CHANCE. Re-pinned at Task 6's
- *  tuning (error 8, gap 20, PD 0.3, recharge 120, duel hull ×1.75): still 4, 7 of 60 shot (12 of 60 at the start values). */
-const PD_SEED = 4;
+ *  tuning (error 8, gap 20, PD 0.3, recharge 120, duel hull ×1.75): still 4, 7 of 60 shot (12 of 60 at the start values).
+ *  Re-pinned at the merge with asteroids-ii (billiard rocks; HUNTER_PEW_ERROR 8 -> 16, SIM_VERSION 55): 4 -> 19, 6 of 60 shot. */
+const PD_SEED = 19;
 
 describe('the Hunter attacks (spec §1)', () => {
   it('aims at the crew\'s lead point with an error within ±HUNTER_PEW_ERROR', () => {

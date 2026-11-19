@@ -30,6 +30,20 @@ export const TABLE: CSSProperties = { borderCollapse: 'collapse', fontSize: 13, 
 export const KEYS: CSSProperties = { padding: '2px 14px 2px 0', color: HOT, whiteSpace: 'nowrap', verticalAlign: 'top' };
 export const ACTION: CSSProperties = { padding: '2px 0' };
 
+/** The lobby card (2026-11-18, owner): the room code on its own line as a big click-to-copy key, then the crew list. */
+export const ROOM_BLOCK: CSSProperties = { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, margin: '0 0 14px' };
+export const ROOM_LABEL: CSSProperties = { font: '12px monospace', letterSpacing: '0.2em', color: MID };
+export const ROOM_CODE: CSSProperties = { font: '700 30px monospace', letterSpacing: '0.22em', color: HOT, background: 'transparent', border: `1px solid ${MID}`, padding: '8px 10px 8px 18px', cursor: 'copy' };
+export const ROOM_CODE_STRIP: CSSProperties = { ...BUTTON, color: HOT, padding: '3px 8px', margin: 0, letterSpacing: '0.12em', cursor: 'copy' };
+export const ROOM_HINT: CSSProperties = { font: '12px monospace', color: DIM, minHeight: 15 };
+export const ROOM_HINT_DONE: CSSProperties = { ...ROOM_HINT, color: HOT };
+export const SEAT_NOTE: CSSProperties = { color: MAIN, margin: '0 0 8px' };
+export const ROSTER: CSSProperties = { listStyle: 'none', margin: '0 0 12px', padding: 0, border: `1px solid ${FAINT}` };
+export const ROSTER_ROW: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 38, padding: '2px 4px 2px 14px', borderTop: `1px solid ${FAINT}` };
+export const ROSTER_ROW_FIRST: CSSProperties = { ...ROSTER_ROW, borderTop: 'none' };
+/** A seat's state word: READY hot, EMPTY and DISCONNECTED dim, JOINED main. */
+export const seatTone = (label: string): string => /READY|Ready/.test(label) && !/Not ready/.test(label) ? HOT : /EMPTY|DISCONNECTED|Bot/.test(label) ? DIM : MAIN;
+
 const n = (v: number): string => String(Math.round(v * 1000) / 1000);
 
 /** The menu's stylesheet for a CRT strength. The colour rules always apply (the amber stays with the setting off, as on

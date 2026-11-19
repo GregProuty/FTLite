@@ -158,6 +158,6 @@ describe('the declared-added fields (new in the R-2 alias table)', () => {
     } finally { disposeDuel(d); }
     expect(ticks).toBeGreaterThan(0);
     expect(wrong).toBe(0);
-    if (crew === 'scripted') expect(ticks).toBe(5716);   // seed 1's scripted Cutter duel (5125 before W-1's pew and duel hull ×1.75, SIM_VERSION 54; 16340 before FTL targeting, SIM_VERSION 49; 18793 before the weapons update, SIM_VERSION 48; 9724 before Sci-1's merge, SIM_VERSION 47; 10320 before homing torpedoes, SIM_VERSION 46; 16268 before the Hunter's grace, SIM_VERSION 45; 15772 before duel fire)
+    if (crew === 'scripted') expect(ticks).toBe(11460);   // seed 1's scripted Cutter duel (SIM_VERSION 55, W-1's pew merged with asteroids-ii, HUNTER_PEW_ERROR 16; 19199 before, SIM_VERSION 54 on master; 5716 on the W-1 branch, SIM_VERSION 54, with W-1's pew and duel hull ×1.75; SIM_VERSION 53, spike ii with the fan split at r 13; 20252 with the fan split at r 25: the Hunter shoves belt rock 39 at tick 2058 and no longer dives into the planet; 5125 before, SIM_VERSION 52; 16340 before FTL targeting, SIM_VERSION 49; 18793 before the weapons update, SIM_VERSION 48; 9724 before Sci-1's merge, SIM_VERSION 47; 10320 before homing torpedoes, SIM_VERSION 46; 16268 before the Hunter's grace, SIM_VERSION 45; 15772 before duel fire)
   }, 60_000);
 });

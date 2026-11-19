@@ -21,8 +21,10 @@ import { aimTurn, type DuelInput } from './step';
 import { THROTTLE_MAX, THROTTLE_MIN, throttleThrust } from './throttle';
 
 // The pilot's own numbers (tuned with the Valkyrn gate, spec §12), separate from the game tuning.
-/** The orbit radius it holds while the Hunter is far: the middle of the pair's ORBIT_MIN..ORBIT_MAX, fixed (no rng). */
-export const PILOT_ORBIT_R = 1850;
+/** The orbit radius it holds while the Hunter is far, fixed (no rng). 1850 (the middle of the pair's ORBIT_MIN..ORBIT_MAX)
+ *  until the asteroids-ii merge (SIM 54): with billiard rocks the gate fell to a median of 150.5 s (Hunter planet ends), and
+ *  the orbit sweep (Valkyrn spec §12, merge) picked 2200, the middle of the passing run 2100..2300. */
+export const PILOT_ORBIT_R = 2200;
 /** Within this range of the Hunter it stops orbiting and attacks (u). */
 export const PILOT_ENGAGE_RANGE = 900;
 /** The range the attack's throttle closes to and holds (u): inside the torpedo's 360. */

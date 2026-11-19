@@ -149,7 +149,7 @@ describe('the duel modules (spec §6 module contract)', () => {
   });
   it('the modules own the duel\'s command kinds (setPaused is the core\'s), and their reasons are enum members', () => {
     const kinds = DUEL_MODULES.flatMap(({ module }) => [...module.commands]).sort();
-    expect(kinds).toEqual(['contactScan', 'designate', 'heading', 'laserCharge', 'laserFrequency', 'laserLock', 'missileLaunch', 'pewFire', 'presence', 'rematch', 'sit', 'stand', 'throttle', 'torpLock']);
+    expect(kinds).toEqual(['contactScan', 'designate', 'heading', 'laserCharge', 'laserFrequency', 'laserLock', 'missileLaunch', 'pewFire', 'presence', 'rematch', 'rockLock', 'sit', 'stand', 'throttle', 'torpLock']);
     for (const { module } of DUEL_MODULES) for (const reason of module.reasons) expect(COMMAND_REASONS, `${module.id}: ${reason}`).toContain(reason);
   });
   it('cloneTactical is derived from the space and ship modules: every field is copied, and changing it on the copy leaves the original', () => {

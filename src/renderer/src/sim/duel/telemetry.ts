@@ -5,6 +5,7 @@
 // freezes once the round is decided, so the end card's ticks add nothing and the terminal causes are never recomputed.
 import { Life, LifeState, Seated } from '../components';
 import { inArc } from '../tactical/geometry';
+import { rockAt, rockCapacity } from '../tactical/rocks';
 import { classOf, missileOf, Outcome, targetOf } from '../tactical/state';
 import { CONTACT_GRACE_TICKS, LASER_ARC_COS, LASER_RANGE } from '../tactical/tuning';
 import { canLaunch, laserFull } from '../tactical/weapons';
@@ -122,10 +123,10 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
     t.ships[i]!.planetContacts += now[i]![0]! - t.prev.counters[i]![0]!;
     t.ships[i]!.asteroidContacts += now[i]![1]! - t.prev.counters[i]![1]!;
   }
-  const m = t.manoeuvre, asteroids = tac.map.asteroids.length;
+  const m = t.manoeuvre, asteroids = rockCapacity(tac.map);
   if (m.tick >= 0 && tick - m.tick <= BAIT_WINDOW_TICKS) for (const k of struck[1]!) {
     if (k > asteroids) continue;   // a ship body: only the planet and asteroids can be baits
-    const b = k === 0 ? tac.map.planet : tac.map.asteroids[k - 1]!;
+    const b = k === 0 ? tac.map.planet : rockAt(tac, k - 1);
     if (dist(enemy.x, enemy.y, b.x, b.y) < dist(m.x, m.y, b.x, b.y)) t.baits++;
   }
   const helm = attendant(d, d.nav);

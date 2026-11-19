@@ -1,0 +1,33 @@
+{
+  "verdict": "ready",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "duel.ts:L46 now calls beginRockTick(state) after the outcome and before tick++. The start-of-tick clear at L27 is still there, and the early return at L26 can only follow a tick that ended with empty masks. The only writer is rockBreak.ts:L118, which runs only inside a tick. Every reader (geometry.ts:L27, rocks.ts:L99, contacts.ts:L106, missiles.ts:L122, rockBlast.ts, rockBreak.ts, rockContacts.ts) therefore sees zero masks between ticks, as a clone does (hash.ts:L173). I found no caller of the exported rockBorn() helper (rocks.ts:L57) that reads it after stepDuel. tests/rockMaskBetweenTicks.test.ts checks that lineOfSight is the same on the live state and the clone, and that both masks are all zero after stepDuel. The comments in hash.ts:L114-115, rocks.ts:L9 and state.ts:L130 were updated to match."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "(a) The new three-body test (rockContacts.test.ts) fails if the rockDone skip is removed. I traced it by hand. After motion, a is at -29 and b at 4 (overlap 7), and a's turn moves each 3.5 apart (a -32.5, b 7.5). On c's turn, the r 60 rock overlaps b by 10 and is split 1 for c and 9 for b, so c ends at 78.5 and b at -1.5. That leaves a and b 31 apart, under 39. A second (b, a) resolution would change a.x, so the assertions catch it. (b) The r 15 test asserts both velocities: share(ms)=60, giving the ship -60, and share(mk)=240, giving the rock +40. Swapping is/ik would swap those values and fail. (c) The 40 u/s static ram test now asserts the hp drop (10/40)\u00b71800/(900+r\u00b2), so it would fail if case 2 dropped ram damage."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "weapons.ts:L202 records torpOnRock after the rockLock fold (L197-201) and before stepBurst (L203). That covers a breaking shot from the pending burst, from a charge press (L207) or from auto-fire (L216). L217 returns before both the manual launch (L218) and the auto-launch (L222), so a broken rock target can no longer turn into a launch at the enemy. Plan deviation 11 (plan L44) records that the command can still read 'applied'. tests/rockBlast.test.ts adds a regression test that expects missilesLaunched 0 and torpRock -1."
+    }
+  ],
+  "verified": [
+    "duel.ts:L25-48: the masks are cleared at the start (L27) and the end (L46) of every running tick, so between ticks they are always empty",
+    "Every rockBorn/rockDone reader in src (from grep) runs inside stepDuel or reads masks that are empty between ticks; the only writer is rockBreak.ts:L118",
+    "weapons.ts:L189-223: the order is rockLock fold \u2192 torpOnRock snapshot \u2192 stepBurst \u2192 charge press \u2192 auto-fire \u2192 guard \u2192 manual launch \u2192 auto-launch",
+    "I checked the arithmetic in the three-body once-per-pair test and the r 15 inverse-mass test by hand against the restitution-0.5 impulse formula",
+    "Plan L44 (deviation 11) matches the implemented behaviour"
+  ],
+  "not_verified": [
+    "I did not run the tests (read-only). That the new tests pass, and that each one fails under its mutation, is the responder's report, not something I ran",
+    "I did not open tests/helpers/rockArena.ts to confirm that arena() leaves the crew laser full and laserTargeted, which the R1-F3 test relies on to fire",
+    "tests/golden/basic.json is binary in the diff, so I could not check that only its content digest moved"
+  ]
+}

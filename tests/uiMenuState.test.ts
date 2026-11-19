@@ -1,6 +1,6 @@
 // The menu's pure rules (React UI spec §5), moved line for line from render/sessionMenu.ts.
 import { describe, expect, it } from 'vitest';
-import { applyStatus, availabilityText, can, countdownText, ERRORS, INITIAL_MENU, inputBlockedOf, isPlaying, menuMessage, receiptText, seatLabel, startAllowed, type MenuState, type MenuView } from '../src/renderer/src/ui/menuState';
+import { applyStatus, availabilityText, LOBBY_MESSAGE, can, countdownText, ERRORS, INITIAL_MENU, inputBlockedOf, isPlaying, menuMessage, receiptText, seatLabel, startAllowed, type MenuState, type MenuView } from '../src/renderer/src/ui/menuState';
 import { createUiStore } from '../src/renderer/src/ui/store';
 import type { OnlineStatus } from '../src/shared/onlineSession';
 
@@ -58,7 +58,7 @@ describe('the derived rules', () => {
     expect(menuMessage(view({ page: 'multiplayer' }, idle))).toBe('Host a crew or join one with its room code.');
     expect(menuMessage(view({ page: 'settings' }, idle))).toBe('');
     expect(menuMessage(view({ page: 'session', pending: true }, null))).toBe('Connecting…');
-    expect(menuMessage(view({ page: 'session' }, { ...idle, phase: 'lobby' }))).toBe('lobby');
+    expect(menuMessage(view({ page: 'session' }, { ...idle, phase: 'lobby' }))).toBe(LOBBY_MESSAGE);
     expect(menuMessage(view({ localError: 'x' }, { ...idle, phase: 'rehosting' }))).toBe('x');
     expect(menuMessage(view({}, { ...idle, phase: 'rehosting' }))).toBe('Restoring the mirrored checkpoint…');
     expect(menuMessage(view({}, { ...idle, phase: 'saving' }))).toBe('Saving the final checkpoint…');

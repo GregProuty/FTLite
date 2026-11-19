@@ -3,6 +3,7 @@
 // bracket and the bright arc). Pure reads of the tactical state with the sim's own rules (laserEligible's range, arc and
 // line of sight), so the words never disagree with what the laser does. Presentation only.
 import { inArc, lineOfSight, sideOf } from '../../sim/tactical/geometry';
+import { rockAlive, rockAt } from '../../sim/tactical/rocks';
 import { predictFlight, touchesSolid } from '../../sim/tactical/predict';
 import { classOf, CREW_SLOT, missileOf, NO_AXES, Outcome, Room, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
 import type { DuelState } from '../../sim/duel/state';
@@ -27,8 +28,8 @@ export function gunnerPresent(d: DuelState): boolean {
  *  torpedo in flight holding the laser (`frozen`), each of which stops auto-fire (laserFrozen); then lined up and ready
  *  (`solution`) or `charging`. */
 export type LaserSituation =
-  | { kind: 'range'; range: number; reach: number }
-  | { kind: 'arc'; turn: 'LEFT' | 'RIGHT' }
+  | { kind: 'range'; range: number; reach: number; rock?: true }
+  | { kind: 'arc'; turn: 'LEFT' | 'RIGHT'; rock?: true }
   | { kind: 'blocked' } | { kind: 'offline' } | { kind: 'frozen' } | { kind: 'nogunner' }
   | { kind: 'solution'; targeted: boolean } | { kind: 'charging'; targeted: boolean }
   | { kind: 'none' };
@@ -37,6 +38,18 @@ export type LaserSituation =
  *  is attended (gunnerPresent). */
 export function laserSituation(t: TacticalState, sinceShot = Infinity, gunner = true): LaserSituation {
   if (t.outcome !== Outcome.Running) return { kind: 'none' };   // decided: no sentence, bracket or bright arc behind the end card
+  const own = t.ships[CREW_SLOT], sysRock = t.systems[CREW_SLOT];
+  const reach = classOf(t, CREW_SLOT).slots.laser;   // Valkyrn spec §6.1: null on the gun fit (no rock target either)
+  if (reach && sysRock.laserRock >= 0 && rockAlive(t, sysRock.laserRock)) {   // spike ii §6.2: the laser aims at its rock target
+    const r = rockAt(t, sysRock.laserRock), rx = r.x - own.x, ry = r.y - own.y, surface = Math.sqrt(rx * rx + ry * ry) - r.r;
+    if (surface > reach.range) return { kind: 'range', range: Math.round(surface), reach: reach.range, rock: true };
+    if (!inArc(own.heading, rx, ry, reach.arcCos)) return { kind: 'arc', turn: (sideOf(own.heading, rx, ry) || 1) > 0 ? 'RIGHT' : 'LEFT', rock: true };
+    if (laserOffline(t, CREW_SLOT)) return { kind: 'offline' };
+    if (sysRock.laserBurst > 0 || sinceShot < SOLUTION_HOLD_S) return { kind: 'solution', targeted: sysRock.laserTargeted };
+    if (!gunner) return { kind: 'nogunner' };
+    if (missileOf(t, CREW_SLOT)) return { kind: 'frozen' };
+    return laserFull(t, CREW_SLOT) ? { kind: 'solution', targeted: sysRock.laserTargeted } : { kind: 'charging', targeted: sysRock.laserTargeted };
+  }
   const me = t.ships[CREW_SLOT], target = targetOf(t, CREW_SLOT), e = t.ships[target], sys = t.systems[CREW_SLOT];
   if (!e || !e.active || target === CREW_SLOT) return { kind: 'none' };
   const laser = classOf(t, CREW_SLOT).slots.laser, dx = e.x - me.x, dy = e.y - me.y, range = Math.round(Math.sqrt(dx * dx + dy * dy));
@@ -60,8 +73,8 @@ export function linedUp(s: LaserSituation): boolean { return s.kind === 'solutio
 /** The status sentence (§1), the same on both seats: plain words a crew can say to each other. */
 export function statusSentence(s: LaserSituation): string {
   switch (s.kind) {
-    case 'range': return `ENEMY OUT OF RANGE: CLOSE TO ${s.reach}`;
-    case 'arc': return `ENEMY OUT OF ARC: TURN ${s.turn}`;
+    case 'range': return s.rock ? `ROCK OUT OF RANGE: CLOSE TO ${s.reach}` : `ENEMY OUT OF RANGE: CLOSE TO ${s.reach}`;
+    case 'arc': return s.rock ? `ROCK OUT OF ARC: TURN ${s.turn}` : `ENEMY OUT OF ARC: TURN ${s.turn}`;
     case 'blocked': return 'NO LINE OF SIGHT: CLEAR THE ROCK';
     case 'offline': return 'WEAPONS OFFLINE: REPAIR';
     case 'frozen': return 'LASER HOLDS: TORPEDO FLYING';

@@ -5,6 +5,7 @@ import { gravityAccel } from '../../sim/tactical/physics';
 import { predictFlight } from '../../sim/tactical/predict';
 import { derelictPos } from '../../sim/tactical/science';
 import { classOf, Contact, CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
+import { rockAlive, rockAt, rockHpMax, RockKind, rockSlots } from '../../sim/tactical/rocks';
 import { AIM_STEPS, HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
@@ -46,7 +47,11 @@ export interface Line { x1: number; y1: number; x2: number; y2: number }
 export interface Label { text: string; x: number; y: number }
 export interface GridDraw { spacing: number; lines: (Line & { major: boolean })[]; columns: Label[]; rows: Label[] }
 export interface CircleDraw { x: number; y: number; r: number }
-export interface AsteroidDraw extends CircleDraw { index: number; dot: boolean }
+/** Spike ii: `wear` 0 (whole) .. 1 from hp / hpMax, drawn as cracks and a dimmer fill; `streak` (§7 item 3) the screen end of
+ *  a moving rock's fading streak behind it, with its alpha. */
+export interface AsteroidDraw extends CircleDraw { index: number; dot: boolean; wear?: number; streak?: { x: number; y: number; alpha: number } }
+/** Spike ii §7 item 3: rocks faster than STREAK_MIN_SPEED (u/s) streak STREAK_S seconds of their motion, at most STREAK_MAX_U. */
+export const STREAK_MIN_SPEED = 20, STREAK_S = 0.25, STREAK_MAX_U = 90;
 export interface ShipDraw {
   index: number; x: number; y: number;
   /** Radians clockwise from north (the screen's up). */
@@ -69,7 +74,8 @@ export interface HelmDraw { path: Point[]; origin: Point; velocity: Point; headi
 /** Feel-ii §1.3: a gravity ring about the planet (where its pull is `g` of the crew ship's full thrust) and its label. */
 export interface GravityDraw extends CircleDraw { g: number; label: Label }
 export type ArrowTarget = 'ship' | 'enemy' | 'planet' | 'missile';
-export interface ArrowDraw { target: ArrowTarget; x: number; y: number; angle: number; distance: number; label: string }
+/** `edge`: own ship window spec §3, set only on an arrow placed on the avoid rect's right or bottom side. */
+export interface ArrowDraw { target: ArrowTarget; x: number; y: number; angle: number; distance: number; label: string; edge?: 'avoidRight' | 'avoidBottom' }
 export interface OverlayDraw { zoomText: string; scaleBar: { px: number; units: number }; snapHint: boolean; paused: boolean }
 /** The derelict's loot as the map and the contact window name it (Loot order). */
 export const LOOT_NAMES = ['HULL', 'TORPEDOES', 'SHIELD'] as const;
@@ -81,6 +87,8 @@ export interface ContactMarkDraw { contact: 0 | 1; x: number; y: number; r: numb
 export interface SalvageDraw { x: number; y: number; r: number; fill: number }
 /** Science's slow rotating ring on the crew laser's target (Artemis). */
 export interface LockRingDraw { x: number; y: number; r: number }
+/** Spike ii §6.5: a bracket about a rock: a weapon's rock target, or the rock under the pointer while a weapon is picked up. */
+export interface RockMarkDraw { x: number; y: number; r: number; weapon: 'laser' | 'torpedo'; hover: boolean }
 export interface TacticalDraw {
   grid: GridDraw;
   contours: (CircleDraw & { accel: number })[];
@@ -97,6 +105,8 @@ export interface TacticalDraw {
   marks?: ContactMarkDraw[]; salvage?: SalvageDraw | null; lockRing?: LockRingDraw | null;
   /** Feel-ii §1.3, the Helm only: the G 0.5 and G 1 rings. */
   gravity?: GravityDraw[];
+  /** Spike ii §6.5 (only with contacts): the rock brackets. */
+  rockMarks?: RockMarkDraw[];
 }
 
 export interface TacticalModelInput {
@@ -109,6 +119,8 @@ export interface TacticalModelInput {
   console: 'helm' | 'weapons' | 'science';
   /** The duel's contacts (Sci-1 spec §7.1): hide an unknown enemy's silhouette and draw the marks. The flight view leaves it off. */
   contacts?: boolean;
+  /** Spike ii §6.5: the rock under the pointer while a weapon is picked up (the scene's pickRock), for its hover bracket. */
+  rockHover?: { rock: number; weapon: 'laser' | 'torpedo' } | null;
   /** The Helm's effective axes the runtime last sent to the sim. */
   axes: Axes;
   /** Ships to draw (the flight view draws only ship 0). The crew ship is index 0. */
@@ -131,6 +143,8 @@ export interface TacticalModelInput {
   t?: number;
   /** Valkyrn spec §4.5: the crew ship's silhouette (hullFor(true, layout.hull)); absent: the Hound's. */
   crewHull?: HullId;
+  /** Own ship window spec §3: a console window the off-screen arrows go around (OWN_SHIP); absent: none. */
+  avoid?: { x: number; y: number; w: number; h: number };
 }
 
 /** Radius at which the planet's pull is `accel`, by bisection on the falling side of gravityAccel (startup only). */
@@ -268,6 +282,27 @@ function edgePoint(vp: Viewport, reserveLeft: number, reserveRight: number, x: n
   return { x: cx + dx * k, y: cy + dy * k, angle: Math.atan2(dx, -dy) };
 }
 
+type AvoidRect = { x: number; y: number; w: number; h: number };
+/**
+ * Own ship window spec §3: an arrow around `avoid`. A is avoid grown by ARROW_MARGIN on its right and bottom. When edgePoint's
+ * point `e` lies inside A, or the object is on screen (`e` null) under the ungrown avoid, the arrow goes where the ray from
+ * the inset rectangle's centre toward `p` enters A: k = max(kx, ky); the right side when kx >= ky (a corner counts as
+ * right), else the bottom. Otherwise `e` is returned as it is.
+ */
+export function aroundAvoid(vp: Viewport, reserveLeft: number, reserveRight: number, reserveTop: number, avoid: AvoidRect, p: { x: number; y: number },
+  e: { x: number; y: number; angle: number } | null): { x: number; y: number; angle: number; edge?: 'avoidRight' | 'avoidBottom' } | null {
+  const m = ARROW_MARGIN, ar = avoid.x + avoid.w + m, ab = avoid.y + avoid.h + m;
+  const hidden = !e && p.x >= avoid.x && p.x <= avoid.x + avoid.w && p.y >= avoid.y && p.y <= avoid.y + avoid.h;
+  const onIt = !!e && e.x >= avoid.x && e.x <= ar && e.y >= avoid.y && e.y <= ab;
+  if (!hidden && !onIt) return e;
+  const l = reserveLeft + m, t = reserveTop + m, r = vp.w - reserveRight - m, b = vp.h - m;
+  const cx = (l + r) / 2, cy = (t + b) / 2, dx = p.x - cx, dy = p.y - cy;
+  const kx = dx < 0 ? (ar - cx) / dx : -Infinity, ky = dy < 0 ? (ab - cy) / dy : -Infinity;
+  if (kx === -Infinity && ky === -Infinity) return e;
+  const k = Math.max(kx, ky);
+  return { x: cx + dx * k, y: cy + dy * k, angle: Math.atan2(dx, -dy), edge: kx >= ky ? 'avoidRight' : 'avoidBottom' };
+}
+
 const ARROW_NAMES: Readonly<Record<ArrowTarget, string>> = { ship: 'SHIP', enemy: 'ENEMY', planet: 'PLANET', missile: 'TORPEDO' };   // homing torpedo spec §3: on screen it is a torpedo
 
 /**
@@ -275,17 +310,26 @@ const ARROW_NAMES: Readonly<Record<ArrowTarget, string>> = { ship: 'SHIP', enemy
  * end nearer the edge's middle, by the minimum gap from the one before; any overrun past the edge's far end is shifted back.
  * Arrows that already clear each other do not move.
  */
-export function spreadArrows(arrows: ArrowDraw[], vp: Viewport, reserveRight: number, reserveLeft = 0, reserveTop = 0): void {
-  const m = ARROW_MARGIN, top = reserveTop + m, bottom = vp.h - m, right = vp.w - reserveRight - m;
-  const groups = new Map<string, { flat: boolean; list: ArrowDraw[] }>();
+export function spreadArrows(arrows: ArrowDraw[], vp: Viewport, reserveRight: number, reserveLeft = 0, reserveTop = 0, avoid?: AvoidRect): void {
+  const m = ARROW_MARGIN, top = reserveTop + m, bottom = vp.h - m, right = vp.w - reserveRight - m, left = reserveLeft + m;
+  const ar = avoid ? avoid.x + avoid.w + m : -Infinity, ab = avoid ? avoid.y + avoid.h + m : -Infinity;   // own ship window spec §3
+  const groups = new Map<string, { flat: boolean; lo: number; hi: number; list: ArrowDraw[] }>();
   for (const a of arrows) {
-    const flat = Math.abs(a.y - top) < 0.5 || Math.abs(a.y - bottom) < 0.5, key = flat ? `y${Math.round(a.y)}` : `x${Math.round(a.x)}`;
-    const g = groups.get(key) ?? { flat, list: [] };
+    let key: string, flat: boolean, lo: number, hi: number;
+    if (a.edge === 'avoidBottom') { key = a.edge; flat = true; lo = left; hi = ar; }
+    else if (a.edge === 'avoidRight') { key = a.edge; flat = false; lo = top; hi = ab; }
+    else {
+      const onTop = Math.abs(a.y - top) < 0.5;
+      flat = onTop || Math.abs(a.y - bottom) < 0.5; key = flat ? `y${Math.round(a.y)}` : `x${Math.round(a.x)}`;
+      lo = flat ? (onTop ? Math.max(left, ar) : left) : (Math.abs(a.x - left) < 0.5 ? Math.max(top, ab) : top);
+      hi = flat ? right : bottom;
+    }
+    const g = groups.get(key) ?? { flat, lo, hi, list: [] };
     g.list.push(a); groups.set(key, g);
   }
-  for (const { flat, list } of groups.values()) {
+  for (const { flat, lo, hi, list } of groups.values()) {
     if (list.length < 2) continue;
-    const gap = flat ? ARROW_GAP_TOP : ARROW_GAP_SIDE, lo = flat ? reserveLeft + m : top, hi = flat ? right : bottom, mid = (lo + hi) / 2;
+    const gap = flat ? ARROW_GAP_TOP : ARROW_GAP_SIDE, mid = (lo + hi) / 2;
     const get = (a: ArrowDraw): number => (flat ? a.x : a.y), set = (a: ArrowDraw, v: number): void => { if (flat) a.x = v; else a.y = v; };
     const dir = list.reduce((t, a) => t + get(a), 0) / list.length > mid ? -1 : 1;   // spread toward the edge's middle
     const order = [...list].sort((p, q) => (get(p) - get(q)) * dir);
@@ -321,12 +365,15 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   const planet = onScreen(map.planet.x, map.planet.y, map.planet.r) ? { x: pc.x, y: pc.y, r: map.planet.r * z } : null;
 
   const asteroids: AsteroidDraw[] = [];
-  map.asteroids.forEach((a, index) => {
-    const r = a.r * z;
-    if (r < DOT_MIN_PX || !onScreen(a.x, a.y, a.r)) return;
-    const p = toS(a.x, a.y);
-    asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX });
-  });
+  for (let index = 0, n = rockSlots(state); index < n; index++) {   // SPIKE: the live rock pool, not the seeded map
+    if (!rockAlive(state, index)) continue;
+    const a = rockAt(state, index), r = a.r * z;
+    if (r < DOT_MIN_PX || !onScreen(a.x, a.y, a.r)) continue;
+    const p = toS(a.x, a.y), speed = Math.hypot(a.vx, a.vy);
+    const tail = a.kind === RockKind.Moving && speed > STREAK_MIN_SPEED ? Math.min(STREAK_MAX_U, speed * STREAK_S) / speed : 0;
+    const streak = tail > 0 ? { ...toS(a.x - a.vx * tail, a.y - a.vy * tail), alpha: Math.min(1, (speed - STREAK_MIN_SPEED) / 120) } : null;
+    asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX, wear: Math.max(0, Math.min(1, 1 - a.hp / rockHpMax(a.r))), ...(streak ? { streak } : {}) });
+  }
 
   const ships: ShipDraw[] = [];
   for (const i of input.ships) {
@@ -381,10 +428,12 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   // Off-screen arrows: the own ship (distance from the camera centre), and the others (distance from the own ship).
   const arrows: ArrowDraw[] = [];
   const arrow = (target: ArrowTarget, wx: number, wy: number, fromX: number, fromY: number): void => {
-    const p = toS(wx, wy), e = edgePoint(vp, input.reserveLeft ?? 0, input.reserveRight, p.x, p.y, input.reserveTop ?? 0);
+    const p = toS(wx, wy), rl = input.reserveLeft ?? 0, rt = input.reserveTop ?? 0;
+    let e: { x: number; y: number; angle: number; edge?: 'avoidRight' | 'avoidBottom' } | null = edgePoint(vp, rl, input.reserveRight, p.x, p.y, rt);
+    if (input.avoid) e = aroundAvoid(vp, rl, input.reserveRight, rt, input.avoid, p, e);
     if (!e) return;
     const distance = Math.round(Math.sqrt((wx - fromX) ** 2 + (wy - fromY) ** 2));
-    arrows.push({ target, x: e.x, y: e.y, angle: e.angle, distance, label: `${target === 'enemy' && input.contacts && state.known[Contact.Enemy] === 0 ? 'CONTACT' : ARROW_NAMES[target]} ${distance}` });
+    arrows.push({ target, x: e.x, y: e.y, angle: e.angle, distance, label: `${target === 'enemy' && input.contacts && state.known[Contact.Enemy] === 0 ? 'CONTACT' : ARROW_NAMES[target]} ${distance}`, ...(e.edge ? { edge: e.edge } : {}) });
   };
   if (input.ships.includes(0)) arrow('ship', own.x, own.y, cam.centreX, cam.centreY);
   const foe = targetOf(state, CREW_SLOT);   // the crew's locked target (engine refactor Decision 15)
@@ -392,7 +441,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   arrow('planet', map.planet.x, map.planet.y, own.x, own.y);
   const m = missileOf(state, 0);
   if (m) arrow('missile', m.x, m.y, own.x, own.y);
-  if (input.spreadArrows) spreadArrows(arrows, vp, input.reserveRight, input.reserveLeft ?? 0, input.reserveTop ?? 0);
+  if (input.spreadArrows) spreadArrows(arrows, vp, input.reserveRight, input.reserveLeft ?? 0, input.reserveTop ?? 0, input.avoid);
 
   // Sci-1 spec §7.1: the contact marks, the salvage ring and Science's ring, in the duel only.
   let marks: ContactMarkDraw[] | undefined, salvage: SalvageDraw | null = null, lockRing: LockRingDraw | null = null;
@@ -426,11 +475,29 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     });
   }
 
+  // Spike ii §6.5: the laser's rock target, the torpedo's (the next shot's, else the one in flight) and the hover.
+  let rockMarks: RockMarkDraw[] | undefined;
+  if (input.contacts) {
+    rockMarks = [];
+    const sys = state.systems[CREW_SLOT]!, list = rockMarks;
+    const mark = (k: number, weapon: 'laser' | 'torpedo', hover: boolean): void => {
+      if (k < 0 || !rockAlive(state, k)) return;
+      const a = rockAt(state, k);
+      if (!onScreen(a.x, a.y, a.r)) return;
+      const p = toS(a.x, a.y);
+      list.push({ x: p.x, y: p.y, r: Math.max(a.r * z, ROCK_PICK_MIN_PX) + 5, weapon, hover });
+    };
+    mark(sys.laserRock, 'laser', false);
+    mark(sys.torpRock >= 0 ? sys.torpRock : sys.torpRockFlying, 'torpedo', false);
+    if (input.rockHover) mark(input.rockHover.rock, input.rockHover.weapon, true);
+  }
+
   const units = [...SCALE_STEPS].reverse().find((u) => u * z <= SCALE_BAR_MAX_PX) ?? SCALE_STEPS[0]!;
   return {
     grid: gridDraw(cam, vp), contours, edge, planet, asteroids, ships, helm, arrows,
     ...(marks ? { marks, salvage, lockRing } : {}),
     ...(gravity ? { gravity } : {}),
+    ...(rockMarks ? { rockMarks } : {}),
     overlay: { zoomText: `ZOOM ${z.toFixed(2)}`, scaleBar: { px: units * z, units }, snapHint: cam.follow === 'free', paused: input.paused },
     stars: starOffset(cam.centreX, cam.centreY, vp)
   };
@@ -466,6 +533,20 @@ export function pickContact(input: Pick<TacticalModelInput, 'state' | 'prev' | '
   }
   const w = derelictPos(input.state), s = worldToScreen(input.camera, input.viewport, w.x, w.y), dd = Math.hypot(s.x - p.x, s.y - p.y);
   if (dd <= r && dd < bestD) best = Contact.Derelict;
+  return best;
+}
+
+/** Spike ii §6.5: a rock drawn smaller than this (a dot at map zoom) is picked as if it were this big, in internal px. */
+export const ROCK_PICK_MIN_PX = 6;
+/** Spike ii §6.5: the live rock under a map click: among the rocks whose drawn circle (r · zoom, at least ROCK_PICK_MIN_PX)
+ *  holds the point, the nearest centre; ties go to the lowest slot. null when none. */
+export function pickRock(input: Pick<TacticalModelInput, 'state' | 'camera' | 'viewport'>, p: Point): number | null {
+  let best: number | null = null, bestD = Infinity;
+  for (let k = 0, n = rockSlots(input.state); k < n; k++) {
+    if (!rockAlive(input.state, k)) continue;
+    const a = rockAt(input.state, k), s = worldToScreen(input.camera, input.viewport, a.x, a.y), d = Math.hypot(s.x - p.x, s.y - p.y);
+    if (d <= Math.max(a.r * input.camera.zoom, ROCK_PICK_MIN_PX) && d < bestD) { best = k; bestD = d; }
+  }
   return best;
 }
 

@@ -5,7 +5,8 @@
 // the pool, whatever pool entry they sit in.
 import { hx, hy, wrapHeading } from './direction';
 import { roomAtImpact, sideOf } from './geometry';
-import { queryGrid } from './grid';
+import { rockAlive, rockAt, rocksNear } from './rocks';
+import { detonateTorpedo } from './rockBlast';
 import { gravityAccel } from './physics';
 import { classOf, emptyMissile, missileOf, placeMissile, type DuelEvent, type Missile, type TacticalState } from './state';
 import { DT, MISSILE_CRUISE_SPEED, MISSILE_LEAD_CAP_S, MISSILE_MIN_CLOSING, R_MAP } from './tuning';
@@ -23,12 +24,15 @@ export function launchMissile(state: TacticalState, i: number): void {
   // FTL targeting spec §2: the torpedo strikes the room its target names at launch (−1: the lock room as it lands), and
   // a torpedo's target is a single shot, so it clears.
   sys.torpRoom = sys.torpLock; sys.torpLock = -1;
+  // Spike ii §6.4: the rock target too is a single shot: the flying torpedo homes on it.
+  sys.torpRockFlying = sys.torpRock; sys.torpRock = -1;
 }
 
 function end(state: TacticalState, m: Missile, cause: EndCause, target = -1, room = -1): void {
   state.events.push({ kind: 'missileEnd', ship: m.owner, cause, target, room, x: m.x, y: m.y });
   if (cause !== 'ship') state.systems[m.owner]!.missilesLost++;
   state.systems[m.owner]!.torpRoom = -1;
+  state.systems[m.owner]!.torpRockFlying = -1;
   Object.assign(m, emptyMissile());
 }
 
@@ -51,13 +55,22 @@ const STEP_SIN = hx(1);
  * within one heading step of the nose; a wanted direction dead astern turns clockwise. Only + − × ÷ and sqrt.
  */
 export function homingTurn(state: TacticalState, i: number, m: Missile): number {
-  const k = state.systems[i]!.target, t = state.ships[k];
-  if (!t || !t.active || k === i) return 0;
-  const dx = t.x - m.x, dy = t.y - m.y, dist = Math.sqrt(dx * dx + dy * dy);
+  const sys = state.systems[i]!, fly = sys.torpRockFlying;
+  let tx: number, ty: number, tvx: number, tvy: number;
+  if (fly === -2) return 0;   // spike ii §6.4: its rock broke: unguided
+  if (fly >= 0) {             // spike ii §6.4: a rock target: that rock's position and velocity
+    if (!rockAlive(state, fly)) return 0;
+    const r = rockAt(state, fly); tx = r.x; ty = r.y; tvx = r.vx; tvy = r.vy;
+  } else {
+    const k = sys.target, t = state.ships[k];
+    if (!t || !t.active || k === i) return 0;
+    tx = t.x; ty = t.y; tvx = t.vx; tvy = t.vy;
+  }
+  const dx = tx - m.x, dy = ty - m.y, dist = Math.sqrt(dx * dx + dy * dy);
   if (dist === 0) return 0;
-  const closing = ((m.vx - t.vx) * dx + (m.vy - t.vy) * dy) / dist;
+  const closing = ((m.vx - tvx) * dx + (m.vy - tvy) * dy) / dist;
   const tgo = Math.min(dist / Math.max(closing, MISSILE_MIN_CLOSING), MISSILE_LEAD_CAP_S);
-  const ax = dx + t.vx * tgo, ay = dy + t.vy * tgo, al = Math.sqrt(ax * ax + ay * ay);
+  const ax = dx + tvx * tgo, ay = dy + tvy * tgo, al = Math.sqrt(ax * ax + ay * ay);
   if (al === 0) return 0;
   const speed = Math.max(Math.sqrt(m.vx * m.vx + m.vy * m.vy), MISSILE_CRUISE_SPEED);
   const ex = (ax / al) * speed - m.vx, ey = (ay / al) * speed - m.vy, el = Math.sqrt(ex * ex + ey * ey);
@@ -113,7 +126,10 @@ export function resolveMissiles(state: TacticalState): void {
     if (!m) continue;
     const def = classOf(state, i).slots.missile, p = state.map.planet;
     if (touches(m, def.radius, p.x, p.y, p.r)) { end(state, m, 'planet'); continue; }
-    if (queryGrid(state.grid, m.x, m.y, def.radius).some((k) => { const a = state.map.asteroids[k]!; return touches(m, def.radius, a.x, a.y, a.r); })) { end(state, m, 'asteroid'); continue; }
+    const rock = rocksNear(state, m.x, m.y, def.radius).find((k) => { if (state.rockBorn[k] === 1) return false; const a = rockAt(state, k); return touches(m, def.radius, a.x, a.y, a.r); });
+    if (rock !== undefined) {   // spike ii §4.2: it detonates on the first rock it touches (on purpose or not)
+      detonateTorpedo(state, m.owner, m.x, m.y, m.vx, m.vy, rock); end(state, m, 'asteroid'); continue;
+    }
     if (m.x * m.x + m.y * m.y > R_MAP * R_MAP) { end(state, m, 'edge'); continue; }
     let landed = false;
     for (let k = 0; k < n && !landed; k++) {

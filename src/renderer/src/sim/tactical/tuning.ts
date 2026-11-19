@@ -213,8 +213,12 @@ export const HUNTER_PEW_GAP = 20;
  *  with the hull ×1.75, the duel gates (tests/duelGates.test.ts): Hound median 224.1 s, 7 crew wins, 3 losses; Valkyrn median 183.1 s, 7 Hunter wins (.superpowers/sdd/task-6-report.md). */
 export const HUNTER_PEW_RECHARGE_TICKS = 120;
 /** W-1 (pew pew spec §1): the Hunter's seeded aim error, ±HUNTER_PEW_ERROR degrees, in fine heading units (rounded down:
- *  HUNTER_PEW_ERROR_STEPS). 8 (was 4), Task 6 tuning; the duel gates (tests/duelGates.test.ts): Hound median 224.1 s, 7 crew wins, 3 losses; Valkyrn median 183.1 s, 7 Hunter wins. */
-export const HUNTER_PEW_ERROR = 8;
+ *  HUNTER_PEW_ERROR_STEPS). 8 (was 4), Task 6 tuning; the duel gates (tests/duelGates.test.ts): Hound median 224.1 s, 7 crew wins, 3 losses; Valkyrn median 183.1 s, 7 Hunter wins.
+ *  16 (was 8) at the merge with asteroids-ii (billiard rocks): at 8 the gates fell short (Hound median 172.7 s, 6 crew wins,
+ *  4 losses; Valkyrn median 168.9 s, 3 crew wins, 7 Hunter wins, most by downed crew, which the hull factor does not reach:
+ *  ×2.25 still gave a 176.2 s Valkyrn median); at 16: Hound median 208.8 s, 6 crew wins, 4 losses; Valkyrn median 210.9 s,
+ *  4 crew wins, 6 Hunter wins (12 passed at 189.8 s / 206.7 s, a thinner Hound margin). */
+export const HUNTER_PEW_ERROR = 16;
 export const HUNTER_PEW_ERROR_STEPS = Math.floor((HUNTER_PEW_ERROR / 360) * AIM_STEPS);
 /** Point defence: a crew torpedo within HUNTER_PD_RANGE inside the cone is tried for with HUNTER_PD_CHANCE a second, one
  *  roll a tick that succeeds 1 in HUNTER_PD_ODDS (200 at 60 Hz). HUNTER_PD_CHANCE 0.3 (was 0.5), Task 6 tuning;

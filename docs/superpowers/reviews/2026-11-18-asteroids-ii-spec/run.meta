@@ -1,0 +1,11 @@
+topic=asteroids-ii-spec
+subject_kind=spec
+subject=docs/superpowers/specs/2026-11-18-asteroids-ii-design.md
+worktree=C:\Users\djuar\FTLite\.worktrees\asteroids-ii
+base=main
+cap=4
+effort=high
+confirm=0
+verify=
+created=2026-11-18
+head_at_setup=cff7d494

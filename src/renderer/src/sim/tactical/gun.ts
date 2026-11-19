@@ -5,7 +5,7 @@
 // contacts resolve and sweeps each as a segment (spec §7.2). Only + − × ÷ and sqrt (the determinism guard).
 import type { GunDef } from './defs';
 import { hx, hy } from './direction';
-import { queryGrid } from './grid';
+import { rockAt, rocksNear } from './rocks';
 import { classOf, emptyRound, Room, type GunRound, type TacticalState } from './state';
 import { DT } from './tuning';
 import type { ShipInput } from './weapons';
@@ -111,9 +111,13 @@ function gunHit(state: TacticalState, owner: number, k: number, ox: number, oy: 
 /**
  * Every round in flight, in pool order (spec §7.2): it flies straight one tick (no gravity, no drag; it also moves on
  * its spawn tick) and ages; its segment from the old to the new position is swept against every other active ship's
- * circle (as it stands after this tick's flight), the asteroids and the planet; the first contact along the segment ends
- * it (ties: ship, then asteroids ascending, then the planet; a ship contact is a hit). A round reaching its gun's life
+ * circle (as it stands after this tick's flight), the live rocks and the planet; the first contact along the segment ends
+ * it (ties: ship, then rocks by ascending slot, then the planet; a ship contact is a hit). A round reaching its gun's life
  * ends. An ended round's entry holds zeros. Never its own ship.
+ * Merge with asteroids-ii (spike ii §8 as-built, Valkyrn spec §12): the rocks are the live pool `state.rocks` as it
+ * stands when this runs (after stepRocks moved them this tick), found with rocksNear as the laser's firstBlocker does,
+ * and like it a piece born this tick is not in the way. A round that meets a rock is absorbed: it ends and the rock is
+ * untouched (no push, no wear, no event).
  */
 export function stepRounds(state: TacticalState): void {
   for (const r of state.rounds) {
@@ -127,8 +131,9 @@ export function stepRounds(state: TacticalState): void {
       if (t >= 0 && t < best) { best = t; ship = k; }
     });
     const half = Math.max(Math.abs(r.x - ox), Math.abs(r.y - oy)) / 2;
-    for (const k of queryGrid(state.grid, (ox + r.x) / 2, (oy + r.y) / 2, half)) {
-      const a = state.map.asteroids[k]!, t = segmentEntry(ox, oy, r.x, r.y, a.x, a.y, a.r);
+    for (const k of rocksNear(state, (ox + r.x) / 2, (oy + r.y) / 2, half)) {
+      if (state.rockBorn[k] === 1) continue;   // as firstBlocker: a piece made earlier this tick is not in the way
+      const a = rockAt(state, k), t = segmentEntry(ox, oy, r.x, r.y, a.x, a.y, a.r);
       if (t >= 0 && t < best) { best = t; ship = -1; }
     }
     const p = state.map.planet, tp = segmentEntry(ox, oy, r.x, r.y, p.x, p.y, p.r);

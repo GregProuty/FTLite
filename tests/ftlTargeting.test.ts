@@ -166,7 +166,7 @@ describe('the commands through the duel step and the wire (spec §2)', () => {
     } finally { disposeDuel(d); }
   });
   it('the ship module owns torpLock, and the duel codec carries it and laserLock −1', () => {
-    expect(shipModule.commands).toEqual(['laserLock', 'torpLock', 'laserCharge', 'missileLaunch', 'pewFire']);   // W-1
+    expect(shipModule.commands).toEqual(['laserLock', 'torpLock', 'rockLock', 'laserCharge', 'missileLaunch', 'pewFire']);   // W-1: the pew last
     const codec = duelCodec(2), envelope = (command: unknown) => ({ kind: 'command' as const, envelope: { runId: 'r', id: { player: 0, sequence: 1 }, requestedTick: 0, command } as CommandEnvelope });
     for (const command of [{ kind: 'torpLock', room: -1 }, { kind: 'torpLock', room: 2 }, { kind: 'laserLock', room: -1 }])
       expect(codec.decodeMessage(codec.encodeMessage(envelope(command)))).toEqual(envelope(command));

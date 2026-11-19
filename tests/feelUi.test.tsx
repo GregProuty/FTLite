@@ -46,7 +46,7 @@ describe('the Weapons LASER card (spec §3)', () => {
     expect(document.querySelector('[data-ui-card-firing]')).not.toBeNull();
     act(() => duel.frame(view(weapons({ laserReason: null, laserTarget: -1, goal: true }))));
     expect(document.querySelector('[data-ui-card-goal]')).not.toBeNull();
-    expect(texts()).toContain('CLICK A WEAPON, THEN A ROOM');
+    expect(texts()).toContain('CLICK A WEAPON, THEN A ROOM OR ROCK');
   });
 });
 

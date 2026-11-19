@@ -1,11 +1,11 @@
 ## Role
 <!-- reuse -->
 
-The subject is a design spec for a spike: the Helm's flight in FTLite's two-player duel. It covers a held throttle that ramps, Newtonian flight for the crew ship, cold gas thrusters, and the Helm splitting its power between ENGINE and COMPRESSOR. It will become an implementation plan that fresh subagents execute task by task, and then deterministic sim code. That code must stay bit-identical on Node, Electron and Firefox, and it runs both locally and online with one authority. Any rule two implementers would build differently, and any interface the spec assumes but the codebase lacks, is a defect.
+The subject is a design spec for a spike: the Helm's flight in FTLite's two-player duel. It covers a held throttle that ramps, mouse steering with a gas-boosted turn, Newtonian flight for the crew ship, cold gas thrusters, and the Helm splitting its power between ENGINE and COMPRESSOR. It will become an implementation plan that fresh subagents execute task by task, and then deterministic sim code. That code must stay bit-identical on Node, Electron and Firefox, and it runs both locally and online with one authority. Any rule two implementers would build differently, and any interface the spec assumes but the codebase lacks, is a defect.
 
 ## What to review
 
-- THE SUBJECT (spec): `docs/superpowers/specs/2026-11-18-playtest2feedback-design.md` at commit `edf34a05`, worktree `C:/Users/djuar/FTLite`, branch `master`.
+- THE SUBJECT (spec): `docs/superpowers/specs/2026-11-18-playtest2feedback-design.md` at commit `f5acc6b8`, worktree `C:/Users/djuar/FTLite`, branch `master`.
 - Neighbouring specs it must stay consistent with:
   - `docs/superpowers/specs/2026-11-18-engineering-spike-design.md` §9-§10 (Engines bars and the throttle cap);
   - `docs/superpowers/specs/2026-11-18-pew-pew-weapons-design.md` §3-§4 (the manual torpedo flies like the Helm; `HeldInput` gains fields).
@@ -31,11 +31,12 @@ The subject is a design spec for a spike: the Helm's flight in FTLite's two-play
 10. **Gas and the compressor (§4).** Ordering between venting and refill within a tick, the `rcsY`-first rule, the sixtieths accumulator, and the integer bounds for snapshot validation.
 11. **Removing the `throttle` command.** Its consumers are scripted.ts L318-L320, runtime.ts L229-L345 and HelmStation. Does the spec cover everything the removal breaks, including the client-side prediction of `throttleBase` and the Valkyrn's `helmHoldsUnattended` path?
 12. **The online path.** Held fields are optional with a default of 0. Ramp state comes from held input. Does a lost or late held frame on the online authority produce a sensible throttle?
-13. **Consistency with Engineering §10.2.** That section caps the throttle by Engines bars, and the merge note says whichever spike merges second reconciles. Is the stand-in budget of 4 consistent with Engineering's start of 3 Engines bars?
+13. **Mouse steering and the boost (§4a).** Reuses `HeldInput.aim`, `heldAim`, `aimTurn` and `helmTurn` (step.ts L90-L116) and the runtime's `steer` (runtime.ts L500-L510). Check the boosted turn's dead band against `aimTurn` and `headingTurn`, the new `Axes.turnBoost` against `flyShip`, and that the Valkyrn is unaffected.
+14. **Consistency with Engineering §10.2.** That section caps the throttle by Engines bars, and the merge note says whichever spike merges second reconciles. Is the stand-in budget of 4 consistent with Engineering's start of 3 Engines bars?
 
 ## Reading manifest
 
-- `docs/superpowers/specs/2026-11-18-playtest2feedback-design.md:L1-L256`: the subject, all of it.
+- `docs/superpowers/specs/2026-11-18-playtest2feedback-design.md:L1-L408`: the subject, all of it.
 - `docs/superpowers/specs/2026-11-18-engineering-spike-design.md:L294-L385`: Engineering amendments §9.1 and §10.1-§10.2.
 - `docs/superpowers/specs/2026-11-18-pew-pew-weapons-design.md:L95-L150`: the manual torpedo and the held-input fields.
 - `src/renderer/src/sim/tactical/physics.ts:L1-L70`: `flyShip`, `stepFlight`, stabilise, drag and thrust quantisation.
@@ -43,13 +44,13 @@ The subject is a design spec for a spike: the Helm's flight in FTLite's two-play
 - `src/renderer/src/sim/tactical/defs.ts:L80-L100`: ship class flight parameters.
 - `src/renderer/src/sim/duel/throttle.ts:L1-L25`: throttle levels and `throttleThrust`.
 - `src/renderer/src/sim/duel/modules.ts:L50-L80`: the helm module and its fields.
-- `src/renderer/src/sim/duel/step.ts:L20-L40`, `src/renderer/src/sim/duel/step.ts:L100-L130`, `src/renderer/src/sim/duel/step.ts:L215-L302`: `DUEL_KINDS`, `helmTurn`, throttle/heading admission and the crew's axes.
+- `src/renderer/src/sim/duel/step.ts:L20-L40`, `src/renderer/src/sim/duel/step.ts:L86-L130`, `src/renderer/src/sim/duel/step.ts:L215-L302`: `DUEL_KINDS`, `helmTurn`, throttle/heading admission and the crew's axes.
 - `src/renderer/src/sim/duel/scripted.ts:L95-L110`, `src/renderer/src/sim/duel/scripted.ts:L300-L330`: the scripted crew's throttle use.
 - `src/renderer/src/sim/duel/snapshot.ts:L140-L160`: helm values in the snapshot.
 - `src/renderer/src/net/contracts.ts:L30-L40`, `src/renderer/src/net/contracts.ts:L80-L100`: `HeldInput` and the duel commands.
 - `src/renderer/src/net/codec.ts:L145-L155`: the held-input zod schema.
 - `src/renderer/src/app/duel/input.ts:L55-L80`, `src/renderer/src/app/duel/input.ts:L195-L210`: `helmAxes`, `throttleRequest`, the wheel.
-- `src/renderer/src/app/duel/runtime.ts:L200-L240`, `src/renderer/src/app/duel/runtime.ts:L310-L350`: sent axes, `throttleBase`, console commands.
+- `src/renderer/src/app/duel/runtime.ts:L200-L240`, `src/renderer/src/app/duel/runtime.ts:L310-L350`, `src/renderer/src/app/duel/runtime.ts:L490-L515`: sent axes, `throttleBase`, console commands, the held aim/steer.
 - `src/renderer/src/ui/duel/HelmStation.tsx:L1-L73`: today's Helm console.
 
 Read by range (`sed -n`), not whole files. Do not `ls` or explore beyond this manifest unless a finding requires it, and say so under `not_verified` if you do.
@@ -69,7 +70,10 @@ These were made by the owner and are not up for reversal. Flag a violation of on
 - Scope is the Helm only. The Weapons-control notes go to a later pew pew amendment.
 - Crew ship: no drag and no stabilise. Gravity stays. The Hunter keeps its drag.
 - The throttle ramps slowly while W/S is held and returns fast to 0 when released. The range is −25 % to +100 %.
-- Cold gas thrusters push relative to the ship: ←/→ and Q/E port and starboard, ↑/↓ fore and aft. Holding a key gives a steady push, and a tank is refilled by a compressor.
+- Cold gas thrusters push relative to the ship: A/D, Q/E and ←/→ port and starboard, ↑/↓ fore and aft. Holding a key gives a steady push, and a tank is refilled by a compressor.
+- Holding the left mouse button steers the ship toward the cursor. A/D no longer turn the crew ship.
+- Gas boosts turns: a turn with gas in the tank is faster and spends gas. Without gas, it runs at the normal rate.
+- The Valkyrn keeps its own controls.
 - The Helm splits its bars between ENGINE (each bar is 25 % of throttle cap) and COMPRESSOR (the refill rate), the way Weapons splits its bars. The stand-in budget is 4 until Engineering lands.
 - Spike rules: nothing merges until the owner plays it.
 

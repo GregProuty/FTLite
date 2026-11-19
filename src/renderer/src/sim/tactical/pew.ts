@@ -7,10 +7,10 @@
 // applyWeaponsInput (before anything moves); stepPew (Task 3) after the gun rounds. Only + − × ÷ and sqrt.
 import type { PewDef } from './defs';
 import { dirBetween, hx, hy } from './direction';
-import { queryGrid } from './grid';
 import { placeRound, segmentEntry } from './gun';
 import { interceptTime, nearestHeading } from './lead';
 import { shootDown } from './missiles';
+import { rockAt, rocksNear } from './rocks';
 import { classOf, emptyRound, type TacticalState } from './state';
 import { AIM_STEPS, DT, HEADING_COUNT } from './tuning';
 
@@ -83,7 +83,8 @@ function pewHit(state: TacticalState, owner: number, k: number, x: number, y: nu
 
 /**
  * Every pew round in flight, in pool order (spec §1): it flies straight one tick (no gravity, no drag; it also moves on its
- * spawn tick) and ages; its segment from the old to the new position is swept (gun.ts segmentEntry) against the asteroids,
+ * spawn tick) and ages; its segment from the old to the new position is swept (gun.ts segmentEntry) against the live rocks
+ * (the asteroids-ii pool as it stands after this tick's rock step; a piece born this tick is skipped),
  * the planet, every torpedo in flight that another ship owns (its post-move position) and every other active ship (its
  * post-move circle). The smallest entry wins; on a tie the earlier of rock, planet, torpedo, ship (strict <, in that order).
  * A torpedo is shot down (missiles.ts shootDown), a ship takes pewHit at the entry point, a rock or the planet only stops
@@ -96,8 +97,12 @@ export function stepPew(state: TacticalState): void {
     r.x += r.vx * DT; r.y += r.vy * DT; r.age++;
     let best = 2, hit: 'none' | 'solid' | 'torpedo' | 'ship' = 'none', k = -1;   // entry parameters are at most 1
     const half = Math.max(Math.abs(r.x - ox), Math.abs(r.y - oy)) / 2;
-    for (const a of queryGrid(state.grid, (ox + r.x) / 2, (oy + r.y) / 2, half)) {
-      const rock = state.map.asteroids[a]!, t = segmentEntry(ox, oy, r.x, r.y, rock.x, rock.y, rock.r);
+    // Merge with asteroids-ii (spike ii §8; owner decision): the rocks are the live pool `state.rocks` as it stands when this
+    // runs (after stepRocks moved them this tick), found with rocksNear as gun.ts stepRounds does, and a piece born this tick
+    // is not in the way. A pew round that meets a rock stops on it with no effect on the rock (no chip, split, push or event).
+    for (const q of rocksNear(state, (ox + r.x) / 2, (oy + r.y) / 2, half)) {
+      if (state.rockBorn[q] === 1) continue;   // as stepRounds and firstBlocker: a piece made earlier this tick is not in the way
+      const a = rockAt(state, q), t = segmentEntry(ox, oy, r.x, r.y, a.x, a.y, a.r);
       if (t >= 0 && t < best) { best = t; hit = 'solid'; }
     }
     const p = state.map.planet, tp = segmentEntry(ox, oy, r.x, r.y, p.x, p.y, p.r);

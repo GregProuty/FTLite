@@ -1,0 +1,83 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Task 2's input.ts edits are quoted from before asteroids-ii and match nothing on master",
+      "claim": "Four of Task 2 Step 4's quoted 'Replace' blocks in app/duel/input.ts don't match current master. Asteroids-ii added `rockLock?` to ConsoleInput and `rockTo` to the keyboard. If an executor pasted the plan's replacement text anyway, rockTo would be lost from clear() and sample().",
+      "evidence": "plan L511 quotes ConsoleInput as one line ending `frequency(freq: number): void }`; master input.ts:36-38 ends `frequency(freq: number): void;` and then has the `rockLock?(weapon, rock): void }` member. Plan L529 `let presses = \u2026` has no `rockTo`; master input.ts:105 does. Plan L538 `const clear` has no `rockTo = null`; master input.ts:125 does. Plan L551-552 (sample's `out` and its reset) have no rockTo; master input.ts:148-149 do. Only `frequency(freq) { freqTo = freq; }` (plan L544, input.ts:140) still matches. Existing test tests/duelRuntime.test.ts:457-458 drives `rockTo`.",
+      "why": "An executor can't apply the edits as written. A forced paste breaks the rock-target clear that asteroids-ii relies on, along with its tests.",
+      "fix": "Re-quote all four edits from master. ConsoleInput: insert the `ship?` member after the `rockLock?` member, before the closing `}`. Keep `rockTo` in the `let`, in clear(), in the `out` literal and in the reset line, and add only `ship` / `ship = []`."
+    },
+    {
+      "severity": "P1",
+      "title": "Task 8's WeaponsStation rewrite drops asteroids-ii's rock targeting, and an existing test imports what it removes",
+      "claim": "Step 10 replaces the whole of WeaponsStation.tsx with a version written before asteroids-ii. It removes `export const WEAPONS_HINT`, the `rock` parameter of `targetText`, the cards' right-click `rockLock?(weapon, -1)` clear, 'TGT ROCK', and the `ROCKS n` count. The plan never states or justifies this regression. tsc -b and vitest will fail.",
+      "evidence": "plan L2131: `targetText = (room: number)`, with no WEAPONS_HINT, no rockLock and no ROCKS line (L2101-2229). Master WeaponsStation.tsx:30 has `targetText(room, rock = false)`, :42 has `actions.console.rockLock?.(weapon, -1)`, :63 has `export const WEAPONS_HINT`, :72/84/93 have the rock flags, and :108 has `ROCKS ${weapons.rocks}`. tests/rockTargetUi.test.tsx:13 imports `{ targetText, WEAPONS_HINT }`, :38 calls `targetText(1, true)`, and :59-62 assert WEAPONS_HINT and the ROCKS width. tsconfig.web.json includes `tests/**/*`. Step 11 (L2237) does not run rockTargetUi.",
+      "why": "The task fails its `npx tsc -b` gate. Even after patching, it silently removes the shipped rock-target UI, which spec \u00a711 does not ask for.",
+      "fix": "Rewrite Step 10 on top of master's file. Keep targetText(room, rock), WEAPONS_HINT, the rock-aware right-click clear (in Pick), TGT ROCK on BEAM and TORPEDO, and the ROCKS count. Then fit FREE and the pip hint around them, and add tests/rockTargetUi.test.tsx to Step 11's run list."
+    },
+    {
+      "severity": "P1",
+      "title": "Task 8's model edits also predate asteroids-ii: the WeaponsPanel quote doesn't match, and the laserSituation quote matches twice",
+      "claim": "Step 4's WeaponsPanel replacement quotes a line that no longer closes the interface. Step 6's `laserSituation` replacement text now appears twice: once in the rock-target branch and once in the enemy branch. Two executors would edit different lines. Separately, the Task 8 model test clears rocks the pre-asteroids way.",
+      "evidence": "plan L1908 quotes `\u2026 refused?: RefusedView | null }`; consoleModel.ts:37 ends `refused?: RefusedView | null;` and is followed by :38-40 `laserRock?; torpRock?; torpRockFlying?; rocks?: number }`. plan L1991 `  if (laserOffline(t, CREW_SLOT)) return { kind: 'offline' };` matches situationModel.ts:46 (inside the `sysRock.laserRock >= 0` branch) and :59. plan L1881 resets only `t.map.asteroids` and `t.grid`, while the repo's own helper tests/feelIiModels.test.ts:46 also resets `st.rocks = initRocks(st.map)`, because lineOfSight now walks the rock pool (geometry.ts:26).",
+      "why": "Step 4 can't be applied as written. In Step 6, if only :59 is edited, a beam-dark ship aiming at a rock still shows WEAPONS OFFLINE on the BEAM card, which contradicts Decision 14.",
+      "fix": "Quote L37-40 and insert `weaponBars?: number[]; weaponFree?: number` before `rocks?: number }`. State that both laserOffline lines (:46 and :59) get the weaponsOffline treatment, or quote each with its surrounding line. In the test, clear rocks as feelIiModels' clearRocks does (import initRocks)."
+    },
+    {
+      "severity": "P1",
+      "title": "Task 7's pre-flight grep for THROTTLE_CAP_BY_BARS can't match Part i's declaration",
+      "claim": "Step 1 greps `THROTTLE_CAP_BY_BARS = \\[0, 1, 2, 3, 4, 4\\]`. Part i declares the table with a type annotation, so the grep prints nothing, and the plan says 'If any prints nothing, stop and report'.",
+      "evidence": "plan L1434: `git grep -n \"THROTTLE_CAP_BY_BARS = \\[0, 1, 2, 3, 4, 4\\]\"`. Part i plan L2021: `export const THROTTLE_CAP_BY_BARS: readonly number[] = [0, 1, 2, 3, 4, 4];`.",
+      "why": "Every executor halts at Task 7 Step 1, even though Part i built exactly the right name.",
+      "fix": "Grep `THROTTLE_CAP_BY_BARS: readonly number\\[\\] = \\[0, 1, 2, 3, 4, 4\\]`, or grep the name alone and check the values in the tests."
+    },
+    {
+      "severity": "P2",
+      "title": "The fog still gives away an unseen enemy: its exact range in text, the sit-down zoom, and map clicks or pings at its hidden spot",
+      "claim": "Task 9 hides the enemy's silhouette, marks and lock, but several other paths still read the real enemy:\n- laserSituation returns `{ kind: 'range', range }` for an unseen enemy, so the Weapons status sentence and the BEAM card reason print 'OUT OF RANGE 2134/450'.\n- The sit-down zoom frames both ships using the enemy's real position.\n- pickContact and pickShip scan every active ship, so a click at the hidden enemy opens its window and a ping snaps onto it.",
+      "evidence": "situationModel.ts:56 returns the range. weaponsModel.ts:166-169 builds the status sentence from laserSituation whatever `ships` holds. consoleModel.ts:115 builds the card reason from laserSituation. scene.ts:250 `if (e?.active) zoomTo(\u2026 frameZoom(e.x - own.x, \u2026))`. scene.ts:184 and :203 pickContact for the click and the ping. tacticalModel.ts:471-475: pickShip loops over all active slots. Plan Task 9 Steps 5 and 8 (L2446-2548) gate only the drawing. Spec \u00a710.4 L431: unseen contacts are drawn as a ghost.",
+      "why": "A player can learn an unseen enemy's distance and bearing without Sensors power, which undercuts the fog the spike is meant to test.",
+      "fix": "In the scene, gate on fogView.seen.enemy:\n- skip zoomTo when the enemy is unseen;\n- pass a `seen` flag to pickContact (or skip Contact.Enemy) for the click and the ping;\n- have laserSituation (or the scene's input) return 'none' for an unseen target, so no range or arc words show.\nAdd one test for each path."
+    },
+    {
+      "severity": "P2",
+      "title": "The refused LAUNCH reason now runs into FREE and past the Weapons block",
+      "claim": "With three 90 px cards, the torpedo card's text starts at tx = 218. 'LAUNCH: OUT OF RANGE' is about 120 px at FONT_NATIVE, which runs to about 338, past `right` (304), over the right-aligned FREE count and outside the 312 px panel. Longer reasons such as TORPEDO UNPOWERED run further. The plan says the text stays clear.",
+      "evidence": "plan L1940: card x = x0 + i \u00d7 96, w 90, so T.x is 212 and tx is 218. plan L2213 draws FREE right-aligned at `right` on row y0+116. plan L2215 draws the refusal at `tx` on the same row. plan L2231 claims '(x 220), which stays clear of FREE'. FONT_NATIVE text is about 6 px per glyph (tests/rockTargetUi.test.tsx:62 budgets textPx(s, 1)).",
+      "why": "The most common LAUNCH refusal overlaps on the console the owner will play.",
+      "fix": "Draw every refusal from x0, or move FREE to its own spot (for example under the pips, or on the y0+134 row beside ROCKS). Then add a jsdom or textPx width assertion like rockTargetUi's."
+    },
+    {
+      "severity": "P3",
+      "title": "Out-of-date numbers in the plan text",
+      "claim": "Global Constraints say Task 1 records the baselines at 54, but Task 1 Step 2 and the Self-review say 55. The plan cites `scene.ts:291` for the HUD rule, but it is now :305. Decision 11 gives the panel as y 546\u2013712, but powerPanel() gives y 557 (with the header text at 529).",
+      "evidence": "plan L26 vs L146-152 and L2796. plan L74 and L2782 vs scene.ts:305. plan L76 vs Task 1's layout (powerBarY(9) = 563, minus pad 6 = 557).",
+      "why": "These are small, but executors match by these numbers.",
+      "fix": "L26: 'at 55'. Cite scene.ts:305. Decision 11: 'y 529 (header) / 557\u2013712 (backing)'."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "Part i's names match what Part ii uses:\n- power.ts re-exports DuelSystem, DUEL_SYSTEM_COUNT, OVERDRIVE_SYSTEMS, SYSTEM_MAX, SYSTEM_SLOTS, REACTOR_BARS, START_BARS and effectiveBars (Part i L754-756).\n- power.ts defines COOLANT_POOL_DUEL=8, capacityOf, sparesOf, coolantFree, isOverdriven and PowerState {heat, coolant, failed: number[]} (L759-781).\n- Also matching: fireTileOf(d, room) (L1727), LOW_AIR_FRAC (L1706), and throttleCap(sys: Pick<'rooms'|'bars'>) (L2025).\n- Weapons names match: WeaponSlot {Pew:0,Beam:1,Torpedo:2} as const, weaponBarsUsable, trimmedWeaponPower(WeaponSys), weaponBars (L2324-2343), BEAM_SHOTS_BY_BARS [0,1,2,2,2] (L2582), and the command `{ kind: 'weaponPower'; slot; delta }` (L2423).\n- Fog names match: sensorRange, pointSeen, shipSeen, contactSeen (L2885-2902), and the four ship commands in contracts (L1120).",
+    "No pew pew remnant survives: no pew charge, lock, pick-up, number key or `weapon` field (grep over the plan). This agrees with Part i L68-70 and spec \u00a711 L451-453. Part i's laserOffline (beamShots===0) and canLaunch (torpedo bars \u22651) (Part i L2618-2632) match Task 8's weaponsOffline and refusal ordering.",
+    "These quoted edits match master once each:\n- actions.ts:56-57 and :75;\n- runtime.ts:372-373 (the new line is inserted after the signature; the trailing comment stays) and the two throttleRequest calls at :404 and :433;\n- onlineDuel.ts:191-192, :201 and :310;\n- scene.ts:18, :138, :161, :173, :181, :271, :279 and :297;\n- duelMode.ts:55, :81-82 and :114;\n- interiorView.ts:23-24, 46, 51, 70, 95, 101, 110, 135, 146 and 100 (`container, world, memory,`);\n- consoleModel.ts:12, 26, 58, 109, 113, 115 and 127;\n- HelmStation.tsx:36, 46 and 53; DuelUi.tsx:30 and :46;\n- situationModel.ts:200-202 (refusal);\n- tacticalModel.ts:88, 106, 144, 418-419, 453 and 457;\n- weaponsModel.ts:146-147, 155, 178 and 250; tacticalLayer.ts:246; contactModel.ts:93 and :118;\n- feelIiModels.test.ts:215 and :220 (the plan says lines 213 and 218).",
+    "The helpers the plan relies on exist with the assumed shapes: Placement {scale,x,y} (interiorCamera.ts:12); Derived doorTileToEdge, airlockOfTile, siteRoom, siteTile, roomTiles and volume (derived.ts:11-17); rooms.fireRepair and breaches.repair (state.ts:31,35); DoorState.HeldOpen=3 (grid.ts:4); INTERIOR_BAND y 42 and TILE_PX 32; createInteriorView's defaulted args (interiorView.ts:55); Box attrs, boxCss, CrtProvider/CrtGlow/useCrt, blink and ALERT_BLINK_HZ (crtTheme.ts:14); Button's disabled \u2192 aria-disabled, which ignores presses (Button.tsx:45,56); and placeMissile and createCamera.",
+    "Hound geometry in the tests: the door at (12,7) is O\u2013Q, the airlock at (0,7) is the Hold's, (14,7) is Quarters floor, and Q's breach site (15,5) is also its fire tile, so the half-tile offset applies (hound.json:108-121,129-133,221-225).",
+    "Task 1 layout arithmetic: the panel is x 6\u2013334 and y 557\u2013712. Every layout assertion in tests/shipHudModel's rewrite holds, and the airTint expected values are exact in IEEE doubles (0.15, 0.3 and 0.55).",
+    "Online path: Task 3 sends `k.ship` first in onlineDuel's play, which runs only while running, synced, focused and not decided (onlineDuel.ts:260-270). Unfocused pumps drain the keyboard and stopInput clears it (onlineDuel.ts:140,252). The interior-click wiring is gated on `focused && !blocked`, as takeClick is (onlineDuel.ts:304). Ship-command refusals are not surfaced in either mode. The plan lists 'a refusal flash' as a candidate (L2751), and spec \u00a76 doesn't require one.",
+    "HUD clicks don't block the interior: the Stage root is pointerEvents:none (Stage.tsx:7), so the nested CrtGlow inset div inherits it, and only the Hit targets set 'auto'.",
+    "Ship commands survive a Single-player Tab because runtime's isConsoleCommand (runtime.ts:239) doesn't include them.",
+    "Fog state is per screen and deterministic in tests: stepFog takes an explicit `now` and epoch, and the ghost alpha arithmetic is exact (0.9 at 1 s; deleted at 10 s).",
+    "Task 11 smoke: the selectors exist (Home.tsx:10 'single-player', ShipPicker.tsx:11 'ship-${id}'), the staging hook sits beside __ftliteDuel (duelMode.ts:81-82), there are exactly nine check() lines, and the output paths are concrete."
+  ],
+  "not_verified": [
+    "Whether the Task 3 runtime rig's scheduler advance actually steps a tick between the two frames. I didn't read runtime.ts's tick pacing beyond L345-L513; tests/duelRuntime.test.ts:37-48 uses a similar rig.",
+    "Whether jsdom in this repo's vitest setup delivers `button` on fireEvent.pointerDown. Existing console tests rely on it, but I didn't open one to confirm.",
+    "Whether any runtime validator rejects the smoke's staged `bars[3] = 3` (bar total 12, above the reactor's 10) in Single player before screenshot 5. Part i's hash rules for `systems.<i>.bars` weren't read.",
+    "Whether the smoke's walk (D 1800 ms, W pulses, E) reliably seats at Weapons on the Hound. It can only be checked by running the app.",
+    "The full list of existing scene and UI tests that need the Hunter moved inside 900 (Task 9 Step 9). The grep recipe is plausible, but I didn't enumerate the results.",
+    "I read tests/rockTargetUi.test.tsx, tests/feelIiModels.test.ts, sim/tactical/geometry.ts and sim/tactical/rocks.ts, which are beyond the manifest, to confirm the asteroids-ii findings."
+  ]
+}

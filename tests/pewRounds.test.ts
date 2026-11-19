@@ -3,19 +3,25 @@
 // ship or torpedo; a ship hit strips a layer or costs 1 hull and never raises a room; a torpedo hit ends it 'shot'; a crew
 // round turns the Hunter hostile.
 import { describe, expect, it } from 'vitest';
-import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { placeRound } from '../src/renderer/src/sim/tactical/gun';
 import { firePew, stepPew } from '../src/renderer/src/sim/tactical/pew';
+import { beginRockTick, RockKind, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
+import { mover } from './helpers/rockArena';
 import { createTacticalState, missileOf, placeMissile, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { TERMINAL_CAUSES } from '../src/renderer/src/sim/duel/summary';
 import { HEADING_COUNT, PEW_HULL, PEW_LIFE, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 
-/** A state with no asteroids (or the ones given), the crew at (0, 1500) nose north and still, the Hunter far off. */
+/** The first pool slot past the seeded asteroids, where open() writes its rocks. */
+const ROCK0 = 100;
+/** A state with no rocks (or the ones given, as resting moving rocks of the asteroids-ii pool from slot ROCK0 on), the crew
+ *  at (0, 1500) nose north and still, the Hunter far off, a fresh tick's rock masks. */
 function open(rocks: { x: number; y: number; r: number }[] = []): TacticalState {
   const st = createTacticalState(5);
-  st.map = { ...st.map, asteroids: rocks }; st.grid = buildGrid(rocks, st.map.rMap);
+  st.rocks.fill(0);   // every seeded rock gone (the seeded grid ignores empty slots)
+  rocks.forEach((a, k) => mover(st, ROCK0 + k, a.x, a.y, 0, 0, a.r));
+  beginRockTick(st);
   Object.assign(st.ships[0], { x: 0, y: 1500, vx: 0, vy: 0, heading: 0, headingAcc: 0 });
   Object.assign(st.ships[1], { x: 2000, y: 2000, vx: 0, vy: 0, heading: 0, headingAcc: 0 });
   st.events = [];
@@ -78,6 +84,33 @@ describe('what a round hits (spec §1, §5)', () => {
     expect(flying(st)).toHaveLength(0);
     expect(st.events).toEqual([]);
     expect({ ...st.systems[1], rooms: [...st.systems[1].rooms] }).toEqual(before);
+  });
+  it('a moving rock is met where it is this tick, by its segment test, and takes no push, wear or event', () => {
+    const st = open([{ x: 200, y: 1400, r: 20 }]);   // off the round's line (x 0) ...
+    Object.assign(st.ships[1], { x: 0, y: 1300 });
+    const shields = st.systems[1].shields;
+    firePew(st, 0, NORTH); st.events = [];
+    stepPew(st);
+    expect(flying(st)).toHaveLength(1);
+    st.rocks[ROCK0 * ROCK_STRIDE + 1] = 10;   // ... then moved across it (the rock step runs before stepPew): x 10, r 20 covers x 0
+    st.rocks[ROCK0 * ROCK_STRIDE + 3] = -300;   // a velocity of its own, which the round never changes
+    const before = Array.from(st.rocks.subarray(ROCK0 * ROCK_STRIDE, (ROCK0 + 1) * ROCK_STRIDE));
+    for (let k = 0; k < 20; k++) stepPew(st);
+    expect(flying(st)).toHaveLength(0);
+    expect(Array.from(st.rocks.subarray(ROCK0 * ROCK_STRIDE, (ROCK0 + 1) * ROCK_STRIDE))).toEqual(before);
+    expect([st.events, st.rockHits, st.rockSplits, st.systems[1].shields, st.systems[0].pewHits]).toEqual([[], 0, 0, shields, 0]);
+  });
+  it('a gone seeded rock no longer stops it; a piece born this tick is not in the way', () => {
+    const gone = createTacticalState(5), a = gone.map.asteroids[0]!;
+    Object.assign(gone.ships[0], { x: a.x, y: a.y + a.r + 40, vx: 0, vy: 0, heading: 0, headingAcc: 0 });   // nose at the seeded rock
+    Object.assign(gone.ships[1], { x: 2600, y: 2600 });
+    gone.rocks[0] = RockKind.Gone; beginRockTick(gone);
+    firePew(gone, 0, NORTH); stepPew(gone);
+    expect(flying(gone)).toHaveLength(1);
+    const born = open([{ x: 0, y: 1460, r: 20 }]);   // just ahead of the muzzle, on the first tick's segment
+    born.rockBorn[ROCK0] = 1;
+    firePew(born, 0, NORTH); stepPew(born);
+    expect(flying(born)).toHaveLength(1);
   });
   it('the planet stops it with no effect', () => {
     const st = open();
