@@ -370,6 +370,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
 
   /** One frame's press edges for the active character, by where it is (spec §5 table). */
   function play(k: KeySample, requests: ContactRequests, heading: number | null, launches: number): KeySample {
+    for (const c of k.ship ?? []) queue(c);   // Engineering spike §7: the ship view's clicks, on foot or seated, before a Tab
     if (k.presses.switch > 0 && crew === 1) {   // Valkyrn spec §4.4: no other character; Tab toggles the console and the ship view while seated
       if (seatOf(d, active) !== 'standing' && k.presses.switch % 2 === 1) shipView = !shipView;
       cameraInput.reset(); refollowInteriorCamera(interiorCamera);

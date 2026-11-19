@@ -189,6 +189,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   }
   /** One frame's press edges for this seat, by where its character is (H-1 spec §5 table, without Tab). */
   function play(k: KeySample, d: DuelState, me: number, requests: ContactRequests, heading: number | null, prevHeld: HeldFlags): void {
+    for (const c of k.ship ?? []) send(c);   // Engineering spike §7: the ship view's clicks, as Single player queues them
     const seat = seatOf(d, me), p = k.presses;
     if (seat === 'standing') {
       if (p.interact > 0 && repairInReach(d, me) < 0) { const c = consoleInReach(d, me); if (c >= 0) { throttleSent = null; headingSent = null; send({ kind: 'sit', station: c }); } }
