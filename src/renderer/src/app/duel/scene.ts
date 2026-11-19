@@ -111,10 +111,10 @@ export function sceneUi(view: DuelView, overlay: SceneOverlay, pauseText: string
 }
 
 /** Feel-ii §2.5: the torpedo lock tone's frame data: the torpedo has a target and is ready (canLaunch's checks bar the
- *  range: none flying, one in the magazine, Weapons on), the enemy's distance and the torpedo's range. */
+ *  range: none flying, one in the magazine, Weapons on), the enemy's distance and the torpedo's range. W-3: none in MANUAL. */
 export function torpedoTone(d: DuelState): TorpedoTone {
   const t = d.tactical, sys = t.systems[CREW_SLOT]!, me = t.ships[CREW_SLOT]!, e = t.ships[targetOf(t, CREW_SLOT)];
-  const locked = t.outcome === Outcome.Running && sys.torpLock >= 0 && !missileOf(t, CREW_SLOT) && sys.magazine > 0 && sys.rooms[Room.Weapons] < 2 && e?.active === true;
+  const locked = t.outcome === Outcome.Running && !sys.torpManual && sys.torpLock >= 0 && !missileOf(t, CREW_SLOT) && sys.magazine > 0 && sys.rooms[Room.Weapons] < 2 && e?.active === true;   // W-3: a lock never launches in MANUAL
   return { locked, distance: e ? Math.hypot(e.x - me.x, e.y - me.y) : Infinity, range: classOf(t, CREW_SLOT).slots.missile.range, target: sys.torpLock };
 }
 

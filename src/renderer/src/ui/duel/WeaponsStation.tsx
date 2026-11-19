@@ -6,6 +6,7 @@
 // the laser and the torpedo up from the keyboard. The torpedo homes by itself (homing torpedo spec §3).
 // Sci-1 spec §7.4: the frequency row, A B C with the tuned one lit and the weak one marked after a Level 2 scan (keys 3/4/5).
 // W-2 (pew pew spec §2): the LASER card's AUTO / MAN tag in its header row, lit in MANUAL; a click toggles the mode, as Z does.
+// W-3 (pew pew spec §3): the TORPEDO card's AUTO / MAN tag likewise (V); in MANUAL the card says MANUAL, and a MANUAL torpedo in flight STEER A/D while it can turn (FLYING in its boost, COASTING once its fuel is spent).
 // W-1 (pew pew spec 1): the PEW row first, its three charge pips (each fills as its third recharges) and the click hint; the left click on the Weapons map fires it, so it has no pick-up card and 1 / 2 never pick it up.
 // Feel-i (console feel spec §1, §3): the LASER card flashes FIRING while the shot is lined up, says why not in words on the
 // row under the cards (`LASER: OUT OF ARC: HELM TURN RIGHT`), and its frame pulses (the goal glow) while it has no target.
@@ -98,9 +99,14 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
       <Card weapon="torpedo" lit={aim === 'torpedo'} crt={crt} rock={weapons.torpRock === true} />
       <PixelText text="TORPEDO" x={tx} y={T.y + 6} size={FONT_NATIVE} tint={aim === 'torpedo' ? hot : dim} />
       <PixelText text="2" x={T.x + T.w - 6} y={T.y + 6} size={FONT_NATIVE} tint={dim} anchorX={1} />
+      {weapons.torpManual !== undefined
+        ? <Button name="torp-mode" label={weapons.torpManual ? 'MAN' : 'AUTO'} x={tx + 66} y={T.y + 2} w={36} h={18} lit={weapons.torpManual} onPress={() => actions.console.press('torpMode')} />
+        : null}
       <PixelText text={`MAG ${weapons.magazine}`} x={tx} y={T.y + 20} size={FONT_SIZE} tint={main} />
       {weapons.missileFlying
-        ? <PixelText text="FLYING" x={tx} y={T.y + 42} size={FONT_NATIVE} tint={hot} />
+        ? <PixelText text={weapons.torpSteer === true ? 'STEER A/D' : weapons.torpCoast === true ? 'COASTING' : 'FLYING'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={hot} />
+        : weapons.torpManual === true
+        ? <PixelText text="MANUAL" x={tx} y={T.y + 42} size={FONT_NATIVE} tint={main} />
         : <PixelText text={weapons.torpedoInRange ? 'IN RANGE' : 'OUT OF RANGE'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={weapons.torpedoInRange ? main : dim} />}
       <PixelText text={targetText(weapons.torpTarget, torpRock)} x={tx} y={T.y + 56} size={FONT_NATIVE} tint={weapons.torpTarget >= 0 || torpRock ? hot : dim} />
       <Button name="launch" label="LAUNCH" hint="F" x={tx} y={T.y + T.hitH + 4} w={T.w - 12} h={24} dim={!weapons.canLaunch} flash={flash('launch')} onPress={() => actions.console.press('launch')} />

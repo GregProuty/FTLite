@@ -38,6 +38,10 @@ export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: stri
   laserRock?: boolean; torpRock?: boolean; torpRockFlying?: boolean;
   /** W-2 (pew pew spec §2): the laser's mode for the LASER card's AUTO / MAN tag (true MANUAL); absent draws no tag. */
   laserManual?: boolean;
+  /** W-3 (pew pew spec §3): the torpedo's mode for the TORPEDO card's AUTO / MAN tag (true MANUAL; absent draws no tag);
+   *  `torpSteer`: the crew's torpedo in flight is a MANUAL one that can turn now (past its boost, fuel left: the card says
+   *  STEER A/D); `torpCoast`: it is a MANUAL one whose fuel is spent (COASTING). Both false during its boost (FLYING). */
+  torpManual?: boolean; torpSteer?: boolean; torpCoast?: boolean;
   /** Spike ii §7 item 9: the rocks the crew broke this round. */
   rocks?: number;
   /** W-1 (pew pew spec 1): each third's fill 0..1 (the PEW card's pips); absent or null without the pew. */
@@ -120,7 +124,7 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
     ? { heading: ((Math.round((ship.heading / HEADING_COUNT) * 360) % 360) + 360) % 360, speed: Math.round(Math.hypot(ship.vx, ship.vy)), held, throttle: i.throttle ?? d.throttle,
         refused: i.refused && HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, holdHeading: d.holdHeading, ...(station === 'flight' ? { flight: true } : {}) }
     : null;
-  const flying = missileOf(t, 0) !== null, sys = t.systems[0];
+  const flightM = missileOf(t, 0), flying = flightM !== null, sys = t.systems[0], torpDef = classOf(t, 0).slots.missile;   // W-3: the crew's torpedo in flight and its def, for the card's words
   const weaponsPanel = (): WeaponsPanel => {
     const reason = laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), laserOffline(t, 0));
     return { lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null,
@@ -128,6 +132,7 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
       laserRock: sys.laserRock >= 0, torpRock: sys.torpRock >= 0, torpRockFlying: sys.torpRockFlying >= 0, rocks: sys.rocksBroken,   // spike ii §6.5, §7 item 9
       // W-2 (pew pew spec §2): the mode for the tag; in MANUAL the laser never fires by itself, so no FIRING and no goal glow.
       laserReason: sys.laserManual ? manualCardReason(reason) : reason, goal: (i.goal ?? false) && !sys.laserTargeted && !sys.laserManual, laserManual: sys.laserManual,
+      torpManual: sys.torpManual, torpSteer: flightM?.manual === true && flightM.age > torpDef.boostTicks && flightM.age <= torpDef.fuelTicks, torpCoast: flightM?.manual === true && flightM.age > torpDef.fuelTicks,   // W-3 (pew pew spec §3): canLaunch above reads the mode (no range in MANUAL); the words follow flyMissile's steering window
       refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, pew: pewPips(t) };
   };
   const weapons: WeaponsPanel | null = station === 'weapons' ? weaponsPanel() : null;
