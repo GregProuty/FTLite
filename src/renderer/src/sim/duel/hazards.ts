@@ -1,7 +1,9 @@
 // Engineering spike spec §4, §5 (docs/superpowers/specs/2026-11-18-engineering-spike-design.md): the duel's own pieces
 // of the interior hazards: the door and airlock toggles the ship-view clicks send (any player, no range check). Tasks 6
 // and 7 add Life Support injection, breach sites, firefighting tiles, work jobs and patching.
-import { DoorState } from '../grid';
+import { DoorState, doorIsOpen } from '../grid';
+import { roomVenting } from '../hazards/oxygen';
+import type { SimState } from '../state';
 import { repairBreach } from '../hazards/breach';
 import { inReachOfTile } from '../interact';
 import { DuelSystem, effectiveBars, OXY_FACTOR_BY_BARS } from '../tactical/bars';
@@ -31,12 +33,35 @@ export function toggleAirlock(d: DuelState, index: number): void {
 }
 
 /** Spec §4 Life Support injection, before each oxygenStep: every room asks INJECT_FRAC × V × HAZARD_DT ×
- *  OXY_FACTOR[Oxygen bars]; oxygenStep's clamp to free volume and its venting skip apply. Bypasses the sector
+ *  OXY_FACTOR[Oxygen bars], none into a room of ventedRegion (fire venting, owner 2026-11-19); oxygenStep's clamp to free
+ *  volume and its venting skip apply. Returns the ventedRegion flags (a scratch buffer, valid until the next call). Bypasses the sector
  *  lifeSupportInjection (its station output and seated bonus). */
-export function duelInjection(d: DuelState): void {
+export function duelInjection(d: DuelState): Uint8Array {
   const st = d.interior, V = st.derived.volume, inj = st.injectionScratch;
   const f = OXY_FACTOR_BY_BARS[effectiveBars(d.tactical.systems[0], DuelSystem.Oxygen)]!;
-  for (let r = 0; r < V.length; r++) inj[r] = INJECT_FRAC * V[r]! * HAZARD_DT * f;
+  const vented = ventedScratch(V.length);
+  ventedRegion(st, vented);
+  for (let r = 0; r < V.length; r++) inj[r] = vented[r] ? 0 : INJECT_FRAC * V[r]! * HAZARD_DT * f;   // fire venting: none into a section open to space
+  return vented;   // this hazard tick's ventedRegion, for fireStep (doors, airlocks and breaches do not change in between)
+}
+
+let ventedBuf = new Uint8Array(0);
+function ventedScratch(n: number): Uint8Array { if (ventedBuf.length !== n) ventedBuf = new Uint8Array(n); return ventedBuf; }
+
+/** Fire venting (owner 2026-11-19, FTL-style): marks in `out` (1/0 per room) every room open to space: a venting room
+ *  (an active breach or an open airlock, roomVenting) and every room joined to one through open doorways (an open or
+ *  held-open door, or a doorless opening). Closed doors bound the section. */
+export function ventedRegion(st: SimState, out: Uint8Array): void {
+  const de = st.derived, R = out.length, E = de.edgeA.length;
+  for (let r = 0; r < R; r++) out[r] = roomVenting(st, r) ? 1 : 0;
+  for (let changed = true; changed;) {
+    changed = false;
+    for (let e = 0; e < E; e++) {
+      if (de.edgeIsDoor[e] && !doorIsOpen(st.doors.state[e]!)) continue;
+      const a = de.edgeA[e]!, b = de.edgeB[e]!;
+      if (out[a] !== out[b]) { out[a] = 1; out[b] = 1; changed = true; }
+    }
+  }
 }
 
 /** The room's lowest-index breach site, or −1 (spec §4: the Hound has exactly one per room). */
