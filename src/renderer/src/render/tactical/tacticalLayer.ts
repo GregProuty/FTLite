@@ -11,7 +11,7 @@ import type { CrtScale } from '../crt';
 import { createCrtFilters, type CrtFilters } from './crtFilter';
 import { ALERT_BLINK_HZ, blink, CRT, DAMAGE_BLINK_HZ, DASH, ENEMY_BLINK_HZ, GAP, HATCH_ANGLE, HATCH_SPACING, roomLevel, roomLook } from './crtTheme';
 import { dashCircle, dashLine, hatchSegments } from './dashModel';
-import { asteroidShape, CHEVRON_SIZE, type ArrowTarget, type ContactMarkDraw, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
+import { asteroidShape, CHEVRON_SIZE, crackDraw, type ArrowTarget, type ContactMarkDraw, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
 import { ENEMY_RING, HULLS } from './hullModel';
 import type { ArcDraw, CombatDraw, MissileDraw } from './weaponsModel';
 import type { Viewport } from './camera';
@@ -269,15 +269,10 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         if (a.dot) { bodies.rect(Math.round(a.x) - 1, Math.round(a.y) - 1, 2, 2).fill(CRT.mid); continue; }
         const shape = asteroidShape(a.index), pts: number[] = [];
         shape.forEach((m, k) => { const ang = (k / shape.length) * Math.PI * 2; pts.push(a.x + Math.cos(ang) * a.r * m, a.y + Math.sin(ang) * a.r * m); });
-        const wear = a.wear ?? 0;   // SPIKE: cracks and a dimmer fill as the rock wears down
+        const wear = a.wear ?? 0;   // §7.3: the fill dims at wear ≥ 0.5; the outline keeps CRT.main once worn
         bodies.poly(pts).fill(wear >= 0.5 ? CRT.faint : CRT.dim).stroke({ width: 1, color: wear > 0 ? CRT.main : CRT.mid });
-        const cracks = wear > 0 ? Math.min(5, 1 + Math.floor(wear * 4)) : 0;
-        for (let k = 0; k < cracks; k++) {
-          const ang = k * 2.39996 + shape[k]! * 3, r1 = a.r * 0.15, r2 = a.r * shape[(k + 3) % shape.length]! * 0.95;
-          const bend = ang + 0.35 * (k % 2 ? 1 : -1), mid = (r1 + r2) / 2;
-          bodies.moveTo(a.x + Math.cos(ang) * r1, a.y + Math.sin(ang) * r1).lineTo(a.x + Math.cos(bend) * mid, a.y + Math.sin(bend) * mid).lineTo(a.x + Math.cos(ang) * r2, a.y + Math.sin(ang) * r2)
-            .stroke({ width: 1.5, color: CRT.hot, alpha: 0.9 });
-        }
+        // §7.3 step 6: cut into the rock: a 1 px CRT.glass line at 0.85, then a 1 px CRT.mid highlight 0.6 px off at 0.5
+        for (const s of crackDraw(a.index, wear, a.x, a.y, a.r)) bodies.moveTo(s.x1, s.y1).lineTo(s.x2, s.y2).stroke({ width: 1, color: s.light ? CRT.mid : CRT.glass, alpha: s.light ? 0.5 : 0.85 });
       }
 
       // Spike ii §6.5: rock brackets: the laser's four hot corners, the torpedo's dashed main ring; a hover mark in mid.
