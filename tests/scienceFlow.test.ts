@@ -89,7 +89,7 @@ describe('the laser frequency (spec §4.4)', () => {
     Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
     st.systems[1].freq = st.weakFreq; st.systems[1].fireHeld = true; st.systems[1].laserCharge = LASER_CHARGE_UNITS;
     applyWeaponsInput(st, 1, { ...IDLE_INPUT, laserCharge: false });
-    expect(st.systems[0].shields).toBe(classOf(st, 0).shields.layers - 1);
+    expect(st.systems[0].shields).toBe(1 - 1);   // Engineering spike spec §2: the crew starts at 1 layer (2 Shields bars), so one strip leaves 0 (was classOf(st, 0).shields.layers - 1)
   });
 });
 

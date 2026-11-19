@@ -61,7 +61,7 @@ describe('the crew slot\'s class (spec §6.1)', () => {
     const cutter = createTacticalState(5), valkyrn = createTacticalState(5, 2, ShipClass.Valkyrn), fit = createTacticalState(5, 2, ShipClass.ValkyrnLaser);
     expect([cutter.systems[0].cls, valkyrn.systems[0].cls, fit.systems[0].cls]).toEqual([0, 2, 3]);
     expect([valkyrn.systems[1].cls, valkyrn.systems[1].hull]).toEqual([ShipClass.Hunter, HUNTER_CLASS.hull]);
-    expect(valkyrn.systems[0]).toMatchObject({ hull: VALKYRN_HULL, laserCharge: 0, laserTargeted: false, shields: 2, magazine: MISSILE.magazine });
+    expect(valkyrn.systems[0]).toMatchObject({ hull: VALKYRN_HULL, laserCharge: 0, laserTargeted: false, shields: 1, magazine: MISSILE.magazine });   // Engineering spike spec §2 and Decision 5: every crew class starts at 1 layer (2 Shields bars)
     expect(fit.systems[0]).toMatchObject({ hull: VALKYRN_HULL, laserCharge: LASER.chargeUnits, laserTargeted: true });   // Feel-i: the crew laser starts full and targeted
     expect(Array.from(flattenTactical(valkyrn))).not.toEqual(Array.from(flattenTactical(cutter)));
     for (const bad of [ShipClass.Hunter, 4, -1, 1.5]) expect(() => createTacticalState(5, 2, bad), `class ${bad}`).toThrow(/invalid crew ship class/);

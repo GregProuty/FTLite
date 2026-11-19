@@ -88,9 +88,10 @@ describe('salvage (spec §4.5)', () => {
   });
   it('the extra Shield layer is kept but never regained above the class layers', () => {
     const st = finish({ loot: Loot.Shield }), layers = classOf(st, 0).shields.layers;
-    expect(st.systems[0].shields).toBe(layers + 1);
+    expect(st.systems[0].shields).toBe(1 + 1);   // Engineering spike spec §2: the crew starts at 1 layer (2 Shields bars), the loot adds 1 (was layers + 1)
+    expect(layers).toBe(2);
     for (let k = 0; k < 1000; k++) tickWeapons(st, 0, UNCREWED_INPUT);
-    expect([st.systems[0].shields, st.systems[0].shieldClock]).toEqual([layers + 1, 0]);
+    expect([st.systems[0].shields, st.systems[0].shieldClock]).toEqual([1, 0]);   // Engineering spike spec §2: layers above the bars' cap (1 at 2 bars) drop at once, so the loot's layer is lost (Decision 21; was [layers + 1, 0])
   });
   it('a trap costs 3 hull after the loot, with a salvage event saying so; at 2 hull it decides the round in that step', () => {
     const st = finish({ loot: Loot.Missiles, trapped: true }, (s) => { s.systems[0].hull = 10; });

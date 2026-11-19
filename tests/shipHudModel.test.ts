@@ -17,7 +17,7 @@ describe('shipHud (spec §E)', () => {
       const h = shipHud(d);
       expect(h.hull).toEqual({ segments: SHIP_HULL / 2, lit: SHIP_HULL / 2, tone: 'good' });
       expect(h.hull.segments).toBe(20);
-      expect(h.shields).toEqual({ layers: SHIELD_LAYERS, up: SHIELD_LAYERS });
+      expect(h.shields).toEqual({ layers: SHIELD_LAYERS, up: 1 });   // Engineering spike spec §2: the crew's shields start a round at 1 layer (2 Shields bars)
       expect(h.systems.map((s) => [s.key, s.name])).toEqual([['helm', 'HELM'], ['weapons', 'WEAP'], ['shields', 'SHLD'], ['medbay', 'MED']]);
       for (const s of h.systems.slice(0, 3)) expect(s).toMatchObject({ bars: 2, lit: 2, damaged: 0, look: 'normal' });
       expect(medbayOnline(d)).toBe(true);

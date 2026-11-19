@@ -23,7 +23,7 @@ const FIELDS = ['startTick', 'hostileAt', 'known', 'scan.contact', 'scan.level',
 describe('the science module (spec §6.2)', () => {
   it('sits after ship in both module lists, names its fields in order, and owns the three commands', () => {
     expect(TACTICAL_MODULES.map((m) => m.id)).toEqual(['space', 'ship', 'science']);
-    expect(DUEL_MODULES.map(({ module }) => module.id)).toEqual(['space', 'ship', 'science', 'presence', 'repair', 'round', 'helm', 'interior']);
+    expect(DUEL_MODULES.map(({ module }) => module.id)).toEqual(['space', 'ship', 'science', 'presence', 'repair', 'round', 'helm', 'power', 'interior']);   // Engineering spike spec §7: the power module, after helm and before interior
     const st = createTacticalState(3);
     expect(scienceModule.fields(st).map((f) => f.name)).toEqual(FIELDS);
     expect(scienceModule.fields(st).map((f) => f.count)).toEqual([1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
@@ -49,7 +49,7 @@ describe('the science module (spec §6.2)', () => {
       expect((orbitR >= 700 && orbitR <= 1000) || (orbitR >= 1400 && orbitR <= 1599), `seed ${seed}: orbit ${orbitR} clear of the belt`).toBe(true);
       expect(!near(phase) || draws === 16, `seed ${seed}: 600 clear of both spawns unless all 16 draws were near`).toBe(true);
       expect({ mode: st.hunter.mode, hostileAt: st.hostileAt, startTick: st.startTick, known: st.known, scan: st.scan, designated: st.designated, shields: st.systems.map((y) => y.shields), freq: st.systems.map((y) => y.freq) }, `seed ${seed}`)
-        .toEqual({ mode: HunterMode.Hunt, hostileAt: -1, startTick: 0, known: [0, 0], scan: idleScan(), designated: -1, shields: [classOf(st, 0).shields.layers, classOf(st, 1).shields.layers], freq: [0, 0] });
+        .toEqual({ mode: HunterMode.Hunt, hostileAt: -1, startTick: 0, known: [0, 0], scan: idleScan(), designated: -1, shields: [1, classOf(st, 1).shields.layers], freq: [0, 0] });   // Engineering spike spec §2: the crew's shields start a round at 1 layer (2 Shields bars)
       weak.add(weakFreq); loot.add(lootDrawn); bands.add(orbitR <= 1000 ? 'near' : 'far');
     }
     expect([weak.size, loot.size, bands.size]).toEqual([3, 3, 2]);

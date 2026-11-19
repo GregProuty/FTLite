@@ -56,7 +56,7 @@ describe('ship classes and weapons as definitions (spec §5)', () => {
     expect([classOf(st, 0), classOf(st, 1)]).toEqual([CUTTER_CLASS, HUNTER_CLASS]);
     expect([targetOf(st, 0), targetOf(st, 1)]).toEqual([1, 0]);
     expect(hunterSlot(st)).toBe(1);
-    expect(st.systems.map((y) => [y.hull, y.shields, y.magazine])).toEqual([[SHIP_HULL, SHIELD_LAYERS, MAGAZINE], [HUNTER_HULL, SHIELD_LAYERS, MAGAZINE]]);   // full shields while holding (owner decision 2026-11-17)
+    expect(st.systems.map((y) => [y.hull, y.shields, y.magazine])).toEqual([[SHIP_HULL, 1, MAGAZINE], [HUNTER_HULL, SHIELD_LAYERS, MAGAZINE]]);   // full shields while holding (owner decision 2026-11-17); Engineering spike spec §2: the crew's shields start at 1 layer (2 Shields bars)
   });
 });
 
@@ -159,6 +159,6 @@ describe('the declared-added fields (new in the R-2 alias table)', () => {
     } finally { disposeDuel(d); }
     expect(ticks).toBeGreaterThan(0);
     expect(wrong).toBe(0);
-    if (crew === 'scripted') expect(ticks).toBe(19199);   // seed 1's scripted Cutter duel (SIM_VERSION 53, spike ii with the fan split at r 13; 20252 with the fan split at r 25: the Hunter shoves belt rock 39 at tick 2058 and no longer dives into the planet; 5125 before, SIM_VERSION 52; 16340 before FTL targeting, SIM_VERSION 49; 18793 before the weapons update, SIM_VERSION 48; 9724 before Sci-1's merge, SIM_VERSION 47; 10320 before homing torpedoes, SIM_VERSION 46; 16268 before the Hunter's grace, SIM_VERSION 45; 15772 before duel fire)
+    if (crew === 'scripted') expect(ticks).toBe(7207);   // Engineering spike (SIM 55): was 19199. Seed 1's scripted Cutter duel (SIM_VERSION 53, spike ii with the fan split at r 13; 20252 with the fan split at r 25: the Hunter shoves belt rock 39 at tick 2058 and no longer dives into the planet; 5125 before, SIM_VERSION 52; 16340 before FTL targeting, SIM_VERSION 49; 18793 before the weapons update, SIM_VERSION 48; 9724 before Sci-1's merge, SIM_VERSION 47; 10320 before homing torpedoes, SIM_VERSION 46; 16268 before the Hunter's grace, SIM_VERSION 45; 15772 before duel fire)
   }, 60_000);
 });
