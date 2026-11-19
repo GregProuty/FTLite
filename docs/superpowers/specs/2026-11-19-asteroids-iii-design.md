@@ -7,6 +7,9 @@
 `research_notes/Orbital gravity and fragmenting asteroids/`.
 **Revision 2:** the Fable review's findings are applied. The table at the end lists each finding and its fix.
 
+**Revision 3 (2026-11-19):** Fable's physics follow-up is applied, with the owner's choices (§13). §13 overrides any section
+it amends.
+
 ## 1. Goal and owner decisions
 
 The owner wants asteroids that visibly respond to gravity. A torpedo hit should blow a rock into several pieces, and those
@@ -35,6 +38,8 @@ Owner decisions, all made on 2026-11-19:
 | D8 | Architecture A: rocks on rails, worked out from the tick, cost no bytes per tick. |
 | D9 | The burst kick is medium: real pieces leave at 0.30 to 0.60 of escape speed. |
 | D10 | Redraw the cracks so they stay inside the outline and read as fractures (§7.3). |
+| D11 | The burst kick is softened to 0.15 to 0.40 of escape speed. This replaces D9 (§13.6). |
+| D12 | Four experimental switches go in the spike, all on by default: mass r³, a soft edge for rocks, tumbling clusters and a Roche break (§13.7). |
 
 ## 2. Terms and shared formulas
 
@@ -480,3 +485,163 @@ The gate is ≥ 7 of 10 shots passing.
 | 24 (cap order) | §4. |
 | 25 (edge spring) | Confirmed correct, no change. |
 | 26 (cracks) | §7.3. |
+
+## 13. Revision 3: physics follow-up (Fable, 2026-11-19), with the owner's choices
+
+All numbers here are Fable's hand estimates, to be confirmed by the §8 measurements.
+
+**Reference values:**
+
+| ρ | v_c (u/s) | v_esc (u/s) | g (u/s²) | Period (s) |
+|---|---|---|---|---|
+| 150 | 129 | 182 | 111 | 7.3 |
+| 600 | 64.5 | 91 | 6.9 | 58 |
+| 1200 | 45.6 | 64.5 | 1.74 | 165 |
+| 2000 | 35.4 | 50 | 0.63 | 355 |
+| 2800 | 29.9 | 42.3 | 0.32 | 589 |
+
+### 13.1 Rails: centre plus offset (amends §3.1, §3.2, §3.5)
+**Slot layout.** A rail slot now holds:
+- `x, y`: the rail's **centre** at tick t;
+- `vx, vy`: the rock's **offset** from that centre at tick t.
+
+The ω-radius ρ_ω is |centre|; the `vx`-as-ρ_ω encoding in §3.1 is dropped.
+
+**Kinds.** `Rail 1` turns centre and offset together, so the rock co-rotates rigidly at ω(ρ_ω). `Tumble 3` (new) turns the
+offset by an extra spin each tick.
+
+**Position.**
+1. Raise the step to the tick count, `P = step(θ_ω)^n`, then turn each part:
+   - `centre_T = |centre| · norm(P·centre)`;
+   - for Rail, `offset_T = |offset| · norm(P·offset)`;
+   - for Tumble, `offset_T = |offset| · norm(P·S·offset)`, where `S = step(θ_spin)^n` and
+     `θ_spin = 2π·DT / CLUSTER_SPIN_PERIOD`. 2π is a literal and the period is 200 s.
+   - Each part is rescaled to its own stored length. An offset of 0 skips its part.
+2. Add them: `p = centre_T + offset_T`.
+3. The velocity is ω·perp(p) for Rail, and ω·perp(centre_T) + (ω + ω_spin)·perp(offset_T) for Tumble, where perp(x, y) =
+   (−y, x).
+
+**Slot values for each kind of rail:**
+
+| Rail | centre | offset | Kind |
+|---|---|---|---|
+| Seeded lane rock | its own position | 0 | Rail |
+| Seeded cluster rock | the cluster centre | rock − centre | Tumble when `CLUSTER_TUMBLE` is on, else Rail. Default on. |
+| Rejoined rock | p · (ρ_ω / ρ), with ρ_ω chosen by §13.2 | p − centre | Rail |
+
+**Validation** (amends §3.1): |centre| ≥ 150 and |offset| ≤ 200.
+
+**Freed speed.** A freed tumbling rock leaves at most about 5 u/s off circular.
+
+### 13.2 Rejoining: lane capture and rigid groups (amends §3.4; fixes G1 and G2)
+Revision 2's lane bands overlap and cover the whole belt from 1092 to 1308, so nothing could rejoin there (G1). Separately,
+rejoined rails at nearby ρ could pass through each other (G2).
+
+**Lane zones.** Lane bands are replaced by **lane zones**, one per lane: the part of [1092, 1308] nearest that lane. The
+boundaries are 1161 and 1239.
+
+**The target velocity V\*.** A free rock's drag target (§13.3) and rejoin target depend on where it is:
+- In a lane zone, the lane's rigid rotation: `V* = ω(ρ_lane) · perp(p)`.
+- Elsewhere, V_c(p).
+
+**Rejoining.** The §3.4 rule becomes these checks, applied with V\*:
+- (T + 1) − t ≥ 120;
+- the rock is untouched and was not born this tick;
+- |v − V\*| < 0.5;
+- it lies within the ρ bounds;
+- it overlaps no live rock.
+
+Its ρ_ω is then chosen in this order:
+1. **Lane zone:** ρ_ω = ρ_lane.
+2. **Rigid group:** otherwise, scan rails that are neither lane rocks nor cluster rocks, in slot order. If the rock's padded
+   annulus overlaps that rail's, and the snap `1.5 · ω · |ρ − ρ_ω(other)| < 2 u/s`, it takes that rail's ρ_ω. The lowest slot
+   wins.
+3. **Its own orbit:** otherwise, ρ_ω = ρ.
+4. **Too big a snap:** if the snap for the matching rail is 2 u/s or more, the rock stays Free.
+
+Rails with the same ρ_ω co-rotate rigidly, so they can never meet. Settled debris forms ringlets and streams, and the free
+count falls after a fight.
+
+### 13.3 Free-rock motion (replaces §4 steps 1 to 5)
+**Drag ramps with age.** Let `age = ((T + 1) − t) / 60` seconds. Then
+`k = SETTLE_K_MAX · clamp((age − SETTLE_A0) / (SETTLE_A1 − SETTLE_A0), 0, 1)`, with:
+- `SETTLE_K_MAX` 0.06;
+- `SETTLE_A0` 20 s;
+- `SETTLE_A1` 60 s.
+
+For the first 20 s a piece flies a true gravity path, and it settles about 108 s after birth. A push resets t, which restarts
+the free flight.
+
+**One tick, split symmetrically:**
+1. Drift: `p += v · DT/2`.
+2. Half drag: `v += (V* − v) · k · DT/2`.
+3. Kick: `v += (g(p) + e_rock(p)) · DT`.
+4. Half drag: `v += (V* − v) · k · DT/2`.
+5. Speed cap at 300.
+6. Drift: `p += v · DT/2`.
+
+V\* and g share q and q·√q.
+
+**Speed cap.** It stays as a safety net. A counter `rockCapHits` counts every time it fires, and the stress gate is 0.
+
+**The soft edge** (`ROCK_SOFT_EDGE`, default on):
+- **Spring:** `e_rock` uses `K_EDGE_ROCK` (0.25/s²) instead of `K_EDGE` (2).
+- **Extra drag:** while ρ > R_MAP, an extra drag toward V_c(p) acts at `EDGE_SETTLE_K` (0.3/s).
+- **Effect:** returning debris swings back slowly and nearly circular, and parks as an outer ring at ρ ≈ 2650 to 2750.
+- **Slack:** `ROCK_EDGE_SLACK` goes from 400 to 700.
+- **Ships:** unchanged.
+- **Switch off:** with the switch off, rocks use `K_EDGE` and the slack is 400.
+
+**The Roche break** (`ROCHE_BREAK`, default on):
+- **When it fires:** a free rock with ρ < `ROCHE_R` (175), r ≥ `FAN_SPLIT_MIN_R` (13) and age ≥ 30 ticks breaks during the
+  motion pass, in slot order.
+- **The break:** it is a fan break along its velocity, cause `'tidal'`, with a kick of only 0.03 to 0.08 × v_esc(ρ). The pieces
+  string out along the orbit.
+- **Pieces:** the pieces are under 13 or are born this tick, so they do not chain-break on the same pass.
+- **Measurement:** the stress run counts tidal breaks and their pool use.
+
+### 13.4 Billiards (amends §5.3, §5.4)
+**Mass** (`ROCK_MASS_CUBE`, default on): `m = r³ / 30`, so r 30 still has mass 900, the same as the ship.
+- `LASER_ROCK_PUSH` and `BLAST_PUSH` keep their values. Δv at r 30 is unchanged, big rocks move less and small ones more.
+- The push caps of §5.3 still bound small pieces.
+- Switched off, mass is r².
+
+**Restitution:** `e = 0.3 + 0.5 · clamp((vc − 4) / 26, 0, 1)` above `BOUNCE_MIN`.
+- That is 0.8 at 30 u/s and above, falling toward 0.3 near 4 u/s.
+- Debris clouds calm down in 2 to 3 bounces.
+
+**Soft contacts:** below `BOUNCE_MIN` the contact is an impulse with e = 0, `j = vc / (1/ma + 1/mb)`, so momentum is conserved.
+Each rock's normal speed is never zeroed on its own.
+
+**Separation:** each tick corrects `0.5 · max(0, overlap − 0.5)`, capped at `ROCK_SEPARATE_MAX` (8 u) per pair.
+
+### 13.5 Renderer (amends §7.1)
+- **Trails:** a free rock younger than 60 s gets a **25 s** trail, sampled at 4 Hz. Older free rocks keep 6 s. A 20 s trail at
+  the belt bends about 22 px at zoom 0.25.
+- **Spin:** each rock's outline turns at a hashed rate of ±0.1 to 0.5 rad/s. This is drawing only, and the cracks turn with
+  the outline.
+
+### 13.6 Kick (replaces the kick in §5.1)
+- **Burst:** `k_j = v_esc(ρ_parent) · (0.15 + 0.25 · f_j)`, about 10 to 26 u/s at the belt.
+  - No burst piece from the belt can fall into the planet, and prograde pieces still reach the edge.
+  - The boom comes from the effect-only shards (§5.6).
+- **Fan:** stays at 0.10 to 0.25.
+
+### 13.7 Switches and the §8 gates
+**Switches.** `ROCK_MASS_CUBE`, `ROCK_SOFT_EDGE`, `CLUSTER_TUMBLE` and `ROCHE_BREAK` live in `rockTuning.ts`. All four are
+`true` by default. They are compile-time constants, not settings.
+- Each switch has unit tests in both states.
+- The measure script runs the feel check once with all four on and once with all four off, and reports both.
+
+**Gates.** §8.3 adds `rockCapHits` = 0. Its stress run reports:
+- tidal breaks;
+- lane captures;
+- group rejoins;
+- own-orbit rejoins.
+
+**Tests.** §8.1 adds:
+- **Rails:** a tumbling rail matches a reference; a lane-captured rock co-rotates with its lane; two group-rejoined rocks never
+  overlap over 30 minutes.
+- **Motion:** the drag ramp is zero before 20 s; a circular free orbit is a fixed point of the symmetric step to second order
+  (the ρ drift over 10 minutes stays under 0.1 u with the drag on).
+- **Billiards:** the restitution curve; momentum is conserved across soft contacts.
