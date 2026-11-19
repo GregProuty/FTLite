@@ -8,8 +8,8 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import type { GameAssets } from '../src/renderer/src/render/assets';
 import { FEATURE_NAMES } from '../src/renderer/src/render/fallback';
 import { DEFAULT_FEEL } from '../src/renderer/src/render/feel';
-import { worldToScreen } from '../src/renderer/src/render/tactical/camera';
-import { interpolatedShip } from '../src/renderer/src/render/tactical/tacticalModel';
+import { screenToWorld, worldToScreen } from '../src/renderer/src/render/tactical/camera';
+import { fineHeadingOf, interpolatedShip } from '../src/renderer/src/render/tactical/tacticalModel';
 import { emptyPresses, type KeyAction, type KeySample } from '../src/renderer/src/app/duel/input';
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import { seatDuelCrew } from './helpers/duelSeat';
@@ -19,7 +19,7 @@ import { createMapRequests } from '../src/renderer/src/app/duel/mapRequests';
 import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import { createUiStore } from '../src/renderer/src/ui/store';
 import { resetSits } from '../src/renderer/src/render/duel/sitModel';
-import { STATION, stationTop, TABS } from '../src/renderer/src/render/duel/consoleLayout';
+import { CONTACT, STATION, stationTop, TABS } from '../src/renderer/src/render/duel/consoleLayout';
 
 const layout = parseShip(cutter);
 const assets: GameAssets = {
@@ -54,7 +54,7 @@ function rig() {
   press('switch'); tick(); tick();
   const enemyOnScreen = () => { const b = interpolatedShip(rt.duel.tactical, rt.prev, rt.alpha(), 1); return worldToScreen(rt.cameras.weapons, vp, b.x, b.y); };
   const view = () => store.getState().duel?.contact;
-  return { rt, store, contact, clicks, requests, scene, enemyOnScreen, view };
+  return { rt, store, contact, clicks, requests, press, tick, scene, enemyOnScreen, view };
 }
 
 describe('the scene and the contact window (spec §6.5)', () => {
@@ -97,6 +97,58 @@ describe('the scene and the contact window (spec §6.5)', () => {
         r.clicks.push(p); r.scene.draw(r.rt, 1 / 60, LIVE);
         expect(r.requests.takePew(), `click at ${p.x},${p.y}`).toBeNull();
       }
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+  it('W-1: with the default follow camera the pew aim is the click bearing from the own ship marker, split into aim and aimAcc', () => {
+    const r = rig();
+    try {
+      const b = interpolatedShip(r.rt.duel.tactical, r.rt.prev, r.rt.alpha(), 0), m = worldToScreen(r.rt.cameras.weapons, vp, b.x, b.y);
+      expect(r.rt.cameras.weapons.follow).toBe('ship');
+      const at = (dx: number, dy: number) => { r.clicks.push({ x: m.x + dx, y: m.y + dy }); r.scene.draw(r.rt, 1 / 60, LIVE); return r.requests.takePew(); };
+      expect(at(0, -100)).toBe(0);                 // straight up: heading 0
+      expect(at(100, 0)).toBe(16384);              // east: a quarter turn of 65536
+      expect(at(0, 100)).toBe(32768);              // south
+      const odd = at(63, -41), want = fineHeadingOf(63, -41);
+      expect(odd).toBe(want);
+      expect([Math.floor(odd! / 256), odd! % 256]).toEqual([Math.floor(want / 256), want % 256]);
+      const w = screenToWorld(r.rt.cameras.weapons, vp, m.x + 63, m.y - 41);
+      expect(fineHeadingOf(w.x - b.x, w.y - b.y)).toBe(want);   // the world and screen bearings agree
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+  it('W-1: with a weapon card picked up a map click queues no pew and keeps its old meaning', () => {
+    const r = rig();
+    try {
+      r.contact.pickUp('laser'); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.contact.aimWeapon()).toBe('laser');
+      r.clicks.push({ x: 700, y: 250 }); r.scene.draw(r.rt, 1 / 60, LIVE);   // empty map: today's contact.click does nothing
+      expect(r.requests.takePew()).toBeNull();
+      expect(r.contact.state()).toEqual({ contact: 0, aim: true });
+      r.clicks.push(r.enemyOnScreen()); r.scene.draw(r.rt, 1 / 60, LIVE);   // the enemy marker (off screen here, still picked): the old click, no pew
+      expect(r.requests.takePew()).toBeNull();
+      expect(r.contact.state()).toBeNull();   // the window's own click closed the shown contact, as before
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+  it('W-1: with the contact window open a click inside it queues no pew; one on the open map still does', () => {
+    const r = rig();
+    try {
+      r.contact.toggle(); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.contact.state()).not.toBeNull();
+      r.clicks.push({ x: CONTACT.x + 20, y: CONTACT.y + 20 }); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.requests.takePew()).toBeNull();
+      r.clicks.push({ x: 700, y: 250 }); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.requests.takePew()).not.toBeNull();
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+  it('W-1: at the Helm a map click over the enemy still opens its window and asks for no pew', () => {
+    const r = rig();
+    try {
+      r.press('switch'); r.tick(); r.tick();
+      expect(r.rt.view()).toBe('helm');
+      r.scene.draw(r.rt, 1 / 60, LIVE);
+      const b = interpolatedShip(r.rt.duel.tactical, r.rt.prev, r.rt.alpha(), 1);
+      r.clicks.push(worldToScreen(r.rt.cameras.helm, vp, b.x, b.y)); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.contact.state()).toEqual({ contact: 0, aim: false });
+      expect(r.requests.takePew()).toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
   it('with the console hidden a click over the enemy opens nothing and fires nothing, and the click is not kept for later', () => {
