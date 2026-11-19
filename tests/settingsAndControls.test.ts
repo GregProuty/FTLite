@@ -46,7 +46,10 @@ describe('the controls list', () => {
     expect(action('Z')).toMatch(/Weapons.*AUTO.*MANUAL/);   // W-2: the laser's mode
     expect(action('V')).toMatch(/Weapons.*torpedo.*AUTO.*MANUAL/);   // W-3: the torpedo's mode
     expect(action('Right click or drag')).toMatch(/Helm.*heading/);   // Feel-ii: the Helm's right button aims the heading
-    expect([action('Shift+W'), action('G / Middle click')]).toEqual(['At the Helm, full throttle', 'Ping the map point (or the enemy) for the crew']);
+    expect(action('G / Middle click')).toBe('Ping the map point (or the enemy) for the crew');
+    expect(sections[0]!.rows.some((r) => r.keys === 'Shift+W' || /notch/.test(r.action))).toBe(false);   // playtest2feedback §6: the crew Helm has no notches
+    expect([action('Hold W / S'), action('Hold left mouse'), action('A Q / D E / ← →'), action('↑ ↓')].every((t) => t.startsWith('At the Helm'))).toBe(true);
+    expect(sections[0]!.rows.some((r) => r.keys === '1 / 2' && /Helm/.test(r.action))).toBe(false);   // owner 2026-11-19 (kind a): no Helm power keys
     expect([keyLabel('KeyE'), keyLabel('Equal'), keyLabel('NumpadAdd'), keyLabel('Escape')]).toEqual(['E', '=', 'Num +', 'Esc']);
   });
 });

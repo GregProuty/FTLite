@@ -6,6 +6,8 @@
 import { Position } from '../../sim/components';
 import type { DuelState } from '../../sim/duel/state';
 import { throttleThrust } from '../../sim/duel/throttle';
+import { engineBars, heldAxis, noVent, rampTicks, throttleCap, throttleFloor, ventOf, type HelmVent } from '../../sim/duel/helmFlight';
+import { crewAxes } from '../../sim/duel/step';
 import { hx, hy } from '../../sim/tactical/direction';
 import { CREW_SLOT, missileOf, NO_AXES, Outcome, type Axes, type DuelEvent, type Missile, type TacticalState } from '../../sim/tactical/state';
 import { LASER_RANGE } from '../../sim/tactical/tuning';
@@ -14,7 +16,7 @@ import { createCamera, followBody, updateCamera, type Camera, type Viewport } fr
 import { createInteriorCamera, resetInteriorCamera } from '../../render/duel/interiorCamera';
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
-import { seatOf } from './controls';
+import { crewHelmSeat, seatOf } from './controls';
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 import { createTorpedoFollow, trackManualTorpedo } from './torpedoCamera';
 import { NO_HELD_FLAGS, type HeldFlags, type KeySample, type PointerSample } from './input';
@@ -105,6 +107,9 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   let events: ViewEvent[] = [], sentHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
   let cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() }, torpFollow = createTorpedoFollow();
   let uiHeld: HeldFlags = NO_HELD_FLAGS, shownThrottle: number | null = null, refusals: Refusal[] = [];
+  let unackedFrames = 0;   // playtest2feedback Decision 14: this seat's held frames the replica has not taken yet
+  /** Playtest2feedback §3: this seat flies the crew Helm (a newtonianHelm class) in a running round. */
+  const crewHelm = (d: DuelState): boolean => crewHelmSeat(d, seat) && d.tactical.outcome === Outcome.Running;
   const cameraInput = createCameraInput(deps.now, deps.viewport), interiorCamera = createInteriorCamera();
   const gaps: number[] = [];
   /** Observe the client: on a new publication, roll the interpolation and derive the gap's events. True when one was new. */
@@ -134,7 +139,8 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   }
   const duel = (): DuelState => client.state()!;
   const source: DuelViewSource & {
-    observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: { moveX: number; moveY: number; face?: boolean }): void; heldFlags(flags: HeldFlags): void;
+    observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: HeldInput): void; heldFlags(flags: HeldFlags): void;
+    thrMille(): number; helmVent(): HelmVent; unacked(n: number): void;
     throttleBase(level: number | null): void;
     refuse(control: Refusal['control'], reason: string): void;
     arrivals(): readonly number[]; takeArrivals(): number[]; ready(): boolean;
@@ -151,8 +157,20 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     view: (): DuelView => { const s = seatOf(duel(), seat); return s === 'standing' ? 'interior' : s; },
     axes: (): Axes => {   // Artemis spec §5.3: the held turn and the replica's throttle, while this seat flies a running round
       const d = duel();
+      if (crewHelm(d)) return crewAxes(d, sentHeld, source.thrMille());   // playtest2feedback §3, §6: the local prediction
       return seatOf(d, seat) === 'helm' && d.tactical.outcome === Outcome.Running ? { turn: heldTurn(d, sentHeld), thrust: throttleThrust(d.throttle) } : NO_AXES;
     },
+    /** Playtest2feedback §3: the crew Helm's thrMille: the replica's plus the ramp this seat's held W/S adds over its
+     *  unacknowledged frames (the sim's rule); away from the Helm, the replica's. */
+    thrMille: (): number => {
+      const d = duel();
+      if (!crewHelm(d)) return d.thrMille;
+      const e = engineBars(d);
+      return rampTicks(d.thrMille, heldAxis(sentHeld.throttleHeld), throttleFloor(e), throttleCap(e), unackedFrames);
+    },
+    /** Playtest2feedback Decision 11: the puffs and the hiss online: this seat's own predicted vent at the crew Helm, else none. */
+    helmVent: (): HelmVent => { const d = duel(); return crewHelm(d) ? ventOf(crewAxes(d, sentHeld)) : noVent(); },
+    unacked(n) { unackedFrames = Math.max(0, n); },
     alpha: () => frameAlpha,
     paused: () => client.publication()?.phase === 'paused',
     live: () => client.live?.() ?? true,
@@ -187,7 +205,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       }
     },
     /** The held axes this seat last sent (its own console's predicted path). */
-    sent(held) { sentHeld = { moveX: held.moveX, moveY: held.moveY, interactHeld: false, ...(held.face ? { face: true } : {}) }; },
+    sent(held) { sentHeld = { ...held, interactHeld: false }; },   // playtest2feedback: the crew Helm's fields and aim too
     /** The last pump's merged held keys and console holds (Artemis spec §6.1). */
     heldFlags(flags) { uiHeld = flags; },
     /** Publication inter-arrival gaps in milliseconds, for the record's jitter. */

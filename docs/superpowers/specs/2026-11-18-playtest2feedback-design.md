@@ -408,3 +408,33 @@ starting compressor value by writing `d.compressor` after `createDuel`, or by se
 - Thrusters for the Hunter, or on the sector map.
 - Any change to the Valkyrn solo ships (§1).
 - Engineering's real Engines bars, which plug in at merge (§5).
+
+## Amendment (owner 2026-11-19): the merge with the Engineering spike
+
+These decisions replace §4's tank and §5 where they differ. Everything else in this spec stays: the mouse steer, the
+W/S ramp numbers, no drag, `MAX_SPEED`, the Valkyrn unchanged, and online prediction.
+
+1. **No COMPRESSOR and no Helm split.**
+   - Gone: `helm.compressor`, the ENGINE/COMPRESSOR split, its UI and its keys (1 and 2), the `helmPower` command, the
+     `helmBars` stand-in and `createDuel`'s `opts.helmBars`.
+   - The crew Helm's throttle cap comes from Engineering's effective Engines bars: cap = `min(effective Engines bars,
+     4) × 250` per mille. So 1 bar = 25 %, and the overdrive 5th bar adds no cap.
+   - Reverse needs at least 1 Engines bar.
+   - Engineering's `ENGINE_FACTOR_BY_BARS` (the overdrive thrust and turn factor) and its Engines Room damage stay as
+     they are. Engineering's Engines start stays at 3 bars (75 %).
+   - A bar taken off Engines, or damage to the Engines Room, clamps `thrMille` down the same tick.
+   - Engineering's level-based throttle cap and the `throttle` command stay for the Valkyrn only.
+   - The Helm block shows the Engines bars and the cap. The bars themselves are on the console's Engines power strip,
+     from Engineering.
+2. **The cold gas is free.**
+   - Gone: the tank (`rcsGas`, `rcsAcc`, `RCS_TANK`, `COMPRESSOR_RATE`), the gas spend, the pressure gauge and the
+     NO PRESSURE refusal. The `helm` module now hashes `throttle`, `holdHeading` and `thrMille`.
+   - While the Helm is attended, a held thruster always pushes, at `RCS_THRUST`. The push isn't scaled by the Engines.
+   - The gas-boosted turn is free. It's boosted whenever the turn is far and Engineering's engine factor is above 0.
+     The far bands (`BOOST_FAR`, `BOOST_FACE_SIN`) don't change, so the nose never chatters.
+   - `helmVent` still drives the puffs and the hiss.
+
+Merge notes:
+- The scripted crew's speed band is split by class. A newtonianHelm crew uses `CREW_SPEED_SLACK` (10). The Valkyrn's
+  pair and pilot use `SPEED_SLACK` (8), as on master, so the Valkyrn flies bit for bit as on master.
+- `SIM_VERSION` goes from 58 to 59.

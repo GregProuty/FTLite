@@ -12,7 +12,7 @@ import { rockAlive } from '../../sim/tactical/rocks';
 import { throttleCap } from '../../sim/tactical/bars';
 import { canCharge, canLaunch, validRockLock, validTarget } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, DUEL_CREW_MIN, type DuelState } from '../../sim/duel/state';
-import { helmTurn, stepDuelTick } from '../../sim/duel/step';
+import { crewAxes, helmTurn, stepDuelTick } from '../../sim/duel/step';
 import { throttleThrust } from '../../sim/duel/throttle';
 import { duelEndSummary, duelRoundRecord, type DuelRoundRecord } from '../../sim/duel/summary';
 import { createTelemetry, recordTick } from '../../sim/duel/telemetry';
@@ -28,11 +28,11 @@ import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxMod
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 import { createTorpedoFollow, trackManualTorpedo } from './torpedoCamera';
-import { consoleInReach, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
+import { consoleInReach, crewHelmSeat, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
 import type { ContactRequests } from './contactController';
 import type { Refusal } from './scene';
 import { lockRefusal, NO_LASER, refusal } from '../../render/duel/situationModel';
-import { accumulateWheel, emptyPresses, frequencyRequest, helmAxes, NO_HELD_FLAGS, throttleRequest, WHEEL_IDLE_MS, type HeldFlags, type KeySample, type PointerSample } from './input';
+import { accumulateWheel, crewHelmHeld, emptyPresses, frequencyRequest, helmAxes, NO_HELD_FLAGS, throttleRequest, WHEEL_IDLE_MS, type HeldFlags, type KeySample, type PointerSample } from './input';
 
 export type PauseReason = 'user' | 'blur' | 'hidden' | 'suspend';
 
@@ -178,8 +178,13 @@ export interface DuelRuntimeDeps extends FlightRuntimeDeps {
   takeLaunches?(): number;
   /** Valkyrn spec §5.1: whether the left button is held on the canvas (the Flight seat's gun). */
   gunHeld?(): boolean;
+  /** Playtest2feedback §4a: whether the left button is held on the canvas (the crew Helm steers while it is). */
+  steerHeld?(): boolean;
   /** Drop the keyboard's held keys and press edges (Tab and restart, spec §4, §5). */
   clearKeys?(): void;
+  /** Playtest2feedback (final review I1): the keys held now stop counting for the crew Helm's held fields until pressed
+   *  again (the keyboard's staleHeld); called on the frame the active character's seat becomes the crew Helm. */
+  staleKeys?(): void;
   /** Each decided round's record, once, on the tick it is decided (H-2 spec §8: Single player's solo records). */
   onRound?(record: DuelRoundRecord): void;
   /** The contact window's requests since the last frame (Sci-1 spec §7.2, §7.3): designate and scan, sent by seat. */
@@ -241,6 +246,8 @@ export interface DuelRuntime {
   running(): boolean;
   /** The Helm throttle level the console shows (Artemis spec §6.1): the active player's latest queued throttle, else the duel's. */
   throttle(): number;
+  /** Playtest2feedback §3, §6: the crew Helm's thrMille the console shows (the sim's: Single player steps it locally). */
+  thrMille(): number;
   /** Feel-ii §2.8: the console controls refused since the last take (the scene flashes them). */
   takeRefusals(): Refusal[];
   dispose(): void;
@@ -265,6 +272,10 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   const idleHeld = (): HeldInput[] => Array.from({ length: crew }, () => NEUTRAL);
   // Valkyrn spec §4.4, §5.1: Tab's ship view while seated (n = 1), the Flight seat's held bearing, and the gun's last frame.
   let shipView = false, steer = -1, gunPrev = false, torpHold = -1;   // W-3: the MANUAL torpedo's held heading (−1 none), re-sent every frame
+  // Playtest2feedback §4a: whether this left-button hold has steered yet (the refusal's press edge), and whether the active
+  // character flew the crew Helm on the last frame (final review I1).
+  let steerPrev = false, crewHelmPrev = false;
+  const newtonian = (): boolean => classOf(d.tactical, 0).newtonianHelm;
   const hasGun = (): boolean => classOf(d.tactical, 0).slots.gun !== null;
   const hasLaser = (): boolean => classOf(d.tactical, 0).slots.laser !== null;
   let telemetry = createTelemetry(d);   // the round's accumulator, as the authority's duel rules keep it
@@ -343,7 +354,8 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     }
     sentHeld = held;
     const helm = attendant(d.nav);
-    sentAxes = ended() ? NO_AXES : helm >= 0 ? { turn: heldTurn(d, held[helm]!), thrust: throttleThrust(d.throttle) }   // Artemis spec §5.3; Feel-i's auto-face
+    sentAxes = ended() ? NO_AXES : newtonian() ? crewAxes(d, helm >= 0 ? held[helm]! : NEUTRAL)   // playtest2feedback §3, §6: the sim's rule, attended or not
+      : helm >= 0 ? { turn: heldTurn(d, held[helm]!), thrust: throttleThrust(d.throttle) }   // Artemis spec §5.3; Feel-i's auto-face
       : d.interior.layout.helmHoldsUnattended === true ? { turn: helmTurn(d, NEUTRAL), thrust: throttleThrust(d.throttle) } : NO_AXES;   // Valkyrn spec §4.4: out of the seat it flies on (mirrors the sim's helmHoldsUnattended rule)
     for (const e of d.tactical.events) events.push(e);
     // Contact sparks (spec §7 item 8): the sim emits no contact events, so an increase in a hit counter is one.
@@ -381,14 +393,14 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   function newRound(): void {
     round = d.round; pending = []; switching = false; deferred = [];
     activeHeld = NEUTRAL; sentHeld = idleHeld(); sentAxes = NO_AXES;
-    shipView = false; steer = -1; gunPrev = false; torpHold = -1;
+    shipView = false; steer = -1; gunPrev = false; torpHold = -1; steerPrev = false; crewHelmPrev = false;
     events = []; counts = hitCounts(d);
     capture(); freshCameras(); cameraInput.reset(); resetInteriorCamera(interiorCamera);
     deps.clearKeys?.();
   }
 
   /** One frame's press edges for the active character, by where it is (spec §5 table). */
-  function play(k: KeySample, requests: ContactRequests, heading: number | null, launches: number, pew: number | null): KeySample {
+  function play(k: KeySample, requests: ContactRequests, heading: number | null, launches: number, pew: number | null, steerNow: number | null): KeySample {
     for (const c of k.ship ?? []) queue(c);   // Engineering spike §7: the ship view's clicks, on foot or seated, before a Tab
     if (k.presses.switch > 0 && crew === 1) {   // Valkyrn spec §4.4: no other character; Tab toggles the console and the ship view while seated
       if (seatOf(d, active) !== 'standing' && k.presses.switch % 2 === 1) shipView = !shipView;
@@ -448,6 +460,20 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
         if (held.fire && !prevHeld.fire) refuse('auto-face', off);
         if (level !== null) refuse('throttle', off);
       }
+      return k;
+    }
+    if (crewHelmSeat(d, active)) {   // playtest2feedback §3-§5: W/S, the thrusters and the steer go out on the held frame
+      if (p.camera > 0) snapBack(cameras.helm);
+      if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== headingBase(k.fireHeld)) queue({ kind: 'heading', heading });   // RMB; only auto-face clears the hold
+      // §4a: a hold steers once the map gives a bearing (a press over a block or the ship steers nothing yet).
+      const off = refusal(d, 'turn'), held = k.held ?? NO_HELD_FLAGS, steering = deps.steerHeld?.() ?? false, steered = steering && steerNow !== null;
+      if (off) {
+        if (steered && !steerPrev) refuse('turn', off);   // §4a: the hold's first steer, not A/D (final review M1)
+        if (held.fire && !prevHeld.fire) refuse('auto-face', off);
+        if ((held.up && !prevHeld.up) || (held.down && !prevHeld.down)) refuse('throttle', off);
+        if (heading !== null && heading >= 0) refuse('heading', off);
+      }
+      steerPrev = steering && (steerPrev || steered);   // owner 2026-11-19: the free cold gas has no refusal
       return k;
     }
     if (seat === 'helm') {
@@ -546,6 +572,11 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     alpha: () => frameAlpha,
     frame(dt) {
       let k = deps.sampleKeys();
+      // Final review I1: on the frame the active character's seat becomes the crew Helm, the keys held now (E sits and is a
+      // thruster; W, A and D walk) are stale until pressed again, and this sample's crew fields are dropped.
+      const crewHelmAtSample = crewHelmSeat(d, active);
+      if (crewHelmAtSample && !crewHelmPrev) { deps.staleKeys?.(); k = { ...k, throttleHeld: 0, rcsX: 0, rcsY: 0 }; }
+      crewHelmPrev = crewHelmAtSample;
       prevHeld = lastHeld; lastHeld = k.held ?? NO_HELD_FLAGS;
       const requests = deps.takeContactRequests?.() ?? NO_REQUESTS;   // drained every frame; dropped while paused or ended
       const heading = deps.takeHeading?.() ?? null;   // Feel-ii §1.1: drained every frame, like the contact requests
@@ -558,19 +589,24 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       // A Tab or a rematch changes which camera the pointer would move: this frame's sampled drag and wheel belong to the old one.
       const moved = (): void => { pointer = { ...sampled, wheel: 0, dragX: 0, dragY: 0, rightX: 0, rightY: 0 }; };   // the right drag too: the Helm pans by minus it
       if (ended()) { if (k.presses.confirm > 0 && !pending.some((c) => c.command.kind === 'rematch')) { pending.push({ player: active, command: { kind: 'rematch' } }); k = IDLE_KEYS(); moved(); } }
-      else if (pacer.reasons.size === 0) { if (k.presses.switch > 0) moved(); k = play(k, requests, heading, launchesNow, pewNow); }   // while paused, gameplay presses are dropped; the camera still moves
+      else if (pacer.reasons.size === 0) { if (k.presses.switch > 0) moved(); k = play(k, requests, heading, launchesNow, pewNow, steerNow); }   // while paused, gameplay presses are dropped; the camera still moves
       // Quantised as online (H-2 spec §3), and neutral on the end card as online sends it.
       // Feel-i (console feel spec §2): Space held at the Helm is auto-face, sent only from the Helm, as the sim admits it.
       const seatNow = seatOf(d, active);
       if (seatNow === 'standing') shipView = false;
-      if (seatNow !== 'flight') steer = -1; else if (steerNow !== null && !shipView) steer = steerNow;   // the last bearing holds over the side tools
+      // Playtest2feedback §4a: the crew Helm steers only while the left button is held (the last bearing holds over a block);
+      // let go, no aim goes out and the sim holds the last one as the held heading.
+      const crewHelmNow = crewHelmSeat(d, active), steering = crewHelmNow && (deps.steerHeld?.() ?? false);
+      if (crewHelmNow) steer = steering ? steerNow ?? steer : -1;
+      else if (seatNow !== 'flight') steer = -1; else if (steerNow !== null && !shipView) steer = steerNow;   // the last bearing holds over the side tools
       const gunNow = seatNow === 'flight' && !shipView && hasGun() && (deps.gunHeld?.() ?? false);
       const look = seatNow === 'flight' && shipView;   // Decision 11: the ship view keeps the course (no turn keys, no face)
       // W-3 (pew pew spec §3): at Weapons, while the crew's MANUAL torpedo flies, A/D turn it (torpTurn) and the map's right
       // button gives it a heading to hold (torpHold, re-sent every frame) until A or D, a right click on it or the flight's end clears it.
-      const steering = seatNow === 'weapons' && !ended() && manualTorpedoFlying(d.tactical), torpTurn = steering ? Math.sign(k.moveX) || 0 : 0;
-      if (!steering || torpTurn !== 0) torpHold = -1; else if (torpNow !== null) torpHold = torpNow;
-      activeHeld = ended() ? NEUTRAL : { moveX: look ? 0 : Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld,
+      const torpSteering = seatNow === 'weapons' && !ended() && manualTorpedoFlying(d.tactical), torpTurn = torpSteering ? Math.sign(k.moveX) || 0 : 0;
+      if (!torpSteering || torpTurn !== 0) torpHold = -1; else if (torpNow !== null) torpHold = torpNow;
+      activeHeld = ended() ? NEUTRAL : { moveX: look || crewHelmNow ? 0 : Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld,   // playtest2feedback §4: A/D are thrusters at the crew Helm
+        ...(crewHelmNow ? crewHelmHeld(k, -1) : {}),
         ...(k.fireHeld && !look && (seatNow === 'helm' || seatNow === 'flight') ? { face: true } : {}),
         ...(steer >= 0 ? { aim: steer } : {}), ...(gunNow ? { gunHeld: true } : {}),   // Valkyrn spec §5.1
         ...(torpTurn !== 0 ? { torpTurn } : {}), ...(torpHold >= 0 ? { torpHeading: torpHold } : {}) };   // W-3
@@ -600,6 +636,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     uiHeld: () => lastHeld,
     running: () => pacer.reasons.size === 0 && !ended(),
     throttle: throttleBase,
+    thrMille: () => d.thrMille,
     takeRefusals() { const out = refusals; refusals = []; return out; },
     dispose() { pacer.dispose(); disposeDuel(d); }
   };

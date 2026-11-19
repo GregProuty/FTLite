@@ -14,10 +14,12 @@ import { movementSystem } from '../movement';
 import { DuelSystem, effectiveBars, throttleAllowed, WEAPON_SLOTS } from '../tactical/bars';
 import { applyWeaponPower } from './weaponSlots';
 import { stepDuel } from '../tactical/duel';
-import { autoFaceTurn, headingTurn } from '../tactical/hunter';
+import { autoFacePoint, autoFaceTurn, headingTurn } from '../tactical/hunter';
 import { contactSeen, scanCommand, shipSeen } from '../tactical/science';
-import { HEADING_COUNT, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
-import { classOf, CONTACT_MAX_LEVEL, Outcome } from '../tactical/state';
+import { BOOST_FAR, HEADING_COUNT, RCS_TURN_BOOST, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
+import { classOf, CONTACT_MAX_LEVEL, Outcome, type Axes } from '../tactical/state';
+import { hx, hy } from '../tactical/direction';
+import { shipEngineFactor } from '../tactical/physics';
 import { HAZARD_EVERY } from '../tuning';
 import { rockAlive } from '../tactical/rocks';
 import { canCharge, canLaunch, manualLaserReady, validRockLock, validTarget, type ShipInput } from '../tactical/weapons';
@@ -31,7 +33,8 @@ import { applyPower, clampToCapacity, cycleDuelCoolant, duelHeatStep, OVERDRIVE_
 import { duelInjection, patchWork, toggleAirlock, toggleDoor, validAirlock, validDoor, workJob } from './hazards';
 import { throttleThrust, validHoldHeading, validThrottle } from './throttle';
 import { createDuel, disposeDuel, type DuelState } from './state';
-import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
+import { crewThrust, engineBars, heldAxis, noVent, rampThrottle, throttleCap, throttleFloor } from './helmFlight';
+import { BOOST_FACE_SIN, REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
 
 export interface DuelInput { held: readonly HeldInput[]; commands: readonly DuelEnvelope[] }
 
@@ -124,20 +127,86 @@ export function heldTorpSteer(h: HeldInput): { turn: number; heading: number } {
  *  one tick's integer step (defs.ts asserts every class turns fewer than 3 steps a tick), so the nose never steps across
  *  it. Pure; only + − and the integer modulo. */
 export function aimTurn(heading: number, aim: number): number {
-  const d = ((aim - heading + HEADING_COUNT + HEADING_COUNT / 2) % HEADING_COUNT) - HEADING_COUNT / 2;
+  const d = headingDelta(heading, aim);
   return d >= -1 && d <= 1 ? 0 : Math.sign(d);
 }
 
 /** The turn the Helm attendant's held input flies this tick (Artemis spec §5.3, Feel-i, Feel-ii spec §1.1, Valkyrn spec
- *  §6.2): A/D, else auto-face's turn, else the aim's, else the held heading's, else none. Pure; reads the state before
+ *  §6.2): A/D (not on a newtonianHelm class, playtest2feedback §4a), else auto-face's turn, else the aim's, else the held heading's, else none. Pure; reads the state before
  *  the step (the app's predicted path calls it too). */
 export function helmTurn(d: DuelState, h: HeldInput): number {
-  if ((Math.sign(h.moveX) || 0) !== 0) return h.moveX;
+  // Playtest2feedback §4a: an authority rule: moveX turns only a class that is not newtonianHelm (the crew's A/D are thrusters).
+  if (!classOf(d.tactical, 0).newtonianHelm && (Math.sign(h.moveX) || 0) !== 0) return h.moveX;
   if (d.tactical.outcome !== Outcome.Running) return 0;
   if (h.face === true) return autoFaceTurn(d.tactical, 0);
   const aim = heldAim(h);
   if (aim >= 0) return aimTurn(d.tactical.ships[0].heading, aim);
   return d.holdHeading >= 0 ? headingTurn(d.tactical, 0, d.holdHeading) : 0;
+}
+
+/** Playtest2feedback §4a: the signed heading-index difference from `heading` to `target`, −128..127. */
+export function headingDelta(heading: number, target: number): number {
+  return ((target - heading + HEADING_COUNT + HEADING_COUNT / 2) % HEADING_COUNT) - HEADING_COUNT / 2;
+}
+
+/** Playtest2feedback §4a: the crew turn's boost this tick, RCS_TURN_BOOST or 1. It is boosted on a newtonianHelm class when
+ *  all of these hold:
+ *  - helmTurn turns;
+ *  - the Engines turn the ship at all (Engineering's engine factor, from the effective Engines bars, above 0);
+ *  - the target is far. For the aim or the held heading, far is |headingDelta| > BOOST_FAR. For auto-face, the led target
+ *    lies outside BOOST_FACE_SIN of the nose, or behind it.
+ *  Owner 2026-11-19: the boost is free (no gas to hold). Both far bands are wider than a boosted step, so the normal step
+ *  and today's bands finish the turn and the nose never chatters. Pure, from the state before the step: the step and the
+ *  app's prediction both call it. */
+export function helmBoost(d: DuelState, h: HeldInput): number {
+  const t = d.tactical, cls = classOf(t, 0);
+  if (!cls.newtonianHelm || helmTurn(d, h) === 0 || shipEngineFactor(t, 0) <= 0) return 1;   // owner 2026-11-19: the gas is free
+  const heading = t.ships[0].heading;
+  if (h.face === true) {
+    const p = autoFacePoint(t, 0), dist = Math.sqrt(p.x * p.x + p.y * p.y), h0 = hx(heading), h1 = hy(heading);
+    const near = h0 * p.x + h1 * p.y > 0 && Math.abs(h0 * p.y - h1 * p.x) <= BOOST_FACE_SIN * dist;
+    return near ? 1 : RCS_TURN_BOOST;
+  }
+  const aim = heldAim(h), target = aim >= 0 ? aim : d.holdHeading;   // helmTurn turns, so one of them is set
+  return Math.abs(headingDelta(heading, target)) > BOOST_FAR ? RCS_TURN_BOOST : 1;
+}
+
+/** Playtest2feedback §3, §6: the axes the app predicts the crew ship flies on the next tick, from the state as it stands
+ *  and a held input (so flyShip with them flies exactly what crewHelm's tick flies, final review M3):
+ *  - the turn and its boost (helmTurn, helmBoost);
+ *  - the thrust of one ramp step on the held throttle from `thrMille` (the duel's by default, or the app's local
+ *    prediction of it), clamped to the Engines bars' floor and cap as the step clamps it (owner 2026-11-19);
+ *  - the held thrusters, every one of which vents (owner 2026-11-19: free cold gas).
+ *  Pure. */
+export function crewAxes(d: DuelState, h: HeldInput, thrMille: number = d.thrMille): Axes {
+  const boost = helmBoost(d, h), y = heldAxis(h.rcsY), x = heldAxis(h.rcsX), engine = engineBars(d);
+  const thrust = crewThrust(rampThrottle(thrMille, heldAxis(h.throttleHeld), throttleFloor(engine), throttleCap(engine)));
+  return { turn: helmTurn(d, h), turnBoost: boost, thrust, rcsX: x, rcsY: y };   // owner 2026-11-19: every held thruster vents
+}
+
+/** Playtest2feedback (spec §3, §4, §4a, §5, §7's step order 2 to 7): the crew Helm's tick on a newtonianHelm class,
+ *  attended (`h` is the attendant's held input) or not (null). In order:
+ *  - the turn and its boost, from the state before the step;
+ *  - a held aim becomes the held heading, and auto-face clears it (moveX never touches it on this class);
+ *  - the throttle ramp on the attendant's throttleHeld (0 with no attendant), clamped to the Engines bars' floor and cap
+ *    (owner 2026-11-19: Engineering's effective Engines bars, after this tick's ship commands);
+ *  - the fore/aft and the side thruster, each venting whenever the attendant holds it (owner 2026-11-19: free cold gas, so
+ *    no tank, no spend and no compressor);
+ *  - this tick's helmVent;
+ *  - the crew's axes, which fly attended or not.
+ *  Runs only while the round runs (stepDuelTick). */
+function crewHelm(d: DuelState, h: HeldInput | null, crew: ShipInput): void {
+  const held = h ?? NO_HELD, turn = helmTurn(d, held), boost = helmBoost(d, held);
+  if (h) {
+    if (h.face === true) d.holdHeading = -1;
+    else if (heldAim(h) >= 0) d.holdHeading = heldAim(h);
+  }
+  const engine = engineBars(d);
+  d.thrMille = rampThrottle(d.thrMille, h ? heldAxis(h.throttleHeld) : 0, throttleFloor(engine), throttleCap(engine));
+  const rcsY = h ? heldAxis(h.rcsY) : 0, rcsX = h ? heldAxis(h.rcsX) : 0;   // owner 2026-11-19: free cold gas, no tank
+  d.helmVent = { x: rcsX, y: rcsY, boosted: boost === RCS_TURN_BOOST, turn: boost === RCS_TURN_BOOST ? Math.sign(turn) || 0 : 0 };
+  crew.helm = true;
+  crew.axes = { turn, turnBoost: boost, thrust: crewThrust(d.thrMille), rcsX, rcsY };
 }
 
 /**
@@ -167,7 +236,7 @@ function stepDecided(d: DuelState, input: DuelInput): DuelResult[] {
     results.push(reason ? { id: env.id, tick, status: 'rejected', reason } : { id: env.id, tick, status });
   };
   resetScratch(d);
-  d.events = []; d.tactical.events = [];
+  d.events = []; d.tactical.events = []; d.helmVent = noVent();   // playtest2feedback §4: the end card vents nothing
   const presentBefore = d.present.slice();
   let rematch = false;
   for (const e of input.commands) {
@@ -292,6 +361,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     const level = e.command.level;
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (helm < 0 || e.id.player !== helm) { result(e, 'invalid-seat'); continue; }
+    if (classOf(d.tactical, 0).newtonianHelm) { result(e, 'unavailable'); continue; }   // playtest2feedback §3: the crew Helm holds its throttle (Decision 6)
     if (!validThrottle(level)) { result(e, 'malformed'); continue; }
     if (!throttleAllowed(d.tactical.systems[0], level)) { result(e, 'unavailable'); continue; }   // Task 8, spec §10.2: the Engines cap
     if (level === d.throttle) { result(e, undefined, 'noop'); continue; }
@@ -377,7 +447,9 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   // Valkyrn spec §6.2: a held aim turns before the held heading, and when neither A/D nor auto-face is held a valid aim
   // becomes the held heading. Valkyrn spec §4.4: with the Helm empty, a layout whose Helm holds unattended flies its
   // throttle and held heading; any other (the Hound's) flies zero axes as before.
-  if (helm >= 0) {
+  // Playtest2feedback §3: a newtonianHelm class runs crewHelm instead, attended or not.
+  if (classOf(t, 0).newtonianHelm) crewHelm(d, helm >= 0 ? input.held[helm] ?? NO_HELD : null, crew);   // playtest2feedback §3, §7: attended or not
+  else if (helm >= 0) {
     const h = input.held[helm] ?? NO_HELD;
     crew.axes = { turn: helmTurn(d, h), thrust: throttleThrust(d.throttle) };
     if ((Math.sign(h.moveX) || 0) !== 0 || h.face === true) d.holdHeading = -1;

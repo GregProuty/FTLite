@@ -5,8 +5,9 @@ import { Seated } from '../src/renderer/src/sim/components';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import {
-  AVOID_MARGIN, AVOID_TICKS, bfsPath, createScriptedPair, goalTiles, MISSILE_GAP, ORBIT_GAIN, ORBIT_MAX, ORBIT_MIN, SCRIPTED_PEW_GAP, scriptedInput, SPEED_SLACK
+  AVOID_MARGIN, AVOID_TICKS, bfsPath, createScriptedPair, goalTiles, MISSILE_GAP, ORBIT_GAIN, ORBIT_MAX, ORBIT_MIN, predictAxes, SCRIPTED_PEW_GAP, scriptedInput, SPEED_SLACK
 } from '../src/renderer/src/sim/duel/scripted';
 import { Outcome, placeMissile, removeMissile, Room } from '../src/renderer/src/sim/tactical/state';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
@@ -14,6 +15,7 @@ import { pewLead } from '../src/renderer/src/sim/tactical/pew';
 import type { DuelState } from '../src/renderer/src/sim/duel/state';
 import type { DuelInput } from '../src/renderer/src/sim/duel/step';
 import { BELT_OUTER, R_MAP } from '../src/renderer/src/sim/tactical/tuning';
+import { RCS_TURN_BOOST } from '../src/renderer/src/sim/tactical/tuning';
 
 const layout = parseShip(cutter);
 
@@ -49,11 +51,19 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
     disposeDuel(d);
   });
   it('the Helm turns away from the planet and sets full throttle when its predicted path meets it', () => {
-    const d = createSeatedDuel(layout, 1), s = d.tactical.ships[0], pair = createScriptedPair(1);
+    const d = createSeatedDuel(layout, 1, 0, 2, ShipClass.Valkyrn), s = d.tactical.ships[0], pair = createScriptedPair(1);
     s.x = 0; s.y = -300; s.vx = 0; s.vy = 150; s.heading = 128;           // falling south onto the planet, nose south
     const input = scriptedInput(pair, d);
     expect(input.held[0]).toEqual({ moveX: 1, moveY: 0, interactHeld: false });   // dead astern of the away direction: clockwise
     expect(input.commands.filter((e) => e.id.player === 0).map((e) => e.command)).toEqual([{ kind: 'throttle', level: 3 }]);   // and full throttle: Engineering spike spec §10.2 (fallout a, Decision 16): the Engines cap at the start is 3 (was 4)
+    disposeDuel(d);
+  });
+  it('the Cutter twin: the Helm answers the same hazard by holding W (throttleHeld), never a throttle command', () => {
+    const d = createSeatedDuel(layout, 1), s = d.tactical.ships[0], pair = createScriptedPair(1);
+    s.x = 0; s.y = -300; s.vx = 0; s.vy = 150; s.heading = 128;
+    const input = scriptedInput(pair, d);
+    expect(input.held[0]).toEqual({ moveX: 0, moveY: 0, interactHeld: false, aim: 0, throttleHeld: 1 });   // playtest2feedback §4a: it steers by the aim (north, away from the planet), never moveX
+    expect(input.commands.filter((e) => e.id.player === 0 && e.command.kind === 'throttle')).toEqual([]);
     disposeDuel(d);
   });
   it('the nearest free character (the gunner, 5 tiles away) walks to an Engines repair, fixes it and sits again', () => {
@@ -76,13 +86,31 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
     disposeDuel(d);
   });
   it('plays a whole duel with every command admitted: never a weapon command away from Weapons, never a refused sit', () => {
-    const d = createSeatedDuel(layout, 2), pair = createScriptedPair(2), kinds = new Set<string>();   // seed 2: one whose duel uses every kind (merge with the Engineering spike, kind b: seed 1 stopped sending laserLock; seed 3 stopped sitting and standing with W-1's pew and duel hull ×1.75, SIM_VERSION 54; seed 1 stopped sending laserLock with Feel-i's SHIELDS opener, SIM_VERSION 50; seed 5 stopped sitting and standing with homing torpedoes, SIM_VERSION 46; seed 4 stopped locking after the Hunter's grace)
+    const d = createSeatedDuel(layout, 5), pair = createScriptedPair(5), kinds = new Set<string>();   // seed 5: one whose duel uses every kind (the merge with the Engineering spike and owner 2026-11-19 (playtest2feedback merge, SIM 59), kind b: seed 2 stopped sending laserLock and sit; merge with the Engineering spike, kind b: seed 1 stopped sending laserLock; seed 3 stopped sitting and standing with W-1's pew and duel hull ×1.75, SIM_VERSION 54; seed 1 stopped sending laserLock with Feel-i's SHIELDS opener, SIM_VERSION 50; seed 5 stopped sitting and standing with homing torpedoes, SIM_VERSION 46; seed 4 stopped locking after the Hunter's grace)
     while (d.tactical.outcome === Outcome.Running) {
       const input = scriptedInput(pair, d);
       for (const e of input.commands) { kinds.add(e.command.kind); expect(e.requestedTick).toBe(d.interior.tick); }
       expect(stepDuelTick(d, input).every((r) => r.status === 'applied')).toBe(true);
     }
-    expect([...kinds].sort()).toEqual(['laserLock', 'sit', 'stand', 'throttle', 'torpLock', 'weaponPower']);   // FTL targeting spec §3: the gunner fires by targets; Engineering spike Decision 20 (kept at the merge, brief decision 2): it moves pew pew's bar to the beam, so no pewFire (W-1 gave the gunner pewFire: kind a, replaced rule)
+    expect([...kinds].sort()).toEqual(['laserLock', 'sit', 'stand', 'torpLock', 'weaponPower']);   // FTL targeting spec §3: the gunner fires by targets; Engineering spike Decision 20 (kept at the merge, brief decision 2): it moves pew pew's bar to the beam, so no pewFire (W-1 gave the gunner pewFire: kind a, replaced rule); playtest2feedback: no throttle commands on the Cutter; owner 2026-11-19: no helmPower (the Task 8 gate's knob 0, the compressor bar to ENGINE, has no split to move)
+    disposeDuel(d);
+  });
+});
+
+describe("the Helm's hazard prediction flies the sim's turn boost (playtest2feedback §4a)", () => {
+  it('on the Cutter, the next tick predicts with exactly the boost the step flew the held input with, and some far turns are boosted', () => {
+    const d = createSeatedDuel(layout, 3), pair = createScriptedPair(3);
+    let seated = 0, boosted = 0;
+    for (let k = 0; k < 6000 && d.tactical.outcome === Outcome.Running; k++) {
+      const atHelm = Seated.station[d.interior.crew[0]!]! === d.nav, input = scriptedInput(pair, d);
+      stepDuelTick(d, input);
+      if (!atHelm || Seated.station[d.interior.crew[0]!]! !== d.nav) continue;
+      const flew = d.helmVent.boosted ? RCS_TURN_BOOST : 1, next = predictAxes(pair, d).turnBoost;
+      expect(next).toBe(flew);   // only ever exactly 1 or RCS_TURN_BOOST
+      seated++; if (flew === RCS_TURN_BOOST) boosted++;
+    }
+    expect(seated).toBeGreaterThan(1000);
+    expect(boosted).toBeGreaterThan(0);
     disposeDuel(d);
   });
 });

@@ -70,7 +70,7 @@ export function decodeDuelMemory(memory: DuelMemory): DuelTelemetry {
   return { ...t, prev: { ...t.prev, grace: [Int32Array.from(t.prev.grace[0]), Int32Array.from(t.prev.grace[1])] } } as DuelTelemetry;
 }
 
-const held = z.object({ moveX: z.number().finite().min(-1).max(1), moveY: z.number().finite().min(-1).max(1), interactHeld: z.boolean(), face: z.boolean().optional(), aim: z.number().int().min(-1).max(255).optional(), gunHeld: z.boolean().optional(), torpTurn: z.number().int().min(-1).max(1).optional(), torpHeading: z.number().int().min(-1).max(255).optional() }).strict();
+const held = z.object({ moveX: z.number().finite().min(-1).max(1), moveY: z.number().finite().min(-1).max(1), interactHeld: z.boolean(), face: z.boolean().optional(), aim: z.number().int().min(-1).max(255).optional(), gunHeld: z.boolean().optional(), torpTurn: z.number().int().min(-1).max(1).optional(), torpHeading: z.number().int().min(-1).max(255).optional(), throttleHeld: z.number().int().min(-1).max(1).optional(), rcsX: z.number().int().min(-1).max(1).optional(), rcsY: z.number().int().min(-1).max(1).optional() }).strict();   // W-3; playtest2feedback §7
 const checkpointSchema = z.object({
   checkpointVersion: z.literal(2), init: z.unknown(), snapshot: z.unknown(),
   commandHighWater: crewList(uint), recentResults: z.array(z.unknown()).max(DUEL_CREW_MAX * 256),

@@ -16,6 +16,7 @@ import type { ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import type { OnlinePortDescriptor } from '../src/shared/onlineSession';
 import { CUTTER } from './helpers/scriptedDuel';
 import { emptyPresses } from '../src/renderer/src/app/duel/input';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 /** A fake confirmed client: `publish` restores a fresh replica from the live duel, as a received publication would. */
@@ -43,7 +44,7 @@ describe('the online duel view source (spec §3)', () => {
     c.dispose();
   });
   it('interpolates over the actual tick gap: alpha reaches 1 only when the next publication is due', () => {
-    const d = createSeatedDuel(CUTTER, 3), c = confirmed();
+    const d = createSeatedDuel(CUTTER, 3, 0, 2, ShipClass.Valkyrn), c = confirmed();   // playtest2feedback Decision 17: the notched throttle is the Valkyrn's
     let now = 0;
     const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => now, viewport: { w: 1280, h: 720 } });
     try {
@@ -187,11 +188,11 @@ describe('the online interior zoom camera (interior zoom spec rule 5)', () => {
 
 describe('the online source follows the throttle (Artemis spec §5.3, §6.1)', () => {
   it('the Helm seat flies the replica throttle; throttle() is the session base, else the replica', () => {
-    const d = createSeatedDuel(CUTTER, 3), c = confirmed();
+    const d = createSeatedDuel(CUTTER, 3, 0, 2, ShipClass.Valkyrn), c = confirmed();   // playtest2feedback Decision 17: moveX turns only the Valkyrn class
     const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });
     try {
       d.throttle = 2; c.publish(d); source.observe();
-      source.sent({ moveX: 1, moveY: -1 });
+      source.sent({ moveX: 1, moveY: -1, interactHeld: false });
       expect([source.axes(), source.throttle()]).toEqual([{ turn: 1, thrust: 0.5 }, 2]);
       source.throttleBase(4);
       expect([source.throttle(), source.axes().thrust]).toEqual([4, 0.5]);   // the drawn path follows the replica
@@ -203,7 +204,7 @@ describe('the online source follows the throttle (Artemis spec §5.3, §6.1)', (
     } finally { disposeDuel(d); c.dispose(); }
   });
   it('the end card flies nothing: axes() is NO_AXES on a decided round whatever the throttle', () => {
-    const d = createSeatedDuel(CUTTER, 3), c = confirmed();
+    const d = createSeatedDuel(CUTTER, 3, 0, 2, ShipClass.Valkyrn), c = confirmed();
     const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });
     try {
       d.throttle = 3; c.publish(d); source.observe();

@@ -61,12 +61,14 @@ export const helmModule: SimModule<DuelState> = {
   id: 'helm',
   fields: () => HELM,
   notSnapshotted: {},
-  commands: ['throttle', 'heading'],
-  reasons: ['invalid-seat', 'malformed', 'stale-tick']
+  commands: ['throttle', 'heading'],   // owner 2026-11-19: no helmPower (the crew Helm's cap is Engineering's Engines bars)
+  reasons: ['invalid-seat', 'malformed', 'stale-tick', 'unavailable']   // playtest2feedback §3: throttle on the crew Helm's class; Engineering spike §10.2: above the Engines cap
 };
 const HELM: ModuleField<DuelState>[] = [
   scalar('throttle', (d) => d.throttle, (d, v) => { d.throttle = v; }),
-  scalar('holdHeading', (d) => d.holdHeading, (d, v) => { d.holdHeading = v; })
+  scalar('holdHeading', (d) => d.holdHeading, (d, v) => { d.holdHeading = v; }),
+  // Playtest2feedback §7: the crew Helm's held throttle (owner 2026-11-19: no COMPRESSOR share and no cold gas tank).
+  scalar('thrMille', (d) => d.thrMille, (d, v) => { d.thrMille = v; })
 ];
 
 /** The duel ship (the Hound) interior: today's SimState, through the sector snapshot path (flatten / unflatten, validated). */
@@ -97,6 +99,7 @@ export const DUEL_NOT_SNAPSHOTTED: Readonly<Record<string, string>> = {
   science: 'the Science station index, from the layout',
   crewClass: 'the crew slot\'s class: hashed and snapshotted as the ship module\'s systems.0.cls, and in the snapshot header (Valkyrn spec §6.1)',
   events: 'per-tick repair events, cleared every tick',
+  helmVent: 'per-tick scratch: this tick\'s vented thruster axes and boost, recomputed every running tick (playtest2feedback §4)',
   systemRooms: 'each system\'s interior room, derived from the layout by createDuel (Engineering spike Decision 3)'
 };
 
