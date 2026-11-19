@@ -5,11 +5,12 @@
 // to the pointer, TargetingLine); a click on the same card again cancels; a right-click clears its target. 1 and 2 pick
 // the laser and the torpedo up from the keyboard. The torpedo homes by itself (homing torpedo spec §3).
 // Sci-1 spec §7.4: the frequency row, A B C with the tuned one lit and the weak one marked after a Level 2 scan (keys 3/4/5).
+// W-1 (pew pew spec 1): the PEW row first, its three charge pips (each fills as its third recharges) and the click hint; the left click on the Weapons map fires it, so it has no pick-up card and 1 / 2 never pick it up.
 // Feel-i (console feel spec §1, §3): the LASER card flashes FIRING while the shot is lined up, says why not in words on the
 // row under the cards (`LASER: OUT OF ARC: HELM TURN RIGHT`), and its frame pulses (the goal glow) while it has no target.
 import { memo, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from 'react';
 import type { WeaponsPanel } from '../../render/duel/consoleModel';
-import { STATION, stationTop, weaponCard } from '../../render/duel/consoleLayout';
+import { PEW_ROW_H, STATION, stationTop, weaponCard } from '../../render/duel/consoleLayout';
 import { FREQ_NAMES } from '../../render/duel/scienceModel';
 import { AMBER, BAR_OFF, DIM, FONT_NATIVE, FONT_SIZE, TEXT } from '../../render/theme';
 import { CRT } from '../../render/tactical/crtTheme';
@@ -57,7 +58,7 @@ function Card({ weapon, lit, crt, flash = false, glow = false, now = 0 }: { weap
 
 export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null }: { weapons: WeaponsPanel; aim?: Weapon | null }) {
   const actions = useActions(), { crt, now } = useCrt();
-  const top = stationTop('weapons'), x0 = STATION.x + 8, y0 = top + 6, right = STATION.x + STATION.w - 8;
+  const top = stationTop('weapons'), x0 = STATION.x + 8, y0 = top + 6 + PEW_ROW_H, right = STATION.x + STATION.w - 8;
   const dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT, hot = crt ? CRT.hot : AMBER, c = weapons.charge;
   const barColour = crt ? crtRowLook(c, now).bar : c.bar?.colour ?? TEXT;
   const L = weaponCard('laser'), T = weaponCard('torpedo'), lx = L.x + 6, tx = T.x + 6;
@@ -67,6 +68,13 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
   return (
     <>
       <Panel x={STATION.x} y={top} w={STATION.w} h={STATION.h.weapons} />
+      {weapons.pew ? <>
+        <PixelText text="PEW" x={x0} y={top + 10} size={FONT_NATIVE} tint={main} />
+        {weapons.pew.map((f, k) => <Box key={`pip-${k}`} x={x0 + 44 + k * 34} y={top + 12} w={28} h={8} attrs={{ 'data-ui-pew-pip': String(k), 'data-ui-pew-fill': f.toFixed(2) }}
+          style={{ background: hex(crt ? CRT.faint : BAR_OFF) }} />)}
+        {weapons.pew.map((f, k) => f > 0 ? <Box key={`fill-${k}`} x={x0 + 44 + k * 34} y={top + 12} w={Math.max(1, Math.round(28 * f))} h={8} style={{ background: hex(f >= 1 ? hot : dim) }} /> : null)}
+        <PixelText text="L-CLICK MAP" x={right} y={top + 10} size={FONT_NATIVE} tint={dim} anchorX={1} />
+      </> : null}
       <Card weapon="laser" lit={aim === 'laser'} crt={crt} flash={firing} glow={weapons.goal === true && aim !== 'laser'} now={now} />
       <PixelText text="LASER" x={lx} y={L.y + 6} size={FONT_NATIVE} tint={aim === 'laser' ? hot : dim} />
       <PixelText text={`x${weapons.burst}`} x={lx + 48} y={L.y + 6} size={FONT_NATIVE} tint={main} />
@@ -85,7 +93,7 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
       <PixelText text={targetText(weapons.torpTarget)} x={tx} y={T.y + 56} size={FONT_NATIVE} tint={weapons.torpTarget >= 0 ? hot : dim} />
       <Button name="launch" label="LAUNCH" hint="F" x={tx} y={T.y + T.hitH + 4} w={T.w - 12} h={24} dim={!weapons.canLaunch} flash={flash('launch')} onPress={() => actions.console.press('launch')} />
       {refused !== null
-        ? <PixelText text={`${refused.control === 'launch' ? 'LAUNCH' : 'FIRE'}: ${refused.reason}`} x={refused.control === 'launch' ? tx : x0} y={y0 + 116} size={FONT_NATIVE} tint={hot} />
+        ? <PixelText text={`${refused.control === 'launch' ? 'LAUNCH' : refused.control === 'pew' ? 'PEW' : 'FIRE'}: ${refused.reason}`} x={refused.control === 'launch' ? tx : x0} y={y0 + 116} size={FONT_NATIVE} tint={hot} />
         : reason !== null && !firing
         ? <PixelText text={`LASER: ${reason}`} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={hot} />
         : <PixelText text={firing ? 'LASER: FIRING' : 'CLICK A WEAPON, THEN A ROOM'} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={firing ? hot : dim} />}

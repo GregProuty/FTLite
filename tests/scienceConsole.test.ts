@@ -93,8 +93,8 @@ describe('the console model (spec §7.3, §7.4)', () => {
 });
 
 describe('the layout (spec §7.3, §7.4)', () => {
-  it('the Weapons block is 216 high (the frequency row where the steer row was), the contact window 420, the Science block 96; the status table still ends above the Weapons block', () => {
-    expect([STATION.h.weapons, stationTop('weapons'), CONTACT.h, STATION.h.science, stationTop('science')]).toEqual([216, 492, 420, 96, 612]);
+  it('the Weapons block is 244 high (the frequency row where the steer row was; W-1: the PEW row on top), the contact window 420, the Science block 96; the status table still ends above the Weapons block', () => {
+    expect([STATION.h.weapons, stationTop('weapons'), CONTACT.h, STATION.h.science, stationTop('science')]).toEqual([244, 464, 420, 96, 612]);
     const d = createDuel(CUTTER, 5);
     try {
       d.tactical.systems[0].rooms = [2, 1, 1];
