@@ -42,7 +42,7 @@ import type { AimSample, HeldFlags } from './input';
 import type { ContactController } from './contactController';
 import type { MapRequests } from './mapRequests';
 import { headingOf, pickRadius } from '../../render/tactical/tacticalModel';
-import { flightPointer } from './flightPointer';
+import { flightPointer, helmSteer } from './flightPointer';
 import { flightAlert, type RefusedControl } from '../../render/duel/situationModel';
 import { pingAllowed, pushPing, stepPings, type Ping, type PingRequest } from '../../render/duel/pingModel';
 import type { TorpedoTone } from './duelAudio';
@@ -77,6 +77,8 @@ export interface DuelViewSource {
   uiHeld(): HeldFlags;
   /** The Helm throttle level the console shows (Artemis spec §6.1): the local base of §5.4. */
   throttle(): number;
+  /** Playtest2feedback §3, §6: the crew Helm's thrMille to show (online, the local prediction). Absent: the duel's. */
+  thrMille?(): number;
   /** Feel-ii §1.2: the Helm's axes as this screen best knows them, for the COLLISION words on every seat (Single player:
    *  axes(); online away from the Helm: the state's, stateAxes). Absent: axes(). */
   helmAxes?(): Axes;
@@ -128,6 +130,8 @@ export interface DuelSceneOptions {
   pointer?: () => { x: number; y: number } | null;
   /** Feel-ii §1.1: the right button since the last frame (the Helm's heading aim); drained every frame. */
   takeAim?: () => AimSample | null;
+  /** Playtest2feedback §4a: whether the left button is held on the canvas (the crew Helm steers while it is). */
+  leftHeld?: () => boolean;
   /** Feel-ii §1.1: where the Helm's heading requests go (the duel mode drains them). */
   requests?: MapRequests;
   /** Feel-ii §2.7: a ping asked for since the last frame (a middle click, or G at the pointer), in internal px. */
@@ -175,6 +179,8 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel); scene.addChildAt(interior.container, 1);
       }
       const d = source.duel, view = source.view(), alpha = source.alpha(), contact = options.contact;
+      /** Playtest2feedback §3: the crew Helm's lever is thrMille; the Valkyrn's is its level (Feel-i's sit card reads either). */
+      const shownThrottle = (): number => (classOf(d.tactical, CREW_SLOT).newtonianHelm ? source.thrMille?.() ?? d.thrMille : source.throttle());
       const camKey = view === 'interior' ? null : viewCamera(view), cam = camKey ? source.cameras[camKey] : null;   // Valkyrn spec §5: Flight flies the Helm's camera
       // Everything the console changes follows whether it is drawn (Artemis spec §6.1): a paused or decided console view
       // falls back to the right-hand readout with its rows and help.
@@ -183,7 +189,8 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const station = hidden ? null : consoleStation(d, source.active());
       const onMap = view !== 'interior' && (station === 'helm' || station === 'weapons' || station === 'science' || station === 'flight');   // Sci-1 spec §7.2: the window on all three
       const click = options.takeClick?.() ?? null;   // drained every frame, so a click never waits for a later frame
-      if (contact && click && onMap && station !== 'flight') {   // Valkyrn spec §5.1: on the Flight seat the left button is the gun
+      const crewHelmMap = station === 'helm' && view === 'helm' && classOf(d.tactical, CREW_SLOT).newtonianHelm;   // playtest2feedback §4a
+      if (contact && click && onMap && station !== 'flight' && !crewHelmMap) {   // Valkyrn spec §5.1: on the Flight seat the left button is the gun; on the crew Helm it only steers
         // Spike ii §6.5: a ship contact under the pointer wins; else, with a weapon picked up, a rock under it takes the drop.
         const at = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport }, ship = pickContact(at, click);
         const rock = ship === null && contact.aimWeapon() !== null ? pickRock(at, click) : null;
@@ -229,6 +236,13 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         if (f.steer !== null) options.requests?.steer(f.steer);
         if (f.launch) options.requests?.launch();
       }
+      // Playtest2feedback §4a: on the crew Helm's map the held left button steers, every frame: the bearing from the own ship's
+      // drawn marker to the pointer while it is on the open map and off the ship (else the last bearing stands).
+      if (onMap && crewHelmMap && running && !overlay.layerPaused && (options.leftHeld?.() ?? false)) {
+        const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT);
+        const h = helmSteer({ pointer: options.pointer?.() ?? null, ship: worldToScreen(cam!, viewport, b.x, b.y), zoom: cam!.zoom, contactShown: shown });
+        if (h !== null) options.requests?.steer(h);
+      }
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       ({ watch: fires, flashUntil } = fireWatch(fires, d, t, flashUntil));   // own ship window spec §4
       const events = source.drainEvents();
@@ -250,7 +264,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const sitOf = (pid: number): SitSeat | null => { const s = consoleStation(d, pid); return s === 'helm' || s === 'weapons' || s === 'flight' ? s : null; };
       const me = source.active(), sitSeat = sitOf(me), sat = trackSit(sits, me, Array.from({ length: d.interior.playerCount }, (_, pid) => sitOf(pid)));   // Sci-2 spec §5.1: every seat of the crew
       if (sat && sitSeat) {
-        seat = sitSeat; sitAt = t; sitThrottle = source.throttle(); acted = false; goalUsed = false; carded = countSit(sitSeat);
+        seat = sitSeat; sitAt = t; sitThrottle = shownThrottle(); acted = false; goalUsed = false; carded = countSit(sitSeat);
         const own = d.tactical.ships[CREW_SLOT], e = d.tactical.ships[enemySlot];
         if (e?.active) zoomTo(source.cameras[viewCamera(sitSeat)], frameZoom(e.x - own.x, e.y - own.y, viewport, CONSOLE_RESERVE.left, CONSOLE_RESERVE.right, OWN_SHIP));
       } else if (sitSeat !== seat) { seat = sitSeat; carded = false; }   // a Tab, a stand or Science: no new sit
@@ -258,7 +272,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       lastAimed = aimed;
       if (seat === 'helm' && (held.left || held.right || held.fire)) goalUsed = true;
       if (seat === 'weapons' && aimed === 'laser') goalUsed = true;
-      if (seat !== null && (held.left || held.right || held.fire || held.up || held.down || aimed !== null || source.throttle() !== sitThrottle)) acted = true;
+      if (seat !== null && (held.left || held.right || held.fire || held.up || held.down || aimed !== null || shownThrottle() !== sitThrottle)) acted = true;
       if (sound) {   // Audio-i spec section 4: the same events the effects use; pan from the screen on a map view, crew-relative inside
         const crew = d.tactical.ships[CREW_SLOT]!;
         sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true, me: source.active(), crew: crewLife(d), dt, hostile: enemyHostile(d.tactical),   // duel polish i spec §C
@@ -294,7 +308,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const hover = station === 'science' && view !== 'interior'
         ? hoverReadout(cam!, viewport, interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), options.pointer?.() ?? null)
         : null;
-      const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView, throttle: source.throttle(), hover,
+      const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView, throttle: source.throttle(), thrMille: source.thrMille?.() ?? d.thrMille, hover,
         sinceShot: fx.sinceShot, goal: seat === 'weapons' && !goalUsed, t, refused: refusedView, shipView: view === 'interior' });
       // Step 5: the contact view, only while shown.
       const open = contact?.state() ?? null;

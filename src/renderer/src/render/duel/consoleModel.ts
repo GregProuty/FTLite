@@ -61,6 +61,8 @@ export interface ConsoleModelInput {
   duel: DuelState; me: number; mode: 'single' | 'online'; hidden: boolean; held: HeldFlags; overlay: MapOverlayView | null;
   /** The Helm throttle level to show (Artemis spec §6.1: the local base); the duel's own level when absent. */
   throttle?: number;
+  /** Playtest2feedback §3, §6: the crew Helm's thrMille to show (Single player the sim's; online the local prediction); the duel's when absent. */
+  thrMille?: number;
   /** Science's hover readout this frame (Sci-1 spec §7.3), from the scene; null or absent with no cursor. */
   hover?: string | null;
   /** Feel-i: seconds since the crew laser last fired on this screen (the FIRING hold; absent: never), and whether the
@@ -93,7 +95,7 @@ export function consoleStation(d: DuelState, me: number): ConsoleStation {
   return seat === 'standing' ? 'ship' : seat;
 }
 
-const HELM_CONTROLS: readonly RefusedControl[] = ['turn', 'auto-face', 'throttle', 'heading'];
+const HELM_CONTROLS: readonly RefusedControl[] = ['turn', 'auto-face', 'throttle', 'heading', 'thrusters'];   // playtest2feedback §4: NO PRESSURE shows on the Helm block
 
 export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   if (i.hidden) return null;

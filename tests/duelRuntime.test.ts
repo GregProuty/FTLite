@@ -435,7 +435,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     rt.dispose();
   });
   it('the end card sends neutral held input, as online does (H-2 spec §3, §7)', () => {
-    const { rt, hold, tick } = rig(7);
+    const { rt, hold, tick } = rig(7, undefined, true, ShipClass.Valkyrn);
     hold({ moveX: 1, moveY: -1, interactHeld: true }); tick();
     expect(rt.held()[0]).toEqual({ moveX: 1, moveY: -1, interactHeld: true });
     rt.duel.tactical.systems[1].hull = 0; tick();

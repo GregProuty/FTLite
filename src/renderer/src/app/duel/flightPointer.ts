@@ -46,3 +46,19 @@ export function flightPointer(i: FlightPointerInput): { steer: number | null; la
     ? headingOf(p.x - i.ship.x, p.y - i.ship.y) : null;
   return { steer, launch: i.press && !i.aimed };
 }
+
+/** Playtest2feedback §4a: the console blocks over the crew Helm's map: the tab strip, the side column and the Helm block. */
+const HELM_BLOCKS: readonly Rect[] = BLOCKS.slice(0, 3);
+/** Whether a screen point is on the crew Helm map's open part: on the screen, clear of its blocks, and of the contact window
+ *  while it is shown. */
+export function onHelmMap(p: Point, contactShown: boolean): boolean {
+  if (p.x < 0 || p.y < 0 || p.x >= INTERNAL_W || p.y >= INTERNAL_H) return false;
+  if (contactShown && inside(p, CONTACT)) return false;
+  return !HELM_BLOCKS.some((r) => inside(p, r));
+}
+/** Playtest2feedback §4a: the bearing the held left button steers to on the crew Helm's map: from the own ship's drawn
+ *  marker to the pointer, or null (send nothing: the last bearing stands) off the open map or on the ship itself. */
+export function helmSteer(i: { pointer: Point | null; ship: Point; zoom: number; contactShown: boolean }): number | null {
+  const p = i.pointer;
+  return p && onHelmMap(p, i.contactShown) && Math.hypot(p.x - i.ship.x, p.y - i.ship.y) > pickRadius(i.zoom) ? headingOf(p.x - i.ship.x, p.y - i.ship.y) : null;
+}

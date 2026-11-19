@@ -8,7 +8,8 @@ import { predictFlight, touchesSolid } from '../../sim/tactical/predict';
 import { classOf, CREW_SLOT, missileOf, NO_AXES, Outcome, Room, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
 import type { DuelState } from '../../sim/duel/state';
 import { throttleThrust } from '../../sim/duel/throttle';
-import { helmTurn } from '../../sim/duel/step';
+import { crewAxes, helmTurn } from '../../sim/duel/step';
+import { RCS_GAS_PER_TICK } from '../../sim/duel/tuning';
 import { laserEligible, laserFull, laserOffline, torpedoInRange } from '../../sim/tactical/weapons';
 import { TICK_HZ } from '../../sim/tuning';
 
@@ -118,6 +119,8 @@ export const COLLISION_TICKS = Math.round(COLLISION_WARN_S * TICK_HZ);
  *  held heading's turn and the throttle's thrust while the Helm is attended, else none (the sim flies no axes then). */
 export function stateAxes(d: DuelState): Axes {
   if (d.tactical.outcome !== Outcome.Running) return NO_AXES;
+  // Playtest2feedback §3: the crew Helm flies attended or not (the throttle's return and the held heading, no thrusters).
+  if (classOf(d.tactical, CREW_SLOT).newtonianHelm) return crewAxes(d, { moveX: 0, moveY: 0, interactHeld: false });
   const pid = d.interior.stations.occupant[d.nav]!, attended = pid >= 0 && d.present[pid] === true;
   if (!attended && d.interior.layout.helmHoldsUnattended !== true) return NO_AXES;   // Valkyrn spec §4.4: the Valkyrn flies on unattended
   return { turn: helmTurn(d, { moveX: 0, moveY: 0, interactHeld: false }), thrust: throttleThrust(d.throttle) };
@@ -184,7 +187,7 @@ export function evadeDir(t: TacticalState): { x: number; y: number } | null {
 }
 
 /** The console controls a refusal can name (the buttons, and their keys). */
-export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser';
+export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser' | 'thrusters';   // thrusters: playtest2feedback §4
 /** Valkyrn spec §6.1: the reason a laser key (1, 3/4/5) gives on a class without a laser (the `laser` control, Flight only). */
 export const NO_LASER = 'NO LASER';
 /** Feel-ii §2.8: why the sim would refuse a control's command (or do nothing with it), or null when it would act. FIRE is
@@ -202,5 +205,6 @@ export function refusal(d: DuelState, control: RefusedControl): string | null {
     if (sys.rooms[Room.Weapons] >= 2) return 'WEAPONS OFFLINE';
     return torpedoInRange(t, CREW_SLOT) ? null : 'OUT OF RANGE';
   }
+  if (control === 'thrusters') return d.rcsGas < RCS_GAS_PER_TICK ? 'NO PRESSURE' : null;   // playtest2feedback §4: cold gas is not the Engines
   return sys.rooms[Room.Engines] >= 2 ? 'ENGINES OFFLINE' : null;
 }
