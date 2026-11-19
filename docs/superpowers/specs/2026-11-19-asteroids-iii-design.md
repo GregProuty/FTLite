@@ -195,6 +195,39 @@ Each free rock not born this tick does the following, in slot order:
 - **Unchanged:** today's streaks, cracks, brackets and the `ROCKS n` tally.
 - **Online guests:** guests see all rock motion, because the pool reaches them. They still get no rock effects.
 
+### 7.1 The cracks, redrawn (owner 2026-11-19: "looks crappy and some of the lines are outside of the asteroid border")
+
+**The bug (`tacticalLayer.ts` around line 276):**
+- The outline is 9 vertices at multipliers 0.72 to 1.08 of r (`asteroidShape`).
+- Each crack's outer end uses the multiplier of an unrelated vertex, `shape[(k + 3) % 9] · 0.95`, at an angle that is not that
+  vertex's angle. The end can sit at about 1.03 r where the outline is 0.72 r, outside the rock.
+- The cracks are also drawn as 1.5 px hot spokes radiating from near the centre. They read as glowing spokes, not fractures.
+
+**The redraw** is a pure function `crackPaths(index, r, wear)` in `tacticalModel.ts`, unit-testable and with no Pixi:
+- **Starting points:** each crack starts at a point on the outline, an "impact" point, and runs inward as a jagged polyline of
+  3 to 4 segments.
+  - Each segment turns by a hashed angle of up to ±35°.
+  - Roughly every second crack forks one short branch.
+- **Stable growth:** the crack set is seeded by the rock index (the same hash as `asteroidShape`), so it is stable frame to
+  frame.
+  - Wear only reveals more of it: crack count = `ceil(wear · 4)`, up to 4, and the lengths grow from 0.35 r to 0.8 r with
+    wear.
+  - A crack never jumps or redraws differently as hp falls.
+- **Inside the border, always:** every point is clamped to at most 0.9 of the outline's radius *at that point's own angle*.
+  That radius is found by intersecting the ray with the outline polygon's edge between the two neighbouring vertices, never
+  from a single vertex.
+- **Style:** cracks are cut into the rock, so they are dark, not glowing.
+  - A 1 px line in the dark background tone at alpha 0.85, with a 1 px `CRT.mid` highlight offset by 0.5 px on one side for
+    a carved look.
+  - The fill dims at wear ≥ 0.5, as now. The outline keeps today's `CRT.main` when worn.
+- **Below 6 px:** no cracks are drawn at map zoom when the rock's screen radius is under 6 px.
+
+**Tests:**
+- Every crack point lies inside the outline polygon, checked by a point-in-polygon test over indices 0 to 500 and
+  wear 0.25 to 1.
+- Cracks at a higher wear contain the cracks at a lower wear as prefixes.
+- A screenshot of rocks at wear 0.25, 0.5 and 1 is added to the §8.4 set for the owner's look check.
+
 ## 8. Gates and tests
 
 ### 8.1 Unit tests
