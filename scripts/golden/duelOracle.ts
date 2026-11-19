@@ -125,7 +125,11 @@ export const ADDITIONS: Readonly<Record<number, Migration>> = {
   /** W-2 (56): the laser mode and the MANUAL burst aim on every systems record; no oracle run sends laserMode, so they stay
    *  at their first recorded values (false and −1), which `frozen` makes recordRun check at every tick. */
   56: { change: 'W-2: the laser mode and the MANUAL burst aim', rename: () => undefined, derived: [], frozen: true,
-    added: [/^ship\.systems\.\d+\.(laserManual|laserAim)$/] }
+    added: [/^ship\.systems\.\d+\.(laserManual|laserAim)$/] },
+  /** W-3 (57): the torpedo mode on every systems record and the manual bit on every missile pool entry; no oracle run sends
+   *  torpMode, so they stay at their first recorded value (false), which `frozen` makes recordRun check at every tick. */
+  57: { change: 'W-3: the torpedo mode and the per-torpedo manual flag', rename: () => undefined, derived: [], frozen: true,
+    added: [/^ship\.systems\.\d+\.torpManual$/, /^space\.missiles\.\d+\.manual$/] }
 };
 
 /** The duel's named canonical fields after SIM_VERSION, in flattenDuel order: `<module id>.<field name>`, with the

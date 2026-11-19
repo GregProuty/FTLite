@@ -988,3 +988,21 @@ Spec `docs/superpowers/specs/2026-11-18-pew-pew-weapons-design.md` §2; plan `do
 
 - [x] Automated (W-2): `npx vitest run` passes (435 files), including the mode (every round AUTO, the Hunter always; MANUAL charges but never fires by itself), the beam (along the aim clamped to ±60°, the room under the hit point, rocks struck as the AUTO laser strikes them, the planet stops it, torpedoes pass, bursts keep their aim), the commands' admission and the codec, the snapshot bounds, Z and Space in Single player and online (NO CHARGE from the authority's 'unavailable'), the aim line, the AUTO / MAN tag (`tests/manualLaser*.test.ts`, `tests/manualLaserUi.test.tsx`); `npx tsc -b` clean; SIM_VERSION 56, goldens blessed; the additive duel oracle proves every AUTO run unchanged per tick (21 runs, 229672 ticks); the duel gates unchanged (Hound median 208.8 s, 6 wins, 4 losses; Valkyrn median 210.9 s, 6 Hunter wins).
 - [ ] Manual (owner): play a Single player duel at Weapons. The LASER card shows an AUTO tag; press Z (or click the tag) and it reads MAN, lit. With the laser charged, a dashed line runs from your ship along the mouse's bearing, stopping at the ±60° arc; Space fires the beam along it (the left click is still the pew). A rock in the way takes the hit; the enemy's struck room is the one under the beam. Press Z again for AUTO: it fires at its target room by itself as before. Screenshots for the look gate: (1) the LASER card with the AUTO tag and with the MAN tag; (2) the Weapons map in MANUAL with the laser charged, showing the dashed aim line beside the pew's cone and solid aim line. Do the tag and the dashed line read on the amber CRT, and is the dashed laser line easy to tell from the pew's?
+
+## W-3: the manual torpedo (2026-11-18)
+
+Spec `docs/superpowers/specs/2026-11-18-pew-pew-weapons-design.md` §3; plan `docs/superpowers/plans/2026-11-18-w3-manual-torpedo.md`.
+
+- [x] Automated (W-3): `npx vitest run` passes (445 files, 5551 tests). This includes the mode (every round AUTO, the Hunter always; V, since X is Stand and C the camera; the mode fixed at launch), the MANUAL launch (no lock, no range, no auto-launch), the flight (A/D at the torpedo's turn rate, the held heading by the Helm's hold law, full thrust then a coast, no homing, only its Weapons seat flies it), the hit (the room under the impact point, 3 hull), the commands' admission and the codec, the held torpTurn and torpHeading in every held schema (a pause and an expiry clear them), the snapshot bounds, V, F and the steering in Single player and online (the always-send launch), the right button's heading, the camera follow and the TORPEDO card's AUTO / MAN tag (`tests/manualTorpedo*.test.ts`, `tests/torpedoCamera.test.ts`, `tests/manualTorpedoUi.test.tsx`). `npx tsc -b` is clean; SIM_VERSION 57, goldens blessed. The additive duel oracle proves every AUTO run unchanged per tick (21 runs, 229672 ticks); `tests/torpedoGuidance.test.ts` still passes; the duel gates are unchanged (Hound median 208.8 s, 6 wins, 4 losses; Valkyrn median 210.9 s, 6 Hunter wins).
+- [ ] Manual (owner): play a Single player duel at Weapons.
+  1. The TORPEDO card shows an AUTO tag beside the LASER card's. Press V (or click the tag) and it reads MAN, lit, and the card says MANUAL.
+  2. With the enemy far out of range, press F: the torpedo leaves the nose, and the Weapons map follows it. Hold A or D and it turns. Right click or drag on the map and it swings onto the bearing from the torpedo to the mouse and holds it, until A or D takes over again. The card says STEER A/D.
+  3. Fly it into the enemy: the struck room is the one under the impact. When the flight ends, the map goes back to your ship.
+  4. Press V again for AUTO: a locked torpedo launches and homes by itself, as before.
+
+  Screenshots for the look gate:
+  1. The TORPEDO card with the AUTO tag, and with the MAN tag lit (MANUAL).
+  2. A MANUAL torpedo in flight with the Weapons camera following it (STEER A/D on the card).
+  3. The torpedo swinging onto a right-drag heading.
+
+  Do the tags read on the amber CRT, is the followed torpedo easy to fly, and does the right-drag heading feel like the Helm's?
