@@ -7,7 +7,7 @@ import { flattenTactical, hashTactical, shipModule, spaceModule, unflattenTactic
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { railPos, type RailOut } from '../src/renderer/src/sim/tactical/rails';
-import { beginRockStep, beginRockTick, endRockStep, freeFrame, freeRock, rockAlive, rockAt, rockBorn, rockCapacity, rockHp, rockHpMax, RockKind, rockMass, rockPhase, rockSlots, rocksMoved, ROCK_RESERVE, ROCK_STRIDE, rockVx, rockVy, rockX, rockY } from '../src/renderer/src/sim/tactical/rocks';
+import { beginRockStep, beginRockTick, endRockStep, freeFrame, freeRock, rockAlive, rockAt, rockBorn, rockCapacity, rockHp, rockHpMax, RockKind, rockMass, rockPhase, rockSlots, rocksMoved, seededRail, ROCK_RESERVE, ROCK_STRIDE, rockVx, rockVy, rockX, rockY } from '../src/renderer/src/sim/tactical/rocks';
 
 /** The flat index of a space or ship field (the space module's values come first). */
 function fieldIndex(st: TacticalState, name: string): number {
@@ -24,14 +24,14 @@ function railAt(st: TacticalState, k: number, T: number): RailOut {
 const slot = (st: TacticalState, k: number): number[] => Array.from(st.rocks.subarray(k * ROCK_STRIDE, (k + 1) * ROCK_STRIDE));
 
 describe('the asteroids-iii rock pool (spec §3.1)', () => {
-  it('has 160 reserve slots of 8 values; every seeded rock is a Rail (centre its position, offset 0) at t = 0 with full hp', () => {
+  it('has 160 reserve slots of 8 values; every seeded rock is a rail at t = 0 with full hp', () => {
     const st = createTacticalState(3);
     expect([ROCK_RESERVE, ROCK_STRIDE]).toEqual([160, 8]);
     expect(rockSlots(st)).toBe(st.map.asteroids.length + 160);
     expect(rockCapacity(st.map)).toBe(rockSlots(st));
     st.map.asteroids.forEach((a, k) => {
       const v = slot(st, k);
-      expect(v).toEqual([RockKind.Rail, a.x, a.y, 0, 0, a.r, rockHp(a.r), 0]);   // Task 5 turns cluster rocks into centre + offset
+      expect(v).toEqual([...seededRail(st.map, k), a.r, rockHp(a.r), 0]);   // §13.1: lane rocks Rail on themselves, cluster rocks Tumble on their centre
       const at = rockAt(st, k);   // tick 0: where the map put it (centre + offset, so to the last few bits for a cluster rock)
       expect([at.r, at.hp]).toEqual([a.r, rockHp(a.r)]); expect(at.x).toBeCloseTo(a.x, 9); expect(at.y).toBeCloseTo(a.y, 9);
       expect(rockHpMax(a.r)).toBe(Math.ceil(a.r / 10));

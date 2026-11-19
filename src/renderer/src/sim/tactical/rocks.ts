@@ -15,9 +15,9 @@
 // Per-tick transient masks (§3.1, §3.3, §3.4; not hashed, cleared at the start and the end of every stepDuel tick):
 // rockBorn (a new piece this tick), rockDone (had its contact turn), rockTouched (freed, pushed, hit or in a contact).
 // Breaking is rockBreak.ts, motion and rock-rock contacts rockContacts.ts, every number rockTuning.ts.
-import type { MapDef } from './map';
+import { clusterOf, type MapDef } from './map';
 import { railPos, type RailOut } from './rails';
-import { ROCK_HP_PER } from './rockTuning';
+import { ROCK_HP_PER, ROCK_SWITCHES } from './rockTuning';
 import type { TacticalState } from './state';
 export type { RockCause } from './state';
 
@@ -37,10 +37,13 @@ export const rockHpMax = rockHp;
 /** Spike ii §3.1: a rock's mass, r² (no unit). */
 export function rockMass(r: number): number { return r * r; }
 
-/** §13.1: seeded asteroid k's rail: kind, centre and offset (a lane rock: its own position, offset 0). */
-export function seededRail(map: MapDef, k: number): [number, number, number, number, number] {
-  const a = map.asteroids[k]!;
-  return [RockKind.Rail, a.x, a.y, 0, 0];
+/** §13.1: seeded asteroid k's rail: a belt rock a Rail centred on itself (offset 0); a cluster rock on its cluster's centre
+ *  with its offset, a Tumble when the clusterTumble switch is on (else a Rail: the cluster turns rigidly). */
+export function seededRail(map: MapDef, k: number, tumble = ROCK_SWITCHES.clusterTumble): [number, number, number, number, number] {
+  const a = map.asteroids[k]!, c = clusterOf(map, k);
+  if (c < 0) return [RockKind.Rail, a.x, a.y, 0, 0];
+  const o = map.clusterCentres[c]!;
+  return [tumble ? RockKind.Tumble : RockKind.Rail, o.x, o.y, a.x - o.x, a.y - o.y];
 }
 /** §3.5, §13.1: every seeded rock a rail at t = 0 where the map put it; the reserve empty. */
 export function initRocks(map: MapDef): Float64Array {

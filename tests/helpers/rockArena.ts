@@ -2,6 +2,7 @@
 // Rail at its own radius, a seeded slot as the map makes it), a full pool, and the tick's rock events.
 import { createTacticalState, type DuelEvent, type TacticalState } from '../../src/renderer/src/sim/tactical/state';
 import { beginRockTick, initRocks, rockHp, RockKind, rockSlots, ROCK_STRIDE, writeRock } from '../../src/renderer/src/sim/tactical/rocks';
+import { ROCK_SWITCHES } from '../../src/renderer/src/sim/tactical/rockTuning';
 import { todaysCrewWeapons } from './crewWeapons';
 
 export type RockEvent = Extract<DuelEvent, { kind: 'rock' }>;
@@ -36,4 +37,11 @@ export function fillPool(st: TacticalState, r: number, except: readonly number[]
 /** This tick's rock events, optionally of one kind. */
 export function rockEvents(st: TacticalState, what?: RockEvent['what']): RockEvent[] {
   return st.events.filter((e): e is RockEvent => e.kind === 'rock' && (what === undefined || e.what === what));
+}
+
+/** Asteroids-iii §13.7: run `run` with some switches set, always restoring them (plan deviation 19). */
+export function withSwitches(patch: Partial<typeof ROCK_SWITCHES>, run: () => void): void {
+  const saved = { ...ROCK_SWITCHES };
+  Object.assign(ROCK_SWITCHES, patch);
+  try { run(); } finally { Object.assign(ROCK_SWITCHES, saved); }
 }
