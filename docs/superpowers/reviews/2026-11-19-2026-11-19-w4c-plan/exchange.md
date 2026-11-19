@@ -195,3 +195,48 @@ Confirmed: spec L387-L390. Decision 8 now states it as a deviation with its reas
 
 ---
 
+# Round 2 (delta, reviewing 97073e12, effort medium, 115 s, 866401 in / 788302 cached / 9754 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — Decision 8 (plan L100) now says both runtimes keep lastGunSel. Step 5.2 (L1015) adds only `flight` and `triggerLive` to W-4a's `let` line and to its resets. Step 5.3 (L1016-L1024) replaces both of W-4a's lines with one block that keeps a single `lastGunSel` update. This matches W-4a plan Task 11 Step 3.4.
+- R1-F2: resolved — Plan L1077 now filters the 'Hold left mouse' rows and uses toContainEqual with stringMatching(/^At Weapons, with a MANUAL torpedo flying: steer it/). The Helm row at controlsList.ts L59 stays first, so settingsAndControls.test.ts L51 is unaffected.
+- R1-F3: resolved — Task 1 Step 3 (L141-L142) now runs `canonical-trace.ts baseline`, which writes both the trace and basicCopy (canonical-trace.ts L16-L21). Task 7 Step 1 (L1135-L1136) runs `same`, which exists at L26-L29 of the script. The lost-baseline fallback (L1138) also skips Step 2's `golden` check, which needs basicCopy (L31).
+- R1-F4: resolved — Step 4.4 and 4.5 (L1004-L1009) now quote W-4b's text. The pew click keeps `&& gunsManual`. The dead-trigger line stays and reads `trig = triggerLive`. The merge becomes `weaponsSeatHeld(weaponSel, triggerLive && gunModeBase(), deps.reticleAim?.() ?? -1)`. This matches W-4b plan L65 (Decision 7) and its test at L905-L916.
+- R1-F5: resolved — The online case (L923-L945) is now written in full in onlineDuelSession.test.ts's Hound block on rig(1), with the needed imports. It republishes with `r.client().publish(r.d)` after removeMissile, and it tests the prediction on pew pew, which has 1 bar at the start (note at L947). Task 5's Files list (L818) and its commit (L1039) now include both test files.
+- R1-F6: resolved — The pan case (L701-L724) uses a settable samplePointer and drag(); PointerSample is exported at input.ts L206. In runtime.ts L617-L624 the order is: cameraInput.apply (pan with p.dragX, and with aims false after Task 4 nothing is subtracted), then trackManualTorpedo, which leaves a free camera alone, then updateCamera, which returns early when follow is 'free'. So centreX = cx − 40/z holds exactly (camera.ts L68-L72). The Single player cases (L875-L919) use only W-4a's rig members: press, set, click, hold, tick, d, rt (W-4a plan L1848-L1871). The w4Ui case is concrete (L1062-L1067).
+- R1-F7: resolved — Plan L212 now covers both torpTurn literals in 'keeps the mode', at manualTorpedoFlight.test.ts L105 and L113. The L107 expectation stays valid under a hold toward 64. Plan L213 changes both file headers.
+- R1-F8: resolved — Both greps are now `-- src` only (L417, L1173). Plan L410 edits contracts.ts L112's torpMode doc and the HeldInput doc (L35-L37); the field at L40 is removed by Task 2's wire step.
+- R1-F9: resolved — Plan L576 and L579 now always inline `missileOf(state, i)?.manual === true`, say not to import manualTorpedo.ts, explain the cycle correctly (hunter.ts → weapons.ts → turret.ts), and add `missileOf` to the ./state import if it is missing.
+- R1-F10: resolved — Decision 8 (L100) now states the end-of-flight rule as a deviation from spec §7's 'at launch' wording, with its reason. flightFrame (L972-L974) implements it.
+
+## Verified
+- Task 5 Single player case 2 traced through flightFrame (L972-L974). On the removeMissile tick, frame 1 sees the flight end with sel 2 and lastGunSel 1, so weaponSel becomes 1 and stale is set because the trigger is held. Frame 2 keeps stale. After the release frame, stale clears and the trigger passes.
+- The W-4a launch idiom (W-4a plan L1911-L1912: MANUAL needs no lock or range) supports case 1's F launch and case 2's click launch.
+- W-4b's merge and pew-click text (W-4b plan L65, L881, L905-L916) agree with Task 5 Step 4's quotes.
+- W-4b's online held frame (W-4b plan L81) agrees with Step 5.4, which puts `triggerLive` in place of `triggerNow()`.
+- torpedoCamera.ts L16-L29 keeps a pan made during a flight, so the pan test's `follow === 'free'` holds after the frame.
+- canonical-trace.ts supports the baseline, same and golden modes in the order the plan now uses them.
+
+## Not verified
+- The internals of onlineDuelSession.test.ts's rig(1) after W-4a and W-4b (h.sources, h.sceneOpts[0].requests.trigger/reticle, c.helds(), c.state()) were not re-read. The online case is the round-1 reviewer's code, copied verbatim.
+- That the autocannon actually fires within 20 ticks on 1 bar in MAN with no reticle set (W-4b's MAN fire path) in Single player case 2.
+- Task 7 Step 5's report list does not name the canonical `same` line. This is cosmetic and was not raised.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the subject at `97073e12`. 0 accepted, 0 rejected, 0 deferred. The reviewer confirmed that R1-F1 to R1-F10 are resolved and raised no new findings.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
