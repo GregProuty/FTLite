@@ -32,7 +32,7 @@ const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
  *  torpedoes; at SPLIT 5108). Seed 4 before that: a crew loss at tick 8859 with SPLIT 5193 (SIM_VERSION 45, the Hunter's grace; now a crew win at 9346); seed 7 before that: a crew loss at tick 8069 (8311 before Artemis-ii, SIM_VERSION 43; 7282 before duel health, SIM_VERSION 41; 8832 before duel fire), short enough to run to its end twice.
  *  SPLIT is the first tick from 5000 on that ends with a missile in flight, a damaged crew room and a repair in
  *  progress (found by stepping the scripted duel; the test asserts all three). */
-const SEED = 10, SPLIT = 6283;   // merge of the Engineering spike with W-1, W-2 and W-3: was 6233 (master, SIM 57); the spike alone used seed 2 at 6104
+const SEED = 10, SPLIT = 6292;   // seed 10 a crew loss at tick 8092 (seeds 1 to 7 and 9 qualify at 6379, 6427, 6039, 6260, 6440, 7930, 5990, 6236; seed 8 none); the merge with the Engineering spike and owner 2026-11-19 (playtest2feedback merge, SIM 59): was 6283 (master, SIM 58); merge of the Engineering spike with W-1, W-2 and W-3: was 6233 (master, SIM 57); the spike alone used seed 2 at 6104
 function runToEnd(h: DuelCore, driver: ReturnType<typeof createDriver>, hashes: string[], frames: ReplayFrame[] = [], until = Infinity) {
   while (h.state.duel.tactical.outcome === Outcome.Running && duelRules.tick(h.state) < until) {   // to the round's decision (H-2: the run itself never ends)
     for (const frame of stepScripted(h, driver)) { frames.push(frame); if (frame.action.kind === 'tick') hashes.push(frame.after!.hash); }
@@ -64,7 +64,7 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
         expect(resumed.state.summary).toEqual(end);
         expect(resumed.core.captureCheckpoint().modeMemory, 'the final telemetry accumulator of the restored run').toEqual(reference.core.captureCheckpoint().modeMemory);
         expect(end).toMatchObject({ outcome: Outcome.EnemyWins, ticks: referenceHashes.length,
-          terminal: [['missile'], []], laserReleases: [2, 24], laserHits: [2, 24], missilesLaunched: [2, 5], missileHits: [0, 3], repairsFinished: [1, 7] });   // seed 10, merged with the Engineering spike (pinned whole-run numbers, kind b): was [['downed'], []], [1, 23], [2, 23], [2, 4], [1, 3], [5, 10] (SIM_VERSION 55, W-1 merged with asteroids-ii; seed 2 at SIM_VERSION 53, spike ii: [['laser'], []], [13, 24], [22, 24], [6, 7], [3, 3], [3, 9]; seed 6 on the W-1 branch at 54: [['laser'], []], [1, 22], [2, 22], [2, 4], [1, 2], [4, 14])
+          terminal: [['pew', 'missile'], []], laserReleases: [0, 20], laserHits: [0, 20], missilesLaunched: [1, 4], missileHits: [0, 3], repairsFinished: [1, 6] });   // seed 10, the playtest2feedback merge (owner 2026-11-19, pinned whole-run numbers, kind b): was [['missile'], []], [2, 24], [2, 24], [2, 5], [0, 3], [1, 7] (seed 10 merged with the Engineering spike); before that [['downed'], []], [1, 23], [2, 23], [2, 4], [1, 3], [5, 10] (SIM_VERSION 55, W-1 merged with asteroids-ii; seed 2 at SIM_VERSION 53, spike ii: [['laser'], []], [13, 24], [22, 24], [6, 7], [3, 3], [3, 9]; seed 6 on the W-1 branch at 54: [['laser'], []], [1, 22], [2, 22], [2, 4], [1, 2], [4, 14])
         expect(Object.isFrozen(end)).toBe(true);
         expect(referenceHashes.length).toBeGreaterThan(SPLIT);
         console.log(`continuation proof: seed ${SEED}, ${SPLIT} + ${referenceHashes.length - SPLIT} ticks; summary ${JSON.stringify(end)}`);

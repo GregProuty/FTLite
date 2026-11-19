@@ -86,7 +86,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
     disposeDuel(d);
   });
   it('plays a whole duel with every command admitted: never a weapon command away from Weapons, never a refused sit', () => {
-    const d = createSeatedDuel(layout, 2), pair = createScriptedPair(2), kinds = new Set<string>();   // seed 2: one whose duel uses every kind (merge with the Engineering spike, kind b: seed 1 stopped sending laserLock; seed 3 stopped sitting and standing with W-1's pew and duel hull ×1.75, SIM_VERSION 54; seed 1 stopped sending laserLock with Feel-i's SHIELDS opener, SIM_VERSION 50; seed 5 stopped sitting and standing with homing torpedoes, SIM_VERSION 46; seed 4 stopped locking after the Hunter's grace)
+    const d = createSeatedDuel(layout, 5), pair = createScriptedPair(5), kinds = new Set<string>();   // seed 5: one whose duel uses every kind (the merge with the Engineering spike and owner 2026-11-19 (playtest2feedback merge, SIM 59), kind b: seed 2 stopped sending laserLock and sit; merge with the Engineering spike, kind b: seed 1 stopped sending laserLock; seed 3 stopped sitting and standing with W-1's pew and duel hull ×1.75, SIM_VERSION 54; seed 1 stopped sending laserLock with Feel-i's SHIELDS opener, SIM_VERSION 50; seed 5 stopped sitting and standing with homing torpedoes, SIM_VERSION 46; seed 4 stopped locking after the Hunter's grace)
     while (d.tactical.outcome === Outcome.Running) {
       const input = scriptedInput(pair, d);
       for (const e of input.commands) { kinds.add(e.command.kind); expect(e.requestedTick).toBe(d.interior.tick); }

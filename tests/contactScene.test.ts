@@ -156,7 +156,7 @@ describe('the scene and the contact window (spec §6.5)', () => {
       expect(r.requests.takePew()).toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
-  it('W-1: at the Helm a map click over the enemy still opens its window and asks for no pew', () => {
+  it('W-1: at the crew Helm a map click over the enemy asks for no pew; it steers and leaves the window shut (playtest2feedback §4a, kind a)', () => {
     const r = rig();
     try {
       r.press('switch'); r.tick(); r.tick();
@@ -164,7 +164,7 @@ describe('the scene and the contact window (spec §6.5)', () => {
       r.scene.draw(r.rt, 1 / 60, LIVE);
       const b = interpolatedShip(r.rt.duel.tactical, r.rt.prev, r.rt.alpha(), 1);
       r.clicks.push(worldToScreen(r.rt.cameras.helm, vp, b.x, b.y)); r.scene.draw(r.rt, 1 / 60, LIVE);
-      expect(r.contact.state()).toEqual({ contact: 0, aim: false });
+      expect(r.contact.state()).toBeNull();   // the merge with W-1: on the Cutter's Newtonian Helm the left button only steers (T opens the window)
       expect(r.requests.takePew()).toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
