@@ -63,6 +63,24 @@ describe('acquireOnlineLock', () => {
   });
 });
 
+describe('acquireOnlineLock robustness', () => {
+  it('does not throw without AbortSignal.timeout', async () => {
+    const original = AbortSignal.timeout; (AbortSignal as { timeout?: unknown }).timeout = undefined;
+    try {
+      const busy = { request: vi.fn((_n: string, opts: { ifAvailable?: boolean }, cb: (lock: null) => unknown) => {
+        if (opts.ifAvailable) { cb(null); return Promise.resolve(); } return new Promise(() => {}); }) };
+      const result = await acquireOnlineLock(busy as never, { retryMs: 20, timeoutMs: 200 });
+      expect(result.state).not.toBe('held');
+    } finally { (AbortSignal as { timeout?: unknown }).timeout = original; }
+  });
+  it('releases a grant that completes just after the start-up race', async () => {
+    let grant: ((lock: object) => Promise<unknown> | undefined) | undefined;
+    const slow = { request: vi.fn((_n: string, _o: object, cb: (lock: object) => Promise<unknown> | undefined) => { grant = cb; return new Promise(() => {}); }) };
+    expect(await acquireOnlineLock(slow as never, { timeoutMs: 20 })).toEqual({ state: 'unavailable' });
+    expect(grant!({})).toBeUndefined();   // gaveUp: handed straight back, so the lock is not kept
+  });
+});
+
 describe('storage persistence on first online use', () => {
   it('asks once, on the first host/join/reconnect/rehost, and survives a refusal', async () => {
     const persistStorage = vi.fn(async () => { throw Error('refused'); });
