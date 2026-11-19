@@ -2,6 +2,7 @@
 // authority's commands; here the crew's inputs arrive ready-made for its slot, the hunter-class slot's come from the
 // hunter, and any other active slot is uncrewed.
 import { hunterThink } from './hunter';
+import { manualTorpTurn } from './manualTorpedo';
 import { flyMissile, resolveMissiles } from './missiles';
 import { stepRounds } from './gun';
 import { stepPew } from './pew';
@@ -10,7 +11,7 @@ import { hostilityStep, salvageStep, scanStep } from './science';
 import { resolveContacts } from './contacts';
 import { beginRockTick } from './rocks';
 import { stepRocks } from './rockContacts';
-import { classOf, CREW_SLOT, NO_AXES, Outcome, type TacticalState } from './state';
+import { classOf, CREW_SLOT, missileOf, NO_AXES, Outcome, type TacticalState } from './state';
 import { DEFAULT_FLIGHT, type FlightTuning } from './tuning';
 import { applyWeaponsInput, tickWeapons, UNCREWED_INPUT, type ShipInput } from './weapons';
 
@@ -21,7 +22,7 @@ export function hunterSlot(state: TacticalState): number {
 
 /**
  * Order, fixed (Sci-1 spec §4.6): think (the hunter reads the state as it stands), weapon commands (every active ship, in slot order),
- * ships fly, missiles fly, ship contacts, missile contacts, gun rounds (Valkyrn spec §7.2), pew rounds (W-1), weapon clocks, hostility, scan progress (the crew input's scanner), salvage, outcome, tick. The crew wins when every other
+ * ships fly, missiles fly (W-3: a MANUAL one by its Weapons input), ship contacts, missile contacts, gun rounds (Valkyrn spec §7.2), pew rounds (W-1), weapon clocks, hostility, scan progress (the crew input's scanner), salvage, outcome, tick. The crew wins when every other
  * active ship's hull is gone. Does nothing once the duel has ended.
  */
 export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTuning = DEFAULT_FLIGHT): void {
@@ -33,7 +34,11 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTu
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) applyWeaponsInput(state, i, inputs[i]!);
   if (hunter >= 0 && state.systems[hunter]!.missilesLaunched > hunterLaunches) state.hunter.lastLaunch = state.tick;   // a refused launch costs no cooldown
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) flySlot(state, i, inputs[i]!.helm ? inputs[i]!.axes : NO_AXES, tuning);
-  for (let i = 0; i < n; i++) if (state.ships[i]!.active) flyMissile(state, i);   // homing torpedo spec: it steers itself, attended or not
+  for (let i = 0; i < n; i++) if (state.ships[i]!.active) {   // homing torpedo spec: an AUTO one steers itself, attended or not
+    // W-3 (pew pew spec §3): a MANUAL one turns by its ship's Weapons input, and only while that console is attended.
+    const m = missileOf(state, i), input = inputs[i]!;
+    flyMissile(state, i, m && m.manual && input.weapons ? manualTorpTurn(m, input.torpTurn, input.torpHeading) : 0);
+  }
   stepRocks(state);   // SPIKE (destructible asteroids): fragments fly and meet the planet and the other rocks
   resolveContacts(state, true);   // spike ii §5.1: rocks are bodies in the duel
   resolveMissiles(state);

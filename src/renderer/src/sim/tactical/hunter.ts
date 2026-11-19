@@ -36,7 +36,14 @@ export function autoFaceTurn(state: TacticalState, i: number): number {
 /** Feel-ii's click-to-heading (Feel-ii spec §1.1): auto-face's turn law aimed at the fixed bearing of heading index `h`
  *  instead of the lead point. Pure. */
 export function headingTurn(state: TacticalState, i: number, h: number): number {
-  return faceTurn(state.ships[i]!.heading, hx(h), hy(h));
+  return holdTurn(state.ships[i]!.heading, h);
+}
+
+/** W-3 (pew pew spec §3): headingTurn's law for any nose: the turn (−1, 0 or 1) from a nose at heading index `heading`
+ *  toward the bearing of heading index `h`, none once it is within AUTO_FACE_SIN of the nose. A MANUAL torpedo holds its
+ *  heading by it, as the Helm does. Pure. */
+export function holdTurn(heading: number, h: number): number {
+  return faceTurn(heading, hx(h), hy(h));
 }
 
 /** The auto-face turn law: toward (dx, dy) as pursuitTurn, none once it is within AUTO_FACE_SIN of the nose. */
