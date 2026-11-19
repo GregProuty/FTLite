@@ -127,7 +127,7 @@ export type RockCause = 'laser' | 'torpedo' | 'collision' | 'ram' | 'planet' | '
 export interface TacticalState {
   tick: number; seed: number; rng: RngState; map: MapDef; grid: BroadPhase;
   /** Spike ii (rocks.ts): the mutable rock pool and its counters (§8), then the per-tick transient masks (§3.1, §3.3: not
-   *  hashed, not snapshotted, cleared at the start of every stepDuel tick). */
+   *  hashed, not snapshotted, cleared at the start and the end of every stepDuel tick). */
   rocks: Float64Array; rockHits: number; rockSplits: number; rockDust: number; rockBlasts: number; rockCollisions: number; rockEvictions: number;
   rockBorn: Uint8Array; rockDone: Uint8Array;
   /** Each slot's body in space. */

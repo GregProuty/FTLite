@@ -6,7 +6,7 @@
 // static rock never moves, so a grid hit counts only while its slot still holds a static rock; moving rocks are found by
 // a linear scan. rocksNear merges both, ascending, so every caller still meets rocks in one fixed slot order.
 // Two per-tick transient masks sit beside the pool (§3.1, §3.3): `rockBorn` (slots written with a new piece this tick)
-// and `rockDone` (slots that had their contact turn this tick); not hashed, cleared at the start of every stepDuel tick.
+// and `rockDone` (slots that had their contact turn this tick); not hashed, cleared at the start and the end of every stepDuel tick.
 // Breaking is rockBreak.ts, motion and rock-rock contacts rockContacts.ts, every number rockTuning.ts.
 import { queryGrid } from './grid';
 import type { MapDef } from './map';

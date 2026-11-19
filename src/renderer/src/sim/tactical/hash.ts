@@ -111,8 +111,8 @@ export const spaceModule: SimModule<TacticalState> = {
     map: 'regenerated from the seed by generateMap; the duel snapshot checks its mapHash',
     grid: 'the broad-phase grid, rebuilt from the map',
     events: 'per-tick events for the views, cleared every tick',
-    rockBorn: 'spike ii §3.1: slots written with a new piece this tick; cleared at the start of every stepDuel tick',
-    rockDone: 'spike ii §3.3: slots that had their contact turn this tick; cleared at the start of every stepDuel tick'
+    rockBorn: 'spike ii §3.1: slots written with a new piece this tick; cleared at the start and the end of every stepDuel tick',
+    rockDone: 'spike ii §3.3: slots that had their contact turn this tick; cleared at the start and the end of every stepDuel tick'
   },
   commands: [],
   reasons: []

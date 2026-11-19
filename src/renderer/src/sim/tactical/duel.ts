@@ -43,5 +43,6 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTu
   const crewDown = down(CREW_SLOT), others = state.ships.map((s, i) => i).filter((i) => i !== CREW_SLOT && state.ships[i]!.active);
   const enemyDown = others.length > 0 && others.every(down);
   state.outcome = crewDown && enemyDown ? Outcome.Draw : crewDown ? Outcome.EnemyWins : enemyDown ? Outcome.CrewWins : Outcome.Running;
+  beginRockTick(state);   // impl review R1-F1: and end empty, so a read between ticks sees what a clone or restore sees
   state.tick++;
 }
