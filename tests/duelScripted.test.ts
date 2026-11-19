@@ -8,10 +8,11 @@ import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import {
-  AVOID_MARGIN, AVOID_TICKS, bfsPath, createScriptedPair, goalTiles, MISSILE_GAP, ORBIT_GAIN, ORBIT_MAX, ORBIT_MIN, scriptedInput, SPEED_SLACK
+  AVOID_MARGIN, AVOID_TICKS, bfsPath, createScriptedPair, goalTiles, MISSILE_GAP, ORBIT_GAIN, ORBIT_MAX, ORBIT_MIN, predictAxes, scriptedInput, SPEED_SLACK
 } from '../src/renderer/src/sim/duel/scripted';
 import { Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { BELT_OUTER, R_MAP } from '../src/renderer/src/sim/tactical/tuning';
+import { RCS_TURN_BOOST } from '../src/renderer/src/sim/tactical/tuning';
 
 const layout = parseShip(cutter);
 
@@ -88,7 +89,25 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
       for (const e of input.commands) { kinds.add(e.command.kind); expect(e.requestedTick).toBe(d.interior.tick); }
       expect(stepDuelTick(d, input).every((r) => r.status === 'applied')).toBe(true);
     }
-    expect([...kinds].sort()).toEqual(['laserLock', 'sit', 'stand', 'torpLock']);   // FTL targeting spec §3: the gunner fires by targets; playtest2feedback: no throttle commands on the Cutter
+    expect([...kinds].sort()).toEqual(['helmPower', 'laserLock', 'sit', 'stand', 'torpLock']);   // FTL targeting spec §3: the gunner fires by targets; playtest2feedback: no throttle commands on the Cutter (playtest2feedback (SIM 55) moved it from without helmPower: the Task 8 gate's knob 0, the compressor bar to ENGINE)
+    disposeDuel(d);
+  });
+});
+
+describe("the Helm's hazard prediction flies the sim's turn boost (playtest2feedback §4a)", () => {
+  it('on the Cutter, the next tick predicts with exactly the boost the step flew the held input with, and some far turns are boosted', () => {
+    const d = createSeatedDuel(layout, 3), pair = createScriptedPair(3);
+    let seated = 0, boosted = 0;
+    for (let k = 0; k < 6000 && d.tactical.outcome === Outcome.Running; k++) {
+      const atHelm = Seated.station[d.interior.crew[0]!]! === d.nav, input = scriptedInput(pair, d);
+      stepDuelTick(d, input);
+      if (!atHelm || Seated.station[d.interior.crew[0]!]! !== d.nav) continue;
+      const flew = d.helmVent.boosted ? RCS_TURN_BOOST : 1, next = predictAxes(pair, d).turnBoost;
+      expect(next).toBe(flew);   // only ever exactly 1 or RCS_TURN_BOOST
+      seated++; if (flew === RCS_TURN_BOOST) boosted++;
+    }
+    expect(seated).toBeGreaterThan(1000);
+    expect(boosted).toBeGreaterThan(0);
     disposeDuel(d);
   });
 });

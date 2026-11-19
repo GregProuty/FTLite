@@ -10,7 +10,7 @@ import { classOf, missileOf, Outcome, targetOf } from '../tactical/state';
 import { CONTACT_GRACE_TICKS, LASER_ARC_COS, LASER_RANGE } from '../tactical/tuning';
 import { canLaunch, laserFull } from '../tactical/weapons';
 import type { DuelState } from './state';
-import type { DuelInput } from './step';
+import { heldAim, type DuelInput } from './step';
 
 /** A crew manoeuvre (the Helm turns, or its throttle is set: Artemis spec §5.3) counts toward a bait for this many ticks (spec §4). */
 export const BAIT_WINDOW_TICKS = 300;
@@ -130,8 +130,13 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
   }
   const helm = attendant(d, d.nav);
   if (helm >= 0) {
-    const turning = (input.held[helm]?.moveX ?? 0) !== 0;   // Artemis spec §5.3: the Helm turns, or the throttle is not 0
-    if ((turning || d.throttle !== 0) && dist(crew.x, crew.y, enemy.x, enemy.y) <= BAIT_RANGE) { m.tick = tick; m.x = enemy.x; m.y = enemy.y; }
+    // Artemis spec §5.3: the Helm turns, or the throttle is not 0. Playtest2feedback Decision 15: on a newtonianHelm class, a
+    // held face or aim, a vented thruster or boost (helmVent), or a held throttle that is not 0.
+    const h = input.held[helm], v = d.helmVent;
+    const manoeuvre = classOf(tac, 0).newtonianHelm
+      ? h?.face === true || (h !== undefined && heldAim(h) >= 0) || v.x !== 0 || v.y !== 0 || v.boosted || d.thrMille !== 0
+      : (h?.moveX ?? 0) !== 0 || d.throttle !== 0;
+    if (manoeuvre && dist(crew.x, crew.y, enemy.x, enemy.y) <= BAIT_RANGE) { m.tick = tick; m.x = enemy.x; m.y = enemy.y; }
   }
 
   // Repairs: a start is the first tick of work on a room after not working on it; a finish credits every named player.

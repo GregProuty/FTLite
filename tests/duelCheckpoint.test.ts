@@ -18,7 +18,8 @@ import { LAYOUT } from './helpers/sim';
 import { runReplay } from '../src/renderer/src/authority/replay';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
-/** Seed 2's scripted duel is a crew loss at tick 14424 (SIM_VERSION 53, spike ii with the fan split at r 13; at SPLIT 7195;
+/** Seed 2's scripted duel is a crew loss at tick 10432 (playtest2feedback (SIM 55) moved it from 14424, at SPLIT 6427 from 7195;
+ *  seeds 5 and 8 to 10 have no qualifying tick, seeds 1, 3, 4, 6 and 7 do at 17054, 5905, 5380, 10234 and 17975). It was a crew loss at tick 14424 (SIM_VERSION 53, spike ii with the fan split at r 13; at SPLIT 7195;
  *  seeds 1, 5 and 7 to 9 have no qualifying tick, seeds 3, 4, 6 and 10 do at 5823, 6156, 6055 and 9861). Before the fan
  *  tuning it was a crew win at tick 25426 (SIM_VERSION 53, spike ii billiard asteroids; at SPLIT 7195; seeds
  *  1 and 4 to 10 had no qualifying tick, seed 3 did at 9599). Seed 1 was used before: a crew win at tick 5980 (SIM_VERSION 50,
@@ -29,7 +30,7 @@ const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
  *  torpedoes; at SPLIT 5108). Seed 4 before that: a crew loss at tick 8859 with SPLIT 5193 (SIM_VERSION 45, the Hunter's grace; now a crew win at 9346); seed 7 before that: a crew loss at tick 8069 (8311 before Artemis-ii, SIM_VERSION 43; 7282 before duel health, SIM_VERSION 41; 8832 before duel fire), short enough to run to its end twice.
  *  SPLIT is the first tick from 5000 on that ends with a missile in flight, a damaged crew room and a repair in
  *  progress (found by stepping the scripted duel; the test asserts all three). */
-const SEED = 2, SPLIT = 7195;
+const SEED = 2, SPLIT = 6427;   // playtest2feedback (SIM 55) moved it from 7195
 function runToEnd(h: DuelCore, driver: ReturnType<typeof createDriver>, hashes: string[], frames: ReplayFrame[] = [], until = Infinity) {
   while (h.state.duel.tactical.outcome === Outcome.Running && duelRules.tick(h.state) < until) {   // to the round's decision (H-2: the run itself never ends)
     for (const frame of stepScripted(h, driver)) { frames.push(frame); if (frame.action.kind === 'tick') hashes.push(frame.after!.hash); }
@@ -61,7 +62,7 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
         expect(resumed.state.summary).toEqual(end);
         expect(resumed.core.captureCheckpoint().modeMemory, 'the final telemetry accumulator of the restored run').toEqual(reference.core.captureCheckpoint().modeMemory);
         expect(end).toMatchObject({ outcome: Outcome.EnemyWins, ticks: referenceHashes.length,
-          terminal: [['laser'], []], laserReleases: [13, 24], laserHits: [22, 24], missilesLaunched: [6, 7], missileHits: [3, 3], repairsFinished: [3, 9] });   // seed 2 (SIM_VERSION 53, spike ii, the fan split at r 13)
+          terminal: [['laser'], []], laserReleases: [1, 29], laserHits: [2, 29], missilesLaunched: [2, 5], missileHits: [0, 3], repairsFinished: [1, 16] });   // seed 2 (SIM_VERSION 53, spike ii, the fan split at r 13; playtest2feedback (SIM 55) moved it from laserReleases [13, 24], laserHits [22, 24], missilesLaunched [6, 7], missileHits [3, 3], repairsFinished [3, 9])
         expect(Object.isFrozen(end)).toBe(true);
         expect(referenceHashes.length).toBeGreaterThan(SPLIT);
         console.log(`continuation proof: seed ${SEED}, ${SPLIT} + ${referenceHashes.length - SPLIT} ticks; summary ${JSON.stringify(end)}`);

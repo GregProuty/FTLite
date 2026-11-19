@@ -120,7 +120,8 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
     const bait = (manoeuvre: boolean, wait: number): number => {
       const d = createSeatedDuel(layout, 5), t = createTelemetry(d), [s, e] = d.tactical.ships, p = d.tactical.map.planet;
       e.x = s.x + 500; e.y = s.y; e.vx = s.vx; e.vy = s.vy;                  // within 900 of the crew, far from the planet
-      step(d, t, [], [manoeuvre ? { moveX: 1, moveY: 0, interactHeld: false } : NONE, NONE]);
+      // playtest2feedback Decision 15: on the Cutter (a newtonianHelm class) moveX is no manoeuvre; one tick of a vented thruster is
+      step(d, t, [], [manoeuvre ? { moveX: 0, moveY: 0, interactHeld: false, rcsX: 1 } : NONE, NONE]);
       for (let k = 0; k < wait; k++) step(d, t);
       e.x = p.x - p.r - SHIP_RADIUS + 5; e.y = p.y; e.vx = 10; e.vy = 0;     // into the planet's far side
       step(d, t);

@@ -22,7 +22,7 @@ import { CREW_SPEED, DT, HEALTH_MAX, REACH } from '../tuning';
 import { isDowned, medbayOnline, medbayRoom, revivers } from './health';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope } from './commands';
 import type { DuelState } from './state';
-import { aimTurn, type DuelInput } from './step';
+import { aimTurn, helmBoost, type DuelInput } from './step';
 import { THROTTLE_MAX, THROTTLE_MIN, throttleThrust } from './throttle';
 import { crewThrust } from './helmFlight';
 
@@ -35,8 +35,9 @@ export const ORBIT_GAIN = 0.004;
 /** The orbit radius is drawn once per duel in [ORBIT_MIN, ORBIT_MAX] (spec: ≥ BELT_OUTER + 200, ≤ R_MAP − 600). */
 export const ORBIT_MIN = 1500;
 export const ORBIT_MAX = 2200;
-/** Speed band around the circular speed inside which the Helm neither thrusts nor brakes (u/s). */
-export const SPEED_SLACK = 8;
+/** Speed band around the circular speed inside which the Helm neither thrusts nor brakes (u/s). playtest2feedback (SIM 55):
+ *  8 → 10 from the gate (median 223.4 s, 5 wins, 5 losses). */
+export const SPEED_SLACK = 10;
 /** The Helm dodges the enemy's torpedo inside this range with a hard full-thrust turn across its path (homing torpedo
  *  spec §1: a hard turn can beat it). 350 from the telemetry gate (tests/duelGates.test.ts): without a dodge the
  *  homing Hunter torpedo cut the median duel to 136 s. */
@@ -62,7 +63,8 @@ export interface ScriptedPair {
   orbitR: number;
   /** Next command sequence per player. */
   seq: [number, number];
-  /** The Helm's axes on the tick before. The avoidance prediction holds their turn, and flies the throttle's thrust. */
+  /** The Helm's axes on the tick before. The avoidance prediction holds their turn and its boost (playtest2feedback §4a:
+   *  helmBoost of the held input it sent, so it predicts the turn the sim flew), and flies the throttle's thrust. */
   axes: Axes;
   /** Tick of the last crew missile launch the pair sent. */
   lastLaunch: number;
@@ -99,6 +101,16 @@ export function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } |
   return null;
 }
 
+/** The axes the Helm's hazard check predicts with (spec §3): the turn of the tick before and, on a newtonianHelm class, its
+ *  boost (playtest2feedback §4a: the boost the sim flew it with, so a far turn is predicted at RCS_TURN_BOOST, not 1×), with
+ *  the thrust the ship flies at this tick before any new command (the throttle's, Artemis spec §5.5; the held throttle's,
+ *  playtest2feedback §7). */
+export function predictAxes(pair: ScriptedPair, d: DuelState): Axes {
+  return classOf(d.tactical, 0).newtonianHelm
+    ? { turn: pair.axes.turn, turnBoost: pair.axes.turnBoost ?? 1, thrust: crewThrust(d.thrMille) }
+    : { turn: pair.axes.turn, thrust: throttleThrust(d.throttle) };
+}
+
 /** The Helm's axes (spec §3): avoid, then dodge an inbound torpedo, then line up (a full laser with a target, FTL targeting
  *  spec §3; Feel-i: by holding auto-face, as a player would, so `face` is set and `turn` is the turn it will make), then orbit. The hazard check predicts with the thrust the ship flies
  *  at this tick before any new command (the throttle's, Artemis spec §5.5; the held throttle's, playtest2feedback §7).
@@ -108,7 +120,7 @@ function helmAxes(pair: ScriptedPair, d: DuelState): Axes & { face?: boolean; ai
   const t = d.tactical, s = t.ships[0], e = t.ships[targetOf(t, 0)]!;
   const crewClass = classOf(t, 0).newtonianHelm;   // the Valkyrn class keeps its A/D turn law (turnToward), so its scripted pair is unchanged
   const toward = (dx: number, dy: number): Axes & { aim: number } => { const aim = nearestHeading(dx, dy); return { turn: crewClass ? aimTurn(s.heading, aim) : turnToward(s.heading, dx, dy), thrust: 1, aim }; };
-  const away = hazardAway(d, { turn: pair.axes.turn, thrust: classOf(t, 0).newtonianHelm ? crewThrust(d.thrMille) : throttleThrust(d.throttle) });   // playtest2feedback §7: the thrust it flies now
+  const away = hazardAway(d, predictAxes(pair, d));
   if (away) return toward(away.x, away.y);
   // Dodge (homing torpedo spec): the enemy's torpedo within EVADE_RANGE, turn the nose square across its line of approach,
   // on the side the ship already moves to, at full thrust.
@@ -329,9 +341,14 @@ export function scriptedInput(pair: ScriptedPair, d: DuelState): DuelInput {
         if (level !== d.throttle) cmds[pid]!.push({ kind: 'throttle', level });
       }
       const lever = crewHelm && thr !== 0 ? { throttleHeld: thr } : {};
+      // Playtest2feedback (Task 8 gate, knob 0): the scripted crew moves its compressor bar to ENGINE (cap 1000), since it
+      // never vents a thruster (Decision 8). It limits itself: applied, compressor is 0. A scripted-pair choice, not a rule.
+      if (crewHelm && d.compressor > 0) cmds[pid]!.push({ kind: 'helmPower', delta: 1 });
       // Playtest2feedback §4a, §7: the crew Helm turns by aim or face, never moveX (the Valkyrn class still turns by moveX).
       held[pid] = axes.face ? { moveX: 0, moveY: 0, interactHeld: false, face: true, ...lever }
         : crewHelm ? { moveX: 0, moveY: 0, interactHeld: false, aim: axes.aim, ...lever } : { moveX: axes.turn, moveY: 0, interactHeld: false, ...lever };
+      // Playtest2feedback §4a: the boost the sim flies this held input with (the step reads the same state), 1 or RCS_TURN_BOOST.
+      if (crewHelm) pair.axes.turnBoost = helmBoost(d, held[pid]!);
     } else if (seat === d.weapons) {
       gunner(pair, d, cmds[pid]!);
     }
