@@ -128,13 +128,13 @@ Line numbers were verified against master at `cf4d6775`, which already carries V
     - **Hazard capacity.** Sensors capacity from hazards is a duel rule (`sim/duel/sensors.ts`, via `capacityOf`), because tactical code can't see the interior. A clamp after the hazard tick catches fires that spread or ignite there.
     - **The gates** are on `contactScan`, `laserLock` and `torpLock` with a room ≥ 0 (clearing needs nothing seen), and on `designate` with a contact ≥ 0. A running scan pauses while its contact is unseen.
     - **The scripted gunner** sends no lock while the target is unseen.
+19. **Measurements for the report (spec §1)** come from `scripts/engineering-spike-measure.ts`, run at 53 (Task 1) and at the end (Task 12): the flattened duel length for a Hound duel, and the mean ms per tick over a 3600-tick scripted Cutter duel. Task 12 adds the gate table. Part ii adds feel and screenshots to the same report file.
 20. **The bots fight with pew pew (Task 9b Step 7b).** The beam starts dark, so:
     - the scripted Helm lines up when either laser is full and targeted;
     - the scripted gunner re-locks with `laserLock { weapon: 'pew' }` and holds the torpedo while pew pew has a shot;
     - telemetry's `weaponsIdleTicks` counts a full laser on either barrel.
     The console's "WEAPONS OFFLINE" situation is Part ii's.
 21. **The Shield loot is cancelled by the cap (spike only).** The derelict's Shield loot (`sim/tactical/science.ts:74`) adds a layer over the class layers, but the crew's shield cap (Task 3) drops any layer above `SHIELD_LAYERS_BY_BARS[bars]` the same tick. In the spike that loot does nothing. Task 12 notes it in the report's known limits; the bar cap is not changed for it.
-19. **Measurements for the report (spec §1)** come from `scripts/engineering-spike-measure.ts`, run at 53 (Task 1) and at the end (Task 12): the flattened duel length for a Hound duel, and the mean ms per tick over a 3600-tick scripted Cutter duel. Task 12 adds the gate table. Part ii adds feel and screenshots to the same report file.
 
 ## File structure
 
@@ -1463,7 +1463,7 @@ Keep the first line's `// Duel fire (duel-fire spec §1): the crew ship's fires,
 
 In `src/renderer/src/sim/duel/tuning.ts`:
 - delete the line `export const DUEL_FIRE_GROW = 1 / 60;`;
-- in the doc comment above the fire constants (it spans lines 34 and 35 with ` *  ` prefixes), remove the clause that a fire "grows DUEL_FIRE_GROW per tick to FIRE_CAP and never goes out by itself" and put in its place "grows, shrinks and spreads by the sector fireStep (Engineering spike spec §4)". Keep the rest of the comment and the line prefixes.
+- in the doc comment above the fire constants (it spans lines 35 and 36 with ` *  ` prefixes), remove the clause that a fire "grows DUEL_FIRE_GROW per tick to FIRE_CAP and never goes out by itself" and put in its place "grows, shrinks and spreads by the sector fireStep (Engineering spike spec §4)". Keep the rest of the comment and the line prefixes.
 
 - [ ] **Step 6: doorSystem and the hazard tick in the step**
 
@@ -3416,17 +3416,18 @@ import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { DuelSystem } from '../src/renderer/src/sim/duel/power';
 import { HEAT_MAX } from '../src/renderer/src/sim/tuning';
+import { Life, LifeState } from '../src/renderer/src/sim/components';
 
 const HOUND = parseShip(hound);
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 /** The engineering script (spec §10.1 start: 1 spare bar): Engines to its overdrive bar with no coolant (heat +2 per
- *  hazard tick, so it overheats near tick 640), coolant on Shields, a held door, airlock 0 (the Hold, away from the Q
- *  spawns) opened and closed, then the freed bars into Sensors and Oxygen. */
+ *  hazard tick, so it overheats near tick 640), coolant on Shields, the R–H door held (edge 1, off the crew's air path:
+ *  O and Q only leak to the Hold through closed doors), airlock 0 (the Hold) opened and closed, then the freed bars into Sensors and Oxygen. */
 const SCRIPT: readonly [number, number, DuelCommand][] = [
   [30, 0, { kind: 'shipPower', system: DuelSystem.Engines, delta: 1 }], [31, 1, { kind: 'shipPower', system: DuelSystem.Sensors, delta: -1 }],
   [40, 0, { kind: 'shipPower', system: DuelSystem.Engines, delta: 1 }], [60, 1, { kind: 'shipCoolant', system: DuelSystem.Shields }],
-  [400, 0, { kind: 'shipDoor', edge: 2 }], [420, 1, { kind: 'shipAirlock', index: 0 }], [900, 1, { kind: 'shipAirlock', index: 0 }],
+  [400, 0, { kind: 'shipDoor', edge: 1 }], [420, 1, { kind: 'shipAirlock', index: 0 }], [900, 1, { kind: 'shipAirlock', index: 0 }],
   [1200, 0, { kind: 'shipPower', system: DuelSystem.Sensors, delta: 1 }], [1201, 0, { kind: 'shipPower', system: DuelSystem.Oxygen, delta: 1 }]
 ];
 let seq = 0;
@@ -3455,6 +3456,7 @@ describe('engineering spike: determinism (spec §8)', () => {
         expect(ha, `seed ${seed}`).toEqual(hb);
         expect(ra.statuses, `seed ${seed}`).toEqual(SCRIPT.map(() => 'applied'));
         expect(ra.maxHeat, `seed ${seed}`).toBe(HEAT_MAX); expect(ra.failed, `seed ${seed}`).toBe(true);
+        for (let p = 0; p < 2; p++) expect(Life.state[a.interior.crew[p]!], `seed ${seed} player ${p}`).toBe(LifeState.Conscious);
       } finally { disposeDuel(a); disposeDuel(b); }
     }
   }, 120_000);
