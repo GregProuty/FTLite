@@ -199,6 +199,7 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
     if (rl.laser !== null) { if (live(rl.laser)) { s.laserRock = rl.laser; s.laserTargeted = true; } else if (rl.laser === -1) { s.laserRock = -1; s.laserTargeted = false; } }
     if (rl.torpedo !== null) { if (live(rl.torpedo)) { s.torpRock = rl.torpedo; s.torpLock = -1; } else if (rl.torpedo === -1) s.torpRock = -1; }
   }
+  const torpOnRock = s.torpRock >= 0;   // impl review R1-F3: a shot below that breaks this rock must not turn the launch on the enemy
   stepBurst(state, i);
   if (!input.weapons) { s.fireHeld = false; return; }   // unattended: Fire lets go without firing or discarding
   if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; }   // a hit after its clock ran last tick: no shot
@@ -213,6 +214,7 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
   }
   // Auto-fire: on the enemy when eligible; spike ii §6.2: on a rock target when it is on target (AUTO_DIG is false).
   if (crew && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && (s.laserRock >= 0 ? rockOnTarget(state, i, s.laserRock) : laserEligible(state, i, s.target) || laserDiggable(state, i))) fireLaser(state, i);
+  if (torpOnRock && s.torpRock < 0) return;   // the torpedo's rock broke this call: no launch this tick (the command can still read 'applied')
   if (input.missileLaunch && canLaunch(state, i)) {
     launchMissile(state, i);
     s.fireHeld = false;

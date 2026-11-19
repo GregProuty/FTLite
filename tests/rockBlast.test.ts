@@ -6,8 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { homingTurn } from '../src/renderer/src/sim/tactical/missiles';
 import { placeMissile } from '../src/renderer/src/sim/tactical/state';
-import { canLaunch, IDLE_INPUT, torpedoInRange } from '../src/renderer/src/sim/tactical/weapons';
-import { rockAt } from '../src/renderer/src/sim/tactical/rocks';
+import { applyWeaponsInput, canLaunch, IDLE_INPUT, torpedoInRange } from '../src/renderer/src/sim/tactical/weapons';
+import { rockAlive, rockAt } from '../src/renderer/src/sim/tactical/rocks';
 import { blastFall, detonateTorpedo } from '../src/renderer/src/sim/tactical/rockBlast';
 import { arena, fillPool, mover, rockEvents } from './helpers/rockArena';
 
@@ -102,6 +102,17 @@ describe('a torpedo with a rock target (spec §6.4)', () => {
     s.torpRock = 100;
     stepDuel(st, { ...IDLE_INPUT, missileLaunch: true });
     expect([s.torpRock, s.torpRockFlying]).toEqual([-1, 100]);
+  });
+  it('a launch on a rock that a laser shot in the same call breaks does not retarget the enemy: nothing launches (R1-F3)', () => {
+    const st = arena(), s = st.systems[0];
+    st.ships[0].heading = 64;   // east, at (0, −2500): the laser is full and targeted
+    st.ships[1].active = true; Object.assign(st.ships[1], { x: 0, y: -2200 });
+    mover(st, 100, 200, -2500, 0, 0, 12, 2);   // r 12, hp 2: the laser's 2 damage turns it to dust
+    s.laserRock = 100; s.torpRock = 100;
+    expect([canLaunch(st, 0), canLaunch(st, 0, -1)]).toEqual([true, true]);   // the enemy is in range too
+    applyWeaponsInput(st, 0, { ...IDLE_INPUT, missileLaunch: true });
+    expect(rockAlive(st, 100)).toBe(false);
+    expect([s.torpRock, s.torpRockFlying, s.missilesLaunched]).toEqual([-1, -1, 0]);
   });
   it('flies unguided at −2 (its rock broke)', () => {
     const st = arena();

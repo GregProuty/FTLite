@@ -41,6 +41,7 @@
 8. **Blast fall-off test** (spec §9.3 "blast damage and push fall off linearly to zero at the radius"): the §4.2 formula gives push `BLAST_PUSH · fall` (linear to 0) and damage `2 + 4 · fall` (linear to 2 at the edge, then nothing at and beyond the radius). The test checks exactly that formula.
 9. **Stress script driver** (spec §9.1 does not say how the crew reaches the belt): the script parks the crew 300 u outward of the biggest live belt rock when nothing is within torpedo range, keeps the crew's hull full and tops the magazine up before each 10 s torpedo, and turns the nose straight onto the laser's rock (script-side writes, identical in both twins). The Hunter is switched off as an inactive slot.
 10. **Fan 2-piece threshold** (spec §3.4): tuned 2026-11-18 from r ≥ 25 to r ≥ 13 (`FAN_SPLIT_MIN_R`; 3 pieces at `FAN_TRIPLE_MIN_R` 40 unchanged) after the §9.4 feel proxy (1/10) so chain breaks keep making pieces. The task code blocks below show the original 25.
+11. **A launch whose rock breaks in the same tick** (impl review R1-F3): when a laser shot earlier in the same `applyWeaponsInput` call breaks the torpedo's rock target, neither the manual `missileLaunch` nor the auto-launch fires that tick (no retarget to the enemy), so such a command can still read 'applied' with no launch.
 
 ---
 
