@@ -177,3 +177,79 @@ Confirmed: W-4a declares `triggerNow`. Task 5 now quotes W-4a's exact `sessionHe
 
 ---
 
+# Round 2 (delta, reviewing 0f820aff, effort medium, 203 s, 2312072 in / 2216663 cached / 17284 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 Task 7's new online prediction case assumes the replica's Hound faces heading 0, but the spawn heading depends on the seed
+The case sends `reticle(8000)` and then expects `src().turret(0)` to be > 0 and either a multiple of 455 or exactly 8000. But `turretAim` is a world fine aim: `predictTurret` calls `slewTurret(v, t.ships[0].heading, aim, …)`. So the target offset is `turretOffset(heading, 8000)`, clamped to ±10922, and that equals 8000 only when the replica's Hound heading is 0. For most headings the offset is negative, or it is clamped, or it ends at a value that is neither 8000 nor a multiple of 455. · plan L1459-1475 (reticle(8000), `expect(p).toBeGreaterThan(0); expect(p % 455 === 0 || p === 8000)`), plan L1492-1499 (predictTurret slews about `t.ships[0].heading`); map.ts L57-59 (spawnAt: heading = (first + 64) % 256, prograde), L72-73 (`first = nextInt(rng, HEADING_COUNT)`); state.ts L283 (ships at map.spawns). · As written, the test can pass only by luck of seed 5's spawn heading, so Task 7 Step 6's expected PASS is not guaranteed. This is a test the executor cannot make pass as written. · Derive the reticle from the replica. Use `const h0 = c.state()!.tactical.ships[0].heading; const want = (h0 * 256 + 2000) % 65536;` and send `reticle(want)`. Then assert `p > 0 && p <= 2000 && (p % 455 === 0 || p === 2000)`. Alternatively, assert `p` equals `predictTurret(c.state()!.tactical, 0, { weaponSel: 0, turretAim: want }, true, k)` for the k the rig reached.
+
+### [P2] R2-F2 Task 10's commit names tests/w4Auto.test.ts for rung 4, but the first-seated-tick test lives in tests/duelScripted.test.ts
+The new rung-4 rule updates Task 6's 'its first seated tick sends shipPower …' case. Step 5's git add appends `<tests/w4Auto.test.ts if rung 4 is kept>`, but Task 6 puts that describe block in `tests/duelScripted.test.ts`, which the commit omits. · plan L1341-1345 (the case is in tests/duelScripted.test.ts); plan L1911 (rung 4 rule); plan L1926 (commit placeholder names w4Auto.test.ts) · If rung 4 is kept, the updated test would be left out of the tuning commit, and an unchanged file would be staged. · Change the placeholder to `<tests/duelScripted.test.ts if rung 4 is kept>`. Add `<tests/w4Loadout.test.ts if rung 2 is kept>` as well; it is already listed, so note that it changes only for rung 2.
+
+### [P3] R2-F3 The w4Autocannon rewrite names the wrong lines: the interval case drives TRIGGER through gaps(), and the heat-lock case pins no interval
+Task 6 Step 4 says the interval case calls `tickGun(st, 0, IDLE_INPUT, true)`. That case reaches tickGun only through the `gaps()` helper, which hard-codes `TRIGGER`. Step 4 also says to re-pin the heat-and-lock case's interval numbers to the MAN row, but that case asserts no interval. · plan L1323-1324; W-4a plan L567-571 (gaps uses TRIGGER), L587-600 (heat-and-lock case: heat, lock and cooling only) · The executor has to infer that `gaps()` itself changes, while the lock case, which needs TRIGGER in MAN, does not use `gaps()`. The re-pin instruction points at numbers that are not there. · Say that `gaps()` calls `tickGun(st, 0, IDLE_INPUT, true)`, along with the direct TRIGGER calls at W-4a L584, L604, L609, L616, L619 and L628. Say that the heat-and-lock case sets `s.gunsManual = true`, keeps TRIGGER and needs no re-pin.
+
+### [P3] R2-F4 The self-review's Placeholders bullet is stale after R1-F8
+The Self-review still says that the app-rig tests in Tasks 5, 7, 8 and 9 only name their assertions and the rig to copy. Those tests are now written in full. · plan L2008; compare plan L879-925, L945-972, L1459-1475, L1555-1636, L1759-1796 · It contradicts the revised tasks and could lead a reader to look for outlines that no longer exist. · Rewrite the bullet: every test body, sim and app, is written in full.
+
+## Prior findings
+- R1-F1: resolved — Decision 4 (L58-62) and pewAutoReady (L1284-1289) use pewFull, pewThird and pewGain. All three exist: pew.ts L21 and L31, defs.ts L104, and pew.ts already imports pewThird (L11). From full (1080) a shot leaves 720; then 726 % 360 = 6, which is not < 6, so the next round waits 60 ticks. The tests at L1143-1156 check out arithmetically.
+- R1-F2: resolved — L630-631 asserts turretOffset(0, pewLead(st, 0, e.x, e.y, 0, 0)). pewLead is in the import list (L580) and turretOffset is in Task 1's import (L104).
+- R1-F3: resolved — Task 6 Files (L1101) and Step 4 (L1322-1325) name all three files. The AUTO-row intervals hold under auto=true: at interval 5, 60 ticks gain about 360 heat, below the 800 stop (tuning.ts L171-174). There is a wording nit in a new P3.
+- R1-F4: resolved — Kind (a) inserts are named for both w4Runtime cases (L881) and for the online cases (1) and (2) (L943). onlineDuelSession is in Step 9's run list and in the commit (L1084, L1090). The rig's methods (set, click, hold, statuses) match W-4a L1862-1870.
+- R1-F5: resolved — L1507 adds turret(slot) to interface DuelRuntime after W-4a's weaponSel().
+- R1-F6: resolved — The Seam section (L74-84) matches Task 4's loop and MAN branch (L792-798), Task 6's refusal (L1318) and Task 7's call (L1521). W-4c L128-129 now greps for the new shapes.
+- R1-F7: resolved — The `1 as 1 | 2` knob is at L1870 and the rung rules are at L1907-1913. The rung-4 commit names the wrong file; that is a new P2.
+- R1-F8: resolved — Task 8's w4Map is written in full on pewViews' rig, which matches pewViews.test.ts L14-18; headingAngle and drawnScale exist (tacticalModel.ts L210, L33). Task 3's and Task 8's hedges are replaced with facts. The stale self-review bullet is a new P3.
+- R1-F9: resolved — L992 and L1064 quote W-4a's triggerNow() line; the stale bullet is removed.
+
+## Verified
+- pewAutoReady's arithmetic: third 360, AUTO gain 6 at 1 bar (pew.ts L31-37, bars.ts L90); mid-third, just-completed and under-a-third cases (plan L1152-1155).
+- The seam's MAN branch text matches Task 4's code (plan L78 vs L792-798); the pewFire refusal (L79 vs L1318); the predictTurret call (L77 vs L1521).
+- W-4a's runtime rig exposes set/click/hold/statuses/press/tick (W-4a L1862-1870); the online stub client exposes ids, results, helds and commands (onlineDuelSession.test.ts L32-49).
+- w4Map imports: headingAngle (tacticalModel.ts L210); AUTOCANNON_ARC_STEPS, AUTOCANNON_AUTO_RANGE and PEW_ARC_STEPS from W-4a's tuning (W-4a L44, L292).
+- AUTOCANNON_MAN_INTERVAL_BY_BARS exists in W-4a (W-4a L387).
+- W-4c L128-129 now anchors on `turret: (slot: 0 | 1)` and predictTurret.
+
+## Not verified
+- That Task 9's UI cases match W-4a's w4Ui rig (mount, weapons(over), AC, input()) and the WeaponsPanel shape with gunsManual and gunsHold; the W-4a rig text was not read in full.
+- Whether createSeatedDuel overrides the spawn heading: not checked; the P1 assumes it does not (state.ts L283).
+- Task 8's bracket and muzzle-length assertions depend on Task 8 Step 3's model code, which was not re-read line by line.
+
+---
+
+# Round 2 response (plan revised to rev after 0f820aff)
+
+Reviewed `round-2.json` against the subject at `0f820aff`. 4 accepted, 0 rejected, 0 deferred. The reviewer confirmed R1-F1 to R1-F9 resolved.
+
+## R2-F1 [P1]: Task 7's online case assumes heading 0
+
+Confirmed: map.ts L57-L59 and L72-L73 seed the spawn heading. The case now reads `c.state()!.tactical.ships[0].heading`, aims `(h0 * 256 + 2000) % 65536`, and asserts `0 < p <= 2000` in steps of 455 (or exactly 2000).
+
+## R2-F2 [P2]: Task 10's commit names the wrong file for rung 4
+
+Confirmed: the first-seated-tick case is in duelScripted.test.ts. The placeholder now names it. A note says w4Loadout is always committed and that its range pin changes only for rung 2.
+
+## R2-F3 [P3]: The w4Autocannon rewrite names the wrong lines
+
+Confirmed against the W-4a plan's w4Autocannon (`gaps()` at L567-L571; the heat case asserts no interval). The rewrite now names `gaps()` and the direct TRIGGER calls. The heat-and-lock case sets MAN with no re-pin.
+
+## R2-F4 [P3]: Stale Placeholders bullet
+
+Confirmed. It now says every test body is written in full, and it names the rigs.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-19-w4b-turrets-auto.md
+
+<!-- end -->
+
+---
+

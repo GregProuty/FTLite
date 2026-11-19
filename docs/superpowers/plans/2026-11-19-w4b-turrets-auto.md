@@ -1321,7 +1321,7 @@ with
 
 Kind (a) rewrites, each citing W-4 spec §4.3 (from this task on, a turret gun in AUTO ignores `gunHeld`, and every round starts AUTO):
 - `tests/w4PewFire.test.ts` (W-4a): its admission test sets MAN first (`d.tactical.systems[0].gunsManual = true` after creating the duel). Its case "on the Hound gunHeld fires the autocannon only with weaponSel 1" also sets `gunsManual = true` on the Hound duel before stepping.
-- `tests/w4Autocannon.test.ts` (W-4a): the interval-by-bars, rounds-along-the-aim, cooldown, six-hits-a-level and 0-bar cases call `tickGun(st, 0, IDLE_INPUT, true)` instead of `tickGun(st, 0, TRIGGER)`. That is AUTO on solution with the AUTO rows, so W-4a's 10 / 8 / 6 / 5 assertions stand. The heat-and-lock case sets `s.gunsManual = true` and keeps `TRIGGER`, because only MAN can lock, and its interval at the bars it uses is the MAN row's: re-pin those interval numbers to `AUTOCANNON_MAN_INTERVAL_BY_BARS` with a `// W-4b: MAN` note.
+- `tests/w4Autocannon.test.ts` (W-4a): the `gaps()` helper calls `tickGun(st, 0, IDLE_INPUT, true)` instead of `tickGun(st, 0, TRIGGER)`, which fixes the interval-by-bars case. The direct `TRIGGER` calls in the rounds-along-the-aim, cooldown, six-hits-a-level and 0-bar cases change the same way (W-4a plan's w4Autocannon at its L584, L604, L609, L616, L619 and L628). That is AUTO on solution with the AUTO rows, so W-4a's 10 / 8 / 6 / 5 assertions stand. The heat-and-lock case sets `s.gunsManual = true` and keeps `TRIGGER`, because only MAN can lock. It asserts heat, lock and cooling only, so it needs no re-pin.
 - `tests/w4Turret.test.ts` (Task 4's "a pew round and an autocannon round leave along them"): `tickGun(st, 0, { ...IDLE_INPUT, gunHeld: true })` becomes `tickGun(st, 0, IDLE_INPUT, true)`.
 
 - [ ] **Step 5: The scripted gunner on AUTO (spec §12)**
@@ -1462,11 +1462,14 @@ Add to `tests/onlineDuelSession.test.ts`'s Hound block (the rig's replica is the
   it("the source's turret(0) follows the reticle at MAN traverse while gunMode is in flight, then the replica's again", () => {
     const r = rig(1), c = r.attach(); r.session.frame();
     const src = () => h.sources.at(-1) as unknown as { turret(slot: 0 | 1): number };
-    h.sceneOpts[0]!.requests!.reticle(8000); r.pump(); r.session.frame();
+    // turretAim is a world fine aim and the spawn heading depends on the seed (map.ts spawnAt): aim 2000 steps right of the
+    // replica's nose, inside the pew's ±10922 arc.
+    const h0 = c.state()!.tactical.ships[0].heading, want = (h0 * 256 + 2000) % 65536;
+    h.sceneOpts[0]!.requests!.reticle(want); r.pump(); r.session.frame();
     expect(src().turret(0)).toBe(0);   // AUTO: the replica's
     r.key('keydown', 'KeyZ'); r.key('keyup', 'KeyZ'); r.pump(); r.pump(); r.session.frame();
     const p = src().turret(0);
-    expect(p).toBeGreaterThan(0); expect(p % 455 === 0 || p === 8000).toBe(true);   // k unacknowledged frames of MAN's 455 a frame toward 8000
+    expect(p > 0 && p <= 2000 && (p % 455 === 0 || p === 2000)).toBe(true);   // k unacknowledged frames of MAN's 455 a frame toward +2000
     const id = c.ids[c.commands().map((x) => x.kind).lastIndexOf('gunMode')]!;
     c.results.push({ id, tick: 3, status: 'applied' }); r.pump(); r.session.frame();
     expect(src().turret(0)).toBe(0);   // gunModeSent cleared: the replica's mode (AUTO) is the base again
@@ -1910,7 +1913,7 @@ For the setting kept, update the tests it pins (kind (a), citing W-4 spec §12):
 - rung 3: no test pins `HOUND_MISSILE_GAP`'s value;
 - rung 4: Task 6's "its first seated tick sends shipPower … then weaponPower Autocannon +1" reads the four commands (`shipPower`, then `weaponPower` Pew −1, then Autocannon +1 twice), and the resulting bars `[0, 2, 1]`.
 
-Add the changed test files to Step 5's commit.
+Add the changed test files to Step 5's commit. `tests/w4Loadout.test.ts` is always in it (Step 1's `hitsPerHull` destructuring); its range pin changes only for rung 2.
 
 - [ ] **Step 4: The report**
 
@@ -1922,7 +1925,7 @@ Expected: the per-seed gates PASS (if no setting met the target and a per-seed t
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/renderer/src/sim/tactical/tuning.ts src/renderer/src/sim/tactical/defs.ts src/renderer/src/sim/duel/scripted.ts tests/w4Loadout.test.ts docs/superpowers/research/2026-11-19-w4-report.md <tests/w4Auto.test.ts if rung 4 is kept>
+git add src/renderer/src/sim/tactical/tuning.ts src/renderer/src/sim/tactical/defs.ts src/renderer/src/sim/duel/scripted.ts tests/w4Loadout.test.ts docs/superpowers/research/2026-11-19-w4-report.md <tests/duelScripted.test.ts if rung 4 is kept>
 git commit -m "tune(w4b): the spec §12 ladder on the Hound-only knobs; <the setting kept, or base numbers>" -m "<the ladder table, one line per setting>" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -2005,5 +2008,5 @@ git commit -m "test(w4b): same-version bless at SIM_VERSION V for the turrets an
 ## Self-review
 
 - **Spec coverage (W-4b scope):** §3.1 state → Task 1; §3.2 slew law → Task 1, wired in Task 4; §3.3 numbers → W-4a's tuning constants, exercised in Tasks 1 and 4; §3.4 when a turret slews → Task 4 (§19.1: the MANUAL-torpedo hold is W-4c's); §4.1 the mode and `gunMode` → Task 3, the keys in Task 5; §4.2 targets and solutions (ship only, `pewLead`, `gunLead`, line of sight) → Task 4; §4.3 AUTO firing, the heat stop, LMB on an AUTO gun, the hold → Task 6 (sim) and Task 5 (app); §4.4 MAN tables → Task 3; §6 `pewFire`'s AUTO refusal → Task 6; §8 `turretAim`, `gunMode`, the tick order → Tasks 2, 3, 4, 6; §9 the mouse reticle and Z → Task 5; §10 the tags and hint → Task 9, the map → Task 8; §11 online (the authority decides, held fields, prediction, `gunModeSent`) → Tasks 5 and 7; §12 AUTO gunner and the ladder → Tasks 6 and 10; §13.1 hash and bounds → Task 1 (the cooldown bound is W-4a's Task 3); §13.4 the Valkyrn identity → Task 1, the fences → every sim task; §14's turret, AUTO, MAN, online, hash and snapshot tests → Tasks 1-9; §19.1 the per-part bless and gates → Tasks 10 and 11.
-- **Placeholders:** the app-rig tests in Tasks 5, 7, 8 and 9 name every assertion and the file whose rig to copy, as W-4a's Tasks 10-12 do, because those rigs are long and file-local. Every sim test is written in full.
+- **Placeholders:** every test body, sim and app, is written in full. The app tests extend W-4a's rigs (`w4Runtime`'s `rig()`, `onlineDuelSession`'s `rig()`, `w4Ui`'s `mount()`) and `pewViews`' `input()`.
 - **Type consistency:** `turretOffset`, `slewTurret`, `turretWorldAim`, `autoSolution`, `AutoOnSolution`, `slewTurrets`, `gunLead`, `tickGun(…, auto)`, `heldTurretAim`, `predictTurret`, `weaponsSeatHeld(sel, trigger, aim)`, `sessionHeld(…, { sel, trigger, aim })`, `gunModeSent`, `gunModeBase`, `DuelViewSource.turret`, `MapRequests.reticle/reticleAim/resetReticle`, `DuelRuntimeDeps.reticleAim`, `KeyAction 'weaponMode'`, `CombatModelInput.turrets/weaponSel/reticle`, `CombatDraw.turretArc/muzzles/reticle/bracket` and `WeaponsPanel.gunsManual/gunsHold` are each defined once and used with the same signature in later tasks.
