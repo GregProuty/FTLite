@@ -225,6 +225,10 @@ describe('sitting down (spec §1)', () => {
     const zl = frameZoom(-600, 300, vp, 228, 156);
     expect(640 - 600 * zl).toBeGreaterThanOrEqual(228); expect(360 + 300 * zl).toBeLessThanOrEqual(720);
   });
+  it('own ship window spec §3 (owner 2026-11-18): the avoid cap uses the 28 px arrow margin, so (-200, -200) frames at 0.72', () => {
+    const vp = { w: 1280, h: 720 };
+    expect(frameZoom(-200, -200, vp, 228, 156, OWN_SHIP)).toBeCloseTo((640 - 468 - 28) / 200, 9);
+  });
   it('own ship window spec §3: an up-left enemy is framed clear of the window on at least one axis; without avoid, unchanged', () => {
     const vp = { w: 1280, h: 720 };
     for (const [dx, dy] of [[-300, -250], [-500, -120], [-150, -400]] as const) {
