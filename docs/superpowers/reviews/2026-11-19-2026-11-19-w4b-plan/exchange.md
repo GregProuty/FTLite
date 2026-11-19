@@ -253,3 +253,40 @@ Confirmed. It now says every test body is written in full, and it names the rigs
 
 ---
 
+# Round 3 (delta, reviewing ebde9040, effort medium, 32 s, 140252 in / 115152 cached / 2812 out)
+
+Verdict: ready
+
+## Prior findings
+- R2-F1: resolved — Plan L1465-1472 now reads h0 from c.state()!.tactical.ships[0].heading (the stub's state() returns the published replica, onlineDuelSession.test.ts:L44; DuelState.tactical at sim/duel/state.ts:L45). It aims want = (h0*256 + 2000) % 65536, so turretOffset(h0, want) = +2000, which sits inside the ±10922 arc. predictTurret (plan L1495-1502) slews about the same t.ships[0].heading, so p lands in (0, 2000] in 455 steps or at exactly 2000, whatever the seed.
+- R2-F2: resolved — Plan L1928: the commit placeholder now names <tests/duelScripted.test.ts if rung 4 is kept>. Plan L1916: the new note says w4Loadout.test.ts is always committed and that its range pin changes only for rung 2.
+- R2-F3: resolved — Plan L1324 now names the gaps() helper (W-4a plan L567-571, TRIGGER at L569). The direct TRIGGER calls it cites match the W-4a plan line for line: L584 (0 bars), L604 and L609 (along the aim), L616 and L619 (cooldown), L628 (six hits). The heat-and-lock case (W-4a L587-600) asserts only heat, lock and cooling. The plan keeps TRIGGER there under MAN with no re-pin, which is correct.
+- R2-F4: resolved — Plan L2011: the Placeholders bullet now says every test body is written in full and names the rigs extended. This matches the revised Tasks 5, 7, 8 and 9.
+
+## Verified
+- The Task 7 online case (plan L1462-1477) uses only stub members that exist: state(), commands(), ids, results (onlineDuelSession.test.ts:L32-49).
+- The line numbers in the w4Autocannon rewrite (plan L1324) match the W-4a plan's TRIGGER call sites at L569, L584, L604, L609, L616, L619 and L628.
+- The heat-and-lock case (W-4a plan L587-600) pins no interval, so leaving it un-re-pinned is consistent.
+- The Task 10 commit (plan L1928) and the new note (L1916) agree with Task 6's placement of the first-seated-tick case in tests/duelScripted.test.ts.
+- The diff introduced no contradiction with predictTurret's signature or its heading convention (plan L1495-1502).
+
+## Not verified
+- Whether rig(1) has published a replica before c.state() is read at plan L1467. The earlier frame() call suggests it has, but I did not trace the rig body.
+- How many unacknowledged frames k the rig reaches after the two pumps. The assertion holds for any k ≥ 1; k = 0 would fail p > 0, but that was already the premise of the case before this round.
+
+---
+
+# Round 3 response (no subject change)
+
+Reviewed `round-3.json` against the subject at `ebde9040`. 0 accepted, 0 rejected, 0 deferred. The reviewer confirmed R2-F1 to R2-F4 resolved and raised no new findings.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
