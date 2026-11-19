@@ -74,7 +74,8 @@ export interface HelmDraw { path: Point[]; origin: Point; velocity: Point; headi
 /** Feel-ii §1.3: a gravity ring about the planet (where its pull is `g` of the crew ship's full thrust) and its label. */
 export interface GravityDraw extends CircleDraw { g: number; label: Label }
 export type ArrowTarget = 'ship' | 'enemy' | 'planet' | 'missile';
-export interface ArrowDraw { target: ArrowTarget; x: number; y: number; angle: number; distance: number; label: string }
+/** `edge`: own ship window spec §3, set only on an arrow placed on the avoid rect's right or bottom side. */
+export interface ArrowDraw { target: ArrowTarget; x: number; y: number; angle: number; distance: number; label: string; edge?: 'avoidRight' | 'avoidBottom' }
 export interface OverlayDraw { zoomText: string; scaleBar: { px: number; units: number }; snapHint: boolean; paused: boolean }
 /** The derelict's loot as the map and the contact window name it (Loot order). */
 export const LOOT_NAMES = ['HULL', 'TORPEDOES', 'SHIELD'] as const;
@@ -142,6 +143,8 @@ export interface TacticalModelInput {
   t?: number;
   /** Valkyrn spec §4.5: the crew ship's silhouette (hullFor(true, layout.hull)); absent: the Hound's. */
   crewHull?: HullId;
+  /** Own ship window spec §3: a console window the off-screen arrows go around (OWN_SHIP); absent: none. */
+  avoid?: { x: number; y: number; w: number; h: number };
 }
 
 /** Radius at which the planet's pull is `accel`, by bisection on the falling side of gravityAccel (startup only). */
@@ -272,6 +275,27 @@ function edgePoint(vp: Viewport, reserveLeft: number, reserveRight: number, x: n
   return { x: cx + dx * k, y: cy + dy * k, angle: Math.atan2(dx, -dy) };
 }
 
+type AvoidRect = { x: number; y: number; w: number; h: number };
+/**
+ * Own ship window spec §3: an arrow around `avoid`. A is avoid grown by ARROW_MARGIN on its right and bottom. When edgePoint's
+ * point `e` lies inside A, or the object is on screen (`e` null) under the ungrown avoid, the arrow goes where the ray from
+ * the inset rectangle's centre toward `p` enters A: k = max(kx, ky); the right side when kx >= ky (a corner counts as
+ * right), else the bottom. Otherwise `e` is returned as it is.
+ */
+export function aroundAvoid(vp: Viewport, reserveLeft: number, reserveRight: number, reserveTop: number, avoid: AvoidRect, p: { x: number; y: number },
+  e: { x: number; y: number; angle: number } | null): { x: number; y: number; angle: number; edge?: 'avoidRight' | 'avoidBottom' } | null {
+  const m = ARROW_MARGIN, ar = avoid.x + avoid.w + m, ab = avoid.y + avoid.h + m;
+  const hidden = !e && p.x >= avoid.x && p.x <= avoid.x + avoid.w && p.y >= avoid.y && p.y <= avoid.y + avoid.h;
+  const onIt = !!e && e.x >= avoid.x && e.x <= ar && e.y >= avoid.y && e.y <= ab;
+  if (!hidden && !onIt) return e;
+  const l = reserveLeft + m, t = reserveTop + m, r = vp.w - reserveRight - m, b = vp.h - m;
+  const cx = (l + r) / 2, cy = (t + b) / 2, dx = p.x - cx, dy = p.y - cy;
+  const kx = dx < 0 ? (ar - cx) / dx : -Infinity, ky = dy < 0 ? (ab - cy) / dy : -Infinity;
+  if (kx === -Infinity && ky === -Infinity) return e;
+  const k = Math.max(kx, ky);
+  return { x: cx + dx * k, y: cy + dy * k, angle: Math.atan2(dx, -dy), edge: kx >= ky ? 'avoidRight' : 'avoidBottom' };
+}
+
 const ARROW_NAMES: Readonly<Record<ArrowTarget, string>> = { ship: 'SHIP', enemy: 'ENEMY', planet: 'PLANET', missile: 'TORPEDO' };   // homing torpedo spec §3: on screen it is a torpedo
 
 /**
@@ -279,17 +303,26 @@ const ARROW_NAMES: Readonly<Record<ArrowTarget, string>> = { ship: 'SHIP', enemy
  * end nearer the edge's middle, by the minimum gap from the one before; any overrun past the edge's far end is shifted back.
  * Arrows that already clear each other do not move.
  */
-export function spreadArrows(arrows: ArrowDraw[], vp: Viewport, reserveRight: number, reserveLeft = 0, reserveTop = 0): void {
-  const m = ARROW_MARGIN, top = reserveTop + m, bottom = vp.h - m, right = vp.w - reserveRight - m;
-  const groups = new Map<string, { flat: boolean; list: ArrowDraw[] }>();
+export function spreadArrows(arrows: ArrowDraw[], vp: Viewport, reserveRight: number, reserveLeft = 0, reserveTop = 0, avoid?: AvoidRect): void {
+  const m = ARROW_MARGIN, top = reserveTop + m, bottom = vp.h - m, right = vp.w - reserveRight - m, left = reserveLeft + m;
+  const ar = avoid ? avoid.x + avoid.w + m : -Infinity, ab = avoid ? avoid.y + avoid.h + m : -Infinity;   // own ship window spec §3
+  const groups = new Map<string, { flat: boolean; lo: number; hi: number; list: ArrowDraw[] }>();
   for (const a of arrows) {
-    const flat = Math.abs(a.y - top) < 0.5 || Math.abs(a.y - bottom) < 0.5, key = flat ? `y${Math.round(a.y)}` : `x${Math.round(a.x)}`;
-    const g = groups.get(key) ?? { flat, list: [] };
+    let key: string, flat: boolean, lo: number, hi: number;
+    if (a.edge === 'avoidBottom') { key = a.edge; flat = true; lo = left; hi = ar; }
+    else if (a.edge === 'avoidRight') { key = a.edge; flat = false; lo = top; hi = ab; }
+    else {
+      const onTop = Math.abs(a.y - top) < 0.5;
+      flat = onTop || Math.abs(a.y - bottom) < 0.5; key = flat ? `y${Math.round(a.y)}` : `x${Math.round(a.x)}`;
+      lo = flat ? (onTop ? Math.max(left, ar) : left) : (Math.abs(a.x - left) < 0.5 ? Math.max(top, ab) : top);
+      hi = flat ? right : bottom;
+    }
+    const g = groups.get(key) ?? { flat, lo, hi, list: [] };
     g.list.push(a); groups.set(key, g);
   }
-  for (const { flat, list } of groups.values()) {
+  for (const { flat, lo, hi, list } of groups.values()) {
     if (list.length < 2) continue;
-    const gap = flat ? ARROW_GAP_TOP : ARROW_GAP_SIDE, lo = flat ? reserveLeft + m : top, hi = flat ? right : bottom, mid = (lo + hi) / 2;
+    const gap = flat ? ARROW_GAP_TOP : ARROW_GAP_SIDE, mid = (lo + hi) / 2;
     const get = (a: ArrowDraw): number => (flat ? a.x : a.y), set = (a: ArrowDraw, v: number): void => { if (flat) a.x = v; else a.y = v; };
     const dir = list.reduce((t, a) => t + get(a), 0) / list.length > mid ? -1 : 1;   // spread toward the edge's middle
     const order = [...list].sort((p, q) => (get(p) - get(q)) * dir);
@@ -388,10 +421,12 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   // Off-screen arrows: the own ship (distance from the camera centre), and the others (distance from the own ship).
   const arrows: ArrowDraw[] = [];
   const arrow = (target: ArrowTarget, wx: number, wy: number, fromX: number, fromY: number): void => {
-    const p = toS(wx, wy), e = edgePoint(vp, input.reserveLeft ?? 0, input.reserveRight, p.x, p.y, input.reserveTop ?? 0);
+    const p = toS(wx, wy), rl = input.reserveLeft ?? 0, rt = input.reserveTop ?? 0;
+    let e: { x: number; y: number; angle: number; edge?: 'avoidRight' | 'avoidBottom' } | null = edgePoint(vp, rl, input.reserveRight, p.x, p.y, rt);
+    if (input.avoid) e = aroundAvoid(vp, rl, input.reserveRight, rt, input.avoid, p, e);
     if (!e) return;
     const distance = Math.round(Math.sqrt((wx - fromX) ** 2 + (wy - fromY) ** 2));
-    arrows.push({ target, x: e.x, y: e.y, angle: e.angle, distance, label: `${target === 'enemy' && input.contacts && state.known[Contact.Enemy] === 0 ? 'CONTACT' : ARROW_NAMES[target]} ${distance}` });
+    arrows.push({ target, x: e.x, y: e.y, angle: e.angle, distance, label: `${target === 'enemy' && input.contacts && state.known[Contact.Enemy] === 0 ? 'CONTACT' : ARROW_NAMES[target]} ${distance}`, ...(e.edge ? { edge: e.edge } : {}) });
   };
   if (input.ships.includes(0)) arrow('ship', own.x, own.y, cam.centreX, cam.centreY);
   const foe = targetOf(state, CREW_SLOT);   // the crew's locked target (engine refactor Decision 15)
@@ -399,7 +434,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   arrow('planet', map.planet.x, map.planet.y, own.x, own.y);
   const m = missileOf(state, 0);
   if (m) arrow('missile', m.x, m.y, own.x, own.y);
-  if (input.spreadArrows) spreadArrows(arrows, vp, input.reserveRight, input.reserveLeft ?? 0, input.reserveTop ?? 0);
+  if (input.spreadArrows) spreadArrows(arrows, vp, input.reserveRight, input.reserveLeft ?? 0, input.reserveTop ?? 0, input.avoid);
 
   // Sci-1 spec §7.1: the contact marks, the salvage ring and Science's ring, in the duel only.
   let marks: ContactMarkDraw[] | undefined, salvage: SalvageDraw | null = null, lockRing: LockRingDraw | null = null;

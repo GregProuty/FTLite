@@ -3,6 +3,7 @@ import type { EndView } from '../render/duel/endModel';
 import type { ReadoutRow } from '../render/duel/readoutModel';
 import type { ConsoleView } from '../render/duel/consoleModel';
 import type { ContactView } from '../render/duel/contactModel';
+import type { OwnShipView } from '../render/duel/ownShipModel';
 import type { ShipHudView } from '../render/duel/shipHudModel';
 import type { OverlayDraw } from '../render/tactical/tacticalModel';
 
@@ -15,6 +16,8 @@ export interface DuelUiView { readout: { rows: readonly ReadoutRow[]; help: read
   console?: ConsoleView | null;
   /** The contact window (enemy ship window spec §6.5): set while it is shown; absent or null draws no window. */
   contact?: ContactView | null;
+  /** The own ship window (own ship window spec §4): set exactly when the scene's onMap is true; absent or null draws none. */
+  ownShip?: OwnShipView | null;
   /** FTL targeting spec §1: the map pointer's last position in internal px (the app's pointer source), set only while a
    *  weapon is picked up, so the targeting line can draw before the mouse next moves; absent or null when unknown. */
   pointer?: { x: number; y: number } | null;

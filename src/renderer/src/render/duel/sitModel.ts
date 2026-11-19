@@ -7,6 +7,8 @@ import type { Viewport } from '../tactical/camera';
 export const SIT_CARD_S = 4, SIT_CARD_FADE_S = 0.5, SIT_CARD_SITS = 3;
 /** The auto-frame's zoom clamp and the screen px kept clear between the enemy and the map's usable edges. */
 export const FRAME_ZOOM_MIN = 0.25, FRAME_ZOOM_MAX = 1, FRAME_MARGIN = 110;
+/** Own ship window spec §3 (owner 2026-11-18): the framed enemy clears the avoid rect by the arrow margin, not FRAME_MARGIN. */
+export const AVOID_MARGIN = 28;
 
 export type SitSeat = 'helm' | 'weapons' | 'flight';
 /** `top`: the card sits at the top of the map, clear of an enemy below the ship; else at the bottom. */
@@ -44,9 +46,13 @@ export function sitCard(seat: SitSeat, age: number, acted: boolean, enemyBelow =
 }
 
 /** The zoom that fits the enemy at (dx, dy) world units from the own ship on screen, the camera centred on the own ship:
- *  inside the map's usable span (clear of the left and right reserves) with FRAME_MARGIN, clamped to 0.25..1. */
-export function frameZoom(dx: number, dy: number, vp: Viewport, reserveLeft: number, reserveRight: number): number {
+ *  inside the map's usable span (clear of the left and right reserves) with FRAME_MARGIN, clamped to 0.25..1. Own ship
+ *  window spec §3: with `avoid`, an up-left enemy is also kept clear of that rect on at least one axis. */
+export function frameZoom(dx: number, dy: number, vp: Viewport, reserveLeft: number, reserveRight: number, avoid?: { x: number; y: number; w: number; h: number }): number {
   const left = vp.w / 2 - reserveLeft - FRAME_MARGIN, right = vp.w / 2 - reserveRight - FRAME_MARGIN, up = vp.h / 2 - FRAME_MARGIN;
   const zx = dx === 0 ? Infinity : (dx < 0 ? left : right) / Math.abs(dx), zy = dy === 0 ? Infinity : up / Math.abs(dy);
-  return Math.max(FRAME_ZOOM_MIN, Math.min(FRAME_ZOOM_MAX, zx, zy));
+  const za = avoid && dx < 0 && dy < 0
+    ? Math.max((vp.w / 2 - (avoid.x + avoid.w) - AVOID_MARGIN) / Math.abs(dx), (vp.h / 2 - (avoid.y + avoid.h) - AVOID_MARGIN) / Math.abs(dy))
+    : Infinity;
+  return Math.max(FRAME_ZOOM_MIN, Math.min(FRAME_ZOOM_MAX, zx, zy, za));
 }
