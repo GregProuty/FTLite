@@ -10,6 +10,7 @@ import { HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS } from '..
 import { TICK_HZ } from '../../sim/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
 import { hullFor, type HullId } from './hullModel';
+import type { HelmVent } from '../../sim/duel/helmFlight';
 
 /** The grid square's half-size: the smallest multiple of 500 that encloses the map circle (plan decision 4). */
 export const GRID_EXTENT = Math.ceil(R_MAP / 500) * 500;
@@ -70,7 +71,11 @@ export interface RingDraw { x: number; y: number; r: number; ticks: (Line & { ma
 export interface CollisionDraw { x: number; y: number; from: Point; label: Label; seconds: number }
 export interface HoldDraw { chevron: number[]; from: Point; to: Point; preview: boolean }
 export interface HelmDraw { path: Point[]; origin: Point; velocity: Point; headingFrom: Point; headingTo: Point; thrust: number; turn: number; ring: RingDraw | null;
-  collision?: CollisionDraw | null; hold?: HoldDraw | null; slingshot?: Label | null }
+  collision?: CollisionDraw | null; hold?: HoldDraw | null; slingshot?: Label | null;
+  /** Playtest2feedback §6: the steering marker while the left button steers: from the ship to the cursor. */
+  steer?: { from: Point; to: Point } | null }
+/** Playtest2feedback §6: one cold gas puff, at a screen point on the crew ship's hull edge, venting along (dx, dy) (unit). */
+export interface PuffDraw { x: number; y: number; dx: number; dy: number }
 /** Feel-ii §1.3: a gravity ring about the planet (where its pull is `g` of the crew ship's full thrust) and its label. */
 export interface GravityDraw extends CircleDraw { g: number; label: Label }
 export type ArrowTarget = 'ship' | 'enemy' | 'planet' | 'missile';
@@ -107,6 +112,8 @@ export interface TacticalDraw {
   gravity?: GravityDraw[];
   /** Spike ii §6.5 (only with contacts): the rock brackets. */
   rockMarks?: RockMarkDraw[];
+  /** Playtest2feedback §6: the crew ship's cold gas puffs this frame. */
+  puffs?: PuffDraw[];
 }
 
 export interface TacticalModelInput {
@@ -143,6 +150,9 @@ export interface TacticalModelInput {
   t?: number;
   /** Valkyrn spec §4.5: the crew ship's silhouette (hullFor(true, layout.hull)); absent: the Hound's. */
   crewHull?: HullId;
+  /** Playtest2feedback §6: the crew ship's vented thruster axes and boost this tick (the puffs), and the cursor the held left
+   *  button steers to (the steering marker), in screen px; absent: none. */
+  vent?: HelmVent | null; steerTo?: Point | null;
   /** Own ship window spec §3: a console window the off-screen arrows go around (OWN_SHIP); absent: none. */
   avoid?: { x: number; y: number; w: number; h: number };
 }
@@ -378,6 +388,16 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   }
 
   const own = interpolatedShip(state, prev, alpha, 0), ownS = toS(own.x, own.y);
+  // Playtest2feedback §6: the puffs, at the hull edge opposite each vented push. A boosted turn puffs at the bow on the side
+  // away from the turn and at the stern on the side toward it.
+  const puffs: PuffDraw[] = [], vt = input.vent ?? null;
+  if (vt && input.ships.includes(0) && (vt.x !== 0 || vt.y !== 0 || vt.boosted)) {
+    const a = headingAngle(own.h), fx = Math.sin(a), fy = -Math.cos(a), rx = -fy, ry = fx, rr = SHIP_RADIUS * 1.3 * drawnScale(z);
+    const puff = (ox: number, oy: number, dx: number, dy: number): void => { puffs.push({ x: ownS.x + ox * rr, y: ownS.y + oy * rr, dx, dy }); };
+    if (vt.y !== 0) puff(-fx * vt.y, -fy * vt.y, -fx * vt.y, -fy * vt.y);
+    if (vt.x !== 0) puff(-rx * vt.x, -ry * vt.x, -rx * vt.x, -ry * vt.x);
+    if (vt.boosted) { const s = Math.sign(input.axes.turn) || 1; puff(fx - rx * s, fy - ry * s, -rx * s, -ry * s); puff(-fx + rx * s, -fy + ry * s, rx * s, ry * s); }
+  }
   let helm: HelmDraw | null = null;
   if (input.console === 'helm' && input.ships.includes(0)) {
     const s = state.ships[0];
@@ -414,7 +434,8 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
       velocity: { x: ownS.x + s.vx * z, y: ownS.y + s.vy * z },   // where the ship would be in 1 s at this speed
       headingFrom: { x: ownS.x + hxs * nose, y: ownS.y + hys * nose }, headingTo: { x: ownS.x + hxs * (nose + 40), y: ownS.y + hys * (nose + 40) },
       thrust: Number.isFinite(input.axes.thrust) ? Math.max(-1, Math.min(1, input.axes.thrust)) : 0, turn: Math.sign(input.axes.turn) || 0,
-      ring: z >= BEARING_RING_ZOOM ? ringDraw(ownS.x, ownS.y) : null
+      ring: z >= BEARING_RING_ZOOM ? ringDraw(ownS.x, ownS.y) : null,
+      steer: input.steerTo ? { from: { x: ownS.x, y: ownS.y }, to: { x: input.steerTo.x, y: input.steerTo.y } } : null   // playtest2feedback §6
     };
   }
 
@@ -491,6 +512,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     ...(marks ? { marks, salvage, lockRing } : {}),
     ...(gravity ? { gravity } : {}),
     ...(rockMarks ? { rockMarks } : {}),
+    ...(puffs.length > 0 ? { puffs } : {}),
     overlay: { zoomText: `ZOOM ${z.toFixed(2)}`, scaleBar: { px: units * z, units }, snapHint: cam.follow === 'free', paused: input.paused },
     stars: starOffset(cam.centreX, cam.centreY, vp)
   };

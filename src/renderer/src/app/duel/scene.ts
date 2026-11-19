@@ -36,6 +36,7 @@ import { crewLife } from '../../render/duel/healFxModel';
 import type { DuelSink } from '../../ui/sinks';
 import { mapOverlayOf, type Banners, type MapOverlayView } from '../../ui/views';
 import type { DuelState } from '../../sim/duel/state';
+import type { HelmVent } from '../../sim/duel/helmFlight';
 import { classOf, Contact, CREW_SLOT, missileOf, Outcome, Room, targetOf, type Axes } from '../../sim/tactical/state';
 import type { InteriorCamera } from '../../render/duel/interiorCamera';
 import type { AimSample, HeldFlags } from './input';
@@ -79,6 +80,8 @@ export interface DuelViewSource {
   throttle(): number;
   /** Playtest2feedback §3, §6: the crew Helm's thrMille to show (online, the local prediction). Absent: the duel's. */
   thrMille?(): number;
+  /** Playtest2feedback §6, Decision 11: the crew ship's vent this frame (online: this seat's own prediction). Absent: the duel's helmVent. */
+  helmVent?(): HelmVent;
   /** Feel-ii §1.2: the Helm's axes as this screen best knows them, for the COLLISION words on every seat (Single player:
    *  axes(); online away from the Helm: the state's, stateAxes). Absent: axes(). */
   helmAxes?(): Axes;
@@ -238,11 +241,14 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       }
       // Playtest2feedback §4a: on the crew Helm's map the held left button steers, every frame: the bearing from the own ship's
       // drawn marker to the pointer while it is on the open map and off the ship (else the last bearing stands).
+      let steerTo: { x: number; y: number } | null = null;   // §6: the steering marker's end while the left button steers
       if (onMap && crewHelmMap && running && !overlay.layerPaused && (options.leftHeld?.() ?? false)) {
-        const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT);
-        const h = helmSteer({ pointer: options.pointer?.() ?? null, ship: worldToScreen(cam!, viewport, b.x, b.y), zoom: cam!.zoom, contactShown: shown });
+        const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), p = options.pointer?.() ?? null;
+        const h = helmSteer({ pointer: p, ship: worldToScreen(cam!, viewport, b.x, b.y), zoom: cam!.zoom, contactShown: shown });
         if (h !== null) options.requests?.steer(h);
+        steerTo = p;
       }
+      const vent = source.helmVent?.() ?? d.helmVent;   // §6: the puffs and the hiss
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       ({ watch: fires, flashUntil } = fireWatch(fires, d, t, flashUntil));   // own ship window spec §4
       const events = source.drainEvents();
@@ -276,7 +282,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       if (sound) {   // Audio-i spec section 4: the same events the effects use; pan from the screen on a map view, crew-relative inside
         const crew = d.tactical.ships[CREW_SLOT]!;
         sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true, me: source.active(), crew: crewLife(d), dt, hostile: enemyHostile(d.tactical),   // duel polish i spec §C
-          torpedo: torpedoTone(d), pings: pinged,   // Feel-ii §2.5, §2.7
+          torpedo: torpedoTone(d), pings: pinged, vent,   // Feel-ii §2.5, §2.7; playtest2feedback §6
           pan: (x, y) => (cam ? screenPan(worldToScreen(cam, viewport, x, y).x, viewport.w) : worldPan(x - crew.x)) });
       }
       // Paused, or a frozen online copy (a lost link): the callouts, flashes, heal motes and the charge pulse hold (polish i review).
@@ -297,7 +303,8 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
           state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, console: camKey!, axes: source.axes(),
           ships: fx.kill ? [0] : [0, 1], paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: { left: TABS_RIGHT, right: SIDE.x } } : { reserveRight: READOUT_COLUMN }), ...(onMap ? { avoid: OWN_SHIP } : {}), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
           holdHeading: view === 'flight' ? -1 : preview ?? d.holdHeading, holdPreview: preview !== null, crewHull: hullFor(true, d.interior.layout.hull), gravity: camKey === 'helm', flight: view === 'flight', alert, pings,   // Feel-ii; Valkyrn spec §4.5: the crew hull
-          rockHover: hoverRock !== null && aimed !== null ? { rock: hoverRock, weapon: aimed } : null
+          rockHover: hoverRock !== null && aimed !== null ? { rock: hoverRock, weapon: aimed } : null,
+          vent, steerTo   // playtest2feedback §6: the puffs and the steering marker
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting

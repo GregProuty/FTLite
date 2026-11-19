@@ -6,7 +6,7 @@ import type { DuelState } from '../../sim/duel/state';
 import type { Axes } from '../../sim/tactical/state';
 import type { ViewEvent } from '../../render/tactical/fxModel';
 import {
-  CREW, FIRE_ALARM, HEARTBEAT, OUTCOME_RUNNING, PING_TONE, crewLifeSounds, duelEventSounds, duelStateSounds, fireAlarm, heartbeat, heartbeatOn, lockTone,
+  CREW, FIRE_ALARM, HEARTBEAT, OUTCOME_RUNNING, PING_TONE, RCS_HISS, crewLifeSounds, duelEventSounds, duelStateSounds, fireAlarm, heartbeat, heartbeatOn, lockTone, rcsHiss,
   type CrewLife, type CrewWatch, type DuelWatch, type LockWatch, type Pan, type TorpedoTone
 } from '../../audio/duelSounds';
 export type { TorpedoTone } from '../../audio/duelSounds';
@@ -25,12 +25,14 @@ export interface DuelAudioFrame {
   /** Feel-ii §2.5: the torpedo lock tone's data (the scene's torpedoTone); absent: no tone. §2.7: the pings that appeared
    *  this frame (one soft ping tone for any). */
   torpedo?: TorpedoTone; pings?: number;
+  /** Playtest2feedback §6: the crew ship's vent this frame (the hiss); absent: none. */
+  vent?: { x: number; y: number; boosted: boolean };
 }
 
 export function createDuelAudio(out: AudioOut) {
   let duelWatch: DuelWatch | null = null, inside: InteriorWatch | null = null, crewWatch: CrewWatch | null = null;
   let clock = 0, nextBeat: number | null = null, lastAlarm: number | null = null, lock: LockWatch | null = null, crewFlying = false;
-  let rockWatch: RockSoundWatch | null = null;
+  let rockWatch: RockSoundWatch | null = null, nextHiss: number | null = null;
   return {
     frame(f: DuelAudioFrame): void {
       const t = f.duel.tactical, ev = duelEventSounds(f.events, f.pan);
@@ -52,7 +54,9 @@ export function createDuelAudio(out: AudioOut) {
       const tone = f.torpedo && f.live !== false && !f.paused ? lockTone(lock, f.torpedo, launched, clock) : { watch: lock, sounds: [] };
       lock = tone.watch;
       const rocks = rockSounds(rockWatch, f.events, f.pan, clock); rockWatch = rocks.watch;   // spike ii §7 item 8
-      const list = [...ev.sounds, ...st.sounds, ...ins.sounds, ...(alarm.play ? FIRE_ALARM : []), ...(beat.beat ? [HEARTBEAT] : []), ...tone.sounds, ...((f.pings ?? 0) > 0 ? [PING_TONE] : []), ...rocks.sounds];
+      const v = f.vent, hiss = rcsHiss(nextHiss, f.live !== false && !f.paused && !!v && (v.x !== 0 || v.y !== 0 || v.boosted), clock);   // playtest2feedback §6
+      nextHiss = hiss.next;
+      const list = [...ev.sounds, ...st.sounds, ...ins.sounds, ...(alarm.play ? FIRE_ALARM : []), ...(beat.beat ? [HEARTBEAT] : []), ...tone.sounds, ...((f.pings ?? 0) > 0 ? [PING_TONE] : []), ...rocks.sounds, ...(hiss.play ? [RCS_HISS] : [])];
       if (list.length) out.sounds(list);
       for (const cue of [...st.cues, ...life.cues]) out.play(cue);
       const ship = t.ships[CREW]!;
@@ -63,7 +67,7 @@ export function createDuelAudio(out: AudioOut) {
         hum: { thrust: Number.isFinite(f.axes.thrust) ? Math.min(1, Math.abs(f.axes.thrust)) : 0, speed: Math.hypot(ship.vx, ship.vy), charge: 0 } });
     },
     /** A new round or a rebuilt scene: the next frame is a fresh baseline. */
-    reset(): void { duelWatch = null; inside = null; crewWatch = null; nextBeat = null; lastAlarm = null; lock = null; crewFlying = false; rockWatch = null; }
+    reset(): void { duelWatch = null; inside = null; crewWatch = null; nextBeat = null; lastAlarm = null; lock = null; crewFlying = false; rockWatch = null; nextHiss = null; }
   };
 }
 export type DuelAudio = ReturnType<typeof createDuelAudio>;
