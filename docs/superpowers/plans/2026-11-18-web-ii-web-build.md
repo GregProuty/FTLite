@@ -2730,28 +2730,22 @@ git commit -m "docs(web-ii): gate results
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
-## Web-ii gate results (filled in by Task 12)
+## Web-ii gate results (re-run at the post-merge head, impl review R1-F1)
 
 | Gate | Command | Result |
 |---|---|---|
-| Typecheck | `npm run typecheck` | exit 0 |
-| Unit | `npm test` | exit 1 on 3 known load flakes (director soak, run captain-bot evasive, snapshot mid Build Up); 400/403 files, 5200/5203 tests passed; 2 vitest onTaskUpdate timeouts (load noise). Each file rerun alone: director 35/35, run 52/52, snapshot 49/49 pass |
-| Web output | `npm run test:web-output` | exit 0, WEB OUTPUT PASS: 96 static paths need the cookie |
-| Production refusals | `FTLITE_WEB_SERVICE_ORIGIN=https://example.workers.dev npm run build:web`; `npm run build:web` | both refuse: `public/assets/paid is missing or empty`; `must be exactly one https origin` |
-| Signalling | `npm run test:signalling`; `npm run typecheck:signalling` | 15 files / 224 tests pass; exit 0 |
-| Determinism | `npm run test:determinism` (logs restored with git checkout) | exit 0; Node v24.18.0, Electron 37.10.3 (Chromium 138), Firefox 160 UA: 1800 samples PASS each; SIM_VERSION 53, no diff vs merge-base |
-| Electron | `test:worker-boot` | exit 0, WORKER BOOT PASS |
-|  | `test:host-runtime` | exit 0, 15 checks PASS |
-|  | `test:rtc-runtime` | first run exit 1 (renderer call timeout, load); rerun alone exit 0, 17 required checks PASS |
-|  | `test:room-service-runtime` | exit 0, PASS |
-|  | `test:online-app-runtime` | exit 0, PASS |
-|  | `test:online-recovery-runtime` | exit 0, PASS hound-2 |
-|  | `test:duel-app-runtime` | exit 0, PASS (175 s) |
-| Vitest | `onlineRecoveryInstrumentation` + `build-output` | 2 files / 6 tests pass |
-| Browser | `npm run test:web-net` | exit 0, ACTUAL BROWSER NETWORK GATE PASS (90.8 s): chromium-firefox, firefox-chromium, chromium-electron |
+| Typecheck | `npm run typecheck`; `npm run build` | exit 0 |
+| Unit | `npm test` | 419/421 files, 5348/5350 tests; 2 load-flake failures (snapshot mid Build Up, plus one other lost to vitest onTaskUpdate timeouts); snapshot 49/49 alone; director, duelFire, authorityBoundary, authorityIngress, leaseSmokeCleanup, onlineAppRuntime, acceptance, bot, eventList, run: 14 files / 177 tests pass alone |
+| Web output | `npm run test:web-output` | exit 0, WEB OUTPUT PASS: 96 static paths plus `/`, unknown path, query string and HEAD need the cookie |
+| Production refusals | `build:web` with a non-https origin, and without paid art | both refuse (unchanged since b532961f; covered by tests/build-output) |
+| Signalling | `npm run test:signalling` | 15 files / 224 tests pass |
+| Determinism | `npm run test:determinism` (logs restored with git checkout) | exit 0; Node v24.18.0, Electron 37.10.3, Firefox 160 UA: 1800 samples PASS each; SIM_VERSION 54 |
+| Electron | `test:worker-boot`, `test:host-runtime`, `test:rtc-runtime`, `test:room-service-runtime`, `test:online-app-runtime`, `test:online-recovery-runtime`, `test:duel-app-runtime` | all exit 0, PASS (duel-app 154 s) |
+| Browser | `npm run test:web-net` | exit 0, ACTUAL BROWSER NETWORK GATE PASS (105 s): chromium-firefox, firefox-chromium, chromium-electron (electron console watched) |
 | Injection | `web-net-smoke.ts --inject=origin-refused --pairing=chromium-firefox` | exit 1, WEB NET INJECTED FAIL (origin-refused): ... online error unavailable (403 seen) |
 
-Head b532961f; Node v24.18.0, Electron 37.10.3.
+Head 4732902d; Node v24.18.0, Electron 37.10.3; SIM_VERSION 54.
+
 
 ---
 
