@@ -7,5 +7,5 @@
     "lib": ["ES2023", "DOM"],
     "jsx": "react-jsx"
   },
-  "include": ["src/web/**/*", "src/renderer/src/**/*", "src/renderer/src/**/*.json", "src/preload/index.ts", "src/network/**/*", "src/shared/**/*", "src/worker/**/*", "src/main/appExit.ts", "src/main/network/duelRecords.ts", "tests/**/*", "scripts/**/*", "art/*.stars.json", "services/signalling/scripts/local-runtime.ts", "build/contentDigest.ts", "build/isolatedBuildReporter.ts"]
+  "include": ["src/web/**/*", "src/renderer/src/**/*", "src/renderer/src/**/*.json", "src/preload/index.ts", "src/network/**/*", "src/shared/**/*", "src/worker/**/*", "src/main/appExit.ts", "src/main/network/duelRecords.ts", "tests/**/*", "scripts/**/*", "art/*.stars.json", "services/signalling/scripts/local-runtime.ts", "build/contentDigest.ts", "build/isolatedBuildReporter.ts", "build/buildInfo.ts", "build/rendererConfig.ts", "build/webBuild.ts", "vite.web.config.ts"]
 }

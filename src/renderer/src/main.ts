@@ -81,8 +81,9 @@ async function startApp(): Promise<void> {
   audio.setVolumes(settings);
   renderer.setShake?.(settings.shake);   // Feel-i: the console maps' screen shake
   const scheduler = { schedule(delay: number, cb: () => void) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } };
-  // The online session runs in this page (web build spec §3.3); Electron's preload hands it main's resolved config.
-  const onlineConfig = window.ftlite?.onlineConfig;
+  // The online session runs in this page (web build spec §3.3): Electron's preload hands it main's resolved config, and
+  // the web build bakes its own in (§5.1).
+  const onlineConfig = window.ftlite ? window.ftlite.onlineConfig : __FTLITE_WEB_CONFIG__;
   const pageOnline = onlineConfig && validatePageOnlineConfig(onlineConfig) ? createPageOnline(onlineConfig, { window }) : null;
   const bridge = pageOnline ? createOnlineBridge(pageOnline) : null;
   const offVisibility = bridge && !window.ftlite ? watchHostVisibility({ document, onStatus: cb => bridge.onStatus(cb) }) : undefined;   // Electron does not throttle its page, so the warning is browser-only
