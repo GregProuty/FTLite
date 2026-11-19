@@ -53,7 +53,7 @@ export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: r
     if (!ship.active) return;
     const was = beforeCounters[i], now = duelCounters(t, i);
     if (!was) return;
-    const target = t.systems[i]!.target, tgt = t.ships[target], lock = t.systems[i]!.lock;
+    const target = t.systems[i]!.target, tgt = t.ships[target], lock = t.systems[i]!.lock, manual = t.systems[i]!.laserManual;
     // What each hit did (duel polish i spec §B, online): the first `stripped` hits took a shield layer; the rest struck the
     // laser's lock room. A missile hit struck a room whose level rose beyond what those laser hits explain, else unknown (−1).
     const tw = beforeCounters[target], tn = tgt ? duelCounters(t, target) : null;
@@ -62,7 +62,9 @@ export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: r
     const hits = now.laserHits - was.laserHits, weak = i === CREW_SLOT && t.systems[i]!.freq === t.weakFreq;
     let layers = now.stripped - was.stripped;
     for (let k = 0; k < now.shots - was.shots; k++) {
-      const hit = k < hits && !!tgt, stripped = hit && layers > 0, room = hit && !stripped ? lock : -1;
+      // W-2 (pew pew spec §2): a MANUAL hit struck the room under its hit point, which the snapshot does not carry: the first
+      // room whose level rose in the gap, else none.
+      const hit = k < hits && !!tgt, stripped = hit && layers > 0, room = hit && !stripped ? (manual ? rose.findIndex((r) => r > 0) : lock) : -1;
       if (stripped) layers -= weak ? Math.min(2, layers) : 1;
       if (room >= 0 && rose[room]! > 0) rose[room]!--;
       const x2 = hit ? tgt!.x : ship.x + hx(ship.heading) * LASER_RANGE, y2 = hit ? tgt!.y : ship.y + hy(ship.heading) * LASER_RANGE;

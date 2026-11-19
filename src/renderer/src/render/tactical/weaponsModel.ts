@@ -3,11 +3,11 @@
 // circle (both consoles, weapons update spec §2), the Weapons layer (bearing ring, both laser arcs, the enemy's bearing
 // and range) and the event effects. Pure, like tacticalModel, which it
 // sits beside: the layer draws TacticalDraw and CombatDraw together.
-import { classOf, Contact, Outcome, targetOf } from '../../sim/tactical/state';
+import { classOf, Contact, missileOf, Outcome, targetOf } from '../../sim/tactical/state';
 import { predictMissile } from '../../sim/tactical/predict';
-import { laserEligible, torpedoInRange } from '../../sim/tactical/weapons';
+import { laserEligible, manualLaserReady, torpedoInRange } from '../../sim/tactical/weapons';
 import { clampAim } from '../../sim/tactical/pew';
-import { AIM_STEPS, LASER_ARC_COS, LASER_RANGE, MISSILE_RADIUS, MISSILE_RANGE, PEW_ARC, PEW_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
+import { AIM_STEPS, HEADING_COUNT, LASER_ARC_COS, LASER_ARC_STEPS, LASER_RANGE, MISSILE_RADIUS, MISSILE_RANGE, PEW_ARC, PEW_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { ROOM_NAMES } from '../duel/interiorModel';
 import { alertSentence, evadeDir, gunReason, gunSentence, laserSituation, linedUp, type FlightAlert } from '../duel/situationModel';
 import { gunSightDraw, roundDraws, type GunSightDraw } from '../duel/leadModel';
@@ -79,6 +79,8 @@ export interface CombatDraw {
   /** W-1 (pew pew spec §1): on the Weapons map the pew cone (its edges drawn dim) and the aim line toward the pointer,
    *  clamped into the cone (mid); on every console map each pew round as a short streak (hot). */
   pewCone?: ArcDraw | null; pewAim?: Segment | null; pewRounds?: Segment[];
+  /** W-2 (pew pew spec §2): on the Weapons map in MANUAL, while Space would fire, the laser's aim line (drawn dashed main). */
+  laserAim?: Segment | null;
 }
 /** Feel-ii §1.6: the EVADE arrow beside the own ship (its tip, the way it points in radians clockwise from north) and its word. */
 export interface EvadeDraw { x: number; y: number; angle: number; label: Label }
@@ -115,6 +117,8 @@ export interface CombatModelInput extends TacticalModelInput {
   flight?: boolean;
   /** W-1: the pointer on the Weapons map (screen px), for the pew's aim line; absent or null draws none. */
   pewPointer?: Point | null;
+  /** W-2: the MANUAL laser's aim on the Weapons map (a fine heading, MapRequests.laserAim); null or absent aims along the nose. */
+  laserAim?: number | null;
 }
 
 /** Bearing in whole degrees, 0 to 359, north 0, clockwise. */
@@ -281,9 +285,17 @@ export function combatModel(input: CombatModelInput): CombatDraw {
       pewAim = { x1: ownS.x, y1: ownS.y, x2: ownS.x + Math.sin(a) * r, y2: ownS.y - Math.cos(a) * r };
     }
   }
+  // W-2 (pew pew spec §2): in MANUAL, while Space would fire (charged, no burst pending, Weapons online, no own torpedo in
+  // flight), the laser's aim line: from the own ship's drawn marker along the aim clamped as the sim clamps it, to its reach.
+  let laserAim: Segment | null = null;
+  if (input.console === 'weapons' && cls.slots.laser && input.ships.includes(0) && state.systems[0]!.laserManual && manualLaserReady(state, 0) && missileOf(state, 0) === null) {
+    const heading = state.ships[0].heading, r = LASER_RANGE * z, aim = input.laserAim ?? heading * HEADING_COUNT;
+    const a = (clampAim(heading, aim, LASER_ARC_STEPS) / AIM_STEPS) * 2 * Math.PI;
+    laserAim = { x1: ownS.x, y1: ownS.y, x2: ownS.x + Math.sin(a) * r, y2: ownS.y - Math.cos(a) * r };
+  }
   const pewRounds: Segment[] = state.pew.filter((q) => q.active).map((q) => {
     const a = toS(q.x - q.vx * PEW_STREAK_S, q.y - q.vy * PEW_STREAK_S), b = toS(q.x, q.y);
     return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
   });
-  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange, status, helmArc, solution, goal, floats, torpedoPath, evade, pings, pewCone, pewAim, pewRounds, ...gun };
+  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange, status, helmArc, solution, goal, floats, torpedoPath, evade, pings, pewCone, pewAim, pewRounds, laserAim, ...gun };
 }

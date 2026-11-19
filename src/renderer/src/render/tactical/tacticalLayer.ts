@@ -367,6 +367,9 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       }
       const pa = c?.pewAim ?? null;
       if (pa) combat.moveTo(pa.x1, pa.y1).lineTo(pa.x2, pa.y2).stroke({ width: 1, color: CRT.mid });
+      // W-2 (pew pew spec §2): the MANUAL laser's aim line, dashed main, while it is charged.
+      const la = c?.laserAim ?? null;
+      if (la) { line.length = 0; line.push(la.x1, la.y1, la.x2, la.y2); segments(combat, dashLine(line, DASH, GAP, seg), 1, CRT.main); }
       for (const r of c?.pewRounds ?? []) combat.moveTo(r.x1, r.y1).lineTo(r.x2, r.y2).stroke({ width: 2, color: CRT.hot });
       const gs = c?.gunSight ?? null;
       if (gs) {
