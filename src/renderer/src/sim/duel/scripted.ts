@@ -8,7 +8,7 @@ import { Health, Life, LifeState, Position, Seated } from '../components';
 import { roomAt, solidAt } from '../grid';
 import { inReachOfTile } from '../interact';
 import { stationOnline } from '../stations';
-import { levelWithinCap } from '../tactical/bars';
+import { levelWithinCap, weaponBars, WeaponSlot } from '../tactical/bars';
 import { hx, hy } from '../tactical/direction';
 import { inArc, sideOf } from '../tactical/geometry';
 import { autoFaceTurn } from '../tactical/hunter';
@@ -275,6 +275,10 @@ export function roomTiles(d: DuelState, room: number): Set<number> {
  *  so the gunner holds nothing. */
 function gunner(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void {
   const t = d.tactical, target = targetOf(t, 0), sys = t.systems[0];
+  // Engineering spike Decision 20 (spec §11): pew pew does nothing on this branch and the beam starts dark, so on its
+  // first seated tick the gunner moves pew pew's bar to the beam (−1 then +1, applied in sequence order), then fights
+  // with the beam and the torpedo as before.
+  if (weaponBars(sys, WeaponSlot.Pew) > 0) out.push({ kind: 'weaponPower', slot: WeaponSlot.Pew, delta: -1 }, { kind: 'weaponPower', slot: WeaponSlot.Beam, delta: 1 });
   const want = t.systems[target]!.shields > 0 ? Room.Shields : Room.Weapons;
   if (!sys.laserTargeted || sys.lock !== want) out.push({ kind: 'laserLock', room: want });
   if (missileOf(t, 0) || sys.torpLock >= 0) return;

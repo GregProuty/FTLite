@@ -21,6 +21,7 @@ import { disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 const vp = { w: 1280, h: 720 };
 /** Crew at rest far out, the enemy 2000 units north (out of every range), no asteroids. */
@@ -211,6 +212,7 @@ describe('never a dead click (Feel-ii §2.8): the reasons are the sim\'s own che
     const d = createSeatedDuel(CUTTER, 5);
     try {
       const t = d.tactical, sys = t.systems[0], me = t.ships[0], e = t.ships[1];
+      todaysCrewWeapons(t);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
       Object.assign(e, { x: me.x + 2000, y: me.y });
       expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual([null, 'OUT OF RANGE']);
       Object.assign(e, { x: me.x + 200, y: me.y });

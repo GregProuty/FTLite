@@ -8,7 +8,8 @@ import { roomAtImpact, sideOf } from './geometry';
 import { rockAlive, rockAt, rocksNear } from './rocks';
 import { detonateTorpedo } from './rockBlast';
 import { gravityAccel } from './physics';
-import { classOf, emptyMissile, missileOf, placeMissile, type DuelEvent, type Missile, type TacticalState } from './state';
+import { classOf, CREW_SLOT, emptyMissile, missileOf, placeMissile, type DuelEvent, type Missile, type TacticalState } from './state';
+import { TORPEDO_LEVELS_BY_BARS, weaponBars, WeaponSlot } from './bars';
 import { DT, MISSILE_CRUISE_SPEED, MISSILE_LEAD_CAP_S, MISSILE_MIN_CLOSING, R_MAP } from './tuning';
 
 type EndCause = Extract<DuelEvent, { kind: 'missileEnd' }>['cause'];
@@ -103,7 +104,8 @@ function land(state: TacticalState, m: Missile, k: number): void {
   const target = state.ships[k]!, sys = state.systems[k]!;
   const owner = state.systems[m.owner]!;   // the lock names a room on the owner's target; any other ship takes the impact room
   const room = (k === owner.target && k !== m.owner ? (owner.torpRoom >= 0 ? owner.torpRoom : owner.lock) : roomAtImpact(target, m.x, m.y)) as 0 | 1 | 2;
-  if (sys.rooms[room] < 2) sys.rooms[room]++;
+  const levels = m.owner === CREW_SLOT ? TORPEDO_LEVELS_BY_BARS[weaponBars(owner, WeaponSlot.Torpedo)]! : 1;   // Engineering spike spec §10.3: 3 bars hit 2 levels
+  sys.rooms[room] = Math.min(2, sys.rooms[room] + levels);
   sys.hull = Math.max(0, sys.hull - classOf(state, m.owner).slots.missile.hull);
   if (k !== m.owner) state.systems[m.owner]!.missileHits++;   // a self-hit is not a hit; the event's target tells them apart
   end(state, m, 'ship', k, room);

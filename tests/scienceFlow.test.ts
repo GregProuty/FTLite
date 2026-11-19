@@ -17,6 +17,7 @@ import { DERELICT_NEAR_MAX, HOSTILE_AFTER_TICKS, LASER_CHARGE_UNITS } from '../s
 import { applyWeaponsInput, IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { makeHostile } from './helpers/hostile';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { CUTTER } from './helpers/scriptedDuel';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
@@ -27,6 +28,7 @@ const step = (d: DuelState, commands: DuelEnvelope[] = []) => stepDuelTick(d, { 
 /** Player 1 at Weapons, the crew at (−600, −300) facing the enemy 300 east, the laser full and held, the enemy at 2 layers. */
 function gunnery(): DuelState {
   const d = createDuel(CUTTER, 5), t = d.tactical;
+  todaysCrewWeapons(t);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   sitDown(d.interior, 1, d.weapons);
   Object.assign(t.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(t.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });

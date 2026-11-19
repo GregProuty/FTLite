@@ -13,6 +13,7 @@ import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { inTorpedoRange } from './helpers/torpedoRange';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { missileOf, Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
@@ -97,6 +98,7 @@ describe('consoles are roles (spec §8, §13)', () => {
   });
   it('accepts weapon commands only from the present player seated at Weapons', () => {
     const d = createSeatedDuel(layout, 5);
+    todaysCrewWeapons(d.tactical);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
     const helmPress = cmd(d, 0, { kind: 'laserCharge', held: true }), gunPress = cmd(d, 1, { kind: 'laserCharge', held: true });
     const results = step(d, [helmPress, gunPress]);
     expect(results.find((r) => r.id === helmPress.id)).toMatchObject({ status: 'rejected', reason: 'not-at-weapons' });
@@ -107,6 +109,7 @@ describe('consoles are roles (spec §8, §13)', () => {
   it('weapon commands take effect lock, then charge, then launch, whatever their envelope order', () => {
     for (const launchFirst of [true, false]) {
       const d = createSeatedDuel(layout, 5), s = d.tactical.systems[0];
+      todaysCrewWeapons(d.tactical);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
       inTorpedoRange(d.tactical);                                       // weapons update spec §2: a launch needs the target within 360
       s.laserCharge = LASER_CHARGE_UNITS;                               // a full charge
       const launch = cmd(d, 1, { kind: 'missileLaunch' }), release = cmd(d, 1, { kind: 'laserCharge', held: true });
@@ -116,6 +119,7 @@ describe('consoles are roles (spec §8, §13)', () => {
     }
     for (const lockFirst of [true, false]) {
       const d = createSeatedDuel(layout, 5), [s, e] = d.tactical.ships;
+      todaysCrewWeapons(d.tactical);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
       Object.assign(e, { x: s.x + hx(s.heading) * 300, y: s.y + hy(s.heading) * 300 }); d.tactical.systems[1].shields = 0;   // dead ahead, shields down
       d.tactical.systems[0].laserCharge = LASER_CHARGE_UNITS;
       const lock = cmd(d, 1, { kind: 'laserLock', room: Room.Engines }), release = cmd(d, 1, { kind: 'laserCharge', held: true });

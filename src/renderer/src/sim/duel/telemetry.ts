@@ -6,9 +6,9 @@
 import { Life, LifeState, Seated } from '../components';
 import { inArc } from '../tactical/geometry';
 import { rockAt, rockCapacity } from '../tactical/rocks';
-import { classOf, missileOf, Outcome, targetOf } from '../tactical/state';
+import { missileOf, Outcome, targetOf } from '../tactical/state';
 import { CONTACT_GRACE_TICKS, LASER_ARC_COS, LASER_RANGE } from '../tactical/tuning';
-import { canLaunch, laserFull } from '../tactical/weapons';
+import { beamShots, canLaunch, laserFull } from '../tactical/weapons';
 import type { DuelState } from './state';
 import type { DuelInput } from './step';
 
@@ -105,7 +105,7 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
     if (e.kind !== 'laser' && e.kind !== 'missileEnd') continue;   // Sci-1's and the gun's other events are not these weapons
     const s = t.ships[e.ship as 0 | 1]!;
     if (e.kind === 'laser') {
-      if (tac.systems[e.ship]!.laserBurst > 0 || classOf(tac, e.ship).slots.laser?.shots === 1) s.laserReleases++;   // a burst's first shot (its rest still pending) is the release; only a laser class emits one
+      if (tac.systems[e.ship]!.laserBurst > 0 || beamShots(tac, e.ship) === 1) s.laserReleases++;   // a burst's first shot (its rest still pending) is the release; only a laser class emits one; Engineering spike spec §10.3: the crew's burst is the beam's bars
       if (e.hit) { s.laserHits++; if (e.stripped) s.layersStripped++; else laserOn[targetOf(tac, e.ship)] = true; } else s.laserMisses++;
     } else if (e.cause === 'ship') {
       missileOn[e.target] = true;

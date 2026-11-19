@@ -17,13 +17,14 @@ import { DT, GUN_POOL, HEADING_COUNT, SHIP_RADIUS, VALKYRN_HULL, VALKYRN_THRUST,
 import { IDLE_INPUT, laserEligible, laserFull } from '../src/renderer/src/sim/tactical/weapons';
 import { duelInit, resolveCutter } from './helpers/duelAuthority';
 import { makeHostile } from './helpers/hostile';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { liveDuel } from './helpers/liveDuel';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 /** The crew ship of class `cls` at (−600, −300) facing east at the enemy 300 units away (facing west at it), hostile,
  *  no asteroids: inside the Cutter laser's arc and range. */
 function facing(cls: number): TacticalState {
-  const st = makeHostile(createTacticalState(5, 2, cls));
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 2, cls)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   st.map = { ...st.map, asteroids: [] }; st.grid = buildGrid([], st.map.rMap);
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });

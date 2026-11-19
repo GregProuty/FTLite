@@ -18,11 +18,12 @@ import { LASER_BURST_GAP_TICKS, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MISSILE_RA
 import { applyWeaponsInput, IDLE_INPUT, laserEligible, tickWeapons, validTarget, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { makeHostile } from './helpers/hostile';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 const layout = parseShip(cutter);
 /** The crew at (−600, −300) facing east, the enemy 300 east facing west: in arc, laser range and torpedo range. */
 function facing(): TacticalState {
-  const st = makeHostile(createTacticalState(5));
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   st.map = { ...st.map, asteroids: [] };
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });

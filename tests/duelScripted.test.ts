@@ -78,7 +78,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
       for (const e of input.commands) { kinds.add(e.command.kind); expect(e.requestedTick).toBe(d.interior.tick); }
       expect(stepDuelTick(d, input).every((r) => r.status === 'applied')).toBe(true);
     }
-    expect([...kinds].sort()).toEqual(['laserLock', 'sit', 'stand', 'throttle', 'torpLock']);   // FTL targeting spec §3: the gunner fires by targets
+    expect([...kinds].sort()).toEqual(['laserLock', 'sit', 'stand', 'throttle', 'torpLock', 'weaponPower']);   // FTL targeting spec §3: the gunner fires by targets; Engineering spike spec §11 (Decision 20): it moves pew pew's bar to the beam
     disposeDuel(d);
   });
 });

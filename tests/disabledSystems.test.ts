@@ -9,9 +9,10 @@ import { CUTTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { DEFAULT_FLIGHT, DT, LASER_CHARGE_UNITS, THRUST, TURN_STEPS_PER_TICK, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
 import { makeHostile } from './helpers/hostile';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 function duel(): TacticalState {
-  const st = makeHostile(createTacticalState(5));
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
   return st;
@@ -68,14 +69,14 @@ describe('Weapons at level 2: the laser is off', () => {
     tickWeapons(st, 0, input());
     expect(missileOf(st, 0)).not.toBeNull();
   });
-  it('repair back to level 1 brings the laser back, at the level-1 rate', () => {
+  it('repair back to level 1 brings the laser back, at its bars\' rate (Engineering spike spec §10.3: level 1 leaves Weapons 5 bars, so the beam keeps 2)', () => {
     const st = duel(), a = st.systems[0];
     a.rooms[Room.Weapons] = 2;
     tick(st, input({ laserCharge: true }));
     for (let t = 0; t < 60; t++) tick(st, input());
     expect(a.laserCharge).toBe(0);
     a.rooms[Room.Weapons] = 1;                            // it charges by itself again (FTL targeting spec §2)
-    for (let t = 0; t < 384; t++) tick(st, input());
+    for (let t = 0; t < 240; t++) tick(st, input());   // Engineering spike spec §10.3: the beam's 2 bars charge 40 a tick at level 1 (was 384 ticks at the level-1 rate)
     expect(a.laserCharge).toBe(LASER_CHARGE_UNITS);
     tick(st, input({ laserCharge: true }));
     expect(a.shots).toBe(1);

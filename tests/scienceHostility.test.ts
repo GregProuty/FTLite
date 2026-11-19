@@ -18,12 +18,13 @@ import { HOSTILE_AFTER_TICKS, LASER_CHARGE_UNITS } from '../src/renderer/src/sim
 import { IDLE_INPUT, tickWeapons, UNCREWED_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { seatDuelCrew } from './helpers/duelSeat';
 import { holding, makeHostile } from './helpers/hostile';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { inTorpedoRange } from './helpers/torpedoRange';
 import { missileOf } from '../src/renderer/src/sim/tactical/state';
 
 /** Holding: the crew at (−600, −300) facing east at the enemy 300 units east of it (in arc and range), both at rest. */
 function facing(): TacticalState {
-  const st = holding(createTacticalState(5));
+  const st = todaysCrewWeapons(holding(createTacticalState(5)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
   return st;

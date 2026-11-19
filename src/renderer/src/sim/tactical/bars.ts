@@ -82,3 +82,14 @@ export function trimmedWeaponPower(sys: WeaponSys): number[] {
 }
 /** The bars weapon `slot` stands on now (trimmed). */
 export function weaponBars(sys: WeaponSys, slot: number): number { return trimmedWeaponPower(sys)[slot]!; }
+
+// ---- Weapons, the effects (Task 9b; Engineering spike spec §10.3, §11; isolated) ----
+// Indexed by a weapon's bars 0..4; 4 is the overdrive bar, 3's effect at 1.25× the charge or reload rate. Pew pew's
+// slot has no table here: it is W-1's weapon (spec §11) and its bars have no effect on this branch.
+export const BEAM_SHOTS_BY_BARS: readonly number[] = [0, 1, 2, 2, 2];
+export const BEAM_RATE_BY_BARS: readonly number[] = [0, 40, 40, 60, 75];
+export const TORPEDO_RELOAD_BY_BARS: readonly number[] = [0, 4, 6, 8, 10];
+/** The Room levels a crew torpedo hit adds (to the cap of 2). A torpedo already in flight when its bars go hits for 1. */
+export const TORPEDO_LEVELS_BY_BARS: readonly number[] = [1, 1, 1, 2, 2];
+/** The crew magazine's units clock: at 4 a tick (1 bar) a missile takes 2700 ticks, today's MAGAZINE_REGEN_TICKS. */
+export const MAGAZINE_REGEN_UNITS = 10800;

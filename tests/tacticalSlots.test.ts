@@ -13,6 +13,7 @@ import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { CUTTER, passiveInput } from './helpers/scriptedDuel';
 import { makeHostile } from './helpers/hostile';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { classOf, createTacticalState, emptyMissile, missileOf, placeMissile, removeMissile, shipBody, targetOf, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import {
   ENGINE_FACTOR, HUNTER_HULL, LASER_CHARGE_UNITS, LASER_HULL, LASER_RANGE, MAGAZINE, MISSILE_HULL, MISSILE_LIFE_TICKS, SHIELD_LAYERS, SHIP_HULL, SHIP_RADIUS, THRUST, TURN_STEPS_PER_TICK
@@ -77,7 +78,7 @@ describe('ship slots (spec §5 "arrays, not pairs")', () => {
     }
   }, 60_000);
   it('contacts and the laser work across any pair of active slots, by the locked target', () => {
-    const st = makeHostile(createTacticalState(5, 3));
+    const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 3)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
     quiet(st);
     Object.assign(st.ships[2]!, { active: true, x: 500, y: -1800, vx: 0, vy: 0, heading: 192 });   // a third ship, west-facing
     Object.assign(st.systems[2]!, { ...st.systems[1], rooms: [0, 0, 0], target: 0 });

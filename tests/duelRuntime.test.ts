@@ -20,6 +20,7 @@ import { soloDuelRecord, validateDuelRecord } from '../src/renderer/src/net/duel
 import { soloRecorder } from '../src/renderer/src/app/duel/soloRecorder';
 import { seatDuelCrew } from './helpers/duelSeat';
 import { inTorpedoRange } from './helpers/torpedoRange';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 
 const layout = parseShip(cutter);
@@ -58,6 +59,7 @@ function rig(seed = 5, onRound?: (record: DuelRoundRecord) => void, seated = tru
     clearKeys: () => { keys = idle(); cleared++; }, onRound
   });
   if (seated) seatDuelCrew(rt.duel);   // the old seated start: createDuel now leaves both standing
+  todaysCrewWeapons(rt.duel.tactical);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   const hold = (h: Partial<Omit<KeySample, 'presses'>>): void => { keys = { ...keys, ...h }; };
   const press = (...actions: KeyAction[]): void => { const p = { ...keys.presses }; for (const a of actions) p[a]++; keys = { ...keys, presses: p }; };
   /** One frame, then one tick's worth of wall time with a frame after it (so the press is sent on exactly one tick). */
