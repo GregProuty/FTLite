@@ -1,11 +1,10 @@
 // Asteroids-iii (docs/superpowers/specs/2026-11-19-asteroids-iii-design.md §3.1–§3.4) on spike ii's pool: 160 reserve
 // slots of 8 values (kind, x, y, vx, vy, r, hp, t), every seeded rock a Rail at t = 0, the accessors and their memo, the
-// step phase, freeing, the rock targets, the eight rock counters, the three transient masks and the restore rules.
+// step phase, freeing, the rock targets, the nine rock counters, the three transient masks and the restore rules.
 import { describe, expect, it } from 'vitest';
 import { cloneTactical, createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { flattenTactical, hashTactical, shipModule, spaceModule, unflattenTactical, validateTacticalValues } from '../src/renderer/src/sim/tactical/hash';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
-import { breakRock } from '../src/renderer/src/sim/tactical/rockBreak';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { railPos, type RailOut } from '../src/renderer/src/sim/tactical/rails';
 import { beginRockStep, beginRockTick, endRockStep, freeFrame, freeRock, rockAlive, rockAt, rockBorn, rockCapacity, rockHp, rockHpMax, RockKind, rockMass, rockPhase, rockSlots, rocksMoved, ROCK_RESERVE, ROCK_STRIDE, rockVx, rockVy, rockX, rockY } from '../src/renderer/src/sim/tactical/rocks';

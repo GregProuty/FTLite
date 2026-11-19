@@ -17,6 +17,7 @@ import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import type { SimModule } from '../src/renderer/src/sim/module';
 import { canonicalFields } from '../src/renderer/src/sim/canonicalFields';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
+import { isRail, rockKind, RockKind, rockSlots, ROCK_STRIDE, rockX, rockY } from '../src/renderer/src/sim/tactical/rocks';
 import { CUTTER } from './helpers/scriptedDuel';
 import { duelInit, resolveCutter, throughBytes } from './helpers/duelAuthority';
 import { hunterDown, liveDuel } from './helpers/liveDuel';
@@ -121,7 +122,9 @@ describe('a decided round and the rematch (spec §7)', () => {
           for (const [name, values] of a) {
             if (name.startsWith('round.')) continue;
             const want = b.get(name)!, shift = stamps.test(name) ? T : (name === fireAt || name === lsStamp) && want[0]! >= 0 ? T : 0;   // Engineering spike spec §4: lsStamp
-            expect(values, `${name} at round tick ${k}`).toEqual(want.map((v) => v + shift));
+            // Asteroids-iii §3.1: a live rock slot's clock t (value 7 of each ROCK_STRIDE) is a tick stamp too.
+            const rockShift = (j: number): number => (name === 'space.rocks' && j % ROCK_STRIDE === 7 && want[j - 7] !== RockKind.Gone ? T : 0);
+            expect(values, `${name} at round tick ${k}`).toEqual(want.map((v, j) => v + shift + rockShift(j)));
           }
           if (d.tactical.outcome !== Outcome.Running) break;
           stepDuelTick(d, scriptedInput(pa, d)); stepDuelTick(fresh, scriptedInput(pb, fresh));
@@ -130,6 +133,22 @@ describe('a decided round and the rematch (spec §7)', () => {
       } finally { disposeDuel(fresh); }
     } finally { disposeDuel(d); }
   }, 60_000);
+  it('a round started at T reads its rails as a fresh duel does the same number of ticks in (asteroids-iii §3.1: the belt starts unturned)', () => {
+    const d = decided(4);
+    try {
+      for (let k = 0; k < 255; k++) step(d);
+      step(d, [env(d, 0, { kind: 'rematch' })]);
+      const fresh = createDuel(CUTTER, d.tactical.seed);
+      try {
+        const rails = Array.from({ length: rockSlots(fresh.tactical) }, (_, k) => k).filter((k) => isRail(rockKind(fresh.tactical, k)));
+        expect(rails.length).toBeGreaterThan(0);
+        for (let k = 0; k < 30; k++) {
+          for (const j of rails) expect([rockX(d.tactical, j), rockY(d.tactical, j)], `slot ${j} at round tick ${k}`).toEqual([rockX(fresh.tactical, j), rockY(fresh.tactical, j)]);
+          step(d); step(fresh);
+        }
+      } finally { disposeDuel(fresh); }
+    } finally { disposeDuel(d); }
+  });
   it('after a rematch, the stepped duel hashes as its saved-and-loaded copy at every tick for 600 ticks', () => {
     const d = decided(6);
     try {

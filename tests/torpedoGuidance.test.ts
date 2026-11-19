@@ -24,6 +24,7 @@ function openSpace(seed: number): TacticalState {
   const st = createTacticalState(seed);
   st.map = { ...st.map, asteroids: [] };
   st.grid = buildGrid([], st.map.rMap);
+  st.rocks.fill(0);   // asteroids-iii: the pool too (every slot Gone), so no seeded rock orbits into open space
   return st;
 }
 

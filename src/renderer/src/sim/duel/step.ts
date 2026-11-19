@@ -21,7 +21,7 @@ import { classOf, CONTACT_MAX_LEVEL, Outcome, type Axes } from '../tactical/stat
 import { hx, hy } from '../tactical/direction';
 import { shipEngineFactor } from '../tactical/physics';
 import { HAZARD_EVERY } from '../tuning';
-import { rockAlive } from '../tactical/rocks';
+import { rockAlive, rockSlots, ROCK_STRIDE } from '../tactical/rocks';
 import { canCharge, canLaunch, manualLaserReady, validRockLock, validTarget, type ShipInput } from '../tactical/weapons';
 import { pewReady, validAim } from '../tactical/pew';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
@@ -212,8 +212,8 @@ function crewHelm(d: DuelState, h: HeldInput | null, crew: ShipInput): void {
 /**
  * The next round (H-2 spec §7), built in place in `d` so every holder of the duel keeps it: a fresh duel (a fresh
  * interior world) from the round seed after this one, with the same Helm player and presence, whose every tick stamp
- * is moved to the encounter tick `tick`: the interior and tactical ticks, each ship's graceUntil and the hunter's last
- * launch. A round started at `tick` behaves as a fresh duel started at 0 (tests/duelRounds.test.ts).
+ * is moved to the encounter tick `tick`: the interior and tactical ticks, each ship's graceUntil, the hunter's last
+ * launch and each live rock's clock t. A round started at `tick` behaves as a fresh duel started at 0 (tests/duelRounds.test.ts).
  */
 function startRound(d: DuelState, tick: number): void {
   const next = createDuel(d.interior.layout, followingSeed(d.tactical.seed), d.helmPlayer, d.interior.playerCount, d.crewClass);   // Valkyrn spec §6.1: the class carries over
@@ -221,6 +221,7 @@ function startRound(d: DuelState, tick: number): void {
   next.round = d.round + 1; next.baseTick = tick; next.decidedTick = -1;
   next.interior.tick = tick; next.tactical.tick = tick;
   for (const ship of next.tactical.ships) ship.graceUntil.fill(tick);
+  for (let k = 0; k < rockSlots(next.tactical); k++) if (rockAlive(next.tactical, k)) next.tactical.rocks[k * ROCK_STRIDE + 7] = tick;   // asteroids-iii §3.1: each rock's clock t, so the belt starts unturned
   next.tactical.hunter.lastLaunch += tick;
   next.tactical.startTick = tick;   // Sci-1 spec §4.1: the round's rules read rt = tick − startTick; hostileAt is round-relative
   disposeDuel(d);

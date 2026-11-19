@@ -11,6 +11,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { computeContentDigest } from '../build/contentDigest';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
+import { ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { DUEL_LAYOUT } from '../src/renderer/src/sim/duel/layout';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
@@ -135,7 +136,7 @@ const feel = (() => {
   }
   return { rows, medianSeconds: median(rows.map((x) => x.seconds)) };
 })();
-function countAlive(rocks: Float64Array): number { let n = 0; for (let k = 0; k < rocks.length; k += 7) if (rocks[k]! > 0) n++; return n; }
+function countAlive(rocks: Float64Array): number { let n = 0; for (let k = 0; k < rocks.length; k += ROCK_STRIDE) if (rocks[k]! > 0) n++; return n; }
 
 const result = { simVersion: SIM_VERSION, sizes, cost, determinism, feel };
 console.log(JSON.stringify(result, null, 2));
