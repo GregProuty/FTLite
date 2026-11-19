@@ -7,6 +7,7 @@
 // events are outputs, reset every tick, and not hashed. −0 is written as 0.
 import { hashF64 } from '../../../../shared/hash';
 import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
+import { DUEL_SYSTEM_COUNT, SYSTEM_SLOTS } from './bars';
 import { SHIP_CLASSES, type ShipClassDef } from './defs';
 import { DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, GUN_POOL, HEADING_COUNT, HUNTER_TRAIL_TICKS, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
 import { rockCapacity, ROCK_RESERVE, ROCK_STRIDE } from './rocks';
@@ -123,6 +124,7 @@ function shipFields(slots: number): ModuleField<TacticalState>[] {
     fields.push(vector(`systems.${i}.rooms`, 3, (s) => s.systems[i]!.rooms));
     for (const key of SYSTEMS_TAIL) fields.push(systemsField(i, key));
     fields.push(vector(`systems.${i}.gunRoomWear`, 3, (s) => s.systems[i]!.gunRoomWear));   // Valkyrn spec §7.3
+    fields.push(vector(`systems.${i}.bars`, DUEL_SYSTEM_COUNT, (s) => s.systems[i]!.bars));   // Engineering spike spec §2
   }
   shipCache.set(slots, fields);
   return fields;
@@ -198,7 +200,7 @@ export function cloneTacticalFromModule(s: TacticalState): TacticalState {
   const copy: TacticalState = { ...s, rng: { s: 0 }, rocks: new Float64Array(s.rocks.length),
     rockBorn: new Uint8Array(s.rockBorn.length), rockDone: new Uint8Array(s.rockDone.length),
     ships: s.ships.map((b) => ({ ...b, graceUntil: new Int32Array(b.graceUntil.length) })) as TacticalState['ships'],
-    systems: s.systems.map((y) => ({ ...y, rooms: [0, 0, 0], gunRoomWear: [0, 0, 0] })) as TacticalState['systems'],
+    systems: s.systems.map((y) => ({ ...y, rooms: [0, 0, 0], gunRoomWear: [0, 0, 0], bars: [0, 0, 0, 0, 0] })) as TacticalState['systems'],
     missiles: s.missiles.map(emptyMissile) as TacticalState['missiles'],
     rounds: s.rounds.map(emptyRound),
     hunter: { ...s.hunter, trail: new Float64Array(s.hunter.trail.length) }, events: s.events.map((e) => ({ ...e })),
@@ -236,7 +238,8 @@ const systemsRules = (slots: number, rocks: number): Readonly<Record<string, (v:
   // Valkyrn spec §7.3: heat 0..heatMax, cooldown 0..interval, muzzle 0..1, wear below each threshold, counts ≥ 0.
   gunHeat: within(0, most((c) => c.slots.gun?.heatMax)), gunLocked: flagBit, gunCooldown: within(0, most((c) => c.slots.gun?.intervalTicks)), gunMuzzle: within(0, 1),
   gunWear: within(0, most((c) => c.slots.gun?.hitsPerLayer) - 1), gunHull: within(0, most((c) => c.slots.gun?.hitsPerHull) - 1),
-  gunRoomWear: within(0, most((c) => c.slots.gun?.hitsPerLevel) - 1), gunShots: count, gunHits: count
+  gunRoomWear: within(0, most((c) => c.slots.gun?.hitsPerLevel) - 1), gunShots: count, gunHits: count,
+  bars: within(0, Math.max(...SYSTEM_SLOTS))   // Engineering spike spec §2, §10.1: 0..10 per system
 });
 // Built on first use: state.ts imports this file for cloneTactical, so its enums are read lazily.
 const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({

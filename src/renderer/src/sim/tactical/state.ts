@@ -4,6 +4,7 @@
 // locked target (`systems[i].target`). All fields are flat scalars or arrays, so the flatten and the clone stay simple.
 import { createRng, nextInt, type RngState } from '../../../../shared/rng';
 import { DUEL_CLASSES, SHIP_CLASSES, ShipClass, type ShipClassDef } from './defs';
+import { DUEL_SYSTEM_COUNT, SHIELD_LAYERS_BY_BARS, START_BARS } from './bars';
 import { dirBetween } from './direction';
 import { buildGrid, type BroadPhase } from './grid';
 import { generateMap, type MapDef, type Spawn } from './map';
@@ -70,6 +71,9 @@ export interface ShipSystems {
   gunHeat: number; gunLocked: boolean; gunCooldown: number; gunMuzzle: number;
   gunWear: number; gunHull: number; gunRoomWear: [number, number, number];
   gunShots: number; gunHits: number;
+  /** Engineering spike spec §2: the crew ship's powered reactor bars per system (Shields, Weapons, Engines, Sensors,
+   *  Oxygen; sim/tactical/bars.ts). START_BARS on the crew slot at a round's start, zeros on every other slot (never read). */
+  bars: number[];
 }
 
 /** A cruise missile's flight (spec §7b). */
@@ -190,16 +194,18 @@ function emptyShip(bodies: number): Ship {
 function systemsFor(cls: number, target: number, crew = false): ShipSystems {
   const c = SHIP_CLASSES[cls]!, laser = c.slots.laser;
   return {
-    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: crew && laser ? laser.chargeUnits : 0, laserHold: 0, fireHeld: false, lock: Room.Shields,
+    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: crew ? Math.min(c.shields.layers, SHIELD_LAYERS_BY_BARS[START_BARS[0]!]!) : c.shields.layers, shieldClock: 0, laserCharge: crew && laser ? laser.chargeUnits : 0, laserHold: 0, fireHeld: false, lock: Room.Shields,
     laserTargeted: crew && laser !== null, torpLock: -1, torpRoom: -1, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: c.slots.missile.magazine, magazineClock: 0, laserRock: -1, torpRock: -1, torpRockFlying: -1, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
-    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0
+    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0,
+    bars: crew ? [...START_BARS] : Array<number>(DUEL_SYSTEM_COUNT).fill(0)   // Engineering spike spec §2
   };
 }
 function emptySystems(): ShipSystems {
   return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, laserTargeted: false, torpLock: 0, torpRoom: 0, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: 0, magazineClock: 0, laserRock: 0, torpRock: 0, torpRockFlying: 0, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
-    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0 };
+    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0,
+    bars: Array<number>(DUEL_SYSTEM_COUNT).fill(0) };
 }
 /** A free missile pool entry. */
 export function emptyMissile(): Missile { return { active: false, owner: 0, x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 }; }
