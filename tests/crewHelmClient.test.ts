@@ -8,12 +8,13 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuelKeyboard, crewHelmHeld, emptyPresses, type EventSource, type KeySample } from '../src/renderer/src/app/duel/input';
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import { helmSteer, onHelmMap } from '../src/renderer/src/app/duel/flightPointer';
+import { OWN_SHIP } from '../src/renderer/src/render/duel/consoleLayout';
 import { refusal, stateAxes } from '../src/renderer/src/render/duel/situationModel';
 import { crewAxes } from '../src/renderer/src/sim/duel/step';
 import { crewThrust } from '../src/renderer/src/sim/duel/helmFlight';
 import { disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { Room } from '../src/renderer/src/sim/tactical/state';
-import { seatDuelCrew, createSeatedDuel } from './helpers/duelSeat';
+import { seatDuelCrew, createSeatedDuel, standAtStation } from './helpers/duelSeat';
 
 const layout = parseShip(cutter);
 const TICK_MS = 1000 / 60;
@@ -58,6 +59,12 @@ describe('the Helm map\'s steer (spec §4a)', () => {
     expect(helmSteer({ pointer: null, ship, zoom: 1, contactShown: false })).toBeNull();
     expect(onHelmMap({ x: 30, y: 700 }, false)).toBe(false);   // the Helm block, bottom left
     expect(onHelmMap({ x: 640, y: 360 }, false)).toBe(true);
+  });
+  it('the left button over the own ship window (drawn on the crew Helm map) does not steer', () => {
+    const mid = { x: OWN_SHIP.x + OWN_SHIP.w / 2, y: OWN_SHIP.y + OWN_SHIP.h / 2 };
+    expect(onHelmMap(mid, false)).toBe(false);
+    expect(helmSteer({ pointer: mid, ship: { x: 640, y: 360 }, zoom: 1, contactShown: false })).toBeNull();
+    expect(onHelmMap({ x: OWN_SHIP.x + OWN_SHIP.w + 4, y: mid.y }, false)).toBe(true);   // just right of it is open map
   });
 });
 
@@ -142,6 +149,56 @@ describe('Single player at the crew Helm (spec §3, §4, §4a, §5)', () => {
     r.tick();
     r.set({ throttleHeld: 1, rcsY: 1 }); r.tick();
     expect(r.rt.axes()).toEqual(crewAxes(r.rt.duel, r.rt.held()[0]!));
+    r.rt.dispose();
+  });
+});
+
+describe('held keys do not carry onto the crew Helm (final review I1)', () => {
+  it('the keyboard: a key held when staleHeld runs counts for no crew field until it is released and pressed again', () => {
+    const t = fakeTarget(), kb = createDuelKeyboard(t);
+    t.fire('keydown', key('KeyE')); t.fire('keydown', key('KeyW'));
+    kb.staleHeld();
+    let s = kb.sample();
+    expect([s.rcsX, s.throttleHeld, s.interactHeld, s.held?.up]).toEqual([0, 0, true, true]);   // only the crew fields go stale
+    t.fire('keydown', { ...key('KeyE'), repeat: true }); expect(kb.sample().rcsX).toBe(0);   // an OS repeat is no new press
+    t.fire('keyup', key('KeyE')); t.fire('keydown', key('KeyE'));
+    s = kb.sample(); expect([s.rcsX, s.throttleHeld]).toEqual([1, 0]);
+    t.fire('keyup', key('KeyW')); t.fire('keydown', key('KeyW'));
+    expect(kb.sample().throttleHeld).toBe(1);
+    kb.ui.hold('KeyW', true); kb.staleHeld(); t.fire('keyup', key('KeyW'));
+    expect(kb.sample().throttleHeld).toBe(1);   // a console button's hold is never stale
+  });
+  function seatRig() {
+    const time = fakeTime(), t = fakeTarget(), kb = createDuelKeyboard(t);
+    const rt = createDuelRuntime({
+      now: time.now, scheduler: time.scheduler, seed: 5, viewport: { w: 1280, h: 720 }, layout,
+      sampleKeys: () => kb.sample(), samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }),
+      clearKeys: () => kb.clear(), staleKeys: () => kb.staleHeld()
+    });
+    standAtStation(rt.duel, rt.active(), rt.duel.nav);
+    return { rt, down: (c: string) => t.fire('keydown', key(c)), up: (c: string) => t.fire('keyup', key(c)), tick() { time.advance(TICK_MS); rt.frame(1 / 60); } };
+  }
+  it('Single player: E sits and stays held, so no starboard thruster or vent until E is released and pressed again', () => {
+    const r = seatRig();
+    r.tick(); r.tick();
+    r.down('KeyE');
+    for (let k = 0; k < 6; k++) r.tick();
+    expect(r.rt.view()).toBe('helm');
+    expect([r.rt.held()[r.rt.active()]!.rcsX, r.rt.duel.helmVent.x]).toEqual([undefined, 0]);
+    r.up('KeyE'); r.down('KeyE'); r.tick(); r.tick();
+    expect([r.rt.held()[r.rt.active()]!.rcsX, r.rt.duel.helmVent.x]).toEqual([1, 1]);
+    r.rt.dispose();
+  });
+  it('Single player: W held from the walk does not hold the throttle until it is pressed again', () => {
+    const r = seatRig();
+    r.tick(); r.tick();
+    r.down('KeyW'); r.down('KeyE'); r.tick(); r.up('KeyE');
+    for (let k = 0; k < 6; k++) r.tick();
+    expect(r.rt.view()).toBe('helm');
+    expect([r.rt.held()[r.rt.active()]!.throttleHeld, r.rt.duel.thrMille]).toEqual([undefined, 0]);
+    r.up('KeyW'); r.down('KeyW'); r.tick(); r.tick();
+    expect(r.rt.held()[r.rt.active()]!.throttleHeld).toBe(1);
+    expect(r.rt.duel.thrMille).toBeGreaterThan(0);
     r.rt.dispose();
   });
 });

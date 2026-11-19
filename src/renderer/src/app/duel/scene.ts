@@ -37,6 +37,7 @@ import type { DuelSink } from '../../ui/sinks';
 import { mapOverlayOf, type Banners, type MapOverlayView } from '../../ui/views';
 import type { DuelState } from '../../sim/duel/state';
 import type { HelmVent } from '../../sim/duel/helmFlight';
+import { crewHelmSeat } from './controls';
 import { classOf, Contact, CREW_SLOT, missileOf, Outcome, Room, targetOf, type Axes } from '../../sim/tactical/state';
 import type { InteriorCamera } from '../../render/duel/interiorCamera';
 import type { AimSample, HeldFlags } from './input';
@@ -192,7 +193,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const station = hidden ? null : consoleStation(d, source.active());
       const onMap = view !== 'interior' && (station === 'helm' || station === 'weapons' || station === 'science' || station === 'flight');   // Sci-1 spec §7.2: the window on all three
       const click = options.takeClick?.() ?? null;   // drained every frame, so a click never waits for a later frame
-      const crewHelmMap = station === 'helm' && view === 'helm' && classOf(d.tactical, CREW_SLOT).newtonianHelm;   // playtest2feedback §4a
+      const crewSeat = crewHelmSeat(d, source.active()), crewHelmMap = station === 'helm' && view === 'helm' && crewSeat;   // playtest2feedback §4a
       if (contact && click && onMap && station !== 'flight' && !crewHelmMap) {   // Valkyrn spec §5.1: on the Flight seat the left button is the gun; on the crew Helm it only steers
         // Spike ii §6.5: a ship contact under the pointer wins; else, with a weapon picked up, a rock under it takes the drop.
         const at = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport }, ship = pickContact(at, click);
@@ -245,8 +246,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       if (onMap && crewHelmMap && running && !overlay.layerPaused && (options.leftHeld?.() ?? false)) {
         const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), p = options.pointer?.() ?? null;
         const h = helmSteer({ pointer: p, ship: worldToScreen(cam!, viewport, b.x, b.y), zoom: cam!.zoom, contactShown: shown });
-        if (h !== null) options.requests?.steer(h);
-        steerTo = p;
+        if (h !== null) { options.requests?.steer(h); steerTo = p; }   // final review M1: the marker only while a steer goes out
       }
       const vent = source.helmVent?.() ?? d.helmVent;   // §6: the puffs and the hiss
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
@@ -276,7 +276,8 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       } else if (sitSeat !== seat) { seat = sitSeat; carded = false; }   // a Tab, a stand or Science: no new sit
       const held = source.uiHeld(), aimed = contact?.aimWeapon() ?? null;
       lastAimed = aimed;
-      if (seat === 'helm' && (held.left || held.right || held.fire)) goalUsed = true;
+      // Final review: at the crew Helm A/D are thrusters, so the goal is used by the steer or auto-face; else A/D or auto-face.
+      if (seat === 'helm' && (crewSeat ? steerTo !== null || held.fire : held.left || held.right || held.fire)) goalUsed = true;
       if (seat === 'weapons' && aimed === 'laser') goalUsed = true;
       if (seat !== null && (held.left || held.right || held.fire || held.up || held.down || aimed !== null || shownThrottle() !== sitThrottle)) acted = true;
       if (sound) {   // Audio-i spec section 4: the same events the effects use; pan from the screen on a map view, crew-relative inside
@@ -323,7 +324,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         ? contactModel({ state: d.tactical, contact: open?.contact ?? null, aim: open?.aim ?? false, weapon: contact?.aimWeapon() ?? 'laser', station, t, weapons: consoleView?.weapons ?? consoleView?.flight?.weapons ?? null, flashes: open?.contact === 0 ? flashesFor(fx.struck, targetOf(d.tactical, CREW_SLOT)) : [] })
         : null;
       options.ui.frame({
-        readout: { rows: readoutRows({ duel: d, mode: view === 'flight' ? 'helm' : view, active: source.active(), console: onConsole }), help: onConsole ? [] : readoutHelp(view === 'flight' ? 'helm' : view, view === 'helm' && classOf(d.tactical, CREW_SLOT).newtonianHelm) },
+        readout: { rows: readoutRows({ duel: d, mode: view === 'flight' ? 'helm' : view, active: source.active(), console: onConsole }), help: onConsole ? [] : readoutHelp(view === 'flight' ? 'helm' : view, view === 'helm' && crewSeat) },
         end: overlay.end,
         console: consoleView,
         crt: crtActive(view),

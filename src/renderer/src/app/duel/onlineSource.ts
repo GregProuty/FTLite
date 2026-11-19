@@ -8,7 +8,6 @@ import type { DuelState } from '../../sim/duel/state';
 import { throttleThrust } from '../../sim/duel/throttle';
 import { engineBars, heldAxis, noVent, rampTicks, throttleCap, throttleFloor, ventOf, type HelmVent } from '../../sim/duel/helmFlight';
 import { crewAxes } from '../../sim/duel/step';
-import { classOf } from '../../sim/tactical/state';
 import { hx, hy } from '../../sim/tactical/direction';
 import { CREW_SLOT, missileOf, NO_AXES, Outcome, type Axes, type DuelEvent, type Missile, type TacticalState } from '../../sim/tactical/state';
 import { LASER_RANGE } from '../../sim/tactical/tuning';
@@ -17,7 +16,7 @@ import { createCamera, followBody, updateCamera, type Camera, type Viewport } fr
 import { createInteriorCamera, resetInteriorCamera } from '../../render/duel/interiorCamera';
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
-import { seatOf } from './controls';
+import { crewHelmSeat, seatOf } from './controls';
 import { NO_HELD_FLAGS, type HeldFlags, type KeySample, type PointerSample } from './input';
 import { createCameraInput, heldTurn, type DuelView } from './runtime';
 import type { HeldInput } from '../../net/contracts';
@@ -99,7 +98,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   let uiHeld: HeldFlags = NO_HELD_FLAGS, shownThrottle: number | null = null, refusals: Refusal[] = [];
   let unackedFrames = 0;   // playtest2feedback Decision 14: this seat's held frames the replica has not taken yet
   /** Playtest2feedback §3: this seat flies the crew Helm (a newtonianHelm class) in a running round. */
-  const crewHelm = (d: DuelState): boolean => seatOf(d, seat) === 'helm' && classOf(d.tactical, 0).newtonianHelm && d.tactical.outcome === Outcome.Running;
+  const crewHelm = (d: DuelState): boolean => crewHelmSeat(d, seat) && d.tactical.outcome === Outcome.Running;
   const cameraInput = createCameraInput(deps.now, deps.viewport), interiorCamera = createInteriorCamera();
   const gaps: number[] = [];
   /** Observe the client: on a new publication, roll the interpolation and derive the gap's events. True when one was new. */

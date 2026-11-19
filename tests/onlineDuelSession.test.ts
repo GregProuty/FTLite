@@ -459,6 +459,24 @@ describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () =>
     expect(headings(c)).toEqual([]);
     r.dispose();
   });
+  it('keys held while sitting (E) or walking up (W) do not carry onto the crew Helm until pressed again (final review I1)', () => {
+    const r = rig(0), c = r.attach();
+    const stepOne = (command: DuelCommand, sequence: number): void => {
+      stepDuelTick(r.d, { held: [], commands: [{ runId: 'duel', id: { player: 0, sequence }, requestedTick: r.d.interior.tick, command }] });
+      c.publish(r.d); r.pump();
+    };
+    stepOne({ kind: 'stand' }, 1);
+    r.key('keydown', 'KeyW'); r.key('keydown', 'KeyE'); r.pump();   // E sits (the session sends it); W is held from the walk
+    expect(c.commands().filter((x) => x.kind === 'sit')).toHaveLength(1);
+    stepOne({ kind: 'sit', station: r.d.nav }, 2);                 // the sit's publication arrives with both still held
+    r.pump(); r.pump();
+    for (const held of c.helds().slice(-3)) expect([held.rcsX, held.throttleHeld]).toEqual([undefined, undefined]);
+    r.key('keyup', 'KeyE'); r.key('keydown', 'KeyE'); r.pump();   // pressed again: starboard
+    expect([c.helds().at(-1)!.rcsX, c.helds().at(-1)!.throttleHeld]).toEqual([1, undefined]);
+    r.key('keyup', 'KeyW'); r.key('keydown', 'KeyW'); r.pump();
+    expect([c.helds().at(-1)!.rcsX, c.helds().at(-1)!.throttleHeld]).toEqual([1, 1]);
+    r.dispose();
+  });
   it('blur drops the local prediction: the vent and thrMille fall back to the replica state', () => {
     const r = rig(0), c = r.attach();
     r.d.rcsGas = 100; c.publish(r.d); r.pump(); r.session.frame();

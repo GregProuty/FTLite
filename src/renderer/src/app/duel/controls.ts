@@ -6,6 +6,7 @@ import { inReachOfTile } from '../../sim/interact';
 import { stationOnline } from '../../sim/stations';
 import { pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
+import { classOf } from '../../sim/tactical/state';
 
 export type Seat = 'helm' | 'weapons' | 'science' | 'flight' | 'standing';
 
@@ -23,6 +24,12 @@ export function seatOf(d: DuelState, pid: number): Seat {
   const station = Seated.station[eid]!;
   if (station >= 0 && (station === d.nav || station === d.weapons) && flightSeat(d)) return 'flight';
   return station === d.nav ? 'helm' : station === d.weapons ? 'weapons' : d.science >= 0 && station === d.science ? 'science' : 'standing';
+}
+
+/** Playtest2feedback §3: whether player pid's character flies the crew Helm: seated at the Helm (not the Flight seat) of a
+ *  newtonianHelm class (the Cutter), whose W/S hold the throttle and whose A/D, Q/E and the arrows are thrusters. */
+export function crewHelmSeat(d: DuelState, pid: number): boolean {
+  return seatOf(d, pid) === 'helm' && classOf(d.tactical, 0).newtonianHelm;
 }
 
 /** The tactical Room player pid would repair (or put out, duel-fire spec §1.4) by holding E now, or −1: the first damaged

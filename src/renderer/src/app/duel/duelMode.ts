@@ -69,6 +69,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     takeContactRequests: () => contact.takeRequests(), takeHeading: () => requests.takeHeading(),
     cls: deps.cls, takeSteer: () => requests.takeSteer(), takeLaunches: () => requests.takeLaunches(), gunHeld: () => pointer.leftHeld(), steerHeld: () => pointer.leftHeld(),   // Valkyrn spec §5.1, §8; playtest2feedback §4a
     clearKeys: () => { keyboard.clear(); pointer.clear(); },
+    staleKeys: () => keyboard.staleHeld(),   // playtest2feedback final review I1: held keys do not carry onto the crew Helm
     seed: deps.seed, viewport, layout: deps.layout, onRound: (summary) => { void Promise.resolve(deps.recordDuel?.(solo.record(summary))).catch(() => {}); }
   });
   // SPIKE ii (billiard asteroids): a staging hook for the screenshots, solo only. Never in a shipped build. `seatWeapons`

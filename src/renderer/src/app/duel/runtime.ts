@@ -24,7 +24,7 @@ import { createFeelTracker, recordFeel, type FeelTracker } from '../../render/ta
 import { createInteriorCamera, interiorInput, refollowInteriorCamera, resetInteriorCamera, type InteriorCamera } from '../../render/duel/interiorCamera';
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
-import { consoleInReach, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
+import { consoleInReach, crewHelmSeat, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
 import type { ContactRequests } from './contactController';
 import type { Refusal } from './scene';
 import { NO_LASER, refusal } from '../../render/duel/situationModel';
@@ -178,6 +178,9 @@ export interface DuelRuntimeDeps extends FlightRuntimeDeps {
   steerHeld?(): boolean;
   /** Drop the keyboard's held keys and press edges (Tab and restart, spec §4, §5). */
   clearKeys?(): void;
+  /** Playtest2feedback (final review I1): the keys held now stop counting for the crew Helm's held fields until pressed
+   *  again (the keyboard's staleHeld); called on the frame the active character's seat becomes the crew Helm. */
+  staleKeys?(): void;
   /** Each decided round's record, once, on the tick it is decided (H-2 spec §8: Single player's solo records). */
   onRound?(record: DuelRoundRecord): void;
   /** The contact window's requests since the last frame (Sci-1 spec §7.2, §7.3): designate and scan, sent by seat. */
@@ -257,8 +260,9 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   const idleHeld = (): HeldInput[] => Array.from({ length: crew }, () => NEUTRAL);
   // Valkyrn spec §4.4, §5.1: Tab's ship view while seated (n = 1), the Flight seat's held bearing, and the gun's last frame.
   let shipView = false, steer = -1, gunPrev = false;
-  // Playtest2feedback §4, §4a: the crew Helm's left button and thrusters on the last frame (the refusals' press edges).
-  let steerPrev = false, rcsPrev = { x: 0, y: 0 };
+  // Playtest2feedback §4, §4a: whether this left-button hold has steered yet and the thrusters on the last frame (the
+  // refusals' press edges), and whether the active character flew the crew Helm on the last frame (final review I1).
+  let steerPrev = false, rcsPrev = { x: 0, y: 0 }, crewHelmPrev = false;
   const newtonian = (): boolean => classOf(d.tactical, 0).newtonianHelm;
   const hasGun = (): boolean => classOf(d.tactical, 0).slots.gun !== null;
   const hasLaser = (): boolean => classOf(d.tactical, 0).slots.laser !== null;
@@ -370,14 +374,14 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   function newRound(): void {
     round = d.round; pending = []; switching = false; deferred = [];
     activeHeld = NEUTRAL; sentHeld = idleHeld(); sentAxes = NO_AXES;
-    shipView = false; steer = -1; gunPrev = false; steerPrev = false; rcsPrev = { x: 0, y: 0 };
+    shipView = false; steer = -1; gunPrev = false; steerPrev = false; rcsPrev = { x: 0, y: 0 }; crewHelmPrev = false;
     events = []; counts = hitCounts(d);
     capture(); freshCameras(); cameraInput.reset(); resetInteriorCamera(interiorCamera);
     deps.clearKeys?.();
   }
 
   /** One frame's press edges for the active character, by where it is (spec §5 table). */
-  function play(k: KeySample, requests: ContactRequests, heading: number | null, launches: number): KeySample {
+  function play(k: KeySample, requests: ContactRequests, heading: number | null, launches: number, steerNow: number | null): KeySample {
     if (k.presses.switch > 0 && crew === 1) {   // Valkyrn spec §4.4: no other character; Tab toggles the console and the ship view while seated
       if (seatOf(d, active) !== 'standing' && k.presses.switch % 2 === 1) shipView = !shipView;
       cameraInput.reset(); refollowInteriorCamera(interiorCamera);
@@ -436,21 +440,22 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       }
       return k;
     }
-    if (seat === 'helm' && newtonian()) {   // playtest2feedback §3-§5: W/S, the thrusters and the steer go out on the held frame
+    if (crewHelmSeat(d, active)) {   // playtest2feedback §3-§5: W/S, the thrusters and the steer go out on the held frame
       if (p.camera > 0) snapBack(cameras.helm);
       if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== headingBase(k.fireHeld)) queue({ kind: 'heading', heading });   // RMB; only auto-face clears the hold
       const power = k.power ?? 0;
       for (let n = 0; n < Math.abs(power); n++) queue({ kind: 'helmPower', delta: power > 0 ? 1 : -1 });   // 1 to ENGINE, 2 to COMPRESSOR
-      const off = refusal(d, 'turn'), held = k.held ?? NO_HELD_FLAGS, steering = deps.steerHeld?.() ?? false;
+      // §4a: a hold steers once the map gives a bearing (a press over a block or the ship steers nothing yet).
+      const off = refusal(d, 'turn'), held = k.held ?? NO_HELD_FLAGS, steering = deps.steerHeld?.() ?? false, steered = steering && steerNow !== null;
       if (off) {
-        if (steering && !steerPrev) refuse('turn', off);   // §4a: the steer, not A/D
+        if (steered && !steerPrev) refuse('turn', off);   // §4a: the hold's first steer, not A/D (final review M1)
         if (held.fire && !prevHeld.fire) refuse('auto-face', off);
         if ((held.up && !prevHeld.up) || (held.down && !prevHeld.down)) refuse('throttle', off);
         if (heading !== null && heading >= 0) refuse('heading', off);
       }
       const rx = k.rcsX ?? 0, ry = k.rcsY ?? 0, gas = refusal(d, 'thrusters');
       if (gas && ((rx !== 0 && rcsPrev.x === 0) || (ry !== 0 && rcsPrev.y === 0))) refuse('thrusters', gas);   // §4: NO PRESSURE
-      steerPrev = steering; rcsPrev = { x: rx, y: ry };
+      steerPrev = steering && (steerPrev || steered); rcsPrev = { x: rx, y: ry };
       return k;
     }
     if (seat === 'helm') {
@@ -524,6 +529,11 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     alpha: () => frameAlpha,
     frame(dt) {
       let k = deps.sampleKeys();
+      // Final review I1: on the frame the active character's seat becomes the crew Helm, the keys held now (E sits and is a
+      // thruster; W, A and D walk) are stale until pressed again, and this sample's crew fields are dropped.
+      const crewHelmAtSample = crewHelmSeat(d, active);
+      if (crewHelmAtSample && !crewHelmPrev) { deps.staleKeys?.(); k = { ...k, throttleHeld: 0, rcsX: 0, rcsY: 0 }; }
+      crewHelmPrev = crewHelmAtSample;
       prevHeld = lastHeld; lastHeld = k.held ?? NO_HELD_FLAGS;
       const requests = deps.takeContactRequests?.() ?? NO_REQUESTS;   // drained every frame; dropped while paused or ended
       const heading = deps.takeHeading?.() ?? null;   // Feel-ii §1.1: drained every frame, like the contact requests
@@ -535,14 +545,14 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       // A Tab or a rematch changes which camera the pointer would move: this frame's sampled drag and wheel belong to the old one.
       const moved = (): void => { pointer = { ...sampled, wheel: 0, dragX: 0, dragY: 0, rightX: 0, rightY: 0 }; };   // the right drag too: the Helm pans by minus it
       if (ended()) { if (k.presses.confirm > 0 && !pending.some((c) => c.command.kind === 'rematch')) { pending.push({ player: active, command: { kind: 'rematch' } }); k = IDLE_KEYS(); moved(); } }
-      else if (pacer.reasons.size === 0) { if (k.presses.switch > 0) moved(); k = play(k, requests, heading, launchesNow); }   // while paused, gameplay presses are dropped; the camera still moves
+      else if (pacer.reasons.size === 0) { if (k.presses.switch > 0) moved(); k = play(k, requests, heading, launchesNow, steerNow); }   // while paused, gameplay presses are dropped; the camera still moves
       // Quantised as online (H-2 spec §3), and neutral on the end card as online sends it.
       // Feel-i (console feel spec §2): Space held at the Helm is auto-face, sent only from the Helm, as the sim admits it.
       const seatNow = seatOf(d, active);
       if (seatNow === 'standing') shipView = false;
       // Playtest2feedback §4a: the crew Helm steers only while the left button is held (the last bearing holds over a block);
       // let go, no aim goes out and the sim holds the last one as the held heading.
-      const crewHelmNow = seatNow === 'helm' && newtonian(), steering = crewHelmNow && (deps.steerHeld?.() ?? false);
+      const crewHelmNow = crewHelmSeat(d, active), steering = crewHelmNow && (deps.steerHeld?.() ?? false);
       if (crewHelmNow) steer = steering ? steerNow ?? steer : -1;
       else if (seatNow !== 'flight') steer = -1; else if (steerNow !== null && !shipView) steer = steerNow;   // the last bearing holds over the side tools
       const gunNow = seatNow === 'flight' && !shipView && hasGun() && (deps.gunHeld?.() ?? false);
