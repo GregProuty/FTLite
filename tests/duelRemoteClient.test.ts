@@ -13,15 +13,19 @@ import { linkPair } from './helpers/linkPair';
 import { ownTestCleanup } from './helpers/simLifetime';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
 
+import { CUTTER } from './helpers/scriptedDuel';
+// W-4 spec §14.1: the beam's rule, on the laser fit: the Cutter layout flying the laser class (the layout's shipClass picks it).
+const LASER_FIT = { ...CUTTER, shipClass: 'valkyrnLaser' };
+const resolveLaser = (id: string) => (id === LASER_FIT.id ? LASER_FIT : resolveCutter(id));
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 function rig(seed: number, drop?: (k: number) => boolean) {
   let now = 0, ordinal = 0;
-  const clock = { nowMs: () => now }, init = duelInit(seed, 'remote-duel'), session = duelRules.create(init, resolveCutter);
+  const clock = { nowMs: () => now }, init = duelInit(seed, 'remote-duel', 0, LASER_FIT), session = duelRules.create(init, resolveLaser);
   seatDuelCrew(session.duel);   // the old seated start (createDuel leaves both standing)
   todaysCrewWeapons(session.duel.tactical);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
-  const core = createEncounterCore(duelRules, { init, contentDigest: DIGEST, resolveLayout: resolveCutter, clock, scheduler: { schedule: () => () => {} }, onCrash(r) { throw Error(r.error); } }, session);
-  const pair = linkPair('remote', drop), binding = createDuelStreamBinding(pair.host.link, { resolveLayout: resolveCutter, contentDigest: DIGEST, clock, latestPayloadLimit: 16088 });
-  const client = createDuelRemoteClient(pair.guest.link, [1], { runId: init.runId, contentDigest: DIGEST, resolveLayout: resolveCutter, clock });
+  const core = createEncounterCore(duelRules, { init, contentDigest: DIGEST, resolveLayout: resolveLaser, clock, scheduler: { schedule: () => () => {} }, onCrash(r) { throw Error(r.error); } }, session);
+  const pair = linkPair('remote', drop), binding = createDuelStreamBinding(pair.host.link, { resolveLayout: resolveLaser, contentDigest: DIGEST, clock, latestPayloadLimit: 16088 });
+  const client = createDuelRemoteClient(pair.guest.link, [1], { runId: init.runId, contentDigest: DIGEST, resolveLayout: resolveLaser, clock });
   ownTestCleanup(() => { client.dispose(); binding.dispose(); core.dispose(); });
   return { core, session, pair, binding, client,
     attach() { core.attach(binding.link, [1], { ...binding.attachOptions, admissionPolicy: 'receive-time' }); },

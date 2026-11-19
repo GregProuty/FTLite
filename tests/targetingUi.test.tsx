@@ -20,6 +20,7 @@ import { CRT, CRT_RAMP } from '../src/renderer/src/render/tactical/crtTheme';
 import { hex } from '../src/renderer/src/ui/stage/color';
 import { targetingTint } from '../src/renderer/src/ui/duel/TargetingLine';
 import { makeUi } from './helpers/uiStore';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const charge = { label: 'CHARGE', value: 'READY', labelTint: TEXT, valueTint: TEXT, bar: { fill: 1, colour: TEXT } };
@@ -39,7 +40,7 @@ const texts = () => Array.from(document.querySelectorAll('canvas')).map((e) => e
 
 /** The UI with the real contact controller; `frame()` rebuilds the contact view from the controller, as the scene does. */
 function mount(known = 2) {
-  const ui = makeUi(), duel = createDuelSink(ui.store), controller = createContactController(), st: TacticalState = createTacticalState(4);
+  const ui = makeUi(), duel = createDuelSink(ui.store), controller = createContactController(), st: TacticalState = createTacticalState(4, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
   st.known[0] = known;
   const sync = (): ContactSync => ({ ...live, enemyKnown: st.known[0] });
   const input = { press: vi.fn(), hold: vi.fn(), lock: vi.fn(), torpLock: vi.fn(), throttle: vi.fn(), frequency: vi.fn() };

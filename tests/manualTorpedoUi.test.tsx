@@ -23,6 +23,7 @@ import { classOf, missileOf, placeMissile, Room } from '../src/renderer/src/sim/
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
 import { makeUi } from './helpers/uiStore';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 afterEach(() => { cleanup(); });
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((c) => c.dataset.text!);
@@ -81,7 +82,7 @@ describe('the TORPEDO card\'s AUTO / MAN tag (spec §3, §5)', () => {
 
 describe('the Weapons panel and the tone in MANUAL (spec §3)', () => {
   it('carries the mode and the flying torpedo\'s; LAUNCH is live out of range; the lock tone is off', () => {
-    const d = createSeatedDuel(CUTTER, 5); todaysCrewWeapons(d.tactical);
+    const d = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.ValkyrnLaser); todaysCrewWeapons(d.tactical);   // W-4 spec §14.1: the beam's rule, on the laser fit
     try {
       // Merge with the Engineering spike (kind a): out of torpedo range but inside sensor range (800 < 900 at 1 Sensors bar,
       // spec §10.4), since an unseen enemy never sounds the lock tone (was 3000 apart).
