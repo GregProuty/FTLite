@@ -63,14 +63,15 @@ describe('the rock track (spec §7.1, §13.5)', () => {
     expect(resized.len).toBe(1); expect(resized.at).toEqual(resized.head);
     const kept = run(() => undefined);   // no change: the history continues
     expect(kept.len).toBeGreaterThan(3);
-    // slot 5 was a rail: a free rock now, so its history is exactly one sample at its position
-    const st = arena(), track = createRockTrack();
-    rail(st, 5, 300, 1700, 12); updateRockTrack(track, st);
-    while ((st.tick + 1) % 15 !== 0 || st.tick < 100) { stepDuel(st, IDLE_INPUT); updateRockTrack(track, st); }
-    writeRock(st, 5, RockKind.Free, 300, 1700, 0, 0, 12, 5, st.tick); stepDuel(st, IDLE_INPUT); updateRockTrack(track, st);
-    const out: number[] = [];
-    expect(rockTrailInto(track, st, 5, out)).toBe(1);
-    expect(out.slice(0, 2)).toEqual([rockX(st, 5), rockY(st, 5)]);
+    // a free rock turned into a rail (same r, moved under JUMP_RESET_U) on a sample tick: only the kind rule resets it
+    const sk = arena(), tk = createRockTrack(), [kx, ky] = circularVelocity(0, 1700);
+    mover(sk, 5, 0, 1700, kx, ky + 5, 12); updateRockTrack(tk, sk);
+    while (tk.len[5]! <= 3 || (sk.tick + 1) % 15 !== 0) { stepDuel(sk, IDLE_INPUT); updateRockTrack(tk, sk); }
+    const prevX = tk.cx[5]!;
+    writeRock(sk, 5, RockKind.Rail, 0, 1710, 0, 0, 12, 5, sk.tick); stepDuel(sk, IDLE_INPUT); updateRockTrack(tk, sk);
+    expect(tk.len[5]).toBe(0);                                     // a rail keeps no trail, and the free history is gone
+    expect(tk.px[5]).toBe(rockX(sk, 5)); expect(tk.py[5]).toBe(rockY(sk, 5));
+    expect(Math.hypot(rockX(sk, 5) - prevX, rockY(sk, 5) - 1700)).toBeLessThan(JUMP_RESET_U);
   });
   it('a tick that goes backwards resets the history', () => {
     const st = arena(), track = createRockTrack();

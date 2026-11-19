@@ -618,9 +618,9 @@ export function pickRock(input: Pick<TacticalModelInput, 'state' | 'camera' | 'v
 }
 
 /** §7.2: the target's predicted path in world units, kept for the tick and rock it was made for (the frames between two ticks reuse it). */
-let pathCache: { state: TacticalState; tick: number; k: number; pts: Point[] } | null = null;
+let pathCache: { state: WeakRef<TacticalState>; tick: number; k: number; pts: Point[] } | null = null;   // a WeakRef: the cache never keeps an old state alive
 export function cachedRockPath(state: TacticalState, k: number): Point[] {
-  if (!pathCache || pathCache.state !== state || pathCache.tick !== state.tick || pathCache.k !== k) pathCache = { state, tick: state.tick, k, pts: predictRock(state, k, ROCK_PATH_TICKS, ROCK_PATH_EVERY) };
+  if (!pathCache || pathCache.state.deref() !== state || pathCache.tick !== state.tick || pathCache.k !== k) pathCache = { state: new WeakRef(state), tick: state.tick, k, pts: predictRock(state, k, ROCK_PATH_TICKS, ROCK_PATH_EVERY) };
   return pathCache.pts;
 }
 const trailBuf: number[][] = [];   // per rock slot: the draw list's trail scratch (the model builds one frame at a time)
