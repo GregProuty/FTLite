@@ -23,6 +23,9 @@ import { createBrowserFullscreen, type KeyboardLockApi } from './app/web/browser
 import { checkBrowserSupport, ONE_TAB_TEXT, SAFARI_NOTE, UNSUPPORTED_TEXT, type SupportGlobals } from './app/web/browserSupport';
 import { acquireOnlineLock, type OnlineLock } from './app/web/onlineLock';
 import { installAudioUnlock } from './app/audioUnlock';
+import { createIndexedDbDuelRecordStore } from './app/web/duelRecordStore';
+import { downloadText } from './app/web/download';
+import type { DuelPlaytestRecord } from './net/duelRecord';
 import { validatePageOnlineConfig } from '../../shared/onlineConfig';
 import { createOnlineRendererSession } from './app/onlineSession';
 import { createOnlineModeSession } from './app/onlineModeSession';
@@ -100,7 +103,10 @@ async function startApp(): Promise<void> {
   // A lock manager that fails or never answers (review R1-F2, R1-F6) leaves online off with the unsupported text, not
   // the "configured local service" one.
   const browserInit = web ? { web: true, unsupported: support?.ok ? null : UNSUPPORTED_TEXT, note: support?.safari ? SAFARI_NOTE : null,
-    onlineBlocked: lock.state === 'busy' ? ONE_TAB_TEXT : lock.state === 'unavailable' && configured ? UNSUPPORTED_TEXT : null } : undefined;
+    onlineBlocked: lock.state === 'busy' ? ONE_TAB_TEXT : lock.state === 'unavailable' && configured ? UNSUPPORTED_TEXT : null, playtestLog: true } : undefined;
+  // Web build spec §7.4: the browser keeps duel records in IndexedDB; Electron still writes them to disk through main.
+  const duelRecords = web ? createIndexedDbDuelRecordStore() : null;
+  const recordDuel = (record: DuelPlaytestRecord): Promise<boolean> | undefined => window.ftlite?.recordDuel ? window.ftlite.recordDuel(record) : duelRecords?.append(record);
   const bridge = pageOnline ? createOnlineBridge(pageOnline) : null;
   const offVisibility = bridge && !window.ftlite ? watchHostVisibility({ document, onStatus: cb => bridge.onStatus(cb) }) : undefined;   // Electron does not throttle its page, so the warning is browser-only
   const offPrepareExit = window.ftlite?.onPrepareExit?.(() => pageOnline ? pageOnline.prepareExit() : Promise.resolve());
@@ -124,7 +130,7 @@ async function startApp(): Promise<void> {
       const pick = soloShip(settings.soloShip), layout = soloLayouts.get(pick.id)!;   // Valkyrn spec §9: the picked ship
       const cls = settings.valkyrnLaserFit && pick.laserFit !== null ? classIndexById(pick.laserFit) : undefined;   // §8: the developer laser fit
       const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout, cls, lifecycle: window.ftlite, ui: duelSink, audio,   // Audio-i: Single player was silent
-        onExit: () => { session.home(); actions.leaveSingle(); }, recordDuel: record => window.ftlite?.recordDuel?.(record), setConsole: (input) => actions.setConsole(input),
+        onExit: () => { session.home(); actions.leaveSingle(); }, recordDuel, setConsole: (input) => actions.setConsole(input),
         setContact: (contact) => actions.setContact(contact) });
       return { frame() { /* the duel runs on its own ticker callback */ }, dispose };
     },
@@ -133,7 +139,7 @@ async function startApp(): Promise<void> {
       const resolveLayout = (id: string) => { const layout = Object.values(ships).find(ship => ship.id === id); if (!layout) throw Error('unknown-layout'); return layout; };
       online = createOnlineModeSession({
         duel: () => createOnlineDuelSession({ renderer, ui: duelSink, latency: latencySink, now: () => performance.now(), scheduler, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, api: bridge!,
-          leave: () => actions.leave(), audio, recordDuel: record => window.ftlite?.recordDuel?.(record), setConsole: (input) => actions.setConsole(input),
+          leave: () => actions.leave(), audio, recordDuel, setConsole: (input) => actions.setConsole(input),
           setContact: (contact) => actions.setContact(contact) }),   // Audio-i: local duel sounds; the replicated cues would play twice
         sector: () => createOnlineRendererSession({ sampleDevices: keyboard.sample, resetInput: keyboard.reset, renderer, hud, now: () => performance.now(), scheduler,
           resolveLayout, api: bridge!, playCue: audio.play, sound: createSectorAudio(audio) })
@@ -159,6 +165,7 @@ async function startApp(): Promise<void> {
     fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) }
       : pageFullscreen ? { get: () => pageFullscreen.get(), set: (on) => pageFullscreen.set(on) } : undefined,
     reload() { location.reload(); },   // web build spec §5.4: the update banner
+    downloadPlaytestLog: duelRecords ? async () => { const log = await duelRecords.exportLog(); if (!log) return null; downloadText(document, URL, log.name, log.text); return log.name; } : undefined,
     quit() { window.close(); }   // the main window's close: main quits the app on window-all-closed, as the close button does
   });
   // Online input is blocked everywhere but a viewed session (React UI spec §2), applied when the derived value changes.
