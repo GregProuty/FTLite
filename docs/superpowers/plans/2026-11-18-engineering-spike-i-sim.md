@@ -86,6 +86,7 @@
   - Never run two vitest processes at once.
   - `tests/director.test.ts`, `tests/run.test.ts`, `tests/snapshot.test.ts` and `tests/gate-*.test.ts` can time out under load. Rerun a failing one alone before calling it a failure.
   - Tasks 2 to 11 (9a and 9b included) must leave `npx tsc -b` clean, with their own new tests and the listed touched tests green. The full suite is first required green in Task 12.
+  - **One exemption:** `tests/duelCheckpoint.test.ts`'s "the duel codec admits exactly the duel modules' command kinds" is red from Task 4 (the power module declares the four ship kinds) until Task 5 puts them on the wire. Every other listed test must be green at the end of its task.
 - **Comments:** each new file gets a header comment citing the spec section. Exports get doc comments. Changed lines that need a reason cite "Engineering spike spec §x".
 
 ## Decisions where the spec leaves room, and where the code forces a choice
@@ -111,7 +112,7 @@ Line numbers were verified against master at `cf4d6775`, which already carries V
 13. **The hazard tick** is `(tick − d.baseTick) % HAZARD_EVERY === 0`, with `tick` the interior tick being stepped. It runs after firePhase and clampToCapacity and before healthPhase. `duelHeatStep` runs last in it, so an overheat ignition there is seen by the next tick's fireStep.
 14. **The door toggle** is Closed/Open → HeldOpen and HeldOpen → Closed, each zeroing `closeTimer` and `sealRequested`. Sealed is unreachable in the duel. `createDuel` no longer fills `HeldOpen`, so doors start `DoorState.Closed` (createSimState's default).
 15. **No quirk.** createDuel passes `{ quirk: 3 }` (Lucky Hull) to createSimState. Its only hook is sector debris (`sim/quirks.ts`), which the duel never runs. The quirk draw itself is still made, as createSimState always does.
-16. **The throttle cap and the scripted pair (Task 8).** `sim/duel/scripted.ts` asks for throttle 4 at full thrust (`:318-320`), and `runDuel` throws on any refused scripted command (`tests/helpers/scriptedDuel.ts:39`). With a cap of 3 at the start (Engines 3 bars, spec §10.2), every golden run would throw. So the scripted pair clamps its wanted level to `throttleCap`, and to 0 for a reverse at cap 0, before comparing it with `d.throttle`. This is a sim change to the bot, recorded in the report.
+16. **The throttle cap and the bots (Task 8).** Both bots ask for throttle 4 at full thrust: the scripted pair (`sim/duel/scripted.ts:318-320`) and the Valkyrn pilot (`sim/duel/scriptedPilot.ts`, via `flight` and `PILOT_AWAY_THROTTLE`). `runDuel` and `runValkyrnDuel` throw on any refused scripted command (`tests/helpers/scriptedDuel.ts:39`). With a cap of 3 at the start (Engines 3 bars, spec §10.2), every golden and gate run would throw. So both bots pass their wanted level through `levelWithinCap` (the cap for forward, 0 for a reverse at cap 0) before comparing it with `d.throttle`. This is a sim change to the bots, recorded in the report.
 17. **Weapons (Tasks 9a and 9b).**
     - **The trim is computed, not stored, for every reader.** `trimmedWeaponPower` first drops any 4th bar when the Weapons system lacks its overdrive bar, then takes bars one at a time from the highest slot (torpedo, then beam, then pew pew) until no more are spent than the effective Weapons bars. A hit inside stepDuel therefore trims at once, and `clampToCapacity` writes the trimmed values back.
     - **A 4th bar** is allowed only while the Weapons system's effective bars exceed `SYSTEM_MAX` (9), and on one weapon at a time. A weapon at 4 has 3's effect at 1.25× its charge or reload (the tables' last column).
@@ -127,6 +128,12 @@ Line numbers were verified against master at `cf4d6775`, which already carries V
     - **Hazard capacity.** Sensors capacity from hazards is a duel rule (`sim/duel/sensors.ts`, via `capacityOf`), because tactical code can't see the interior. A clamp after the hazard tick catches fires that spread or ignite there.
     - **The gates** are on `contactScan`, `laserLock` and `torpLock` with a room ≥ 0 (clearing needs nothing seen), and on `designate` with a contact ≥ 0. A running scan pauses while its contact is unseen.
     - **The scripted gunner** sends no lock while the target is unseen.
+20. **The bots fight with pew pew (Task 9b Step 7b).** The beam starts dark, so:
+    - the scripted Helm lines up when either laser is full and targeted;
+    - the scripted gunner re-locks with `laserLock { weapon: 'pew' }` and holds the torpedo while pew pew has a shot;
+    - telemetry's `weaponsIdleTicks` counts a full laser on either barrel.
+    The console's "WEAPONS OFFLINE" situation is Part ii's.
+21. **The Shield loot is cancelled by the cap (spike only).** The derelict's Shield loot (`sim/tactical/science.ts:74`) adds a layer over the class layers, but the crew's shield cap (Task 3) drops any layer above `SHIELD_LAYERS_BY_BARS[bars]` the same tick. In the spike that loot does nothing. Task 12 notes it in the report's known limits; the bar cap is not changed for it.
 19. **Measurements for the report (spec §1)** come from `scripts/engineering-spike-measure.ts`, run at 53 (Task 1) and at the end (Task 12): the flattened duel length for a Hound duel, and the mean ms per tick over a 3600-tick scripted Cutter duel. Task 12 adds the gate table. Part ii adds feel and screenshots to the same report file.
 
 ## File structure
@@ -509,7 +516,10 @@ with
 
 - [ ] **Step 6: Update the flatten key guard**
 
-In `tests/tacticalDeterminism.test.ts`, change the systems key list (line 115) to include `'bars'` after nothing else alphabetically before it: the sorted list begins `['bars', 'cls', 'fireHeld', ...`. Change `2 * 37` to `2 * 42` on line 122, and append to the comment on line 121: `; Engineering spike spec §2: per slot the 5 bars.`
+In `tests/tacticalDeterminism.test.ts`:
+- change the systems key list (line 115) to begin with `'bars'`: the sorted list starts `['bars', 'cls', 'fireHeld', ...`;
+- change `2 * 37` to `2 * 42` in the `expect(flattenTactical(st).length)` line (line 123);
+- append `; Engineering spike spec §2: per slot the 5 bars.` to the end of the comment just above it (the comment's last line is line 122).
 
 - [ ] **Step 7: Run the tests**
 
@@ -959,7 +969,8 @@ with
 
 In `tests/duelModules.test.ts`:
 - Import `powerModule` from `../src/renderer/src/sim/duel/power`.
-- Line 40: add `powerModule` to the `duelNames` list after `helmModule`.
+- Line 42: add `powerModule` to the `duelNames` list after `helmModule`.
+- Line 107: the hash loop `for (const { module, state } of DUEL_MODULES.slice(0, 5)) {` becomes `for (const { module, state } of DUEL_MODULES.filter(({ module }) => module.id !== 'interior')) {   // Engineering spike spec §7: every non-interior module, power included`. With power added after helm, `slice(0, 5)` would silently skip helm and power.
 - Line 140 (the explicit flatten expectation): after `d.throttle, d.holdHeading,` insert `...d.power.heat, ...d.power.coolant, ...d.power.failed,`.
 - Line 150: the sorted kind list becomes `['contactScan', 'designate', 'heading', 'laserCharge', 'laserFrequency', 'laserLock', 'missileLaunch', 'presence', 'rematch', 'shipAirlock', 'shipCoolant', 'shipDoor', 'shipPower', 'sit', 'stand', 'throttle', 'torpLock']`.
 - Mark each changed line `// Engineering spike spec §7`.
@@ -971,7 +982,7 @@ Run: `npx vitest run tests/engPower.test.ts tests/duelModules.test.ts tests/duel
 Expected:
 - engPower and duelModules PASS.
 - duelSnapshot PASS. A test that hard-codes an offset after `helm` is fallout kind (a): shift it by `POWER_VALUES`.
-- duelCheckpoint's "the duel codec admits exactly the duel modules' command kinds" fails until Task 5 puts the four kinds on the wire. That is expected; leave it red until Task 5.
+- duelCheckpoint's "the duel codec admits exactly the duel modules' command kinds" fails until Task 5 puts the four kinds on the wire. That is the one exemption in Global Constraints; leave it red until Task 5.
 - `tsc -b` is clean (`SimModule.commands` is `readonly string[]`).
 
 - [ ] **Step 9: Commit**
@@ -1262,6 +1273,8 @@ git commit -m "feat(engineering-spike): shipPower, shipCoolant, shipDoor and shi
 - Modify: `src/renderer/src/sim/duel/fire.ts` (firePhase without growth)
 - Modify: `src/renderer/src/sim/duel/tuning.ts` (remove DUEL_FIRE_GROW)
 - Modify: `src/renderer/src/sim/duel/step.ts` (doorSystem, the hazard tick)
+- Modify: `src/renderer/src/sim/duel/scripted.ts:144-182` (goalTiles and bfsPath plan through doors whatever their state)
+- Modify: `tests/duelScripted.test.ts:35-42` (path tiles are not wall tiles, rather than not solid)
 - Test: `tests/engHazards.test.ts`
 
 **Interfaces:**
@@ -1443,11 +1456,14 @@ export function firePhase(d: DuelState, tick: number): void {
 }
 ```
 
-(c) Change the header comment's "Only the pieces the duel uses run: ignition from enemy hits, growth to FIRE_CAP, the level damage cadence and the extinguish work. The sector's fireStep never runs here: no oxygen, no shrink and no spread, so a duel fire burns until a player puts it out." to "Ignition from enemy hits, the level damage cadence and the extinguish work are here; growth by oxygen, shrink and spread are the sector fireStep's, run on the duel's hazard tick (Engineering spike spec §4)."
+(c) Rewrite the file's header comment (lines 1 to 4, each starting `// `). Today it says the duel runs only ignition, growth to FIRE_CAP, the damage cadence and the extinguish work, and that the sector fireStep never runs. Make it say instead:
+- ignition from enemy hits (with Task 7's breach roll), the level damage cadence and the extinguish work are here;
+- growth by oxygen, shrink and spread are the sector fireStep's, run on the duel's hazard tick (Engineering spike spec §4).
+Keep the first line's `// Duel fire (duel-fire spec §1): the crew ship's fires, kept in the interior's own rooms.fire and rooms.fireRepair (so` sentence about storage.
 
 In `src/renderer/src/sim/duel/tuning.ts`:
 - delete the line `export const DUEL_FIRE_GROW = 1 / 60;`;
-- in the comment above it, replace "a fire grows DUEL_FIRE_GROW per tick to FIRE_CAP and never goes out by itself;" with "a fire grows, shrinks and spreads by the sector fireStep (Engineering spike spec §4);".
+- in the doc comment above the fire constants (it spans lines 34 and 35 with ` *  ` prefixes), remove the clause that a fire "grows DUEL_FIRE_GROW per tick to FIRE_CAP and never goes out by itself" and put in its place "grows, shrinks and spreads by the sector fireStep (Engineering spike spec §4)". Keep the rest of the comment and the line prefixes.
 
 - [ ] **Step 6: doorSystem and the hazard tick in the step**
 
@@ -1501,9 +1517,53 @@ with
 
 (d) Update `stepDuelTick`'s doc comment, replacing "fire (growth, damage, ignition from this tick's hits)" with "the doors; fire (the damage cadence, then the hits' fire and breach rolls); the bar clamp; on the hazard tick Life Support, oxygen, fire growth and spread, and heat (Engineering spike spec §7)".
 
-- [ ] **Step 7: Run the tests and the touched suites**
+- [ ] **Step 7: The scripted crew plans through closed doors (bot pathing)**
 
-Run: `npx vitest run tests/engHazards.test.ts tests/engPower.test.ts tests/engCommands.test.ts tests/duelFire.test.ts tests/duelInterior.test.ts tests/duelHealth.test.ts tests/duel.test.ts`, then `npx tsc -b`.
+`bfsPath` and `goalTiles` (`sim/duel/scripted.ts`) use `solidAt`, which treats a Closed door as solid (`sim/grid.ts:14-21`). With the doors in auto, every bot path through a doorway is now null, and the Cutter's spawns are all in one room. A real crew member walks into an auto door, `doorSystem` opens it the next tick, and they pass. So the bots plan through door tiles whatever their state, and the movement code does the rest.
+
+In `src/renderer/src/sim/duel/scripted.ts`:
+
+(a) Directly above `export function goalTiles`, add:
+
+```ts
+/** Engineering spike spec §5: a tile the bots may plan through: inside the grid and not a wall. Door tiles count
+ *  whatever their state, because an auto door opens for a crew member walking into it (doorSystem). */
+function walkable(d: DuelState, tx: number, ty: number): boolean {
+  const de = d.interior.derived;
+  return tx >= 0 && ty >= 0 && tx < de.width && ty < de.height && de.wallTile[ty * de.width + tx] === 0;
+}
+```
+
+(b) In `goalTiles`, replace `    if (Math.sqrt(ddx * ddx + ddy * ddy) <= REACH && !solidAt(st, i % w, Math.floor(i / w))) out.add(i);` with `    if (Math.sqrt(ddx * ddx + ddy * ddy) <= REACH && walkable(d, i % w, Math.floor(i / w))) out.add(i);`.
+
+(c) In `bfsPath`, replace `      if (solidAt(st, nx, ny)) continue;` with `      if (!walkable(d, nx, ny)) continue;   // Engineering spike spec §5: through auto doors too`.
+
+(d) Change the section comment `// --- Walking (spec §3): a BFS over the Cutter's walkable tiles, doors held open, four-way only. ---` to `// --- Walking (spec §3): a BFS over the layout's walkable tiles (door tiles included, Engineering spike spec §5), four-way only. ---`. In `bfsPath`'s doc comment, change `Walkable means not solid (doors are held open in the duel).` to `Walkable means not a wall: door tiles count whatever their state (Engineering spike spec §5).`
+
+(e) If `solidAt` is no longer used in the file, remove it from its import so `noUnusedLocals` passes.
+
+In `tests/duelScripted.test.ts`, in the walk test (`walks four-way through walkable tiles only, ...`), replace the assertion `expect(solidAt(st, next % w, Math.floor(next / w))).toBe(false);` with `expect(st.derived.wallTile[next]).toBe(0);   // Engineering spike spec §5: door tiles are walkable whatever their state`. Drop the `solidAt` import if it is unused. This is fallout kind (a).
+
+Append to `tests/engHazards.test.ts` (add the imports at the top of the file: `import cutter from '../src/renderer/src/sim/ship/cutter.json';`, `import { Seated } from '../src/renderer/src/sim/components';` and `import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';`):
+
+```ts
+describe('engineering spike: the scripted crew with closed doors (spec §5)', () => {
+  it('an unseated scripted pair on the Cutter reaches Navigation and Weapons within 1200 ticks, through auto doors', () => {
+    const d = createDuel(parseShip(cutter), 1), pair = createScriptedPair(1);
+    try {
+      for (const e of d.interior.derived.doorEdges) expect(d.interior.doors.state[e]).toBe(DoorState.Closed);
+      let t = 0;
+      const seatOf = (pid: number) => Seated.station[d.interior.crew[pid]!]!;
+      while ((seatOf(0) !== d.nav || seatOf(1) !== d.weapons) && t < 1200) { stepDuelTick(d, scriptedInput(pair, d)); t++; }
+      expect(seatOf(0)).toBe(d.nav); expect(seatOf(1)).toBe(d.weapons);
+    } finally { disposeDuel(d); }
+  });
+});
+```
+
+- [ ] **Step 8: Run the tests and the touched suites**
+
+Run: `npx vitest run tests/engHazards.test.ts tests/engPower.test.ts tests/engCommands.test.ts tests/duelFire.test.ts tests/duelInterior.test.ts tests/duelHealth.test.ts tests/duel.test.ts tests/duelScripted.test.ts`, then `npx tsc -b`.
 
 Expected: the three eng files PASS. Fix failures in duelFire, duelInterior, duelHealth and duel by the fallout rule. In particular:
 - `tests/duelFire.test.ts` imports `DUEL_FIRE_GROW`. Remove the import, and rewrite its growth test to "a fire grows only through fireStep on the hazard tick", which is kind (a).
@@ -1511,10 +1571,10 @@ Expected: the three eng files PASS. Fix failures in duelFire, duelInterior, duel
 
 `tsc -b` must be clean, including every file that imported `DUEL_FIRE_GROW`. Find them with `grep -rn DUEL_FIRE_GROW src tests scripts`.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/renderer/src/sim/duel/state.ts src/renderer/src/sim/duel/hazards.ts src/renderer/src/sim/duel/fire.ts src/renderer/src/sim/duel/tuning.ts src/renderer/src/sim/duel/step.ts tests/engHazards.test.ts
+git add src/renderer/src/sim/duel/state.ts src/renderer/src/sim/duel/hazards.ts src/renderer/src/sim/duel/fire.ts src/renderer/src/sim/duel/tuning.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/duel/scripted.ts tests/engHazards.test.ts tests/duelScripted.test.ts
 git commit -m "feat(engineering-spike): the interior hazards run on the duel (closed doors, doorSystem, oxygen and Life Support by bars, fire by air and spread, heat on the hazard tick, quirk 3)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -1876,12 +1936,13 @@ Add the fallout test files you fixed to the `git add` line by name.
 - Modify: `src/renderer/src/sim/tactical/physics.ts` (flyShip's `factor`, `shipEngineFactor`, flySlot), `src/renderer/src/sim/tactical/predict.ts` (predictFlight)
 - Modify: `src/renderer/src/sim/duel/step.ts` (the throttle loop; clampThrottle after the ship commands)
 - Modify: `src/renderer/src/sim/duel/scripted.ts:318-320` (the pair's wanted level)
+- Modify: `src/renderer/src/sim/duel/scriptedPilot.ts:127-139` (the Valkyrn pilot's levels)
 - Test: `tests/engEngines.test.ts`
 
 **Interfaces:**
 - Consumes: Task 2's `effectiveBars` and `DuelSystem`; `THROTTLE_MAX`, `THROTTLE_MIN` (`sim/duel/throttle.ts`).
 - Produces:
-  - `THROTTLE_CAP_BY_BARS`, `ENGINE_FACTOR_BY_BARS`, `throttleCap(sys): number`, `throttleAllowed(sys, level): boolean` (bars.ts);
+  - `THROTTLE_CAP_BY_BARS`, `ENGINE_FACTOR_BY_BARS`, `throttleCap(sys): number`, `throttleAllowed(sys, level): boolean`, `levelWithinCap(sys, level): number` (bars.ts);
   - `clampThrottle(d: DuelState): void` (engines.ts);
   - `shipEngineFactor(state, i): number` (physics.ts);
   - `flyShip(s, axes, tuning, engines = 0, cls = CUTTER_CLASS, factor = engineFactor(cls, engines))`.
@@ -1971,6 +2032,10 @@ export function throttleCap(sys: Pick<ShipSystems, 'rooms' | 'bars'>): number { 
 export function throttleAllowed(sys: Pick<ShipSystems, 'rooms' | 'bars'>, level: number): boolean {
   const cap = throttleCap(sys);
   return level === -1 ? cap > 0 : level <= cap;
+}
+/** The nearest allowed level to `level` (the bots' throttle, Decision 16): itself, else the cap for forward, else 0. */
+export function levelWithinCap(sys: Pick<ShipSystems, 'rooms' | 'bars'>, level: number): number {
+  return throttleAllowed(sys, level) ? level : level > 0 ? throttleCap(sys) : 0;
 }
 ```
 
@@ -2079,7 +2144,7 @@ with
 - [ ] **Step 7: The scripted pair stays within the cap (Decision 16)**
 
 In `src/renderer/src/sim/duel/scripted.ts`:
-- add `import { throttleAllowed, throttleCap } from '../tactical/bars';`;
+- add `import { levelWithinCap } from '../tactical/bars';`;
 - replace
 
 ```ts
@@ -2089,19 +2154,50 @@ In `src/renderer/src/sim/duel/scripted.ts`:
 with
 
 ```ts
-      const wanted = axes.thrust > 0 ? THROTTLE_MAX : axes.thrust < 0 ? THROTTLE_MIN : 0, sys = d.tactical.systems[0];
-      const level = throttleAllowed(sys, wanted) ? wanted : wanted > 0 ? throttleCap(sys) : 0;   // Engineering spike Decision 16: within the Engines cap (3 at the start)
+      const level = levelWithinCap(d.tactical.systems[0], axes.thrust > 0 ? THROTTLE_MAX : axes.thrust < 0 ? THROTTLE_MIN : 0);   // Engineering spike Decision 16: within the Engines cap (3 at the start)
 ```
+
+In `src/renderer/src/sim/duel/scriptedPilot.ts` (the Valkyrn pilot; `flight` returns THROTTLE_MAX at `:79`, `:86`, `:92` (via `levelOf`) and `:104`, and `runValkyrnDuel`'s `requireApplied` throws on any refusal):
+- add `import { levelWithinCap } from '../tactical/bars';`;
+- in `scriptedPilotInput`, replace
+
+```ts
+        if (d.throttle !== PILOT_AWAY_THROTTLE) {
+          cmds.push({ kind: 'throttle', level: PILOT_AWAY_THROTTLE });
+```
+
+with
+
+```ts
+        const away = levelWithinCap(sys, PILOT_AWAY_THROTTLE);   // Engineering spike Decision 16
+        if (d.throttle !== away) {
+          cmds.push({ kind: 'throttle', level: away });
+```
+
+- and replace
+
+```ts
+      if (f.level !== d.throttle) cmds.push({ kind: 'throttle', level: f.level });
+```
+
+with
+
+```ts
+      const level = levelWithinCap(sys, f.level);   // Engineering spike Decision 16: within the Engines cap
+      if (level !== d.throttle) cmds.push({ kind: 'throttle', level });
+```
+
+(`sys` is `d.tactical.systems[0]`, already declared at the top of `scriptedPilotInput`.)
 
 - [ ] **Step 8: Run the tests**
 
-Run: `npx vitest run tests/engEngines.test.ts tests/engPower.test.ts tests/engCommands.test.ts tests/disabledSystems.test.ts tests/duelThrottle.test.ts tests/feelIiModels.test.ts tests/duelScripted.test.ts`, then `npx tsc -b`.
+Run: `npx vitest run tests/engEngines.test.ts tests/engPower.test.ts tests/engCommands.test.ts tests/disabledSystems.test.ts tests/duelThrottle.test.ts tests/feelIiModels.test.ts tests/duelScripted.test.ts tests/scriptedPilot.test.ts tests/duelGates.test.ts`, then `npx tsc -b`. A scripted throttle refused `unavailable` (thrown by `requireApplied`) is a bug in Step 7, not fallout. A duelGates band out of range is fallout kind (c).
 Expected: the eng files PASS. Fix the others by the fallout rule. A ship-0 Engines-level table assertion, or a throttle-4 command expected `applied` at the start, is kind (a). `tsc -b` is clean.
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/renderer/src/sim/tactical/bars.ts src/renderer/src/sim/duel/engines.ts src/renderer/src/sim/duel/power.ts src/renderer/src/sim/tactical/physics.ts src/renderer/src/sim/tactical/predict.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/duel/scripted.ts tests/engEngines.test.ts
+git add src/renderer/src/sim/tactical/bars.ts src/renderer/src/sim/duel/engines.ts src/renderer/src/sim/duel/power.ts src/renderer/src/sim/tactical/physics.ts src/renderer/src/sim/tactical/predict.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/duel/scripted.ts src/renderer/src/sim/duel/scriptedPilot.ts tests/engEngines.test.ts
 git commit -m "feat(engineering-spike): Engines bars cap the Helm throttle at 25 % a bar and set the engine factor (Amendment 2, isolated)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -2390,7 +2486,8 @@ The Hunter's laser and torpedo are unchanged.
 - Modify: `src/renderer/src/sim/tactical/missiles.ts` (`land`: the crew torpedo's levels)
 - Modify: `src/renderer/src/net/contracts.ts`, `src/renderer/src/net/codec.ts` (the laser commands' `weapon`)
 - Modify: `src/renderer/src/sim/duel/step.ts` (the laser commands fold into `pewLock` and `pewCharge`)
-- Modify: `tests/tacticalDeterminism.test.ts`
+- Modify: `src/renderer/src/sim/duel/scripted.ts` (the Helm and gunner treat pew pew as the primary weapon), `src/renderer/src/sim/duel/telemetry.ts:161` (weaponsIdleTicks counts either barrel)
+- Modify: `tests/tacticalDeterminism.test.ts`, `tests/duelModules.test.ts:58`
 - Test: `tests/engWeapons.test.ts`
 
 **Interfaces:**
@@ -2568,6 +2665,8 @@ with
 ```
 
 - add `PEW_SHOTS_BY_BARS` to the bars import.
+
+In `tests/duelModules.test.ts:58`, add `pewTargeted` to the flag alternation in `changedFirst`'s first regex, so it reads `/\.(active|released|fireHeld|laserTargeted|gunLocked|pewTargeted)$/` (a flag flips; `+1` on a boolean field would write 2). Mark it `// Engineering spike spec §10.3`.
 
 In `tests/tacticalDeterminism.test.ts`:
 - add `'pewBurst', 'pewBurstClock', 'pewCharge', 'pewHold', 'pewLock', 'pewTargeted'` in sorted position in the systems key list, after `'missilesLost'`;
@@ -2890,12 +2989,59 @@ with
 
 Also add a `weapon` round-trip to `tests/duelCheckpoint.test.ts`'s examples: change `laserLock: { kind: 'laserLock', room: 1 }` to `laserLock: { kind: 'laserLock', room: 1, weapon: 'pew' }`.
 
+- [ ] **Step 7b: The bots fight with pew pew; telemetry counts either barrel (Decision 20)**
+
+The beam starts the round dark (0 bars), so a bot that only lines up and locks the beam would never fire.
+
+In `src/renderer/src/sim/duel/scripted.ts`:
+
+(a) In the Helm's facing rule (`:118`), replace
+
+```ts
+  if (laserFull(t, 0) && t.systems[0].laserTargeted && ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE && !inArc(s.heading, ex, ey, LASER_ARC_COS))
+```
+
+with
+
+```ts
+  const ready = (laserFull(t, 0, 'pew') && t.systems[0].pewTargeted) || (laserFull(t, 0) && t.systems[0].laserTargeted);   // Engineering spike Decision 20: pew pew first
+  if (ready && ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE && !inArc(s.heading, ex, ey, LASER_ARC_COS))
+```
+
+(b) In `gunner`, replace
+
+```ts
+  if (!sys.laserTargeted || sys.lock !== want) out.push({ kind: 'laserLock', room: want });
+```
+
+with
+
+```ts
+  if (!sys.pewTargeted || sys.pewLock !== want) out.push({ kind: 'laserLock', room: want, weapon: 'pew' });   // Engineering spike Decision 20: pew pew is the primary
+```
+
+and replace
+
+```ts
+  if (canLaunch(t, 0) && !(laserFull(t, 0) && laserEligible(t, 0, target)) && sys.laserBurst === 0 && t.tick - pair.lastLaunch >= MISSILE_GAP) {
+```
+
+with
+
+```ts
+  if (canLaunch(t, 0) && !(laserFull(t, 0, 'pew') && laserEligible(t, 0, target)) && sys.pewBurst === 0 && t.tick - pair.lastLaunch >= MISSILE_GAP) {
+```
+
+In `src/renderer/src/sim/duel/telemetry.ts:161`, replace `laserFull(tac, 0) && !canLaunch(tac, 0)` with `(laserFull(tac, 0) || laserFull(tac, 0, 'pew')) && !canLaunch(tac, 0)`, and append to the comment above it: `; either laser (Engineering spike Decision 20)`.
+
+The beam keeps today's lock, so a scenario that powers the beam still auto-fires it on its old lock. The console's "WEAPONS OFFLINE" situation (`render/duel/situationModel.ts`) belongs to Part ii.
+
 - [ ] **Step 8: Run the tests**
 
-Run: `npx vitest run tests/engWeapons.test.ts tests/engWeaponPower.test.ts tests/engBars.test.ts tests/tacticalDeterminism.test.ts tests/duelCheckpoint.test.ts tests/weaponsUpdate.test.ts tests/ftlTargeting.test.ts tests/tacticalWeapons.test.ts tests/tacticalMissiles.test.ts tests/disabledSystems.test.ts tests/duelWeaponsView.test.ts tests/valkyrnGun.test.ts`, then `npx tsc -b`.
+Run: `npx vitest run tests/engWeapons.test.ts tests/engWeaponPower.test.ts tests/engBars.test.ts tests/tacticalDeterminism.test.ts tests/duelModules.test.ts tests/duelCheckpoint.test.ts tests/duelScripted.test.ts tests/duelTelemetry.test.ts tests/weaponsUpdate.test.ts tests/ftlTargeting.test.ts tests/tacticalWeapons.test.ts tests/tacticalMissiles.test.ts tests/disabledSystems.test.ts tests/duelWeaponsView.test.ts tests/valkyrnGun.test.ts`, then `npx tsc -b`.
 
 Expected:
-- engWeapons, engWeaponPower, engBars, tacticalDeterminism and duelCheckpoint PASS.
+- engWeapons, engWeaponPower, engBars, tacticalDeterminism, duelModules and duelCheckpoint PASS.
 - The crew's 2-shot beam at the start, its level-based Weapons gate, today's magazine for the crew, and one-level crew torpedo hits are now kind (a): update those assertions to the §10.3 rules, setting `weaponPower` where a test needs the beam powered.
 - Hunter assertions must still pass unchanged. If one fails, that is a bug.
 - `tsc -b` is clean. If a render model narrows the laser event exhaustively, the optional `weapon` field needs no change.
@@ -2903,7 +3049,7 @@ Expected:
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/renderer/src/sim/tactical/bars.ts src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/tactical/weapons.ts src/renderer/src/sim/tactical/missiles.ts src/renderer/src/net/contracts.ts src/renderer/src/net/codec.ts src/renderer/src/sim/duel/step.ts tests/engWeapons.test.ts tests/tacticalDeterminism.test.ts tests/duelCheckpoint.test.ts
+git add src/renderer/src/sim/tactical/bars.ts src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/tactical/weapons.ts src/renderer/src/sim/tactical/missiles.ts src/renderer/src/net/contracts.ts src/renderer/src/net/codec.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/duel/scripted.ts src/renderer/src/sim/duel/telemetry.ts tests/engWeapons.test.ts tests/tacticalDeterminism.test.ts tests/duelModules.test.ts tests/duelCheckpoint.test.ts
 git commit -m "feat(engineering-spike): pew pew, the beam and the torpedo by the officer's bars (Amendment 2, isolated)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -3247,7 +3393,7 @@ Add the fallout test files you fixed to the `git add` line by name.
 - Test: `tests/engDeterminism.test.ts`
 
 **Interfaces:**
-- Consumes: `passiveInput` (`tests/helpers/scriptedDuel.ts:33`), `hashDuel`, `saveDuelSnapshot`, `loadDuelSnapshot`, the four commands.
+- Consumes: `hashDuel`, `saveDuelSnapshot`, `loadDuelSnapshot`, the four commands, `DuelSystem`, `HEAT_MAX`. Both players stay present; it doesn't use passiveInput, which marks them away so every engineering command would be `unavailable`.
 - Produces: the spec §8 determinism proof for Part i.
 
 - [ ] **Step 1: Write the test**
@@ -3255,47 +3401,61 @@ Add the fallout test files you fixed to the `git add` line by name.
 Create `tests/engDeterminism.test.ts`:
 
 ```ts
-// Engineering spike spec §8 determinism: with bars, heat, doors, airlocks, oxygen, fire spread and breaches all
-// running, two duels from one seed and one command script hash alike every 60 ticks over a seed sweep, and a mid-run
-// snapshot reload continues with the same hashes.
+// Engineering spike spec §8 determinism: with bars, heat (an overheat), doors, airlocks, oxygen, fire spread and breaches
+// all running, two duels from one seed and one command script hash alike every 60 ticks over a seed sweep, every
+// scripted command is applied, and a mid-run snapshot reload continues with the same hashes. Both players stay present
+// and standing (no one at Weapons, so the crew never fires and the enemy holds until rt 1800: no hits change the bars).
 import { describe, expect, it } from 'vitest';
 import hound from '../src/renderer/src/sim/ship/hound.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
+import type { HeldInput } from '../src/renderer/src/net/contracts';
 import type { DuelCommand, DuelEnvelope } from '../src/renderer/src/sim/duel/commands';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
-import { passiveInput } from './helpers/scriptedDuel';
+import { DuelSystem } from '../src/renderer/src/sim/duel/power';
+import { HEAT_MAX } from '../src/renderer/src/sim/tuning';
 
 const HOUND = parseShip(hound);
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
-/** The engineering script: at fixed ticks, power moves (Engines to its overdrive bar, then back into Shields), coolant,
- *  a held door, an airlock opened and closed, so heat, venting and spread all run. Spec §10.1 start: 1 spare bar. */
+const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
+/** The engineering script (spec §10.1 start: 1 spare bar): Engines to its overdrive bar with no coolant (heat +2 per
+ *  hazard tick, so it overheats near tick 640), coolant on Shields, a held door, airlock 0 (the Hold, away from the Q
+ *  spawns) opened and closed, then the freed bars into Sensors and Oxygen. */
 const SCRIPT: readonly [number, number, DuelCommand][] = [
-  [30, 0, { kind: 'shipPower', system: 2, delta: 1 }], [31, 1, { kind: 'shipPower', system: 3, delta: -1 }],
-  [40, 0, { kind: 'shipPower', system: 2, delta: 1 }],
-  [60, 1, { kind: 'shipCoolant', system: 2 }], [400, 0, { kind: 'shipDoor', edge: 2 }], [420, 1, { kind: 'shipAirlock', index: 0 }],
-  [900, 1, { kind: 'shipAirlock', index: 0 }], [1200, 0, { kind: 'shipPower', system: 2, delta: -1 }], [1201, 0, { kind: 'shipPower', system: 0, delta: 1 }]
+  [30, 0, { kind: 'shipPower', system: DuelSystem.Engines, delta: 1 }], [31, 1, { kind: 'shipPower', system: DuelSystem.Sensors, delta: -1 }],
+  [40, 0, { kind: 'shipPower', system: DuelSystem.Engines, delta: 1 }], [60, 1, { kind: 'shipCoolant', system: DuelSystem.Shields }],
+  [400, 0, { kind: 'shipDoor', edge: 2 }], [420, 1, { kind: 'shipAirlock', index: 0 }], [900, 1, { kind: 'shipAirlock', index: 0 }],
+  [1200, 0, { kind: 'shipPower', system: DuelSystem.Sensors, delta: 1 }], [1201, 0, { kind: 'shipPower', system: DuelSystem.Oxygen, delta: 1 }]
 ];
 let seq = 0;
 function tickOf(d: DuelState): DuelEnvelope[] {
   const t = d.interior.tick - d.baseTick;
   return SCRIPT.filter(([at]) => at === t).map(([, player, command]) => ({ runId: 'duel', id: { player, sequence: ++seq }, requestedTick: d.interior.tick, command }));
 }
-function play(d: DuelState, ticks: number, hashes: string[]): void {
+/** Play `ticks` ticks; push a hash every 60; return the statuses of the script's results and the highest Engines heat. */
+function play(d: DuelState, ticks: number, hashes: string[]): { statuses: string[]; maxHeat: number; failed: boolean } {
+  const statuses: string[] = [];
+  let maxHeat = 0, failed = false;
   for (let k = 0; k < ticks; k++) {
-    const input = passiveInput(d);
-    stepDuelTick(d, { held: input.held, commands: [...input.commands, ...tickOf(d)] });
+    for (const r of stepDuelTick(d, { held: [NONE, NONE], commands: tickOf(d) })) statuses.push(r.status);
+    maxHeat = Math.max(maxHeat, d.power.heat[DuelSystem.Engines]!); failed ||= d.power.failed[DuelSystem.Engines] === 1;
     if (d.interior.tick % 60 === 0) hashes.push(hashDuel(d));
   }
+  return { statuses, maxHeat, failed };
 }
 
 describe('engineering spike: determinism (spec §8)', () => {
-  it('two runs of one seed and script agree every 60 ticks, over seeds 1 to 5', () => {
+  it('two runs of one seed and script agree every 60 ticks over seeds 1 to 5; every command applies; Engines overheats', () => {
     for (let seed = 1; seed <= 5; seed++) {
       const a = createDuel(HOUND, seed), b = createDuel(HOUND, seed), ha: string[] = [], hb: string[] = [];
-      try { play(a, 1800, ha); play(b, 1800, hb); expect(ha, `seed ${seed}`).toEqual(hb); } finally { disposeDuel(a); disposeDuel(b); }
+      try {
+        const ra = play(a, 1800, ha); play(b, 1800, hb);
+        expect(ha, `seed ${seed}`).toEqual(hb);
+        expect(ra.statuses, `seed ${seed}`).toEqual(SCRIPT.map(() => 'applied'));
+        expect(ra.maxHeat, `seed ${seed}`).toBe(HEAT_MAX); expect(ra.failed, `seed ${seed}`).toBe(true);
+      } finally { disposeDuel(a); disposeDuel(b); }
     }
   }, 120_000);
   it('a snapshot at tick 950 reloads and continues with the same hashes', () => {
@@ -3309,7 +3469,7 @@ describe('engineering spike: determinism (spec §8)', () => {
 });
 ```
 
-`passiveInput(d)` returns a `DuelInput` (`tests/helpers/scriptedDuel.ts:33`). If its signature differs on the branch, read it and adapt `play`; it may need `d` and return `{ held, commands }`.
+The overheat is asserted for every seed, which covers F4's "at least one". Before hostility (rt 1800) nothing damages the Engines Room, so the timing is the same in every seed: Engines overdriven from tick 40, +2 heat per hazard tick, HEAT_MAX at about tick 640. If a seed shows otherwise, read its heat trace before weakening the assertion.
 
 - [ ] **Step 2: Run it**
 
@@ -3371,6 +3531,10 @@ In `docs/superpowers/research/2026-11-18-engineering-spike.md`:
 - Fill the After column of the measurements table with the new numbers.
 - Replace the gate section's `(Task 12)` with a table of every test skipped under rule (c): its file and name, its band, and the measured value.
 - Below that table, add the per-seed `telemetryLine` output that `npx vitest run tests/duelGates.test.ts` prints, which is logged even for skipped aggregate tests. Run that file's per-seed tests with `--reporter=verbose` to capture the lines.
+- Add a "Known limits" section listing:
+  - the Shield loot cancelled by the bar cap (Decision 21);
+  - the bots fighting with pew pew only (Decision 20);
+  - the bots never moving bars.
 - Replace the determinism section's `(Task 12)` with: `tests/engDeterminism.test.ts: hash agreement over seeds 1-5 (1800 ticks, every 60) and a snapshot reload at tick 950: PASS. Goldens re-blessed at SIM 54 (same-version bless).` Add the duel golden's new outcome and ticks from the bless output.
 
 - [ ] **Step 6: Commit**
