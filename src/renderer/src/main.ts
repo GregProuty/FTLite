@@ -19,6 +19,7 @@ import { createPageOnline } from './app/online/pageSession';
 import { watchHostVisibility } from './app/online/hostVisibility';
 import { versionPollActive, watchVersion } from './app/web/versionWatch';
 import { inMatch, installPageGuards } from './app/web/pageGuards';
+import { createBrowserFullscreen, type KeyboardLockApi } from './app/web/browserFullscreen';
 import { validatePageOnlineConfig } from '../../shared/onlineConfig';
 import { createOnlineRendererSession } from './app/onlineSession';
 import { createOnlineModeSession } from './app/onlineModeSession';
@@ -93,7 +94,14 @@ async function startApp(): Promise<void> {
   let online: ReturnType<typeof createOnlineModeSession> | null = null, status: OnlineStatus | null = null;
   let blocked = true;
   const win = window.ftlite?.window;
-  const store = createUiStore({ onlineAvailable: !!bridge, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, fullscreenAvailable: !!win, controls: controlSections(),
+  // Web build spec §7.2: no preload window API in the browser, so the Fullscreen API with the keyboard-lock rule.
+  const pageFullscreen = window.ftlite ? null : createBrowserFullscreen({ document,
+    keyboard: (navigator as Navigator & { keyboard?: KeyboardLockApi }).keyboard,
+    window: { addEventListener: (type, fn, capture) => window.addEventListener(type, fn as (e: KeyboardEvent) => void, capture),
+      removeEventListener: (type, fn, capture) => window.removeEventListener(type, fn as (e: KeyboardEvent) => void, capture),
+      dispatchEscape: () => { for (const type of ['keydown', 'keyup']) window.dispatchEvent(new KeyboardEvent(type, { code: 'Escape', key: 'Escape', bubbles: true })); } },
+    matchRunning: () => inMatch(store.getState().menu), now: () => performance.now(), onChange: () => actions.windowResized() });
+  const store = createUiStore({ onlineAvailable: !!bridge, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, fullscreenAvailable: !!win || !!pageFullscreen?.available, controls: controlSections(),
     ships: SOLO_SHIPS.map(({ id, name, line }) => ({ id, name, line })), soloShip: settings.soloShip, valkyrnLaserFit: settings.valkyrnLaserFit } });   // Valkyrn spec §9
   bootCrt(renderer, store);
   const offGuards = installPageGuards(window, () => inMatch(store.getState().menu));   // web build spec §7.1 (harmless in Electron)
@@ -135,7 +143,8 @@ async function startApp(): Promise<void> {
     home() { session.home(); online = null; }, pause() { online?.pause(); },
     setVolume(channel, volume) { settings = { ...settings, [channel]: volume }; audio.setVolumes(settings); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     setShake(shake) { settings = { ...settings, shake }; renderer.setShake?.(shake); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
-    fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) } : undefined,
+    fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) }
+      : pageFullscreen ? { get: () => pageFullscreen.get(), set: (on) => pageFullscreen.set(on) } : undefined,
     reload() { location.reload(); },   // web build spec §5.4: the update banner
     quit() { window.close(); }   // the main window's close: main quits the app on window-all-closed, as the close button does
   });
