@@ -122,3 +122,57 @@ Confirmed: valkyrnIdentity.test.ts L29 and hunter.ts L143. §13.4 says to build 
 
 ---
 
+# Round 2 (delta, reviewing 833b0627, effort medium, 69 s, 293274 in / 242880 cached / 6843 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R2-F1 Moving the digit keys off freqTo drops the gun fit's 3/4/5 NO LASER cue and breaks key-path tests that §14.1's grep misses
+After R1-F1's fix, keyboard Digit3/4/5 write only `freqKeyTo`, and §9 says it is 'read only on a class with a laser'. `freqTo` now comes only from the console buttons. Today the Valkyrn gun fit's Flight seat flashes NO LASER when `k.freqTo` is set by 3/4/5 (Valkyrn spec §6.1, its review R1-F2). Read literally, the new text never reads `freqKeyTo` there, so pressing 3/4/5 on the Valkyrn goes silent. That breaks the 'Valkyrn's Flight seat keeps theirs' promise at spec L444-445. valkyrnRuntime's test still passes because it injects `freqTo` directly, so nothing catches the loss. Also, scienceInput.test.ts asserts that Digit3/Digit5 keydowns set `freqTo`, and those asserts now fail. §14.1's inventory grep has no `freqTo`/`FREQ_CODES` term, so this file isn't covered by any rule. · spec L444-445, L473-474 ('Read only on a class with a laser'), L479, L482-484; runtime.ts:L453 (`else if (requests.noLaser || (k.freqTo !== undefined && k.freqTo !== null) || …) refuse('laser', NO_LASER)   // §6.1: 1 or 3/4/5 on the gun fit`); input.ts:L146; tests/valkyrnRuntime.test.ts:L127-134 (holds `{ freqTo: 1 }` to stand in for 3/4/5); tests/scienceInput.test.ts:L38-44 (Digit3/Digit5 keydowns expect `sample().freqTo`); spec L810 (§14.1 grep pattern: laserLock|laserFire|laserCharge|laserMode|laserReleases|WeaponSlot.Beam|todaysCrewWeapons). · This is a quiet regression of a pinned Valkyrn cue that the existing test can't detect. The scienceInput failures will turn up red during W-4a with no rule in §14.1 telling the subagent what to do with them. · In §9, say that the gun fit's Flight seat refuses NO LASER on `freqKeyTo ?? freqTo` (runtime.ts L453 reads both), and change valkyrnRuntime's test to hold `freqKeyTo`. Add `freqTo`/`FREQ_CODES` to §14.1's grep, and list scienceInput.test.ts as a port: key asserts move to `freqKeyTo`, the console `ui.frequency` asserts stay on `freqTo`, and new asserts cover Digit4-6 → `gunFreqKeyTo` and Digit1-3/Numpad1-3 → `selectTo`, including the clear/clearUi and repeat cases.
+
+## Prior findings
+- R1-F1: resolved — §9 L471-486 adds separate freqKeyTo/gunFreqKeyTo/selectTo KeySample fields with class-based reading, and the §14 test at L729-731 pins that 3 on the Hound queues no laserFrequency. A side effect on the gun fit's cue is raised as a new P2.
+- R1-F2: resolved — §13.4 L682-691 corrects the premise and keeps the laser-class Weapons-seat path through cls. §14.1 L806-829 gives port/kind-a/helper/kind-b/unchanged rules. The createTacticalState(seed, slots, crewClass) signature (state.ts:L273) and createDuel's cls argument (duel/state.ts:L97) match the port rule.
+- R1-F3: resolved — §19.1 L969-994 defines per-part same-version blesses, per-seed gates passing at every part end, W-4a's no-mode pewFire admission with PEW_TICKS_BY_BARS, the stand-in gunner pew, and the W-4b/W-4c boundaries. §19 item 1 and §13.3 L663 agree with it.
+- R1-F4: resolved — §11 L566-579 defines the prediction as the thrMille analogue (k = unackedFrames capped, replica heading held fixed, latest turretAim, MAN traverse, explicit k=0 conditions, gunModeSent first). The §14 online tests at L787-790 are concrete and not vacuous.
+- R1-F5: resolved — §2.1 L97-102 adds pewShots/gunShots/holdEndTick/holdCause to DuelRun from the final state and the hostile event. tactical.hostileAt exists (hash.ts:L165) and the hostile event carries its cause (science.ts:L41).
+- R1-F6: resolved — §12 L593-596 gives the sparesOf/capacityOf/autocannon-at-0 pre-check, and §14 L797-799 names the kinds-list change as kind (a), including the W-4a stand-in's pewFire.
+- R1-F7: resolved — §5.1 L286-288 and §14 L717 now match stepRounds' order (ship, rocks, planet, strict <): a rock wins an exact tie with the planet and is worn.
+- R1-F8: resolved — §12 L616-626 gives per-rung values, a single pass at W-4b end with earlier rungs held at base, a stop rule, and a fallback to base numbers plus a sweep report.
+- R1-F9: resolved — §13.4 L668-672 builds the digest from TACTICAL_MODULES' fields, skipping the three names, and says this is new. §8 L420-422 and §1 L34 name hunter.ts L143's literal as the only hunter.ts edit.
+
+## Verified
+- input.ts:L146, L160-161, L176, L191-192: freqTo is set by FREQ_CODES keydowns and by ui.frequency, and cleared by clear/clearUi. This matches the premise of spec L471-481.
+- runtime.ts:L449-453 and L521-522, onlineDuel.ts:L303: the laserFrequency send sites the spec names.
+- state.ts:L273 createTacticalState(seed, slots, crewClass) and duel/state.ts:L97 createDuel(layout, seed, helmPlayer, crew, cls) support §14.1's port rule.
+- science.ts:L40-41 and state.ts:L149: the hostile event's cause union includes 'gun' and 'pew', as §2.1's holdCause and §14's hold tests need.
+- scripted.ts imports: it already imports weaponBars/WeaponSlot from bars.ts. sparesOf/capacityOf would be a new import from power.ts, which §12 names.
+
+## Not verified
+- Whether flattenTactical iterates TACTICAL_MODULES' fields in exactly the order §13.4's rebuilt digest assumes. I didn't read hash.ts's flattenTactical body.
+- Whether the W-4a stand-in gunner (ship-only pew along the nose, ±60°) gets pewShots ≥ 1 on every gate seed. This can only be checked by running the duel gates, which is out of scope here.
+- sparesOf/capacityOf exact signatures in sim/duel/power.ts (cited by the ledger at L41/L48-51, not re-read).
+
+---
+
+# Round 2 response (spec revised to rev after 833b0627)
+
+Reviewed `round-2.json` against the subject at `833b0627`. 1 accepted, 0 rejected, 0 deferred. The reviewer confirmed R1-F1 to R1-F9 resolved.
+
+## R2-F1 [P2]: Moving the digit keys off freqTo drops the gun fit's NO LASER cue and misses key-path tests
+
+Confirmed: runtime.ts L453 refuses NO LASER on `k.freqTo`, and scienceInput.test.ts L38-L44 asserts that keydowns set `freqTo`. §9 now says the gun fit's Flight seat refuses on `freqKeyTo ?? freqTo`, and that `valkyrnRuntime.test.ts` holds `freqKeyTo`. The `freqKeyTo` bullet says it tunes only on a laser class and only raises NO LASER on the gun fit. §14.1's grep adds `freqTo|FREQ_CODES`, and a new "key path" rule ports scienceInput.test.ts: key asserts move to `freqKeyTo`, console asserts stay on `freqTo`, and there are new `gunFreqKeyTo` / `selectTo` asserts with the repeat and clear cases.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-19-w4-weapons-controls-design.md
+
+<!-- end -->
+
+---
+

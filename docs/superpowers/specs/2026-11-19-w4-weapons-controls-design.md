@@ -470,8 +470,8 @@ Weapons seat (the seat is `weapons` and the class has a turret). The Valkyrn's F
   and selects it too. The laser fit's 1 / 2 are unchanged.
 - **3 against frequency A.** The keyboard does not know the class, and today every Digit3 / 4 / 5 keydown sets `freqTo`
   (`input.ts` L146). So the digits travel as separate `KeySample` fields, and the runtime picks by class:
-  - `freqKeyTo?: number`: from `FREQ_CODES` (Digit3 / 4 / 5 → 0 / 1 / 2), as today's key path. Read only on a class
-    with a laser (the laser fit's Weapons seat and Flight seat).
+  - `freqKeyTo?: number`: from `FREQ_CODES` (Digit3 / 4 / 5 → 0 / 1 / 2), as today's key path. It tunes only on a
+    class with a laser (the laser fit's Weapons seat and Flight seat); on the gun fit it only raises NO LASER (below).
   - `gunFreqKeyTo?: number`: from a new `GUN_FREQ_CODES = { Digit4: 0, Digit5: 1, Digit6: 2 }`. Read only at the
     Hound's Weapons seat.
   - `selectTo?: number`: from a new `WEAPON_SELECT_CODES` (Digit1..3, Numpad1..3 → 0..2). Read only at the Hound's
@@ -482,6 +482,8 @@ Weapons seat (the seat is `weapons` and the class has a turret). The Valkyrn's F
   - The local runtime (the Weapons branch near L521, the Flight branch near L452) and online (`onlineDuel.ts` near L303)
     send `laserFrequency` from `freqKeyTo ?? freqTo` on a laser class, and from `gunFreqKeyTo ?? freqTo` on the Hound.
     So 3 on the Hound selects the torpedo and sends no `laserFrequency`, and 4 tunes A.
+  - The gun fit's Flight seat keeps its NO LASER cue for 3 / 4 / 5 (Valkyrn spec §6.1): `runtime.ts` L453 refuses on
+    `freqKeyTo ?? freqTo`, and `tests/valkyrnRuntime.test.ts` (L127-L134) holds `freqKeyTo` instead of `freqTo`.
   - `pageGuards.ts` `GUARDED_CODES` adds `GUN_FREQ_CODES` and `WEAPON_SELECT_CODES`. Digit6 and Numpad1-3 have no other
     binding.
 - **W / S against the throttle notches.** `PRESS_CODES` L17 binds W/S to `throttleUp` / `throttleDown`. The runtime
@@ -807,8 +809,11 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
 
 About 60 test files send a laser command, read `laserReleases` or `WeaponSlot.Beam`, or call `todaysCrewWeapons`, and
 most build the Cutter by default. Each is handled by one of these rules, and W-4a's plan lists every file with its rule
-(from `grep -rln "laserLock\|laserFire\|laserCharge\|laserMode\|laserReleases\|WeaponSlot.Beam\|todaysCrewWeapons" tests/`,
+(from `grep -rln "laserLock\|laserFire\|laserCharge\|laserMode\|laserReleases\|WeaponSlot.Beam\|todaysCrewWeapons\|freqTo\|FREQ_CODES" tests/`,
 then each file read to confirm the beam is the crew's, not the Hunter's):
+- **The key path:** `tests/scienceInput.test.ts` (L38-L44) is ported: its Digit3 / Digit5 keydown asserts move to
+  `freqKeyTo`, its console `ui.frequency` asserts stay on `freqTo`, and new asserts cover Digit4-6 → `gunFreqKeyTo` and
+  Digit1-3 / Numpad1-3 → `selectTo`, with the repeat, `clear` and `clearUi` cases.
 - **Port (the beam's own rules):** a test of the crew beam's rules (charge, bursts, locks, MANUAL laser, rock digging,
   the frequency strip, laser commands' admission) builds the laser fit instead: `createTacticalState(seed, slots,
   ShipClass.ValkyrnLaser)`, `createDuel(layout, seed, helm, crew, ShipClass.ValkyrnLaser)` or the runtime deps' `cls`.
