@@ -9,10 +9,11 @@ import { HUNTER_JITTER_TICKS, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_WALK_TICKS, 
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { makeHostile, noHunterPew } from './helpers/hostile';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 /** Enemy at (−300, −300) facing west at the crew 300 units away: in arc, in range, clear of the planet. */
 function facing(): TacticalState {
-  const st = todaysCrewWeapons(makeHostile(createTacticalState(5)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 2, ShipClass.ValkyrnLaser)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)   // W-4 spec §14.1: the beam's rule, on the laser fit
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
   return st;
