@@ -90,6 +90,7 @@ async function startApp(): Promise<void> {
   let settings = (() => { try { return loadSettings(localStorage); } catch { return loadSettings({ getItem: () => null, setItem() {} }); } })();
   audio.setVolumes(settings);
   renderer.setShake?.(settings.shake);   // Feel-i: the console maps' screen shake
+  renderer.setMapGrid?.(settings.mapGrid);   // the console maps' grid (gravity or square)
   const scheduler = { schedule(delay: number, cb: () => void) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } };
   // The online session runs in this page (web build spec §3.3): Electron's preload hands it main's resolved config, and
   // the web build bakes its own in (§5.1). A browser must have the online APIs (§7.7), and only the tab holding the
@@ -121,7 +122,7 @@ async function startApp(): Promise<void> {
       removeEventListener: (type, fn, capture) => window.removeEventListener(type, fn as (e: KeyboardEvent) => void, capture),
       dispatchEscape: () => { for (const type of ['keydown', 'keyup']) window.dispatchEvent(new KeyboardEvent(type, { code: 'Escape', key: 'Escape', bubbles: true })); } },
     matchRunning: () => inMatch(store.getState().menu), now: () => performance.now(), onChange: () => actions.windowResized() });
-  const store = createUiStore({ onlineAvailable: !!bridge, browser: browserInit, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, fullscreenAvailable: !!win || !!pageFullscreen?.available, controls: controlSections(),
+  const store = createUiStore({ onlineAvailable: !!bridge, browser: browserInit, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, mapGrid: settings.mapGrid, fullscreenAvailable: !!win || !!pageFullscreen?.available, controls: controlSections(),
     ships: SOLO_SHIPS.map(({ id, name, line }) => ({ id, name, line })), soloShip: settings.soloShip, valkyrnLaserFit: settings.valkyrnLaserFit } });   // Valkyrn spec §9
   bootCrt(renderer, store);
   const offGuards = installPageGuards(window, () => inMatch(store.getState().menu));   // web build spec §7.1 (harmless in Electron)
@@ -163,6 +164,7 @@ async function startApp(): Promise<void> {
     home() { session.home(); online = null; }, pause() { online?.pause(); },
     setVolume(channel, volume) { settings = { ...settings, [channel]: volume }; audio.setVolumes(settings); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     setShake(shake) { settings = { ...settings, shake }; renderer.setShake?.(shake); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
+    setMapGrid(mapGrid) { settings = { ...settings, mapGrid }; renderer.setMapGrid?.(mapGrid); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) }
       : pageFullscreen ? { get: () => pageFullscreen.get(), set: (on) => pageFullscreen.set(on) } : undefined,
     reload() { location.reload(); },   // web build spec §5.4: the update banner

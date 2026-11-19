@@ -13,6 +13,7 @@ import type { FlightSink } from '../../ui/sinks';
 import { mapOverlayOf } from '../../ui/views';
 import { createDuelKeyboard, createPointerSource, type EventSource } from './input';
 import { createFlightRuntime } from './runtime';
+import { DEFAULT_MAP_GRID } from '../../render/tactical/mapGrid';
 
 export interface FlightModeDeps {
   renderer: Renderer;
@@ -58,7 +59,7 @@ export function startFlightMode(deps: FlightModeDeps): () => void {
     runtime.frame(Math.min(0.1, ticker.deltaMS / 1000));
     const ship = runtime.state.ships[0];
     const paused = runtime.reasons().has('user');
-    const model = tacticalModel({ state: runtime.state, prev: runtime.prev, alpha: runtime.alpha(), camera: runtime.camera, viewport, console: 'helm', axes: runtime.axes(), ships: [0], paused, reserveRight: FLIGHT_RESERVE_RIGHT });
+    const model = tacticalModel({ state: runtime.state, prev: runtime.prev, alpha: runtime.alpha(), camera: runtime.camera, viewport, console: 'helm', axes: runtime.axes(), ships: [0], paused, reserveRight: FLIGHT_RESERVE_RIGHT, mapGrid: deps.renderer.mapGrid?.() ?? DEFAULT_MAP_GRID });
     layer.setCrt(crtScale(deps.renderer.crt()));   // CRT map spec section 1: the flight view is a console screen
     layer.draw(model, null, performance.now() / 1000);
     deps.ui.frame({ feel: feelRows(feelReadout(runtime.feel, ship, runtime.state.map.planet)), banners: { interior: null, tactical: paused ? PAUSE_TEXT : null, notice: null }, overlay: mapOverlayOf(model.overlay), crt: true });

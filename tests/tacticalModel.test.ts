@@ -7,6 +7,7 @@ import {
 } from '../src/renderer/src/render/tactical/tacticalModel';
 import { OWN_SHIP } from '../src/renderer/src/render/duel/consoleLayout';
 import { HULLS } from '../src/renderer/src/render/tactical/hullModel';
+import { WELL_MAX_SHIFT, WELL_PULL, wellScale } from '../src/renderer/src/render/tactical/mapGrid';
 import { gravityAccel, stepSoloFlight } from '../src/renderer/src/sim/tactical/physics';
 import { createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 
@@ -30,6 +31,40 @@ describe('gravity contours (H-1 spec §7 item 3)', () => {
     expect(tacticalModel(input(st, cam)).contours.map((c) => c.accel)).toEqual([40, 10, 3]);
     const far = createCamera(2400, 0, 1.2);
     expect(tacticalModel(input(st, far)).contours).toEqual([]);
+  });
+});
+
+describe('the gravity grid (owner 2026-11-19)', () => {
+  const st = createTacticalState(4), well = { mapGrid: 'gravity' } as const;
+  const drawn = (r: number) => r * wellScale(r * r);
+  it('pulls points toward the planet, most at its centre, never past each other, and fades far out', () => {
+    expect(wellScale(0)).toBeCloseTo(1 - WELL_PULL, 12);
+    let last = -1, most = 0;
+    for (let r = 0; r <= 3000; r += 5) { expect(drawn(r)).toBeGreaterThan(last); last = drawn(r); most = Math.max(most, r - drawn(r)); }
+    expect(most).toBeLessThanOrEqual(WELL_MAX_SHIFT); expect(most).toBeGreaterThan(WELL_MAX_SHIFT * 0.99);
+    expect(3000 - drawn(3000)).toBeLessThan(20);   // the map's edge barely moves
+  });
+  it('draws two lines for each of the square grid, each a polyline: bent beside the planet, straight through it', () => {
+    const cam = createCamera(0, 0, 0.12), g = tacticalModel(input(st, cam, well)).grid, square = tacticalModel(input(st, cam)).grid;
+    expect(g.lines).toEqual([]); expect(square.curves).toBeUndefined();
+    expect(g.curves!.length).toBe(2 * (2 * GRID_EXTENT / 250 + 1)); expect(g.curves!.filter((c) => c.major).length).toBe(square.lines.length);
+    expect(g.columns.map((c) => c.text)).toEqual(square.columns.map((c) => c.text));   // the squares keep their names
+    const vertical = g.curves!.slice(0, g.curves!.length / 2), at = (k: number) => vertical[k]!;   // x = −3000, −2750 … 3000
+    expect(at(12).pts.length).toBe(4); expect(at(12).pts[0]).toBeCloseTo(640, 9); expect(at(12).pts[2]).toBeCloseTo(640, 9);   // through the planet
+    expect(at(14).major).toBe(true); expect(at(13).major).toBe(false);
+    const near = at(14).pts, xs = near.filter((_, i) => i % 2 === 0);   // x = 500
+    expect(near.length).toBeGreaterThan(4);
+    const flat = 640 + 500 * 0.12;
+    expect(Math.min(...xs)).toBeCloseTo(640 + drawn(500) * 0.12, 1);   // closest beside the planet
+    expect(Math.max(...xs)).toBeLessThanOrEqual(flat); expect(Math.max(...xs)).toBeGreaterThan(flat - 1);   // square again far along the line
+    expect(g.curves!.every((c) => c.pts.every(Number.isFinite))).toBe(true);
+  });
+  it('keeps to the lines near the screen and adds the minor lines past zoom 0.6', () => {
+    const g = tacticalModel(input(st, createCamera(1500, 1500, 1.2), well)).grid;
+    expect(g.spacing).toBe(250); expect(g.curves!.some((c) => !c.major)).toBe(true);
+    expect(g.curves!.length).toBeLessThan(30);   // ±533 by ±300 units of view plus the well's reach, a line every 125 units
+    const reach = 2 * WELL_MAX_SHIFT * 1.2 + 1;   // a line is kept one reach past the view, and the well moves it at most one more
+    for (const c of g.curves!) for (let i = 0; i < c.pts.length; i += 2) { expect(c.pts[i]).toBeGreaterThan(-reach); expect(c.pts[i]).toBeLessThan(1280 + reach); }
   });
 });
 

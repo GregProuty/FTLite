@@ -12,6 +12,7 @@ import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type
 import { hullFor, type HullId } from './hullModel';
 import type { HelmVent } from '../../sim/duel/helmFlight';
 import type { FogView, GhostKind } from './fogModel';
+import { WELL_MAX_SHIFT, wellScale, type MapGridSetting } from './mapGrid';
 
 /** The grid square's half-size: the smallest multiple of 500 that encloses the map circle (plan decision 4). */
 export const GRID_EXTENT = Math.ceil(R_MAP / 500) * 500;
@@ -47,7 +48,13 @@ export const STAR_PARALLAX = 0.02;
 export interface PrevBody { x: number; y: number; h: number }
 export interface Line { x1: number; y1: number; x2: number; y2: number }
 export interface Label { text: string; x: number; y: number }
-export interface GridDraw { spacing: number; lines: (Line & { major: boolean })[]; columns: Label[]; rows: Label[] }
+/** `curves` (the gravity grid only; `lines` is then empty): each bent line as a flat x, y, x, y… screen polyline. */
+export interface GridDraw { spacing: number; lines: (Line & { major: boolean })[]; columns: Label[]; rows: Label[]; curves?: { pts: number[]; major: boolean }[] }
+/** The gravity grid: a bent line gets a point about every WELL_SEG_PX screen pixels; a line the well bows by less than
+ *  WELL_STRAIGHT_PX is drawn straight (two points). */
+export const WELL_SEG_PX = 14, WELL_STRAIGHT_PX = 0.5;
+/** The gravity grid draws this many lines per square-grid line, so the well's shape reads; every 500 units stays major. */
+export const WELL_DENSITY = 2;
 export interface CircleDraw { x: number; y: number; r: number }
 /** Spike ii: `wear` 0 (whole) .. 1 from hp / hpMax, drawn as cracks and a dimmer fill; `streak` (§7 item 3) the screen end of
  *  a moving rock's fading streak behind it, with its alpha. */
@@ -163,6 +170,8 @@ export interface TacticalModelInput {
   fog?: FogView | null;
   /** Own ship window spec §3: a console window the off-screen arrows go around (OWN_SHIP); absent: none. */
   avoid?: { x: number; y: number; w: number; h: number };
+  /** The grid's style (Settings, mapGrid.ts); absent: the square grid. */
+  mapGrid?: MapGridSetting;
 }
 
 /** Radius at which the planet's pull is `accel`, by bisection on the falling side of gravityAccel (startup only). */
@@ -248,7 +257,7 @@ export function ringCrossesRect(x: number, y: number, r: number, w: number, h: n
   return fx * fx + fy * fy >= r * r;
 }
 
-function gridDraw(cam: Camera, vp: Viewport): GridDraw {
+function gridDraw(cam: Camera, vp: Viewport, well: Point | null): GridDraw {
   const spacing = cam.zoom > GRID_MINOR_ZOOM ? GRID_MINOR : GRID_MAJOR;
   const v = visibleWorld(cam, vp), E = GRID_EXTENT;
   const x0 = Math.max(-E, v.x0), x1 = Math.min(E, v.x1), y0 = Math.max(-E, v.y0), y1 = Math.min(E, v.y1);
@@ -256,28 +265,66 @@ function gridDraw(cam: Camera, vp: Viewport): GridDraw {
   if (x0 > x1 || y0 > y1) return { spacing, lines, columns, rows };
   const sy0 = worldToScreen(cam, vp, 0, y0).y, sy1 = worldToScreen(cam, vp, 0, y1).y;
   const sx0 = worldToScreen(cam, vp, x0, 0).x, sx1 = worldToScreen(cam, vp, x1, 0).x;
-  for (let k = Math.ceil((x0 + E) / spacing); -E + k * spacing <= x1; k++) {
-    const wx = -E + k * spacing, sx = worldToScreen(cam, vp, wx, 0).x;
-    lines.push({ x1: sx, y1: sy0, x2: sx, y2: sy1, major: (wx + E) % GRID_MAJOR === 0 });
-  }
-  for (let k = Math.ceil((y0 + E) / spacing); -E + k * spacing <= y1; k++) {
-    const wy = -E + k * spacing, sy = worldToScreen(cam, vp, 0, wy).y;
-    lines.push({ x1: sx0, y1: sy, x2: sx1, y2: sy, major: (wy + E) % GRID_MAJOR === 0 });
+  const curves = well ? wellCurves(cam, vp, well, spacing / WELL_DENSITY) : undefined;
+  if (!well) {
+    for (let k = Math.ceil((x0 + E) / spacing); -E + k * spacing <= x1; k++) {
+      const wx = -E + k * spacing, sx = worldToScreen(cam, vp, wx, 0).x;
+      lines.push({ x1: sx, y1: sy0, x2: sx, y2: sy1, major: (wx + E) % GRID_MAJOR === 0 });
+    }
+    for (let k = Math.ceil((y0 + E) / spacing); -E + k * spacing <= y1; k++) {
+      const wy = -E + k * spacing, sy = worldToScreen(cam, vp, 0, wy).y;
+      lines.push({ x1: sx0, y1: sy, x2: sx1, y2: sy, major: (wy + E) % GRID_MAJOR === 0 });
+    }
   }
   // Labels name the 500-unit squares at every zoom, so a square keeps its name (plan decision 4); each sits in the middle
   // of the square's visible part, along the top and left edges of the screen (or of the grid, when that edge is on screen).
+  // On the gravity grid a label is pulled toward the planet as the lines beside it are, so it stays between them.
   const n = (2 * E) / GRID_MAJOR, top = Math.max(4, sy0 + 4), left = Math.max(4, sx0 + 4);
+  const pulled = (x: number, y: number): Point => {
+    if (!well) return worldToScreen(cam, vp, x, y);
+    const dx = x - well.x, dy = y - well.y, f = wellScale(dx * dx + dy * dy);
+    return worldToScreen(cam, vp, well.x + dx * f, well.y + dy * f);
+  };
   for (let k = 0; k < n; k++) {
     const a = Math.max(x0, -E + k * GRID_MAJOR), b = Math.min(x1, -E + (k + 1) * GRID_MAJOR);
     if (b <= a || (b - a) * cam.zoom < 24) continue;
-    columns.push({ text: columnName(k), x: worldToScreen(cam, vp, (a + b) / 2, 0).x, y: top });
+    columns.push({ text: columnName(k), x: pulled((a + b) / 2, y0).x, y: top });
   }
   for (let k = 0; k < n; k++) {
     const a = Math.max(y0, -E + k * GRID_MAJOR), b = Math.min(y1, -E + (k + 1) * GRID_MAJOR);
     if (b <= a || (b - a) * cam.zoom < 24) continue;
-    rows.push({ text: String(k + 1), x: left, y: worldToScreen(cam, vp, 0, (a + b) / 2).y });
+    rows.push({ text: String(k + 1), x: left, y: pulled(x0, (a + b) / 2).y });
   }
-  return { spacing, lines, columns, rows };
+  return curves ? { spacing, lines, columns, rows, curves } : { spacing, lines, columns, rows };
+}
+
+/** The gravity grid's lines (mapGrid.ts): every grid line that can reach the screen, each point scaled toward the planet
+ *  by wellScale. A line through the planet, or one the well barely bows, stays two points. Per point: about ten
+ *  multiplies and one divide. */
+function wellCurves(cam: Camera, vp: Viewport, well: Point, spacing: number): NonNullable<GridDraw['curves']> {
+  const v = visibleWorld(cam, vp), E = GRID_EXTENT, z = cam.zoom, pad = WELL_MAX_SHIFT;
+  // The well only pulls inward, by at most WELL_MAX_SHIFT, so a line that far outside the view can still be drawn in it.
+  const lo = [Math.max(-E, v.x0 - pad), Math.max(-E, v.y0 - pad)], hi = [Math.min(E, v.x1 + pad), Math.min(E, v.y1 + pad)];
+  const ox = vp.w / 2 - cam.centreX * z, oy = vp.h / 2 - cam.centreY * z, centre = [well.x, well.y];
+  const curves: NonNullable<GridDraw['curves']> = [];
+  for (let axis = 0; axis < 2; axis++) {   // 0: the north-south lines (x fixed, y runs); 1: the east-west lines
+    const run = 1 - axis, a = lo[run]!, b = hi[run]!;
+    if (a >= b) continue;
+    for (let k = Math.ceil((lo[axis]! + E) / spacing); -E + k * spacing <= hi[axis]!; k++) {
+      const w = -E + k * spacing, d = w - centre[axis]!;
+      // The line's nearest point to the planet moves the most: that is how far the line bows.
+      const bow = Math.abs(d) * (1 - wellScale(d * d)) * z;
+      const n = bow < WELL_STRAIGHT_PX ? 1 : Math.max(1, Math.ceil(((b - a) * z) / WELL_SEG_PX));
+      const pts = new Array<number>(2 * (n + 1));
+      for (let i = 0; i <= n; i++) {
+        const t = a + ((b - a) * i) / n, x = axis === 0 ? w : t, y = axis === 0 ? t : w;
+        const dx = x - well.x, dy = y - well.y, f = n === 1 ? 1 : wellScale(dx * dx + dy * dy);
+        pts[2 * i] = ox + (well.x + dx * f) * z; pts[2 * i + 1] = oy + (well.y + dy * f) * z;
+      }
+      curves.push({ pts, major: (w + E) % GRID_MAJOR === 0 });
+    }
+  }
+  return curves;
 }
 
 /** The bearing ring about a screen point: ticks every 10°, labels every 30° (north 0). */
@@ -530,7 +577,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   }
   const units = [...SCALE_STEPS].reverse().find((u) => u * z <= SCALE_BAR_MAX_PX) ?? SCALE_STEPS[0]!;
   return {
-    grid: gridDraw(cam, vp), contours, edge, planet, asteroids, ships, helm, arrows,
+    grid: gridDraw(cam, vp, input.mapGrid === 'gravity' ? map.planet : null), contours, edge, planet, asteroids, ships, helm, arrows,
     ...(marks ? { marks, salvage, lockRing } : {}),
     ...(gravity ? { gravity } : {}),
     ...(input.fog ? { sensor, ghosts } : {}),
