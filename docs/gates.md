@@ -919,3 +919,28 @@ Electron's online stack (service client, RTC, lease owner) now runs in the page,
   - [ ] Firefox background-tab valid run (optional; the plan's path B).
   - [ ] D-9: the `stale` recovery scenario is deferred (needs Worker-target evidence).
   - [ ] D-10: the duel host's leave to idle is not asserted by the duel gate.
+
+## Web-ii: the web build and browser behaviour (2026-11-18)
+
+`npm run build:web` writes `.vercel/output` (Build Output API v3: `static/`, the passcode middleware in `functions/_middleware.func`, `config.json`). `npm run deploy:web` runs a fresh production `build:web`, the output check (`scripts/web/check-output.ts`), then `vercel deploy --prebuilt --prod`. Vercel never builds from git. Nothing is deployed in Web-ii; the first deploy is Web-iii.
+
+**Owner's one-time Vercel setup (Web-iii, needs the owner's login).** Run from the main checkout (it has `public/assets/paid`):
+1. `npx vercel login`.
+2. `npx vercel link` and create a new **Hobby** project. Keep its git integration **disconnected** (Project Settings → Git: no repository), so only `--prod` deploys exist and no preview address is ever made.
+3. Set the two environment variables for **Production**:
+   - `npx vercel env add FTLITE_PASSCODE production` (the code friends type). Choose a long passcode (several words or 16+ random characters): the 1 s failure delay is per request, so parallel guessing is only slowed, not stopped.
+   - `npx vercel env add FTLITE_COOKIE_SECRET production` with 32 random bytes in base64, made by `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`.
+   Changing `FTLITE_PASSCODE` changes the code; changing `FTLITE_COOKIE_SECRET` signs everyone out. A missing or short secret makes every page answer "FTLite is not configured." (fail closed).
+4. Each deploy, in PowerShell: `$env:FTLITE_WEB_SERVICE_ORIGIN='https://<signalling worker origin>'; npm run deploy:web` (in Git Bash: `FTLITE_WEB_SERVICE_ORIGIN=https://<signalling worker origin> npm run deploy:web`). Use exactly one https origin, with no trailing slash. Never run plain `vercel` or `vercel deploy`: a source build has no passcode middleware, so the root `vercel.json` makes it fail on purpose (its `buildCommand` exits 1 telling you to run `npm run deploy:web`); `--prebuilt` uploads only `.vercel/output` and runs no build.
+5. After the first deploy, put `https://<project>.vercel.app` into Cloudflare's `ALLOWED_ORIGINS` (spec §6), then run these live checks with `curl -I`. Use `-b ftlite_pass=<value>` for the cookie; copy the value from a browser sign-in (DevTools → Application → Cookies).
+   - Without the cookie: `/`, `/assets/authorityWorker.js` and `/assets/paid/<a real file from public/assets/paid>` each answer `401` (the passcode page).
+   - With the cookie: `/`, `/assets/authorityWorker.js` and the same paid file each answer `200` with `cache-control: private, no-cache`, and `/version.json` answers `200` with `cache-control: no-store`.
+   - If any check fails, roll the first deploy back at once: `npx vercel rollback`, or delete the deployment in the dashboard. Fix it before redeploying; never leave the paid art reachable without the cookie.
+   - If every page answers `503` "FTLite is not configured." although both vars are set, the vars are not reaching the middleware. Check that both are set for **Production**, then redeploy (env changes need a new deploy).
+   Web-iii's `scripts/web/live-smoke.ts` runs the same cookie and header checks, without and with the cookie, before its two-browser duel, and fails the run if any of them fails.
+
+- [ ] Owner: Vercel login, link (Hobby, git disconnected) and the two env vars (Web-iii).
+- [ ] Owner: first `deploy:web`, then the step-5 live checks without and with the cookie (paid art, Worker, `/`, `version.json`); roll back on any failure (Web-iii).
+- [ ] Web-iii plan: `scripts/web/live-smoke.ts` repeats the step-5 checks (401 without the cookie for `/assets/paid/<file>` and `/assets/authorityWorker.js`; 200 with `private, no-cache` with it; `version.json` `no-store`) before its duel.
+- [x] Web-ii gate (Task 12, re-run after the master merge and impl review R1), head 4732902d: `typecheck`; `npm test` (421 files; load flakes rerun alone: snapshot and the known list, all pass alone); `test:web-output` (WEB OUTPUT PASS, 96 static paths need the cookie); `test:determinism` (Node, Electron, Firefox UA); `test:signalling`, `typecheck:signalling`; Electron gates `test:worker-boot`, `test:host-runtime`, `test:rtc-runtime` , `test:room-service-runtime`, `test:online-app-runtime`, `test:online-recovery-runtime`, `test:duel-app-runtime`; browser gates `test:web-net` (chromium-firefox, firefox-chromium, chromium-electron) and the origin-refused injection (fails for its named reason). No SIM_VERSION change.
+- [ ] Owner look check in a real browser (Chrome and Firefox), with a production-like local build (`npm run build:web -- --test --service-origin=<https signalling origin> --out=out/web-look` then `npx vite preview --outDir out/web-look/static`): Settings fullscreen on and off; Esc during a match in fullscreen (Chrome: Esc reaches the game, hold Esc exits; Firefox: one Esc exits fullscreen and pauses once); first click starts the menu music; a second tab shows "FTLite is already open in another tab" on Multiplayer; closing a lobby tab asks before leaving; Settings -> Download playtest log after a solo round saves `ftlite-playtest-<date>-to-<date>.jsonl`.

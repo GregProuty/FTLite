@@ -3,7 +3,7 @@
 import type { ConsoleInput } from '../app/duel/input';
 import type { ContactActions } from '../app/duel/contactController';
 import type { DuelCrewSize, OnlinePreloadApi, OnlineResult, OnlineStatus } from '../../../shared/onlineSession';
-import { applyStatus, failureText, helmPlayerOf, isDuel, ROOM_CODE, type MenuState } from './menuState';
+import { applyStatus, failureText, helmPlayerOf, isDuel, NO_PLAYTEST_RECORDS_TEXT, PLAYTEST_LOG_FAILED_TEXT, ROOM_CODE, type MenuState } from './menuState';
 import type { UiStore } from './store';
 import type { VolumeChannel } from '../app/settingsStore';
 
@@ -17,6 +17,10 @@ export interface UiActionDeps {
   setLaserFit?(on: boolean): void;
   /** Quit the app (owner 2026-11-17: Quit on the main menu): closes the window, as its close button does. */
   quit?(): void;
+  /** Web build spec §5.4: the update banner's reload (location.reload in the page). */
+  reload?(): void;
+  /** Web build spec §7.4: save the browser's playtest log; the saved file's name, or null when there are no records. */
+  downloadPlaytestLog?(): Promise<string | null>;
   setVolume?(channel: VolumeChannel, volume: number): void;
   /** Feel-i: the screen shake setting changed (main saves it and hands it to the renderer). */
   setShake?(shake: import('../render/shake').ShakeSetting): void;
@@ -90,6 +94,15 @@ export function createUiActions(deps: UiActionDeps) {
     setLaserFit(on: boolean): void { store.setState((s) => ({ settings: { ...s.settings, valkyrnLaserFit: on } })); deps.setLaserFit?.(on); },
     openMultiplayer(): void { setMenu({ localError: '', page: 'multiplayer' }); },
     quit(): void { deps.quit?.(); },
+    /** Web build spec §5.4: version.json names another build (the version watch); shown by the menu outside a match. */
+    updateAvailable(): void { if (!store.getState().browser.update) store.setState((s) => ({ browser: { ...s.browser, update: true } })); },
+    reload(): void { deps.reload?.(); },
+    /** Settings' Download playtest log (web build spec §7.4): says what was saved, or that there is nothing yet. */
+    downloadPlaytestLog(): void {
+      const run = deps.downloadPlaytestLog; if (!run) return;
+      const say = (text: string): void => { if (!disposed) store.setState((s) => ({ browser: { ...s.browser, playtestLogText: text } })); };
+      void run().then((name) => say(name ? `Saved ${name}.` : NO_PLAYTEST_RECORDS_TEXT), () => say(PLAYTEST_LOG_FAILED_TEXT));
+    },
     openSettings(): void { setMenu({ localError: '', page: 'settings' }); readFullscreen(); },
     openHost(): void { setMenu({ hadView: false, page: 'host' }); },
     openJoin(): void { setMenu({ hadView: false, page: 'join' }); },

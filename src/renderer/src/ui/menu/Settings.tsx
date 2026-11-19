@@ -3,13 +3,14 @@ import { FULLSCREEN_KEY } from '../../../../shared/onlineSession';
 import { VOLUME_CHANNELS, VOLUME_LABELS, VOLUME_STEPS } from '../../app/settingsStore';
 import { SHAKE_LABELS, SHAKE_SETTINGS, validShake } from '../../render/shake';
 import { useActions, useUi } from '../context';
+import { BROWSER_F11_TEXT } from '../menuState';
 import { MenuButton } from './MenuButton';
 import { ACTION, KEYS, TABLE, VOLUME } from './styles';
 
 /** The Master, Music and Effects volumes (Audio-i spec section 6), the screen shake (Feel-i), the live fullscreen toggle
  *  and the read-only controls list (main menu spec decision 4). */
 export function Settings() {
-  const settings = useUi((s) => s.settings), fullscreen = useUi((s) => s.menu.fullscreen), actions = useActions();
+  const settings = useUi((s) => s.settings), fullscreen = useUi((s) => s.menu.fullscreen), browser = useUi((s) => s.browser), actions = useActions();
   return (
     <>
       {VOLUME_CHANNELS.map((ch) => (
@@ -33,7 +34,11 @@ export function Settings() {
       </label>
       <MenuButton id="fullscreen" text={`Fullscreen: ${fullscreen === null ? '…' : fullscreen ? 'On' : 'Off'}`} onClick={actions.toggleFullscreen}
         enabled={settings.fullscreenAvailable && fullscreen !== null} />
-      <p data-testid="fullscreen-note">{`${FULLSCREEN_KEY} also toggles fullscreen.`}</p>
+      <p data-testid="fullscreen-note">{browser.web ? BROWSER_F11_TEXT : `${FULLSCREEN_KEY} also toggles fullscreen.`}</p>
+      {browser.playtestLog && <>
+        <MenuButton id="download-playtest-log" text="Download playtest log" onClick={actions.downloadPlaytestLog} />
+        {browser.playtestLogText && <p data-testid="playtest-log-status">{browser.playtestLogText}</p>}
+      </>}
       <div data-testid="controls">
         <h3>Controls</h3>
         {settings.controls.map((section) => (

@@ -24,7 +24,11 @@ export function createRtcTransport(identity: HostIdentity, wire: RtcTransportWir
   function stamp() { if (nextId >= Number.MAX_SAFE_INTEGER) throw Error('rtc-request-capacity'); return { version: 1 as const, hostGeneration: identity.hostGeneration, requestId: ++nextId }; }
   function retire(entry: Attempt, reason: string) {
     if (attempts.get(entry.id) !== entry) return;
-    attempts.delete(entry.id); clearTimeout(entry.timer); closePort(entry.port);
+    attempts.delete(entry.id); clearTimeout(entry.timer);
+    // The page transport gives the controller this same port object, so its later portLink close frame would go out on a
+    // closed port; browsers fire no MessagePort close event at the far end. Say it closed first (a PortFrame).
+    try { entry.port.postMessage({ version: 1, type: 'close', reason: reason.slice(0, 128) }); } catch { /* already gone */ }
+    closePort(entry.port);
     entry.reject(Error(reason));
     for (const [id, item] of pending) if (item.attemptId === entry.id && item.kind !== 'closed') {
       pending.delete(id); clearTimeout(item.timer); item.reject(Error(reason));
