@@ -78,14 +78,14 @@ describe('ship slots (spec §5 "arrays, not pairs")', () => {
     }
   }, 60_000);
   it('contacts and the laser work across any pair of active slots, by the locked target', () => {
-    const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 3)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
+    const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 3, ShipClass.ValkyrnLaser)));   // W-4 spec §14.1: the beam's rule, on the laser fit. Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
     quiet(st);
     Object.assign(st.ships[2]!, { active: true, x: 500, y: -1800, vx: 0, vy: 0, heading: 192 });   // a third ship, west-facing
     Object.assign(st.systems[2]!, { ...st.systems[1], rooms: [0, 0, 0], target: 0 });
     Object.assign(st.ships[0], { x: 465, y: -1800, vx: 100, vy: 0, heading: 64 });               // overlapping it by 5, closing
     stepFlight(st, [{ turn: 0, thrust: 0 }, { turn: 0, thrust: 0 }, { turn: 0, thrust: 0 }], { gravity: false, edge: false, drag: 0, stabilise: 0 });
     expect([st.ships[0].shipHits, st.ships[2]!.shipHits, st.ships[1].shipHits]).toEqual([1, 1, 0]);
-    expect([st.systems[0].hull, st.systems[2]!.hull]).toEqual([SHIP_HULL - 1, HUNTER_HULL - 1]);   // the third ship is a Hunter-class copy
+    expect([st.systems[0].hull, st.systems[2]!.hull]).toEqual([52, HUNTER_HULL - 1]);   // the third ship is a Hunter-class copy. W-4 spec §14.1 (laser fit): was SHIP_HULL - 1 (69); the laser fit has VALKYRN_HULL 53
     expect(st.ships[0].graceUntil[shipBody(st.map, 0, 2)]).toBeGreaterThan(0);
     expect(st.ships[2]!.graceUntil[shipBody(st.map, 2, 0)]).toBeGreaterThan(0);
     const before = { ...st.systems[1] };

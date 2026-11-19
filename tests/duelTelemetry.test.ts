@@ -109,7 +109,7 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
     expect(endedFromPlanet(t)).toBe(true);
   });
   it('a laser kill is attributed to the laser, not the planet', () => {
-    const d = createSeatedDuel(layout, 5), t = createTelemetry(d), [s, e] = d.tactical.ships;
+    const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser), t = createTelemetry(d), [s, e] = d.tactical.ships;   // W-4 spec §14.1: the beam's rule, on the laser fit
     todaysCrewWeapons(d.tactical);   // Engineering spike spec §10.3: the round starts the beam dark; give it its bars
     e.x = s.x + hx(s.heading) * 200; e.y = s.y + hy(s.heading) * 200; e.vx = s.vx; e.vy = s.vy; d.tactical.systems[1].shields = 0; d.tactical.systems[1].hull = 1;
     d.tactical.systems[0].laserCharge = LASER_CHARGE_UNITS;
