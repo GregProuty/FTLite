@@ -31,7 +31,7 @@ export function gunnerPresent(d: DuelState): boolean {
 export type LaserSituation =
   | { kind: 'range'; range: number; reach: number; rock?: true }
   | { kind: 'arc'; turn: 'LEFT' | 'RIGHT'; rock?: true }
-  | { kind: 'blocked' } | { kind: 'offline' } | { kind: 'frozen' } | { kind: 'nogunner' }
+  | { kind: 'blocked' } | { kind: 'offline'; damaged: boolean } | { kind: 'frozen' } | { kind: 'nogunner' }
   | { kind: 'solution'; targeted: boolean } | { kind: 'charging'; targeted: boolean }
   | { kind: 'none' };
 
@@ -52,7 +52,7 @@ export function laserSituation(t: TacticalState, sinceShot = Infinity, gunner = 
     const r = rockAt(t, sysRock.laserRock), rx = r.x - own.x, ry = r.y - own.y, surface = Math.sqrt(rx * rx + ry * ry) - r.r;
     if (surface > reach.range) return { kind: 'range', range: Math.round(surface), reach: reach.range, rock: true };
     if (!inArc(own.heading, rx, ry, reach.arcCos)) return { kind: 'arc', turn: (sideOf(own.heading, rx, ry) || 1) > 0 ? 'RIGHT' : 'LEFT', rock: true };
-    if (laserOffline(t, CREW_SLOT)) return weaponsOffline(t) ? { kind: 'offline' } : { kind: 'none' };   // Engineering spike §10.3: the beam dark, the torpedo powered: its card speaks
+    if (laserOffline(t, CREW_SLOT)) return weaponsOffline(t) ? { kind: 'offline', damaged: t.systems[CREW_SLOT].rooms[Room.Weapons] >= 2 } : !gunner ? { kind: 'nogunner' } : missileOf(t, CREW_SLOT) ? { kind: 'frozen' } : { kind: 'none' };   // Engineering spike §10.3: the beam dark, the torpedo powered: its card speaks
     if (sysRock.laserBurst > 0 || sinceShot < SOLUTION_HOLD_S) return { kind: 'solution', targeted: sysRock.laserTargeted };
     if (!gunner) return { kind: 'nogunner' };
     if (missileOf(t, CREW_SLOT)) return { kind: 'frozen' };
@@ -66,7 +66,7 @@ export function laserSituation(t: TacticalState, sinceShot = Infinity, gunner = 
   if (dx * dx + dy * dy > laser.range * laser.range) return { kind: 'range', range, reach: laser.range };
   if (!inArc(me.heading, dx, dy, laser.arcCos)) return { kind: 'arc', turn: (sideOf(me.heading, dx, dy) || 1) > 0 ? 'RIGHT' : 'LEFT' };
   if (!lineOfSight(t, me.x, me.y, e.x, e.y)) return { kind: 'blocked' };
-  if (laserOffline(t, CREW_SLOT)) return weaponsOffline(t) ? { kind: 'offline' } : { kind: 'none' };   // Engineering spike §10.3
+  if (laserOffline(t, CREW_SLOT)) return weaponsOffline(t) ? { kind: 'offline', damaged: t.systems[CREW_SLOT].rooms[Room.Weapons] >= 2 } : !gunner ? { kind: 'nogunner' } : missileOf(t, CREW_SLOT) ? { kind: 'frozen' } : { kind: 'none' };   // Engineering spike §10.3
   const targeted = sys.laserTargeted;
   if (sys.laserBurst > 0 || sinceShot < SOLUTION_HOLD_S) return { kind: 'solution', targeted };   // the burst fires attended or not
   if (!gunner) return { kind: 'nogunner' };
@@ -85,7 +85,7 @@ export function statusSentence(s: LaserSituation): string {
     case 'range': return s.rock ? `ROCK OUT OF RANGE: CLOSE TO ${s.reach}` : `ENEMY OUT OF RANGE: CLOSE TO ${s.reach}`;
     case 'arc': return s.rock ? `ROCK OUT OF ARC: TURN ${s.turn}` : `ENEMY OUT OF ARC: TURN ${s.turn}`;
     case 'blocked': return 'NO LINE OF SIGHT: CLEAR THE ROCK';
-    case 'offline': return 'WEAPONS OFFLINE: REPAIR';
+    case 'offline': return s.damaged ? 'WEAPONS OFFLINE: REPAIR' : 'WEAPONS OFFLINE: POWER A WEAPON';
     case 'frozen': return 'LASER HOLDS: TORPEDO FLYING';
     case 'nogunner': return 'NO GUNNER: SIT AT WEAPONS';
     case 'solution': return s.targeted ? 'FIRING SOLUTION' : 'FIRING SOLUTION: PICK A ROOM';

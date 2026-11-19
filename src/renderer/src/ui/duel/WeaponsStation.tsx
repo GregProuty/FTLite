@@ -104,7 +104,9 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
   return (
     <>
       <Panel x={STATION.x} y={top} w={STATION.w} h={STATION.h.weapons} />
-      <Box x={P.x} y={P.y} w={P.w} h={P.h} attrs={{ 'data-ui-card-frame': 'pew' }} style={{ border: `1px solid ${hex(dim)}`, pointerEvents: 'none' }} />
+      <div data-testid="console-pew-frame" onContextMenu={stop} onMouseDown={stop} onAuxClick={stop}>
+        <Box x={P.x} y={P.y} w={P.w} h={P.h} attrs={{ 'data-ui-card-frame': 'pew' }} style={{ border: `1px solid ${hex(dim)}`, pointerEvents: 'auto' }} />
+      </div>
       <PixelText text="PEW PEW" x={px} y={P.y + 4} size={FONT_NATIVE} tint={dim} />
       <PixelText text="ARRIVES" x={px} y={P.y + 20} size={FONT_NATIVE} tint={dim} />
       <PixelText text="WITH W-1" x={px} y={P.y + 36} size={FONT_NATIVE} tint={dim} />

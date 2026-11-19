@@ -7,12 +7,13 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { consoleModel } from '../src/renderer/src/render/duel/consoleModel';
 import { CARD_ORDER, STATION, weaponCard } from '../src/renderer/src/render/duel/consoleLayout';
-import { laserSituation, refusal, weaponsOffline } from '../src/renderer/src/render/duel/situationModel';
+import { laserSituation, refusal, statusSentence, weaponsOffline } from '../src/renderer/src/render/duel/situationModel';
 import { createDuelKeyboard, NO_HELD_FLAGS, type EventSource } from '../src/renderer/src/app/duel/input';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import { lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
 import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
 import { initRocks } from '../src/renderer/src/sim/tactical/rocks';
+import { placeMissile, Room } from '../src/renderer/src/sim/tactical/state';
 import { seatDuelCrew } from './helpers/duelSeat';
 
 const HOUND = parseShip(hound);
@@ -60,10 +61,27 @@ describe('WEAPONS OFFLINE only when the beam and the torpedo are both dark (spec
       sys.weaponPower[2] = 0;   // pew pew keeps its 1 bar: it does not count
       expect(weaponsOffline(t)).toBe(true);
       expect(laserSituation(t).kind).toBe('offline');
+      expect(statusSentence(laserSituation(t))).toBe('WEAPONS OFFLINE: POWER A WEAPON');   // merely unpowered: not a repair job
+      t.systems[0].rooms[Room.Weapons] = 2;
+      expect(statusSentence(laserSituation(t))).toBe('WEAPONS OFFLINE: REPAIR');   // the room damaged
+      t.systems[0].rooms[Room.Weapons] = 0;
       expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual(['WEAPONS OFFLINE', 'WEAPONS OFFLINE']);
       sys.weaponPower.splice(0, 3, 0, 2, 0);   // the beam on 2 bars
       expect(weaponsOffline(t)).toBe(false);
       expect(refusal(d, 'fire')).toBeNull();
+    } finally { disposeDuel(d); }
+  });
+
+  it('the beam dark, the torpedo powered: NO GUNNER and TORPEDO FLYING still speak, else none', () => {
+    const d = createDuel(HOUND, 5), t = d.tactical, me = t.ships[0]!, e = t.ships[1]!;
+    try {
+      t.map = { ...t.map, asteroids: [] }; t.grid = buildGrid([], t.map.rMap); t.rocks = initRocks(t.map);
+      e.x = me.x + hx(me.heading) * 200; e.y = me.y + hy(me.heading) * 200; e.active = true;
+      expect(weaponsOffline(t)).toBe(false);
+      expect(laserSituation(t, Infinity, true).kind).toBe('none');
+      expect(statusSentence(laserSituation(t, Infinity, false))).toBe('NO GUNNER: SIT AT WEAPONS');
+      placeMissile(t, 0, { x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });
+      expect(statusSentence(laserSituation(t, Infinity, true))).toBe('LASER HOLDS: TORPEDO FLYING');
     } finally { disposeDuel(d); }
   });
 });

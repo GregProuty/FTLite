@@ -5,12 +5,12 @@ import { NO_HELD_FLAGS, type HeldFlags, type KeyAction } from '../../app/duel/in
 import type { DuelState } from '../../sim/duel/state';
 import { classOf, Contact, missileOf, Room } from '../../sim/tactical/state';
 import { HEADING_COUNT, MAGAZINE } from '../../sim/tactical/tuning';
-import { canLaunch, torpedoInRange } from '../../sim/tactical/weapons';
+import { beamShots, canLaunch, torpedoInRange } from '../../sim/tactical/weapons';
 import type { MapOverlayView } from '../../ui/views';
 import { chargeRow, type ReadoutRow } from './readoutModel';
 import { gunnerPresent, laserCardReason, laserSituation, weaponsOffline, type RefusedControl } from './situationModel';
 import { DuelSystem } from '../../sim/duel/power';
-import { BEAM_SHOTS_BY_BARS, throttleCap, trimmedWeaponPower, weaponBarsUsable, WeaponSlot } from '../../sim/tactical/bars';
+import { throttleCap, trimmedWeaponPower, weaponBarsUsable, WeaponSlot } from '../../sim/tactical/bars';
 import { powerStrip, type ConsolePowerStrip } from './shipHudModel';
 
 export type ConsoleStation = 'helm' | 'weapons' | 'science' | 'flight' | 'ship';
@@ -122,7 +122,7 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   const weaponsPanel = (): WeaponsPanel => ({ lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null,
       laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock,
       ...(() => { const w = trimmedWeaponPower(sys);   // Engineering spike §10.3: the bars each weapon stands on now; the beam's shots by its bars
-        return { burst: classOf(t, 0).slots.laser ? BEAM_SHOTS_BY_BARS[w[WeaponSlot.Beam]!] ?? 0 : 0, weaponBars: w, weaponFree: weaponBarsUsable(sys) - (w[0]! + w[1]! + w[2]!) }; })(),
+        return { burst: classOf(t, 0).slots.laser ? beamShots(t, 0) : 0, weaponBars: w, weaponFree: weaponBarsUsable(sys) - (w[0]! + w[1]! + w[2]!) }; })(),
       laserRock: sys.laserRock >= 0, torpRock: sys.torpRock >= 0, torpRockFlying: sys.torpRockFlying >= 0, rocks: sys.rocksBroken,   // spike ii §6.5, §7 item 9
       laserReason: laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), weaponsOffline(t)), goal: (i.goal ?? false) && !sys.laserTargeted,
       refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null });
