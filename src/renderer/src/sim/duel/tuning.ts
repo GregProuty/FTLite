@@ -36,6 +36,10 @@ export const DUEL_REPAIR_POINTS: Readonly<Record<string, typeof CUTTER_REPAIR_PO
  *  raises its tactical Room one level (to 2). Putting it out takes DUEL_EXTINGUISH_UNITS whole units, stored in
  *  rooms.fireRepair as a 0..1 fraction: one worker adds DUEL_EXTINGUISH_RATE_SOLO per tick (720 / 4 = 180 ticks), each of
  *  two or more DUEL_EXTINGUISH_RATE_TEAM (two finish in 72 ticks). */
+/** Fire venting (owner 2026-11-19, FTL-style): the duel fire's oxygen use per second per unit of intensity (the sector
+ *  game keeps FIRE_O2_RATE). Sized so a sealed burning room with Oxygen unpowered smothers in about 20-40 s; with Life
+ *  Support powered a sealed fire keeps burning, so the crew fight it or vent its section (ventedRegion). */
+export const DUEL_FIRE_O2_RATE = 0.1;
 export const DUEL_FIRE_CHANCE_LASER = 0.3;
 export const DUEL_FIRE_CHANCE_MISSILE = 0.6;
 export const DUEL_FIRE_DAMAGE_TICKS = 900;

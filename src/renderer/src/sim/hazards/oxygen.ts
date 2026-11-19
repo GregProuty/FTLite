@@ -41,7 +41,7 @@ export function totalO2(state: SimState): number {
  * A room whose total demand (outflows + venting + breathing + fire) exceeds its mass has all of them
  * scaled down proportionally, which keeps conservation and non-negativity on branching graphs (spec §5).
  */
-export function oxygenStep(state: SimState, injection: Float64Array): void {
+export function oxygenStep(state: SimState, injection: Float64Array, fireO2Rate: number = FIRE_O2_RATE): void {
   const d = state.derived, o2 = state.rooms.o2, V = d.volume, k = d.kEff, dt = HAZARD_DT;
   const R = o2.length, E = d.edgeA.length, S = d.siteRoom.length;
   const frac = new Float64Array(R);
@@ -80,7 +80,7 @@ export function oxygenStep(state: SimState, injection: Float64Array): void {
     const r = conditionRoomAt(state, Position.x[eid]!, Position.y[eid]!);
     if (r >= 0) breath[r]! += BREATH_RATE * dt;
   }
-  for (let r = 0; r < R; r++) { burn[r] = FIRE_O2_RATE * state.rooms.fire[r]! * dt; demand[r]! += breath[r]! + burn[r]!; }
+  for (let r = 0; r < R; r++) { burn[r] = fireO2Rate * state.rooms.fire[r]! * dt; demand[r]! += breath[r]! + burn[r]!; }
   // Proportional scaling per source room.
   const scale = new Float64Array(R);
   for (let r = 0; r < R; r++) scale[r] = demand[r]! > o2[r]! && demand[r]! > 0 ? o2[r]! / demand[r]! : 1;

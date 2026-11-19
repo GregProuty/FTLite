@@ -34,7 +34,7 @@ import { duelInjection, patchWork, toggleAirlock, toggleDoor, validAirlock, vali
 import { throttleThrust, validHoldHeading, validThrottle } from './throttle';
 import { createDuel, disposeDuel, type DuelState } from './state';
 import { crewThrust, engineBars, heldAxis, noVent, rampThrottle, throttleCap, throttleFloor } from './helmFlight';
-import { BOOST_FACE_SIN, REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
+import { BOOST_FACE_SIN, DUEL_FIRE_O2_RATE, REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
 
 export interface DuelInput { held: readonly HeldInput[]; commands: readonly DuelEnvelope[] }
 
@@ -471,9 +471,9 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   firePhase(d, tick);   // duel-fire spec §1: the damage cadence, then this tick's hits roll (rng.hazards)
   clampToCapacity(d);   // Engineering spike spec §7: excess bars back to the pool after every damage rise this tick
   if ((tick - d.baseTick) % HAZARD_EVERY === 0) {   // Engineering spike spec §7 (Decision 13): the hazard tick, 12 Hz
-    duelInjection(d);
-    oxygenStep(st, st.injectionScratch);
-    fireStep(st);
+    const vented = duelInjection(d);   // fire venting (owner 2026-11-19): no Life Support into a section open to space
+    oxygenStep(st, st.injectionScratch, DUEL_FIRE_O2_RATE);   // the duel fire's own oxygen use
+    fireStep(st, vented);   // a fire in a section open to space shrinks below FIRE_GROW_FRAC
     duelHeatStep(d);   // overheat draws last; each overheat clamps its bars inline
     clampToCapacity(d);   // Task 10, spec §10.4: a fire that spread into the Sensors room costs it a slot this tick
   }
