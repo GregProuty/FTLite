@@ -152,7 +152,7 @@ export const shipModule: SimModule<TacticalState> = {
   id: 'ship',
   fields: (s) => shipFields(s.systems.length),
   notSnapshotted: {},
-  commands: ['laserMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire'],
+  commands: ['laserMode', 'torpMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire'],
   reasons: ['not-at-weapons', 'missile-in-flight', 'malformed', 'stale-tick', 'unavailable']
 };
 /** The `science` module (Sci-1 spec §6.2): round-relative time and hostility, what each contact is known to, the ship's

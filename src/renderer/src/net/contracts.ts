@@ -31,9 +31,11 @@ export interface Session {
 }
 /** `face` (Feel-i, console feel spec §2): the Helm's auto-face, Space held at the Helm; absent means false. `aim`
  *  (Valkyrn spec §6.2): the Flight seat's mouse aim, a heading index 0..255, −1 or absent for none (the sim counts any
- *  other value as none). `gunHeld` (Valkyrn spec §7.1): the gun's trigger; absent means false. Only the duel reads them:
- *  `face` and `aim` from the Helm's attendant (A/D, moveX, overrides both), `gunHeld` from Weapons'. */
-export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean; aim?: number; gunHeld?: boolean }
+ *  other value as none). `gunHeld` (Valkyrn spec §7.1): the gun's trigger; absent means false. W-3 (pew pew spec §3):
+ *  `torpTurn` the MANUAL torpedo's A/D (−1, 0 or 1; absent 0) and `torpHeading` the heading it holds (0..255; −1 or
+ *  absent none). Only the duel reads them: `face` and `aim` from the Helm's attendant (A/D, moveX, overrides both),
+ *  `gunHeld`, `torpTurn` and `torpHeading` from Weapons'. */
+export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean; aim?: number; gunHeld?: boolean; torpTurn?: number; torpHeading?: number }
 export interface HeldFrame { runId: RunId; player: PlayerId; tick: number; sequence: number; held: HeldInput }
 export interface LifecyclePause { paused: boolean; reason: string }
 export interface CommandId { player: PlayerId; sequence: number }
@@ -104,6 +106,10 @@ export type DuelCommand =
   /** W-2: Weapons fires the MANUAL laser along heading index `aim` 0..255 plus `aimAcc` 0..255 256ths of a step (pewFire's
    *  aim), clamped into the laser's ±60° by the sim. Any integers pass the codec; the sim answers an out-of-range one malformed. */
   | { kind: 'laserFire'; aim: number; aimAcc: number }
+  /** W-3 (pew pew spec §3): Weapons sets the crew torpedo's mode: true MANUAL (launched by missileLaunch alone, no lock or
+   *  range, and flown by the Weapons seat's held torpTurn and torpHeading), false AUTO (as before). A torpedo in flight
+   *  keeps the mode it launched with. */
+  | { kind: 'torpMode'; manual: boolean }
   /** On a decided round's end card: start the next round (H-2 spec §7). */
   | { kind: 'rematch' }
   | { kind: 'setPaused'; paused: boolean };
