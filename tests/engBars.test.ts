@@ -3,6 +3,8 @@
 import { describe, expect, it } from 'vitest';
 import { damageCapacity, DuelSystem, effectiveBars, knock, START_BARS, SYSTEM_SLOTS, SYSTEM_TACTICAL_ROOM } from '../src/renderer/src/sim/tactical/bars';
 import { cloneTactical, createTacticalState, Room } from '../src/renderer/src/sim/tactical/state';
+import { tickWeapons, IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
+import { SHIELD_RATE_BY_BARS } from '../src/renderer/src/sim/tactical/bars';
 import { flattenTactical, validateTacticalValues } from '../src/renderer/src/sim/tactical/hash';
 
 describe('engineering spike: tactical bars (spec §2)', () => {
@@ -43,5 +45,25 @@ describe('engineering spike: tactical bars (spec §2)', () => {
     expect(validateTacticalValues(s, values, 0)).toBe(values.length);
     s.systems[0].bars[0] = 11;                                             // out of 0..10: refused by name
     expect(() => validateTacticalValues(s, Array.from(flattenTactical(s)), 0)).toThrow(/systems\.0\.bars/);
+  });
+});
+
+describe('engineering spike: shields read bars (spec §2)', () => {
+  it('the layer cap and rate follow bars; layers above the cap drop at once and the clock resets; the Hunter is unchanged', () => {
+    const s = createTacticalState(1), sys = s.systems[0];
+    sys.bars[DuelSystem.Shields] = 4; sys.shields = 1; sys.shieldClock = 0;
+    tickWeapons(s, 0, IDLE_INPUT);
+    expect(sys.shieldClock).toBe(SHIELD_RATE_BY_BARS[4]);
+    sys.shields = 2; sys.shieldClock = 10; sys.bars[DuelSystem.Shields] = 2;
+    tickWeapons(s, 0, IDLE_INPUT);
+    expect(sys.shields).toBe(1); expect(sys.shieldClock).toBe(0);
+    sys.bars[DuelSystem.Shields] = 1;
+    tickWeapons(s, 0, IDLE_INPUT);
+    expect(sys.shields).toBe(0);
+    sys.bars[DuelSystem.Shields] = 4; sys.rooms[Room.Shields] = 1;   // damage 1: capacity 2, so 1 layer at most
+    sys.shields = 2; tickWeapons(s, 0, IDLE_INPUT);
+    expect(sys.shields).toBe(1);
+    s.systems[1].shields = 2; tickWeapons(s, 1, IDLE_INPUT);
+    expect(s.systems[1].shields).toBe(2);
   });
 });
