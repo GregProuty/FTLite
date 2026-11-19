@@ -137,7 +137,15 @@ in tuning files and tuned in playtest.
   - `scene.ts`'s `sitThrottle` (L238, L246) reads `thrMille` for the crew Helm.
   - Telemetry's "acted" and "bait" tests (`telemetry.ts` L132-L133) count a turn, a vent or a non-zero `thrMille`.
 - **The held heading stays:** the `heading` command, set with right-click and drag.
-- **An unattended crew Helm:** the throttle returns to 0 and the ship coasts. A held heading still turns it.
+- **An unattended crew Helm:** the throttle returns to 0 and the ship coasts. A held heading still turns it. Today an
+  unattended Hound/Cutter Helm sets `crew.helm` false and flies `NO_AXES` (step.ts L279-L287). For a `newtonianHelm`
+  class with no attendant, the step instead sets `crew.helm = true` and flies:
+  - `turn`: `outcome Running && holdHeading ≥ 0 ? headingTurn(…) : 0`;
+  - `turnBoost`: `helmBoost(d, NO_HELD)`;
+  - `thrust`: `crewThrust(thrMille)`, while it returns to 0;
+  - `rcsX` and `rcsY`: 0.
+
+  The same rule is mirrored in `situationModel.stateAxes` (L106-L110) and `runtime.ts`'s `sentAxes` (L321-L322).
 
 ## 4. Cold gas thrusters (crew Helm)
 
@@ -196,7 +204,8 @@ in tuning files and tuned in playtest.
   - Otherwise the ship turns at the normal step and spends nothing.
   - "Far" means outside a band wider than the boosted step:
     - **aim or held heading:** the signed index difference `|d| > 4` (2 × 1.78 = 3.56 < 4);
-    - **auto-face:** the target isn't within `BOOST_FACE_SIN` (sin 5°) of the nose, or is behind it.
+    - **auto-face:** the target isn't within `BOOST_FACE_SIN` (sin 6°, about 4.27 indices, more than the 4 whole
+      indices a boosted tick can step) of the nose, or is behind it.
   - Inside the band, the normal step and today's bands (aimTurn's |d| ≤ 1, `AUTO_FACE_SIN`) finish the turn. So the
     boosted step never reaches today's bands, and the nose never chatters.
   - Whether a tick is far is decided before the turn is applied, from the state before the step. It's computed by one
@@ -213,7 +222,9 @@ in tuning files and tuned in playtest.
 ## 5. Helm power: ENGINE and COMPRESSOR
 
 - **The budget:** the Helm has a budget of `HELM_BARS` bars.
-  - In this spike it's a stand-in of 4, taken from the duel's options (`createDuel`), so tests can set 0-5.
+  - In this spike it's a stand-in of 4. `createDuel` gains a sixth parameter, `opts: { helmBars?: number } = {}`,
+    stored as `d.helmBars` (default 4), so tests can set 0-5. `startRound` passes `d.helmBars` through to the next
+    round's `createDuel`. The online authority and client always use the default.
   - When the Engineering spike lands, it becomes the Engines system's effective bars.
 - **The split:** the pilot splits the budget: `helm.compressor`, from 0 to `min(3, HELM_BARS)`, and ENGINE is
   `HELM_BARS − compressor`.
@@ -234,8 +245,8 @@ in tuning files and tuned in playtest.
 - **Keys and clicks:** 1 sends `helmPower +1`, and 2 sends `helmPower −1`. Clicking an ENGINE or COMPRESS cell on the
   strip sends the matching move.
 - **The cap drops:** if the cap falls below `thrMille`, `thrMille` is clamped down the same tick, in the ramp's clamp.
-- **Losing bars** (after Engineering, when `HELM_BARS` falls): compressor becomes `min(compressor, HELM_BARS, 3)`.
-  ENGINE is what remains.
+- **Losing bars** (after Engineering, when `HELM_BARS` falls by `lost`): bars come off COMPRESSOR first. compressor
+  becomes `max(0, min(3, compressor − lost, HELM_BARS))`, and ENGINE is what remains.
 - **Merge note for the Engineering spike.** Whichever spike merges second makes these changes:
   - **(a) The start split is an owner call at merge.** Engineering starts Engines at 3 bars, and the owner's rule is
     "75 % by default". So either Engineering's Engines start becomes 4, or the merged start is compressor 0. The
@@ -297,10 +308,15 @@ The changes are in `ui/duel/HelmStation.tsx`, the console models (`render/duel/c
     - `rcsAcc`: 0..59;
     - `compressor`: 0..3;
     - plus today's checks for `throttle` and `holdHeading`.
-  - `HELM_BARS` is a duel option, not state.
+  - **Module contract** (`sim/duel/modules.ts`):
+    - `helmBars` is a duel option, not state. `helmBars` and `helmVent` are listed in `DUEL_NOT_SNAPSHOTTED`, with
+      their reasons: an option fixed per duel, and per-tick scratch.
+    - `helmModule.commands` gains `helmPower`, and `helmModule.reasons` gains `unavailable`.
+    - `tests/duelModules.test.ts`'s pinned kind and field lists are updated.
 - **Step order,** after seats and before flight:
   1. `throttle` (Valkyrn), `heading` and `helmPower` admission;
-  2. the turn (`helmTurn`) and `helmBoost`;
+  2. the turn (`helmTurn` for an attended crew Helm; with no attendant, the held-heading turn of §3's unattended
+     rule) and `helmBoost`;
   3. the throttle ramp and clamp;
   4. the boost's gas, then fore/aft venting, then side venting;
   5. the compressor;
@@ -354,8 +370,10 @@ The tests that need a budget other than the stand-in set `HELM_BARS` and `compre
   - A/D on the crew Helm give `rcsX` and no turn.
   - A `moveX` held input doesn't turn a `newtonianHelm` class.
   - A far turn with gas runs at 2× and spends 4 gas a tick. With under 4 gas, or once inside the band, it runs at 1×.
-  - A boosted turn settles on the aim, the held heading and the auto-face target without oscillating (`aimTurn`
+  - A boosted turn settles on the aim, the held heading and the auto-face target without oscillating (`helmTurn`
     returns 0 for 10 straight ticks).
+  - A crew ship whose Helm stands up at `thrMille` 1000 thrusts down the 30-tick return and turns onto its held
+    heading.
   - The Valkyrn's held aim still becomes the held heading, and its A/D still turn it.
 - **`helmPower`:**
   - It's Helm-seat only.

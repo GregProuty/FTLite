@@ -36,7 +36,7 @@ The subject is a design spec for a spike: the Helm's flight in FTLite's two-play
 
 ## Reading manifest
 
-- `docs/superpowers/specs/2026-11-18-playtest2feedback-design.md:L1-L307`: the subject, all of it.
+- `docs/superpowers/specs/2026-11-18-playtest2feedback-design.md:L1-L408`: the subject, all of it.
 - `docs/superpowers/specs/2026-11-18-engineering-spike-design.md:L294-L385`: Engineering amendments §9.1 and §10.1-§10.2.
 - `docs/superpowers/specs/2026-11-18-pew-pew-weapons-design.md:L95-L150`: the manual torpedo and the held-input fields.
 - `src/renderer/src/sim/tactical/physics.ts:L1-L70`: `flyShip`, `stepFlight`, stabilise, drag and thrust quantisation.

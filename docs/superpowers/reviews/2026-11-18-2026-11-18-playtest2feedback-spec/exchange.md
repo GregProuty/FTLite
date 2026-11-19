@@ -158,3 +158,85 @@ Confirmed: scripted.ts L321. §4a makes ignoring `moveX` turning for `newtonianH
 
 ---
 
+# Round 2 (delta, reviewing 576c38de, effort medium, 160 s, 857845 in / 781984 cached / 14107 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 The unattended crew Helm's rule assumes a flight branch the Hound layout doesn't have
+§3 says that with no Helm attendant, the crew Helm's throttle returns to 0 and the ship coasts, and that 'a held heading still turns it'. §4 says the compressor runs unattended. But today an unattended Helm on a layout without helmHoldsUnattended (the Hound/Cutter) leaves crew.helm false, so stepDuel flies NO_AXES. The ship isn't turned by a held heading at all, and the per-mille ramp-down would never reach flyShip. The spec doesn't say whether a newtonianHelm class now sets crew.helm = true while unattended. It also doesn't say which axes that slot flies: the heading turn, the boost from helmBoost(d, NO_HELD), and crewThrust(thrMille) while it returns to 0. The two mirrors of the sim's rule aren't named either. · spec L140, L106-L107, L166; step.ts:L279-L287 (only `st.layout.helmHoldsUnattended === true` sets crew.helm and flies a heading turn and throttle; the comment says 'any other (the Hound's) flies zero axes as before'); tactical/duel.ts:L32 (`inputs[i]!.helm ? inputs[i]!.axes : NO_AXES`); situationModel.ts:L109 and runtime.ts:L322 (both return NO_AXES for an unattended non-Valkyrn Helm). · Implementer A keeps today's branch. A pilot who stands up then gets an instant cut of the main thrust and no held-heading turn, so the 'returns to 0 over 30 ticks' ramp is invisible. Implementer B adds a newtonianHelm unattended branch that thrusts down the ramp, turns onto the held heading and may spend boost gas. That gives different trajectories and goldens, and the drawn path and sentAxes disagree with whichever the sim does. · State the rule for an unattended crew Helm in §3 and §7's step order. Recommended: for a newtonianHelm class with no attendant, the step sets crew.helm = true and flies `{ turn: running && holdHeading >= 0 ? headingTurn(...) : 0, turnBoost: helmBoost(d, NO_HELD), thrust: crewThrust(thrMille), rcsX: 0, rcsY: 0 }`. Apply the same rule in situationModel.stateAxes (L109) and runtime.ts sentAxes (L322), and add an §8 test that a crew ship whose Helm stands at thrMille 1000 thrusts down the 30-tick return and turns onto its held heading. Otherwise, keep NO_AXES and delete 'A held heading still turns it' and the returning-thrust claim.
+
+### [P2] R2-F2 HELM_BARS as a createDuel option, helmVent and helmPower aren't fitted to the module contract or the rematch
+§5 and §8 take HELM_BARS 'from the duel's options (createDuel)', but createDuel takes positional arguments and has no options object. startRound rebuilds the next round with createDuel and passes only the layout, seed, helm player, crew and class, so a test's HELM_BARS reverts to 4 at the rematch. The spec calls HELM_BARS 'not state' and d.helmVent 'unsnapshotted', but tests/duelModules.test.ts fails on any DuelState member that isn't a field or listed in DUEL_NOT_SNAPSHOTTED. The helm module's `commands` (['throttle','heading']) and `reasons` lists must also gain helmPower and 'unavailable'. A test pins the full kind list. · spec L216, L300, L174-L175, L326, L121, L230-L231; state.ts:L84 (`createDuel(layout, seed, helmPlayer = 0, crew = DUEL_CREW_MIN, cls?)`); step.ts:L125 (startRound's createDuel call); modules.ts:L59-L65 (helm module commands/reasons), L92 (DUEL_NOT_SNAPSHOTTED); tests/duelModules.test.ts:L68-L70, L150-L151. · A subagent adding these will hit failing module-contract tests or guess a createDuel signature. A HELM_BARS that is lost on the rematch makes a round-2 test silently run at 4 bars. · Name the interface: a sixth createDuel parameter (or an `opts: { helmBars?: number }` object) stored as `d.helmBars`. startRound passes `d.helmBars` through. List `helmBars` and `helmVent` in DUEL_NOT_SNAPSHOTTED with their reasons. Add 'helmPower' to helmModule.commands and 'unavailable' to its reasons, and update the duelModules.test.ts L150 list. For the online authority and client, state that both use the default.
+
+### [P3] R2-F3 The auto-face boost band isn't wider than the boosted step, and the settle test names the wrong function
+§4a says 'far' is 'outside a band wider than the boosted step'. But sin 5° is 5 × 256/360 ≈ 3.556 index units, the same as the boosted step (2 × 1.778), and with headingAcc carried a boosted tick can step 4 whole indices. So a boosted auto-face can step up to about 0.44 index past the target. That lands inside AUTO_FACE_SIN's ±1.78 band, so the nose doesn't chatter, but the stated rule is wrong. §8's settle test checks '`aimTurn` returns 0 for 10 straight ticks' for the held heading and auto-face too, but those go through headingTurn and autoFaceTurn. · spec L197-L201, L357-L358; tuning.ts:L127 (AUTO_FACE_SIN = sin 2.5°); hunter.ts:L41-L46; step.ts:L112-L115. · It's a small inconsistency, but a subagent may write the test against aimTurn for every case, or 'fix' the band to match the text. · Use BOOST_FACE_SIN = sin 6° (≈4.27 indices > 4), or reword the rule to 'any overshoot stays inside AUTO_FACE_SIN'. Phrase the test as 'helmTurn returns 0 for 10 straight ticks'.
+
+## Prior findings
+- R1-F1: resolved — spec L113-L119: flyShip rounds to thousandths and reverse is proportional, with crewThrust defined. With |q| = 1, the product `…·|q|·f` is bit-identical to today's physics.ts L53, and quarters round-trip exactly through /1000.
+- R1-F2: resolved — spec L56-L69 adds the newtonianHelm gate and the Valkyrn keep-list. The throttle command is kept for the Valkyrn only (L121).
+- R1-F3: resolved — spec L183-L187 keeps step.ts L283 for every class. Only the moveX clear at L282 is gated, and there's a Valkyrn test (L359).
+- R1-F4: resolved — spec L78-L86: flightFor is used by stepDuel and as predict.ts's default (a TS default parameter can read state and shipIndex). The callers are listed.
+- R1-F5: resolved — spec L88-L96 gives the exact algorithm, only on the drag-0 path, and the test is reworded (L340).
+- R1-F6: resolved — spec L190-L206: the 'far' rule is decided before the step by helmBoost. The aim and heading margin |d| > 4 can't overshoot (at most 4 whole steps from |d| ≥ 5). The auto-face band wording is a separate P3 above.
+- R1-F7: resolved — spec L275-L285 adds the three schemas, the expiry check, the pause clear and the 105/120 bound (15 × 7 and 15 × 8), and §8 tests them. It matches core.ts L329 and L435.
+- R1-F8: resolved — §3 L130-L138, §4a L207-L211, §6 L250-L271 and §7 L288-L289 cover the listed consumers. d.helmVent replaces the post-step sentAxes recompute.
+- R1-F9: still open — (a)-(c) are fixed (spec L239-L246). But the losing-bars rule at L237-L238, `compressor = min(compressor, HELM_BARS, 3)`, now takes lost bars from ENGINE first. At 4 bars with compressor 1, losing one gives compressor 1 and ENGINE 2, a 50 % cap. That reverses the earlier 'bars come off COMPRESSOR first' and the round-1 fix asked for (compressor drops while > 0). Either write `compressor = max(0, min(3, compressor − lost, HELM_BARS))` or mark ENGINE-first as an owner decision.
+- R1-F10: resolved — spec L156-L167 and L294-L298: gas ≥ 8, the exact accumulator, the reset at full and the unattended compressor are all stated, along with the bounds. The refill arithmetic checks: 60000/50 = 1200 ticks, 600 and 400.
+- R1-F11: resolved — The test setups are stated at spec L326-L334, with the 750 start cap and ENGINE 0 via HELM_BARS 3 / compressor 3. The missing createDuel option interface is raised as a new P2.
+- R1-F12: resolved — spec L186-L189: the sim ignores moveX turning for newtonianHelm classes (an authority rule), the scripted crew moves to aim or face, and §8 L355 tests it.
+
+## Verified
+- physics.ts:L32 and L53: the whole-axis bit-identity claim (spec L117-L118) holds, since x·1 is exact and quarters are exact in /1000.
+- The admission order fits the existing pattern: step.ts L262-L268 checks stale-tick, then invalid-seat, then unavailable.
+- core.ts L329 and L435 are the expiry and pause lists the spec names (spec L281-L282).
+- predict.ts:L23 and L29: predictPath and predictFlight take (state, shipIndex), so `flightFor(state, shipIndex)` works as a default (spec L84).
+- situationModel.ts:L116 is a predictFlight caller for CREW_SLOT, as spec L86 says.
+- runtime.ts:L238: isConsoleCommand exists, as spec L289 says.
+- tactical/duel.ts:L24 and L32: one tuning per call, so the override-only semantics (spec L82-L83) are a clean change.
+- The arithmetic in spec L108, L110, L167, L171 and L283-L284 checks: ceil(1000/7) = 143, ceil(1000/34) = 30, 1000/8 = 125, 15×7 = 105, 15×8 = 120.
+- AUTO_FACE_SIN (tuning.ts:L127) is sin 2.5°, about 1.78 indices, so a boosted overshoot of at most 0.44 index stays inside it.
+
+## Not verified
+- Whether Digit1 and Digit2 (input.ts:L20 WEAPON_CODES) are seat-gated so they don't clash with §5's 1/2 helmPower keys. §5's key text is unchanged since round 1, so I didn't pursue it.
+- Whether Q/E as thruster keys clash with existing seat or interact bindings (the §4 key list is unchanged).
+- authority/checkpoint.ts L40 and duelCheckpoint.ts L73: I didn't re-read them this round and relied on round 1's citations.
+- Whether the Hunter and the dev flight view only ever pass whole thrust axes (spec L117): I relied on round 1's statement.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json` against the subject at `576c38de`. 3 accepted, 0 rejected, 0 deferred, plus R1-F9 reopened and fixed again. The reviewer confirmed R1-F1 to R1-F8 and R1-F10 to R1-F12 as resolved.
+
+## R1-F9 [P2]: The stand-in budget of 4 doesn't match Engineering's start of 3 (reopened)
+
+Confirmed: `min(compressor, HELM_BARS, 3)` takes lost bars from ENGINE first. §5 now reads `max(0, min(3, compressor − lost, HELM_BARS))`, so bars come off COMPRESSOR first, as round 1's fix intended.
+
+## R2-F1 [P1]: The unattended crew Helm's rule assumes a flight branch the Hound layout doesn't have
+
+Confirmed: step.ts L279-L287 sets `crew.helm` only for `helmHoldsUnattended`, and duel.ts L32 flies NO_AXES otherwise. §3 now states the rule for a `newtonianHelm` class with no attendant: `crew.helm = true`, the held-heading turn, `helmBoost(d, NO_HELD)`, `crewThrust(thrMille)` and no thrusters. It's mirrored in `situationModel.stateAxes` and `runtime.ts`'s `sentAxes`. §7's step order references it, and §8 tests the 30-tick return.
+
+## R2-F2 [P2]: HELM_BARS, helmVent and helmPower aren't fitted to the module contract or the rematch
+
+Confirmed: state.ts L84 has positional parameters only, and modules.ts L59-L65 has the commands and reasons. Changes:
+- §5 adds `createDuel`'s sixth parameter, `opts: { helmBars }`, stored as `d.helmBars` and passed on by `startRound`;
+- §7 adds the module contract: `DUEL_NOT_SNAPSHOTTED` entries for `helmBars` and `helmVent`, `helmPower` in `commands`, `unavailable` in `reasons`, and the `duelModules.test.ts` update.
+
+## R2-F3 [P3]: The auto-face boost band isn't wider than the boosted step
+
+Confirmed: sin 5° is about 3.56 indices, which isn't more than a 4-index step. `BOOST_FACE_SIN` is now sin 6° (about 4.27 indices), and the settle test names `helmTurn`.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-18-playtest2feedback-design.md
+
+<!-- end -->
+
+---
+
