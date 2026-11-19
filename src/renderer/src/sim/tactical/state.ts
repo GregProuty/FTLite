@@ -3,7 +3,7 @@
 // crew's Cutter in slot 0 and the hunter in slot 1; slots always update in slot order. A slot's weapons fire at its
 // locked target (`systems[i].target`). All fields are flat scalars or arrays, so the flatten and the clone stay simple.
 import { createRng, nextInt, type RngState } from '../../../../shared/rng';
-import { DUEL_CLASSES, SHIP_CLASSES, ShipClass, type ShipClassDef } from './defs';
+import { DUEL_CLASSES, pewFullCharge, SHIP_CLASSES, ShipClass, type ShipClassDef } from './defs';
 import { DUEL_SYSTEM_COUNT, SHIELD_LAYERS_BY_BARS, START_BARS, START_WEAPON_POWER, WEAPON_SLOTS } from './bars';
 import { dirBetween } from './direction';
 import { buildGrid, type BroadPhase } from './grid';
@@ -77,8 +77,8 @@ export interface ShipSystems {
   /** Engineering spike spec §10.3: the Weapons bars the officer gave each weapon (pew pew, beam, torpedo; 0..3, or 4 with
    *  the overdrive bar). The crew slot starts at START_WEAPON_POWER, every other slot at zeros (never read). Readers trim it. */
   weaponPower: number[];
-  /** W-1 (pew pew spec §1, §4): the pew's charge in ticks, 0..shots × rechargeTicks (a third of the bar per rechargeTicks;
-   *  a round spends one third), and its telemetry counters (rounds fired, rounds that hit a ship). All zero on a class
+  /** W-1 (pew pew spec §1, §4): the pew's charge in units, 0..shots × pewThird (Engineering spike §11: a third is
+   *  rechargeTicks × PEW_CHARGE_SCALE units; the crew's refills at its pew pew bars' rate; a round spends one third), and its telemetry counters (rounds fired, rounds that hit a ship). All zero on a class
    *  without the pew. */
   pewCharge: number; pewShots: number; pewHits: number;
   /** W-2 (pew pew spec §2, §4): the laser's mode, false AUTO (it fires at its target by itself, as before) or true MANUAL
@@ -224,7 +224,7 @@ function systemsFor(cls: number, target: number, crew = false): ShipSystems {
     laserTargeted: crew && laser !== null, torpLock: -1, torpRoom: -1, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: c.slots.missile.magazine, magazineClock: 0, laserRock: -1, torpRock: -1, torpRockFlying: -1, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
     gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0,
-    pewCharge: pew ? pew.shots * pew.rechargeTicks : 0, pewShots: 0, pewHits: 0,   // W-1: a pew starts the round full
+    pewCharge: pew ? pewFullCharge(pew) : 0, pewShots: 0, pewHits: 0,   // W-1: a pew starts the round full
     laserManual: false, laserAim: -1,   // W-2: every round starts AUTO, with no MANUAL burst pending
     torpManual: false,   // W-3: and the torpedo too
     bars: crew ? [...START_BARS] : Array<number>(DUEL_SYSTEM_COUNT).fill(0),   // Engineering spike spec §2

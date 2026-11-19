@@ -1,6 +1,7 @@
 // Engineering spike spec §10.3, §11 (Amendments 2 and 3): the beam (today's laser: 1/2/2 shots, charge 40/40/60, 75 on
 // the overdrive bar) and the torpedo (reload 4/6/8, 10 on the overdrive bar; 3 bars hit 2 Room levels) by the bars the
-// officer gave them; 0 bars is off; pew pew's slot holds bars with no effect; the Hunter unchanged; the scripted gunner
+// officer gave them; 0 bars is off; pew pew's bars do not touch the beam or the torpedo (its own recharge by bars is
+// tests/engPewBars.test.ts, the W-1 plug-in); the Hunter unchanged; the scripted gunner
 // moves pew pew's bar to the beam.
 import { describe, expect, it } from 'vitest';
 import { beamShots, canLaunch, IDLE_INPUT, laserOffline, tickWeapons } from '../src/renderer/src/sim/tactical/weapons';
@@ -23,7 +24,7 @@ function powered(power: number[]): TacticalState {
 }
 
 describe('engineering spike: the beam and the torpedo by bars (spec §10.3, §11)', () => {
-  it('the beam: 0/1/2/2/2 shots; 0 bars is offline; pew pew\'s bars change nothing', () => {
+  it('the beam: 0/1/2/2/2 shots; 0 bars is offline; pew pew\'s bars do not change the beam', () => {
     expect([0, 1, 2, 3, 4].map((b) => beamShots(powered([0, b, 0]), 0))).toEqual([0, 1, 2, 2, 2]);
     expect(laserOffline(powered([1, 0, 1]), 0)).toBe(true);              // the round start: the beam is dark
     expect(laserOffline(powered([3, 1, 0]), 0)).toBe(false);

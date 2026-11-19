@@ -358,5 +358,5 @@ export function tickWeapons(state: TacticalState, i: number, input: ShipInput): 
     const rate = TORPEDO_RELOAD_BY_BARS[weaponBars(s, WeaponSlot.Torpedo)]!;
     if (rate > 0 && (s.magazineClock += rate) >= MAGAZINE_REGEN_UNITS) { s.magazine++; s.magazineClock = 0; }
   } else if (++s.magazineClock >= c.slots.missile.regenTicks) { s.magazine++; s.magazineClock = 0; }
-  tickPew(state, i);   // W-1: the pew refills every tick, attended or not, whatever the damage (spec §6 decision 4)
+  tickPew(state, i);   // W-1: the pew refills every tick, attended or not (spec §6 decision 4); the crew's at its pew pew bars' rate (Engineering spike §11)
 }

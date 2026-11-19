@@ -278,7 +278,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
       if (!canLaunch(d.tactical, 0, torpRock)) { result(e, 'unavailable'); continue; }
       crew.missileLaunch = true;
     }
-    else {   // W-1 (pew pew spec §1, §4): the aim, then one round a tick (the first wins), then a third stored (NO CHARGE)
+    else {   // W-1 (pew pew spec §1, §4): the aim, then one round a tick (the first wins), then a pew pew bar (Engineering spike §11) and a third stored (pewReady)
       if (!validAim(c.aim, c.aimAcc)) { result(e, 'malformed'); continue; }
       if (crew.pewAim >= 0) { result(e, undefined, 'noop'); continue; }
       if (!pewReady(d.tactical, 0)) { result(e, 'unavailable'); continue; }

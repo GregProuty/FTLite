@@ -8,7 +8,7 @@
 import { hashF64 } from '../../../../shared/hash';
 import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
 import { DUEL_SYSTEM_COUNT, SYSTEM_SLOTS, WEAPON_BAR_MAX, WEAPON_SLOTS } from './bars';
-import { SHIP_CLASSES, type ShipClassDef } from './defs';
+import { pewFullCharge, SHIP_CLASSES, type ShipClassDef } from './defs';
 import { AIM_STEPS, DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, GUN_POOL, HEADING_COUNT, HUNTER_PEW_GAP, HUNTER_TRAIL_TICKS, PEW_POOL, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
 import { rockCapacity, ROCK_RESERVE, ROCK_STRIDE } from './rocks';
 import { CREW_SLOT, emptyMissile, emptyRound, HunterMode, Outcome, type GunRound, type Missile, type MissileFlight, type Ship, type ShipSystems, type TacticalState } from './state';
@@ -257,7 +257,7 @@ const systemsRules = (slots: number, rocks: number): Readonly<Record<string, (v:
 /** W-1 (pew pew spec §4; Task 6 review): a slot's pew charge, 0..its own class's full pew (0 for a class without one). */
 const pewChargeRule = (cls: number): ((v: number) => boolean) => {
   const pew = SHIP_CLASSES[cls]?.slots.pew;
-  return within(0, pew ? pew.shots * pew.rechargeTicks : 0);
+  return within(0, pew ? pewFullCharge(pew) : 0);
 };
 // Built on first use: state.ts imports this file for cloneTactical, so its enums are read lazily.
 const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({

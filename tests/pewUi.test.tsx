@@ -15,7 +15,7 @@ import { TEXT } from '../src/renderer/src/render/theme';
 import { duelEventSounds } from '../src/renderer/src/audio/duelSounds';
 import { SFX } from '../src/renderer/src/audio/soundBank';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
-import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
+import { PEW, pewThird, ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { makeUi } from './helpers/uiStore';
 
 afterEach(() => { cleanup(); });
@@ -37,7 +37,7 @@ describe('the pips (spec §1)', () => {
   it('fill each third as it recharges; none without the pew', () => {
     const st = createTacticalState(5);
     expect(pewPips(st)).toEqual([1, 1, 1]);
-    st.systems[0].pewCharge = 90;
+    st.systems[0].pewCharge = 1.5 * pewThird(PEW);   // Engineering spike §11: charge units (was 90 ticks)
     expect(pewPips(st)).toEqual([1, 0.5, 0]);
     st.systems[0].pewCharge = 0;
     expect(pewPips(st)).toEqual([0, 0, 0]);

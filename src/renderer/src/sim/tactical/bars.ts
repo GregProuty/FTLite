@@ -61,7 +61,7 @@ export function levelWithinCap(sys: Pick<ShipSystems, 'rooms' | 'bars'>, level: 
 }
 
 // ---- Weapons, the allocation (Task 9a; Engineering spike spec §10.3, Amendment 2; isolated) ----
-/** Spec §10.3, §11: the three crew weapons in slot order: pew pew (W-1's weapon: its bars have no effect on this branch), the beam (today's laser), the torpedo. */
+/** Spec §10.3, §11: the three crew weapons in slot order: pew pew (W-1's weapon; its bars set its recharge, spec §11), the beam (today's laser), the torpedo. */
 export const WeaponSlot = { Pew: 0, Beam: 1, Torpedo: 2 } as const;
 export const WEAPON_SLOTS = 3;
 /** A weapon's bars without the overdrive bar; the overdrive bar can be one weapon's 4th (spec §10.3). */
@@ -84,8 +84,10 @@ export function trimmedWeaponPower(sys: WeaponSys): number[] {
 export function weaponBars(sys: WeaponSys, slot: number): number { return trimmedWeaponPower(sys)[slot]!; }
 
 // ---- Weapons, the effects (Task 9b; Engineering spike spec §10.3, §11; isolated) ----
-// Indexed by a weapon's bars 0..4; 4 is the overdrive bar, 3's effect at 1.25× the charge or reload rate. Pew pew's
-// slot has no table here: it is W-1's weapon (spec §11) and its bars have no effect on this branch.
+// Indexed by a weapon's bars 0..4; 4 is the overdrive bar, 3's effect at 1.25× the charge or reload rate.
+/** Spec §11 (the W-1 plug-in, merge decision 1a): the crew pew pew's ticks per third by its bars; 0 bars, no recharge and no
+ *  round (refused, `unavailable`). The overdrive 4th bar is 24. The Hunter keeps its class's fixed rechargeTicks. */
+export const PEW_TICKS_BY_BARS: readonly number[] = [0, 60, 45, 30, 24];
 export const BEAM_SHOTS_BY_BARS: readonly number[] = [0, 1, 2, 2, 2];
 export const BEAM_RATE_BY_BARS: readonly number[] = [0, 40, 40, 60, 75];
 export const TORPEDO_RELOAD_BY_BARS: readonly number[] = [0, 4, 6, 8, 10];

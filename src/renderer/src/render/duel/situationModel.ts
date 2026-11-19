@@ -9,7 +9,7 @@ import { classOf, CREW_SLOT, missileOf, NO_AXES, Outcome, Room, targetOf, type A
 import type { DuelState } from '../../sim/duel/state';
 import { throttleThrust } from '../../sim/duel/throttle';
 import { helmTurn } from '../../sim/duel/step';
-import { pewReady } from '../../sim/tactical/pew';
+import { pewPowered, pewReady } from '../../sim/tactical/pew';
 import { laserEligible, laserFull, laserOffline, manualLaserReady, torpedoInRange } from '../../sim/tactical/weapons';
 import { TICK_HZ } from '../../sim/tuning';
 import { trimmedWeaponPower, WeaponSlot } from '../../sim/tactical/bars';
@@ -37,11 +37,12 @@ export type LaserSituation =
   | { kind: 'solution'; targeted: boolean } | { kind: 'charging'; targeted: boolean }
   | { kind: 'none' };
 
-/** Engineering spike §10.3, §11: the beam and the torpedo are both dark (pew pew's bars do nothing on this branch). Bars
- *  only, one source of truth: a level-2 Weapons Room zeroes every weapon's trimmed bars (trimmedWeaponPower reads
- *  effectiveBars), and laserOffline reads the beam's. */
+/** Engineering spike §10.3, §11 (merge decision 4): all three crew weapons are dark: pew pew (no bar, or a class without
+ *  it), the beam and the torpedo. Bars only, one source of truth: a level-2 Weapons Room zeroes every weapon's trimmed bars
+ *  (trimmedWeaponPower reads effectiveBars), laserOffline reads the beam's and pewPowered pew pew's. */
 export function weaponsOffline(t: TacticalState): boolean {
-  return laserOffline(t, CREW_SLOT) && trimmedWeaponPower(t.systems[CREW_SLOT])[WeaponSlot.Torpedo] === 0;
+  return (classOf(t, CREW_SLOT).slots.pew === null || !pewPowered(t, CREW_SLOT)) && laserOffline(t, CREW_SLOT)
+    && trimmedWeaponPower(t.systems[CREW_SLOT])[WeaponSlot.Torpedo] === 0;
 }
 
 /** `sinceShot`: seconds since the crew laser's last release on this screen (Infinity when none); `gunner`: whether Weapons
@@ -217,13 +218,14 @@ export function lockRefusal(d: DuelState): string | null {
  *  LAUNCH is missileLaunch (the gunner, then canLaunch's checks in its order: flying, the magazine, Weapons, range); the
  *  Helm's turn, auto-face, throttle and heading fly nothing with 0 effective Engines bars: ENGINES OFFLINE when the Engines
  *  Room is at level 2, else ENGINES UNPOWERED (no bar, or an overheat failure). PEW (W-1) is pewFire: the gunner,
- *  the pew, then a third stored (NO CHARGE). W-2 (pew pew spec §2): FIRE in MANUAL (`manual`, default the laser's mode) is laserFire: after the same checks, NO CHARGE without
+ *  the pew, then a pew pew bar (WEAPONS OFFLINE / PEW UNPOWERED, Engineering spike §11), then a third stored (NO CHARGE). W-2 (pew pew spec §2): FIRE in MANUAL (`manual`, default the laser's mode) is laserFire: after the same checks, NO CHARGE without
  *  manualLaserReady. W-3 (pew pew spec §3): LAUNCH in MANUAL (`manual`, default the torpedo's mode) has no range: never OUT OF RANGE. */
 export function refusal(d: DuelState, control: RefusedControl, manual?: boolean): string | null {
   const t = d.tactical, sys = t.systems[CREW_SLOT], m = manual ?? (control === 'launch' ? sys.torpManual : sys.laserManual);   // W-3: the control's own weapon's mode
   if (control === 'pew') {   // W-1 (pew pew spec §1): the gunner, then the class, then a third stored
     if (!gunnerPresent(d)) return 'NO GUNNER';
     if (classOf(t, CREW_SLOT).slots.pew === null) return 'NO PEW';
+    if (!pewPowered(t, CREW_SLOT)) return weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'PEW UNPOWERED';   // Engineering spike §11: no pew pew bar
     return pewReady(t, CREW_SLOT) ? null : 'NO CHARGE';
   }
   if (control === 'fire' || control === 'launch') {

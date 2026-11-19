@@ -1,6 +1,6 @@
 // Engineering spike §10.3, §11: the Weapons panel carries the three weapons' trimmed bars and the free Weapons bars; the
 // beam's shots follow its bars (pew pew's bars do nothing on this branch: W-1's weapon); the keyboard queues weaponPower;
-// WEAPONS OFFLINE only when the beam and the torpedo are both dark.
+// WEAPONS OFFLINE only when all three weapons are dark (merge decision 4: pew pew's bars count since the W-1 plug-in).
 import { describe, expect, it } from 'vitest';
 import hound from '../src/renderer/src/sim/ship/hound.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
@@ -49,8 +49,8 @@ describe('the Weapons panel (spec §10.3, §11)', () => {
   });
 });
 
-describe('WEAPONS OFFLINE only when the beam and the torpedo are both dark (spec §10.3, §11)', () => {
-  it('round start: not offline, FIRE says BEAM UNPOWERED; the torpedo dark too: offline, whatever pew pew holds', () => {
+describe('WEAPONS OFFLINE only when all three weapons are dark (spec §10.3, §11; merge decision 4)', () => {
+  it('round start: not offline, FIRE says BEAM UNPOWERED; the torpedo dark too: still not offline while pew pew holds a bar; all three dark: offline', () => {
     const d = createDuel(HOUND, 5), t = d.tactical, sys = t.systems[0], me = t.ships[0]!, e = t.ships[1]!;
     try {
       seatDuelCrew(d);
@@ -60,7 +60,10 @@ describe('WEAPONS OFFLINE only when the beam and the torpedo are both dark (spec
       expect(weaponsOffline(t)).toBe(false);
       expect(laserSituation(t).kind).toBe('none');   // the beam dark, the torpedo powered: the torpedo's card speaks
       expect(refusal(d, 'fire')).toBe('BEAM UNPOWERED');
-      sys.weaponPower[2] = 0;   // pew pew keeps its 1 bar: it does not count
+      sys.weaponPower[2] = 0;   // pew pew keeps its 1 bar: it counts (kind a, replaced rule: was offline here before the W-1 plug-in)
+      expect(weaponsOffline(t)).toBe(false);
+      expect(refusal(d, 'launch')).toBe('TORPEDO UNPOWERED');
+      sys.weaponPower[0] = 0;   // all three dark
       expect(weaponsOffline(t)).toBe(true);
       expect(laserSituation(t).kind).toBe('offline');
       expect(statusSentence(laserSituation(t))).toBe('WEAPONS OFFLINE: POWER A WEAPON');   // merely unpowered: not a repair job

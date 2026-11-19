@@ -3,6 +3,7 @@
 import { consoleInReach, flightSeat, repairInReach, seatOf, type Seat } from '../../app/duel/controls';
 import { NO_HELD_FLAGS, type HeldFlags, type KeyAction } from '../../app/duel/input';
 import type { DuelState } from '../../sim/duel/state';
+import { pewThird } from '../../sim/tactical/defs';
 import { classOf, Contact, missileOf, Room, type TacticalState } from '../../sim/tactical/state';
 import { HEADING_COUNT, MAGAZINE } from '../../sim/tactical/tuning';
 import { beamShots, canLaunch, torpedoInRange } from '../../sim/tactical/weapons';
@@ -114,12 +115,13 @@ export function consoleStation(d: DuelState, me: number): ConsoleStation {
 const HELM_CONTROLS: readonly RefusedControl[] = ['turn', 'auto-face', 'throttle', 'heading'];
 
 /** W-1 (pew pew spec 1): the crew pew's pips, one per third, each its fill 0..1 (a full third 1, the one recharging its
- *  share, the rest 0); null for a class without the pew. A third is the def's own rechargeTicks. */
+ *  share, the rest 0); null for a class without the pew. A third is the def's pewThird (Engineering spike §11: charge units). */
 export function pewPips(t: TacticalState): number[] | null {
   const def = classOf(t, 0).slots.pew;
   if (!def) return null;
   const c = t.systems[0].pewCharge;
-  return Array.from({ length: def.shots }, (_, k) => Math.max(0, Math.min(1, (c - k * def.rechargeTicks) / def.rechargeTicks)));
+  const third = pewThird(def);
+  return Array.from({ length: def.shots }, (_, k) => Math.max(0, Math.min(1, (c - k * third) / third)));
 }
 export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   if (i.hidden) return null;
