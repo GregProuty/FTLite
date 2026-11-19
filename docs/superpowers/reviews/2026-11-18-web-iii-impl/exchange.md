@@ -1,0 +1,112 @@
+# Codex review exchange: web-iii-impl
+
+Subject: `docs/gates.md package.json scripts/web/live-smoke.ts scripts/web/live/duel.ts scripts/web/live/headers.ts scripts/web/live/local-smoke.ts scripts/web/live/relay.ts scripts/web/live/report.ts scripts/web/net/stack.ts scripts/web/net/web-net-smoke.ts scripts/web/web-output.ts tests/webDeployScripts.test.ts tests/webLiveHeaders.test.ts tests/webLiveRelay.test.ts tests/webLiveReport.test.ts` (impl). Reviewer: Codex CLI via `codex exec`. Responder: controller.
+
+---
+
+# Round 1 (full, reviewing 315b90f7, effort high, 324 s, 2411589 in / 2282523 cached / 29258 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R1-F1 Two older Web-ii lines in gates.md contradict the Web-iii owner steps
+Two Web-ii lines still contradict Web-iii. The Web-ii owner checkbox still says 'roll back on any failure' for the first deploy, but Web-iii says to delete the first deploy and roll back only later ones. Web-ii step 5 also says to set ALLOWED_ORIGINS 'After the first deploy', while Web-iii step 3 sets it before the deploy. · docs/gates.md:L943 '- [ ] Owner: first `deploy:web`, then the step-5 live checks ...; roll back on any failure (Web-iii).' versus docs/gates.md:L973-L975 (step 6: first deploy is deleted with `npx vercel rm ... --yes`; `npx vercel rollback` is for later deploys only). docs/gates.md:L935 '5. After the first deploy, put `https://<project>.vercel.app` into Cloudflare's `ALLOWED_ORIGINS`' versus docs/gates.md:L956-L962 (Web-iii step 3 runs `wrangler secret put ALLOWED_ORIGINS` before step 4's deploy). L938 was updated correctly; L943 and L935 were not. · The brief requires that no older line contradicts these steps. If the paid-art check fails on the first deploy, an owner following the L943 checkbox runs `vercel rollback` with nothing to roll back to, and the exposed deployment stays up while they work out what went wrong. · Change L943 to '...; take the deploy down on any failure (delete the first deploy, roll back later ones; Web-iii step 6)'. Reword L935 to 'Put `https://<project>.vercel.app` into Cloudflare's `ALLOWED_ORIGINS` (Web-iii step 3, before the first deploy), then after the deploy run these live checks...'.
+
+### [P2] R1-F2 The local pre-flight never runs the relay hook or the getStats read in a real browser
+In local mode, `runLiveDuel` skips the init script, the hook-loaded check and the relay verdict. So the native `RTCPeerConnection` subclass, the `setConfiguration` override and `PEER_STATS_SOURCE` reading the selected pair are only tested against `FakePc` in Node. Their first run in real Chromium and Firefox is the owner's live run. · scripts/web/live/duel.ts:L66 `if (live) await ... addInitScript({ content: RELAY_INIT_SCRIPT })`; L87 the hook check only `if (live)`; L149 the local relay is `RELAY_NOT_CHECKED`; scripts/web/live/local-smoke.ts:L22 `mode: 'local'`; tests/webLiveRelay.test.ts:L8-L12 and L27-L41 use `FakePc` and a Map, not browser stats. docs/gates.md:L953 calls step 0 'the same duel'. · Several things are proven only against fakes: that Firefox's `RTCPeerConnection` can be subclassed, that the stats have the expected shape, and that a selected pair is found. If any of these breaks in a real browser, the live run fails after a deploy, and the owner has to debug it against the live passcode site. A fake-only test does not cover the riskiest part of the relay proof. The result would be a FAIL, not a false PASS, so this is not P0/P1. · Add a non-forcing variant of the hook, for example `relayInitScript({ force: false })`, that keeps every instance. Install it in local mode too. Then in local mode require at least 2 connected samples, each with a non-null `local` candidate type and at least `MIN_RELAY_BYTES` received, and record the types in the local report. Live mode still requires `relay`.
+
+### [P3] R1-F3 playStep can accept an early end whose two sides read ended more than 5 s apart
+When both sides read `ended`, `playStep` returns 'ended' without checking `elapsedMs - state.endedAtMs <= END_AGREE_MS`. The one-sided branch enforces 5 s only at the ticks it sees. A relay sample (two bounded 6 s stats calls) plus the 1 s delay can sit between ticks, so a tick at 4.9 s one-sided followed by a tick at about 8 s with both ended is accepted. · scripts/web/live/relay.ts:L81-L84 (both-ended branch checks only `first < MIN_EARLY_END_MS`); L85-L90 (the 5 s check is only in the one-sided branch); scripts/web/live/duel.ts:L139-L140 (`await sample()` and `delay(1000)` between ticks). · The brief's rule is 'both sides have ended within 5 s'. The pure function, which is unit-tested, does not quite enforce it. · In the both-ended branch, return a fail when `state.endedAtMs !== null && elapsedMs - state.endedAtMs > END_AGREE_MS`. Add a test case with `{ endedAtMs: 30000 }` at 36000 ms.
+
+### [P3] R1-F4 checkServiceOrigin cuts its error text without redacting it first
+The service-preflight catch slices the error message to 200 characters with no `redact`. The Global Constraints say every outgoing string is redacted before it is cut. · scripts/web/live/headers.ts:L158 `result.problem = `the signalling service did not answer: ${String(...).slice(0, 200)}``; plan L22 ('Every outgoing string passes through `redact` ... always before it is cut (`clip`)'). · This is harmless today: that request carries neither the passcode nor the cookie, and the entry redacts the report and the failure again. It still breaks the stated invariant, so a later edit could rely on it wrongly. · Pass the secrets into `checkServiceOrigin`, or use `clip(text, [], 200)` and leave a comment that no secret reaches this request. Either way, have the entry hand it `secrets`.
+
+## Verified
+- Passcode source: `parseLiveArgs` reads only `env.FTLITE_LIVE_PASSCODE` and refuses any `--passcode*` argument, with a message that holds no secret (scripts/web/live/headers.ts:L40-L50). The `DEBUG` (non-negated `*` or `pw*` pattern), `DEBUG_FILE` and `PWDEBUG` refusals run before any page work, and tests/webLiveHeaders.test.ts:L45-L51 covers them.
+- Redaction paths in scripts/web/live-smoke.ts: an argument error is clipped with the env passcode (L23); the passcode goes into the secrets first (L25), then the cookie and `ftlite_pass=<cookie>` (headers.ts:L126). The caught failure goes through `message()` = `clip` = redact-then-cut (L13, L50) and is redacted again (L54). The report is written as `redact(JSON.stringify(...))` (L59), the FAIL line prints the redacted failure (L60), and the top-level `.catch` exists (L64-L67). Page errors are clipped (duel.ts:L68), as are header request failures (headers.ts:L104) and the Firefox launch error (duel.ts:L102).
+- `secretVariants` covers the raw, URL-encoded, form-encoded and JSON-escaped forms, longest first (headers.ts:L63-L66). `validateLiveReport` fails any report whose JSON holds a variant (report.ts:L33-L34), and a test shows it catching a URL-encoded passcode (tests/webLiveReport.test.ts:L46-L48).
+- `bounded` (scripts/web/net/players.ts:L43-L47) uses `Promise.race`, so a late Playwright rejection is handled and is not printed as an unhandled rejection.
+- The relay hook installs once per document through `context.addInitScript`. It forces `relay` in the constructor and in `setConfiguration` and keeps every instance (relay.ts:L18-L28), and its load is checked on the live path (duel.ts:L87-L88). The product calls `new RTCPeerConnection(config)` at call time (src/network/rtc/peer.ts:L57), and no other constructor reference exists in src.
+- The `getStats` read finds the pair through transport `selectedCandidatePairId`, then `selected`, then nominated and succeeded (relay.ts:L32-L51). `relayVerdict` needs at least 2 connected samples, policy `relay` and a local `relay` candidate on every connected peer, with at least 1024 bytes received from the first sample to the last; a missing pair fails as local null (relay.ts:L100-L110). Each side is judged separately (duel.ts:L149).
+- No pass without a relayed duel: live mode is the default (duel.ts:L93); relay findings go into `problems`, and the entry throws on them (live-smoke.ts:L49). The validator also needs both relay verdicts null, no problems, `playedMs >= 60000`, or an early end with both sides ended and at least 20000 ms, plus the header checks and `version.json` (report.ts:L17-L31).
+- playStep: an early end below `MIN_EARLY_END_MS` (2 × 10 s) fails, a one-sided end over 5 s fails, any phase other than running or ended fails, and coming back from ended fails (relay.ts:L79-L96). Tests cover each case (tests/webLiveRelay.test.ts:L77-L97).
+- The 'Connecting' fix matches the product: `menuMessage` prints `${status?.phase ?? 'Connecting'}` (src/renderer/src/ui/menuState.ts:L92), and SessionPage shows `home` when `!status` (SessionPage.tsx:L103). `uiPhase` maps 'Connecting' before the error rule (relay.ts:L69-L70), with a test.
+- The leave fix matches the product: `leave` is shown when the actions include 'leave' (SessionPage.tsx:L101), and both `actions.leave` and `returnHome` go to page 'home' (actions.ts:L149, L153), where `multiplayer` is rendered (Home.tsx:L12). `leaveToHome` (duel.ts:L50-L62) clicks whichever is offered and is bounded.
+- Every test id the driver clicks exists: multiplayer, host, join, crew-<n>, create-room, join-code, join-room, ready, start, leave, home, retry, room-code, status and page-title (Home.tsx:L12, Multiplayer.tsx:L11-L12, HostForm.tsx:L21-L23, JoinForm.tsx:L16-L19, SessionPage.tsx:L27-L103, Menu.tsx:L38-L40). The form selectors `#code` and `button[type="submit"]` and `action="/__pass"` match src/web/passcode.ts:L63-L64. The cookie attributes and the 303 to `/` match passcode.ts:L81-L82.
+- Header checks: 401 with the passcode form for `/`, the Worker, the paid file and `version.json` without the cookie; a wrong passcode refused; the right one a 303 with every spec attribute; then 200 `private, no-cache` and the game HTML with the cookie; `version.json` 200 `no-store` and `validVersion`. A 503 stops early with the env-var hint (headers.ts:L113-L148). This matches spec L239-L249 and plan L25.
+- The `stack.ts` refactor keeps `test:web-net` the same: the same free port, the same `service` dir, the same allowed origins (including the `origin-refused` null-only case), and the same build args (`--test --allow-missing-paid --test-probe --service-origin --duel-test-seed`). `buildDuelObservers` still runs between the build and the preview, with the same preview options, step labels, launch options and cleanup order, and the injection probe still runs after the preview closes and before workerd is disposed (scripts/web/net/stack.ts:L28-L42; web-net-smoke.ts:L29-L30, L57-L62).
+- Owner steps in docs/gates.md: the order is 0 local pre-flight, 1 login/link, 2 env vars, 3 wrangler secret and deploy, 4 deploy:web, 5 live smoke, 6 take-down, 7 playtest (L953-L977). The passcode is read with `Read-Host -AsSecureString` into the env var and removed afterwards (L966-L970). The take-down rule is to delete the first deploy and roll back later ones (L973-L975), and `TAKE_DOWN` in live-smoke.ts:L15-L16 says the same. The first-deploy check of the failing `buildCommand` is there (L963, L981).
+- No product change: the only change outside the new script and test files is the `validVersion` export (scripts/web/web-output.ts), plus package.json and docs/gates.md. Nothing under src/ is touched.
+
+## Not verified
+- `tsc --noEmit` / `npm run typecheck` and lint: this session has only Read, Grep and Glob, with no shell, so I could not run them. Check them before merging.
+- Whether the `debug` package bundled in Playwright 1.48 builds RegExps from DEBUG patterns (debug ≤4.3 does). If it does, a pattern like `.w:api` or `[p]w:api` would turn on `pw:api` and get past `debugCouldLogPasscode` (headers.ts:L35-L38). This is unlikely to happen by accident. I did not read node_modules (forbidden).
+- That Firefox allows subclassing its native `RTCPeerConnection` and reports `connectionState`, `getConfiguration().iceTransportPolicy` and candidate-pair `bytesReceived` as `PEER_STATS_SOURCE` expects. Only a real browser run shows this (see the P2 finding).
+- That undici's `redirect: 'manual'` exposes the 303's `set-cookie` and `location` headers to Node's fetch on the owner's Node 24. This is expected but was not run.
+- The plan's Task 3 Step 7 dry runs (refusal paths, and the `.invalid` origin report with no passcode in it). Their results are not in the diff, and the brief forbids running them.
+- The browsers sign in through the form and get their own `ftlite_pass` cookies, which are never in `secrets`. They are HttpOnly and I found no path that prints them, but none is redacted explicitly.
+- That `test:web-live-local` needs no prior `electron-vite build`. Unlike `test:web-net`, it has no prefix. scripts/web/build-web.ts showed no dependency on `out/`, but I did not run it.
+
+---
+
+# Round 1 response (code revised to 8b7a9cde)
+
+I checked `round-1.json` against `master...HEAD` at `14cd1b03`. The verdict was "ready with P2s". All four findings are accepted and fixed in `8b7a9cde`. None were rejected or deferred.
+
+Verification:
+- typecheck: clean.
+- `npm test`: 431/431 files, 5457 tests.
+- `test:web-net`: passed. One load flake in the chromium-electron pairing passed when rerun alone.
+- `test:web-live-local`: passed.
+
+## R1-F1 [P2]: Two older Web-ii lines in gates.md contradict the Web-iii owner steps
+
+Confirmed at `gates.md:935` and `:943`.
+- `:935` now says to set `ALLOWED_ORIGINS` at Web-iii step 3, before the first deploy.
+- `:943` now gives the take-down rule: delete the first deploy, and roll back later ones.
+- Step 0 now describes the non-forcing local check.
+- No other line contradicts the Web-iii steps.
+
+## R1-F2 [P2]: The local pre-flight never runs the relay hook or the getStats read in a real browser
+
+Confirmed. The changes:
+- `relayInitScript({ force })` replaces the fixed script.
+- Local mode installs the hook with `force: false` and checks that it loaded.
+- The new `localPairVerdict` passes only when all three hold:
+  - at least 2 samples with a connected peer;
+  - a non-null local candidate type on each of those samples;
+  - at least 1 KiB received from the first sample to the last.
+- `LiveDuelReport` records `candidates`.
+- Live mode still requires `relay`.
+
+The local smoke now runs the hook and the real-browser `getStats` read in both browsers. The selected pairs were `host/host`, and traffic grew from 6 KB to 662 KB on the host and from 58 KB to 836 KB on the guest. Firefox does report `bytesReceived` on its selected pair.
+
+## R1-F3 [P3]: playStep can accept an early end whose two sides read ended more than 5 s apart
+
+Confirmed at `relay.ts:81-84`. The both-ended branch now fails when the two sides read `ended` more than 5 s apart. Tests cover `endedAtMs: 30000` at 36000 (fails) and at 35000 (passes).
+
+## R1-F4 [P3]: checkServiceOrigin cuts its error text without redacting it first
+
+Confirmed at `headers.ts:158`. `checkServiceOrigin` now takes `secrets` and uses `clip`, which redacts before it cuts. The entry passes the secrets in, and a redaction test covers this.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/gates.md
+- scripts/web/live-smoke.ts
+- scripts/web/live/duel.ts
+- scripts/web/live/headers.ts
+- scripts/web/live/local-smoke.ts
+- scripts/web/live/relay.ts
+- tests/webLiveHeaders.test.ts
+- tests/webLiveRelay.test.ts
+- tests/webLiveReport.test.ts
+
+<!-- end -->
+
+---
+

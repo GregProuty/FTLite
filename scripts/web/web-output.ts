@@ -31,7 +31,7 @@ export async function bundleMiddleware(root: string, outDir: string): Promise<vo
 function walk(dir: string): string[] {
   return readdirSync(dir).sort().flatMap(name => { const p = join(dir, name); return statSync(p).isDirectory() ? walk(p) : [p]; });
 }
-function validVersion(value: any): boolean {
+export function validVersion(value: any): boolean {
   return !!value && typeof value === 'object' && Object.keys(value).sort().join() === 'build,digest,sim' && Number.isSafeInteger(value.sim)
     && typeof value.digest === 'string' && /^[0-9a-f]{64}$/.test(value.digest) && !!value.build && typeof value.build.version === 'string'
     && typeof value.build.rev === 'string' && value.build.sim === value.sim;

@@ -4,22 +4,15 @@
 // the run must fail at the first pairing's host step for that reason (exit 1 with the INJECTED line; any other failure
 // exits 2). The temporary root is removed exactly; no browser, Electron or workerd is killed globally.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { chromium, firefox, type Browser } from 'playwright';
-import { preview, type PreviewServer } from 'vite';
 import { computeContentDigest } from '../../../build/contentDigest';
-import { resolveWebBuildPlan } from '../../../build/webBuild';
-import { startLocalRuntime } from '../../../services/signalling/scripts/local-runtime';
 import { buildDuelObservers } from '../../network/online-observer-build';
-import { buildWeb } from '../build-web';
 import { createBrowserPlayer, createElectronPlayer, type GatePlayer, type NetworkEntry } from './players';
 import { DUEL_TEST_SEED, parseWebNetArgs, runPairing, type Pairing } from './scenario';
+import { LocalWebStack, LOOPBACK_CHROMIUM, LOOPBACK_FIREFOX } from './stack';
 
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => { const s = createServer(); s.once('error', fail); s.listen(0, '127.0.0.1', () => { const port = (s.address() as { port: number }).port; s.close(() => done(port)); }); });
-}
 async function main(): Promise<void> {
   const root = process.cwd(), began = performance.now(), args = parseWebNetArgs(process.argv.slice(2));
   const reportPath = resolve(args.reportPath); mkdirSync(resolve(reportPath, '..'), { recursive: true });
@@ -27,25 +20,19 @@ async function main(): Promise<void> {
   const proof: Record<string, unknown> = {};
   let aborted = false; const watchdog = setTimeout(() => { aborted = true; }, 900000);
   let step = 'startup', failure: string | undefined;
-  let runtime: Awaited<ReturnType<typeof startLocalRuntime>> | undefined, server: PreviewServer | undefined;
+  const stack = new LocalWebStack();
   const browsers: Browser[] = [];
   let hostNetwork: NetworkEntry[] = [], pageOrigin = '', probeStatus: number | null = null;
   try {
-    const port = await freePort(), origin = `http://127.0.0.1:${port}`;
+    await stack.start({ root, directory, refuseOrigin: args.inject === 'origin-refused', step: label => { step = label; },
+      buildArgs: service => ['--test', '--allow-missing-paid', '--test-probe', `--service-origin=${service}`, `--duel-test-seed=${DUEL_TEST_SEED}`],
+      afterBuild: () => buildDuelObservers(directory, digest) });
+    const origin = stack.origin, runtime = stack.runtime!;
     pageOrigin = origin;
-    mkdirSync(join(directory, 'service'));
-    step = 'workerd';
-    runtime = await startLocalRuntime(join(directory, 'service'), { allowedOrigins: args.inject === 'origin-refused' ? 'null' : `null,http://localhost:${port},${origin}` });
-    step = 'web build';
-    const plan = resolveWebBuildPlan(root, ['--test', '--allow-missing-paid', '--test-probe', `--service-origin=${runtime.baseUrl}`, `--duel-test-seed=${DUEL_TEST_SEED}`, `--out=${join(directory, 'web')}`], {});
-    await buildWeb(root, plan);
-    await buildDuelObservers(directory, digest);
-    step = 'preview';
-    server = await preview({ configFile: false, root, logLevel: 'warn', build: { outDir: join(directory, 'web', 'static') }, preview: { host: '127.0.0.1', port, strictPort: true } });
     const initScripts = [join(directory, 'observer', 'page-probe.js'), join(directory, 'observer', 'observer.js')];
     step = 'browsers';
-    const chrome = await chromium.launch({ headless: true, args: ['--disable-features=WebRtcHideLocalIpsWithMdns'] }); browsers.push(chrome);
-    const fox = await firefox.launch({ headless: true, firefoxUserPrefs: { 'media.peerconnection.ice.obfuscate_host_addresses': false, 'media.peerconnection.ice.loopback': true } }); browsers.push(fox);
+    const chrome = await chromium.launch(LOOPBACK_CHROMIUM); browsers.push(chrome);
+    const fox = await firefox.launch(LOOPBACK_FIREFOX); browsers.push(fox);
     const browserOf = { chromium: chrome, firefox: fox } as const;
     for (const pairing of args.pairings as readonly Pairing[]) {
       step = pairing;
@@ -69,11 +56,11 @@ async function main(): Promise<void> {
   finally {
     clearTimeout(watchdog);
     for (const b of browsers) await b.close().catch(() => { failure ??= 'browser close failed'; });
-    try { await server?.close(); } catch { failure ??= 'preview close failed'; }
+    const previewClosed = await stack.closePreview(); if (previewClosed) failure ??= previewClosed;
     // The injection's service-side evidence: the same create preflight from Node, with the page's Origin, must be refused.
-    if (args.inject === 'origin-refused' && runtime) probeStatus = await fetch(`${runtime.baseUrl}/v2/rooms`, { method: 'OPTIONS',
+    if (args.inject === 'origin-refused' && stack.runtime) probeStatus = await fetch(`${stack.runtime.baseUrl}/v2/rooms`, { method: 'OPTIONS',
       headers: { Origin: pageOrigin, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' } }).then(r => r.status, () => null);
-    try { await runtime?.dispose(); } catch { failure ??= 'workerd cleanup failed'; }
+    const runtimeClosed = await stack.closeRuntime(); if (runtimeClosed) failure ??= runtimeClosed;
     const target = resolve(directory), prefix = resolve(tmpdir()) + sep;
     if (!target.startsWith(prefix) || !target.slice(prefix.length).startsWith('ftlite-web-net-')) throw Error('invalid exact cleanup target');
     try { rmSync(target, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { failure ??= 'exact temporary cleanup failed'; }

@@ -932,15 +932,52 @@ Electron's online stack (service client, RTC, lease owner) now runs in the page,
    - `npx vercel env add FTLITE_COOKIE_SECRET production` with 32 random bytes in base64, made by `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`.
    Changing `FTLITE_PASSCODE` changes the code; changing `FTLITE_COOKIE_SECRET` signs everyone out. A missing or short secret makes every page answer "FTLite is not configured." (fail closed).
 4. Each deploy, in PowerShell: `$env:FTLITE_WEB_SERVICE_ORIGIN='https://<signalling worker origin>'; npm run deploy:web` (in Git Bash: `FTLITE_WEB_SERVICE_ORIGIN=https://<signalling worker origin> npm run deploy:web`). Use exactly one https origin, with no trailing slash. Never run plain `vercel` or `vercel deploy`: a source build has no passcode middleware, so the root `vercel.json` makes it fail on purpose (its `buildCommand` exits 1 telling you to run `npm run deploy:web`); `--prebuilt` uploads only `.vercel/output` and runs no build.
-5. After the first deploy, put `https://<project>.vercel.app` into Cloudflare's `ALLOWED_ORIGINS` (spec §6), then run these live checks with `curl -I`. Use `-b ftlite_pass=<value>` for the cookie; copy the value from a browser sign-in (DevTools → Application → Cookies).
+5. Put `https://<project>.vercel.app` into Cloudflare's `ALLOWED_ORIGINS` (spec §6; Web-iii step 3, before the first deploy), then after the deploy run these live checks with `curl -I`. Use `-b ftlite_pass=<value>` for the cookie; copy the value from a browser sign-in (DevTools → Application → Cookies).
    - Without the cookie: `/`, `/assets/authorityWorker.js` and `/assets/paid/<a real file from public/assets/paid>` each answer `401` (the passcode page).
    - With the cookie: `/`, `/assets/authorityWorker.js` and the same paid file each answer `200` with `cache-control: private, no-cache`, and `/version.json` answers `200` with `cache-control: no-store`.
-   - If any check fails, roll the first deploy back at once: `npx vercel rollback`, or delete the deployment in the dashboard. Fix it before redeploying; never leave the paid art reachable without the cookie.
+   - If any check fails, take the deploy down at once, as Web-iii step 6 says (the first deploy is deleted with `npx vercel rm <url> --yes` or in the dashboard; `npx vercel rollback` applies only to later deploys). Fix it before redeploying; never leave the paid art reachable without the cookie.
    - If every page answers `503` "FTLite is not configured." although both vars are set, the vars are not reaching the middleware. Check that both are set for **Production**, then redeploy (env changes need a new deploy).
    Web-iii's `scripts/web/live-smoke.ts` runs the same cookie and header checks, without and with the cookie, before its two-browser duel, and fails the run if any of them fails.
 
 - [ ] Owner: Vercel login, link (Hobby, git disconnected) and the two env vars (Web-iii).
-- [ ] Owner: first `deploy:web`, then the step-5 live checks without and with the cookie (paid art, Worker, `/`, `version.json`); roll back on any failure (Web-iii).
-- [ ] Web-iii plan: `scripts/web/live-smoke.ts` repeats the step-5 checks (401 without the cookie for `/assets/paid/<file>` and `/assets/authorityWorker.js`; 200 with `private, no-cache` with it; `version.json` `no-store`) before its duel.
+- [ ] Owner: first `deploy:web`, then the step-5 live checks without and with the cookie (paid art, Worker, `/`, `version.json`); take the deploy down on any failure (delete the first deploy, roll back later ones; Web-iii step 6).
+- [x] Web-iii plan: `scripts/web/live-smoke.ts` repeats the step-5 checks (401 without the cookie for `/assets/paid/<file>` and `/assets/authorityWorker.js`; 200 with `private, no-cache` with it; `version.json` `no-store`) before its duel (`docs/superpowers/plans/2026-11-18-web-iii-live-smoke.md`; `npm run test:web-live`).
 - [x] Web-ii gate (Task 12, re-run after the master merge and impl review R1), head 4732902d: `typecheck`; `npm test` (421 files; load flakes rerun alone: snapshot and the known list, all pass alone); `test:web-output` (WEB OUTPUT PASS, 96 static paths need the cookie); `test:determinism` (Node, Electron, Firefox UA); `test:signalling`, `typecheck:signalling`; Electron gates `test:worker-boot`, `test:host-runtime`, `test:rtc-runtime` , `test:room-service-runtime`, `test:online-app-runtime`, `test:online-recovery-runtime`, `test:duel-app-runtime`; browser gates `test:web-net` (chromium-firefox, firefox-chromium, chromium-electron) and the origin-refused injection (fails for its named reason). No SIM_VERSION change.
 - [ ] Owner look check in a real browser (Chrome and Firefox), with a production-like local build (`npm run build:web -- --test --service-origin=<https signalling origin> --out=out/web-look` then `npx vite preview --outDir out/web-look/static`): Settings fullscreen on and off; Esc during a match in fullscreen (Chrome: Esc reaches the game, hold Esc exits; Firefox: one Esc exits fullscreen and pauses once); first click starts the menu music; a second tab shows "FTLite is already open in another tab" on Multiplayer; closing a lobby tab asks before leaving; Settings -> Download playtest log after a solo round saves `ftlite-playtest-<date>-to-<date>.jsonl`.
+
+## Web-iii: going live (2026-11-18)
+
+`npm run test:web-live` (`scripts/web/live-smoke.ts`) checks the live site after a deploy. It runs the Web-ii step-5 header checks: without the cookie, `/`, the Worker, a real paid file and `version.json` each answer 401 with the passcode form; a wrong passcode is refused; the right one sets the spec's cookie. With the cookie, `/`, the Worker and the paid file answer 200 with `private, no-cache`, and `version.json` answers 200 with `no-store`. If `FTLITE_WEB_SERVICE_ORIGIN` is set, it then sends the service preflight with the live Origin. Last, a Chromium host and a Firefox guest (a second Chromium if Firefox is not installed) pass the passcode form, host, join by code with TURN forced (`iceTransportPolicy: 'relay'` through a test-only init script; the selected candidate pair must be `relay` on both sides, with traffic), play 60 s and leave. It writes `out/web-iii-live/live-smoke.json` and prints `LIVE SMOKE PASS` or `LIVE SMOKE FAIL: <reason>` (exit 1). The passcode is read only from `FTLITE_LIVE_PASSCODE`. Neither it nor the cookie is ever printed or written.
+
+**Owner steps, in order, from the main checkout (it has `public/assets/paid`), in PowerShell:**
+0. Pre-flight, no deploy needed: `npm run test:web-live-local` runs the same duel against a local web-net stack, with the relay hook installed but not forcing relay (loopback ICE). Each side must show a connected selected candidate pair with traffic, and the pass line names the candidate types. Run it before the first live run.
+1. Vercel: `npx vercel login`, then `npx vercel link` to a new **Hobby** project with git **disconnected** (Web-ii steps 1-2).
+2. The two Production env vars, `FTLITE_PASSCODE` and `FTLITE_COOKIE_SECRET` (Web-ii step 3).
+3. Cloudflare allowed origins (spec §6), from `services/signalling`:
+   ```powershell
+   cd services/signalling
+   npx wrangler secret put ALLOWED_ORIGINS    # paste: null,https://<project>.vercel.app
+   npx wrangler deploy                        # ships the service at this revision; harmless if already current
+   cd ../..
+   ```
+4. Deploy: `$env:FTLITE_WEB_SERVICE_ORIGIN='https://<signalling worker origin>'; npm run deploy:web`. It must end by printing the production URL, and `npx vercel ls` must show the deployment **Ready**. The root `vercel.json` `buildCommand` fails only source builds; `--prebuilt` runs no build. **The first live deploy must confirm that this failing `buildCommand` did not affect the prebuilt deploy: the site is up and serves the build.** The live smoke's with-cookie `/` check (the game's HTML, not the passcode page) and its `version.json` check confirm that the prebuilt output is what is served. Run the smoke from the same checkout right after `deploy:web`: the live `version.json` must then equal `.vercel/output/static/version.json`, or it fails with "the live site is not the build in .vercel/output". Without that file, the report shows `versionCompared: false`.
+5. Live smoke, with the passcode typed and not stored in history:
+   ```powershell
+   $env:FTLITE_LIVE_URL = 'https://<project>.vercel.app'
+   $s = Read-Host -AsSecureString 'Passcode'
+   $env:FTLITE_LIVE_PASSCODE = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))
+   npm run test:web-live
+   Remove-Item Env:FTLITE_LIVE_PASSCODE
+   ```
+   `FTLITE_WEB_SERVICE_ORIGIN`, still set from step 4, adds the service preflight. Leave `DEBUG`, `DEBUG_FILE` and `PWDEBUG` unset: the run refuses any value that could turn on Playwright's logs. Expect `LIVE SMOKE PASS`.
+6. **Rollback rule.** If the smoke fails in `header checks` (it says "Take the deploy down now"), act at once:
+   - **First deploy** (nothing to roll back to): delete it with `npx vercel rm <deployment URL printed by deploy:web> --yes`, or Dashboard → Deployments → Delete.
+   - **Later deploys:** `npx vercel rollback`, which returns production to the previous deployment.
+   Fix the cause before redeploying; never leave the paid art reachable without the cookie. A 503 "FTLite is not configured." means the env vars are not reaching the middleware: set both for **Production**, then redeploy. A `service preflight` failure means `ALLOWED_ORIGINS` is missing the live origin; redo step 3 (no rollback: nothing leaks). A `duel` failure (relay, join, page errors) needs no rollback either: the site is safe. Read the report.
+7. **Friend playtest (the acceptance, spec §9 "Done means"):** two people on different networks open the `https://<project>.vercel.app` link and pass the passcode. One hosts and the other joins by code. They finish a duel. Rehost works after the host tab closes.
+
+- [ ] Owner: step 0 `npm run test:web-live-local` passes.
+- [ ] Owner: steps 1-3 (Vercel login/link, env vars, `ALLOWED_ORIGINS` and `wrangler deploy`).
+- [ ] Owner: step 4 `deploy:web` (URL printed, `vercel ls` Ready, site up and serving the build despite the root `vercel.json` `buildCommand`).
+- [ ] Owner: step 5 `npm run test:web-live` prints `LIVE SMOKE PASS` (Firefox guest, or note the Chromium fallback). Date, live `version.json` build/sim and notes: pending owner.
+- [ ] Owner: step 7 friend playtest on different networks: passcode, host, join by code, a finished duel, rehost after the host tab closes. Date and notes: pending owner.
