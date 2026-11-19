@@ -1,5 +1,5 @@
 // Electron check (web build spec §3.2): the built page, loaded from file://, starts the module host Worker and it answers.
-// No preload and no service: the Worker is asked to initialize with a foreign digest and must refuse it.
+// FTLITE_BOOT_PAGE points it at another built page (the packaged check below). No preload and no service: the Worker is asked to initialize with a foreign digest and must refuse it.
 const { app, BrowserWindow } = require('electron');
 const { resolve } = require('node:path');
 app.disableHardwareAcceleration(); app.on('window-all-closed', () => {});
@@ -7,7 +7,7 @@ app.whenReady().then(async () => {
   const timer = setTimeout(() => { console.error('WORKER BOOT FAIL: timeout'); app.exit(1); }, 15000);
   try {
     const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true } });
-    await win.loadFile(resolve(__dirname, '../../out/renderer/index.html'));
+    await win.loadFile(process.env.FTLITE_BOOT_PAGE || resolve(__dirname, '../../out/renderer/index.html'));
     const answer = await win.webContents.executeJavaScript(`new Promise((resolve, reject) => {
       const worker = new Worker(new URL('./assets/authorityWorker.js', location.href), { type: 'module' });
       worker.addEventListener('error', event => reject(String(event.message || 'worker error')));

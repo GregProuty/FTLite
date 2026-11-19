@@ -251,4 +251,14 @@ describe('manual committed-session recovery', () => {
     expect(p.host.invalidateLease.mock.invocationCallOrder[0]).toBeLessThan(p.host.dispose.mock.invocationCallOrder[0]!);
     await p.owner.resume(); expect(p.host.completeBootstrap).not.toHaveBeenCalled(); expect(p.host.request.mock.calls.map((c: any) => c[0].kind)).toEqual(['restore']);
   });
+  it('an un-awaited suspend then resume on an active host (clock jump) invalidates with suspended then the retire fence, disposes the old host once and reconnects once', async () => {
+    const r = room(), p = r.player(); await p.owner.dispatch({ type: 'reconnect' }); await p.owner.dispatch({ type: 'rehost' });
+    p.host.invalidateLease.mockClear(); p.host.dispose.mockClear(); p.service.join.mockClear();
+    void p.owner.suspend(); void p.owner.resume();
+    await vi.waitFor(() => expect(p.service.join).toHaveBeenCalled());
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(p.host.invalidateLease.mock.calls.map((c: any) => c[0])).toEqual(['suspended', 'service-fenced']); // resume finds the host already retired, so no 'resumed' invalidation is queued; the retire fences it
+    expect(p.host.dispose).toHaveBeenCalledOnce();
+    expect(p.service.join).toHaveBeenCalledOnce();
+  });
 });
