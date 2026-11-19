@@ -44,12 +44,12 @@ describe('never a dead click (Feel-ii §2.8)', () => {
     act(() => duel.frame(view(weapons({ canLaunch: false, laserReason: 'OUT OF ARC: HELM TURN RIGHT', refused: { control: 'launch', reason: 'OUT OF RANGE', flash: true } }))));
     expect(btn('launch').getAttribute('data-ui-refused')).toBe('1');
     expect(texts()).toContain('LAUNCH: OUT OF RANGE');
-    expect(texts()).not.toContain('LASER: OUT OF ARC: HELM TURN RIGHT');
+    expect(texts()).not.toContain('BEAM: OUT OF ARC: HELM TURN RIGHT');
     act(() => duel.frame(view(weapons({ canLaunch: false, laserReason: 'OUT OF ARC: HELM TURN RIGHT', refused: { control: 'launch', reason: 'OUT OF RANGE', flash: false } }))));
     expect(btn('launch').getAttribute('data-ui-refused')).toBeNull();
     expect(texts()).toContain('LAUNCH: OUT OF RANGE');
     act(() => duel.frame(view(weapons({ laserReason: 'OUT OF ARC: HELM TURN RIGHT' }))));
-    expect(texts()).toContain('LASER: OUT OF ARC: HELM TURN RIGHT');
+    expect(texts()).toContain('BEAM: OUT OF ARC: HELM TURN RIGHT');
   });
   it('a refused FIRE says TORPEDO FLYING; the Helm\'s turn says ENGINES OFFLINE under the turn buttons', () => {
     const { duel } = mount();

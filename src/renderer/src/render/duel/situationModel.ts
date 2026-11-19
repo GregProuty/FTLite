@@ -11,6 +11,7 @@ import { throttleThrust } from '../../sim/duel/throttle';
 import { helmTurn } from '../../sim/duel/step';
 import { laserEligible, laserFull, laserOffline, torpedoInRange } from '../../sim/tactical/weapons';
 import { TICK_HZ } from '../../sim/tuning';
+import { trimmedWeaponPower, WeaponSlot } from '../../sim/tactical/bars';
 
 /** Seconds a released shot keeps the solution lit, so a volley that auto-fires the tick it is ready still reads FIRING. */
 export const SOLUTION_HOLD_S = 0.6;
@@ -33,6 +34,13 @@ export type LaserSituation =
   | { kind: 'solution'; targeted: boolean } | { kind: 'charging'; targeted: boolean }
   | { kind: 'none' };
 
+/** Engineering spike §10.3, §11: the beam and the torpedo are both dark (pew pew's bars do nothing on this branch). Bars
+ *  only, one source of truth: a level-2 Weapons Room zeroes every weapon's trimmed bars (trimmedWeaponPower reads
+ *  effectiveBars), and laserOffline reads the beam's. */
+export function weaponsOffline(t: TacticalState): boolean {
+  return laserOffline(t, CREW_SLOT) && trimmedWeaponPower(t.systems[CREW_SLOT])[WeaponSlot.Torpedo] === 0;
+}
+
 /** `sinceShot`: seconds since the crew laser's last release on this screen (Infinity when none); `gunner`: whether Weapons
  *  is attended (gunnerPresent). */
 export function laserSituation(t: TacticalState, sinceShot = Infinity, gunner = true): LaserSituation {
@@ -43,7 +51,7 @@ export function laserSituation(t: TacticalState, sinceShot = Infinity, gunner = 
     const r = rockAt(t, sysRock.laserRock), rx = r.x - own.x, ry = r.y - own.y, surface = Math.sqrt(rx * rx + ry * ry) - r.r;
     if (surface > reach.range) return { kind: 'range', range: Math.round(surface), reach: reach.range, rock: true };
     if (!inArc(own.heading, rx, ry, reach.arcCos)) return { kind: 'arc', turn: (sideOf(own.heading, rx, ry) || 1) > 0 ? 'RIGHT' : 'LEFT', rock: true };
-    if (laserOffline(t, CREW_SLOT)) return { kind: 'offline' };
+    if (laserOffline(t, CREW_SLOT)) return weaponsOffline(t) ? { kind: 'offline' } : { kind: 'none' };   // Engineering spike §10.3: the beam dark, the torpedo powered: its card speaks
     if (sysRock.laserBurst > 0 || sinceShot < SOLUTION_HOLD_S) return { kind: 'solution', targeted: sysRock.laserTargeted };
     if (!gunner) return { kind: 'nogunner' };
     if (missileOf(t, CREW_SLOT)) return { kind: 'frozen' };
@@ -56,7 +64,7 @@ export function laserSituation(t: TacticalState, sinceShot = Infinity, gunner = 
   if (dx * dx + dy * dy > laser.range * laser.range) return { kind: 'range', range, reach: laser.range };
   if (!inArc(me.heading, dx, dy, laser.arcCos)) return { kind: 'arc', turn: (sideOf(me.heading, dx, dy) || 1) > 0 ? 'RIGHT' : 'LEFT' };
   if (!lineOfSight(t, me.x, me.y, e.x, e.y)) return { kind: 'blocked' };
-  if (laserOffline(t, CREW_SLOT)) return { kind: 'offline' };
+  if (laserOffline(t, CREW_SLOT)) return weaponsOffline(t) ? { kind: 'offline' } : { kind: 'none' };   // Engineering spike §10.3
   const targeted = sys.laserTargeted;
   if (sys.laserBurst > 0 || sinceShot < SOLUTION_HOLD_S) return { kind: 'solution', targeted };   // the burst fires attended or not
   if (!gunner) return { kind: 'nogunner' };
@@ -197,9 +205,9 @@ export function refusal(d: DuelState, control: RefusedControl): string | null {
     if (!gunnerPresent(d)) return 'NO GUNNER';
     if (control === 'fire' && classOf(t, CREW_SLOT).slots.laser === null) return gunReason(t);   // Valkyrn spec §6.1: the gun's reasons
     if (missileOf(t, CREW_SLOT)) return 'TORPEDO FLYING';
-    if (control === 'fire') return laserOffline(t, CREW_SLOT) ? 'WEAPONS OFFLINE' : null;
+    if (control === 'fire') return !laserOffline(t, CREW_SLOT) ? null : weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'BEAM UNPOWERED';   // Space fires the beam (spec §10.3)
     if (sys.magazine <= 0) return 'NO TORPEDOES';
-    if (sys.rooms[Room.Weapons] >= 2) return 'WEAPONS OFFLINE';
+    if (trimmedWeaponPower(sys)[WeaponSlot.Torpedo] === 0) return weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'TORPEDO UNPOWERED';   // a level-2 Weapons Room lands here too
     return torpedoInRange(t, CREW_SLOT) ? null : 'OUT OF RANGE';
   }
   return sys.rooms[Room.Engines] >= 2 ? 'ENGINES OFFLINE' : null;

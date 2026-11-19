@@ -55,7 +55,8 @@ export function createUiActions(deps: UiActionDeps) {
     rockLock: (weapon, rock) => consoleInput?.rockLock?.(weapon, rock),
     throttle: (level) => consoleInput?.throttle(level),
     frequency: (freq) => consoleInput?.frequency(freq),
-    ship: (command) => consoleInput?.ship?.(command)
+    ship: (command) => consoleInput?.ship?.(command),
+    weaponPower: (slot, delta) => consoleInput?.weaponPower?.(slot, delta)
   };
   // Engineering spike §6: the ship view's HUD clicks, through the same console slot (the duel keyboard queues them).
   const send = (command: ShipCommand): void => consoleInput?.ship?.(command);

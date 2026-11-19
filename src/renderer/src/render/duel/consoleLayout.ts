@@ -9,12 +9,15 @@ export const TABS_RIGHT = TABS.x + 4 * TABS.w + 3 * TABS.gap;   // HELM, WEAPONS
 export const STATUS = { x: 12, y: 42, w: READOUT_W } as const;
 export const STATION = { x: 12, w: 300, h: { helm: 200, weapons: 216, science: 96 } } as const;   // the frequency row takes the old steer row's place (Sci-1 spec §7.4)
 export function stationTop(s: 'helm' | 'weapons' | 'science'): number { return INTERNAL_H - EDGE - STATION.h[s]; }
-/** FTL targeting spec §1: the Weapons block's two weapon cards, LASER then TORPEDO, side by side at its top; `hit` is the
- *  card's clickable part above its FIRE / LAUNCH button, and the targeting line starts at `anchor` (the card's right edge
- *  mid-height of `hit`). */
-export function weaponCard(weapon: 'laser' | 'torpedo'): { x: number; y: number; w: number; h: number; hitH: number; anchor: { x: number; y: number } } {
-  const x0 = STATION.x + 8, y = stationTop('weapons') + 6, w = 138, h = 104, hitH = 72, x = weapon === 'laser' ? x0 : x0 + w + 8;
-  return { x, y, w, h, hitH, anchor: { x: x + w, y: y + hitH / 2 } };
+/** FTL targeting spec §1, Engineering spike §10.3, §11: the Weapons block's three weapon cards, PEW PEW, BEAM ('laser')
+ *  and TORPEDO, side by side at its top. `hit` is the card's clickable part (the beam's and the torpedo's pick-up; PEW
+ *  PEW has none on this branch); `pipsY` the bar pips under it (left click adds a bar, right click removes one); FIRE /
+ *  LAUNCH sits below them; the targeting line starts at `anchor` (the card's right edge mid-height of `hit`). */
+export type CardWeapon = 'pew' | 'laser' | 'torpedo';
+export const CARD_ORDER: readonly CardWeapon[] = ['pew', 'laser', 'torpedo'];
+export function weaponCard(weapon: CardWeapon): { x: number; y: number; w: number; h: number; hitH: number; pipsY: number; anchor: { x: number; y: number } } {
+  const x0 = STATION.x + 8, y = stationTop('weapons') + 6, w = 90, h = 104, hitH = 60, x = x0 + CARD_ORDER.indexOf(weapon) * (w + 6);
+  return { x, y, w, h, hitH, pipsY: y + hitH + 2, anchor: { x: x + w, y: y + hitH / 2 } };
 }
 /** Valkyrn spec §5: the Flight seat's weapon block, beside the Helm block at the bottom: two cards (GUN or the laser fit's
  *  LASER, then TORPEDO), the reason line and, with the laser fit, the frequency row. */

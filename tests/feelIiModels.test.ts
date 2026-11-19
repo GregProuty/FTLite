@@ -219,7 +219,7 @@ describe('never a dead click (Feel-ii §2.8): the reasons are the sim\'s own che
       expect(refusal(d, 'launch')).toBeNull();
       expect(canLaunch(t, 0)).toBe(true);
       sys.magazine = 0; expect(refusal(d, 'launch')).toBe('NO TORPEDOES'); sys.magazine = 2;
-      sys.rooms[Room.Weapons] = 2; expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual(['WEAPONS OFFLINE', 'WEAPONS OFFLINE']); sys.rooms[Room.Weapons] = 0;
+      sys.weaponPower.fill(0); expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual(['WEAPONS OFFLINE', 'WEAPONS OFFLINE']); sys.weaponPower.splice(0, 3, 0, 2, 1);   // Engineering spike §10.3: the beam and the torpedo dark (then todaysCrewWeapons' bars back)
       placeMissile(t, 0, { x: me.x, y: me.y, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });
       expect([refusal(d, 'fire'), refusal(d, 'launch'), canCharge(t, 0)]).toEqual(['TORPEDO FLYING', 'TORPEDO FLYING', false]);
       d.present[1] = false;

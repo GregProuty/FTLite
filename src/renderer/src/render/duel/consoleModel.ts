@@ -8,10 +8,9 @@ import { HEADING_COUNT, MAGAZINE } from '../../sim/tactical/tuning';
 import { canLaunch, torpedoInRange } from '../../sim/tactical/weapons';
 import type { MapOverlayView } from '../../ui/views';
 import { chargeRow, type ReadoutRow } from './readoutModel';
-import { gunnerPresent, laserCardReason, laserSituation, type RefusedControl } from './situationModel';
-import { laserOffline } from '../../sim/tactical/weapons';
+import { gunnerPresent, laserCardReason, laserSituation, weaponsOffline, type RefusedControl } from './situationModel';
 import { DuelSystem } from '../../sim/duel/power';
-import { throttleCap } from '../../sim/tactical/bars';
+import { BEAM_SHOTS_BY_BARS, throttleCap, trimmedWeaponPower, weaponBarsUsable, WeaponSlot } from '../../sim/tactical/bars';
 import { powerStrip, type ConsolePowerStrip } from './shipHudModel';
 
 export type ConsoleStation = 'helm' | 'weapons' | 'science' | 'flight' | 'ship';
@@ -42,7 +41,10 @@ export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: stri
   laserTarget: number; torpTarget: number; burst: number; laserReason?: string | null; goal?: boolean; refused?: RefusedView | null;
   laserRock?: boolean; torpRock?: boolean; torpRockFlying?: boolean;
   /** Spike ii §7 item 9: the rocks the crew broke this round. */
-  rocks?: number }
+  rocks?: number;
+  /** Engineering spike §10.3: the bars each weapon stands on now (pew pew, beam, torpedo; 0..4, trimmed) and the Weapons
+   *  bars not yet spent. Optional, so a hand-built panel may leave them out (the probe's fixture). */
+  weaponBars?: number[]; weaponFree?: number }
 /** Valkyrn spec §8: the GUN card: OFFLINE (Weapons at 2), OVERHEAT (locked) or READY; heat 0..1. */
 export interface GunPanel { state: 'READY' | 'OVERHEAT' | 'OFFLINE'; heat: number; locked: boolean }
 /** Valkyrn spec §5: the Flight seat's weapons: the GUN card (null with the laser fit) and the Weapons panel its cards and the
@@ -118,9 +120,11 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
     : null;
   const flying = missileOf(t, 0) !== null, sys = t.systems[0];
   const weaponsPanel = (): WeaponsPanel => ({ lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null,
-      laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock, burst: classOf(t, 0).slots.laser?.shots ?? 0,   // Valkyrn-i: Part ii gives the gun its own card
+      laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock,
+      ...(() => { const w = trimmedWeaponPower(sys);   // Engineering spike §10.3: the bars each weapon stands on now; the beam's shots by its bars
+        return { burst: classOf(t, 0).slots.laser ? BEAM_SHOTS_BY_BARS[w[WeaponSlot.Beam]!] ?? 0 : 0, weaponBars: w, weaponFree: weaponBarsUsable(sys) - (w[0]! + w[1]! + w[2]!) }; })(),
       laserRock: sys.laserRock >= 0, torpRock: sys.torpRock >= 0, torpRockFlying: sys.torpRockFlying >= 0, rocks: sys.rocksBroken,   // spike ii §6.5, §7 item 9
-      laserReason: laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), laserOffline(t, 0)), goal: (i.goal ?? false) && !sys.laserTargeted,
+      laserReason: laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), weaponsOffline(t)), goal: (i.goal ?? false) && !sys.laserTargeted,
       refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null });
   const weapons: WeaponsPanel | null = station === 'weapons' ? weaponsPanel() : null;
   const gunDef = classOf(t, 0).slots.gun;   // Valkyrn spec §5, §8: the Flight seat's GUN card (null with the laser fit) and its weapons

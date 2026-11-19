@@ -8,8 +8,9 @@ import { TILE_PX } from '../../../../shared/resolution';
 import type { Placement } from './interiorCamera';
 import { INTERIOR_BAND } from './interiorModel';
 
-/** The ship view's commands (Part i's shipPower, shipCoolant, shipDoor and shipAirlock; Task 8 adds weaponPower). */
-export type ShipCommand = Extract<DuelCommand, { kind: 'shipPower' | 'shipCoolant' | 'shipDoor' | 'shipAirlock' }>;
+/** The ship view's commands (Part i's shipPower, shipCoolant, shipDoor and shipAirlock) and the Weapons block's
+ *  weaponPower (spec §10.3), which ride the same keyboard queue; the sim refuses weaponPower off the Weapons seat. */
+export type ShipCommand = Extract<DuelCommand, { kind: 'shipPower' | 'shipCoolant' | 'shipDoor' | 'shipAirlock' | 'weaponPower' }>;
 /** A clickable thing on the interior, with its tile index (for the hover highlight). */
 export type ShipControl = { kind: 'door'; edge: number; tile: number } | { kind: 'airlock'; index: number; tile: number };
 

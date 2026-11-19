@@ -39,7 +39,9 @@ export interface ConsoleInput { press(action: KeyAction): void; hold(code: HoldC
   rockLock?(weapon: 'laser' | 'torpedo', rock: number): void;
   /** Engineering spike §6, §7: a ship-view click (a power column, a coolant counter, a door or an airlock). Optional, so
    *  the tests' console literals stay valid; callers use `?.`. */
-  ship?(command: ShipCommand): void }
+  ship?(command: ShipCommand): void;
+  /** Engineering spike §10.3: a bar on or off a weapon slot. Optional, as ship. */
+  weaponPower?(slot: number, delta: 1 | -1): void }
 /** Engineering spike §7: the most ship commands held between two samples; a further one drops the oldest. */
 export const SHIP_QUEUE_MAX = 16;
 /** Keys whose browser default (focus moves, page scrolls, history back) must never happen in the duel views. */
@@ -149,7 +151,8 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     rockLock(weapon, rock) { rockTo = { weapon, rock }; },
     throttle(level) { throttleTo = level; },
     frequency(freq) { freqTo = freq; },
-    ship(command) { ship.push(command); if (ship.length > SHIP_QUEUE_MAX) ship.shift(); }
+    ship(command) { ship.push(command); if (ship.length > SHIP_QUEUE_MAX) ship.shift(); },
+    weaponPower(slot, delta) { ship.push({ kind: 'weaponPower', slot, delta }); if (ship.length > SHIP_QUEUE_MAX) ship.shift(); }
   };
   return {
     ui: consoleInput,

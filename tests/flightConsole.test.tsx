@@ -17,6 +17,7 @@ import { contactModel } from '../src/renderer/src/render/duel/contactModel';
 import { FlightStation } from '../src/renderer/src/ui/duel/FlightStation';
 import { UiContext } from '../src/renderer/src/ui/context';
 import { makeUi } from './helpers/uiStore';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { controlSections } from '../src/renderer/src/app/controlsList';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -36,7 +37,10 @@ describe('the Flight panel (Valkyrn spec §5, §8)', () => {
   });
   it('the laser fit: no GUN card; the weapons panel carries the laser', () => {
     const d = seated(classIndexById(VALKYRN_LASER_CLASS.id));
-    try { expect(view(d).flight!.gun).toBeNull(); expect(view(d).flight!.weapons.burst).toBeGreaterThan(0); } finally { disposeDuel(d); }
+    try {
+      expect(view(d).flight!.gun).toBeNull(); expect(view(d).flight!.weapons.burst).toBe(0);   // Engineering spike §10.3: the beam starts dark, its shots by its bars
+      todaysCrewWeapons(d.tactical); expect(view(d).flight!.weapons.burst).toBeGreaterThan(0);
+    } finally { disposeDuel(d); }
   });
   it('the block sits beside the Helm block; the cards are side by side', () => {
     expect(FLIGHT).toEqual({ x: STATION.x + STATION.w + 12, y: 720 - 12 - 166, w: 300, h: 166 });
