@@ -10,7 +10,6 @@ import { doorSystem } from '../doors';
 import { roomAt } from '../grid';
 import { fireStep } from '../hazards/fire';
 import { oxygenStep } from '../hazards/oxygen';
-import { inReachOfTile } from '../interact';
 import { movementSystem } from '../movement';
 import { stepDuel } from '../tactical/duel';
 import { autoFaceTurn, headingTurn } from '../tactical/hunter';
@@ -21,11 +20,11 @@ import { HAZARD_EVERY } from '../tuning';
 import { rockAlive } from '../tactical/rocks';
 import { canCharge, canLaunch, validRockLock, validTarget, type ShipInput } from '../tactical/weapons';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
-import { extinguishWork, firePhase, pointBurning } from './fire';
+import { extinguishRoomWork, extinguishWork, firePhase, pointBurning } from './fire';
 import { applyHitDamage, healthPhase } from './health';
 import { followingSeed } from './seeds';
 import { applyPower, clampToCapacity, cycleDuelCoolant, duelHeatStep, OVERDRIVE_SYSTEMS, validSystem } from './power';
-import { duelInjection, toggleAirlock, toggleDoor, validAirlock, validDoor } from './hazards';
+import { duelInjection, patchWork, toggleAirlock, toggleDoor, validAirlock, validDoor, workJob } from './hazards';
 import { throttleThrust, validHoldHeading, validThrottle } from './throttle';
 import { createDuel, disposeDuel, type DuelState } from './state';
 import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
@@ -71,19 +70,23 @@ function seated(d: DuelState, pid: number): boolean { return Seated.station[d.in
 /** A player id of this duel's crew (Sci-2 spec §4.1): an integer 0..n−1. */
 function validPlayer(d: DuelState, pid: number): boolean { return Number.isInteger(pid) && pid >= 0 && pid < d.interior.playerCount; }
 
-/** Each standing, present, conscious player holding Interact inside a damaged or burning room's repair room and in reach
- *  of its point. A burning room's workers put the fire out instead of repairing (duel-fire spec §1.4), and its repair
- *  progress holds. Pushes a repairWork or fireWork event per worker in player order, then per Room in Room order a
- *  repairDone when its level drops or a fireOut when its fire goes out (H-0c-ii-a spec §4). */
+/** Each standing, present, conscious player holding Interact does one job (Engineering spike spec §4, Decision 11):
+ *  the room's fire (at its repair point, else its breach-site tile), then a breach in reach, then the point's damaged
+ *  Room. A burning point room's repair progress holds. Point-room fire and repair work push today's repairWork or
+ *  fireWork per worker in player order, then per Room in Room order a repairDone or fireOut (H-0c-ii-a spec §4);
+ *  fires in other rooms and breaches push nothing (spec §4 Events). */
 function repairPhase(d: DuelState, held: readonly HeldInput[]): void {
   const crewShip = d.tactical.systems[0], workers: number[][] = [[], [], []];
+  const fireCrew = new Map<number, number>(), breachCrew = new Map<number, number>();
   for (let pid = 0; pid < d.interior.playerCount; pid++) {
     if (!d.present[pid] || !conscious(d, pid) || seated(d, pid) || !(held[pid] ?? NO_HELD).interactHeld) continue;
-    const eid = d.interior.crew[pid]!, here = roomAt(d.interior, Position.x[eid]!, Position.y[eid]!);
-    const point = d.points.find((p) => (crewShip.rooms[p.tacticalRoom]! > 0 || pointBurning(d, p)) && p.room === here && inReachOfTile(d.interior, eid, p.tile));
-    if (!point) continue;
-    workers[point.tacticalRoom]!.push(pid);
-    d.events.push({ kind: pointBurning(d, point) ? 'fireWork' : 'repairWork', player: pid, room: point.tacticalRoom });
+    const eid = d.interior.crew[pid]!, job = workJob(d, eid, roomAt(d.interior, Position.x[eid]!, Position.y[eid]!));
+    if (!job) continue;
+    if (job.kind === 'pointFire' || job.kind === 'repair') {
+      workers[job.point.tacticalRoom]!.push(pid);
+      d.events.push({ kind: job.kind === 'pointFire' ? 'fireWork' : 'repairWork', player: pid, room: job.point.tacticalRoom });
+    } else if (job.kind === 'fire') fireCrew.set(job.room, (fireCrew.get(job.room) ?? 0) + 1);
+    else breachCrew.set(job.site, (breachCrew.get(job.site) ?? 0) + 1);
   }
   for (const p of d.points) {
     const r = p.tacticalRoom as 0 | 1 | 2, n = workers[r]!.length;
@@ -96,6 +99,8 @@ function repairPhase(d: DuelState, held: readonly HeldInput[]): void {
     d.repair[r] += n === 1 ? REPAIR_RATE_SOLO : n * REPAIR_RATE_TEAM;
     if (d.repair[r] >= REPAIR_UNITS) { crewShip.rooms[r]--; crewShip.gunRoomWear[r] = 0; d.repair[r] = 0;   /* Valkyrn spec §7.2 */ d.events.push({ kind: 'repairDone', room: r, players: workers[r]! }); }
   }
+  for (const [room, n] of [...fireCrew].sort((a, b) => a[0] - b[0])) extinguishRoomWork(d, room, n);   // Engineering spike spec §4: rooms with no point
+  for (const [site, n] of [...breachCrew].sort((a, b) => a[0] - b[0])) patchWork(d, site, n);
 }
 
 /** Valkyrn spec §6.2: a held aim, a heading index 0..255; absent, −1, NaN, a non-integer or out of range is −1 (none). */

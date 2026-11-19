@@ -35,7 +35,7 @@ export type RepairEvent =
  *  health this tick to a fire or a hit. `downed`: pid reached 0 and went down. `revived`: pid stood up at 1 health; `by`
  *  names the teammates in reach, ascending. */
 export type HealthEvent =
-  | { kind: 'crewHurt'; player: number; amount: number; cause: 'fire' | 'hit' }
+  | { kind: 'crewHurt'; player: number; amount: number; cause: 'fire' | 'hit' | 'air' }   // 'air': Engineering spike spec §4
   | { kind: 'downed'; player: number }
   | { kind: 'revived'; player: number; by: number[] };
 

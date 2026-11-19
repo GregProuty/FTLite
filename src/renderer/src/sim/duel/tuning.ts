@@ -46,3 +46,10 @@ export const DUEL_EXTINGUISH_RATE_TEAM = 5;
 /** Duel health (duel-health spec §1.4): a downed character with a conscious, present, standing teammate within REACH
  *  stands up at 1 health after DUEL_REVIVE_TICKS ticks (5 s); Life.reviveProgress holds ticks / DUEL_REVIVE_TICKS. */
 export const DUEL_REVIVE_TICKS = 300;
+
+/** Engineering spike spec §4: a qualifying enemy hit (a laser hit by ship 1, a missile on ship 0) rolls a breach in the
+ *  struck Room's repair room after its fire roll (rng.hazards, one draw, none if that room's site is already active). */
+export const DUEL_BREACH_CHANCE_LASER = 0.2;
+export const DUEL_BREACH_CHANCE_MISSILE = 0.5;
+/** Engineering spike spec §4: crew in a room below this oxygen fraction lose O2_DAMAGE health a second. */
+export const LOW_AIR_FRAC = 0.25;

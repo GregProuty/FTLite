@@ -7,6 +7,7 @@ import { DoorState, roomAt } from '../src/renderer/src/sim/grid';
 import type { HeldInput } from '../src/renderer/src/net/contracts';
 import type { DuelCommand, DuelEnvelope } from '../src/renderer/src/sim/duel/commands';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
+import { siteOfRoom } from '../src/renderer/src/sim/duel/hazards';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { createSeatedDuel } from './helpers/duelSeat';
@@ -271,7 +272,8 @@ describe('the interior stays quiet (spec §17 risk 7)', () => {
     }
     expect(d.tactical.tick).toBeGreaterThan(100);
     expect([...st.rooms.fire].every((f, room) => f === 0 || started.has(room))).toBe(true);   // no spread, no sector fire
-    expect([...st.breaches.active].every((b) => b === 0)).toBe(true);
+    const hitSites = new Set(d.points.map((p) => siteOfRoom(d, p.room)));
+    expect([...st.breaches.active].every((b, s) => b === 0 || hitSites.has(s))).toBe(true);   // Engineering spike spec §4: hits breach their room's site; no sector breach
     expect([...st.boarders.active].every((b) => b === 0)).toBe(true);
     expect(st.run.event).toBe(event0);
   });
