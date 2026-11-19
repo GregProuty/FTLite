@@ -16,12 +16,17 @@ const rock = (what: 'split' | 'dust' | 'blast' | 'bump' | 'hit', by: 'laser' | '
 const of = (items: FxItem[], kind: FxItem['kind']) => items.filter((i) => i.kind === kind);
 
 describe('rock fx (spec §7)', () => {
-  it('a laser hit on a rock: a flare and 5 to 8 chips thrown back along the shot, living 0.4 s', () => {
+  it('a laser hit on a rock: a flare and 5 to 8 chips sprayed wide of the beam, living 0.6 s', () => {
     const fx = createFx();
     pushRockFx(fx, [{ kind: 'laser', ship: 0, hit: false, stripped: false, room: -1, x1: 0, y1: 0, x2: 100, y2: 0, rock: 3 }]);
     const chips = of(fx.items, 'chip');
     expect(chips.length).toBeGreaterThanOrEqual(5); expect(chips.length).toBeLessThanOrEqual(8);
-    for (const c of chips) { expect(c.vx!).toBeLessThan(0); expect(c.life).toBe(CHIP_S); }
+    expect(CHIP_S).toBe(0.6);
+    for (const c of chips) {
+      expect(c.vx!).toBeLessThan(0); expect(c.life).toBe(0.6);
+      const off = Math.abs(Math.atan2(c.vy!, c.vx!) - Math.PI) % (2 * Math.PI), d = Math.min(off, 2 * Math.PI - off);   // from the reverse shot line (pi)
+      expect(d).toBeGreaterThanOrEqual(0.25 - 1e-9); expect(d).toBeLessThanOrEqual(1.2 + 1e-9);
+    }
     expect(of(fx.items, 'flare')).toHaveLength(1);
     const again = createFx(); pushRockFx(again, [{ kind: 'laser', ship: 0, hit: false, stripped: false, room: -1, x1: 0, y1: 0, x2: 100, y2: 0, rock: 3 }]);
     expect(of(again.items, 'chip').length).toBe(chips.length);   // seeded: the same frame gives the same spray

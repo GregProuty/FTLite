@@ -42,7 +42,7 @@ const { mkdtempSync, mkdirSync } = require('node:fs'); const { join } = require(
   const a = await stage(220);
   const hits0 = await read('rockHits'), splits0 = await read('rockSplits');
   await sys({ laserRock: 'ROCK', laserTargeted: true }, a.rock);
-  await waitMore('rockHits', hits0); await page.waitForTimeout(60); await shot('b0-laser-chip');
+  await waitMore('rockHits', hits0); await page.waitForTimeout(140); await shot('b0-laser-chip');
   await waitMore('rockSplits', splits0); await page.waitForTimeout(250); await shot('b1-laser-split');
   // b2, b3: a rock-targeted torpedo's blast mid-expansion, then the belt seconds after.
   const c = await stage(300);

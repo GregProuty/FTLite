@@ -410,11 +410,17 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
             .circle(e.x1, e.y1, e.r * 0.3).fill({ color: colour, alpha: e.alpha * 0.5 });
         }
         else if (e.kind === 'burst') combat.circle(e.x1, e.y1, e.r).stroke({ width: 3, color: colour, alpha: e.alpha }).circle(e.x1, e.y1, e.r * 0.4).fill({ color: colour, alpha: e.alpha * 0.6 });
-        else if (e.kind === 'chip') combat.moveTo(e.x1, e.y1).lineTo(e.x2, e.y2).stroke({ width: e.r, color: colour, alpha: e.alpha }).circle(e.x1, e.y1, e.r).fill({ color: colour, alpha: e.alpha });   // spike ii §7: a tail and a hot head
+        else if (e.kind === 'chip') continue;   // drawn after the loop, on top of the beams
         else if (e.kind === 'speck') combat.circle(e.x1, e.y1, e.r).fill({ color: colour, alpha: e.alpha });
         else if (e.kind === 'shock') combat.circle(e.x1, e.y1, Math.max(1, e.r)).stroke({ width: e.width ?? 2, color: colour, alpha: e.alpha });
         else if (e.kind === 'core') combat.circle(e.x1, e.y1, e.r).fill({ color: CRT.hot, alpha: e.alpha });
         else for (let k = 0; k < 4; k++) { const a = (k * Math.PI) / 2 + Math.PI / 4; combat.moveTo(e.x1, e.y1).lineTo(e.x1 + Math.cos(a) * e.r, e.y1 + Math.sin(a) * e.r).stroke({ width: 2, color: colour, alpha: e.alpha }); }
+      }
+
+      for (const e of c?.effects ?? []) {   // spike ii: the rock chips, a tail and a hot head, over the beams and the rock outlines
+        if (e.kind !== 'chip') continue;
+        const colour = e.alpha > 0.5 ? e.colour : CRT.mid;
+        combat.moveTo(e.x1, e.y1).lineTo(e.x2, e.y2).stroke({ width: e.r, color: colour, alpha: e.alpha }).circle(e.x1, e.y1, e.r).fill({ color: colour, alpha: e.alpha });
       }
 
       // Duel polish i spec §A: the Hunter's charge, a faint full track under an arc from 12 o'clock clockwise; at a full

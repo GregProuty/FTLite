@@ -14,7 +14,7 @@ export type SitSeat = 'helm' | 'weapons';
 export interface SitCardView { seat: SitSeat; title: string; keys: readonly string[]; alpha: number; top: boolean; under?: boolean }
 export const SIT_CARDS: Readonly<Record<SitSeat, { title: string; keys: readonly string[] }>> = {
   helm: { title: 'HELM: POINT AT THE ENEMY', keys: ['A/D  TURN', 'W/S  THROTTLE', 'HOLD SPACE  AUTO-FACE'] },
-  weapons: { title: 'WEAPONS: CLICK A WEAPON, THEN A ROOM', keys: ['1  LASER', '2  TORPEDO', 'E/Q  NEXT ROOM'] }
+  weapons: { title: 'WEAPONS: CLICK A WEAPON, THEN A ROOM OR ROCK', keys: ['1  LASER', '2  TORPEDO', 'E/Q  NEXT ROOM'] }
 };
 
 const shown: Record<SitSeat, number> = { helm: 0, weapons: 0 };
