@@ -112,3 +112,69 @@ Confirmed by the y arithmetic. Changes:
 
 ---
 
+# Round 2 (delta, reviewing 2a892825, effort medium, 104 s, 699828 in / 654063 cached / 9256 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R2-F1 Knob 0's trigger tick can fall while the scripted Helm is still standing, so the helmPower is refused and never re-sent
+Knob 0 sends helmPower +1 only when `d.tactical.tick === d.baseTick + 1`. The scripted crew does not start a round seated. Its Helm walks to its console and sends `sit` when canSit holds. It also stands up to repair, then walks back and re-sits. If the Helm is not seated at baseTick + 1, the sim refuses that one command and the condition never comes true again, so knob 0 silently does nothing. The plan also hedges with 'match the existing "first seated tick" idiom in that function if one exists', but scripted.ts has no such idiom. · plan L2457 (the knob 0 text with `d.tactical.tick === d.baseTick + 1` and 'if one exists'); src/renderer/src/sim/duel/scripted.ts:L290-L311 (stand for repair, walk back, `cmds[pid]!.push({ kind: 'sit', station: own })`); scripted.ts:L315 (`if (seat === d.nav) {`, the only seated branch); grep of scripted.ts for baseTick/first seated: no match; tests/duelRuntime.test.ts:L59 ('createDuel now leaves both standing'). · The knob the plan says to try first may be a no-op, and the implementer has to guess the seated idiom. That is the kind of 'check at execution' the plan bans. · Drop the tick test and the 'if one exists' hedge. Inside the existing `if (seat === d.nav) {` branch of scriptedInput, push `{ kind: 'helmPower', delta: 1 }` whenever `d.compressor > 0`. This limits itself: once applied, compressor is 0. It also fires on the first seated tick of every round and after every re-sit.
+
+### [P3] R2-F2 The new power line 'ENGINE n  COMPRESS n  +r%/S' reaches past the 300 px panel once the rate has two digits
+With m5x7 advances at 16 px, 'ENGINE 3  COMPRESS 1  +5%/S' is 156 px wide. Drawn at rx = STATION.x + 140 = 152, it ends at x 308. The panel's right edge is at x 312. At compressor 3 the rate is 15, which the plan's own consoleModel test expects, and the text then ends at 314. A fractional COMPRESSOR_RATE/10 such as 12.5 would make it wider still. · plan L3539 (the merged power line); plan L3382 (`compressor: 3, rate: 15`); plan L3455 (`rate: COMPRESSOR_RATE[d.compressor]! / 10`); src/renderer/src/render/theme.ts:L31-L37 (advances: letters 6, M 8, space 5, % 6, / 4); src/renderer/src/render/duel/consoleLayout.ts:L10 (STATION x 12, w 300); src/renderer/src/ui/duel/HelmStation.tsx:L29 (rx = STATION.x + 140). · It overflows the panel's border by a few pixels at the owner's look gate. · Use single spaces ('ENGINE 3 COMPRESS 1 +15%/S', 151 px at a rate of 15), or abbreviate to 'COMP'. Also state that COMPRESSOR_RATE values are multiples of 10, so the rate is always an integer.
+
+## Prior findings
+- R1-F1: resolved — Task 4 now lists replay.ts:17 and gives the insert after `gunHeld: z.boolean().optional()` with a leading comma. That matches replay.ts:L17 exactly, and the object stays .strict(). It also adds a git grep check and the git add.
+- R1-F2: resolved — (c2) quotes onlineDuel.ts:L101 and L252 verbatim. takeSteer0 closes over the session-level MapRequests, and steerTaken is drained before any early return. Step 4(e) uses steerTaken.
+- R1-F3: resolved — (c) and (d) quote tests/duelSnapshot.test.ts:L109 and tests/crewOfFourWire.test.ts:L63 verbatim (both have `+ 4 + 2`). Both files are in Step 9's run and in git add.
+- R1-F4: still open — duelInputMerge and duelOnlineView are handled. duelOnlineView.test.ts:L190 matches the quoted text, and the file has no ShipClass import, which the 'add if missing' rule covers. But 2c says to add `cls: ShipClass.Valkyrn` to 'that createDuelRuntime({ … }) call'. In tests/duelRuntime.test.ts the only call is inside the shared `rig()` helper (L48-L58), and every test in the file uses it. Taken literally, the whole file flies the Valkyrn. Otherwise the implementer has to invent a parameter. Fix: give rig a trailing `cls?: number` passed through as `cls`, and in the L101 test and the five `it`s of the L610 describe call `rig(5, undefined, true, ShipClass.Valkyrn)`.
+- R1-F5: resolved — Task 2 Step 10 (L652) and the end of Task 8 (L2494) now run electron-vite build and the full suite. A new global rule at L20 has Tasks 5 and 7 re-run the K tests and check that each fails on the same assertion.
+- R1-F6: resolved — Knob 0 was added. A failed gate now becomes describe.skip with an owner-visible comment and a 'Gate NOT met:' commit note, and Tasks 9-13 continue. The knob's trigger condition has its own new P2 above.
+- R1-F7: resolved — The rate moved into the power line, AUTO-FACE is at y0 + 118, and the hints are at y0 + 150 and 170, matching the existing lowest row at HelmStation.tsx:L70. The local hint takes `readonly string[]` (plan L3509), so the array calls type-check, and the test at L3394 is updated. The new line's width is a separate P3.
+
+## Verified
+- replay.ts:L17's held object ends with `gunHeld: z.boolean().optional() }).strict()`, so the plan's insert lands inside the object.
+- onlineDuel.ts:L101 and L252 match the plan's quoted replace anchors exactly.
+- duelSnapshot.test.ts:L109 and crewOfFourWire.test.ts:L63 match the quoted anchors exactly.
+- runtime.ts:L170 has `cls?: number`, and L252 passes deps.cls to createDuel.
+- duelOnlineView.test.ts:L189-L190 match the quoted it name and its createSeatedDuel line.
+- duelRuntime.test.ts:L102 and L610 hold the throttle tests the plan names.
+- Plan L3509 defines a local hint over `readonly string[]`, so the array calls at L3543-L3544 type-check.
+- Sign of helmPower: an engine cell click sends -1, so delta is the engine's change, and +1 gives 4 + 0 as knob 0 says.
+
+## Not verified
+- Whether the sim's helmPower handler refuses a command from a standing Helm. I inferred it from the spec's seat rules and did not read the Task 5 code for it.
+- The value table of COMPRESSOR_RATE, beyond the plan's own test values 5 and 15.
+- I did not run tsc or any tests (read-only review).
+
+---
+
+# Round 2 response (plan revised)
+
+Reviewed `round-2.json` against the subject at `2a892825`. Verdict ready with P2s. 2 accepted, 0 rejected, 0 deferred, plus R1-F4 reopened and fixed again. The reviewer confirmed R1-F1 to R1-F3 and R1-F5 to R1-F7 as resolved.
+
+## R1-F4 [P2]: Task 5 Step 8's file list (reopened)
+
+Confirmed: `tests/duelRuntime.test.ts` L48-L58 has a single shared `rig()`. Step 8 2c now gives `rig` a trailing `cls?: number`, passed through to `createDuelRuntime`. Only the L101 test and the L610 describe's tests call `rig(5, undefined, true, ShipClass.Valkyrn)`.
+
+## R2-F1 [P2]: Knob 0's trigger tick can fall while the scripted Helm is standing
+
+Confirmed: scripted.ts has no baseTick idiom. The sit is sent at L290-L311, and L315 is the only seated branch. Knob 0 now pushes `helmPower +1` inside `if (seat === d.nav)` whenever `d.compressor > 0`. It limits itself, and it re-fires after a re-sit or a new round.
+
+## R2-F2 [P3]: The power line can pass the panel's right edge
+
+Confirmed by the advance arithmetic. The line is now `ENGINE n COMP n +r%/S`. Decision 16 states that `COMPRESSOR_RATE` values are multiples of 10, so the rate is an integer of at most 15. The UI test's expected text is updated.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-18-playtest2feedback.md
+
+<!-- end -->
+
+---
+
