@@ -935,7 +935,7 @@ Electron's online stack (service client, RTC, lease owner) now runs in the page,
 5. After the first deploy, put `https://<project>.vercel.app` into Cloudflare's `ALLOWED_ORIGINS` (spec §6), then run these live checks with `curl -I`. Use `-b ftlite_pass=<value>` for the cookie; copy the value from a browser sign-in (DevTools → Application → Cookies).
    - Without the cookie: `/`, `/assets/authorityWorker.js` and `/assets/paid/<a real file from public/assets/paid>` each answer `401` (the passcode page).
    - With the cookie: `/`, `/assets/authorityWorker.js` and the same paid file each answer `200` with `cache-control: private, no-cache`, and `/version.json` answers `200` with `cache-control: no-store`.
-   - If any check fails, roll the first deploy back at once: `npx vercel rollback`, or delete the deployment in the dashboard. Fix it before redeploying; never leave the paid art reachable without the cookie.
+   - If any check fails, take the deploy down at once, as Web-iii step 6 says (the first deploy is deleted with `npx vercel rm <url> --yes` or in the dashboard; `npx vercel rollback` applies only to later deploys). Fix it before redeploying; never leave the paid art reachable without the cookie.
    - If every page answers `503` "FTLite is not configured." although both vars are set, the vars are not reaching the middleware. Check that both are set for **Production**, then redeploy (env changes need a new deploy).
    Web-iii's `scripts/web/live-smoke.ts` runs the same cookie and header checks, without and with the cookie, before its two-browser duel, and fails the run if any of them fails.
 

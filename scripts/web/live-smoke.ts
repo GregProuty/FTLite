@@ -61,4 +61,7 @@ async function main(): Promise<void> {
   const d = report.duel!;
   console.log(`LIVE SMOKE PASS (${report.elapsedMs} ms; ${d.hostBrowser} host, ${d.guestBrowser} guest, relay on both sides, ${d.playedMs} ms played${d.endedEarly ? ', round ended early' : ''}; report ${reportPath})`);
 }
-void main();
+main().catch((error: unknown) => {
+  console.error(`LIVE SMOKE FAIL: ${message(error, [process.env.FTLITE_LIVE_PASSCODE ?? ''])}`);
+  process.exitCode = 1;
+});
