@@ -9,6 +9,7 @@ import { stepPew } from './pew';
 import { flightFor, flySlot } from './physics';
 import { hostilityStep, salvageStep, scanStep } from './science';
 import { resolveContacts } from './contacts';
+import { settleRocks } from './rockSettle';
 import { beginRockStep, beginRockTick, endRockStep } from './rocks';
 import { stepRocks } from './rockContacts';
 import { classOf, CREW_SLOT, missileOf, NO_AXES, Outcome, type TacticalState } from './state';
@@ -22,7 +23,7 @@ export function hunterSlot(state: TacticalState): number {
 
 /**
  * Order, fixed (Sci-1 spec §4.6): think (the hunter reads the state as it stands), weapon commands (every active ship, in slot order),
- * ships fly, missiles fly (W-3: a MANUAL one by its Weapons input), ship contacts, missile contacts, gun rounds (Valkyrn spec §7.2), pew rounds (W-1), weapon clocks, hostility, scan progress (the crew input's scanner), salvage, outcome, tick (asteroids-iii §3.3: inside the step context rails are read at tick + 1). The crew wins when every other
+ * ships fly, missiles fly (W-3: a MANUAL one by its Weapons input), ship contacts, missile contacts, gun rounds (Valkyrn spec §7.2), pew rounds (W-1), weapon clocks, hostility, scan progress (the crew input's scanner), salvage, settle rocks (asteroids-iii §3.4), outcome, tick (asteroids-iii §3.3: inside the step context rails are read at tick + 1). The crew wins when every other
  * active ship's hull is gone. Does nothing once the duel has ended.
  */
 export function stepDuel(state: TacticalState, crew: ShipInput, tuning?: FlightTuning): void {   // playtest2feedback §2: `tuning` overrides every slot; absent, flightFor
@@ -49,6 +50,7 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning?: FlightT
     hostilityStep(state, hunter);
     scanStep(state, crew.scanner);
     salvageStep(state);
+    settleRocks(state);   // asteroids-iii §3.4, §13.2: the rejoin pass, after every contact and weapon of the tick
     const down = (i: number): boolean => state.systems[i]!.hull <= 0;
     const crewDown = down(CREW_SLOT), others = state.ships.map((s, i) => i).filter((i) => i !== CREW_SLOT && state.ships[i]!.active);
     const enemyDown = others.length > 0 && others.every(down);
