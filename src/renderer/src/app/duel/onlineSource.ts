@@ -15,6 +15,8 @@ import { createInteriorCamera, resetInteriorCamera } from '../../render/duel/int
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import { seatOf } from './controls';
+import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
+import { createTorpedoFollow, trackManualTorpedo } from './torpedoCamera';
 import { NO_HELD_FLAGS, type HeldFlags, type KeySample, type PointerSample } from './input';
 import { createCameraInput, heldTurn, type DuelView } from './runtime';
 import type { HeldInput } from '../../net/contracts';
@@ -101,7 +103,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [];
   let latest: { bodies: PrevBody[]; missiles: (PrevBody | null)[]; crew: { x: number; y: number }[]; counters: Counters[] } | null = null;
   let events: ViewEvent[] = [], sentHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
-  let cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() };
+  let cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() }, torpFollow = createTorpedoFollow();
   let uiHeld: HeldFlags = NO_HELD_FLAGS, shownThrottle: number | null = null, refusals: Refusal[] = [];
   const cameraInput = createCameraInput(deps.now, deps.viewport), interiorCamera = createInteriorCamera();
   const gaps: number[] = [];
@@ -113,7 +115,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     const t = d.tactical, now = deps.now();
     if (d.round !== round) {   // the first publication or a new round: no interpolation across it, fresh cameras
       round = d.round; latest = null; lastTick = -1;
-      const s = t.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y), science: createCamera(s.x, s.y) }; cameraInput.reset(); resetInteriorCamera(interiorCamera);
+      const s = t.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y), science: createCamera(s.x, s.y) }; torpFollow = createTorpedoFollow(); cameraInput.reset(); resetInteriorCamera(interiorCamera);
     }
     if (latest) events.push(...gapEvents(latest.counters, latest.missiles, t));
     prev = latest ? latest.bodies : t.ships.map(body);
@@ -176,7 +178,8 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const d = client.state(); if (!d) return;
       frameAlpha = Math.max(0, Math.min(1, (deps.now() - receivedAt) * TICK_HZ / (1000 * gap)));
       const view = seatOf(d, seat), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : view === 'science' ? cameras.science : null;
-      if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer, view === 'helm'); else cameraInput.applyInterior(interiorCamera, keys, pointer); }
+      if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer, view === 'helm' || (view === 'weapons' && manualTorpedoFlying(d.tactical))); else cameraInput.applyInterior(interiorCamera, keys, pointer); }   // W-3: at Weapons the right button steers a MANUAL torpedo
+      trackManualTorpedo(cameras.weapons, torpFollow, manualTorpedoFlying(d.tactical));   // W-3 (pew pew spec §3): follow a MANUAL torpedo, then go back
       for (const c of [cameras.helm, cameras.weapons, cameras.science]) {
         if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');
         const target = c.follow === 'missile' ? interpolatedMissile(d.tactical, missilePrev, frameAlpha, 0) : followTarget(d.tactical, prev, frameAlpha, c.follow);

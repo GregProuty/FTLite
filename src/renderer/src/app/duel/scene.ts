@@ -5,6 +5,7 @@
 // the same screens.
 import { Container } from 'pixi.js';
 import { enemyHostile } from '../../sim/tactical/science';
+import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { Renderer } from '../../render/renderer';
 import { crtActive, crtScale } from '../../render/crt';
@@ -18,7 +19,7 @@ import { shipHud } from '../../render/duel/shipHudModel';
 import { READOUT_COLUMN } from '../../render/duel/interiorModel';
 import { createInteriorView, type InteriorView } from '../../render/duel/interiorView';
 import { readoutHelp, readoutRows } from '../../render/duel/readoutModel';
-import { createFx, fxDt, pushEvents, pushGunHits, pushKill, pushPewHits, recordTrails, resetFx, shakeOffset, stepFx, trackSolution, type ViewEvent } from '../../render/tactical/fxModel';
+import { createFx, fxDt, interpolatedMissile, pushEvents, pushGunHits, pushKill, pushPewHits, recordTrails, resetFx, shakeOffset, stepFx, trackSolution, type ViewEvent } from '../../render/tactical/fxModel';
 import { gunnerPresent, laserSituation, linedUp } from '../../render/duel/situationModel';
 import { countSit, createSitTracker, frameZoom, sitCard, trackSit, type SitSeat } from '../../render/duel/sitModel';
 import { shakeScale } from '../../render/shake';
@@ -223,6 +224,19 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         const dx = aim.x - s.x, dy = aim.y - s.y, onShip = Math.hypot(dx, dy) <= pickRadius(cam.zoom), h = onShip ? -1 : headingOf(dx, dy);
         if (aim.held && !onShip) preview = h;
         if (aim.press || aim.release) options.requests?.heading(h);
+      }
+      // W-3 (pew pew spec §3): at Weapons, while the crew's MANUAL torpedo flies, the right button steers it: a press, every
+      // frame of a drag and a release on the open map ask for the bearing from the torpedo's drawn marker to the pointer as
+      // the heading it holds (on the torpedo itself: clear). Not while a weapon is picked up, and not on the frame its right
+      // button cancels the pick-up: the targeting line's own listener has already dropped it, so the last frame's pick-up
+      // counts too (`lastAimed`, as the Flight seat below does).
+      if (aim && onMap && station === 'weapons' && view === 'weapons' && running && !overlay.layerPaused && manualTorpedoFlying(d.tactical) && lastAimed === null && (contact?.aimWeapon() ?? null) === null
+        && onWeaponsMap(aim, contact?.state() != null, readoutRows({ duel: d, mode: 'weapons', active: source.active(), console: onConsole }).length)) {
+        const m = interpolatedMissile(d.tactical, source.missilePrev, alpha, CREW_SLOT);
+        if (m) {
+          const s = worldToScreen(cam!, viewport, m.x, m.y), dx = aim.x - s.x, dy = aim.y - s.y;
+          options.requests?.torpHeading(Math.hypot(dx, dy) <= pickRadius(cam!.zoom) ? -1 : headingOf(dx, dy));
+        }
       }
       // Feel-ii §2.7: a ping (a middle click, or G at the pointer) on a console map: on the enemy when it is under the
       // pointer, else the map point. Single player shows it at once (one a second); online it goes out and comes back.

@@ -25,6 +25,8 @@ import { createFeelTracker, recordFeel, type FeelTracker } from '../../render/ta
 import { createInteriorCamera, interiorInput, refollowInteriorCamera, resetInteriorCamera, type InteriorCamera } from '../../render/duel/interiorCamera';
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
+import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
+import { createTorpedoFollow, trackManualTorpedo } from './torpedoCamera';
 import { consoleInReach, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
 import type { ContactRequests } from './contactController';
 import type { Refusal } from './scene';
@@ -272,14 +274,14 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   let activeHeld: HeldInput = NEUTRAL, sentHeld: readonly HeldInput[] = idleHeld(), sentAxes: Axes = NO_AXES;
   let menuAsked = false;
   let events: ViewEvent[] = [], results: DuelResult[] = [], counts = hitCounts(d), lastTickTime: number | null = null, frameAlpha = 1;
-  let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [], cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() };
+  let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [], cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() }, torpFollow = createTorpedoFollow();
   const interiorCamera = createInteriorCamera();
   const capture = (): void => {
     prev = d.tactical.ships.map(shipBody);
     missilePrev = d.tactical.ships.map((_, i) => missileBody(missileOf(d.tactical, i)));   // by owner, as interpolatedMissile reads it
     crewPrev = d.interior.crew.map((eid) => ({ x: Position.x[eid]!, y: Position.y[eid]! }));
   };
-  const freshCameras = (): void => { const s = d.tactical.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y), science: createCamera(s.x, s.y) }; };
+  const freshCameras = (): void => { const s = d.tactical.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y), science: createCamera(s.x, s.y) }; torpFollow = createTorpedoFollow(); };   // W-3: a new round's Weapons camera follows no torpedo yet
   capture(); freshCameras();
   const ended = (): boolean => d.tactical.outcome !== Outcome.Running;
   /** The player seated at station i who is present, or −1 (the sim's attendant rule). */
@@ -552,8 +554,9 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       pacer.pump();
       frameAlpha = alphaAt(deps.now(), lastTickTime);
       const shown = viewOf(), cam = shown === 'interior' ? null : cameras[viewCamera(shown)];
-      if (cam) cameraInput.apply(cam, k, pointer, shown === 'helm' || shown === 'flight');   // the Flight seat's right button is the torpedo, not a pan
+      if (cam) cameraInput.apply(cam, k, pointer, shown === 'helm' || shown === 'flight' || (shown === 'weapons' && manualTorpedoFlying(d.tactical)));   // the Flight seat's right button is the torpedo, not a pan; W-3: at Weapons, a MANUAL torpedo's held heading
       else cameraInput.applyInterior(interiorCamera, k, pointer);
+      trackManualTorpedo(cameras.weapons, torpFollow, manualTorpedoFlying(d.tactical));   // W-3 (pew pew spec §3): follow a MANUAL torpedo, then go back
       for (const c of [cameras.helm, cameras.weapons, cameras.science]) {
         if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');   // the followed missile ended
         // A followed missile is tracked at its interpolated (drawn) position, as the ship is (H-1 spec §6).
