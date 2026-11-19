@@ -31,7 +31,7 @@ and AUTO pew aims only at the enemy ship (§4.2).
 
 - **The Hound** gets everything here: the new loadout, the turrets, AUTO/MAN, the new keys and the mouse-flown torpedo.
 - **The Hunter** is unchanged: its laser (`HUNTER_LASER`), its pew (`HUNTER_PEW`, no turret), its torpedo and
-  `hunter.ts` keep their code paths. Its fights change only because the crew's weapons do.
+  `hunter.ts` keep their code paths (its `ShipInput` literal takes the new defaults, §8). Its fights change only because the crew's weapons do.
 - **The Valkyrn** (`VALKYRN_CLASS`) keeps its fixed-forward gun, its Flight seat and its flight, bit for bit
   (`tests/valkyrnIdentity.test.ts`, §13.4).
 - **The Valkyrn laser fit** (`VALKYRN_LASER_CLASS`, a developer fit) keeps the beam and W-2's manual laser. It is the
@@ -95,7 +95,11 @@ null.
   - **Rock digging.** The laser's rock target is gone. Autocannon rounds wear and break rocks instead (§5.1). Pew pew
     rounds still stop on rocks with no effect, as today. The torpedo's rock target and blast are unchanged.
 - **Telemetry:** `laserReleases` (`sim/duel/telemetry.ts` L26) reads 0 for the Hound. The gates read `pewShots` and
-  `gunShots` instead (§14).
+  `gunShots` instead (§14). Neither is in `ShipTelemetry` or `DuelRun` today, so `DuelRun` (`tests/helpers/scriptedDuel.ts`
+  L30) gains `pewShots`, `gunShots`, `holdEndTick` and `holdCause` (the final `tactical.hostileAt`, and the `hostile` event's
+  `cause`; −1 and `'none'` if the round never turned hostile), read from the final state and the run's events, as `ValkyrnRun` reads
+  `gunShots` (`tests/helpers/valkyrnGate.ts`). `ShipTelemetry` is unchanged. `scripts/duel-telemetry.ts` prints them per
+  seed for the report.
 
 ## 3. Turrets (sim, W-4b)
 
@@ -279,7 +283,9 @@ real number in the pool (`rocks.ts`, slot value 6), and the torpedo's blast alre
   3. the round ends, as today.
   - Push first, then damage, as the laser's `laserStrikesRock` (`rockWeapons.ts`). A piece born this tick is not in the
     way (`rockBorn`), so a later round this tick passes where a piece was just made, as today.
-  - The planet and a ship still win their ties as today: the rock branch runs only when the rock is the first contact.
+  - Ties stay as today (`stepRounds`: ship, then rocks by ascending slot, then the planet, each needing a strictly
+    smaller entry): a ship wins its ties over a rock, and on an exact rock–planet tie the rock is the contact (and is
+    worn). The rock branch runs only when a rock is the first contact.
 - **The numbers** (`rockTuning.ts`, beside `LASER_ROCK_DAMAGE`):
   - `AUTOCANNON_ROUNDS_PER_ROCK_HP = 4`: one round wears 1 / 4 = 0.25 hp. A quarter is exact in binary, so the wear
     stays exact and needs no rounding.
@@ -411,7 +417,9 @@ L256):
 **`ShipInput`** (`weapons.ts` L19):
 - new `turretAim` (−1 none), `weaponSel` (−1 none) and `pewTrigger` (false);
 - `torpTurn` removed;
-- `IDLE_INPUT` and `UNCREWED_INPUT` (L56, L58) take the defaults, so the Hunter's inputs are as today.
+- `IDLE_INPUT` and `UNCREWED_INPUT` (L56, L58) take the defaults, and so does the Hunter's own `ShipInput` literal
+  (`hunter.ts` L143: drop `torpTurn`, add `turretAim: -1, weaponSel: -1, pewTrigger: false`), so the Hunter's inputs are
+  as today. That literal is the only `hunter.ts` edit.
 
 **The step** (`step.ts` L301-L304) fills them from the Weapons attendant's held frame:
 - `turretAim` and `weaponSel` as sent;
@@ -460,10 +468,22 @@ Weapons seat (the seat is `weapons` and the class has a turret). The Valkyrn's F
 - **1 / 2 against the FTL pick-up.** `contactController.ts` L140 intercepts `WEAPON_CODES` as pick-ups. At the Hound's
   Weapons seat it no longer takes the digits: they select. A card click still picks the torpedo up for a room click,
   and selects it too. The laser fit's 1 / 2 are unchanged.
-- **3 against frequency A.** `FREQ_CODES` (`input.ts` L21, Digit3 / 4 / 5) is read only on a class with a laser. On the
-  Hound, 3 selects, and a new `GUN_FREQ_CODES = { Digit4: 0, Digit5: 1, Digit6: 2 }` tunes A / B / C at the Weapons
-  seat. Both feed the same `freqTo` (`input.ts` L146), so the local runtime (L452, L522) and online (`onlineDuel.ts`
-  L303) send `laserFrequency` as today. `pageGuards.ts` `GUARDED_CODES` adds Digit6. Digit6 has no other binding.
+- **3 against frequency A.** The keyboard does not know the class, and today every Digit3 / 4 / 5 keydown sets `freqTo`
+  (`input.ts` L146). So the digits travel as separate `KeySample` fields, and the runtime picks by class:
+  - `freqKeyTo?: number`: from `FREQ_CODES` (Digit3 / 4 / 5 → 0 / 1 / 2), as today's key path. Read only on a class
+    with a laser (the laser fit's Weapons seat and Flight seat).
+  - `gunFreqKeyTo?: number`: from a new `GUN_FREQ_CODES = { Digit4: 0, Digit5: 1, Digit6: 2 }`. Read only at the
+    Hound's Weapons seat.
+  - `selectTo?: number`: from a new `WEAPON_SELECT_CODES` (Digit1..3, Numpad1..3 → 0..2). Read only at the Hound's
+    Weapons seat.
+  - `freqTo` is now written only by the console's frequency buttons (`ConsoleInput.frequency`), and is read on both.
+  - Each is the last such keydown since the previous sample (no repeats), as `freqTo` is today, and `clear` / `clearUi`
+    drop them as they drop `freqTo`.
+  - The local runtime (the Weapons branch near L521, the Flight branch near L452) and online (`onlineDuel.ts` near L303)
+    send `laserFrequency` from `freqKeyTo ?? freqTo` on a laser class, and from `gunFreqKeyTo ?? freqTo` on the Hound.
+    So 3 on the Hound selects the torpedo and sends no `laserFrequency`, and 4 tunes A.
+  - `pageGuards.ts` `GUARDED_CODES` adds `GUN_FREQ_CODES` and `WEAPON_SELECT_CODES`. Digit6 and Numpad1-3 have no other
+    binding.
 - **W / S against the throttle notches.** `PRESS_CODES` L17 binds W/S to `throttleUp` / `throttleDown`. The runtime
   sends a throttle only from the Helm and Flight seats, so at Weapons the same press edges become `weaponPower`. No new
   key code.
@@ -478,7 +498,8 @@ Weapons seat (the seat is `weapons` and the class has a turret). The Valkyrn's F
   enemy window is unchanged.
 
 **Selection** is client state: the pew at a sit, kept through a torpedo flight (§7), and sent every frame as
-`weaponSel`. The local runtime (`runtime.ts` `play`, L403) and online (`onlineDuel.ts` `play`, L233) both keep it.
+`weaponSel`. The local runtime (`runtime.ts` `play`, L403) and online (`onlineDuel.ts` `play`, L233) both keep it, and
+set it from `KeySample.selectTo`, the A / D press edges and a card click.
 `app/duel/input.ts` gains `WEAPON_SELECT_CODES` (Digit1..3, Numpad1..3) beside `WEAPON_CODES`.
 
 **Refusals** (the Feel-ii path, `refuse` in `runtime.ts` / `source.refuse` online):
@@ -542,10 +563,18 @@ Weapons seat (the seat is `weapons` and the class has a turret). The Valkyrn's F
   `weaponSel`, `gunHeld`, and `torpHeading` while steering. The held change test (L74) adds them, and drops `torpTurn`.
 - **Client prediction:**
   - **The reticle** is local and drawn at once.
-  - **The own seat's selected turret** is predicted as the crew Helm's throttle is (playtest2feedback Decision 14). The
-    client runs `slewTurret` from the replica's turret over the held frames it has sent and the replica hasn't shown,
-    at most the same cap, at the mode's traverse. Its muzzle line draws from that, so the turret answers the mouse
-    with no round-trip lag.
+  - **The own seat's selected turret** is predicted as the crew Helm's throttle is (playtest2feedback Decision 14,
+    `onlineSource.ts` `thrMille`: the replica's value plus the latest sent held frame applied `unackedFrames` times):
+    - `predicted = slewTurret` applied `k` times, starting from the replica's turret of the selected gun, with the
+      replica's heading (held fixed: the Helm's heading is not predicted), the latest sent `turretAim`, the gun's MAN
+      traverse and its `arcSteps`. `k` is `unackedFrames` (capped at `UNACKED_MAX`, as the throttle's).
+    - `k` is 0, so the replica's turret is drawn, unless all of these hold: the mode is MAN (`gunModeSent?.manual`, else
+      the replica's `gunsManual`); the sent `weaponSel` is a gun (0 or 1) with bars ≥ 1; the seat is the Hound's Weapons
+      seat; the latest sent `turretAim` is ≥ 0; and (from W-4c) no MANUAL torpedo flies.
+    - The unacknowledged count is in held frames, not ticks, so the prediction may run ahead of the authority by a few
+      ticks of slew. That is accepted, as for the throttle: the next replica corrects it, and only the drawn muzzle
+      line uses it. Rounds always come from the replica.
+    - Its muzzle line draws from it, so the turret answers the mouse with no round-trip lag.
   - **Everything else** draws from the replica: the other gun's line, AUTO's turrets, every round.
   - `onlineSource.ts` gains `turret()`, as `thrMille()`.
 - **The mode toggle** follows W-2's pattern: send once, judge from the latest queued (`laserModeSent` becomes
@@ -561,7 +590,10 @@ The goal is bots that use pew pew and the autocannon. The crew bots lose all ten
   - The start uses 9 of 10 bars, and ship commands are admitted before `weaponPower` in the same tick (`step.ts`
     L417-L440). So pew 1, autocannon 1, torpedo 1.
   - It replaces Decision 20's move (pew −1, beam +1) on this class. `barMoved` still makes it once a round.
-  - If the shipPower is refused (no spare bar), it moves nothing.
+  - The gunner can't see a refusal before `weaponPower` is judged in the same tick, so it checks first and sends
+    nothing unless all hold: `!barMoved`, `sparesOf(d) ≥ 1`, `capacityOf(d, DuelSystem.Weapons) > ` the Weapons bars
+    (`power.ts`, the rules `applyPower` applies), and `weaponBars(sys, WeaponSlot.Autocannon) === 0`. `barMoved` is set
+    on the first seated tick either way. So every command it sends is admitted.
 - **The guns stay AUTO.** The gunner sends no `pewFire` and no held aim. AUTO's lead (§4.2) aims at the ship as
   `gunnerPew` did. `gunnerPew` and the `laserLock` line no longer run on this class.
   - **No deliberate point defence** (§4.2, owner 2026-11-19). `gunnerPew` shot an inbound torpedo first; the Hound's
@@ -581,11 +613,16 @@ The goal is bots that use pew pew and the autocannon. The crew bots lose all ten
   the pew → beam move, `laserLock` and `gunnerPew`. So `tests/valkyrnIdentity.test.ts` keeps its digests.
 - **The gates** (§14): the per-seed gates must pass. The aggregate band (3 to 5 minutes, the crew both wins and loses)
   stays `it.skip` as at SIM 59 (kind c). Its numbers go in the plan's report.
-- **The tuning ladder,** in order, until the crew wins at least one seed:
-  1. `AUTOCANNON`'s `hitsPerHull`;
-  2. `AUTOCANNON_AUTO_RANGE`;
-  3. `MISSILE_GAP`;
-  4. the gunner's Weapons bar choice.
+- **The tuning ladder** runs once, at the end of W-4b (§19.1). Its target is at least one crew win over the ten gate
+  seeds with every per-seed gate passing. Each rung is tried in order, value by value, with the earlier rungs held at
+  their base values; the first setting that meets the target is kept and the ladder stops:
+  1. `AUTOCANNON`'s `hitsPerHull`: 12 (base), 10, 8, 6;
+  2. `AUTOCANNON_AUTO_RANGE`: 600 (base), 450;
+  3. `MISSILE_GAP`: the base, then −25 % and −50 % (rounded to whole ticks);
+  4. the gunner's bar move: autocannon +1 (base), then also pew −1 and autocannon +1 more (0 / 2 / 1), each command admitted
+     by the same pre-check.
+  - If no setting meets the target, the base numbers ship, and the report records the whole sweep (each setting's wins
+    and per-seed results). The owner then decides.
   - Never the Hunter's or the Valkyrn's knobs.
 
 ## 13. State, hash, snapshots, determinism
@@ -623,13 +660,16 @@ The repo's pattern, as the playtest2feedback merge did it (58e61a6d's parents):
    tick (`scripts/golden/blessGuard` refuses otherwise).
 4. Re-pick the duel app smoke's forced-round-end seed if its round no longer ends inside the window (as b7c0919e).
 
-W-4a, b and c are built on one branch and merge once at SIM 60 (§19).
+W-4a, b and c are built on one branch and merge once at SIM 60 (§19). Steps 1, 2 and 4 also run at the end of each part that moves a whole run, and step 3 runs once, at the end of W-4c (§19.1).
 
 ### 13.4 What stays bit-identical
 
 - **The Valkyrn:** `tests/valkyrnIdentity.test.ts`'s five digests do not change.
-  - Its digest hashes `flattenTactical`, which now also holds the three new fields. They are always 0 / false on the
-    Valkyrn, so the test leaves them out by name, as it already leaves out `thrMille`.
+  - Its digest hashes `flattenTactical` (`tests/valkyrnIdentity.test.ts` L29), which now also holds the three new
+    fields. They are always 0 / false on the Valkyrn, so the test leaves them out by name: it builds the hashed array
+    from `TACTICAL_MODULES`' fields in their order, skipping `systems.*.pewTurret`, `systems.*.gunTurret` and
+    `systems.*.gunsManual`, so the array equals SIM 59's `flattenTactical` element for element. (No field is left out
+    today; this is new.)
   - A new assertion in the same runs checks they stay 0 / false.
   - The Valkyrn's gun takes the `turret === null` branch everywhere, and its interval is `GUN.intervalTicks`.
   - Its rounds take the `rock === null` branch (absorbed, §5.1), and its layer threshold stays `hitsPerLayer` because
@@ -639,8 +679,16 @@ W-4a, b and c are built on one branch and merge once at SIM 60 (§19).
   `tests/pewHunter.test.ts`, `tests/torpedoGuidance.test.ts` and the Hunter's unit tests pass unchanged.
   - New `tests/w4HunterIdentity.test.ts`: `hunterThink`'s outputs over a fixed scripted crew trajectory (state written
     directly, no crew weapons) match a digest recorded at SIM 59 on master.
-- **The laser fit:** W-2's `tests/manualLaser*.test.ts`, run on `VALKYRN_LASER_CLASS`, pass. Its AUTO beam still fires
-  during the hold, and its laser keeps Sci-1's frequency rule.
+- **The laser fit:** its rules are unchanged. Its AUTO beam still fires during the hold, and its laser keeps Sci-1's
+  frequency rule.
+  - Today W-2's `tests/manualLaser*.test.ts` build the Cutter (`createTacticalState(5)` with the default classes,
+    `parseShip(cutter)`, `createSeatedDuel`), not the laser fit. W-4 ports them to `VALKYRN_LASER_CLASS` by its class
+    argument (§14.1), and they must then pass with their assertions unchanged except the class.
+  - **The laser class's Weapons-seat path is kept.** The laser fit ships only on the Valkyrn layout's Flight seat
+    (`main.ts` L132), but the runtime's and online's Weapons-seat laser branch (`laserMode`, `laserFire`, `laserCharge`,
+    E / Q laser lock, 3 / 4 / 5) stays, reached on a class with a laser at a Weapons seat: the Hound layout with
+    `cls = ShipClass.ValkyrnLaser` (`createDuel`'s and the runtime deps' `cls`). This developer combination is what W-2's
+    app tests run on.
 
 ## 14. Tests
 
@@ -666,7 +714,7 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
   - a rock of r 15 (2 hp) breaks on the 8th round, in the fan pattern along the round, and the owner's `rocksBroken`
     rises by 1;
   - a piece born this tick is not hit by a later round in the same tick;
-  - the planet and a ship keep their ties over a rock;
+  - a ship wins an exact tie over a rock (no wear), and a rock wins an exact tie over the planet (worn);
   - pew pew rounds still stop on a rock with no wear, push or event;
   - the Valkyrn's rounds are still absorbed (`tests/valkyrnRoundsRocks.test.ts`, unchanged);
   - a MAN round at a rock during the hold ends the hold with cause `gun`;
@@ -678,8 +726,9 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
   - the autocannon strips a layer at the 4th hit on the weak frequency and the 8th off it; changing `freq` mid-wear uses
     the new threshold;
   - the Hunter's pew and the Valkyrn's gun keep 1 layer and 8 hits with `freq === weakFreq` forced on their slots;
-  - 4 / 5 / 6 at the Hound's Weapons seat send `laserFrequency` 0 / 1 / 2; 3 selects the torpedo; the row's buttons send
-    it too and the weak mark shows after a Level 2 scan.
+  - 4 / 5 / 6 at the Hound's Weapons seat send `laserFrequency` 0 / 1 / 2; 3 selects the torpedo and queues no
+    `laserFrequency`; on the laser fit 3 / 4 / 5 still send 0 / 1 / 2; the row's buttons send it on both, and the weak
+    mark shows after a Level 2 scan.
 - **Turret** (`w4Turret.test.ts`):
   - `slewTurret` moves at most the rate, never past the wanted offset, and clamps to the arc;
   - the wrap across 0 / 65535;
@@ -735,18 +784,52 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
   - the controls list rows come from the tables.
 - **Online** (`w4Online.test.ts`):
   - `sessionHeld` carries the new fields at the Hound's Weapons seat only;
-  - the predicted turret matches the stepped turret once the replica catches up;
+  - with `unackedFrames = k` (k = 0, 1, 5, 30), a fixed heading and the same held frame, the predicted turret equals the
+    authority's turret after `k` stepped ticks from the same start;
+  - `k` is treated as 0 in AUTO, at 0 bars, with the torpedo selected and with no reticle;
+  - a `gunMode` in flight (`gunModeSent`) sets the traverse before the replica shows the new mode;
   - NO CHARGE comes from the authority's `unavailable`.
 - **Scripted and gates:**
   - the gunner's first tick sends `shipPower` then `weaponPower` and ends at 1 / 1 / 1;
   - on the Hound the gunner sends no `pewFire`, no `gunMode` and no laser command; its AUTO guns fire nothing before the
     `hostile` event, and the hold ends by its torpedo launch or the clock;
   - the Valkyrn pair's commands are unchanged;
+  - **kind (a):** `tests/duelScripted.test.ts`'s whole-duel "every command admitted" test keeps its every-applied check,
+    and its pinned kinds list becomes the Hound's: `shipPower` in, `laserLock` out (W-4a also has `pewFire` from the
+    stand-in, §19.1; W-4b removes it). The seed may be re-picked (kind b) so the run still uses every kind;
   - **kind (a):** `tests/duelGates.test.ts`'s per-seed "the crew uses both weapons" becomes
     `pewShots + gunShots ≥ 1` and `missilesLaunched ≥ 1` (was `laserReleases ≥ 1`), and the same in
     `tests/duelScripted.test.ts`;
   - the aggregate gate stays skipped (kind c), its numbers reported with each seed's hold-end tick and cause (§12).
 - **Identity:** §13.4's three.
+
+### 14.1 Existing tests that assume the Hound's beam
+
+About 60 test files send a laser command, read `laserReleases` or `WeaponSlot.Beam`, or call `todaysCrewWeapons`, and
+most build the Cutter by default. Each is handled by one of these rules, and W-4a's plan lists every file with its rule
+(from `grep -rln "laserLock\|laserFire\|laserCharge\|laserMode\|laserReleases\|WeaponSlot.Beam\|todaysCrewWeapons" tests/`,
+then each file read to confirm the beam is the crew's, not the Hunter's):
+- **Port (the beam's own rules):** a test of the crew beam's rules (charge, bursts, locks, MANUAL laser, rock digging,
+  the frequency strip, laser commands' admission) builds the laser fit instead: `createTacticalState(seed, slots,
+  ShipClass.ValkyrnLaser)`, `createDuel(layout, seed, helm, crew, ShipClass.ValkyrnLaser)` or the runtime deps' `cls`.
+  Its assertions stay. Where a number moves only because the laser fit flies `FIGHTER` or has another hull, that number
+  is re-pinned (kind b) with the reason in a comment.
+- **Kind (a), replaced rule:** a test that pins the Hound fighting with a beam is rewritten for the Hound's new weapons or
+  deleted, naming W-4 in the commit:
+  - the FTL opener's goal glow and the BEAM card on the Hound's Weapons station;
+  - `tests/duelScripted.test.ts`'s `gunnerPew` tests ("defence first", the spacing test): no class keeps that rule (§12);
+  - the scripted whole-duel kinds list (§12);
+  - the per-seed "uses both weapons" gate (§14).
+- **The helper:** `tests/helpers/crewWeapons.ts` `todaysCrewWeapons` keeps its meaning for the laser fit (beam 2 bars).
+  A test that calls it on the Hound is ported (above). A sibling `houndWeapons(st, [pew, autocannon, torpedo])` sets the
+  Hound's bars for the new tests.
+- **Kind (b), whole-run pins:** the trajectory-pinned tests (`duelCheckpoint`, `duelSnapshot`, `duelModules`'s
+  `played(…)`, `tacticalSlots`, `duelScripted`, `duelGates`) and the goldens are re-picked or re-blessed (§13.3).
+- **Unchanged:** a test whose laser under test is the Hunter's, or that only checks a laser command is `unavailable` on a
+  no-laser class, stays as it is.
+
+### 14.2 Final checks
+
 - **Final checks:** `npm run typecheck`, `npm test`, `npm run test:determinism` and `npm run build`.
 
 ## 15. What changes for whom
@@ -862,8 +945,8 @@ the W-2 and W-3 entries (an Automated box and a Manual box with screenshots).
 1. **W-4a: loadout, autocannon and power keys.**
    - What it builds: §2, §5 with its rocks (§5.1) and the weak frequency (§5.2, keys 4 / 5 / 6 and the row), §6's
      `pewFire` without the aim (the pew turret stays at 0, so it fires along the nose), W/S, A/D and 1 / 2 / 3
-     selection with the highlight, LMB fire by selection (the autocannon held), and the scripted gunner (§12). AUTO
-     and its hold arrive in W-4b, so the gunner's guns fire from W-4b, and the gates (§14) are judged at the merge.
+     selection with the highlight, LMB fire by selection (the autocannon held), and the scripted gunner's bar move
+     (§12) with the W-4a stand-in pew rule (§19.1). AUTO and its hold arrive in W-4b.
    - Gate entry: "W-4a: the Hound's guns". The cards in slot order with the selected one lit; W/S moving bars; holding LMB
      with the autocannon selected (heat rising, OVERHEAT); 1 / 2 / 3 and A/D; the autocannon chipping and breaking a
      rock; after a Level 2 scan, tuning to the weak frequency and pew pew taking 2 layers.
@@ -882,3 +965,30 @@ the W-2 and W-3 entries (an Automated box and a Manual box with screenshots).
      and it holds; AUTO guns keep firing while MAN guns go quiet; when it ends, LMB is the selected gun again.
    - Screenshots: a MANUAL torpedo under LMB steer, with the STEER LMB card.
    - Does it feel like the Helm's steer?
+
+### 19.1 What each part leaves on the branch
+
+Each part must build, typecheck and pass the full suite on its own, in order. The rules below say what holds between
+parts.
+
+- **The goldens at each part's end.** Any part that moves a whole run re-blesses `tests/golden/duel-1.json`,
+  `duel-rematch.json` and the determinism fixture at SIM 59 (a same-version bless, as 54d5825d did), as its last task.
+  The kind (b) re-picks (§14.1) go in the same task. The SIM 59 → 60 bump (§13.3 step 3) runs once, at the end of W-4c.
+- **The per-seed gates at each part's end.** `tests/duelGates.test.ts`'s and `tests/duelScripted.test.ts`'s per-seed
+  gates (with W-4a's kind (a) change to "uses both weapons", §14) must pass at the end of every part. None is skipped
+  between parts. The aggregate stays `it.skip`. The tuning ladder (§12) runs only at the end of W-4b, once AUTO exists.
+- **W-4a (no mode yet).** `gunsManual`, `pewTurret` and `gunTurret` are W-4b's state, so in W-4a:
+  - `AUTOCANNON` and `HOUND_PEW` carry their full defs (both interval rows, both turrets), but the sim reads only row 0
+    (`AUTOCANNON_INTERVAL_BY_BARS`) and fires along the nose (`fireRound`'s turret aim is the heading).
+  - `pewFire {}` is admitted as MAN will admit it: stale-tick, `not-at-weapons`, `unavailable` without a pew, the noop,
+    then `pewReady`. There is no AUTO refusal yet. The round flies along the nose. `pewGain` reads `PEW_TICKS_BY_BARS`.
+  - LMB held with the autocannon selected sends `gunHeld`, and the autocannon fires at row 0's interval.
+  - **The scripted gunner** makes §12's bar move. It has no AUTO guns yet, so it keeps a stand-in pew rule:
+    `gunnerPew`'s ship branch (seen, within `PEW_RANGE`, inside the nose's ±60° cone, `pewReady`, `SCRIPTED_PEW_GAP`)
+    sends `pewFire {}`, and the round flies along the nose. It has no torpedo-first branch. W-4b deletes the stand-in.
+  - A MANUAL torpedo still flies by W-3's rules: while it flies, A / D steer it (W-3) and do not select, and the right
+    button gives it a heading. W-4c changes both (§7).
+- **W-4b.** It adds the state, the turrets, the mode, AUTO and MAN, and the online prediction. The flight rules of §7
+  ("The guns while it flies") are W-4c's: in W-4b a MANUAL torpedo in flight does not stop the guns, and A / D still
+  steer it.
+- **W-4c.** It adds §7, including `pewFire`'s `missile-in-flight` refusal, and then the SIM bump.
