@@ -20,8 +20,12 @@ Ryan's "laser" is pew pew. "Missile" is the torpedo (`Missile` in code). "The Ho
 class (`CUTTER_CLASS`, `defs.ts` L122, the one `newtonianHelm` class).
 
 Starting point: master 58e61a6d, SIM_VERSION 59. Paths are under `src/renderer/src/` unless they start with `tests/`,
-`docs/` or `scripts/`. Every number is a starting value, kept in `sim/tactical/tuning.ts` or `sim/tactical/bars.ts` and
-tuned in playtest.
+`docs/` or `scripts/`. Every number is a starting value, kept in `sim/tactical/tuning.ts`, `sim/tactical/bars.ts` or (the
+rock numbers) `sim/tactical/rockTuning.ts`, and tuned in playtest.
+
+The owner answered three of §17's calls on 2026-11-19, and this spec carries the answers: the autocannon breaks rocks
+(§5.1), Science's weak frequency boosts pew pew and the autocannon (§5.2), AUTO holds fire during the 30 s hold (§4.3),
+and AUTO pew aims only at the enemy ship (§4.2).
 
 ## 1. Scope and which ships
 
@@ -38,20 +42,25 @@ tuned in playtest.
 
 | Slot (`WeaponSlot`) | Weapon | Bars (1 / 2 / 3 / overdrive 4th) | Arc | Damage |
 |---|---|---|---|---|
-| 0 `Pew` | **Pew pew** (W-1), a main weapon | ticks per third 60 / 45 / 30 / 24 (`PEW_TICKS_BY_BARS`, as now) | ±60° turret | as W-1: a layer, else 1 hull; never a room |
-| 1 `Autocannon` | **The autocannon**: the Valkyrn's gun (`gun.ts`) moved onto the Hound | fire interval 10 / 8 / 6 / 5 ticks | ±30° turret (new) | as the Valkyrn's gun: 8 hits a layer, 12 a hull point, 6 a room level |
+| 0 `Pew` | **Pew pew** (W-1), a main weapon | ticks per third 60 / 45 / 30 / 24 (`PEW_TICKS_BY_BARS`, as now) | ±60° turret | as W-1: a layer (2 on the weak frequency, §5.2), else 1 hull; never a room; stops on rocks |
+| 1 `Autocannon` | **The autocannon**: the Valkyrn's gun (`gun.ts`) moved onto the Hound | fire interval 10 / 8 / 6 / 5 ticks | ±30° turret (new) | as the Valkyrn's gun: 8 hits a layer (4 on the weak frequency, §5.2), 12 a hull point, 6 a room level; 4 rounds a rock hp (§5.1) |
 | 2 `Torpedo` | **The torpedo**, a main weapon | reload 4 / 6 / 8 / 10 (`TORPEDO_RELOAD_BY_BARS`, as now); 3 bars hit for 2 levels | launch forward, as now | as now |
 
 - **Start power** stays `START_WEAPON_POWER = [1, 0, 1]` (`bars.ts` L70): pew 1, autocannon 0, torpedo 1. The trim order
   (torpedo, then slot 1, then pew, `trimmedWeaponPower` L76) and the 9-bar budget are unchanged.
 - **`defs.ts`:**
-  - `GunDef` gains `turret: TurretDef | null` and `intervalByBars: readonly (readonly number[])[] | null` (indexed
-    `[manual ? 1 : 0][bars]`). `PewDef` gains `turret: TurretDef | null`.
+  - `GunDef` gains `turret: TurretDef | null`, `intervalByBars: readonly (readonly number[])[] | null` (indexed
+    `[manual ? 1 : 0][bars]`), `rock: GunRockDef | null` (§5.1) and `weakHitsPerLayer: number | null` (§5.2).
+    `PewDef` gains `turret: TurretDef | null`.
   - `TurretDef = { arcSteps: number; traverse: readonly [number, number] }`: the arc in fine heading steps
     (`AIM_STEPS` 65536 to the turn) and the traverse per tick for AUTO and for MAN.
-  - `GUN` (the Valkyrn's) gets `turret: null, intervalByBars: null`. `PEW` and `HUNTER_PEW` get `turret: null`.
+  - `GunRockDef = { roundsPerHp: number; pushPerRound: number }` (§5.1).
+  - `GUN` (the Valkyrn's) gets `turret: null, intervalByBars: null, rock: null, weakHitsPerLayer: null`. `PEW` and
+    `HUNTER_PEW` get `turret: null`.
   - New `AUTOCANNON: GunDef = { ...GUN, turret: AUTOCANNON_TURRET, intervalByBars: [AUTOCANNON_INTERVAL_BY_BARS,
-    AUTOCANNON_MAN_INTERVAL_BY_BARS] }` and `HOUND_PEW: PewDef = { ...PEW, turret: PEW_TURRET }`.
+    AUTOCANNON_MAN_INTERVAL_BY_BARS], rock: { roundsPerHp: AUTOCANNON_ROUNDS_PER_ROCK_HP, pushPerRound:
+    AUTOCANNON_ROCK_PUSH }, weakHitsPerLayer: AUTOCANNON_WEAK_HITS_PER_LAYER }` and
+    `HOUND_PEW: PewDef = { ...PEW, turret: PEW_TURRET }`.
   - `CUTTER_CLASS` becomes `shipClass('cutter', 'crew', SHIP_HULL, null, AUTOCANNON, STANDARD, HOUND_PEW)` with
     `newtonianHelm: true`. **Its laser slot is null.** Class indices do not move.
 - **`bars.ts`:** `WeaponSlot` becomes `{ Pew: 0, Autocannon: 1, Torpedo: 2 }`, with `Beam: 1` kept as an alias that
@@ -71,17 +80,20 @@ null.
 - **Sim state:** `laserCharge` stays 0 and `laserTargeted` false (`systemsFor`, `state.ts`), and `laserManual` stays
   false. `lock` stays `Room.Shields`: an AUTO torpedo still strikes `torpRoom`, which `launchMissile` sets from
   `torpLock` (`missiles.ts`), else `lock`.
-- **Commands:** `laserLock`, `laserCharge`, `laserMode`, `laserFire`, `laserFrequency` and `rockLock {weapon: 'laser'}`
-  are answered `unavailable` by today's no-laser rules (`step.ts` L313, L387). The app no longer sends them from the
-  Hound (§9).
+- **Commands:** `laserLock`, `laserCharge`, `laserMode`, `laserFire` and `rockLock {weapon: 'laser'}` are answered
+  `unavailable` by today's no-laser rules (`step.ts` L313). The app no longer sends them from the Hound (§9).
+  `laserFrequency` is the exception: it now tunes the Hound's guns (§5.2), so its admission (`step.ts` L387) answers
+  `unavailable` only on a class with neither a laser nor a turret gun.
 - **Engineering's beam tables** (`BEAM_SHOTS_BY_BARS`, `BEAM_RATE_BY_BARS`) stay, read only by the laser fit.
   `laserOffline` for the crew (`beamShots === 0`) is always true on the Hound. It gates only the laser.
 - **UI:** the BEAM card, its FIRE (Space) button, the FTL opener's goal glow, the `x2` burst mark and the W-2 dashed aim
-  line go from the Hound's Weapons station (§10). The contact window no longer offers a laser pick-up on the Hound.
-- **Two things the Hound loses** (owner check, §17):
-  - **Science's weak shield frequency** (Sci-1 Level 2) affects only the laser, so it has no effect on the Hound.
-  - **Rock digging.** The laser's rock target is gone. Pew and autocannon rounds stop on rocks with no effect, as today.
-    Only the torpedo's rock target breaks rocks.
+  line go from the Hound's Weapons station (§10). The contact window no longer offers a laser pick-up on the Hound. The
+  frequency row stays (§10).
+- **Two beam jobs move to the guns** (owner 2026-11-19, §17 item 1):
+  - **Science's weak shield frequency** (Sci-1 Level 2) now boosts pew pew and the autocannon against shields (§5.2),
+    so Science still matters on the Hound.
+  - **Rock digging.** The laser's rock target is gone. Autocannon rounds wear and break rocks instead (§5.1). Pew pew
+    rounds still stop on rocks with no effect, as today. The torpedo's rock target and blast are unchanged.
 - **Telemetry:** `laserReleases` (`sim/duel/telemetry.ts` L26) reads 0 for the Hound. The gates read `pewShots` and
   `gunShots` instead (§14).
 
@@ -133,7 +145,7 @@ All of these hold only while the Weapons console is attended (`input.weapons`), 
   other gun holds its angle. If there's no reticle, or the torpedo is selected, nothing slews.
 - **While the crew's MANUAL torpedo flies** (`manualTorpedoFlying`), MAN guns hold. The reticle is ignored.
 - **AUTO:** each powered AUTO gun slews toward its own solution (§4.2) at its AUTO traverse. With no solution it slews
-  back to 0, the nose.
+  back to 0, the nose. It slews during the 30 s hold too; only its firing waits (§4.3).
 - **Unattended:** both turrets hold.
 
 The slew runs in `applyWeaponsInput` (`weapons.ts` L297) right after `stepBurst`, before `tickGun` (L313) and before
@@ -164,10 +176,10 @@ The slew runs in `applyWeaponsInput` (`weapons.ts` L297) right after `stepBurst`
   `AUTOCANNON_AUTO_RANGE` 600 (a round reaches about 607 u at rest);
 - the line from the muzzle to it is clear (`geometry.ts` `lineOfSight`: planet and rocks), since rounds stop on rocks.
 
-**Pew point defence first.** The AUTO pew first takes the target ship's torpedo in flight when it lies within
-`AUTO_PD_RANGE` 300 (the Hunter's `HUNTER_PD_RANGE`) and is seen (`pointSeen`). This is the scripted gunner's existing
-priority (`scripted.ts` `gunnerPew` L309). Autocannon rounds never hit torpedoes (`stepRounds`), so the autocannon only
-takes the ship.
+**Ship only** (owner 2026-11-19, §17 item 2). Both AUTO guns aim only at that ship. The AUTO pew never aims at a
+torpedo, so there is no point-defence priority and no `AUTO_PD_RANGE`. W-1's incidental rule stays: `stepPew` sweeps
+every round against the other side's torpedoes in flight, so an AUTO pew round aimed at the ship still shoots down a
+torpedo that crosses its path. Autocannon rounds never hit torpedoes (`stepRounds`), as today.
 
 **The solution** is the lead aim's offset from the nose, when it lies inside the arc:
 - Pew: `pewLead` (`pew.ts` L150). It uses the target's own velocity, since a pew round does not inherit the ship's.
@@ -183,7 +195,8 @@ The solutions are whole-heading multiples and the rates exceed one step's drift,
 
 ### 4.3 AUTO firing
 
-Every AUTO rule needs the Weapons console attended and the gun powered (bars ≥ 1).
+Every AUTO rule needs the Weapons console attended, the gun powered (bars ≥ 1) and the enemy hostile
+(`enemyHostile(state)`, `science.ts` L29; the hold rule below).
 - **AUTO pew:** it fires one round along its turret's world aim whenever it is on solution and a third is stored
   (`pewReady`). So it fires each time a third has charged, and it never bursts.
 - **AUTO autocannon:** it fires along its turret whenever it is on solution, `gunHeat < GUN_AUTO_HEAT_STOP`, and
@@ -195,10 +208,17 @@ Every AUTO rule needs the Weapons console attended and the gun powered (bars ≥
     locks.
   - At the stop it settles at the rate cooling allows: one round every 12.5 ticks at `GUN_COOL` 4. It has no hysteresis.
 - **AUTO with an AUTO gun selected:** W/S still change its bars. LMB does nothing: no command, no refusal. The card
-  reads AUTO.
-- **AUTO ignores hostility.** It fires at a seen enemy in range and arc during the 30 s hold too, as the AUTO beam does
-  today (the FTL opener). Its first round turns the enemy hostile (`hostilityStep`, cause `pew` or `gun`). Owner check,
-  §17.
+  reads AUTO (`HOLD` in the hold).
+- **AUTO holds fire during the hold** (owner 2026-11-19, §17 item 4). While `hostileAt` is −1, AUTO guns track and
+  slew (§3.4) and can sit on solution, but fire nothing. So AUTO never ends the peaceful start by itself.
+  - **The hold ends as it does today** (`hostilityStep`, `science.ts` L36): the crew's first shot of the round (a MAN
+    pew or autocannon round, at the enemy, a rock or nothing; or a torpedo launch, AUTO or MAN), or the clock at
+    `HOSTILE_AFTER_TICKS` (30 s). A scan does not end it (Sci-1 decision 5). The Hunter's own hold is unchanged.
+  - `hostilityStep` runs after `tickWeapons` (`duel.ts` L48), so AUTO opens fire from the tick after the one that ends
+    the hold.
+  - With no enemy ship (`hunter < 0`, so `hostileAt` stays −1) there is no target either, so the rule changes nothing.
+  - The laser fit's AUTO beam is not a turret gun and keeps today's rule: it fires during the hold (the FTL opener).
+  - The card's AUTO tag reads `HOLD` while the hold keeps an AUTO gun quiet (§10).
 
 ### 4.4 MAN
 
@@ -230,19 +250,91 @@ The player aims (the reticle, §3.4) and fires (LMB, §9). MAN gets a bonus:
   - The round's direction is the turret's world aim for a turret gun, else the nose, as today.
   - The velocity is the ship's plus `speed` along that direction.
   - The Valkyrn has no turret, so it keeps `hx/hy(heading)` and its numbers can't move.
-- **Unchanged:** heat, the lock, the halved cooling under Weapons damage, the round pool (`GUN_POOL` 64), `stepRounds`,
-  `gunHit`, the room under the closest approach (`gunRoomOf`), rocks absorbing rounds, the `gunFire` / `gunHit` events
-  and the hostility cause `gun`.
+- **Unchanged:** heat, the lock, the halved cooling under Weapons damage, the round pool (`GUN_POOL` 64), the sweep in
+  `stepRounds`, the room under the closest approach (`gunRoomOf`), the `gunFire` / `gunHit` events and the hostility
+  cause `gun`.
+- **Changed, for a gun with the new fields only:** a round that meets a rock (§5.1) and a hit on a shield layer on the
+  weak frequency (§5.2). On `GUN` both fields are null, so the Valkyrn's rounds take today's branches.
 - **Its hit numbers are the Valkyrn's** (`GUN_HITS_PER_LAYER` 8, `GUN_HITS_PER_HULL` 12, `GUN_HITS_PER_LEVEL` 6), copied
   into `AUTOCANNON`. Gate tuning (§12) may move `AUTOCANNON`'s own copies only, never `GUN`'s.
 - **Its roles:** the autocannon is the Hound's room damage now. Six unshielded hits raise a room a level, which takes
-  over the beam's "take out systems" role (pew pew spec §6 decision 2). Pew pew strips shields, does hull damage and
-  shoots down torpedoes.
+  over the beam's "take out systems" role (pew pew spec §6 decision 2). It is also the Hound's rock digger (§5.1). Pew
+  pew strips shields and does hull damage, and its rounds still shoot down a torpedo in their path (§4.2).
+
+### 5.1 Autocannon rounds break rocks (owner 2026-11-19)
+
+Today a gun round that meets a rock is absorbed: it ends and the rock takes nothing (spike ii §12, `stepRounds`). Spike
+ii rejected a laser-style chip because a full laser hit per round (2 damage, `LASER_ROCK_PUSH`) would shred the belt at
+10 rounds a second. It also thought a fractional chip needed a per-rock wear field. It doesn't: rock hp is already a
+real number in the pool (`rocks.ts`, slot value 6), and the torpedo's blast already leaves fractional hp
+(`rockBlast.ts`: 2 + 4 · fall). So the autocannon chips with a fraction and no new state.
+
+- **The rule.** In `stepRounds`, when the first contact along a round's segment is a live rock `k` and the round's gun
+  has `rock !== null`:
+  1. **push:** `pushRock(k, ux · J, uy · J)` with `J = pushPerRound / rockMass(r)` and (ux, uy) the unit direction of
+     the round's segment (old to new position). A static rock wakes, as every push does (§3.1 of spike ii);
+  2. **wear:** `hitRock(k, 1 / roundsPerHp, ux, uy, 'gun', owner)`. That pushes the `rock` `hit` event, adds 1 to
+     `rockHits`, and at hp ≤ 0 breaks the rock in the fan pattern along the round (`breakRock`), counting `rocksBroken`
+     for the owner;
+  3. the round ends, as today.
+  - Push first, then damage, as the laser's `laserStrikesRock` (`rockWeapons.ts`). A piece born this tick is not in the
+    way (`rockBorn`), so a later round this tick passes where a piece was just made, as today.
+  - The planet and a ship still win their ties as today: the rock branch runs only when the rock is the first contact.
+- **The numbers** (`rockTuning.ts`, beside `LASER_ROCK_DAMAGE`):
+  - `AUTOCANNON_ROUNDS_PER_ROCK_HP = 4`: one round wears 1 / 4 = 0.25 hp. A quarter is exact in binary, so the wear
+    stays exact and needs no rounding.
+  - `AUTOCANNON_ROCK_PUSH = 500`: per round. Four rounds push 2000, the laser's push per hp
+    (`LASER_ROCK_PUSH / LASER_ROCK_DAMAGE` = 4000 / 2), so the autocannon moves a rock as hard per hp as the beam did.
+    An r 15 rock gains about 2.2 u/s a round and an r 45 rock about 0.25 u/s.
+  - **What it takes:** a seeded rock has 2 to 6 hp (`rockHp`, `ceil(r / 10)`), so it breaks in 8 to 24 rounds. In
+    MAN at 3 bars (a round every 5 ticks) that is 0.7 to 2.0 s. Holding LMB on a big rock nears the heat lock (§4.4),
+    which is the cost of digging with a gun.
+- **Who digs.** MAN aim: the gunner holds the reticle on a rock and LMB. AUTO never targets a rock (its line-of-sight
+  rule, §4.2, keeps it off rocks, as `AUTO_DIG` false keeps the AUTO beam off them), and there is no `rockLock` for the
+  guns. A round that misses the enemy and meets a rock wears it too.
+- **Hostility is unchanged:** every round counts in `gunShots`, so shooting a rock during the hold ends it (§4.3), as
+  laser shots at rocks do today (spike ii §6.3).
+- **`RockCause`** (`state.ts` L170) gains `'gun'`. `vacate` and the rock targets are unchanged.
+- **Presentation:** `rockFx.ts` draws the existing `spark` item on a `hit` by `gun` (the `bump` spark, L51).
+  `rockSounds.ts` plays nothing for a `hit` by `gun`, so the rounds don't eat the `ROCK_SOUNDS_PER_S` budget. Breaks
+  sound and burst as today (`ROCK_CRUNCH`, the split and dust bursts).
+- **The Valkyrn stays bit-identical.** `GUN.rock` is null, so its rounds keep the absorbed branch: no push, no wear, no
+  event, no `rockHits`. `tests/valkyrnRoundsRocks.test.ts` passes unchanged. The fence is the gun def, so it is a
+  per-class rule, not a per-slot one.
+- **Pew pew rounds still stop on rocks with no effect** (`stepPew`, W-1's merge rule). The owner's answer names only the
+  autocannon.
+
+### 5.2 The weak shield frequency boosts the guns (owner 2026-11-19)
+
+Sci-1 Level 2 reveals the enemy's weak frequency (`TacticalState.weakFreq`, 0..2), and Weapons tunes `ShipSystems.freq`
+to A, B or C. Today only the crew laser reads it: on a match a laser hit strips `min(2, shields)` layers instead of 1
+(`laserStrike`, `weapons.ts` L172). On the Hound the same match boosts the guns against shields. Hull and room damage
+don't change: the frequency is a shield rule.
+
+- **Pew pew:** a crew round that hits a shield layer while `freq === weakFreq` strips `min(2, shields)` layers instead
+  of 1 (`pewHit`, `pew.ts` L94). It is Sci-1 decision 6's rule, "2 layers instead of 1", moved from the beam to the
+  pew. As any strip, it zeroes `shieldClock` and the gun wear.
+- **Autocannon:** while `freq === weakFreq`, a layer goes at `weakHitsPerLayer` hits instead of `hitsPerLayer`:
+  `AUTOCANNON_WEAK_HITS_PER_LAYER = 4` against 8 (`bars.ts`, beside the autocannon's interval tables). The same
+  doubling as the pew's, as an integer. `gunHit` (`gun.ts`) compares `++gunWear` with the threshold of the moment, so
+  retuning mid-wear simply uses the new one. The wear stays below 8, inside today's `gunWear` bound.
+- **The fence:** the pew bonus needs the owner to be `CREW_SLOT` and its pew to have a turret (`HOUND_PEW` only). The
+  autocannon's needs the owner to be `CREW_SLOT` and its gun to have `weakHitsPerLayer !== null` (`AUTOCANNON` only).
+  - This matters: `freq` starts at 0 on every ship and `weakFreq` is 0 in about a third of seeds, so a rule without the
+    class fence would change the Valkyrn's gun hits in those seeds. With it, `GUN` and `HUNTER_PEW` keep today's numbers.
+  - The laser fit's beam keeps its Sci-1 rule unchanged.
+- **Tuning on the Hound:** `laserFrequency {freq}` keeps its name on the wire (it is the crew's shield frequency now). Its
+  admission answers `unavailable` only on a class with neither a laser nor a turret gun, so the Hound accepts it and the
+  Valkyrn still refuses it. The app sends it from keys 4 / 5 / 6 and the frequency row (§9, §10). `freq`'s state, hash
+  field and bound (0..2) are unchanged.
+- **The bots:** the scripted gunner doesn't tune (as today). It fights at A, so it gets the bonus in the seeds where
+  `weakFreq` is 0, as the beam did.
 
 ## 6. Pew pew on a turret (sim, W-4a and W-4b)
 
 - **The round flies along the pew turret's world aim,** not along a clicked point. The muzzle stays at the nose point
-  (`pewMuzzle`). Rounds, damage, pool and point defence are W-1's.
+  (`pewMuzzle`). Rounds, pool, rocks stopping them and the incidental torpedo hits are W-1's. Damage is W-1's except
+  the weak-frequency strip (§5.2).
 - **`pewFire` loses its aim:** it becomes `{ kind: 'pewFire' }`.
 - **Admission** (`step.ts` L350-L355), in order:
   - stale-tick;
@@ -300,7 +392,8 @@ L256):
 - `pewFire {}`, with no aim;
 - `weaponPower {slot, delta}`, unchanged (W/S and the pips send it);
 - `missileLaunch`, `torpMode` and `torpLock`, unchanged;
-- the laser commands stay on the wire for the laser fit.
+- `laserFrequency {freq}`, unchanged on the wire, now admitted on a turret class too (§5.2);
+- the other laser commands stay on the wire for the laser fit.
 
 **Held input** (`HeldInput`, `net/contracts.ts` L40):
 - new `turretAim?: number`: the reticle's world bearing from the own ship, a fine aim 0..65535 (absent or −1: none).
@@ -359,7 +452,7 @@ Weapons seat (the seat is `weapons` and the class has a turret). The Valkyrn's F
 | F | `missileLaunch` (unchanged) | same |
 | E / Q | Step the torpedo's target room (`torpLock`), as the Flight seat does (`runtime.ts` L440-L445) | Step the laser's lock |
 | Space | Nothing at Weapons (at the Helm it is still auto-face) | Fire the laser |
-| 4 / 5 | Nothing on the Hound (frequency needs a laser) | Frequency B / C |
+| 4 / 5 / 6 | `laserFrequency` A / B / C: the guns' shield frequency (§5.2) | 4 / 5 tuned frequency B / C; 6 nothing |
 | RMB on the map | Pan (as on Science) | The MANUAL torpedo's heading |
 | T, G, C, X, Tab, Esc, M, wheel, middle drag | Unchanged | same |
 
@@ -367,7 +460,10 @@ Weapons seat (the seat is `weapons` and the class has a turret). The Valkyrn's F
 - **1 / 2 against the FTL pick-up.** `contactController.ts` L140 intercepts `WEAPON_CODES` as pick-ups. At the Hound's
   Weapons seat it no longer takes the digits: they select. A card click still picks the torpedo up for a room click,
   and selects it too. The laser fit's 1 / 2 are unchanged.
-- **3 against frequency A.** `FREQ_CODES` (`input.ts` L21) is read only on a class with a laser. On the Hound, 3 selects.
+- **3 against frequency A.** `FREQ_CODES` (`input.ts` L21, Digit3 / 4 / 5) is read only on a class with a laser. On the
+  Hound, 3 selects, and a new `GUN_FREQ_CODES = { Digit4: 0, Digit5: 1, Digit6: 2 }` tunes A / B / C at the Weapons
+  seat. Both feed the same `freqTo` (`input.ts` L146), so the local runtime (L452, L522) and online (`onlineDuel.ts`
+  L303) send `laserFrequency` as today. `pageGuards.ts` `GUARDED_CODES` adds Digit6. Digit6 has no other binding.
 - **W / S against the throttle notches.** `PRESS_CODES` L17 binds W/S to `throttleUp` / `throttleDown`. The runtime
   sends a throttle only from the Helm and Flight seats, so at Weapons the same press edges become `weaponPower`. No new
   key code.
@@ -400,8 +496,11 @@ Weapons seat (the seat is `weapons` and the class has a turret). The Valkyrn's F
   - "A / D, 1 / 2 / 3, Num 1 / 2 / 3: select a weapon";
   - "W / S at Weapons: power the selected weapon";
   - "Z: both guns AUTO / MAN";
+  - "4 / 5 / 6 at Weapons: tune the guns' shield frequency A / B / C";
   - "Hold left mouse with a MANUAL torpedo flying: steer it".
-- The rows stay built from the input tables (`WEAPON_SELECT_CODES`, `PRESS_CODES`), as the list's header requires.
+- The laser fit's frequency row (L84) stays, on `FREQ_CODES`.
+- The rows stay built from the input tables (`WEAPON_SELECT_CODES`, `GUN_FREQ_CODES`, `PRESS_CODES`), as the list's
+  header requires.
   The Valkyrn section is unchanged.
 
 ## 10. Console and map (render and UI)
@@ -414,6 +513,10 @@ Weapons seat (the seat is `weapons` and the class has a turret). The Valkyrn's F
   - **AUTOCANNON:** a heat bar with `OVERHEAT` blinking while locked (from the Valkyrn's GUN card, Valkyrn spec §7.4), its
     rate in rounds a second at the current bars and mode (`6/S`; `OFF` at 0 bars), and the same AUTO / MAN tag.
     - **The two gun tags are one switch:** both lit in MAN, and a click on either sends `gunMode`, as Z does.
+    - **In the hold** (§4.3) an AUTO gun's tag reads `HOLD` instead of `AUTO`, so the gunner sees why it is quiet.
+  - **The frequency row** (`A B C`, Sci-1 §7.4, `WeaponsStation.tsx` L151-L154) shows on the Hound under the cards, with
+    the tuned one lit and the weak one marked after a Level 2 scan, as today. Its buttons send `laserFrequency`; its key
+    hint reads 4 / 5 / 6.
   - **TORPEDO:** as now, with its own tag (V). In MAN while it flies it reads `STEER LMB`, not `STEER A/D`.
   - **The bar pips under each card** stay (left click +1, right click −1).
   - **The hint row:** `LMB FIRE · A/D SELECT · W/S POWER · Z AUTO/MAN`. The BEAM refusal and firing texts go, and the
@@ -423,11 +526,11 @@ Weapons seat (the seat is `weapons` and the class has a turret). The Valkyrn's F
   - each gun's **muzzle line** along its real turret angle (`aimDir` of the interpolated turret): the selected gun's
     `mid`, the other's `dim`. The pew's runs to `PEW_RANGE`, the autocannon's to 600;
   - the **reticle** at the pointer, a small cross (`main`);
-  - in AUTO, a **bracket on the target** while a gun is on solution (`hot`);
+  - in AUTO, a **bracket on the target** while a gun is on solution (`hot`; `dim` during the hold, when it won't fire);
   - the W-2 dashed laser line is not drawn on the Hound;
   - autocannon rounds as the tracers `roundDraws` already draws for any gun class (`weaponsModel.ts` L276).
 - **Sound:** the autocannon uses the Valkyrn gun's fire and hit sounds (the `gunFire` / `gunHit` events), with no new
-  sample.
+  sample. Its rock hits and breaks are §5.1's.
 - **The Helm and Science maps** draw the muzzle lines `dim` and no reticle.
 
 ## 11. Online
@@ -459,9 +562,21 @@ The goal is bots that use pew pew and the autocannon. The crew bots lose all ten
     L417-L440). So pew 1, autocannon 1, torpedo 1.
   - It replaces Decision 20's move (pew −1, beam +1) on this class. `barMoved` still makes it once a round.
   - If the shipPower is refused (no spare bar), it moves nothing.
-- **The guns stay AUTO.** The gunner sends no `pewFire` and no held aim. AUTO's point defence and lead (§4.2) do what
+- **The guns stay AUTO.** The gunner sends no `pewFire` and no held aim. AUTO's lead (§4.2) aims at the ship as
   `gunnerPew` did. `gunnerPew` and the `laserLock` line no longer run on this class.
+  - **No deliberate point defence** (§4.2, owner 2026-11-19). `gunnerPew` shot an inbound torpedo first; the Hound's
+    bots don't. Their pew rounds can still hit a torpedo crossing the line to the ship.
 - **The torpedo rule** keeps `MISSILE_GAP` and the `torpLock`, without the laser terms: `canLaunch` and the gap.
+- **The hold** (§4.3). The AUTO guns are quiet until the enemy turns hostile. The gunner's own move ends the hold
+  sensibly: its `torpLock` launches the AUTO torpedo once the enemy is seen and in torpedo range, the launch counts in
+  `missilesLaunched`, and the AUTO guns open on the next tick. If the torpedo never gets a launch in the first 30 s,
+  the clock ends the hold at rt 1800 as today. The gunner doesn't need to fire a MAN shot, and it doesn't toggle to MAN.
+  - Before W-4 the crew's AUTO beam opened during the hold. The Hound's bots now open with the torpedo or at 30 s, which
+    can lengthen the opener. The gates (§14) account for it: the per-seed "uses both weapons" test counts over the whole
+    round, so it holds whenever the round outlasts the hold. The Hunter can't fire before the hold ends, so only rocks or
+    the planet could end a round inside it, and the gate already fails a planet-contact end under 30 s. If a seed ends
+    inside the hold, the tuning ladder below applies before any gate changes. The plan's report records each seed's
+    hold-end tick and its cause (`hostile` event `missile` or `clock`) beside the aggregate numbers.
 - **On any other class** (the Valkyrn in the identity test's "pair" runs), everything stays as on master, byte for byte:
   the pew → beam move, `laserLock` and `gunnerPew`. So `tests/valkyrnIdentity.test.ts` keeps its digests.
 - **The gates** (§14): the per-seed gates must pass. The aggregate band (3 to 5 minutes, the crew both wins and loses)
@@ -491,7 +606,9 @@ The goal is bots that use pew pew and the autocannon. The crew bots lose all ten
 
 ### 13.2 Determinism
 
-- **The new arithmetic is integer:** turret offsets, rates, tables, the heat stop. `aimDir` (`dirBetween`: + − × ÷,
+- **The new arithmetic is integer:** turret offsets, rates, tables, the heat stop, the weak-frequency threshold. The one
+  real number is the rock wear, 1 / 4 hp a round, exact in binary, on a pool that already holds real hp; its push is
+  `J / m` with + − × ÷, as the laser's. `aimDir` (`dirBetween`: + − × ÷,
   sqrt) gives the direction. Leads use `interceptTime` and `nearestHeading` (`lead.ts`), the heading tables, as
   `pewLead` does. No new randomness, so the crew's AUTO aims exactly.
 - `npm run test:determinism` passes on Node, Electron and Firefox.
@@ -515,11 +632,15 @@ W-4a, b and c are built on one branch and merge once at SIM 60 (§19).
     Valkyrn, so the test leaves them out by name, as it already leaves out `thrMille`.
   - A new assertion in the same runs checks they stay 0 / false.
   - The Valkyrn's gun takes the `turret === null` branch everywhere, and its interval is `GUN.intervalTicks`.
-- **The Hunter:** no rule or number changes. `tests/pewHunter.test.ts`, `tests/torpedoGuidance.test.ts` and the
-  Hunter's unit tests pass unchanged.
+  - Its rounds take the `rock === null` branch (absorbed, §5.1), and its layer threshold stays `hitsPerLayer` because
+    `GUN.weakHitsPerLayer` is null (§5.2), whatever `freq` and `weakFreq` are. `laserFrequency` stays `unavailable`
+    on it. `tests/valkyrnRoundsRocks.test.ts` passes unchanged.
+- **The Hunter:** no rule or number changes. Its pew has no turret, so the weak-frequency strip never applies to it.
+  `tests/pewHunter.test.ts`, `tests/torpedoGuidance.test.ts` and the Hunter's unit tests pass unchanged.
   - New `tests/w4HunterIdentity.test.ts`: `hunterThink`'s outputs over a fixed scripted crew trajectory (state written
     directly, no crew weapons) match a digest recorded at SIM 59 on master.
-- **The laser fit:** W-2's `tests/manualLaser*.test.ts`, run on `VALKYRN_LASER_CLASS`, pass.
+- **The laser fit:** W-2's `tests/manualLaser*.test.ts`, run on `VALKYRN_LASER_CLASS`, pass. Its AUTO beam still fires
+  during the hold, and its laser keeps Sci-1's frequency rule.
 
 ## 14. Tests
 
@@ -530,8 +651,8 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
   - the start power 1 / 0 / 1;
   - the trim order takes the autocannon's bar before the pew's;
   - the Valkyrn's `GUN` and the Hunter's pew have no turret;
-  - every laser command from the Hound is `unavailable`;
-  - Space and 4 / 5 at the Hound's Weapons seat queue nothing.
+  - every laser command from the Hound except `laserFrequency` is `unavailable`;
+  - Space at the Hound's Weapons seat queues nothing.
 - **Autocannon** (`w4Autocannon.test.ts`):
   - the interval by bars, AUTO 10 / 8 / 6 / 5 and MAN 8 / 7 / 5 / 4, measured between `gunFire` events;
   - 0 bars fires nothing;
@@ -539,6 +660,26 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
   - rounds leave along the turret with the ship's velocity added;
   - the twin muzzles alternate on the hull;
   - hits as `gunHit`, with a room level after 6 unshielded hits.
+- **Rocks** (`w4Rocks.test.ts`):
+  - an autocannon round that meets a rock wears it 0.25 hp, pushes it 500 / m along the round (waking a static rock),
+    pushes one `rock` `hit` event with `by: 'gun'` and the owner, and adds 1 to `rockHits`;
+  - a rock of r 15 (2 hp) breaks on the 8th round, in the fan pattern along the round, and the owner's `rocksBroken`
+    rises by 1;
+  - a piece born this tick is not hit by a later round in the same tick;
+  - the planet and a ship keep their ties over a rock;
+  - pew pew rounds still stop on a rock with no wear, push or event;
+  - the Valkyrn's rounds are still absorbed (`tests/valkyrnRoundsRocks.test.ts`, unchanged);
+  - a MAN round at a rock during the hold ends the hold with cause `gun`;
+  - the view: `rockFx` draws a spark for a `gun` hit and `rockSounds` plays nothing for it.
+- **Weak frequency** (`w4Frequency.test.ts`):
+  - on the Hound, `laserFrequency` is admitted (seat, malformed, noop as today); on the Valkyrn it is `unavailable`;
+  - a crew pew round on a shield layer strips 2 layers at `freq === weakFreq` (1 when one is up), else 1; hull hits are
+    unchanged;
+  - the autocannon strips a layer at the 4th hit on the weak frequency and the 8th off it; changing `freq` mid-wear uses
+    the new threshold;
+  - the Hunter's pew and the Valkyrn's gun keep 1 layer and 8 hits with `freq === weakFreq` forced on their slots;
+  - 4 / 5 / 6 at the Hound's Weapons seat send `laserFrequency` 0 / 1 / 2; 3 selects the torpedo; the row's buttons send
+    it too and the weak mark shows after a Level 2 scan.
 - **Turret** (`w4Turret.test.ts`):
   - `slewTurret` moves at most the rate, never past the wanted offset, and clamps to the arc;
   - the wrap across 0 / 65535;
@@ -549,7 +690,11 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
   - a turning ship carries the turret.
 - **AUTO** (`w4Auto.test.ts`):
   - **pew:** it fires only when the target is seen, inside 450, in the arc, with a clear line and on solution; once per
-    third charged; it shoots down an inbound torpedo within 300 before the ship;
+    third charged; it never aims at a torpedo, even an inbound one within 300; a torpedo crossing the line of a round
+    aimed at the ship is still shot down;
+  - **the hold:** with `hostileAt` −1 both AUTO guns slew onto solution and fire nothing over the hold, the tag reads
+    `HOLD`; the first AUTO round comes on the tick after a MAN shot, a torpedo launch or the clock ends the hold; the
+    laser fit's AUTO beam still fires during the hold. Tests that check AUTO firing set `hostileAt` first;
   - **autocannon:** it fires on solution inside 600; it holds at heat ≥ 800 and never locks over 3000 ticks of
     continuous AUTO; it settles at one round per about 12.5 ticks;
   - **no fire** on an unseen (fogged) enemy, behind a rock, or out of the arc;
@@ -594,11 +739,13 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
   - NO CHARGE comes from the authority's `unavailable`.
 - **Scripted and gates:**
   - the gunner's first tick sends `shipPower` then `weaponPower` and ends at 1 / 1 / 1;
+  - on the Hound the gunner sends no `pewFire`, no `gunMode` and no laser command; its AUTO guns fire nothing before the
+    `hostile` event, and the hold ends by its torpedo launch or the clock;
   - the Valkyrn pair's commands are unchanged;
   - **kind (a):** `tests/duelGates.test.ts`'s per-seed "the crew uses both weapons" becomes
     `pewShots + gunShots ≥ 1` and `missilesLaunched ≥ 1` (was `laserReleases ≥ 1`), and the same in
     `tests/duelScripted.test.ts`;
-  - the aggregate gate stays skipped (kind c), its numbers reported.
+  - the aggregate gate stays skipped (kind c), its numbers reported with each seed's hold-end tick and cause (§12).
 - **Identity:** §13.4's three.
 - **Final checks:** `npm run typecheck`, `npm test`, `npm run test:determinism` and `npm run build`.
 
@@ -609,11 +756,15 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
 | Loadout | pew (turret ±60°), autocannon (turret ±30°), torpedo; no beam | unchanged (laser, pew, torpedo) | unchanged (fixed gun, torpedo) | unchanged (beam, torpedo) |
 | Slot-1 bars | autocannon interval 10 / 8 / 6 / 5 | none | ignored, as now | beam shots and charge, as now |
 | AUTO / MAN guns | new (Z, both together; start AUTO) | always auto (its own AI) | none (`gunMode` `unavailable`) | none; W-2 `laserMode` on Z |
+| AUTO in the 30 s hold | tracks, holds fire (`HOLD`) | holds, as now | no AUTO | AUTO beam fires, as now |
+| AUTO targets | the enemy ship only; no torpedo-first | its own AI, unchanged | — | unchanged |
+| Rocks | autocannon rounds wear 1/4 hp and break rocks; pew rounds stop with no effect | unchanged | gun rounds absorbed, as now | beam digs, as now |
+| Weak frequency | pew strips 2 layers, autocannon 4 hits a layer; tuned on 4 / 5 / 6 | none | none (`laserFrequency` `unavailable`) | beam strips 2, as now (3 / 4 / 5) |
 | Reticle and turrets | new (mouse, slew, muzzle lines) | none | none (the nose aims) | none |
 | LMB at Weapons | fire the selected weapon / steer a MANUAL torpedo | — | the Flight seat's gun, unchanged | unchanged |
 | A/D, 1 / 2 / 3, W/S at Weapons | select, select, power | — | Flight seat unchanged | Flight seat unchanged |
 | Manual torpedo | mouse-steered (LMB), no A/D or right drag | none | unchanged rules (no MANUAL flight on the Flight seat) | unchanged |
-| Bots | gunner powers the autocannon, AUTO guns | `hunter.ts` unchanged | pilot and pair bit-identical | — |
+| Bots | gunner powers the autocannon, AUTO guns open after the hold; no point defence | `hunter.ts` unchanged | pilot and pair bit-identical | — |
 | Sim tests pinned | goldens re-blessed | identity digest (§13.4) | `valkyrnIdentity` digests unchanged | `manualLaser*` pass |
 
 ## 16. Decisions
@@ -626,8 +777,8 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
 4. **Weapons controls copy the Helm:** the mouse aims, WASD manages, LMB fires. A/D or 1 / 2 / 3 select, W/S power the
    selected weapon, F still launches, Space no longer fires.
 5. **Z toggles both guns together, and V stays the torpedo's.**
-6. **AUTO guns** slew and fire with lead at a seen enemy in range and arc. The pew fires on each charged third. The
-   autocannon stops at 80 % heat. LMB does nothing on an AUTO gun, and W/S still work.
+6. **AUTO guns** slew and fire with lead at a seen, hostile enemy ship in range and arc. The pew fires on each charged
+   third. The autocannon stops at 80 % heat. LMB does nothing on an AUTO gun, and W/S still work.
 7. **MAN gets +25 % traverse and about +20 % fire rate,** as integer tables.
 8. **The traverse rates** are pew 364 / 455 and autocannon 273 / 341 fine steps a tick (§3.3).
 9. **The MANUAL torpedo is flown by LMB toward the cursor.** Releasing holds the heading. W-3's flight numbers stay, A/D
@@ -636,18 +787,34 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
 11. **The scripted gunner powers the autocannon from the spare reactor bar and leaves the guns on AUTO.** The Valkyrn
     bots don't change.
 12. **SIM 59 → 60 with the bless pattern.** The authority decides, and the client predicts the turret and the reticle.
+13. **Autocannon rounds break rocks** (owner 2026-11-19). Each round wears 1 / 4 hp and pushes 500 / m; a rock breaks in
+    the fan pattern at 0 hp. Pew pew rounds and the Valkyrn's gun rounds still stop on rocks with no effect.
+14. **Science's weak frequency boosts the Hound's guns** (owner 2026-11-19). On a match a pew round strips 2 layers
+    and the autocannon strips a layer in 4 hits instead of 8. Tuned with 4 / 5 / 6 or the frequency row.
+15. **AUTO holds fire during the 30 s hold** (owner 2026-11-19). It tracks; the hold ends as today.
+16. **AUTO pew targets only the enemy ship** (owner 2026-11-19). Its rounds can still hit a torpedo in their path.
 
 ## 17. Judgement calls the code forced (owner to check)
 
+Items 1, 2 and 4 were answered by the owner on 2026-11-19. The rest are open.
+
 1. **The Hound's laser slot is null, not a hidden beam.** This turns off every beam path through the Valkyrn's existing
-   no-laser guards. The cost: Science's weak shield frequency (Sci-1 Level 2) no longer affects the Hound, and the Hound
-   can't dig rocks with a laser. Only the torpedo breaks rocks. Both are listed as later work (§18).
-2. **AUTO pew does point defence first** (the inbound torpedo within 300, before the ship). That's the scripted gunner's
-   W-1 priority. The owner's text names only the enemy.
+   no-laser guards. The cost was that Science's weak shield frequency (Sci-1 Level 2) no longer affected the Hound, and
+   the Hound couldn't dig rocks with a laser.
+   **Owner 2026-11-19: "Autocannon breaks rocks."** The laser slot stays null. Autocannon rounds wear and break rocks
+   (§5.1: 4 rounds a hp, 500 push a round), and the weak frequency boosts pew pew (2 layers a strip) and the autocannon
+   (4 hits a layer instead of 8) instead of the beam (§5.2). Both are fenced by class, so the Valkyrn stays bit-identical.
+2. **AUTO pew did point defence first** (the inbound torpedo within 300, before the ship), the scripted gunner's W-1
+   priority. The owner's text names only the enemy.
+   **Owner 2026-11-19: "No, ship only."** AUTO pew aims only at the enemy ship (§4.2). Its rounds still shoot down a
+   torpedo in their path, by W-1's sweep. The Hound's bots lose `gunnerPew`'s torpedo priority with it (§12).
 3. **AUTO needs a clear line of sight** (no rock or planet in the way) as well as seen, range and arc, so it doesn't pour
    rounds into rocks.
-4. **AUTO fires during the 30 s hold**, as the AUTO beam does today. So AUTO guns end the peaceful start as soon as the
-   enemy is seen in range. The alternative is "AUTO holds fire until hostile".
+4. **AUTO fired during the 30 s hold**, as the AUTO beam does today, so AUTO guns would end the peaceful start as soon
+   as the enemy was seen in range. The alternative was "AUTO holds fire until hostile".
+   **Owner 2026-11-19: "AUTO holds fire during the hold."** AUTO guns track and slew but don't fire until `hostileAt` is
+   set (§4.3). The hold ends as today: a crew shot (a MAN round or a torpedo launch) or the 30 s clock. The scripted
+   gunner opens with its torpedo or waits for the clock (§12).
 5. **AUTO and the turrets work only while Weapons is attended,** today's seat rule for every crew weapon. A gunner who
    stands up to repair leaves the guns silent.
 6. **The 80 % stop has no hysteresis.** The autocannon settles into the cooling-limited rate (about one round per 12.5
@@ -679,7 +846,8 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
 - The **gas tank** (the owner removed it on 2026-11-19, and Ryan's note is parked).
 - **Autopilot**.
 - The **AUTO torpedo launching on its own** while ammo lasts (§17.16).
-- The **weak frequency** for the Hound's guns, and **rock damage** from pew or autocannon rounds (§17.1).
+- **Rock damage from pew pew rounds** (they still stop on rocks with no effect; only the autocannon digs, §5.1).
+- **A gun rock target** (`rockLock` for the guns) or AUTO digging; the autocannon digs by MAN aim only.
 - **Turret sprites** on the ship art (the map's muzzle lines carry it this pass).
 - **Turrets for the Hunter**, and AUTO / MAN for its weapons.
 - **Changing the Valkyrn** or its Flight seat.
@@ -692,16 +860,19 @@ turn, and gets the owner's look and feel check on the branch. Each part adds an 
 the W-2 and W-3 entries (an Automated box and a Manual box with screenshots).
 
 1. **W-4a: loadout, autocannon and power keys.**
-   - What it builds: §2, §5, §6's `pewFire` without the aim (the pew turret stays at 0, so it fires along the nose),
-     W/S, A/D and 1 / 2 / 3 selection with the highlight, LMB fire by selection (the autocannon held), and the
-     scripted gunner (§12).
+   - What it builds: §2, §5 with its rocks (§5.1) and the weak frequency (§5.2, keys 4 / 5 / 6 and the row), §6's
+     `pewFire` without the aim (the pew turret stays at 0, so it fires along the nose), W/S, A/D and 1 / 2 / 3
+     selection with the highlight, LMB fire by selection (the autocannon held), and the scripted gunner (§12). AUTO
+     and its hold arrive in W-4b, so the gunner's guns fire from W-4b, and the gates (§14) are judged at the merge.
    - Gate entry: "W-4a: the Hound's guns". The cards in slot order with the selected one lit; W/S moving bars; holding LMB
-     with the autocannon selected (heat rising, OVERHEAT); 1 / 2 / 3 and A/D.
-   - Screenshots: the three cards; the autocannon firing with its heat bar.
+     with the autocannon selected (heat rising, OVERHEAT); 1 / 2 / 3 and A/D; the autocannon chipping and breaking a
+     rock; after a Level 2 scan, tuning to the weak frequency and pew pew taking 2 layers.
+   - Screenshots: the three cards; the autocannon firing with its heat bar; a rock breaking under autocannon fire.
 2. **W-4b: reticle, turrets, AUTO and MAN.**
    - What it builds: §3, §4, the map's arc, muzzle lines and reticle, Z and the shared tag, and online prediction (§11).
    - Gate entry: "W-4b: turrets and AUTO/MAN". The muzzle lines trail the reticle and stop at the arc; Z flips both
-     tags; on AUTO both guns track and fire with no input, and the pew shoots a torpedo down; MAN feels quicker.
+     tags; in the hold AUTO guns track with `HOLD` on their tags and fire nothing; once hostile, on AUTO both guns track
+     and fire at the ship with no input; MAN feels quicker.
    - Screenshots: the map in MAN, with the reticle, the selected arc and two muzzle lines; AUTO on solution with the
      bracket.
    - Does the slewing read as "slowly follows"?
