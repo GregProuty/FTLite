@@ -8,7 +8,7 @@ import { CREW_SPEED, TICK_HZ } from '../../renderer/src/sim/tuning';
 import { speedMult } from '../../renderer/src/sim/characters';
 import { hashF64 } from '../../shared/hash';
 import { imageBytes, MAX_IMAGE_BYTES, MAX_METADATA_BYTES, type StateImage } from '../state/imageCodec';
-import { createModeStreamBinding, encodeModeNotification } from './streamBinding';
+import { createModeStreamBinding, encodeModeNotification, type SharedStateImage } from './streamBinding';
 import { createModeRemoteClient } from './remoteClient';
 import { createPresentationTimeline, type PresentationPoint, type PresentationTimelineOptions } from '../state/timeline';
 
@@ -54,8 +54,8 @@ export function encodeSectorNotification(message: Notification, requiredPublicat
 }
 
 /** Trusted authority attachment. It owns stream controls, while the authority owns gameplay ingress. */
-export function createSectorStreamBinding(link: Link, options: SectorValidationOptions & { clock: MonotonicClock; latestPayloadLimit: number }) {
-  return createModeStreamBinding(link, { clock: options.clock, latestPayloadLimit: options.latestPayloadLimit,
+export function createSectorStreamBinding(link: Link, options: SectorValidationOptions & { clock: MonotonicClock; latestPayloadLimit: number; images?: SharedStateImage }) {
+  return createModeStreamBinding(link, { clock: options.clock, latestPayloadLimit: options.latestPayloadLimit, images: options.images,
     toImage: publication => publicationToImage(publication, options), codec, notificationStream: NOTIFICATION_STREAM, label: 'sector' });
 }
 

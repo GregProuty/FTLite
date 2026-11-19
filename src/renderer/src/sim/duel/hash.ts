@@ -13,7 +13,11 @@ import type { DuelState } from './state';
 export function flattenDuel(d: DuelState): Float64Array {
   const out: number[] = [SIM_VERSION];
   flattenDuelModules(d, out);
-  return Float64Array.from(out, (v) => (v === 0 ? 0 : v));   // flatten() already canonicalises the interior's −0
+  // −0 written as 0 (flatten() already canonicalises the interior's). A plain loop: Float64Array.from with a mapper takes
+  // V8's iterator path, about fourteen times slower for the same values (Perf-i spec §2.1).
+  const values = new Float64Array(out.length);
+  for (let k = 0; k < out.length; k++) { const v = out[k]!; values[k] = v === 0 ? 0 : v; }
+  return values;
 }
 
 export function hashDuel(d: DuelState): string { return hashF64(flattenDuel(d)); }

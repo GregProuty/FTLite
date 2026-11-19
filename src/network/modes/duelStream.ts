@@ -10,7 +10,7 @@ import { validateDuelSnapshot, type DuelSnapshot } from '../../renderer/src/sim/
 import { DUEL_CREW_MAX } from '../../renderer/src/sim/duel/state';
 import { hashF64 } from '../../shared/hash';
 import { imageBytes, MAX_IMAGE_BYTES, MAX_METADATA_BYTES, type StateImage } from '../state/imageCodec';
-import { createModeStreamBinding } from './streamBinding';
+import { createModeStreamBinding, type SharedStateImage } from './streamBinding';
 import { createModeRemoteClient } from './remoteClient';
 
 export interface DuelValidationOptions { resolveLayout: ResolveLayout; contentDigest: string }
@@ -52,8 +52,8 @@ export function imageToDuelPublication(image: StateImage, options: DuelValidatio
 }
 
 /** The host side of a streamed duel attachment. */
-export function createDuelStreamBinding(link: Link, options: DuelValidationOptions & { clock: MonotonicClock; latestPayloadLimit: number }) {
-  return createModeStreamBinding<DuelSnapshot>(link, { clock: options.clock, latestPayloadLimit: options.latestPayloadLimit,
+export function createDuelStreamBinding(link: Link, options: DuelValidationOptions & { clock: MonotonicClock; latestPayloadLimit: number; images?: SharedStateImage }) {
+  return createModeStreamBinding<DuelSnapshot>(link, { clock: options.clock, latestPayloadLimit: options.latestPayloadLimit, images: options.images,
     toImage: publication => duelPublicationToImage(publication, options), codec: duelCodec(DUEL_CREW_MAX), notificationStream: NOTIFICATION_STREAM, label: 'duel' });
 }
 
