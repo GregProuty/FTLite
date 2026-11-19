@@ -1,8 +1,11 @@
+// Merge with the Engineering spike (SIM 58, kind a, replaced rule): the crew's beam stands on the Weapons officer's bars and
+// starts dark (spec §10.3), so these tests give the crew today's laser and torpedo by bars (todaysCrewWeapons).
 // W-2 manual laser (spec 2026-11-18-pew-pew-weapons-design §2, §4, §5): the crew laser's mode. Every round starts AUTO, the
 // Hunter always; in MANUAL the laser charges as today but never fires by itself (neither the auto-fire on its target nor
 // the AUTO press). The mode and a MANUAL burst's aim are hashed, cloned and bounded: only the crew is ever MANUAL, and an
 // aim waits only while a burst is pending.
 import { describe, expect, it } from 'vitest';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { flattenTactical, hashTactical, TACTICAL_MODULES, validateTacticalValues } from '../src/renderer/src/sim/tactical/hash';
 import { beginRockTick } from '../src/renderer/src/sim/tactical/rocks';
 import { cloneTactical, createTacticalState, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
@@ -12,7 +15,7 @@ import { applyWeaponsInput, IDLE_INPUT, manualLaserReady, tickWeapons } from '..
 /** The crew at (0, 1500) nose north and still, no rocks, the Hunter at `enemyAt` (default far off, out of laser range),
  *  still, a fresh tick's rock masks, no events. */
 function open(enemyAt = { x: 2000, y: 2000 }): TacticalState {
-  const st = createTacticalState(5);
+  const st = todaysCrewWeapons(createTacticalState(5));
   st.rocks.fill(0);   // every seeded rock gone (the seeded grid ignores empty slots)
   beginRockTick(st);
   Object.assign(st.ships[0], { x: 0, y: 1500, vx: 0, vy: 0, heading: 0, headingAcc: 0 });
@@ -31,7 +34,7 @@ const offsetOf = (s: TacticalState, name: string): number => {
 
 describe('the laser mode (spec §2)', () => {
   it('every slot starts AUTO with no burst aim; the arc in fine units is the pew cone\'s 60°', () => {
-    const st = createTacticalState(5);
+    const st = todaysCrewWeapons(createTacticalState(5));
     expect([st.systems[0].laserManual, st.systems[1].laserManual, st.systems[0].laserAim, st.systems[1].laserAim]).toEqual([false, false, -1, -1]);
     expect(LASER_ARC_STEPS).toBe(10922);
     expect(LASER_ARC_STEPS).toBe(PEW_ARC_STEPS);   // the laser's existing ±60° (LASER_ARC_COS 0.5)
@@ -73,7 +76,7 @@ describe('the laser mode (spec §2)', () => {
 
 describe('the mode in the modules (spec §4)', () => {
   it('moves the hash, is copied by the clone, and is bounded by the validator', () => {
-    const st = createTacticalState(5), shape = createTacticalState(5), base = hashTactical(st);
+    const st = todaysCrewWeapons(createTacticalState(5)), shape = todaysCrewWeapons(createTacticalState(5)), base = hashTactical(st);
     st.systems[0].laserManual = true;
     expect(hashTactical(st)).not.toBe(base);
     const copy = cloneTactical(st);

@@ -1,3 +1,5 @@
+// Merge with the Engineering spike (SIM 58, kind a, replaced rule): the crew's beam stands on the Weapons officer's bars and
+// starts dark (spec §10.3), so these tests give the crew today's laser and torpedo by bars (todaysCrewWeapons).
 // @vitest-environment jsdom
 // W-3 manual torpedo (spec 2026-11-18-pew-pew-weapons-design §3, §5): the TORPEDO card.
 // - Its AUTO / MAN tag shows the mode (MAN lit), and a click presses torpMode, as V does.
@@ -6,6 +8,7 @@
 // - The Weapons panel carries the mode and the flying torpedo's, and LAUNCH is live out of range in MANUAL.
 // - The lock tone is off in MANUAL.
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { UiContext } from '../src/renderer/src/ui/context';
 import { UiRoot } from '../src/renderer/src/ui/UiRoot';
@@ -78,10 +81,12 @@ describe('the TORPEDO card\'s AUTO / MAN tag (spec §3, §5)', () => {
 
 describe('the Weapons panel and the tone in MANUAL (spec §3)', () => {
   it('carries the mode and the flying torpedo\'s; LAUNCH is live out of range; the lock tone is off', () => {
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5); todaysCrewWeapons(d.tactical);
     try {
+      // Merge with the Engineering spike (kind a): out of torpedo range but inside sensor range (800 < 900 at 1 Sensors bar,
+      // spec §10.4), since an unseen enemy never sounds the lock tone (was 3000 apart).
       Object.assign(d.tactical.ships[0], { x: 0, y: 1500, vx: 0, vy: 0 });
-      Object.assign(d.tactical.ships[1], { x: 0, y: -1500, vx: 0, vy: 0 });
+      Object.assign(d.tactical.ships[1], { x: 0, y: 700, vx: 0, vy: 0 });
       d.tactical.systems[0].torpLock = Room.Shields;
       const panel = () => consoleModel({ duel: d, me: 1, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null })!.weapons!;
       expect([panel().torpManual, panel().canLaunch, panel().torpSteer, panel().torpCoast, torpedoTone(d).locked]).toEqual([false, false, false, false, true]);

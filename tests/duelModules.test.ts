@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { COMMAND_REASONS } from '../src/renderer/src/net/contracts';
 import { flatten } from '../src/renderer/src/sim/flatten';
 import { flattenModule, unflattenModule, type SimModule } from '../src/renderer/src/sim/module';
+import { powerModule } from '../src/renderer/src/sim/duel/power';   // Engineering spike spec §7
 import { DUEL_MODULES, DUEL_NOT_SNAPSHOTTED, helmModule, interiorModule, presenceModule, repairModule, roundModule } from '../src/renderer/src/sim/duel/modules';
 import { flattenDuel, hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
@@ -40,7 +41,7 @@ const tacticalNames = (s: TacticalState) => new Set([...TACTICAL_MODULES.flatMap
   ...s.rounds.flatMap((_, k) => ROUND_KEYS.map((key) => `rounds.${k}.${key}`)),   // Valkyrn-i: a round pool entry as a missile's
   ...s.pew.flatMap((_, k) => ROUND_KEYS.map((key) => `pew.${k}.${key}`))]);       // W-1: the pew pool's likewise
 const tacticalExcluded = { ...spaceModule.notSnapshotted, ...shipModule.notSnapshotted, ...scienceModule.notSnapshotted };
-const duelNames = (d: DuelState) => new Set([presenceModule, repairModule, roundModule, helmModule, interiorModule].flatMap((m) => [...names(m, d)]));
+const duelNames = (d: DuelState) => new Set([presenceModule, repairModule, roundModule, helmModule, powerModule, interiorModule].flatMap((m) => [...names(m, d)]));
 function played(seed: number, ticks: number): DuelState {
   const d = createSeatedDuel(CUTTER, seed), pair = createScriptedPair(seed);
   for (let k = 0; k < ticks; k++) stepDuelTick(d, scriptedInput(pair, d));
@@ -106,7 +107,7 @@ describe('the duel modules (spec §6 module contract)', () => {
       bothFlying(d.tactical);
       allRoundsFlying(d.tactical);
       const base = hashDuel(d);
-      for (const { module, state } of DUEL_MODULES.slice(0, 5)) {
+      for (const { module, state } of DUEL_MODULES.filter(({ module }) => module.id !== 'interior')) {   // Engineering spike spec §7: every non-interior module, power included
         const m = module as SimModule<unknown>, s = state(d);
         for (const f of m.fields(s)) {
           if (IDENTITY.has(f.name)) continue;   // identity checks, never written (next test)
@@ -139,7 +140,7 @@ describe('the duel modules (spec §6 module contract)', () => {
       const space: number[] = [], ship: number[] = [], science: number[] = [];
       flattenModule(spaceModule, d.tactical, space); flattenModule(shipModule, d.tactical, ship); flattenModule(scienceModule, d.tactical, science);
       expect(Array.from(flattenTactical(d.tactical))).toEqual([...space, ...ship, ...science].map((v) => (v === 0 ? 0 : v)));
-      expect(Array.from(flattenDuel(d))).toEqual([SIM_VERSION, ...flattenTactical(d.tactical), d.present[0] ? 1 : 0, d.present[1] ? 1 : 0, ...d.repair, d.round, d.helmPlayer, d.baseTick, d.decidedTick, d.throttle, d.holdHeading, ...flatten(d.interior)]);
+      expect(Array.from(flattenDuel(d))).toEqual([SIM_VERSION, ...flattenTactical(d.tactical), d.present[0] ? 1 : 0, d.present[1] ? 1 : 0, ...d.repair, d.round, d.helmPlayer, d.baseTick, d.decidedTick, d.throttle, d.holdHeading, ...d.power.heat, ...d.power.coolant, ...d.power.failed, ...flatten(d.interior)]);   // Engineering spike spec §7
       const copy = cloneTactical(d.tactical), fresh = createTacticalState(1);
       expect(unflattenTactical(fresh, flattenTactical(copy))).toBe(flattenTactical(copy).length);
       expect(flattenTactical(fresh)).toEqual(flattenTactical(copy));
@@ -149,7 +150,7 @@ describe('the duel modules (spec §6 module contract)', () => {
   });
   it('the modules own the duel\'s command kinds (setPaused is the core\'s), and their reasons are enum members', () => {
     const kinds = DUEL_MODULES.flatMap(({ module }) => [...module.commands]).sort();
-    expect(kinds).toEqual(['contactScan', 'designate', 'heading', 'laserCharge', 'laserFire', 'laserFrequency', 'laserLock', 'laserMode', 'missileLaunch', 'pewFire', 'presence', 'rematch', 'rockLock', 'sit', 'stand', 'throttle', 'torpLock', 'torpMode']);
+    expect(kinds).toEqual(['contactScan', 'designate', 'heading', 'laserCharge', 'laserFire', 'laserFrequency', 'laserLock', 'laserMode', 'missileLaunch', 'pewFire', 'presence', 'rematch', 'rockLock', 'shipAirlock', 'shipCoolant', 'shipDoor', 'shipPower', 'sit', 'stand', 'throttle', 'torpLock', 'torpMode', 'weaponPower']);   // W-1, W-2, W-3 and the Engineering spike spec §7, §10.3
     for (const { module } of DUEL_MODULES) for (const reason of module.reasons) expect(COMMAND_REASONS, `${module.id}: ${reason}`).toContain(reason);
   });
   it('cloneTactical is derived from the space and ship modules: every field is copied, and changing it on the copy leaves the original', () => {

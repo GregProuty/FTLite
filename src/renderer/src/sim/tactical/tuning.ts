@@ -192,6 +192,10 @@ export const AIM_STEPS = HEADING_COUNT * HEADING_COUNT;
 /** The gun holds PEW_SHOTS thirds; one third refills every PEW_RECHARGE_TICKS (a full bar in 180 ticks, 3 s). */
 export const PEW_SHOTS = 3;
 export const PEW_RECHARGE_TICKS = 60;
+/** Engineering spike §11 (merge with W-1): the pew's charge is counted in units, PEW_CHARGE_SCALE to a tick at the class's
+ *  own rate, so a third is rechargeTicks × PEW_CHARGE_SCALE units (the crew's 360, the Hunter's 720). 6 makes every crew
+ *  rate by bars (bars.ts PEW_TICKS_BY_BARS: 60, 45, 30, 24 ticks a third) a whole number of units a tick (6, 8, 12, 15). */
+export const PEW_CHARGE_SCALE = 6;
 /** The round pool's fixed size, shared by every ship (the oldest round is reused when it is full). */
 export const PEW_POOL = 16;
 /** A round flies straight at PEW_SPEED (u/s) for PEW_LIFE ticks, about 450 u, with no gravity and no inherited velocity. */

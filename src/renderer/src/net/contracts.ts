@@ -112,6 +112,16 @@ export type DuelCommand =
   | { kind: 'torpMode'; manual: boolean }
   /** On a decided round's end card: start the next round (H-2 spec §7). */
   | { kind: 'rematch' }
+  /** Engineering spike spec §7 (any present, conscious player; the sim checks ranges): move one reactor bar into (+1) or
+   *  out of (−1) system 0..4 (Shields, Weapons, Engines, Sensors, Oxygen); cycle system 0..3's coolant; toggle a door
+   *  edge auto ↔ held open; toggle an airlock open or closed. Named ship* because the sector owns `power` and `coolant`. */
+  | { kind: 'shipPower'; system: number; delta: number }
+  | { kind: 'shipCoolant'; system: number }
+  | { kind: 'shipDoor'; edge: number }
+  | { kind: 'shipAirlock'; index: number }
+  /** Engineering spike spec §10.3: the Weapons seat moves one bar onto (+1) or off (−1) weapon slot 0..2 (pew pew, beam,
+   *  torpedo). The sim checks the ranges. */
+  | { kind: 'weaponPower'; slot: number; delta: number }
   | { kind: 'setPaused'; paused: boolean };
 /** The one command union (engine refactor spec §6): every mode's kinds; `setPaused` is the core's control. */
 export type Command = SectorCommand | DuelCommand;

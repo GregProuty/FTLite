@@ -7,6 +7,7 @@ import { hashF64 } from '../src/shared/hash';
 import { flattenDuel, hashDuel, mapHash } from '../src/renderer/src/sim/duel/hash';
 import { loadDuelSnapshot, MAX_DUEL_ROUNDS, saveDuelSnapshot, validateDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
+import { POWER_VALUES } from '../src/renderer/src/sim/duel/power';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
@@ -66,14 +67,14 @@ describe('the duel snapshot (spec §6)', () => {
     } finally { disposeDuel(d); }
   });
   it('rejects tactical, presence and repair values the module writers would refuse, even rehashed, before allocating', () => {
-    const { d } = scriptedDuel(4, 6156);   // a missile in flight, a damaged crew room and a repair in progress: the first such tick from 5000 on (still seed 4 tick 6156 at SIM_VERSION 55, W-1's pew merged with asteroids-ii; seed 6 tick 5000 on the W-1 branch, SIM_VERSION 54; SIM_VERSION 53, spike ii with the fan split at r 13: seed 4 tick 6156; seeds 1 to 3, 5 and 7 to 10 have none, seed 6 does at 6055; seed 1 tick 6472 before, SIM_VERSION 53 with the fan split at r 25, when seeds 2 to 5 and 7 to 10 had none and seed 6 did at 9888; seed 5 tick 7011 before, SIM_VERSION 50; seed 3 tick 5395 before FTL targeting, SIM_VERSION 49; seed 6 tick 6249 before the weapons update, SIM_VERSION 48; seed 9 tick 5108 before Sci-1's merge, SIM_VERSION 47; seed 4 tick 5193 before homing torpedoes, SIM_VERSION 46)
+    const { d } = scriptedDuel(4, 5050);   // a missile in flight, a damaged crew room and a repair in progress: the first such tick from 5000 on (merge of the Engineering spike with W-1, W-2 and W-3: seed 4 tick 5050; the spike alone at SIM 55: seed 4 tick 6276; still seed 4 tick 6156 at SIM_VERSION 55 on master, W-1's pew merged with asteroids-ii; seed 6 tick 5000 on the W-1 branch, SIM_VERSION 54; SIM_VERSION 53, spike ii with the fan split at r 13: seed 4 tick 6156; seeds 1 to 3, 5 and 7 to 10 have none, seed 6 does at 6055; seed 1 tick 6472 before, SIM_VERSION 53 with the fan split at r 25, when seeds 2 to 5 and 7 to 10 had none and seed 6 did at 9888; seed 5 tick 7011 before, SIM_VERSION 50; seed 3 tick 5395 before FTL targeting, SIM_VERSION 49; seed 6 tick 6249 before the weapons update, SIM_VERSION 48; seed 9 tick 5108 before Sci-1's merge, SIM_VERSION 47; seed 4 tick 5193 before homing torpedoes, SIM_VERSION 46)
     try {
       // The fixture's precondition first, so a trajectory change fails here by name rather than further down.
       const flying = d.tactical.missiles.findIndex((m) => m.active);
-      expect(flying, 'one missile in flight at seed 4 tick 6156').toBeGreaterThanOrEqual(0);
-      expect(d.tactical.missiles[1 - flying]!.active, 'only one missile in flight at seed 4 tick 6156').toBe(false);
-      expect(d.tactical.systems[0].rooms.some((r) => r > 0), 'a damaged crew room at seed 4 tick 6156').toBe(true);
-      expect(d.repair.some((r) => r > 0), 'a repair in progress at seed 4 tick 6156').toBe(true);
+      expect(flying, 'one missile in flight at seed 4 tick 5050').toBeGreaterThanOrEqual(0);
+      expect(d.tactical.missiles[1 - flying]!.active, 'only one missile in flight at seed 4 tick 5050').toBe(false);
+      expect(d.tactical.systems[0].rooms.some((r) => r > 0), 'a damaged crew room at seed 4 tick 5050').toBe(true);
+      expect(d.repair.some((r) => r > 0), 'a repair in progress at seed 4 tick 5050').toBe(true);
       const good = saveDuelSnapshot(d, DIGEST), names = new Map<string, number>();
       let at = 1;
       for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) { names.set(f.name, at); at += f.count; }
@@ -115,7 +116,7 @@ describe('the duel snapshot (spec §6)', () => {
       const twice = structuredClone(good);   // the free entry claims the flying missile's owner: two missiles for one ship
       twice.values[names.get(`${free}.active`)!] = 1; twice.values[names.get(`${free}.owner`)!] = owner; twice.header.hash = hashF64(Float64Array.from(twice.values));
       expect(() => validateDuelSnapshot(CUTTER, twice, DIGEST)).toThrow(new RegExp(`ship ${owner} has two missiles in flight`));
-      const interiorAt = at + 5 + 4 + 2, fieldsAt = interiorAt;   // after presence, repair, the round module (H-2) and the helm module (Artemis-ii's throttle, Feel-ii's held heading)
+      const interiorAt = at + 5 + 4 + 2 + POWER_VALUES, fieldsAt = interiorAt;   // Engineering spike spec §7: the power module sits between helm and interior;   // after presence, repair, the round module (H-2) and the helm module (Artemis-ii's throttle, Feel-ii's held heading)
       // Feel-ii §1.1: the held heading is −1 or a heading index 0..255.
       for (const value of [-2, 256, 0.5]) {
         const snap = structuredClone(good); snap.values[at + 5 + 4 + 1] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));

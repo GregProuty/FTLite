@@ -1,8 +1,11 @@
+// Merge with the Engineering spike (SIM 58, kind a, replaced rule): the crew's beam stands on the Weapons officer's bars and
+// starts dark (spec §10.3), so these tests give the crew today's laser and torpedo by bars (todaysCrewWeapons).
 // @vitest-environment jsdom
 // W-2 manual laser (spec 2026-11-18-pew-pew-weapons-design §2, §5): the LASER card's AUTO / MAN tag shows the mode (MAN lit)
 // and a click on it presses laserMode, as Z does; the Weapons panel carries the mode; in MANUAL the card never says
 // FIRING and has no goal glow.
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { UiContext } from '../src/renderer/src/ui/context';
 import { UiRoot } from '../src/renderer/src/ui/UiRoot';
@@ -71,7 +74,7 @@ describe('the Weapons panel in MANUAL (spec §2)', () => {
       .toEqual(['MANUAL: SPACE FIRES', 'MANUAL: SPACE FIRES', 'OUT OF ARC: HELM TURN RIGHT', null]);
   });
   it('carries the mode; a lined-up MANUAL laser never says FIRING and has no goal glow', () => {
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5); todaysCrewWeapons(d.tactical);
     try {
       place(d.tactical, 300, 10);   // lined up, full and targeted: AUTO says FIRING
       const panel = () => consoleModel({ duel: d, me: 1, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null, goal: true })!.weapons!;

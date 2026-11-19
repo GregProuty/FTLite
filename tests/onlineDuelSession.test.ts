@@ -4,6 +4,7 @@
 // neutralising without a pause, Enter's rematch on a decided round and the leave prompt, a release swallowed by a pause
 // re-sent after resume, CONNECTION LOST right after a link close, and each record's own disconnects, pauses and jitter.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import type { CommandResult, DuelCommand, HeldInput } from '../src/renderer/src/net/contracts';
 import type { DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
@@ -199,6 +200,7 @@ describe('the online manual laser (W-2)', () => {
   });
   it('in MANUAL Space sends laserFire along the map aim even on an uncharged replica; an unavailable answer shows NO CHARGE', () => {
     const r = rig(1);
+    todaysCrewWeapons(r.d.tactical);   // merge with the Engineering spike (kind a): the beam needs a bar (spec §10.3)
     r.d.tactical.systems[0]!.laserManual = true;
     r.d.tactical.systems[0]!.laserCharge = 0;   // the lagging replica: empty
     const c = r.attach();

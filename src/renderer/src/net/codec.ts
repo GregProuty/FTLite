@@ -106,7 +106,7 @@ function duelSummaryShape({ uint }: Primitives) {
     repairsStarted: crew, walkingTicks: crew, repairingTicks: crew };
 }
 /** The duel's wire (engine refactor spec §6): its own command kinds plus the core's setPaused, and the duel snapshot
- *  header (sim/duel/snapshot.ts). H-2 adds `rematch` and the `round` event; Artemis-ii adds `throttle`; Feel-ii adds `heading`; W-1 adds `pewFire`; W-2 adds `laserMode` and `laserFire`; W-3 adds `torpMode`. */
+ *  header (sim/duel/snapshot.ts). H-2 adds `rematch` and the `round` event; Artemis-ii adds `throttle`; Feel-ii adds `heading`; W-1 adds `pewFire`; W-2 adds `laserMode` and `laserFire`; W-3 adds `torpMode`; the Engineering spike adds shipPower, shipCoolant, shipDoor, shipAirlock and weaponPower. */
 export const duelWire: ModeWire<DuelSnapshot> = {
   commands({ index }) {
     return [
@@ -129,6 +129,12 @@ export const duelWire: ModeWire<DuelSnapshot> = {
       z.object({ kind: z.literal('laserFire'), aim: z.number().int(), aimAcc: z.number().int() }).strict(),   // W-2: the MANUAL laser's aim
       z.object({ kind: z.literal('torpMode'), manual: z.boolean() }).strict(),   // W-3: the torpedo's AUTO / MANUAL mode
       z.object({ kind: z.literal('rematch') }).strict(),
+      // Engineering spike spec §7: integers; the sim answers an out-of-range one malformed.
+      z.object({ kind: z.literal('shipPower'), system: z.number().int(), delta: z.number().int() }).strict(),
+      z.object({ kind: z.literal('shipCoolant'), system: z.number().int() }).strict(),
+      z.object({ kind: z.literal('shipDoor'), edge: z.number().int() }).strict(),
+      z.object({ kind: z.literal('shipAirlock'), index: z.number().int() }).strict(),
+      z.object({ kind: z.literal('weaponPower'), slot: z.number().int(), delta: z.number().int() }).strict(),   // spec §10.3
       z.object({ kind: z.literal('setPaused'), paused: z.boolean() }).strict()
     ];
   },

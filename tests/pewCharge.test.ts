@@ -7,10 +7,11 @@ import { placeRound } from '../src/renderer/src/sim/tactical/gun';
 import { flattenTactical, hashTactical, TACTICAL_MODULES, validateTacticalValues } from '../src/renderer/src/sim/tactical/hash';
 import { aimDir, clampAim, firePew, pewReady, validAim } from '../src/renderer/src/sim/tactical/pew';
 import { cloneTactical, createTacticalState, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
-import { AIM_STEPS, HEADING_COUNT, HUNTER_PEW_GAP, HUNTER_PEW_RECHARGE_TICKS, PEW_ARC, PEW_ARC_STEPS, PEW_HULL, PEW_LIFE, PEW_POOL, PEW_RANGE, PEW_RECHARGE_TICKS, PEW_SHOTS, PEW_SPEED, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
+import { AIM_STEPS, HEADING_COUNT, HUNTER_PEW_GAP, HUNTER_PEW_RECHARGE_TICKS, PEW_ARC, PEW_ARC_STEPS, PEW_HULL, PEW_LIFE, PEW_POOL, PEW_RANGE, PEW_CHARGE_SCALE, PEW_RECHARGE_TICKS, PEW_SHOTS, PEW_SPEED, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 
-const FULL = PEW_SHOTS * PEW_RECHARGE_TICKS;
+// Engineering spike §11 (merge with W-1, kind a): the charge is in units, PEW_CHARGE_SCALE to a tick at the class's rate.
+const THIRD = PEW_RECHARGE_TICKS * PEW_CHARGE_SCALE, FULL = PEW_SHOTS * THIRD, HUNTER_FULL = PEW_SHOTS * HUNTER_PEW_RECHARGE_TICKS * PEW_CHARGE_SCALE;
 /** One duel tick with the crew firing the pew straight along its nose, or not. Returns whether a crew round went out. */
 function tick(st: TacticalState, fire: boolean): boolean {
   const before = st.systems[0].pewShots;
@@ -39,7 +40,7 @@ describe('the pew definition (spec §1)', () => {
 describe('the charge (spec §1, §5)', () => {
   it('both duel ships start full; a class without the pew holds zero', () => {
     const st = createTacticalState(5);
-    expect([st.systems[0].pewCharge, st.systems[1].pewCharge]).toEqual([FULL, PEW_SHOTS * HUNTER_PEW_RECHARGE_TICKS]);
+    expect([st.systems[0].pewCharge, st.systems[1].pewCharge]).toEqual([FULL, HUNTER_FULL]);
     expect(createTacticalState(5, 2, ShipClass.Valkyrn).systems[0].pewCharge).toBe(0);
   });
   it('three rapid fires succeed and the fourth is refused', () => {
@@ -53,16 +54,16 @@ describe('the charge (spec §1, §5)', () => {
     for (let k = 0; k < 59; k++) tick(st, false);
     expect(pewReady(st, 0)).toBe(false);
     tick(st, false);
-    expect(st.systems[0].pewCharge).toBe(60); expect(pewReady(st, 0)).toBe(true);
+    expect(st.systems[0].pewCharge).toBe(THIRD); expect(pewReady(st, 0)).toBe(true);
     const full = createTacticalState(5);
     full.systems[0].pewCharge = 0;
     for (let k = 0; k < 180; k++) tick(full, false);
     expect(full.systems[0].pewCharge).toBe(FULL);
     expect([tick(full, true), tick(full, true), tick(full, true), tick(full, true)]).toEqual([true, true, true, false]);
     const part = createTacticalState(5);
-    part.systems[0].pewCharge = 90;
+    part.systems[0].pewCharge = THIRD * 1.5;
     expect(tick(part, true)).toBe(true);
-    expect(part.systems[0].pewCharge).toBe(31);   // 90 − 60, then the tick's recharge
+    expect(part.systems[0].pewCharge).toBe(THIRD / 2 + PEW_CHARGE_SCALE);   // 1.5 thirds − 1, then the tick's recharge (was 31, in ticks)
   });
   it('mashing every tick fires exactly once per 60 ticks after the first three', () => {
     const st = createTacticalState(5), fired: number[] = [];
@@ -81,11 +82,16 @@ describe('the charge (spec §1, §5)', () => {
     expect(crewAt).toEqual([60]);
     expect(hunterAt).toEqual([HUNTER_PEW_RECHARGE_TICKS]);
   });
-  it('recharge does not change with Weapons damage, and a full charge stays full', () => {
+  it('recharge holds at Weapons level 1 (the bar survives), stops at level 2 (no bar), and a full charge stays full', () => {
+    // Engineering spike §11 (merge decision 1a, kind a: replaced rule): W-1's "whatever the damage" now meets the bars;
+    // the trimmed pew pew bar gates at once, so a level-2 Weapons Room (no Weapons bars) stops the refill.
     const st = createTacticalState(5);
-    st.systems[0].pewCharge = 0; st.systems[0].rooms[Room.Weapons] = 2;
+    st.systems[0].pewCharge = 0; st.systems[0].rooms[Room.Weapons] = 1;
     for (let k = 0; k < 60; k++) tick(st, false);
-    expect(st.systems[0].pewCharge).toBe(60);
+    expect(st.systems[0].pewCharge).toBe(THIRD);
+    st.systems[0].rooms[Room.Weapons] = 2;
+    for (let k = 0; k < 60; k++) tick(st, false);
+    expect(st.systems[0].pewCharge).toBe(THIRD); expect(pewReady(st, 0)).toBe(false);
     const full = createTacticalState(5);
     for (let k = 0; k < 10; k++) tick(full, false);
     expect(full.systems[0].pewCharge).toBe(FULL);
@@ -120,15 +126,15 @@ describe('a round fired (spec §1)', () => {
     const r = st.pew.find((e) => e.active)!, [ux, uy] = aimDir(PEW_ARC_STEPS);
     expect([r.x, r.y, r.age, r.owner]).toEqual([100, 200 - (SHIP_RADIUS + 1), 0, 0]);
     expect(r.vx).toBeCloseTo(ux * PEW_SPEED, 9); expect(r.vy).toBeCloseTo(uy * PEW_SPEED, 9);
-    expect(st.systems[0].pewCharge).toBe(FULL - PEW_RECHARGE_TICKS);
+    expect(st.systems[0].pewCharge).toBe(FULL - THIRD);
     expect(st.events).toEqual([{ kind: 'pewFire', ship: 0, x: 100, y: 200 - (SHIP_RADIUS + 1) }]);
     expect(st.rounds.every((e) => !e.active)).toBe(true);   // the gun's pool is untouched
   });
   it('refuses with less than a third, a bad aim, or a class without the pew', () => {
     const st = createTacticalState(5);
-    st.systems[0].pewCharge = 59;
+    st.systems[0].pewCharge = THIRD - 1;
     expect(firePew(st, 0, 0)).toBe(false);
-    st.systems[0].pewCharge = 60;
+    st.systems[0].pewCharge = THIRD;
     expect([firePew(st, 0, -1), firePew(st, 0, AIM_STEPS), firePew(st, 0, 0.5)]).toEqual([false, false, false]);
     expect(firePew(createTacticalState(5, 2, ShipClass.Valkyrn), 0, 0)).toBe(false);
     expect(st.pew.every((e) => !e.active)).toBe(true);
@@ -163,10 +169,10 @@ describe('the pew state in the modules (spec §4)', () => {
     };
     const flying = st.pew.findIndex((e) => e.active), free = st.pew.findIndex((e) => !e.active);
     // Task 6 review: the bound is the slot's own class's full pew (it was the fullest class's).
-    bad('systems.0.pewCharge', 0, FULL + 1, /out of range/);   // the Cutter: 181 refused
-    bad('systems.1.pewCharge', 0, PEW_SHOTS * HUNTER_PEW_RECHARGE_TICKS + 1, /out of range/);
-    const hunterFull = [...values]; hunterFull[offsetOf(st, 'systems.1.pewCharge')] = PEW_SHOTS * HUNTER_PEW_RECHARGE_TICKS;
-    expect(validateTacticalValues(shape, hunterFull)).toBe(values.length);   // the Hunter: its full 360 accepted
+    bad('systems.0.pewCharge', 0, FULL + 1, /out of range/);   // the Cutter: 1081 refused
+    bad('systems.1.pewCharge', 0, HUNTER_FULL + 1, /out of range/);
+    const hunterFull = [...values]; hunterFull[offsetOf(st, 'systems.1.pewCharge')] = HUNTER_FULL;
+    expect(validateTacticalValues(shape, hunterFull)).toBe(values.length);   // the Hunter: its full 2160 accepted
     bad('systems.1.pewCharge', 0, -1, /out of range/);
     bad('systems.0.pewShots', 0, -1, /out of range/);
     bad('systems.1.pewHits', 0, 0.5, /out of range/);

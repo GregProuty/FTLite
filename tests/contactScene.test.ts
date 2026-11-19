@@ -52,6 +52,7 @@ function rig() {
   const scene = createDuelScene(renderer as never, { seed: 5, pauseText: 'PAUSED', ui: createDuelSink(store), contact, requests, takeClick: () => clicks.shift() ?? null });
   // The old seated start (createDuel now leaves both standing): player 0 at the Helm, player 1 at Weapons; Tab takes the gunner.
   seatDuelCrew(rt.duel);
+  const sh = rt.duel.tactical.ships; sh[1]!.x = sh[0]!.x + 600; sh[1]!.y = sh[0]!.y;   // Engineering spike §10.4: inside the 900 start range
   press('switch'); tick(); tick();
   const enemyOnScreen = () => { const b = interpolatedShip(rt.duel.tactical, rt.prev, rt.alpha(), 1); return worldToScreen(rt.cameras.weapons, vp, b.x, b.y); };
   const view = () => store.getState().duel?.contact;

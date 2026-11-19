@@ -3,6 +3,7 @@
 // window spec §6.2); it never becomes a command (parent §10).
 import type { Axes } from '../../sim/tactical/state';
 import { clampThrottle, THROTTLE_MAX } from '../../sim/duel/throttle';
+import type { ShipCommand } from '../../render/duel/shipControls';
 
 /** Press-edge actions (spec §5 table). H-1a uses pause, camera and the zoom keys; H-1b adds the duel ones; Artemis-ii
  *  adds the Helm's throttle notches on W and S (spec 2026-11-17-artemis-consoles §5.4); W-2 adds Z, the laser's AUTO / MANUAL toggle at Weapons (pew pew spec §2);
@@ -36,7 +37,14 @@ export type HoldCode = 'Space' | 'KeyA' | 'KeyD' | 'KeyW' | 'KeyS';
  *  the torpedo's. */
 export interface ConsoleInput { press(action: KeyAction): void; hold(code: HoldCode, on: boolean): void; lock(room: number): void; torpLock(room: number): void; throttle(level: number): void; frequency(freq: number): void;
   /** Spike ii §6.5: a weapon card's right-click clear of a rock target (rock −1); optional so older fakes still fit. */
-  rockLock?(weapon: 'laser' | 'torpedo', rock: number): void }
+  rockLock?(weapon: 'laser' | 'torpedo', rock: number): void;
+  /** Engineering spike §6, §7: a ship-view click (a power column, a coolant counter, a door or an airlock). Optional, so
+   *  the tests' console literals stay valid; callers use `?.`. */
+  ship?(command: ShipCommand): void;
+  /** Engineering spike §10.3: a bar on or off a weapon slot. Optional, as ship. */
+  weaponPower?(slot: number, delta: 1 | -1): void }
+/** Engineering spike §7: the most ship commands held between two samples; a further one drops the oldest. */
+export const SHIP_QUEUE_MAX = 16;
 /** Keys whose browser default (focus moves, page scrolls, history back) must never happen in the duel views. */
 const PREVENT = new Set(['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace']);
 
@@ -58,6 +66,8 @@ export interface KeySample {
   throttleTo?: number | null;
   /** The last laser frequency asked for since the previous sample (Digit3..5, or a console button), or null (Sci-1 spec §7.4). */
   freqTo?: number | null;
+  /** Engineering spike §7: the ship-view commands clicked since the previous sample, oldest first; absent or empty for none. */
+  ship?: ShipCommand[];
 }
 
 export function emptyPresses(): Record<KeyAction, number> {
@@ -70,13 +80,15 @@ export function helmAxes(k: Pick<KeySample, 'moveX' | 'moveY'>): Axes {
 }
 
 /** The level a frame's throttle input asks for (Artemis spec §5.4), or null for none. Each W press moves it one notch up
- *  and each S press one down from `base`, clamped to −1..4 at every step. Then a console notch click (`to`) wins. A
- *  request equal to `base` is null, since the sim would answer noop. */
-export function throttleRequest(base: number, presses: Pick<Record<KeyAction, number>, 'throttleUp' | 'throttleDown'>, to: number | null | undefined): number | null {
-  const steps = presses.throttleUp - presses.throttleDown;
+ *  and each S press one down from `base`; then a console notch click (`to`) wins. Every step is clamped to −1..`cap`
+ *  (Engineering spike §10.2: the Engines bars' cap, default THROTTLE_MAX), and to 0..0 at a cap of 0 (no reverse without
+ *  Engines). A request equal to `base` is null, since the sim would answer noop. */
+export function throttleRequest(base: number, presses: Pick<Record<KeyAction, number>, 'throttleUp' | 'throttleDown'>, to: number | null | undefined, cap: number = THROTTLE_MAX): number | null {
+  const steps = presses.throttleUp - presses.throttleDown, top = Math.min(THROTTLE_MAX, cap), floor = cap <= 0 ? 0 : -1;
+  const fit = (v: number): number => Math.max(floor, Math.min(top, clampThrottle(v)));
   let level = base;
-  for (let n = 0; n < Math.abs(steps); n++) level = clampThrottle(level + Math.sign(steps));
-  if (to !== undefined && to !== null) level = clampThrottle(to);
+  for (let n = 0; n < Math.abs(steps); n++) level = fit(level + Math.sign(steps));
+  if (to !== undefined && to !== null) level = fit(to);
   return level === base ? null : level;
 }
 
@@ -104,6 +116,7 @@ export interface DuelKeyboardOptions { intercept?: (code: string) => boolean }
 export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOptions = {}): DuelKeyboard {
   const keys = new Set<string>(), ui = new Set<string>(), taken = new Set<string>();
   let presses = emptyPresses(), lockTo: number | null = null, torpTo: number | null = null, rockTo: { weapon: 'laser' | 'torpedo'; rock: number } | null = null, throttleTo: number | null = null, freqTo: number | null = null;
+  let ship: ShipCommand[] = [];   // Engineering spike §7: kept by clearUi, dropped by clear
   const has = (code: string): boolean => keys.has(code) || ui.has(code);
   const down = (e: KeyEventLike): void => {
     if (PREVENT.has(e.code)) e.preventDefault();
@@ -123,7 +136,7 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     if (e.code === FIRE_HELD && was && !has(FIRE_HELD)) presses.fireUp++;
   };
   const clearUi = (): void => { ui.clear(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; };
-  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; };
+  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; ship = []; };
   target.addEventListener('keydown', down as (e: never) => void);
   target.addEventListener('keyup', up as (e: never) => void);
   target.addEventListener('blur', clear as (e: never) => void);
@@ -138,7 +151,9 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     torpLock(room) { torpTo = room; },
     rockLock(weapon, rock) { rockTo = { weapon, rock }; },
     throttle(level) { throttleTo = level; },
-    frequency(freq) { freqTo = freq; }
+    frequency(freq) { freqTo = freq; },
+    ship(command) { ship.push(command); if (ship.length > SHIP_QUEUE_MAX) ship.shift(); },
+    weaponPower(slot, delta) { ship.push({ kind: 'weaponPower', slot, delta }); if (ship.length > SHIP_QUEUE_MAX) ship.shift(); }
   };
   return {
     ui: consoleInput,
@@ -146,8 +161,8 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
       const x = (has(MOVE_CODES.right) ? 1 : 0) - (has(MOVE_CODES.left) ? 1 : 0), y = (has(MOVE_CODES.down) ? 1 : 0) - (has(MOVE_CODES.up) ? 1 : 0);
       const len = Math.sqrt(x * x + y * y) || 1;
       const held: HeldFlags = { fire: has(FIRE_HELD), left: has(MOVE_CODES.left), right: has(MOVE_CODES.right), up: has(MOVE_CODES.up), down: has(MOVE_CODES.down) };
-      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, torpTo, rockTo, throttleTo, freqTo };
-      presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null;
+      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, torpTo, rockTo, throttleTo, freqTo, ...(ship.length > 0 ? { ship } : {}) };
+      presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; ship = [];
       return out;
     },
     clear,

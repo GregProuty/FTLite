@@ -9,8 +9,10 @@ import { AUTO_DIG } from './rockTuning';
 import { laserStrikesRock, rockOnTarget, rockShotLine } from './rockWeapons';
 import { hx, hy } from './direction';
 import { tickGun } from './gun';
+import { BEAM_RATE_BY_BARS, BEAM_SHOTS_BY_BARS, DuelSystem, effectiveBars, MAGAZINE_REGEN_UNITS, SHIELD_LAYERS_BY_BARS, SHIELD_RATE_BY_BARS, TORPEDO_RELOAD_BY_BARS, weaponBars, WeaponSlot } from './bars';
 import { aimDir, clampAim, firePew, tickPew } from './pew';
 import { classOf, CREW_SLOT, missileOf, Room, type Axes, type TacticalState } from './state';
+import { shipSeen } from './science';
 import { AIM_STEPS, LASER_ARC_STEPS } from './tuning';
 
 /** One ship's inputs for one tick. `helm` / `weapons`: a present player is seated at that console ("attended", spec §8). */
@@ -55,6 +57,14 @@ export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 
 /** Nobody at either console: a ship nobody flies. */
 export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, torpTurn: 0, torpHeading: -1, scanner: true };
 
+/** Engineering spike spec §10.3: the shots one release of ship i's laser fires: the crew's by the beam's bars (1/2/2,
+ *  0 off), any other ship's by its class. 0 without a laser. */
+export function beamShots(state: TacticalState, i: number): number {
+  const laser = classOf(state, i).slots.laser;
+  if (!laser) return 0;
+  return i === CREW_SLOT ? BEAM_SHOTS_BY_BARS[weaponBars(state.systems[i]!, WeaponSlot.Beam)]! : laser.shots;
+}
+
 /** Whether ship i's laser is fully charged; never for a class without a laser (Valkyrn spec §6.1). */
 export function laserFull(state: TacticalState, i: number): boolean {
   const laser = classOf(state, i).slots.laser;
@@ -78,12 +88,13 @@ export function torpedoInRange(state: TacticalState, i: number, torpRock = state
   const dx = b.x - a.x, dy = b.y - a.y;
   return dx * dx + dy * dy <= range * range;
 }
-/** missileLaunch is accepted only with no missile in flight, a missile in the magazine, Weapons below level 2 and the
- *  target (spike ii: the rock target, `torpRock`) within torpedo range (weapons update spec §2). W-3 (pew pew spec §3): in
- *  MANUAL (`manual`, default the ship's torpedo mode) there is no target and no range test. */
+/** missileLaunch is accepted only with no missile in flight, a missile in the magazine, the torpedo up (the crew's: a
+ *  torpedo bar, Engineering spike spec §10.3; any other ship's: Weapons below level 2) and the target (spike ii: the rock
+ *  target, `torpRock`) within torpedo range (weapons update spec §2). W-3 (pew pew spec §3): in MANUAL (`manual`, default the ship's torpedo mode) there is no target and no range test. */
 export function canLaunch(state: TacticalState, i: number, torpRock = state.systems[i]!.torpRock, manual = state.systems[i]!.torpManual): boolean {
   const s = state.systems[i]!;
-  return missileOf(state, i) === null && s.magazine > 0 && s.rooms[Room.Weapons] < 2 && (manual || torpedoInRange(state, i, torpRock));
+  const up = i === CREW_SLOT ? weaponBars(s, WeaponSlot.Torpedo) >= 1 : s.rooms[Room.Weapons] < 2;   // spec §10.3: the crew's torpedo bars
+  return missileOf(state, i) === null && s.magazine > 0 && up && (manual || torpedoInRange(state, i, torpRock));
 }
 /** A lock target must be a Room index. */
 export function validLock(room: number): boolean { return Number.isInteger(room) && room >= 0 && room <= 2; }
@@ -94,13 +105,17 @@ export function validRockLock(state: TacticalState, weapon: unknown, rock: numbe
   return (weapon === 'laser' || weapon === 'torpedo') && Number.isInteger(rock) && rock >= -1 && rock < rockSlots(state);
 }
 
-/** Weapons at damage level 2 is off (owner 2026-11-17, FTL-style): the laser cannot charge, hold or fire and keeps no
- *  charge; canLaunch refuses missiles. A laserCharge command is still admitted (canCharge): it is held, to no effect,
- *  and the laser starts charging again once the room is repaired to 1. */
-export function laserOffline(state: TacticalState, i: number): boolean { return state.systems[i]!.rooms[Room.Weapons] >= 2; }
+/** Whether ship i's laser is off: the crew's with 0 beam bars (Engineering spike spec §10.3), any other ship's at Weapons
+ *  damage level 2 (owner 2026-11-17, FTL-style). Off, the laser cannot charge, hold or fire and keeps no charge (and a
+ *  non-crew ship's canLaunch refuses missiles). A laserCharge command is still admitted (canCharge): it is held, to no
+ *  effect, and the laser starts charging again once the beam has a bar (the crew) or the room is repaired to 1. */
+export function laserOffline(state: TacticalState, i: number): boolean {
+  return i === CREW_SLOT ? beamShots(state, i) === 0 : state.systems[i]!.rooms[Room.Weapons] >= 2;   // spec §10.3: the beam's bars
+}
 
 /** W-2 (pew pew spec §2): whether ship i's MANUAL laser would fire on a laserFire now, a torpedo in flight aside
- *  (laserFrozen): a full charge, no burst shot pending, Weapons below level 2. */
+ *  (laserFrozen): a full charge, no burst shot pending, the laser not offline (the crew's: a beam bar, Engineering spike
+ *  §10.3, merge decision 1b; any other ship's: Weapons below level 2). No sight test (firing blind is allowed). */
 export function manualLaserReady(state: TacticalState, i: number): boolean {
   return laserFull(state, i) && state.systems[i]!.laserBurst === 0 && !laserOffline(state, i);
 }
@@ -240,19 +255,20 @@ function fireLaser(state: TacticalState, i: number): void {
   if (!laser) return;
   shoot(state, i);
   as.laserCharge = 0; as.laserHold = 0;
-  as.laserBurst = laser.shots - 1; as.laserBurstClock = as.laserBurst > 0 ? laser.burstGapTicks : 0;
+  as.laserBurst = Math.max(0, beamShots(state, i) - 1); as.laserBurstClock = as.laserBurst > 0 ? laser.burstGapTicks : 0;   // spec §10.3
 }
 
 /** W-2 (pew pew spec §2): a full charge's MANUAL release along fine aim `aim` (an integer 0..AIM_STEPS − 1, else nothing):
- *  the first shot now along the aim clamped about the heading, the rest of the class's burst queued a burst gap apart,
- *  each to fire along that same clamped aim (laserAim). */
+ *  the first shot now along the aim clamped about the heading, the rest of the burst queued a burst gap apart, each to
+ *  fire along that same clamped aim (laserAim). Engineering spike §10.3 (merge decision 1b): the burst is the beam's bars'
+ *  (beamShots), as AUTO's; no sight test: firing blind along an aim is allowed. */
 function fireLaserAlong(state: TacticalState, i: number, aim: number): void {
   const as = state.systems[i]!, laser = classOf(state, i).slots.laser;
   if (!laser || !Number.isInteger(aim) || aim < 0 || aim >= AIM_STEPS) return;
   const clamped = clampAim(state.ships[i]!.heading, aim, LASER_ARC_STEPS);
   shootAlong(state, i, clamped);
   as.laserCharge = 0; as.laserHold = 0;
-  as.laserBurst = laser.shots - 1; as.laserBurstClock = as.laserBurst > 0 ? laser.burstGapTicks : 0;
+  as.laserBurst = Math.max(0, beamShots(state, i) - 1); as.laserBurstClock = as.laserBurst > 0 ? laser.burstGapTicks : 0;   // spec §10.3
   as.laserAim = as.laserBurst > 0 ? clamped : -1;
 }
 
@@ -264,6 +280,10 @@ function stepBurst(state: TacticalState, i: number): void {
   const s = state.systems[i]!;
   if (s.laserBurst === 0) return;
   if (laserOffline(state, i)) { s.laserBurst = 0; s.laserBurstClock = 0; s.laserAim = -1; return; }
+  if (s.laserBurst > beamShots(state, i) - 1) {   // spec §10.3: a shot whose bar is gone never fires
+    s.laserBurst = Math.max(0, beamShots(state, i) - 1);
+    if (s.laserBurst === 0) { s.laserBurstClock = 0; s.laserAim = -1; return; }
+  }
   if (--s.laserBurstClock > 0) return;
   if (s.laserAim >= 0) shootAlong(state, i, s.laserAim); else shoot(state, i);
   s.laserBurst--; s.laserBurstClock = s.laserBurst > 0 ? classOf(state, i).slots.laser?.burstGapTicks ?? 0 : 0;
@@ -303,7 +323,7 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
     }
   }
   // Auto-fire: on the enemy when eligible; spike ii §6.2: on a rock target when it is on target (AUTO_DIG is false). W-2: AUTO only.
-  if (armed && crew && !s.laserManual && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && (s.laserRock >= 0 ? rockOnTarget(state, i, s.laserRock) : laserEligible(state, i, s.target) || laserDiggable(state, i))) fireLaser(state, i);
+  if (armed && crew && !s.laserManual && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && (s.laserRock >= 0 ? rockOnTarget(state, i, s.laserRock) : (laserEligible(state, i, s.target) || laserDiggable(state, i)) && shipSeen(state, s.target))) fireLaser(state, i);   // Task 10, spec §10.4: the enemy only when seen (rocks are always shown)
   // W-2 (pew pew spec §2): the MANUAL laser fires only on laserFire, along its aim, with a full charge, no burst pending,
   // Weapons online and no torpedo of its own in flight (laserFrozen).
   if (armed && crew && s.laserManual && input.laserFire >= 0 && manualLaserReady(state, i) && !laserFrozen(state, i, input)) fireLaserAlong(state, i, input.laserFire);
@@ -313,7 +333,7 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
       launchMissile(state, i);
       s.fireHeld = false;
     }
-    if (crew && !s.torpManual && (s.torpLock >= 0 || s.torpRock >= 0) && canLaunch(state, i)) launchMissile(state, i);   // auto-launch, once (spike ii: or on a rock target); W-3: never in MANUAL
+    if (crew && !s.torpManual && (s.torpLock >= 0 || s.torpRock >= 0) && canLaunch(state, i) && (s.torpRock >= 0 || shipSeen(state, s.target))) launchMissile(state, i);   // auto-launch, once (spike ii: or on a rock target); W-3: never in MANUAL; Task 10: the enemy only when seen
   }
   if (input.pewAim >= 0) firePew(state, i, input.pewAim);   // W-1 (pew pew spec §1): last, as WEAPON_ORDER admits it; attended (above)
 }
@@ -324,13 +344,21 @@ export function tickWeapons(state: TacticalState, i: number, input: ShipInput): 
   if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; s.laserBurst = 0; s.laserBurstClock = 0; s.laserAim = -1; }   // off: every tick, frozen or not (W-2: a MANUAL burst's aim with it)
   else if (laser !== null && s.laserBurst === 0 && !laserFrozen(state, i, input)) {   // no charging while a burst shot is pending, nor without a laser
     // FTL targeting spec §2: the crew's laser charges by itself, with no hold, and stays full (no vent) until it fires.
-    if (i === CREW_SLOT) { if (!laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + laser.chargeRate[s.rooms[Room.Weapons]]!); }
+    if (i === CREW_SLOT) { if (!laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + BEAM_RATE_BY_BARS[weaponBars(s, WeaponSlot.Beam)]!); }   // spec §10.3
     else if (s.fireHeld && !laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + laser.chargeRate[s.rooms[Room.Weapons]]!);
     else if (laserFull(state, i) && ++s.laserHold >= laser.holdTicks) { s.laserCharge = 0; s.laserHold = 0; }   // vents; recharges if still held
   }
-  if (s.shields >= c.shields.layers) s.shieldClock = 0;
+  if (i === CREW_SLOT) {   // Engineering spike spec §2: the crew's shields by bars; layers above the cap drop at once
+    const bars = effectiveBars(s, DuelSystem.Shields), cap = Math.min(c.shields.layers, SHIELD_LAYERS_BY_BARS[bars]!);
+    if (s.shields > cap) { s.shields = cap; s.shieldClock = 0; }
+    if (s.shields >= cap) s.shieldClock = 0;
+    else if ((s.shieldClock += SHIELD_RATE_BY_BARS[bars]!) >= c.shields.rechargeUnits) { s.shields++; s.shieldClock = 0; }   // rate 0: held
+  } else if (s.shields >= c.shields.layers) s.shieldClock = 0;
   else if ((s.shieldClock += c.shields.rate[s.rooms[Room.Shields]]!) >= c.shields.rechargeUnits) { s.shields++; s.shieldClock = 0; }   // rate 0: held
   if (s.magazine >= c.slots.missile.magazine) s.magazineClock = 0;
-  else if (++s.magazineClock >= c.slots.missile.regenTicks) { s.magazine++; s.magazineClock = 0; }
-  tickPew(state, i);   // W-1: the pew refills every tick, attended or not, whatever the damage (spec §6 decision 4)
+  else if (i === CREW_SLOT) {   // spec §10.3: the torpedo's reload by its bars on a units clock; 0 bars holds the clock
+    const rate = TORPEDO_RELOAD_BY_BARS[weaponBars(s, WeaponSlot.Torpedo)]!;
+    if (rate > 0 && (s.magazineClock += rate) >= MAGAZINE_REGEN_UNITS) { s.magazine++; s.magazineClock = 0; }
+  } else if (++s.magazineClock >= c.slots.missile.regenTicks) { s.magazine++; s.magazineClock = 0; }
+  tickPew(state, i);   // W-1: the pew refills every tick, attended or not (spec §6 decision 4); the crew's at its pew pew bars' rate (Engineering spike §11)
 }

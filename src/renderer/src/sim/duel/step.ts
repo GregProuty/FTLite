@@ -6,21 +6,29 @@ import { NEUTRAL_INTENT, type Intent } from '../../../../shared/intent';
 import type { CommandEnvelope, HeldInput } from '../../net/contracts';
 import { applyConsoleCommand, applyInteractionCommands } from '../commands';
 import { Life, LifeState, Position, Seated } from '../components';
+import { doorSystem } from '../doors';
 import { roomAt } from '../grid';
-import { inReachOfTile } from '../interact';
+import { fireStep } from '../hazards/fire';
+import { oxygenStep } from '../hazards/oxygen';
 import { movementSystem } from '../movement';
+import { DuelSystem, effectiveBars, throttleAllowed, WEAPON_SLOTS } from '../tactical/bars';
+import { applyWeaponPower } from './weaponSlots';
 import { stepDuel } from '../tactical/duel';
 import { autoFaceTurn, headingTurn } from '../tactical/hunter';
-import { scanCommand } from '../tactical/science';
+import { contactSeen, scanCommand, shipSeen } from '../tactical/science';
 import { HEADING_COUNT, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
 import { classOf, CONTACT_MAX_LEVEL, Outcome } from '../tactical/state';
+import { HAZARD_EVERY } from '../tuning';
 import { rockAlive } from '../tactical/rocks';
 import { canCharge, canLaunch, manualLaserReady, validRockLock, validTarget, type ShipInput } from '../tactical/weapons';
 import { pewReady, validAim } from '../tactical/pew';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
-import { extinguishWork, firePhase, pointBurning } from './fire';
+import { clampThrottle } from './engines';
+import { extinguishRoomWork, extinguishWork, firePhase, pointBurning } from './fire';
 import { applyHitDamage, healthPhase } from './health';
 import { followingSeed } from './seeds';
+import { applyPower, clampToCapacity, cycleDuelCoolant, duelHeatStep, OVERDRIVE_SYSTEMS, validSystem } from './power';
+import { duelInjection, patchWork, toggleAirlock, toggleDoor, validAirlock, validDoor, workJob } from './hazards';
 import { throttleThrust, validHoldHeading, validThrottle } from './throttle';
 import { createDuel, disposeDuel, type DuelState } from './state';
 import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
@@ -31,7 +39,10 @@ const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 /** The fixed order weapon commands take effect in within one tick (W-1: the pew last, as applyWeaponsInput fires it). */
 const WEAPON_ORDER = ['laserMode', 'torpMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire'] as const;
 /** Every duel command kind the step handles; any other kind is rejected not-in-duel. */
-const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserMode', 'torpMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency'];
+const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserMode', 'torpMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency',
+  'shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock', 'weaponPower'];   // Engineering spike spec §7, §10.3
+/** Engineering spike spec §7: the ship-view commands. */
+const SHIP_KINDS = new Set(['shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock']);
 
 function resetScratch(d: DuelState): void {
   const sc = d.interior.scratch;
@@ -63,19 +74,23 @@ function seated(d: DuelState, pid: number): boolean { return Seated.station[d.in
 /** A player id of this duel's crew (Sci-2 spec §4.1): an integer 0..n−1. */
 function validPlayer(d: DuelState, pid: number): boolean { return Number.isInteger(pid) && pid >= 0 && pid < d.interior.playerCount; }
 
-/** Each standing, present, conscious player holding Interact inside a damaged or burning room's repair room and in reach
- *  of its point. A burning room's workers put the fire out instead of repairing (duel-fire spec §1.4), and its repair
- *  progress holds. Pushes a repairWork or fireWork event per worker in player order, then per Room in Room order a
- *  repairDone when its level drops or a fireOut when its fire goes out (H-0c-ii-a spec §4). */
+/** Each standing, present, conscious player holding Interact does one job (Engineering spike spec §4, Decision 11):
+ *  the room's fire (at its repair point, else its breach-site tile), then a breach in reach, then the point's damaged
+ *  Room. A burning point room's repair progress holds. Point-room fire and repair work push today's repairWork or
+ *  fireWork per worker in player order, then per Room in Room order a repairDone or fireOut (H-0c-ii-a spec §4);
+ *  fires in other rooms and breaches push nothing (spec §4 Events). */
 function repairPhase(d: DuelState, held: readonly HeldInput[]): void {
   const crewShip = d.tactical.systems[0], workers: number[][] = [[], [], []];
+  const fireCrew = new Map<number, number>(), breachCrew = new Map<number, number>();
   for (let pid = 0; pid < d.interior.playerCount; pid++) {
     if (!d.present[pid] || !conscious(d, pid) || seated(d, pid) || !(held[pid] ?? NO_HELD).interactHeld) continue;
-    const eid = d.interior.crew[pid]!, here = roomAt(d.interior, Position.x[eid]!, Position.y[eid]!);
-    const point = d.points.find((p) => (crewShip.rooms[p.tacticalRoom]! > 0 || pointBurning(d, p)) && p.room === here && inReachOfTile(d.interior, eid, p.tile));
-    if (!point) continue;
-    workers[point.tacticalRoom]!.push(pid);
-    d.events.push({ kind: pointBurning(d, point) ? 'fireWork' : 'repairWork', player: pid, room: point.tacticalRoom });
+    const eid = d.interior.crew[pid]!, job = workJob(d, eid, roomAt(d.interior, Position.x[eid]!, Position.y[eid]!));
+    if (!job) continue;
+    if (job.kind === 'pointFire' || job.kind === 'repair') {
+      workers[job.point.tacticalRoom]!.push(pid);
+      d.events.push({ kind: job.kind === 'pointFire' ? 'fireWork' : 'repairWork', player: pid, room: job.point.tacticalRoom });
+    } else if (job.kind === 'fire') fireCrew.set(job.room, (fireCrew.get(job.room) ?? 0) + 1);
+    else breachCrew.set(job.site, (breachCrew.get(job.site) ?? 0) + 1);
   }
   for (const p of d.points) {
     const r = p.tacticalRoom as 0 | 1 | 2, n = workers[r]!.length;
@@ -88,6 +103,8 @@ function repairPhase(d: DuelState, held: readonly HeldInput[]): void {
     d.repair[r] += n === 1 ? REPAIR_RATE_SOLO : n * REPAIR_RATE_TEAM;
     if (d.repair[r] >= REPAIR_UNITS) { crewShip.rooms[r]--; crewShip.gunRoomWear[r] = 0; d.repair[r] = 0;   /* Valkyrn spec §7.2 */ d.events.push({ kind: 'repairDone', room: r, players: workers[r]! }); }
   }
+  for (const [room, n] of [...fireCrew].sort((a, b) => a[0] - b[0])) extinguishRoomWork(d, room, n);   // Engineering spike spec §4: rooms with no point
+  for (const [site, n] of [...breachCrew].sort((a, b) => a[0] - b[0])) patchWork(d, site, n);
 }
 
 /** Valkyrn spec §6.2: a held aim, a heading index 0..255; absent, −1, NaN, a non-integer or out of range is −1 (none). */
@@ -175,7 +192,7 @@ function stepDecided(d: DuelState, input: DuelInput): DuelResult[] {
  * Spec §13, in order: scratch reset (and d.events cleared); seat phase (sit through today's interaction validation,
  * only at the three role consoles (Navigation, Weapons, Science); stand through today's handler; then presence); tactical commands validated against the
  * seats after the seat phase and folded into the crew's ShipInput; the Helm's throttle (Artemis spec §5.2); laserFrequency, designate and contactScan (Sci-1 spec §5); repair, with its events; movement for standing
- * present players; the tactical stepDuel; hit damage to the crew; fire (growth, damage, ignition from this tick's hits);
+ * present players; the tactical stepDuel; hit damage to the crew; the doors; fire (the damage cadence, then the hits' fire and breach rolls); the bar clamp; on the hazard tick Life Support, oxygen, fire growth and spread, and heat (Engineering spike spec §7);
  * health (fire damage, downed, pick-up, the Medbay, the all-down loss); the interior tick. Commands apply in the order given (the authority's
  * envelope order). Returns one result per command, sorted by player then sequence. A rematch while the round runs is
  * rejected duel-running; the step that decides the round records `decidedTick`. A decided round steps by stepDecided.
@@ -236,8 +253,8 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
       if (c.manual === sys0.torpManual) { result(e, undefined, 'noop'); continue; }
       sys0.torpManual = c.manual;
     }
-    else if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.laserLock = c.room; }   // −1 clears the target
-    else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.torpLock = c.room; torpLocked = true; }
+    else if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; } crew.laserLock = c.room; }   // −1 clears the target; Task 10, spec §10.4: seen
+    else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; } crew.torpLock = c.room; torpLocked = true; }   // spec §10.4: seen
     else if (c.kind === 'rockLock') {
       if (!validRockLock(d.tactical, c.weapon, c.rock)) { result(e, 'malformed'); continue; }
       if (c.rock >= 0 && !rockAlive(d.tactical, c.rock)) { result(e, undefined, 'noop'); continue; }
@@ -261,7 +278,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
       if (!canLaunch(d.tactical, 0, torpRock)) { result(e, 'unavailable'); continue; }
       crew.missileLaunch = true;
     }
-    else {   // W-1 (pew pew spec §1, §4): the aim, then one round a tick (the first wins), then a third stored (NO CHARGE)
+    else {   // W-1 (pew pew spec §1, §4): the aim, then one round a tick (the first wins), then a pew pew bar (Engineering spike §11) and a third stored (pewReady)
       if (!validAim(c.aim, c.aimAcc)) { result(e, 'malformed'); continue; }
       if (crew.pewAim >= 0) { result(e, undefined, 'noop'); continue; }
       if (!pewReady(d.tactical, 0)) { result(e, 'unavailable'); continue; }
@@ -276,6 +293,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (helm < 0 || e.id.player !== helm) { result(e, 'invalid-seat'); continue; }
     if (!validThrottle(level)) { result(e, 'malformed'); continue; }
+    if (!throttleAllowed(d.tactical.systems[0], level)) { result(e, 'unavailable'); continue; }   // Task 8, spec §10.2: the Engines cap
     if (level === d.throttle) { result(e, undefined, 'noop'); continue; }
     d.throttle = level; result(e);
   }
@@ -306,6 +324,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (scientist < 0 || e.id.player !== scientist) { result(e, 'invalid-seat'); continue; }
     if (c !== -1 && c !== 0 && c !== 1) { result(e, 'malformed'); continue; }
+    if (c >= 0 && !contactSeen(t, c)) { result(e, 'unavailable'); continue; }   // Task 10, spec §10.4
     if (c === t.designated) { result(e, undefined, 'noop'); continue; }
     t.designated = c; result(e);
   }
@@ -315,9 +334,41 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (station < 0) { result(e, 'invalid-seat'); continue; }
     if (c !== 0 && c !== 1) { result(e, 'malformed'); continue; }
     if (t.known[c]! >= CONTACT_MAX_LEVEL[c]!) { result(e, 'unavailable'); continue; }
+    if (effectiveBars(t.systems[0], DuelSystem.Sensors) === 0) { result(e, 'unavailable'); continue; }   // Task 10, spec §2 Scans: no Sensors, no scan
+    if (!contactSeen(t, c)) { result(e, 'unavailable'); continue; }   // Task 10, spec §10.4: unseen
     result(e, undefined, scanCommand(t, c, station === d.science ? SCAN_RATE_SCIENCE : SCAN_RATE_OTHER, station));
   }
   crew.scanner = t.scan.contact < 0 || attendant(d, t.scan.by) >= 0;   // spec §4.6: after admission, so a same-tick takeover keeps it
+  // Engineering spike spec §7 (Decision 12): shipPower, shipCoolant, shipDoor and shipAirlock from any valid, present,
+  // conscious player, seated or standing, with no range or view check, applied in (player, sequence) order so the last
+  // in player order wins. The tactical admissions above read the bars as they stood at the start of the tick.
+  const engineer = (pid: number): boolean => validPlayer(d, pid) && d.present[pid] === true && conscious(d, pid);
+  const shipCommands = input.commands.filter((e) => SHIP_KINDS.has(e.command.kind)).sort((a, b) => a.id.player - b.id.player || a.id.sequence - b.id.sequence);
+  for (const e of shipCommands) {
+    const c = e.command;
+    if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
+    const wellFormed = c.kind === 'shipPower' ? validSystem(c.system) && (c.delta === 1 || c.delta === -1)
+      : c.kind === 'shipCoolant' ? Number.isInteger(c.system) && c.system >= 0 && c.system < OVERDRIVE_SYSTEMS
+      : c.kind === 'shipDoor' ? validDoor(d, c.edge)
+      : c.kind === 'shipAirlock' ? validAirlock(d, c.index) : false;
+    if (!wellFormed) { result(e, 'malformed'); continue; }
+    if (!engineer(e.id.player)) { result(e, 'unavailable'); continue; }
+    if (c.kind === 'shipPower') { if (applyPower(d, c.system, c.delta) === 'applied') result(e); else result(e, 'unavailable'); }
+    else if (c.kind === 'shipCoolant') result(e, undefined, cycleDuelCoolant(d, c.system));
+    else if (c.kind === 'shipDoor') { toggleDoor(d, c.edge); result(e); }
+    else if (c.kind === 'shipAirlock') { toggleAirlock(d, c.index); result(e); }
+  }
+  // Task 9a, spec §10.3: weaponPower from the Weapons seat's attendant, in (player, sequence) order: stale, the seat,
+  // the slot and delta, then the allocation rules.
+  for (const e of input.commands.filter((x) => x.command.kind === 'weaponPower').sort((a, b) => a.id.player - b.id.player || a.id.sequence - b.id.sequence)) {
+    const c = e.command;
+    if (c.kind !== 'weaponPower') continue;
+    if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
+    if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }
+    if (!Number.isInteger(c.slot) || c.slot < 0 || c.slot >= WEAPON_SLOTS || (c.delta !== 1 && c.delta !== -1)) { result(e, 'malformed'); continue; }
+    if (applyWeaponPower(d, c.slot, c.delta) === 'applied') result(e); else result(e, 'unavailable');
+  }
+  clampThrottle(d);   // Task 8, spec §10.2: an Engines bar removed this tick lowers the throttle before the axes read it
   for (const e of input.commands) if (e.command.kind === 'rematch') result(e, 'duel-running');
   for (const e of input.commands) if (!DUEL_KINDS.includes(e.command.kind)) result(e, 'not-in-duel');
   // Artemis spec §5.3: held moveX turns, the throttle thrusts; held moveY no longer does. Feel-i (console feel spec §2):
@@ -342,9 +393,18 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     return d.present[pid] ? { ...NEUTRAL_INTENT, moveX: h.moveX, moveY: h.moveY } : { ...NEUTRAL_INTENT };
   });
   movementSystem(st, intents);   // skips seated and downed crew, and anyone who stood this tick
+  doorSystem(st);   // Engineering spike spec §5: auto doors open for crew and close behind (the Doors station stays online)
   stepDuel(d.tactical, crew);
   const hits = applyHitDamage(d, d.tactical.events);   // duel-health spec §1.2: hit damage in tactical event order, before the fire rolls
-  firePhase(d, tick);   // duel-fire spec §1: growth and damage, then this tick's hits roll (rng.hazards)
+  firePhase(d, tick);   // duel-fire spec §1: the damage cadence, then this tick's hits roll (rng.hazards)
+  clampToCapacity(d);   // Engineering spike spec §7: excess bars back to the pool after every damage rise this tick
+  if ((tick - d.baseTick) % HAZARD_EVERY === 0) {   // Engineering spike spec §7 (Decision 13): the hazard tick, 12 Hz
+    duelInjection(d);
+    oxygenStep(st, st.injectionScratch);
+    fireStep(st);
+    duelHeatStep(d);   // overheat draws last; each overheat clamps its bars inline
+    clampToCapacity(d);   // Task 10, spec §10.4: a fire that spread into the Sensors room costs it a slot this tick
+  }
   healthPhase(d, hits);   // duel-health spec §1: fire damage, downed, pick-up, the Medbay; every character down loses the round
   st.tick++;
   if (d.tactical.outcome !== Outcome.Running) d.decidedTick = st.tick;   // the snapshot tick of the first decided publication

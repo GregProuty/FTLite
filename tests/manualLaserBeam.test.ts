@@ -1,3 +1,5 @@
+// Merge with the Engineering spike (SIM 58, kind a, replaced rule): the crew's beam stands on the Weapons officer's bars and
+// starts dark (spec §10.3), so these tests give the crew today's laser and torpedo by bars (todaysCrewWeapons).
 // W-2 manual laser (spec 2026-11-18-pew-pew-weapons-design §2, §5): the MANUAL beam. A laserFire input fires the shot or
 // burst along the aim, clamped into the laser's ±60° about the heading: an instant beam from the ship's centre to 450.
 // The first rock stops it and takes what the AUTO laser does to a rock (a push, then its damage); the planet stops it;
@@ -5,6 +7,7 @@
 // hull). A burst's second shot keeps the aim the burst was fired with and is re-checked at its own tick. No shot while
 // the own torpedo flies, without a full charge, with a burst pending, offline, or in AUTO.
 import { describe, expect, it } from 'vitest';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { aimDir, clampAim } from '../src/renderer/src/sim/tactical/pew';
 import { beginRockTick, rockAt, rockHp } from '../src/renderer/src/sim/tactical/rocks';
 import { laserStrikesRock } from '../src/renderer/src/sim/tactical/rockWeapons';
@@ -20,7 +23,7 @@ type LaserEvent = Extract<DuelEvent, { kind: 'laser' }>;
 /** A MANUAL crew at (0, crewY) nose north and still, full; no rocks but the ones given (resting moving rocks from slot
  *  ROCK0 on); the Hunter far off and still; a fresh tick's rock masks; no events. */
 function open(rocks: { x: number; y: number; r: number }[] = [], crewY = 1500): TacticalState {
-  const st = createTacticalState(5);
+  const st = todaysCrewWeapons(createTacticalState(5));
   st.rocks.fill(0);   // every seeded rock gone (the seeded grid ignores empty slots)
   rocks.forEach((a, k) => mover(st, ROCK0 + k, a.x, a.y, 0, 0, a.r));
   beginRockTick(st);

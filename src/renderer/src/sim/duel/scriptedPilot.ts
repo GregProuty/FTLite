@@ -7,6 +7,7 @@
 import type { HeldInput } from '../../net/contracts';
 import { Health, Life, LifeState, Position, Seated } from '../components';
 import { roomAt } from '../grid';
+import { levelWithinCap } from '../tactical/bars';
 import { hx, hy } from '../tactical/direction';
 import { leadOffset, nearestHeading } from '../tactical/lead';
 import { missileOf, Room, targetOf } from '../tactical/state';
@@ -122,8 +123,9 @@ export function scriptedPilotInput(p: ScriptedPilot, d: DuelState): DuelInput {
     if (p.task >= 0 || healing) {
       if (seat >= 0) {   // stand up; the ship flies the last aim and this throttle (spec §4.4)
         // Two ticks (plan Decision 7): a throttle sent with the stand is checked against the emptied Helm and rejected.
-        if (d.throttle !== PILOT_AWAY_THROTTLE) {
-          cmds.push({ kind: 'throttle', level: PILOT_AWAY_THROTTLE });
+        const away = levelWithinCap(sys, PILOT_AWAY_THROTTLE);   // Engineering spike Decision 16
+        if (d.throttle !== away) {
+          cmds.push({ kind: 'throttle', level: away });
           held = p.aim >= 0 ? { moveX: 0, moveY: 0, interactHeld: false, aim: p.aim, gunHeld: false } : NO_HELD;
         } else cmds.push({ kind: 'stand' });
       } else if (p.task >= 0) {
@@ -138,7 +140,8 @@ export function scriptedPilotInput(p: ScriptedPilot, d: DuelState): DuelInput {
       if (sys.gunHeat >= PILOT_HEAT_RELEASE || sys.gunLocked) p.cooling = true;
       else if (sys.gunHeat === 0) p.cooling = false;
       p.aim = f.aim;
-      if (f.level !== d.throttle) cmds.push({ kind: 'throttle', level: f.level });
+      const level = levelWithinCap(sys, f.level);   // Engineering spike Decision 16: within the Engines cap
+      if (level !== d.throttle) cmds.push({ kind: 'throttle', level });
       held = { moveX: 0, moveY: 0, interactHeld: false, aim: f.aim, gunHeld: f.on && !p.cooling };
       if (canLaunch(d.tactical, 0) && d.tactical.tick - p.lastLaunch >= PILOT_MISSILE_GAP) { cmds.push({ kind: 'missileLaunch' }); p.lastLaunch = d.tactical.tick; }
     }

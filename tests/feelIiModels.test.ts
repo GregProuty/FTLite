@@ -3,6 +3,7 @@
 // side, the enemy torpedo's path, the pings and their rate limit, and the dead-click reasons against the sim's own
 // admission checks. Presentation only: none of it touches the sim's state.
 import { describe, expect, it } from 'vitest';
+import { DuelSystem } from '../src/renderer/src/sim/tactical/bars';
 import { alertSentence, COLLISION_WARN_S, collisionIn, evadeDir, flightAlert, laserSituation, refusal, stateAxes } from '../src/renderer/src/render/duel/situationModel';
 import { PING_GAP_MS, PING_S, PINGS_MAX, pingAllowed, pingDraws, pushPing, stepPings, type Ping } from '../src/renderer/src/render/duel/pingModel';
 import { ARROW_MARGIN, collisionTag, gravityRadius, headingOf, tacticalModel, GRAVITY_RINGS } from '../src/renderer/src/render/tactical/tacticalModel';
@@ -21,6 +22,7 @@ import { disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 const vp = { w: 1280, h: 720 };
 /** Crew at rest far out, the enemy 2000 units north (out of every range), no asteroids. */
@@ -80,6 +82,7 @@ describe('the collision warning (Feel-ii §1.2)', () => {
     expect(a?.kind).toBe('collision');
     expect(alertSentence(a, laserSituation(st)).text).toBe('COLLISION: TURN OR BRAKE');
     expect(alertSentence({ kind: 'torpedo' }, laserSituation(st))).toEqual({ text: 'TORPEDO INBOUND: EVADE', tone: 'hot' });
+    st.ships[1]!.x = me.x + 600; st.ships[1]!.y = me.y;   // Engineering spike §10.4: inside the 900 start range
     expect(alertSentence(null, laserSituation(st)).text).toBe('ENEMY OUT OF RANGE: CLOSE TO 450');
     // Both consoles draw the same sentence from the same alert.
     for (const c of ['helm', 'weapons'] as const) expect(combatModel({ ...input(st, c), alert: a }).status!.label.text).toBe('COLLISION: TURN OR BRAKE');
@@ -211,13 +214,14 @@ describe('never a dead click (Feel-ii §2.8): the reasons are the sim\'s own che
     const d = createSeatedDuel(CUTTER, 5);
     try {
       const t = d.tactical, sys = t.systems[0], me = t.ships[0], e = t.ships[1];
+      todaysCrewWeapons(t);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
       Object.assign(e, { x: me.x + 2000, y: me.y });
       expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual([null, 'OUT OF RANGE']);
       Object.assign(e, { x: me.x + 200, y: me.y });
       expect(refusal(d, 'launch')).toBeNull();
       expect(canLaunch(t, 0)).toBe(true);
       sys.magazine = 0; expect(refusal(d, 'launch')).toBe('NO TORPEDOES'); sys.magazine = 2;
-      sys.rooms[Room.Weapons] = 2; expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual(['WEAPONS OFFLINE', 'WEAPONS OFFLINE']); sys.rooms[Room.Weapons] = 0;
+      sys.weaponPower.fill(0); expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual(['WEAPONS OFFLINE', 'WEAPONS OFFLINE']); sys.weaponPower.splice(0, 3, 0, 2, 1);   // Engineering spike §10.3: the beam and the torpedo dark (then todaysCrewWeapons' bars back)
       placeMissile(t, 0, { x: me.x, y: me.y, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });
       expect([refusal(d, 'fire'), refusal(d, 'launch'), canCharge(t, 0)]).toEqual(['TORPEDO FLYING', 'TORPEDO FLYING', false]);
       d.present[1] = false;
@@ -225,6 +229,19 @@ describe('never a dead click (Feel-ii §2.8): the reasons are the sim\'s own che
       expect(refusal(d, 'turn')).toBeNull();
       sys.rooms[Room.Engines] = 2;
       expect(['turn', 'auto-face', 'throttle', 'heading'].map((c) => refusal(d, c as 'turn'))).toEqual(Array(4).fill('ENGINES OFFLINE'));
+    } finally { disposeDuel(d); }
+  });
+  it('Engineering spike §10.2 (final review): the Helm reads the Engines bars: 0 bars is ENGINES UNPOWERED, a level-2 Room ENGINES OFFLINE', () => {
+    const d = createSeatedDuel(CUTTER, 5);
+    try {
+      const sys = d.tactical.systems[0];
+      expect(refusal(d, 'turn')).toBeNull();
+      sys.bars[DuelSystem.Engines] = 0;   // no bar (an overheat failure clamps the bars to 0 the same way)
+      expect(['turn', 'auto-face', 'throttle', 'heading'].map((c) => refusal(d, c as 'turn'))).toEqual(Array(4).fill('ENGINES UNPOWERED'));
+      sys.rooms[Room.Engines] = 2;
+      expect(refusal(d, 'turn')).toBe('ENGINES OFFLINE');
+      sys.bars[DuelSystem.Engines] = 3; sys.rooms[Room.Engines] = 1;   // damaged but flying (5 - 3 slots: 2 effective bars)
+      expect(refusal(d, 'turn')).toBeNull();
     } finally { disposeDuel(d); }
   });
   it('LAUNCH is refused exactly when canLaunch says no, over many states', () => {

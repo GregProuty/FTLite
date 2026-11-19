@@ -5,10 +5,11 @@ import { inArc, lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
 import { LASER_ARC_COS, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, LASER_RANGE, MAGAZINE, MAGAZINE_REGEN_TICKS, SHIELD_RATE, SHIELD_RECHARGE_UNITS, SHIP_HULL, LASER_BURST_GAP_TICKS } from '../src/renderer/src/sim/tactical/tuning';
 import { HUNTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
 import { makeHostile } from './helpers/hostile';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 /** Crew at (−600, −300) heading east, enemy 300 units east of it: inside the belt, clear of the planet, in arc and range. */
 function duel(): TacticalState {
-  const st = makeHostile(createTacticalState(5));
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
   return st;
@@ -120,10 +121,10 @@ describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2
     tick(st, input());
     expect(b.laserCharge).toBeGreaterThan(0);
   });
-  it('Weapons damage stretches the charge time: 6.4 s at level 1; level 2 is off and never charges (owner 2026-11-17)', () => {
+  it('Weapons damage 1 leaves the beam its bars and its 4 s charge (Engineering spike spec §10.3); level 2 is off and never charges (owner 2026-11-17)', () => {
     const st = duel(), a = st.systems[0];
     a.rooms[Room.Weapons] = 1;
-    charge(st, 383);
+    charge(st, 239);   // Engineering spike spec §10.3: Weapons at level 1 holds 5 bars, so the beam's 2 still charge 40 a tick (was 383, the level-1 rate)
     expect(a.laserCharge).toBeLessThan(LASER_CHARGE_UNITS);
     tick(st, input());
     expect(a.laserCharge).toBe(LASER_CHARGE_UNITS);

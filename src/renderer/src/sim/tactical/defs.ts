@@ -9,7 +9,7 @@ import {
   GUN_MUZZLE_LATERAL, GUN_SPEED, HUNTER_HULL, HUNTER_LASER_SHOTS, LASER_ARC_COS, LASER_CHARGE_RATE, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, LASER_BURST_GAP_TICKS, LASER_HULL, LASER_RANGE, MAGAZINE, MAGAZINE_REGEN_TICKS,
   MISSILE_ARM_TICKS, MISSILE_FUEL_TICKS, MISSILE_HULL, MISSILE_BOOST_TICKS, MISSILE_LAUNCH_SPEED, MISSILE_LIFE_TICKS, MISSILE_RADIUS, MISSILE_RANGE, MISSILE_SPAWN_OFFSET, MISSILE_THRUST,
   MISSILE_TURN_STEPS_PER_TICK, REVERSE_FRACTION, SHIELD_LAYERS, SHIELD_RATE, SHIELD_RECHARGE_UNITS, SHIP_HULL, SHIP_RADIUS, THRUST, TURN_STEPS_PER_TICK, VALKYRN_HULL, VALKYRN_THRUST,
-  VALKYRN_TURN_STEPS_PER_TICK, PEW_ARC_STEPS, PEW_HULL, PEW_LIFE, PEW_RECHARGE_TICKS, HUNTER_PEW_RECHARGE_TICKS, PEW_SHOTS, PEW_SPEED
+  VALKYRN_TURN_STEPS_PER_TICK, PEW_ARC_STEPS, PEW_HULL, PEW_LIFE, PEW_RECHARGE_TICKS, PEW_CHARGE_SCALE, HUNTER_PEW_RECHARGE_TICKS, PEW_SHOTS, PEW_SPEED
 } from './tuning';
 
 /** The laser (spec §7a): range and arc, charge in whole units per Weapons damage level, the hold before it vents, hull per
@@ -96,6 +96,9 @@ export const PEW: PewDef = Object.freeze({
 });
 /** W-1 (Task 6 tuning): the Hunter's pew pew, the crew's but refilling a third every HUNTER_PEW_RECHARGE_TICKS. */
 export const HUNTER_PEW: PewDef = Object.freeze({ ...PEW, rechargeTicks: HUNTER_PEW_RECHARGE_TICKS });
+/** Engineering spike §11: one third of a pew's charge in charge units (rechargeTicks × PEW_CHARGE_SCALE), and a full charge. */
+export function pewThird(def: PewDef): number { return def.rechargeTicks * PEW_CHARGE_SCALE; }
+export function pewFullCharge(def: PewDef): number { return def.shots * pewThird(def); }
 
 /** A class's flight numbers that differ between classes: forward thrust and turn steps per tick. */
 interface Flight { readonly thrust: number; readonly turnStepsPerTick: number }

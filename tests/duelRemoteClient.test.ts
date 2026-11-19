@@ -11,12 +11,14 @@ import { classifyStreamPacket } from '../src/network/state/imageCodec';
 import { duelInit, resolveCutter } from './helpers/duelAuthority';
 import { linkPair } from './helpers/linkPair';
 import { ownTestCleanup } from './helpers/simLifetime';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 function rig(seed: number, drop?: (k: number) => boolean) {
   let now = 0, ordinal = 0;
   const clock = { nowMs: () => now }, init = duelInit(seed, 'remote-duel'), session = duelRules.create(init, resolveCutter);
   seatDuelCrew(session.duel);   // the old seated start (createDuel leaves both standing)
+  todaysCrewWeapons(session.duel.tactical);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   const core = createEncounterCore(duelRules, { init, contentDigest: DIGEST, resolveLayout: resolveCutter, clock, scheduler: { schedule: () => () => {} }, onCrash(r) { throw Error(r.error); } }, session);
   const pair = linkPair('remote', drop), binding = createDuelStreamBinding(pair.host.link, { resolveLayout: resolveCutter, contentDigest: DIGEST, clock, latestPayloadLimit: 16088 });
   const client = createDuelRemoteClient(pair.guest.link, [1], { runId: init.runId, contentDigest: DIGEST, resolveLayout: resolveCutter, clock });

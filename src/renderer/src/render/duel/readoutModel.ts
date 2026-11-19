@@ -7,6 +7,7 @@ import { extinguishProgress, pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
 import { classOf, Contact, missileOf, Room, targetOf } from '../../sim/tactical/state';
 import { REPAIR_UNITS } from '../../sim/duel/tuning';
+import { shipSeen } from '../../sim/tactical/science';
 import { hostilityLine } from './scienceModel';
 import { Health, Life, LifeState } from '../../sim/components';
 import { HEALTH_MAX } from '../../sim/tuning';
@@ -154,8 +155,11 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
     if (!crewed(helm)) rows.push(em(row('', 'COASTING', DIM, WARN), 'alert'));
     rows.push(em(row('WEAPONS', crewed(gun) ? 'CREWED' : 'EMPTY', DIM, crewed(gun) ? TEXT : WARN), crewed(gun) ? null : 'alert'));
     const dx = enemy.x - crew.x, dy = enemy.y - crew.y;
-    rows.push(row('ENEMY', `${Math.round(Math.sqrt(dx * dx + dy * dy))}`));
-    rows.push(row('BEARING', String(bearingDeg(dx, dy)).padStart(3, '0')));
+    if (!shipSeen(t, target)) rows.push(row('ENEMY', 'NO CONTACT'));   // Engineering spike §10.4: no range or bearing unseen
+    else {
+      rows.push(row('ENEMY', `${Math.round(Math.sqrt(dx * dx + dy * dy))}`));
+      rows.push(row('BEARING', String(bearingDeg(dx, dy)).padStart(3, '0')));
+    }
     const m = missileOf(t, target);
     if (m && (m.x - crew.x) ** 2 + (m.y - crew.y) ** 2 <= INCOMING_RANGE * INCOMING_RANGE) rows.push(em(heading('TORPEDO INBOUND', WARN), 'alert'));
   }

@@ -9,6 +9,7 @@ import type { HeldInput, Scheduler } from '../../net/contracts';
 import { Position } from '../../sim/components';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope, type DuelResult } from '../../sim/duel/commands';
 import { rockAlive } from '../../sim/tactical/rocks';
+import { throttleCap } from '../../sim/tactical/bars';
 import { canCharge, canLaunch, validRockLock, validTarget } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, DUEL_CREW_MIN, type DuelState } from '../../sim/duel/state';
 import { helmTurn, stepDuelTick } from '../../sim/duel/step';
@@ -30,7 +31,7 @@ import { createTorpedoFollow, trackManualTorpedo } from './torpedoCamera';
 import { consoleInReach, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
 import type { ContactRequests } from './contactController';
 import type { Refusal } from './scene';
-import { NO_LASER, refusal } from '../../render/duel/situationModel';
+import { lockRefusal, NO_LASER, refusal } from '../../render/duel/situationModel';
 import { accumulateWheel, emptyPresses, frequencyRequest, helmAxes, NO_HELD_FLAGS, throttleRequest, WHEEL_IDLE_MS, type HeldFlags, type KeySample, type PointerSample } from './input';
 
 export type PauseReason = 'user' | 'blur' | 'hidden' | 'suspend';
@@ -388,6 +389,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
 
   /** One frame's press edges for the active character, by where it is (spec §5 table). */
   function play(k: KeySample, requests: ContactRequests, heading: number | null, launches: number, pew: number | null): KeySample {
+    for (const c of k.ship ?? []) queue(c);   // Engineering spike §7: the ship view's clicks, on foot or seated, before a Tab
     if (k.presses.switch > 0 && crew === 1) {   // Valkyrn spec §4.4: no other character; Tab toggles the console and the ship view while seated
       if (seatOf(d, active) !== 'standing' && k.presses.switch % 2 === 1) shipView = !shipView;
       cameraInput.reset(); refollowInteriorCamera(interiorCamera);
@@ -419,13 +421,15 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     if (requests.scan !== null && d.tactical.known[requests.scan] < CONTACT_MAX_LEVEL[requests.scan]) queue({ kind: 'contactScan', contact: requests.scan });
     if (seat === 'flight') {   // Valkyrn spec §5.1: the Flight seat, the Helm and Weapons in one
       if (p.camera > 0) snapBack(cameras.helm);
-      const level = throttleRequest(throttleBase(), p, k.throttleTo);
+      const level = throttleRequest(throttleBase(), p, k.throttleTo, throttleCap(d.tactical.systems[0]!));
       if (level !== null) queue({ kind: 'throttle', level });
       // Q/E (and E/Q while the torpedo is picked up, the contact controller's torpStep) step the torpedo's room.
       const steps = p.interact - p.prevLock + (requests.torpStep ?? 0);
       if (steps !== 0) {
         const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'torpLock')?.command;
-        queue({ kind: 'torpLock', room: stepTorpRoom(last && last.kind === 'torpLock' ? last.room : d.tactical.systems[0].torpLock, steps) });
+        const room = stepTorpRoom(last && last.kind === 'torpLock' ? last.room : d.tactical.systems[0].torpLock, steps);
+        queue({ kind: 'torpLock', room });
+        const why = room >= 0 ? lockRefusal(d) : null; if (why) refuse('launch', why);   // spec §10.4: the sim refuses a lock on an unseen enemy
       }
       if (k.torpTo !== undefined && k.torpTo !== null && k.torpTo >= -1 && k.torpTo <= 2) queue({ kind: 'torpLock', room: k.torpTo });
       // Spike ii §6.5 on the Flight seat (merge): a rock drop or a card's clear sends rockLock; the laser's only on the laser fit.
@@ -448,7 +452,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     }
     if (seat === 'helm') {
       if (p.camera > 0) snapBack(cameras.helm);
-      const level = throttleRequest(throttleBase(), p, k.throttleTo);   // W/S a notch, or a notch click (Artemis spec §5.4)
+      const level = throttleRequest(throttleBase(), p, k.throttleTo, throttleCap(d.tactical.systems[0]!));   // W/S a notch, or a notch click (Artemis spec §5.4)
       if (level !== null) queue({ kind: 'throttle', level });
       if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== headingBase((Math.sign(k.moveX) || 0) !== 0 || k.fireHeld)) queue({ kind: 'heading', heading });   // Feel-ii §1.1
       // Feel-ii §2.8: with Engines off the Helm's controls fly nothing (the commands still go: they apply once repaired).
@@ -473,6 +477,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       let room = last && last.kind === 'laserLock' && last.room >= 0 ? last.room : d.tactical.systems[0].lock;
       for (let n = 0; n < Math.abs(steps); n++) room = cycleLock(room, steps > 0 ? 1 : -1);
       queue({ kind: 'laserLock', room });
+      const why = lockRefusal(d); if (why) refuse('laser', why);   // spec §10.4: the sim refuses a lock on an unseen enemy
     }
     if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });   // a room click or a card's clear
     // The torpedo's target (FTL targeting spec §1): a room click or a card's clear, then E / Q while it is picked up.
@@ -485,6 +490,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'torpLock')?.command;
       const from = last && last.kind === 'torpLock' ? last.room : d.tactical.systems[0].torpLock;
       queue({ kind: 'torpLock', room: stepTorpRoom(from, requests.torpStep) });
+      const why = lockRefusal(d); if (why) refuse('launch', why);   // spec §10.4: as the laser's E/Q
     }
     const freq = frequencyRequest(freqBase(), k.freqTo);   // 3/4/5 or a console button (Sci-1 spec §7.4)
     if (freq !== null) queue({ kind: 'laserFrequency', freq });

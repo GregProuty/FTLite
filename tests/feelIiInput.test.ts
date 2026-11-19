@@ -8,6 +8,7 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuelKeyboard, createPointerSource, emptyPresses, PING_CLICK_PX, type EventSource, type KeyAction, type KeySample, type PointerSample } from '../src/renderer/src/app/duel/input';
 import { createCameraInput, createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import { createMapRequests } from '../src/renderer/src/app/duel/mapRequests';
+import type { ContactRequests } from '../src/renderer/src/app/duel/contactController';
 import { torpedoTone } from '../src/renderer/src/app/duel/scene';
 import { createCamera } from '../src/renderer/src/render/tactical/camera';
 import { duelStateSounds, LAUNCH_CHIRP, LOCK_BEEP, LOCK_BEEP_FAR_S, LOCK_BEEP_NEAR_S, LOCK_REARM_U, LOCK_STEADY, lockBeepGap, lockTone, type LockWatch } from '../src/renderer/src/audio/duelSounds';
@@ -89,14 +90,15 @@ function rig() {
   let keys: KeySample = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() };
   const requests = createMapRequests();
   const IDLE_POINTER: PointerSample = { x: null, y: null, wheel: 0, dragX: 0, dragY: 0 };
-  let pointer = IDLE_POINTER;
+  let pointer = IDLE_POINTER, contactReq: ContactRequests | null = null;
   const rt = createDuelRuntime({ now: () => now, scheduler, seed: 5, viewport: { w: 1280, h: 720 }, layout: parseShip(cutter),
     sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses(), throttleTo: null }; return k; },
-    samplePointer: () => { const s = pointer; pointer = IDLE_POINTER; return s; }, takeHeading: () => requests.takeHeading() });
+    samplePointer: () => { const s = pointer; pointer = IDLE_POINTER; return s; }, takeHeading: () => requests.takeHeading(),
+    takeContactRequests: () => { const c = contactReq ?? { designate: null, scan: null }; contactReq = null; return c; } });
   seatDuelCrew(rt.duel);
   const tick = (): void => { rt.frame(1 / 60); advance(1000 / 60); rt.frame(1 / 60); };
   const press = (...a: KeyAction[]): void => { const p = { ...keys.presses }; for (const x of a) p[x]++; keys = { ...keys, presses: p }; };
-  return { rt, requests, tick, press, hold: (h: Partial<KeySample>) => { keys = { ...keys, ...h }; }, point: (p: Partial<PointerSample>) => { pointer = { ...IDLE_POINTER, ...p }; } };
+  return { rt, requests, tick, press, contact: (c: Partial<ContactRequests>) => { contactReq = { designate: null, scan: null, ...c }; }, hold: (h: Partial<KeySample>) => { keys = { ...keys, ...h }; }, point: (p: Partial<PointerSample>) => { pointer = { ...IDLE_POINTER, ...p }; } };
 }
 
 describe('the Single player runtime (Feel-ii §1.1, §2.8)', () => {
@@ -152,6 +154,21 @@ describe('the Single player runtime (Feel-ii §1.1, §2.8)', () => {
     expect(r.rt.takeRefusals()).toEqual([{ control: 'launch', reason: 'OUT OF RANGE' }]);
     expect(r.rt.takeRefusals()).toEqual([]);
   });
+  it('Engineering spike §10.4 (final review): E/Q on an unseen enemy say NO CONTACT for the beam and the torpedo; seen, nothing', () => {
+    const r = rig();
+    for (let k = 0; k < 3; k++) r.tick();
+    r.press('switch'); for (let k = 0; k < 4; k++) r.tick(); r.rt.takeRefusals();   // now at Weapons
+    const t = r.rt.duel.tactical; Object.assign(t.ships[1], { x: t.ships[0].x + 3000, y: t.ships[0].y, active: true });
+    r.press('interact'); r.tick();
+    expect(r.rt.takeRefusals()).toEqual([{ control: 'laser', reason: 'NO CONTACT' }]);
+    r.press('prevLock'); r.tick();
+    expect(r.rt.takeRefusals()).toEqual([{ control: 'laser', reason: 'NO CONTACT' }]);
+    r.contact({ torpStep: 1 }); r.tick();
+    expect(r.rt.takeRefusals()).toEqual([{ control: 'launch', reason: 'NO CONTACT' }]);
+    Object.assign(t.ships[1], { x: t.ships[0].x + 600 });
+    r.press('interact'); r.tick(); r.contact({ torpStep: 1 }); r.tick();
+    expect(r.rt.takeRefusals()).toEqual([]);
+  });
 });
 
 describe('the torpedo lock tone and the launch chirp (Feel-ii §2.5, §2.6)', () => {
@@ -200,12 +217,16 @@ describe('the torpedo lock tone and the launch chirp (Feel-ii §2.5, §2.6)', ()
     expect(crew.map((s) => s.key)).toEqual(['thruster']);
   });
   it('the scene\'s tone data: locked only with a target and a torpedo ready', () => {
-    const r = rig(), d = r.rt.duel, sys = d.tactical.systems[0];
+    const r = rig(), d = r.rt.duel, sys = d.tactical.systems[0], [own, hunter] = d.tactical.ships;
+    Object.assign(hunter!, { x: own!.x + 600, y: own!.y });   // Engineering spike §10.4: inside the start sensor range (an unseen enemy is never locked)
     expect(torpedoTone(d).locked).toBe(false);
     sys.torpLock = Room.Shields;
     expect(torpedoTone(d)).toMatchObject({ locked: true, range: 360, target: Room.Shields });
     sys.magazine = 0; expect(torpedoTone(d).locked).toBe(false); sys.magazine = 2;
-    sys.rooms[Room.Weapons] = 2; expect(torpedoTone(d).locked).toBe(false);
+    sys.rooms[Room.Weapons] = 2; expect(torpedoTone(d).locked).toBe(false); sys.rooms[Room.Weapons] = 0;
+    // Engineering spike §10.4 (final review): the torpedo's own bars, as canLaunch: no tone while it stands on none
+    sys.weaponPower.splice(0, 3, 2, 0, 0); expect(torpedoTone(d).locked).toBe(false);
+    sys.weaponPower.splice(0, 3, 1, 0, 1); expect(torpedoTone(d).locked).toBe(true);
   });
 });
 

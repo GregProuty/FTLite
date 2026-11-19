@@ -4,6 +4,7 @@
 // (helmHoldsUnattended) while the Hound's empty Helm flies zero axes; aim and gunHeld ride the codec, the checkpoint and
 // the replay, and the aim the hash and snapshot through the held heading.
 import { describe, expect, it } from 'vitest';
+import { DuelSystem } from '../src/renderer/src/sim/tactical/bars';
 import { validateDuelCheckpoint, type DuelCheckpoint } from '../src/renderer/src/authority/duelCheckpoint';
 import { duelRules } from '../src/renderer/src/authority/duelRules';
 import { parseEncounterReplay } from '../src/renderer/src/authority/replay';
@@ -97,6 +98,7 @@ describe('the empty Helm (spec §4.4)', () => {
   it('the Valkyrn flies its throttle and held heading with the pilot standing, exactly as a ship flown by those axes', () => {
     const d = createSeatedValkyrn(5);
     try {
+      d.tactical.systems[0].bars[DuelSystem.Engines] = 4;   // Engineering spike spec §10.2 (fallout a): Engines starts at 3 bars (cap 3); a throttle of 4 needs the 4th bar
       const aim = (d.tactical.ships[0].heading + 64) % 256;
       step(d, [cmd(d, 0, { kind: 'throttle', level: 4 })], { ...NONE, aim });
       step(d, [cmd(d, 0, { kind: 'stand' })]);
@@ -113,6 +115,7 @@ describe('the empty Helm (spec §4.4)', () => {
   it('the Hound flies zero axes with the Helm empty, whatever its throttle and held heading', () => {
     const d = createSeatedDuel(DUEL_LAYOUT, 5);
     try {
+      d.tactical.systems[0].bars[DuelSystem.Engines] = 4;   // Engineering spike spec §10.2 (fallout a): Engines starts at 3 bars (cap 3); a throttle of 4 needs the 4th bar
       const h = (d.tactical.ships[0].heading + 64) % 256;
       step(d, [cmd(d, 0, { kind: 'throttle', level: 4 }), cmd(d, 0, { kind: 'heading', heading: h })]);
       step(d, [cmd(d, 0, { kind: 'stand' })]);

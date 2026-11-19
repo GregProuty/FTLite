@@ -14,6 +14,7 @@ import { placeRound } from '../src/renderer/src/sim/tactical/gun';
 import { placeMissile, missileOf, Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
 import { inTorpedoRange } from './helpers/torpedoRange';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 const layout = parseShip(cutter);
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -108,6 +109,7 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
   });
   it('a laser kill is attributed to the laser, not the planet', () => {
     const d = createSeatedDuel(layout, 5), t = createTelemetry(d), [s, e] = d.tactical.ships;
+    todaysCrewWeapons(d.tactical);   // Engineering spike spec §10.3: the round starts the beam dark; give it its bars
     e.x = s.x + hx(s.heading) * 200; e.y = s.y + hy(s.heading) * 200; e.vx = s.vx; e.vy = s.vy; d.tactical.systems[1].shields = 0; d.tactical.systems[1].hull = 1;
     d.tactical.systems[0].laserCharge = LASER_CHARGE_UNITS;
     step(d, t, [cmd(d, 1, { kind: 'laserCharge', held: true })]);   // FTL targeting spec §2: one press fires a full laser
@@ -133,6 +135,7 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
   });
   it('counts Weapons as idle only with nothing to do: full, no launch possible, enemy out of the arc', () => {
     const d = createSeatedDuel(layout, 5), t = createTelemetry(d), s = d.tactical.systems[0];
+    todaysCrewWeapons(d.tactical);   // Engineering spike spec §10.3: the round starts the beam dark; give it its bars
     s.laserCharge = LASER_CHARGE_UNITS;
     step(d, t);                                                             // the duel's start: the enemy beyond torpedo range (weapons update spec §2)
     expect(t.weaponsIdleTicks).toBe(1);

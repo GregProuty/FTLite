@@ -1,8 +1,11 @@
+// Merge with the Engineering spike (SIM 58, kind a, replaced rule): the crew's beam stands on the Weapons officer's bars and
+// starts dark (spec §10.3), so these tests give the crew today's laser and torpedo by bars (todaysCrewWeapons).
 // W-2 manual laser (spec 2026-11-18-pew-pew-weapons-design §2, §5): the views. The Weapons map shows the MANUAL laser's aim
 // line while Space would fire, from the own ship along the aim clamped into ±60° to the laser's reach (along the nose
 // with no aim yet); none in AUTO, on the Helm, uncharged or with the own torpedo flying. Online, a MANUAL hit's gap event
 // names the enemy room whose level rose.
 import { describe, expect, it } from 'vitest';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { duelCounters, gapEvents } from '../src/renderer/src/app/duel/onlineSource';
 import { createCamera, worldToScreen, type Camera } from '../src/renderer/src/render/tactical/camera';
 import { createFx } from '../src/renderer/src/render/tactical/fxModel';
@@ -17,7 +20,7 @@ function input(st: TacticalState, cam: Camera, console: 'helm' | 'weapons', lase
   return { state: st, prev: prevOf(st), alpha: 1, camera: cam, viewport: vp, console, axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: 236, missilePrev: [null, null], fx: createFx(), laserAim };
 }
 function northFacing(): TacticalState {
-  const st = createTacticalState(5);
+  const st = todaysCrewWeapons(createTacticalState(5));
   Object.assign(st.ships[0], { heading: 0, headingAcc: 0, vx: 0, vy: 0 });
   return st;
 }
@@ -50,7 +53,7 @@ describe('the MANUAL laser\'s aim line (spec §2)', () => {
 describe('the online view (spec §2)', () => {
   it('a MANUAL hit\'s gap event names the room whose level rose; an AUTO hit keeps the lock room', () => {
     for (const manual of [false, true]) {
-      const st = createTacticalState(5);
+      const st = todaysCrewWeapons(createTacticalState(5));
       st.systems[0].laserManual = manual;
       st.systems[1].shields = 0;
       const before = [duelCounters(st, 0), duelCounters(st, 1)];

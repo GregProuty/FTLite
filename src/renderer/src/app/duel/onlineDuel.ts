@@ -17,6 +17,7 @@ import { loadDuelSnapshot, saveDuelSnapshot } from '../../sim/duel/snapshot';
 import { disposeDuel, type DuelState } from '../../sim/duel/state';
 import type { DuelRoundRecord } from '../../sim/duel/summary';
 import { Outcome } from '../../sim/tactical/state';
+import { throttleCap } from '../../sim/tactical/bars';
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 import { HEADING_COUNT } from '../../sim/tactical/tuning';
@@ -30,7 +31,7 @@ import { consoleInReach, cycleLock, repairInReach, seatOf, stepTorpRoom } from '
 import { createDuelKeyboard, createPointerSource, emptyPresses, NO_HELD_FLAGS, PING_CODE, throttleRequest, type ConsoleInput, type EventSource, type HeldFlags, type KeySample } from './input';
 import { createMapRequests } from './mapRequests';
 import { pingAllowed, type PingRequest } from '../../render/duel/pingModel';
-import { refusal } from '../../render/duel/situationModel';
+import { lockRefusal, refusal } from '../../render/duel/situationModel';
 import { consoleChange } from './consoleChange';
 import { createContactController, type ContactActions, type ContactRequests } from './contactController';
 import { createOnlineDuelSource, type OnlineDuelSource } from './onlineSource';
@@ -209,6 +210,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   }
   /** One frame's press edges for this seat, by where its character is (H-1 spec §5 table, without Tab). */
   function play(k: KeySample, d: DuelState, me: number, requests: ContactRequests, heading: number | null, prevHeld: HeldFlags, pew: number | null): void {
+    for (const c of k.ship ?? []) send(c);   // Engineering spike §7: the ship view's clicks, as Single player queues them
     const seat = seatOf(d, me), p = k.presses;
     if (seat === 'standing') {
       if (p.interact > 0 && repairInReach(d, me) < 0) { const c = consoleInReach(d, me); if (c >= 0) { throttleSent = null; headingSent = null; laserModeSent = null; torpModeSent = null; torpHold = -1; send({ kind: 'sit', station: c }); } }
@@ -218,7 +220,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (requests.scan !== null && d.tactical.known[requests.scan] < CONTACT_MAX_LEVEL[requests.scan]) send({ kind: 'contactScan', contact: requests.scan });   // Sci-1 spec §5
     if (seat === 'helm') {
       if (p.camera > 0 && source) snapBack(source.cameras.helm);
-      const level = throttleRequest(throttleSent ? throttleSent.level : d.throttle, p, k.throttleTo);   // Artemis spec §5.4
+      const level = throttleRequest(throttleSent ? throttleSent.level : d.throttle, p, k.throttleTo, throttleCap(d.tactical.systems[0]!));   // Artemis spec §5.4
       if (level !== null) { const id = send({ kind: 'throttle', level }); if (id) throttleSent = { level, sequence: id.sequence, round: d.round }; }
       // Feel-ii §1.1: deduped against the heading in flight, else the replica's; A/D or auto-face held clears the hold (the sim
       // clears it after this tick's commands), so the base is −1 before and after this frame's request.
@@ -249,12 +251,16 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       let room = sys.lock;
       for (let n = 0; n < Math.abs(steps); n++) room = cycleLock(room, steps > 0 ? 1 : -1);
       send({ kind: 'laserLock', room });
+      const why = lockRefusal(d); if (why) source?.refuse('laser', why);   // Engineering spike §10.4: the sim refuses a lock on an unseen enemy
     }
     if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) send({ kind: 'laserLock', room: k.lockTo });   // a room click or a card's clear
     if (k.torpTo !== undefined && k.torpTo !== null && k.torpTo >= -1 && k.torpTo <= 2) send({ kind: 'torpLock', room: k.torpTo });   // the torpedo's
     if (requests.rockLock) send({ kind: 'rockLock', weapon: requests.rockLock.weapon, rock: requests.rockLock.rock });   // spike ii §6.5
     if (k.rockTo) send({ kind: 'rockLock', weapon: k.rockTo.weapon, rock: k.rockTo.rock });
-    if (requests.torpStep) send({ kind: 'torpLock', room: stepTorpRoom(sys.torpLock, requests.torpStep) });   // E / Q while the torpedo is picked up: its own target
+    if (requests.torpStep) {   // E / Q while the torpedo is picked up: its own target
+      send({ kind: 'torpLock', room: stepTorpRoom(sys.torpLock, requests.torpStep) });
+      const why = lockRefusal(d); if (why) source?.refuse('launch', why);   // spec §10.4: as the laser's E/Q
+    }
     // Sci-1 spec §7.4: a one-shot edge, sent as it comes (the lagging replica is no base, a quick undo would be dropped); the sim answers noop to an unchanged value
     if (k.freqTo !== undefined && k.freqTo !== null && Number.isInteger(k.freqTo) && k.freqTo >= 0 && k.freqTo <= 2) send({ kind: 'laserFrequency', freq: k.freqTo });
     // W-2 (pew pew spec §2): Z or the LASER card's AUTO / MAN tag toggles the laser's mode, from the mode in flight, else the
@@ -374,7 +380,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
         takeAim: () => { const aim = pointer.takeAim(); return focused && !blocked ? aim : null; }, requests,
         takePingAt: () => { const key = pingKey ? pointer.position() : null, click = pointer.takeMiddleClick(); pingKey = false; return focused && !blocked ? click ?? key : null; },
         sendPing: (p) => { const now = deps.now(); if (!client || !descriptor || !pingAllowed(lastPing, now)) return; lastPing = now; client.ping(descriptor.seatId, p.x, p.y, p.target); },
-        takePings: () => pingsIn.splice(0) });
+        takePings: () => pingsIn.splice(0),
+        shipCommand: (c) => { if (focused && !blocked) keyboard.ui.ship?.(c); } });   // Engineering spike §5: as the map click, only while focused
       link = createPortLink(browserPortEndpoint(port), `online:${next.seatId}`, { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });
       // Subscribe before the client, which releases its replica on close: keep the last view frozen.
       offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; });

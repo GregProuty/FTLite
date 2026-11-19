@@ -65,8 +65,10 @@ describe('two clients over the loopback, one per seat (spec §10)', () => {
     // The journal since the last baseline replays offline to the same hash.
     const replay = rig.authority.replay(), rerun = runModeReplay(JSON.parse(JSON.stringify(replay)), DIGEST, resolveCutter);
     const ticks = replay.frames.filter((f) => f.action.kind === 'tick');
-    expect(ticks.length).toBeGreaterThan(0);
-    expect(rerun.hashes.at(-1)).toBe(ticks.at(-1)!.after!.hash);
+    // Merge with the Engineering spike (kind b, a whole-run coincidence): seed 10's round is decided at 6594, so the six ticks
+    // above end on a 300-tick journal reset (6600) with no tick frame yet; then the window's baseline is the authority's state.
+    if (ticks.length === 0) expect(hashF64(Float64Array.from((replay as unknown as { initial: { values: number[] } }).initial.values))).toBe(hash);
+    else expect(rerun.hashes.at(-1)).toBe(ticks.at(-1)!.after!.hash);
     // Held input refreshed every publication: the receive-time watchdog never neutralised a seat during the round.
     expect(watchdogCount + watchdogs()).toBe(0);
     const results = [...pa.results, ...pb.results];

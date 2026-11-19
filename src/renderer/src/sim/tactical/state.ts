@@ -3,7 +3,8 @@
 // crew's Cutter in slot 0 and the hunter in slot 1; slots always update in slot order. A slot's weapons fire at its
 // locked target (`systems[i].target`). All fields are flat scalars or arrays, so the flatten and the clone stay simple.
 import { createRng, nextInt, type RngState } from '../../../../shared/rng';
-import { DUEL_CLASSES, SHIP_CLASSES, ShipClass, type ShipClassDef } from './defs';
+import { DUEL_CLASSES, pewFullCharge, SHIP_CLASSES, ShipClass, type ShipClassDef } from './defs';
+import { DUEL_SYSTEM_COUNT, SHIELD_LAYERS_BY_BARS, START_BARS, START_WEAPON_POWER, WEAPON_SLOTS } from './bars';
 import { dirBetween } from './direction';
 import { buildGrid, type BroadPhase } from './grid';
 import { generateMap, type MapDef, type Spawn } from './map';
@@ -70,8 +71,14 @@ export interface ShipSystems {
   gunHeat: number; gunLocked: boolean; gunCooldown: number; gunMuzzle: number;
   gunWear: number; gunHull: number; gunRoomWear: [number, number, number];
   gunShots: number; gunHits: number;
-  /** W-1 (pew pew spec §1, §4): the pew's charge in ticks, 0..shots × rechargeTicks (a third of the bar per rechargeTicks;
-   *  a round spends one third), and its telemetry counters (rounds fired, rounds that hit a ship). All zero on a class
+  /** Engineering spike spec §2: the crew ship's powered reactor bars per system (Shields, Weapons, Engines, Sensors,
+   *  Oxygen; sim/tactical/bars.ts). START_BARS on the crew slot at a round's start, zeros on every other slot (never read). */
+  bars: number[];
+  /** Engineering spike spec §10.3: the Weapons bars the officer gave each weapon (pew pew, beam, torpedo; 0..3, or 4 with
+   *  the overdrive bar). The crew slot starts at START_WEAPON_POWER, every other slot at zeros (never read). Readers trim it. */
+  weaponPower: number[];
+  /** W-1 (pew pew spec §1, §4): the pew's charge in units, 0..shots × pewThird (Engineering spike §11: a third is
+   *  rechargeTicks × PEW_CHARGE_SCALE units; the crew's refills at its pew pew bars' rate; a round spends one third), and its telemetry counters (rounds fired, rounds that hit a ship). All zero on a class
    *  without the pew. */
   pewCharge: number; pewShots: number; pewHits: number;
   /** W-2 (pew pew spec §2, §4): the laser's mode, false AUTO (it fires at its target by itself, as before) or true MANUAL
@@ -213,19 +220,22 @@ function emptyShip(bodies: number): Ship {
 function systemsFor(cls: number, target: number, crew = false): ShipSystems {
   const c = SHIP_CLASSES[cls]!, laser = c.slots.laser, pew = c.slots.pew;
   return {
-    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: crew && laser ? laser.chargeUnits : 0, laserHold: 0, fireHeld: false, lock: Room.Shields,
+    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: crew ? Math.min(c.shields.layers, SHIELD_LAYERS_BY_BARS[START_BARS[0]!]!) : c.shields.layers, shieldClock: 0, laserCharge: crew && laser ? laser.chargeUnits : 0, laserHold: 0, fireHeld: false, lock: Room.Shields,
     laserTargeted: crew && laser !== null, torpLock: -1, torpRoom: -1, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: c.slots.missile.magazine, magazineClock: 0, laserRock: -1, torpRock: -1, torpRockFlying: -1, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
     gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0,
-    pewCharge: pew ? pew.shots * pew.rechargeTicks : 0, pewShots: 0, pewHits: 0,   // W-1: a pew starts the round full
+    pewCharge: pew ? pewFullCharge(pew) : 0, pewShots: 0, pewHits: 0,   // W-1: a pew starts the round full
     laserManual: false, laserAim: -1,   // W-2: every round starts AUTO, with no MANUAL burst pending
-    torpManual: false   // W-3: and the torpedo too
+    torpManual: false,   // W-3: and the torpedo too
+    bars: crew ? [...START_BARS] : Array<number>(DUEL_SYSTEM_COUNT).fill(0),   // Engineering spike spec §2
+    weaponPower: crew ? [...START_WEAPON_POWER] : Array<number>(WEAPON_SLOTS).fill(0)   // spec §10.3
   };
 }
 function emptySystems(): ShipSystems {
   return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, laserTargeted: false, torpLock: 0, torpRoom: 0, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: 0, magazineClock: 0, laserRock: 0, torpRock: 0, torpRockFlying: 0, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
-    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0, pewCharge: 0, pewShots: 0, pewHits: 0, laserManual: false, laserAim: 0, torpManual: false };
+    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0, pewCharge: 0, pewShots: 0, pewHits: 0, laserManual: false, laserAim: 0, torpManual: false,
+    bars: Array<number>(DUEL_SYSTEM_COUNT).fill(0), weaponPower: Array<number>(WEAPON_SLOTS).fill(0) };
 }
 /** A free missile pool entry. */
 export function emptyMissile(): Missile { return { active: false, owner: 0, x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0, manual: false }; }

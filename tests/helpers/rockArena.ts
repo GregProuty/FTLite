@@ -2,13 +2,14 @@
 // and the tick's rock events.
 import { createTacticalState, type DuelEvent, type TacticalState } from '../../src/renderer/src/sim/tactical/state';
 import { beginRockTick, rockHp, RockKind, rockSlots, ROCK_STRIDE, writeRock } from '../../src/renderer/src/sim/tactical/rocks';
+import { todaysCrewWeapons } from './crewWeapons';
 
 export type RockEvent = Extract<DuelEvent, { kind: 'rock' }>;
 
 /** A tactical state with every rock removed (the seeded grid ignores empty slots), the Hunter switched off (slot 1
  *  inactive) and the crew ship parked at rest at (0, −2500), heading north; a fresh tick's masks. */
 export function arena(seed = 5): TacticalState {
-  const st = createTacticalState(seed);
+  const st = todaysCrewWeapons(createTacticalState(seed));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   st.rocks.fill(0);
   Object.assign(st.ships[0], { x: 0, y: -2500, vx: 0, vy: 0, heading: 0, headingAcc: 0 });
   st.ships[1].active = false;

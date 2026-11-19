@@ -8,9 +8,9 @@ import { StationKind } from '../stationKinds';
 import { stationOnline, standUp } from '../stations';
 import type { DuelEvent } from '../tactical/state';
 import { Outcome } from '../tactical/state';
-import { DEBRIS_CREW_DAMAGE, DT, ENEMY_SHOT_CREW_DAMAGE, FIRE_DAMAGE, HEALTH_MAX, MEDBAY_HEAL, REACH } from '../tuning';
+import { DEBRIS_CREW_DAMAGE, DT, ENEMY_SHOT_CREW_DAMAGE, FIRE_DAMAGE, HEALTH_MAX, MEDBAY_HEAL, O2_DAMAGE, REACH } from '../tuning';
 import type { DuelState, HealthEvent } from './state';
-import { DUEL_REVIVE_TICKS } from './tuning';
+import { DUEL_REVIVE_TICKS, LOW_AIR_FRAC } from './tuning';
 
 /** The crew size n (Sci-2 spec §4.1): every health loop runs over all n characters. */
 const crewSize = (d: DuelState): number => d.interior.playerCount;
@@ -87,10 +87,11 @@ export function healing(d: DuelState, pid: number): boolean {
 
 /**
  * The rest of spec §1 after the fire phase: fire damage (FIRE_DAMAGE per second, per tick, to every conscious character
- * in a burning room); the downed transition at 0 (stood up, progress reset, no bleed-out); pick-up (a whole tick per tick
+ * in a burning room), then low air (Engineering spike spec §4: O2_DAMAGE per second to every conscious character, seated
+ * or standing, in a room below LOW_AIR_FRAC of its volume); the downed transition at 0 (stood up, progress reset, no bleed-out); pick-up (a whole tick per tick
  * with any reviver in reach, stored as ticks / DUEL_REVIVE_TICKS; none in reach resets it; at DUEL_REVIVE_TICKS the
  * character is Conscious at 1); the Medbay (MEDBAY_HEAL per second while online, to HEALTH_MAX); and the all-down loss.
- * Pushes `hits` then the fire crewHurt events, then downed, then revived, each in player order.
+ * Pushes `hits` then the fire crewHurt events, then the air ones, then downed, then revived, each in player order.
  */
 export function healthPhase(d: DuelState, hits: readonly HealthEvent[]): void {
   const st = d.interior, fire = st.rooms.fire, events: HealthEvent[] = [...hits];
@@ -100,6 +101,13 @@ export function healthPhase(d: DuelState, hits: readonly HealthEvent[]): void {
     if (r < 0 || fire[r]! <= 0) continue;
     const took = hurt(d, pid, FIRE_DAMAGE * DT);
     if (took > 0) events.push({ kind: 'crewHurt', player: pid, amount: took, cause: 'fire' });
+  }
+  for (let pid = 0; pid < crewSize(d); pid++) {   // Engineering spike spec §4: low air, after fire, seated or standing
+    if (!isConscious(d, pid)) continue;
+    const r = roomOf(d, pid);
+    if (r < 0 || st.rooms.o2[r]! >= LOW_AIR_FRAC * st.derived.volume[r]!) continue;
+    const took = hurt(d, pid, O2_DAMAGE * DT);
+    if (took > 0) events.push({ kind: 'crewHurt', player: pid, amount: took, cause: 'air' });
   }
   for (let pid = 0; pid < crewSize(d); pid++) {
     const e = eidOf(d, pid);

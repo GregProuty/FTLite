@@ -15,7 +15,7 @@ import { TEXT } from '../src/renderer/src/render/theme';
 import { duelEventSounds } from '../src/renderer/src/audio/duelSounds';
 import { SFX } from '../src/renderer/src/audio/soundBank';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
-import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
+import { PEW, pewThird, ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { makeUi } from './helpers/uiStore';
 
 afterEach(() => { cleanup(); });
@@ -37,7 +37,7 @@ describe('the pips (spec §1)', () => {
   it('fill each third as it recharges; none without the pew', () => {
     const st = createTacticalState(5);
     expect(pewPips(st)).toEqual([1, 1, 1]);
-    st.systems[0].pewCharge = 90;
+    st.systems[0].pewCharge = 1.5 * pewThird(PEW);   // Engineering spike §11: charge units (was 90 ticks)
     expect(pewPips(st)).toEqual([1, 0.5, 0]);
     st.systems[0].pewCharge = 0;
     expect(pewPips(st)).toEqual([0, 0, 0]);
@@ -46,9 +46,11 @@ describe('the pips (spec §1)', () => {
 });
 
 describe('the PEW card (spec §1)', () => {
-  it('comes first on the Weapons block, above the LASER and TORPEDO cards, which keep their screen place', () => {
-    expect(STATION.h.weapons).toBe(244); expect(stationTop('weapons')).toBe(464); expect(PEW_ROW_H).toBe(28);
-    expect(weaponCard('laser').y).toBe(498); expect(weaponCard('torpedo').y).toBe(498);   // where they were (492 + 6)
+  // Merge with the Engineering spike (kind a, replaced rule): the PEW row and the cards gain a row of bar pips (+12 each),
+  // so the block grows upward by 24 (was 244 high, top 464, PEW row 28, cards at 498).
+  it('comes first on the Weapons block, above the BEAM and TORPEDO cards', () => {
+    expect(STATION.h.weapons).toBe(268); expect(stationTop('weapons')).toBe(440); expect(PEW_ROW_H).toBe(40);
+    expect(weaponCard('laser').y).toBe(486); expect(weaponCard('torpedo').y).toBe(486);   // 440 + 6 + 40
   });
   it('shows PEW and three pips with their fills', () => {
     const { duel } = mount();

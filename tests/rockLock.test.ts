@@ -13,6 +13,7 @@ import { shipModule } from '../src/renderer/src/sim/tactical/hash';
 import { beginRockTick, rockSlots } from '../src/renderer/src/sim/tactical/rocks';
 import { seeded } from './helpers/rockArena';
 import { createSeatedDuel } from './helpers/duelSeat';
+import { enemySeen, holdInSight } from './helpers/sensorSight';
 
 const layout = parseShip(cutter), NONE = { moveX: 0, moveY: 0, interactHeld: false };
 let seq = 0;
@@ -43,6 +44,7 @@ describe('rockLock effects and order (spec §6.1)', () => {
   it('the laser: −1 clears it and laserTargeted; a laserLock clears the rock first; a same-tick rockLock beats a laserLock', () => {
     const d = createSeatedDuel(layout, 5), s = d.tactical.systems[0];
     try {
+      holdInSight(d.tactical);   // Engineering spike spec §10.4: a laserLock needs the target seen
       step(d, [cmd(d, 1, { kind: 'rockLock', weapon: 'laser', rock: 0 })]);
       expect([s.laserRock, s.laserTargeted]).toEqual([0, true]);
       step(d, [cmd(d, 1, { kind: 'laserLock', room: 2 })]);
@@ -56,6 +58,7 @@ describe('rockLock effects and order (spec §6.1)', () => {
   it('the torpedo: rockLock sets torpRock and clears torpLock; a torpLock clears torpRock; the same tick the rock wins', () => {
     const d = createSeatedDuel(layout, 5), s = d.tactical.systems[0];
     try {
+      holdInSight(d.tactical);   // Engineering spike spec §10.4: a torpLock needs the target seen
       step(d, [cmd(d, 1, { kind: 'torpLock', room: 1 })]);
       step(d, [cmd(d, 1, { kind: 'rockLock', weapon: 'torpedo', rock: 0 })]);
       expect([s.torpRock, s.torpLock]).toEqual([0, -1]);   // the crew is far from rock 0: no launch
@@ -68,7 +71,7 @@ describe('rockLock effects and order (spec §6.1)', () => {
     } finally { disposeDuel(d); }
   });
   it('missileLaunch is admitted with this tick\'s effective torpRock: a same-tick rockLock counts, a same-tick torpLock clears it', () => {
-    const near = (d: DuelState): void => { d.tactical.rocks.fill(0); seeded(d.tactical, 0); beginRockTick(d.tactical); const a = d.tactical.map.asteroids[0]!; Object.assign(d.tactical.ships[0], { x: a.x, y: a.y - 200, vx: 0, vy: 0 }); };
+    const near = (d: DuelState): void => { d.tactical.rocks.fill(0); seeded(d.tactical, 0); beginRockTick(d.tactical); const a = d.tactical.map.asteroids[0]!; Object.assign(d.tactical.ships[0], { x: a.x, y: a.y - 200, vx: 0, vy: 0 }); enemySeen(d.tactical); };   // Engineering spike spec §10.4: the torpLock needs the target seen
     const d = createSeatedDuel(layout, 5);
     try {
       near(d);

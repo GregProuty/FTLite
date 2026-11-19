@@ -105,7 +105,7 @@ describe('hits (spec §7.2)', () => {
     st.systems[1].laserCharge = LASER_CHARGE_UNITS; st.systems[1].fireHeld = true;
     st.events = []; applyWeaponsInput(st, 1, { ...IDLE_INPUT, laserCharge: false });
     expect(st.events.some((e) => e.kind === 'laser' && e.stripped)).toBe(true);
-    expect([st.systems[0].shields, st.systems[0].gunWear]).toEqual([1, 0]);
+    expect([st.systems[0].shields, st.systems[0].gunWear]).toEqual([0, 0]);   // Engineering spike spec §2: the crew starts at 1 layer (2 Shields bars), so the strip leaves 0 (was 1)
   });
   it('an unshielded enemy: the Room by the closest approach on its nose axis; side-on fore Weapons, aft Engines; along the axis Shields', () => {
     const st = range(0);

@@ -10,11 +10,13 @@ import { sitDown } from '../src/renderer/src/sim/stations';
 import { scanStep } from '../src/renderer/src/sim/tactical/science';
 import { Contact, createTacticalState, idleScan } from '../src/renderer/src/sim/tactical/state';
 import { CUTTER } from './helpers/scriptedDuel';
+import { holdInSight } from './helpers/sensorSight';
 
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 let seq = 0;
 const cmd = (d: DuelState, player: number, command: DuelCommand): DuelEnvelope => ({ runId: 'duel', id: { player, sequence: ++seq }, requestedTick: d.interior.tick, command });
-const step = (d: DuelState, commands: DuelEnvelope[] = []) => stepDuelTick(d, { held: [NONE, NONE], commands });
+// Engineering spike spec §10.4: a scan runs only while its contact is seen, so each step holds both contacts in sight.
+const step = (d: DuelState, commands: DuelEnvelope[] = []) => { holdInSight(d.tactical); return stepDuelTick(d, { held: [NONE, NONE], commands }); };
 const scan = (contact: number): DuelCommand => ({ kind: 'contactScan', contact });
 /** A fresh duel with player 0 at `a` and player 1 at `b`; the crew hull is huge so the long timing runs cannot end the round. */
 function crew(a: 'nav' | 'weapons' | 'science', b: 'nav' | 'weapons' | 'science'): DuelState {
@@ -114,6 +116,7 @@ describe('who runs the scan (spec §4.3, §5)', () => {
 describe('scanStep (spec §4.3)', () => {
   it('idle does nothing; an unattended scanner goes idle; otherwise it advances and finishes at its level\'s units', () => {
     const t = createTacticalState(5);
+    holdInSight(t);   // Engineering spike spec §10.4: both contacts seen
     scanStep(t, false); expect(t.scan).toEqual(idleScan());
     t.scan = { contact: 1, level: 1, progress: 895, rate: 5, by: 3 };
     scanStep(t, true);

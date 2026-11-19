@@ -7,7 +7,8 @@
 // events are outputs, reset every tick, and not hashed. −0 is written as 0.
 import { hashF64 } from '../../../../shared/hash';
 import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
-import { SHIP_CLASSES, type ShipClassDef } from './defs';
+import { DUEL_SYSTEM_COUNT, SYSTEM_SLOTS, WEAPON_BAR_MAX, WEAPON_SLOTS } from './bars';
+import { pewFullCharge, SHIP_CLASSES, type ShipClassDef } from './defs';
 import { AIM_STEPS, DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, GUN_POOL, HEADING_COUNT, HUNTER_PEW_GAP, HUNTER_TRAIL_TICKS, PEW_POOL, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
 import { rockCapacity, ROCK_RESERVE, ROCK_STRIDE } from './rocks';
 import { CREW_SLOT, emptyMissile, emptyRound, HunterMode, Outcome, type GunRound, type Missile, type MissileFlight, type Ship, type ShipSystems, type TacticalState } from './state';
@@ -127,6 +128,8 @@ function shipFields(slots: number): ModuleField<TacticalState>[] {
     fields.push(vector(`systems.${i}.rooms`, 3, (s) => s.systems[i]!.rooms));
     for (const key of SYSTEMS_TAIL) fields.push(systemsField(i, key));
     fields.push(vector(`systems.${i}.gunRoomWear`, 3, (s) => s.systems[i]!.gunRoomWear));   // Valkyrn spec §7.3
+    fields.push(vector(`systems.${i}.bars`, DUEL_SYSTEM_COUNT, (s) => s.systems[i]!.bars));   // Engineering spike spec §2
+    fields.push(vector(`systems.${i}.weaponPower`, WEAPON_SLOTS, (s) => s.systems[i]!.weaponPower));   // spec §10.3
   }
   shipCache.set(slots, fields);
   return fields;
@@ -202,7 +205,7 @@ export function cloneTacticalFromModule(s: TacticalState): TacticalState {
   const copy: TacticalState = { ...s, rng: { s: 0 }, rocks: new Float64Array(s.rocks.length),
     rockBorn: new Uint8Array(s.rockBorn.length), rockDone: new Uint8Array(s.rockDone.length),
     ships: s.ships.map((b) => ({ ...b, graceUntil: new Int32Array(b.graceUntil.length) })) as TacticalState['ships'],
-    systems: s.systems.map((y) => ({ ...y, rooms: [0, 0, 0], gunRoomWear: [0, 0, 0] })) as TacticalState['systems'],
+    systems: s.systems.map((y) => ({ ...y, rooms: [0, 0, 0], gunRoomWear: [0, 0, 0], bars: [0, 0, 0, 0, 0], weaponPower: [0, 0, 0] })) as TacticalState['systems'],
     missiles: s.missiles.map(emptyMissile) as TacticalState['missiles'],
     rounds: s.rounds.map(emptyRound),
     pew: s.pew.map(emptyRound),
@@ -247,12 +250,14 @@ const systemsRules = (slots: number, rocks: number): Readonly<Record<string, (v:
   // W-2 (pew pew spec §4): the mode a bit, the burst aim a fine aim or −1 (validateTacticalValues adds the crew-only and burst checks).
   laserManual: flagBit, laserAim: within(-1, AIM_STEPS - 1),
   // W-3 (pew pew spec §4): the torpedo mode a bit (validateTacticalValues adds the crew-only check).
-  torpManual: flagBit
+  torpManual: flagBit,
+  bars: within(0, Math.max(...SYSTEM_SLOTS)),   // Engineering spike spec §2, §10.1: 0..10 per system
+  weaponPower: within(0, WEAPON_BAR_MAX + 1)   // spec §10.3
 });
 /** W-1 (pew pew spec §4; Task 6 review): a slot's pew charge, 0..its own class's full pew (0 for a class without one). */
 const pewChargeRule = (cls: number): ((v: number) => boolean) => {
   const pew = SHIP_CLASSES[cls]?.slots.pew;
-  return within(0, pew ? pew.shots * pew.rechargeTicks : 0);
+  return within(0, pew ? pewFullCharge(pew) : 0);
 };
 // Built on first use: state.ts imports this file for cloneTactical, so its enums are read lazily.
 const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({

@@ -1,5 +1,5 @@
 // The duel on the sim module contract (engine refactor spec §6, R-1 and R-2): space (the ship slots' bodies, the
-// missile pool, the hunter), ship (each slot's systems record), science (Sci-1), presence, repair, round (H-2 spec §7), helm (Artemis-ii) and the interior
+// missile pool, the hunter), ship (each slot's systems record), science (Sci-1), presence, repair, round (H-2 spec §7), helm (Artemis-ii), power (Engineering spike spec §7) and the interior
 // wrapper, in canonical order after SIM_VERSION. flattenDuel, the duel snapshot and its restore all come
 // from this list; tests/duelModules.test.ts holds every DuelState and TacticalState member to a field or an exclusion.
 import { flatten, unflatten } from '../flatten';
@@ -7,6 +7,7 @@ import { validateCanonicalValues } from '../snapshotValidation';
 import { canonicalFields } from '../canonicalFields';
 import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
 import { scienceModule, shipModule, spaceModule } from '../tactical/hash';
+import { powerModule } from './power';
 import type { DuelState } from './state';
 
 /** Who is at the keyboard (spec §8 "present or away"). */
@@ -95,7 +96,8 @@ export const DUEL_NOT_SNAPSHOTTED: Readonly<Record<string, string>> = {
   weapons: 'the Weapons station index, from the layout',
   science: 'the Science station index, from the layout',
   crewClass: 'the crew slot\'s class: hashed and snapshotted as the ship module\'s systems.0.cls, and in the snapshot header (Valkyrn spec §6.1)',
-  events: 'per-tick repair events, cleared every tick'
+  events: 'per-tick repair events, cleared every tick',
+  systemRooms: 'each system\'s interior room, derived from the layout by createDuel (Engineering spike Decision 3)'
 };
 
 /** The duel's modules in canonical order, each with the part of the DuelState it owns. */
@@ -107,6 +109,7 @@ export const DUEL_MODULES: readonly { module: SimModule<never>; state(d: DuelSta
   { module: repairModule as SimModule<never>, state: (d) => d, path: '' },
   { module: roundModule as SimModule<never>, state: (d) => d, path: '' },
   { module: helmModule as SimModule<never>, state: (d) => d, path: '' },
+  { module: powerModule as SimModule<never>, state: (d) => d, path: '' },   // Engineering spike spec §7
   { module: interiorModule as SimModule<never>, state: (d) => d, path: '' }
 ];
 

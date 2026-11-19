@@ -10,6 +10,7 @@ import { DUEL_MODULES, helmModule } from '../src/renderer/src/sim/duel/modules';
 import { moduleLength, type SimModule } from '../src/renderer/src/sim/module';
 import { loadDuelSnapshot, saveDuelSnapshot, validateDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { DuelSystem } from '../src/renderer/src/sim/tactical/bars';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { clampThrottle, THROTTLE_MAX, THROTTLE_MIN, throttleThrust, validThrottle } from '../src/renderer/src/sim/duel/throttle';
@@ -50,7 +51,7 @@ describe('the throttle levels (Artemis spec §5.1, §5.3)', () => {
 
 describe('the helm module (Artemis spec §5.1)', () => {
   it('sits after round and before interior, owns throttle, and its field moves the duel hash', () => {
-    expect(DUEL_MODULES.map(({ module }) => module.id)).toEqual(['space', 'ship', 'science', 'presence', 'repair', 'round', 'helm', 'interior']);
+    expect(DUEL_MODULES.map(({ module }) => module.id)).toEqual(['space', 'ship', 'science', 'presence', 'repair', 'round', 'helm', 'power', 'interior']);   // Engineering spike spec §7: the power module, after helm and before interior
     expect([helmModule.commands, helmModule.reasons]).toEqual([['throttle', 'heading'], ['invalid-seat', 'malformed', 'stale-tick']]);   // Feel-ii adds the held heading
     const d = createSeatedDuel(CUTTER, 5);
     try {
@@ -82,6 +83,7 @@ describe('the throttle command (Artemis spec §5.2)', () => {
   it('envelope order holds within a tick and the last applied level wins; a repeat of the new level is noop', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
+      d.tactical.systems[0].bars[DuelSystem.Engines] = 4;   // Engineering spike spec §10.2 (fallout a): Engines starts at 3 bars (cap 3), so a throttle of 4 needs the 4th bar
       expect(step(d, [cmd(d, 0, throttle(2)), cmd(d, 0, throttle(4)), cmd(d, 0, throttle(4))]).map((x) => x.status)).toEqual(['applied', 'applied', 'noop']);
       expect(d.throttle).toBe(4);
     } finally { disposeDuel(d); }
@@ -214,6 +216,7 @@ describe('the throttle flies the duel (Artemis spec §5.3)', () => {
     for (const [level, thrust] of [[4, 1], [2, 0.5], [-1, -1]] as const) {
       const d = createSeatedDuel(CUTTER, 5);
       try {
+        d.tactical.systems[0].bars[DuelSystem.Engines] = 4;   // Engineering spike spec §10.2 (fallout a): Engines starts at 3 bars (cap 3), so a throttle of 4 needs the 4th bar
         const path = predictPath(d.tactical, 0, { turn: 0, thrust }, 60, 1), s = d.tactical.ships[0];
         expect(path).toHaveLength(60);
         step(d, [cmd(d, 0, throttle(level))]);
@@ -228,6 +231,7 @@ describe('the throttle flies the duel (Artemis spec §5.3)', () => {
   it('held W no longer thrusts; an empty Helm coasts and keeps its level, and the next pilot flies at it', () => {
     const d = createSeatedDuel(CUTTER, 5), coast = createSeatedDuel(CUTTER, 5);
     try {
+      d.tactical.systems[0].bars[DuelSystem.Engines] = 4;   // Engineering spike spec §10.2 (fallout a): Engines starts at 3 bars (cap 3), so a throttle of 4 needs the 4th bar
       step(d, [], [{ moveX: 0, moveY: -1, interactHeld: false }, NONE]); step(coast);
       expect([d.tactical.ships[0].vx, d.tactical.ships[0].vy]).toEqual([coast.tactical.ships[0].vx, coast.tactical.ships[0].vy]);
       step(d, [cmd(d, 0, throttle(4))]);

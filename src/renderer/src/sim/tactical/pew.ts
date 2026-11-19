@@ -1,26 +1,46 @@
 // Pew pew (spec 2026-11-18-pew-pew-weapons-design §1, §4; W-1): the crew Cutter's and the Hunter's skill-shot gun, on a
-// class whose pew slot is not null. Its charge is ticks on the systems record: a third of the bar per rechargeTicks, shots
-// thirds, a round spending one; it refills every tick, attended or not, whatever the Weapons damage (spec §6 decision 4).
+// class whose pew slot is not null. Its charge is units on the systems record (defs.ts pewThird: rechargeTicks ×
+// PEW_CHARGE_SCALE to a third), shots thirds, a round spending one; it refills every tick, attended or not, whatever the
+// Weapons damage (spec §6 decision 4). Engineering spike §11 (merge decision 1a): the crew's refill rate is its pew pew
+// bars' (bars.ts PEW_TICKS_BY_BARS, the trimmed bars, so damage gates at once); at 0 bars it neither refills nor fires.
 // The aim is a fine heading (AIM_STEPS to the turn: a heading index times HEADING_COUNT plus its fraction), clamped in
 // that space into ±arcSteps about the heading at the moment of firing. A round leaves the nose at the round speed along
 // the aim, ignoring the ship's velocity, into the shared pool tactical.pew (gun.ts placeRound's pick). firePew runs from
 // applyWeaponsInput (before anything moves); stepPew (Task 3) after the gun rounds. Only + − × ÷ and sqrt.
-import type { PewDef } from './defs';
+import { PEW_TICKS_BY_BARS, weaponBars, WeaponSlot } from './bars';
+import { pewFullCharge, pewThird, type PewDef } from './defs';
 import { dirBetween, hx, hy } from './direction';
 import { placeRound, segmentEntry } from './gun';
 import { interceptTime, nearestHeading } from './lead';
 import { shootDown } from './missiles';
 import { rockAt, rocksNear } from './rocks';
-import { classOf, emptyRound, type TacticalState } from './state';
+import { classOf, CREW_SLOT, emptyRound, type TacticalState } from './state';
 import { AIM_STEPS, DT, HEADING_COUNT } from './tuning';
 
-/** A full charge in ticks: every third stored. */
-export function pewFull(def: PewDef): number { return def.shots * def.rechargeTicks; }
+/** A full charge in charge units: every third stored. */
+export function pewFull(def: PewDef): number { return pewFullCharge(def); }
 
-/** Whether ship i's pew holds at least one full third (a round can fire); never for a class without the pew. */
+/** Engineering spike §11: whether ship i's pew pew is powered: the crew's with at least one (trimmed) pew pew bar, any
+ *  other ship's always. */
+export function pewPowered(state: TacticalState, i: number): boolean {
+  return i !== CREW_SLOT || weaponBars(state.systems[i]!, WeaponSlot.Pew) >= 1;
+}
+
+/** The charge units ship i's pew gains a tick: the crew's by its pew pew bars (a third per PEW_TICKS_BY_BARS ticks, 0 at
+ *  0 bars), any other ship's one tick at its class's rate (PEW_CHARGE_SCALE units); 0 without the pew. */
+export function pewGain(state: TacticalState, i: number): number {
+  const def = classOf(state, i).slots.pew;
+  if (!def) return 0;
+  if (i !== CREW_SLOT) return pewThird(def) / def.rechargeTicks;
+  const ticks = PEW_TICKS_BY_BARS[weaponBars(state.systems[i]!, WeaponSlot.Pew)]!;
+  return ticks > 0 ? pewThird(def) / ticks : 0;
+}
+
+/** Whether ship i's pew can fire a round now: powered (pewPowered) and at least one full third stored; never for a class
+ *  without the pew. */
 export function pewReady(state: TacticalState, i: number): boolean {
   const def = classOf(state, i).slots.pew;
-  return def !== null && state.systems[i]!.pewCharge >= def.rechargeTicks;
+  return def !== null && state.systems[i]!.pewCharge >= pewThird(def) && pewPowered(state, i);
 }
 
 /** A pewFire command's aim (spec §4): a heading index 0..255 and its fraction aimAcc 0..255, both integers. */
@@ -54,18 +74,18 @@ export function pewMuzzle(state: TacticalState, i: number): { x: number; y: numb
  *  counted and a pewFire event pushed; returns whether it fired. */
 export function firePew(state: TacticalState, i: number, aim: number): boolean {
   const def = classOf(state, i).slots.pew, s = state.systems[i]!;
-  if (!def || !Number.isInteger(aim) || aim < 0 || aim >= AIM_STEPS || s.pewCharge < def.rechargeTicks) return false;
+  if (!def || !Number.isInteger(aim) || aim < 0 || aim >= AIM_STEPS || !pewReady(state, i)) return false;
   const [ux, uy] = aimDir(clampAim(state.ships[i]!.heading, aim, def.arcSteps)), m = pewMuzzle(state, i);
   placeRound(state, { x: m.x, y: m.y, vx: ux * def.speed, vy: uy * def.speed, age: 0, owner: i }, state.pew);
-  s.pewCharge -= def.rechargeTicks; s.pewShots++;
+  s.pewCharge -= pewThird(def); s.pewShots++;
   state.events.push({ kind: 'pewFire', ship: i, x: m.x, y: m.y });
   return true;
 }
 
-/** One tick of ship i's pew recharge (spec §1): one tick of charge while below full, every tick. */
+/** One tick of ship i's pew recharge (spec §1; Engineering spike §11): pewGain units while below full, to full, every tick. */
 export function tickPew(state: TacticalState, i: number): void {
   const def = classOf(state, i).slots.pew, s = state.systems[i]!;
-  if (def && s.pewCharge < pewFull(def)) s.pewCharge++;
+  if (def && s.pewCharge < pewFull(def)) s.pewCharge = Math.min(pewFull(def), s.pewCharge + pewGain(state, i));
 }
 
 /** Owner's pew round hit ship k at (x, y) (spec §1): with a shield layer up it strips one (the shield clock and the gun's

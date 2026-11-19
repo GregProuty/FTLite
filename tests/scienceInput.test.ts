@@ -17,6 +17,7 @@ import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import { createUiStore } from '../src/renderer/src/ui/store';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { derelictPos } from '../src/renderer/src/sim/tactical/science';
+import { holdInSight } from './helpers/sensorSight';
 
 const layout = parseShip(cutter), vp = { w: 1280, h: 720 };
 const LIVE = { banner: null, layerPaused: false, end: null };
@@ -72,7 +73,8 @@ function rig() {
     takeContactRequests: () => contact.takeRequests()
   });
   /** A frame, one tick of wall time, a frame: requests drained by the first frame go out on exactly that tick. */
-  const tick = (): void => { rt.frame(1 / 60); now += 1000 / 60; tasks.sort((a, b) => a.at - b.at); while (tasks[0] && tasks[0].at <= now) tasks.shift()!.cb(); rt.frame(1 / 60); };
+  // Engineering spike spec §10.4: designate and contactScan need the contact seen, so each tick holds both in sight.
+  const tick = (): void => { holdInSight(rt.duel.tactical); rt.frame(1 / 60); now += 1000 / 60; tasks.sort((a, b) => a.at - b.at); while (tasks[0] && tasks[0].at <= now) tasks.shift()!.cb(); rt.frame(1 / 60); };
   const freq = (f: number): void => { keys = { ...keys, freqTo: f }; };
   const at = (station: 'helm' | 'weapons' | 'science') => contact.sync({ shown: true, station, target: 1, active: () => true, epoch: 0, enemyKnown: rt.duel.tactical.known[0] });
   const kinds = (): string[] => rt.lastResults().map((r) => `${r.status}`);

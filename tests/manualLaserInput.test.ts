@@ -1,8 +1,11 @@
+// Merge with the Engineering spike (SIM 58, kind a, replaced rule): the crew's beam stands on the Weapons officer's bars and
+// starts dark (spec §10.3), so this rig gives the crew today's laser and torpedo by bars (todaysCrewWeapons).
 // W-2 manual laser (spec 2026-11-18-pew-pew-weapons-design §2, §4, §5): Z (and the card's tag, a laserMode press) toggles
 // the laser mode from the latest queued one. In MANUAL, Space sends laserFire along the Weapons map's aim (the nose with
 // none yet), or says NO CHARGE without a full charge and queues nothing. In AUTO, Space keeps today's meaning. The
 // Settings list names Z.
 import { describe, expect, it } from 'vitest';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { controlSections } from '../src/renderer/src/app/controlsList';
@@ -29,7 +32,7 @@ function rig(aim: { at: number | null }) {
   });
   const press = (a: KeyAction): void => { keys = { ...keys, presses: { ...keys.presses, [a]: 1 } }; };
   const tick = (): void => { rt.frame(1 / 60); now += 1000 / 60; tasks.sort((a, b) => a.at - b.at); while (tasks[0] && tasks[0].at <= now) tasks.shift()!.cb(); rt.frame(1 / 60); };
-  seatDuelCrew(rt.duel);
+  seatDuelCrew(rt.duel); todaysCrewWeapons(rt.duel.tactical);
   press('switch'); tick(); tick();   // Tab takes the gunner (player 1, at Weapons)
   return { rt, tick, press };
 }

@@ -20,6 +20,7 @@ import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import { SCAN_RATE_SCIENCE } from '../src/renderer/src/sim/tactical/tuning';
 import { standAtStation } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
+import { holdInSight } from './helpers/sensorSight';
 
 const HOUND = parseShip(hound);
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -76,6 +77,7 @@ describe('presence and seats at n (spec §4.1, §7)', () => {
       expect(step(d, [cmd(d, 0, { kind: 'sit', station: d.nav }), cmd(d, 2, { kind: 'sit', station: d.science }), cmd(d, 3, { kind: 'sit', station: d.weapons })]).map((r) => r.status))
         .toEqual(['applied', 'applied', 'applied']);
       expect([d.nav, d.science, d.weapons].map((s) => d.interior.stations.occupant[s])).toEqual([0, 2, 3]);
+      holdInSight(d.tactical);   // Engineering spike spec §10.4: contactScan needs the contact seen
       const r = step(d, [cmd(d, 2, { kind: 'contactScan', contact: 0 }), cmd(d, 3, { kind: 'laserFrequency', freq: 2 }), cmd(d, 1, { kind: 'laserFrequency', freq: 1 })]);
       expect(r.map((x) => [x.id.player, x.reason ?? x.status])).toEqual([[1, 'not-at-weapons'], [2, 'applied'], [3, 'applied']]);
       expect(d.tactical.scan).toMatchObject({ contact: 0, by: d.science, rate: SCAN_RATE_SCIENCE });

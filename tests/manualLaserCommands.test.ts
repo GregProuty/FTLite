@@ -1,9 +1,12 @@
+// Merge with the Engineering spike (SIM 58, kind a, replaced rule): the crew's beam stands on the Weapons officer's bars and
+// starts dark (spec §10.3), so these tests give the crew today's laser and torpedo by bars (todaysCrewWeapons).
 // W-2 manual laser (spec 2026-11-18-pew-pew-weapons-design §2, §4, §5): laserMode and laserFire on the wire and through the
 // duel step. The codec round-trips both; the step admits them from the Weapons attendant only. laserMode sets the crew
 // laser's mode (noop when unchanged). laserFire fires in MANUAL with a valid aim and a full charge (else unavailable: NO
 // CHARGE), at most once a tick, never with the own torpedo flying. In AUTO laserFire is unavailable, and in MANUAL
 // laserCharge is. laserMode takes effect before a same-tick laserFire.
 import { describe, expect, it } from 'vitest';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import type { CommandEnvelope, HeldInput } from '../src/renderer/src/net/contracts';
 import { duelCodec } from '../src/renderer/src/net/codec';
 import type { DuelCommand, DuelEnvelope } from '../src/renderer/src/sim/duel/commands';
@@ -20,7 +23,7 @@ const cmd = (d: DuelState, player: number, command: DuelCommand, requestedTick =
 const step = (d: DuelState, commands: DuelEnvelope[] = []) => stepDuelTick(d, { held: Array.from({ length: d.interior.playerCount }, () => NONE), commands });
 const why = (r: ReturnType<typeof step>) => r.map((x) => x.reason ?? x.status);
 /** A Cutter duel with player 0 standing and player 1 at Weapons. */
-function gunnerAtWeapons(): DuelState { const d = createDuel(CUTTER, 5); sitDown(d.interior, 1, d.weapons); return d; }
+function gunnerAtWeapons(): DuelState { const d = createDuel(CUTTER, 5); todaysCrewWeapons(d.tactical); sitDown(d.interior, 1, d.weapons); return d; }
 const mode = (manual: boolean): DuelCommand => ({ kind: 'laserMode', manual });
 const fire = (aim: number, aimAcc = 0): DuelCommand => ({ kind: 'laserFire', aim, aimAcc });
 
