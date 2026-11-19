@@ -36,15 +36,18 @@ export interface ShipInput {
   /** W-1 (pew pew spec §1, §4): the pew's fine aim this tick (a heading index × HEADING_COUNT + its fraction, 0..65535),
    *  or −1 for no shot. At most one a tick; the duel step admits the first pewFire, the Hunter decides its own. */
   pewAim: number;
+  /** W-2 (pew pew spec §2, §4): the MANUAL laser's fine aim this tick (pewAim's format, 0..65535), or −1 for no shot. Read
+   *  only by the crew's laser in MANUAL; the duel step admits the first laserFire, the Hunter never sends one. */
+  laserFire: number;
   /** Sci-1 spec §4.6: whether the station running the ship's scan is attended (true when no scan runs). The duel step
    *  computes it for the crew; every other input sets true. */
   scanner: boolean;
 }
 
 /** A crew that sits at both consoles and does nothing. */
-export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, scanner: true };
+export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, scanner: true };
 /** Nobody at either console: a ship nobody flies. */
-export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, scanner: true };
+export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, scanner: true };
 
 /** Whether ship i's laser is fully charged; never for a class without a laser (Valkyrn spec §6.1). */
 export function laserFull(state: TacticalState, i: number): boolean {
@@ -88,6 +91,12 @@ export function validRockLock(state: TacticalState, weapon: unknown, rock: numbe
  *  charge; canLaunch refuses missiles. A laserCharge command is still admitted (canCharge): it is held, to no effect,
  *  and the laser starts charging again once the room is repaired to 1. */
 export function laserOffline(state: TacticalState, i: number): boolean { return state.systems[i]!.rooms[Room.Weapons] >= 2; }
+
+/** W-2 (pew pew spec §2): whether ship i's MANUAL laser would fire on a laserFire now, a torpedo in flight aside
+ *  (laserFrozen): a full charge, no burst shot pending, Weapons below level 2. */
+export function manualLaserReady(state: TacticalState, i: number): boolean {
+  return laserFull(state, i) && state.systems[i]!.laserBurst === 0 && !laserOffline(state, i);
+}
 
 /** The laser cannot charge, hold or fire while its ship's missile flies or its Weapons console is empty (spec §7 table). */
 export function laserFrozen(state: TacticalState, i: number, input: ShipInput): boolean {
@@ -201,7 +210,7 @@ function stepBurst(state: TacticalState, i: number): void {
 /** Apply ship i's weapon commands for this tick, before anything moves (spec §7 table). The crew's ship (FTL targeting
  *  spec §2): `laserLock` sets the laser's target (−1 clears it, keeping the lock room for a manual shot) and `torpLock`
  *  the torpedo's, and an accepted room lock clears the matching rock target; `rockLock` sets that weapon's rock target (a rock lock clears its room lock); a charge press fires a full laser; then, attended, the laser with a target fires its burst when full
- *  and eligible, and a torpedo with a target launches when the launch is legal (launchMissile clears torpLock). */
+ *  and eligible, and a torpedo with a target launches when the launch is legal (launchMissile clears torpLock). W-2 (pew pew spec §2): in MANUAL the laser fires neither on a charge press nor by itself. */
 export function applyWeaponsInput(state: TacticalState, i: number, input: ShipInput): void {
   const s = state.systems[i]!, crew = i === CREW_SLOT, armed = classOf(state, i).slots.laser !== null;   // Valkyrn spec §6.1: a null laser skips lock, charge and auto-fire
   if (armed && input.weapons && input.laserLock !== null && validTarget(input.laserLock)) {   // first: a burst shot reads this tick's lock
@@ -222,7 +231,7 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
   if (!input.weapons) { s.fireHeld = false; return; }   // unattended: Fire lets go without firing or discarding
   if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; }   // a hit after its clock ran last tick: no shot
   if (armed && input.laserCharge !== null && canCharge(state, i)) {
-    if (crew) { if (input.laserCharge && s.laserBurst === 0 && laserFull(state, i)) fireLaser(state, i); }   // a single press
+    if (crew) { if (input.laserCharge && !s.laserManual && s.laserBurst === 0 && laserFull(state, i)) fireLaser(state, i); }   // a single press; W-2: never in MANUAL
     else if (input.laserCharge) s.fireHeld = true;
     else if (s.fireHeld) {
       s.fireHeld = false;
@@ -230,8 +239,8 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
       else { s.laserCharge = 0; s.laserHold = 0; }
     }
   }
-  // Auto-fire: on the enemy when eligible; spike ii §6.2: on a rock target when it is on target (AUTO_DIG is false).
-  if (armed && crew && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && (s.laserRock >= 0 ? rockOnTarget(state, i, s.laserRock) : laserEligible(state, i, s.target) || laserDiggable(state, i))) fireLaser(state, i);
+  // Auto-fire: on the enemy when eligible; spike ii §6.2: on a rock target when it is on target (AUTO_DIG is false). W-2: AUTO only.
+  if (armed && crew && !s.laserManual && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && (s.laserRock >= 0 ? rockOnTarget(state, i, s.laserRock) : laserEligible(state, i, s.target) || laserDiggable(state, i))) fireLaser(state, i);
   // W-1 merge: the torpedo launch is skipped when this call broke its rock target (impl review R1-F3), but the pew still fires.
   if (!(torpOnRock && s.torpRock < 0)) {   // the torpedo's rock broke this call: no launch this tick (the command can still read 'applied')
     if (input.missileLaunch && canLaunch(state, i)) {

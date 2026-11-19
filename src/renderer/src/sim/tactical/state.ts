@@ -74,6 +74,11 @@ export interface ShipSystems {
    *  a round spends one third), and its telemetry counters (rounds fired, rounds that hit a ship). All zero on a class
    *  without the pew. */
   pewCharge: number; pewShots: number; pewHits: number;
+  /** W-2 (pew pew spec §2, §4): the laser's mode, false AUTO (it fires at its target by itself, as before) or true MANUAL
+   *  (it charges as before but fires only on laserFire, along an aim); only the crew's is ever MANUAL (laserMode), and every
+   *  round starts AUTO. `laserAim`: the fine aim (0..AIM_STEPS − 1) a MANUAL burst's pending shots fire along, −1 while no
+   *  MANUAL burst is pending. An inactive slot holds zeros. */
+  laserManual: boolean; laserAim: number;
 }
 
 /** A cruise missile's flight (spec §7b). */
@@ -207,13 +212,14 @@ function systemsFor(cls: number, target: number, crew = false): ShipSystems {
     laserTargeted: crew && laser !== null, torpLock: -1, torpRoom: -1, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: c.slots.missile.magazine, magazineClock: 0, laserRock: -1, torpRock: -1, torpRockFlying: -1, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
     gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0,
-    pewCharge: pew ? pew.shots * pew.rechargeTicks : 0, pewShots: 0, pewHits: 0   // W-1: a pew starts the round full
+    pewCharge: pew ? pew.shots * pew.rechargeTicks : 0, pewShots: 0, pewHits: 0,   // W-1: a pew starts the round full
+    laserManual: false, laserAim: -1   // W-2: every round starts AUTO, with no MANUAL burst pending
   };
 }
 function emptySystems(): ShipSystems {
   return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, laserTargeted: false, torpLock: 0, torpRoom: 0, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: 0, magazineClock: 0, laserRock: 0, torpRock: 0, torpRockFlying: 0, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
-    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0, pewCharge: 0, pewShots: 0, pewHits: 0 };
+    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0, pewCharge: 0, pewShots: 0, pewHits: 0, laserManual: false, laserAim: 0 };
 }
 /** A free missile pool entry. */
 export function emptyMissile(): Missile { return { active: false, owner: 0, x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 }; }

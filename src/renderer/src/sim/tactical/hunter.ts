@@ -126,7 +126,7 @@ export function hunterThink(state: TacticalState, i = 1): ShipInput {
   updateRepair(state, i);
   const repairing = h.mode === HunterMode.Repair;
   const helm = !(repairing && h.room === Room.Engines), weapons = !(repairing && h.room !== Room.Engines);
-  const input: ShipInput = { helm, weapons, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, scanner: true };
+  const input: ShipInput = { helm, weapons, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, scanner: true };   // W-2: the Hunter is always AUTO
   if (!enemyHostile(state)) { h.fireAt = -1; return input; }   // the hold before hostility (Sci-1 spec §4.2): it keeps only its drift
 
   if (helm) {

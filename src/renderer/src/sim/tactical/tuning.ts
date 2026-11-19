@@ -226,3 +226,7 @@ export const HUNTER_PEW_ERROR_STEPS = Math.floor((HUNTER_PEW_ERROR / 360) * AIM_
 export const HUNTER_PD_RANGE = 300;
 export const HUNTER_PD_CHANCE = 0.3;
 export const HUNTER_PD_ODDS = Math.round(1 / (HUNTER_PD_CHANCE * DT));
+
+// Manual laser (spec 2026-11-18-pew-pew-weapons-design §2, §4; W-2). No new tuning knob: the beam is today's laser.
+/** W-2: the laser's ±60° arc (LASER_ARC_COS 0.5) in fine heading units, rounded down as PEW_ARC_STEPS is: the MANUAL aim's clamp. */
+export const LASER_ARC_STEPS = Math.floor((60 / 360) * AIM_STEPS);   // 10922
