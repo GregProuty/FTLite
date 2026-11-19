@@ -1,11 +1,12 @@
-// Spike ii §4.2 (docs/superpowers/specs/2026-11-18-asteroids-ii-design.md): a torpedo that touches a rock detonates. The
+// Spike ii §4.2 (asteroids-iii §5.3: the push capped at 0.5 · v_esc(ρ)) (docs/superpowers/specs/2026-11-18-asteroids-ii-design.md): a torpedo that touches a rock detonates. The
 // rocks whose surface lies within BLAST_RADIUS of the blast point are listed once, ascending, before anything changes;
 // then the blast event, the touched rock's burst (whatever its hp), each listed rock in order (skipping any slot now
 // born or gone: push first, then damage, a fan break along the blast-to-rock line), then every active ship in the radius
 // is pushed away. The caller ends the torpedo with cause 'asteroid'.
+import { escapeSpeed } from './rails';
 import { breakRock, hitRock, pushRock } from './rockBreak';
 import { rockAlive, rockAt, rockMass, rocksNear } from './rocks';
-import { BLAST_PUSH, BLAST_RADIUS, BLAST_ROCK_DAMAGE_MAX, BLAST_ROCK_DAMAGE_MIN, BLAST_SHIP_PUSH } from './rockTuning';
+import { BLAST_PUSH, BLAST_PUSH_CAP, BLAST_RADIUS, BLAST_ROCK_DAMAGE_MAX, BLAST_ROCK_DAMAGE_MIN, BLAST_SHIP_PUSH } from './rockTuning';
 import { classOf, type TacticalState } from './state';
 
 /** §4.2: the fall-off for a surface distance d: 1 − d / BLAST_RADIUS inside the radius, 0 at and beyond it. */
@@ -29,7 +30,7 @@ export function detonateTorpedo(s: TacticalState, owner: number, x: number, y: n
   for (const k of near) {
     if (!rockAlive(s, k) || s.rockBorn[k] === 1) continue;   // evicted, or reused for a piece of this blast
     const a = rockAt(s, k), dx = a.x - x, dy = a.y - y, dist = Math.sqrt(dx * dx + dy * dy);
-    const fall = blastFall(Math.max(0, dist - a.r)), ux = dist > 0 ? dx / dist : 0, uy = dist > 0 ? dy / dist : -1, dv = (BLAST_PUSH * fall) / rockMass(a.r);
+    const fall = blastFall(Math.max(0, dist - a.r)), ux = dist > 0 ? dx / dist : 0, uy = dist > 0 ? dy / dist : -1, dv = Math.min((BLAST_PUSH * fall) / rockMass(a.r), BLAST_PUSH_CAP * escapeSpeed(Math.sqrt(a.x * a.x + a.y * a.y)));
     pushRock(s, k, ux * dv, uy * dv);
     hitRock(s, k, BLAST_ROCK_DAMAGE_MIN + (BLAST_ROCK_DAMAGE_MAX - BLAST_ROCK_DAMAGE_MIN) * fall, ux, uy, 'torpedo', owner);
   }

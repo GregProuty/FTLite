@@ -12,10 +12,6 @@ export const ROCK_MIN_R = 8;
  *  (at r 13 each piece is 0.9 · 13 / √2 ≈ 8.27, just over ROCK_MIN_R). */
 export const FAN_TRIPLE_MIN_R = 40;
 export const FAN_SPLIT_MIN_R = 13;
-/** §3.4: the fan pattern's piece speed (laser, blast-secondary, collision or ram break), u/s, on top of the parent's velocity. */
-export const ROCK_FLING = 150;
-/** §3.4: the burst pattern's piece speed (a torpedo's direct hit), u/s, on top of the parent's velocity. */
-export const ROCK_BLAST_FLING = 200;
 
 /** Spike ii §3.2, asteroids-iii §13.3: rock gravity as a share of the ships', and the speed cap (u/s), a safety net counted in rockCapHits. */
 export const ROCK_GRAVITY = 1.0;

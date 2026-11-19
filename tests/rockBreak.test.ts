@@ -5,75 +5,89 @@ import { cloneTactical, createTacticalState } from '../src/renderer/src/sim/tact
 import { hashTactical } from '../src/renderer/src/sim/tactical/hash';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
+import { escapeSpeed } from '../src/renderer/src/sim/tactical/rails';
 import { firstBlocker, rockAlive, rockAt, rockBorn, RockKind } from '../src/renderer/src/sim/tactical/rocks';
-import { breakRock, dustRock, hitRock, pieceCount, pushRock } from '../src/renderer/src/sim/tactical/rockBreak';
-import { arena, fillPool, mover, rockEvents, seeded } from './helpers/rockArena';
+import { breakRock, dustRock, hitRock, kickFraction, pieceCount, pieceKick, pieceOffset, pieceRadius, pushRock } from '../src/renderer/src/sim/tactical/rockBreak';
+import { arena, fillPool, mover, rail, rockEvents, seeded } from './helpers/rockArena';
 
 const deg = (a: number): number => (a * Math.PI) / 180;
 
-describe('the fan (laser, blast-secondary, collision, ram; spec §3.4)', () => {
-  it('r 42 gives 3 pieces, r 30, r 20 and r 13 give 2 (r 13: ≈8.27 each), r 12.9 and r 12 dust; each 0.9 r / √n at hp ceil(rp / 10), fanned across the 120° ahead at 150 u/s plus the parent', () => {
+const ve = escapeSpeed(2000);
+describe('the fan (laser, blast-secondary, collision, ram; spec §3.4, §5.2)', () => {
+  it('r 42 gives 3 pieces, r 30, r 20 and r 13 give 2, r 12.9 and r 12 dust; each 0.9 r / √n, 0.6 r out, the parent\'s velocity plus v_esc · (0.10 + 0.15 f_j)', () => {
     for (const [r, n] of [[42, 3], [30, 2], [20, 2], [13, 2], [12.9, 0], [12, 0]] as const) {
       const st = arena();
       mover(st, 100, 0, 2000, 10, 0, r);
       breakRock(st, 100, 1, 0, 'laser', 0, 'fan');
       expect(pieceCount(r, 'fan')).toBe(n);
-      if (r === 13) expect((0.9 * 13) / Math.sqrt(2)).toBeCloseTo(8.27, 2);
       expect(st.systems[0].rocksBroken, `r ${r}`).toBe(1);
-      if (n === 0) {
-        expect(rockEvents(st, 'split')).toEqual([]);
-        expect(rockEvents(st, 'dust')).toMatchObject([{ rock: 100, by: 'laser', ship: 0, r, x: 0, y: 2000, vx: 10, vy: 0 }]);
-        expect(rockAlive(st, 100)).toBe(false);
-        continue;
-      }
-      const pieces = rockEvents(st, 'split')[0]!.pieces!, rp = (0.9 * r) / Math.sqrt(n), angles = n === 2 ? [-30, 30] : [-40, 0, 40];
-      expect(pieces).toHaveLength(n);
+      if (n === 0) { expect(rockEvents(st, 'dust')).toMatchObject([{ rock: 100, by: 'laser', ship: 0, r, x: 0, y: 2000, vx: 10, vy: 0 }]); continue; }
+      const split = rockEvents(st, 'split')[0]!, pieces = split.pieces!, rp = (0.9 * r) / Math.sqrt(n), angles = n === 2 ? [-30, 30] : [-40, 0, 40];
+      expect(split).not.toHaveProperty('burst');
       expect(pieces[0]).toBe(100);
       pieces.forEach((slot, j) => {
-        const p = rockAt(st, slot), a = deg(angles[j]!);
+        const p = rockAt(st, slot), a = deg(angles[j]!), k = ve * (0.1 + 0.15 * kickFraction(j));
         expect(p.kind).toBe(RockKind.Free);
         expect(p.r).toBeCloseTo(rp, 12);
         expect(p.hp).toBe(Math.ceil(rp / 10));
         expect(p.x).toBeCloseTo(0.6 * r * Math.cos(a), 9);
         expect(p.y).toBeCloseTo(2000 + 0.6 * r * Math.sin(a), 9);
-        expect(p.vx).toBeCloseTo(10 + 150 * Math.cos(a), 9);
-        expect(p.vy).toBeCloseTo(150 * Math.sin(a), 9);
+        expect(p.vx).toBeCloseTo(10 + k * Math.cos(a), 9);
+        expect(p.vy).toBeCloseTo(k * Math.sin(a), 9);
         expect(rockBorn(st, slot)).toBe(true);
       });
-      expect(n * rp * rp).toBeLessThanOrEqual(r * r);   // total piece area ≤ the parent's
     }
   });
   it('a zero hit direction is north', () => {
     const st = arena();
     mover(st, 100, 0, 2000, 0, 0, 42);
     breakRock(st, 100, 0, 0, 'ram', 0, 'fan');
-    const p = rockAt(st, 100);
-    expect(p.vx).toBeCloseTo(-150 * Math.sin(deg(40)), 9);   // piece 0 at −40° from north (anticlockwise on the y-down map): (−sin 40°, −cos 40°)
-    expect(p.vy).toBeCloseTo(-150 * Math.cos(deg(40)), 9);
+    const p = rockAt(st, 100), k = ve * 0.1;   // piece 0 at −40° from north: (−sin 40°, −cos 40°)
+    expect(p.vx).toBeCloseTo(-k * Math.sin(deg(40)), 9);
+    expect(p.vy).toBeCloseTo(-k * Math.cos(deg(40)), 9);
   });
 });
 
-describe('the burst (a torpedo direct hit; spec §3.4)', () => {
-  it('r 50 and r 35 give 6 pieces, r 30 gives 4, r 20 dust; a full circle from u, one piece straight on, 200 u/s plus the parent', () => {
-    for (const [r, n] of [[50, 6], [35, 6], [30, 4], [20, 0]] as const) {
+describe('the burst (a torpedo direct hit; spec §5.1, §13.6)', () => {
+  it('r 50 and r 40 give 8 pieces, r 35 and r 30 give 6, r 20 gives 4, r 19 dust; a full circle from u, born 0.85/0.80/0.70 r out at v_esc · (0.15 + 0.25 f_j)', () => {
+    for (const [r, n] of [[50, 8], [40, 8], [35, 6], [30, 6], [20, 4], [19, 0]] as const) {
       const st = arena();
       mover(st, 100, 0, 2000, 0, 0, r);
       breakRock(st, 100, 0, -3, 'torpedo', 0, 'burst');   // u north (any length)
       expect(pieceCount(r, 'burst')).toBe(n);
       if (n === 0) { expect(rockEvents(st, 'dust')).toMatchObject([{ rock: 100, by: 'torpedo', ship: 0 }]); continue; }
-      const pieces = rockEvents(st, 'split')[0]!.pieces!, rp = (0.9 * r) / Math.sqrt(n);
+      const split = rockEvents(st, 'split')[0]!, pieces = split.pieces!, rp = (0.9 * r) / Math.sqrt(n), off = pieceOffset('burst', n) * r;
+      expect(split.burst).toBe(true);
       expect(pieces).toHaveLength(n);
+      expect(pieceOffset('burst', n)).toBe(n === 8 ? 0.85 : n === 6 ? 0.8 : 0.7);
       pieces.forEach((slot, j) => {
-        const p = rockAt(st, slot), a = deg((360 * j) / n);   // from u = (0, −1): (sin θ, −cos θ)
+        const p = rockAt(st, slot), a = deg((360 * j) / n), k = ve * (0.15 + 0.25 * kickFraction(j));   // from u = (0, −1): (sin θ, −cos θ)
         expect(p.r).toBeCloseTo(rp, 12);
-        expect(p.x).toBeCloseTo(0.6 * r * Math.sin(a), 9);
-        expect(p.y).toBeCloseTo(2000 - 0.6 * r * Math.cos(a), 9);
-        expect(p.vx).toBeCloseTo(200 * Math.sin(a), 9);
-        expect(p.vy).toBeCloseTo(-200 * Math.cos(a), 9);
+        expect(p.x).toBeCloseTo(off * Math.sin(a), 9);
+        expect(p.y).toBeCloseTo(2000 - off * Math.cos(a), 9);
+        expect(p.vx).toBeCloseTo(k * Math.sin(a), 9);
+        expect(p.vy).toBeCloseTo(-k * Math.cos(a), 9);
       });
-      expect(rockAt(st, pieces[0]!).vy).toBeCloseTo(-200, 9);   // one piece flies straight on
-      expect(n * rp * rp).toBeLessThanOrEqual(r * r);
     }
+  });
+  it('no two siblings overlap at birth, for every burst pattern at its smallest and largest parent', () => {
+    for (const [r, n] of [[40, 8], [60, 8], [30, 6], [39.9, 6], [20, 4], [29.9, 4]] as const) {
+      const rp = pieceRadius(r, n), off = pieceOffset('burst', n) * r;
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+        const ai = (2 * Math.PI * i) / n, aj = (2 * Math.PI * j) / n;
+        expect(Math.hypot(off * (Math.cos(ai) - Math.cos(aj)), off * (Math.sin(ai) - Math.sin(aj))), `r ${r} pieces ${i}, ${j}`).toBeGreaterThan(2 * rp);
+      }
+    }
+  });
+  it('every kick is in its band: burst 0.15 to 0.40, fan 0.10 to 0.25, tidal 0.03 to 0.08 of v_esc', () => {
+    for (let j = 0; j < 8; j++) {
+      const b = pieceKick(1200, j, 'burst') / escapeSpeed(1200), f = pieceKick(1200, j, 'fan') / escapeSpeed(1200), t = pieceKick(150, j, 'tidal') / escapeSpeed(150);
+      expect(b).toBeGreaterThanOrEqual(0.15); expect(b).toBeLessThan(0.4);
+      expect(f).toBeGreaterThanOrEqual(0.1); expect(f).toBeLessThan(0.25);
+      expect(t).toBeGreaterThanOrEqual(0.03); expect(t).toBeLessThan(0.08);
+    }
+    expect(kickFraction(0)).toBe(0);
+    expect(kickFraction(1)).toBeCloseTo(0.6180339887498949, 15);
   });
 });
 
@@ -85,7 +99,7 @@ describe('slot use and eviction (spec §3.4)', () => {
     breakRock(st, 100, 1, 0, 'laser', 0, 'fan');
     expect(rockEvents(st, 'split')[0]!.pieces).toEqual([100, 2, 5]);
   });
-  it('with no free slot it evicts the smallest moving rock smaller than the piece (ties: lowest slot), never a born or excluded one', () => {
+  it('with no free slot it evicts the smallest rock (Rail or Free) smaller than the piece (ties: lowest slot), never a born or excluded one', () => {
     for (const [exclude, evicted] of [[[40], 60], [[], 40]] as const) {
       const st = arena();
       mover(st, 0, 0, 2000, 0, 0, 30);
@@ -100,6 +114,12 @@ describe('slot use and eviction (spec §3.4)', () => {
       expect(dust[0]).not.toHaveProperty('ship');
       expect(rockAt(st, evicted).r).toBeCloseTo((0.9 * 30) / Math.SQRT2, 12);
     }
+    const st = arena();
+    mover(st, 0, 0, 2000, 0, 0, 30);
+    fillPool(st, 9, [50]);
+    rail(st, 50, -1500, 1200, 8.2);   // §5.5: a Rail can be evicted too
+    breakRock(st, 0, 1, 0, 'collision', -1, 'fan');
+    expect(rockEvents(st, 'split')[0]!.pieces).toEqual([0, 50]);
   });
   it('with nothing smaller the piece is dust with an event (rock −1), and the break still counts once', () => {
     const st = arena();
@@ -109,7 +129,7 @@ describe('slot use and eviction (spec §3.4)', () => {
     expect(rockEvents(st, 'split')[0]!.pieces).toEqual([0]);
     expect(rockEvents(st, 'dust')).toMatchObject([{ rock: -1, by: 'laser', ship: 0 }]);
     expect(rockEvents(st, 'dust')[0]!.r).toBeCloseTo((0.9 * 30) / Math.SQRT2, 12);
-    expect([st.rockDust, st.rockSplits, st.rockEvictions, st.systems[0].rocksBroken]).toEqual([1, 1, 0, 1]);
+    expect([st.rockDust, st.rockSplits, st.rockEvictions, st.systems[0].rocksBroken, st.rockSlotDust]).toEqual([1, 1, 0, 1, 1]);
   });
 });
 

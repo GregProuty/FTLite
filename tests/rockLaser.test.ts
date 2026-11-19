@@ -4,12 +4,13 @@
 import { describe, expect, it } from 'vitest';
 import { applyWeaponsInput, IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { classOf } from '../src/renderer/src/sim/tactical/state';
-import { firstBlocker, rockAt, RockKind } from '../src/renderer/src/sim/tactical/rocks';
+import { firstBlocker, rockAt, rockMass, RockKind } from '../src/renderer/src/sim/tactical/rocks';
 import { AUTO_DIG } from '../src/renderer/src/sim/tactical/rockTuning';
 import { rockOnTarget } from '../src/renderer/src/sim/tactical/rockWeapons';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
 import { laserCardReason, laserSituation, statusSentence } from '../src/renderer/src/render/duel/situationModel';
-import { arena, mover, rail, rockEvents, seeded } from './helpers/rockArena';
+import { escapeSpeed } from '../src/renderer/src/sim/tactical/rails';
+import { arena, mover, rail, rockEvents, seeded, withSwitches } from './helpers/rockArena';
 import { lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
 
 /** The arena with the crew facing east (heading 64) at (0, −2500), its laser full and targeted (the round's opener). */
@@ -30,6 +31,15 @@ describe('a laser shot on a rock (spec §4.1)', () => {
     expect(shot.x2).toBeCloseTo(170, 9);
     expect(st.systems[0].shots).toBe(1);
   });
+  for (const massCube of [true, false]) it(`caps the push at 0.25 · v_esc(ρ) (massCube ${massCube}): a light rock takes min(4000 / m, cap)`, () => withSwitches({ massCube }, () => {
+    for (const [r, hp] of [[9, 3], [30, 3]] as const) {
+      const st = east();
+      mover(st, 100, 200, -2500, 0, 0, r, hp);
+      st.systems[0].laserRock = 100;
+      applyWeaponsInput(st, 0, IDLE_INPUT);
+      expect(rockAt(st, 100).vx, `r ${r}`).toBeCloseTo(Math.min(4000 / rockMass(r), 0.25 * escapeSpeed(Math.hypot(200, 2500))), 9);
+    }
+  }));
   it('frees a rail rock: Free, its rail velocity plus J / m along the shot, 2 damage', () => {
     const st = east();
     rail(st, 100, 200, -2500, 30, 3);

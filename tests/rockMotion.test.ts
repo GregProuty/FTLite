@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { gravityAccel } from '../src/renderer/src/sim/tactical/physics';
-import { circularVelocity, lanePull, targetVelocity } from '../src/renderer/src/sim/tactical/rails';
+import { circularVelocity, escapeSpeed, lanePull, targetVelocity } from '../src/renderer/src/sim/tactical/rails';
 import { moveFreeSlot, rockEdgeAccel, rockEdgeSlack, settleRate, stepRocks } from '../src/renderer/src/sim/tactical/rockContacts';
 import { rockAlive, rockAt, RockKind, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { ROCK_EDGE_SLACK, ROCK_EDGE_SLACK_SOFT } from '../src/renderer/src/sim/tactical/rockTuning';
@@ -109,5 +109,28 @@ describe('free-rock motion (spec §13.3)', () => {
     mover(st, 102, 0, 2000, 50, 0, 10); st.rockBorn[102] = 1;
     stepRocks(st);
     expect(Array.from(st.rocks.subarray(102 * ROCK_STRIDE + 1, 102 * ROCK_STRIDE + 5))).toEqual([0, 2000, 50, 0]);
+  });
+});
+
+describe('the Roche break (spec §13.3)', () => {
+  it('a free rock inside ρ 175, r ≥ 13 and at least 30 ticks old fan-breaks along its velocity, cause tidal, kicks 0.03 to 0.08 of v_esc', () => {
+    const st = arena(); st.tick = 100;
+    const [vx, vy] = circularVelocity(0, 160);
+    mover(st, 100, 0, 160, vx, vy, 20, 5, 70);    // 30 ticks old
+    mover(st, 101, 0, -160, -vx, -vy, 20, 5, 71);  // 29 ticks old: not yet
+    mover(st, 102, 160, 0, 0, 0, 12, 5, 0);        // r 12: under FAN_SPLIT_MIN_R
+    stepRocks(st);
+    const split = rockEvents(st, 'split');
+    expect(split.map((e) => [e.rock, e.by])).toEqual([[100, 'tidal']]);
+    for (const p of split[0]!.pieces!) {
+      const a = rockAt(st, p), dv = Math.hypot(a.vx - vx, a.vy - vy) / escapeSpeed(160);
+      expect(dv).toBeGreaterThanOrEqual(0.03 - 1e-9); expect(dv).toBeLessThan(0.08);
+    }
+    withSwitches({ rocheBreak: false }, () => {
+      const off = arena(); off.tick = 100;
+      mover(off, 100, 0, 160, vx, vy, 20, 5, 0);
+      stepRocks(off);
+      expect(rockEvents(off, 'split')).toEqual([]);
+    });
   });
 });

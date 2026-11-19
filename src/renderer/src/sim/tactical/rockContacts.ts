@@ -11,7 +11,7 @@ import { gravityAccel } from './physics';
 import { circularVelocity, lanePull, targetVelocity } from './rails';
 import { breakRock, crushDamage, dustRock, wearRock } from './rockBreak';
 import { freeRock, markTouched, regridRock, rockAlive, rockMass, RockKind, rockPhase, rocksMoved, restartClock, rocksNear, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
-import { BOUNCE_MIN, E_LOW, E_RAMP, E_SPAN, EDGE_SETTLE_K, K_EDGE_ROCK, ROCK_CRUSH_SPEED, ROCK_EDGE_SLACK, ROCK_EDGE_SLACK_SOFT, ROCK_GRAVITY, ROCK_MAX_SPEED, ROCK_SEPARATE_MAX, ROCK_SWITCHES, SETTLE_A0, SETTLE_A1, SETTLE_K_MAX, SEPARATE_SHARE, SEPARATE_SLOP, TOUCH_MIN } from './rockTuning';
+import { BOUNCE_MIN, E_LOW, E_RAMP, E_SPAN, EDGE_SETTLE_K, FAN_SPLIT_MIN_R, K_EDGE_ROCK, ROCK_CRUSH_SPEED, ROCK_EDGE_SLACK, ROCK_EDGE_SLACK_SOFT, ROCK_GRAVITY, ROCK_MAX_SPEED, ROCHE_MIN_AGE, ROCHE_R, ROCK_SEPARATE_MAX, ROCK_SWITCHES, SETTLE_A0, SETTLE_A1, SETTLE_K_MAX, SEPARATE_SHARE, SEPARATE_SLOP, TOUCH_MIN } from './rockTuning';
 import type { TacticalState } from './state';
 import { DT, K_EDGE, R_MAP } from './tuning';
 import { TICK_HZ } from '../tuning';
@@ -108,6 +108,11 @@ export function stepRocks(s: TacticalState): void {
   for (let k = 0; k < n; k++) {   // part 1: motion
     const b = k * ROCK_STRIDE;
     if (v[b] !== RockKind.Free || s.rockBorn[k] === 1) continue;
+    const rx = v[b + 1]!, ry = v[b + 2]!;
+    if (ROCK_SWITCHES.rocheBreak && rx * rx + ry * ry < ROCHE_R * ROCHE_R && v[b + 5]! >= FAN_SPLIT_MIN_R && T1 - v[b + 7]! >= ROCHE_MIN_AGE) {
+      breakRock(s, k, v[b + 3]!, v[b + 4]!, 'tidal', -1, 'tidal');   // §13.3: a tidal fan along its velocity; its pieces are born, so they hold this tick
+      continue;
+    }
     if (moveFreeSlot(v, b, T1)) s.rockCapHits++;
     regridRock(s, k);
   }
