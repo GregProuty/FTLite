@@ -23,7 +23,7 @@ So both modes behave the same. HUD clicks come from React (`actions.ship.*`). In
 
 ## Global Constraints
 
-- **No sim change.** Part ii edits nothing under `src/renderer/src/sim/**` or `src/renderer/src/net/**`. SIM_VERSION stays **54** (Part i's bump, on this branch only). Task 1 records both baselines at 54, and Task 10 proves them `same`. Never run `npm run bless` in Part ii, never pass `--fresh`, never hand-edit goldens.
+- **No sim change.** Part ii edits nothing under `src/renderer/src/sim/**` or `src/renderer/src/net/**`. SIM_VERSION stays **55** (Part i's bump, on this branch only). Task 1 records both baselines at 54, and Task 10 proves them `same`. Never run `npm run bless` in Part ii, never pass `--fresh`, never hand-edit goldens.
 - **Part i names consumed (contract, binding):**
   - from `sim/duel/power.ts`: `DuelSystem`, `DUEL_SYSTEM_COUNT` (5), `OVERDRIVE_SYSTEMS` (4), `SYSTEM_MAX` `[4,9,4,3,2]`, `SYSTEM_SLOTS` `[5,10,5,4,2]`, `START_BARS` `[2,2,3,1,1]`, `REACTOR_BARS` (10), `COOLANT_POOL_DUEL` (8), `capacityOf(d, k)`, `sparesOf(d)`, `coolantFree(d)`, `isOverdriven(d, k)`;
   - `DuelState.power: PowerState` (`{ heat: number[]; coolant: number[]; failed: number[] }`, `failed` 0 or 1) and `ShipSystems.bars: number[]` (length 5, in system order Shields, Weapons, Engines, Sensors, Oxygen);
@@ -42,8 +42,8 @@ So both modes behave the same. HUD clicks come from React (`actions.ship.*`). In
   - `InteriorView.placement()`;
   - the scene option `shipCommand` and the scene method `interiorPlacement()`;
   - the staging hook `window.__ftliteScene`.
-- **Amendments 1 and 2 (spec §9, §10):** only Tasks 7 to 9 consume `throttleCap`, `sensorRange`, `pointSeen`, `contactSeen`, `ShipSystems.weaponPower` (bars per weapon), `trimmedWeaponPower`, `weaponBarsUsable`, `barrelShots`, the pew pew state (`pewCharge`, `pewLock`, `pewTargeted`), and the `weaponPower` and `laserLock { weapon }` commands. Only those tasks produce the console strips, the locked notches, the three-weapon Weapons block and the fog. Keep every such edit inside them.
-- **Test ids (the smoke depends on them):** `hud-power-<system>` (0..4), `hud-coolant-<system>` (0..3), `console-card-pew` and `console-weapon-pips-<slot>` (0..2).
+- **Amendments 1 to 3 (spec §9, §10, §11):** only Tasks 7 to 9 consume `throttleCap`, `sensorRange`, `pointSeen`, `contactSeen`, `ShipSystems.weaponPower` (bars per weapon), `trimmedWeaponPower`, `weaponBarsUsable`, `BEAM_SHOTS_BY_BARS`, `WeaponSlot` and the `weaponPower` command. Only those tasks produce the console strips, the locked notches, the three-weapon Weapons block and the fog. Keep every such edit inside them. Pew pew is W-1's weapon (§11): no pew pew charge, lock, pick-up or `weapon` field here.
+- **Test ids (the smoke depends on them):** `hud-power-<system>` (0..4), `hud-coolant-<system>` (0..3) and `console-weapon-pips-<slot>` (0..2).
 - **No layout literal** (`'hound'`, `'cutter'`, `'valkyrn'`) in `src/renderer/src/**`. Tests may import `hound.json`.
 - **Git:** never `git add -A`, `git add .` or `git stash`; stage files by name. Every commit message ends with a blank line, then `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`, passed as a second `-m`. Files are UTF-8.
 - **Test commands:**
@@ -80,7 +80,7 @@ So both modes behave the same. HUD clicks come from React (`actions.ship.*`). In
     - `unpowered`, beyond the bars' layer cap `SHIELD_LAYERS_BY_BARS[effectiveBars(sys, Shields)]`.
     So a 1-layer round start reads as one powered pip and one unpowered one.
 13. **Amendments 1 and 2 are isolated in Tasks 7 to 9.** Tasks 1 to 6 and 10 to 11 don't depend on them. Spec §10 overrides §9 where they differ: 1 Engines bar is 25 % throttle (`THROTTLE_CAP_BY_BARS [0,1,2,3,4,4]`), and the Weapons officer spreads the station's bars over pew pew, beam and torpedo (0–3 each, the overdrive bar as one weapon's 4th). The console strip sits beside the station block (`POWER_STRIP`); the Valkyrn's Flight seat gets none (§9.3 names Helm, Weapons and Science). A `weaponPower` click rides Task 2's ship queue, and the sim refuses it off the Weapons seat. The app's throttle requests stop at `throttleCap`, and REV needs an Engines bar.
-14. **Pew pew in the targeting flow.** It's a third card (`console-card-pew`). Pick it up, click a room, and it sends `laserLock { weapon: 'pew' }`. 'laser' stays the beam's name in the view code, so the Valkyrn's Flight cards and `WEAPON_CODES` keep theirs. Pew pew has no number key in the spike (1 is the beam, 2 the torpedo, 3/4/5 the frequency). Its target shows on its card; the contact window marks only the beam's and the torpedo's rooms, as today.
+14. **Pew pew is W-1's (spec §11).** The PEW PEW card shows its bars and ARRIVES WITH W-1, and nothing else: no charge bar, no lock, no pick-up, no number key. Its pips still move bars, which have no effect on this branch. The beam is today's laser with its shots by its own bars (`BEAM_SHOTS_BY_BARS`). WEAPONS OFFLINE means the beam and the torpedo are both dark; pew pew doesn't count. The contact controller's `Weapon` stays `'laser' | 'torpedo'`, and `CardWeapon` adds `'pew'` for the layout only.
 15. **The fog is per screen.** `stepFog` runs in the scene each frame from the sim state:
     - the enemy is left out of the map's `ships` while unseen, which hides its silhouette, arcs, charge ring, bracket and pings, and the lock mark and Weapons info line are gated the same way;
     - the derelict's mark and the enemy torpedo (and its path) are gated by `seen`;
@@ -102,7 +102,7 @@ So both modes behave the same. HUD clicks come from React (`actions.ship.*`). In
 | `src/renderer/src/render/duel/interiorModel.ts`, `render/duel/interiorView.ts` | modify (T5) | air tints, hazard markers, hover, `placement()` |
 | `src/renderer/src/app/duel/scene.ts`, `app/duel/duelMode.ts` | modify (T6) | interior clicks and hover; `interiorPlacement`; the staging hook |
 | `src/renderer/src/render/duel/consoleModel.ts`, `consoleLayout.ts`, `ui/duel/HelmStation.tsx`, `ui/duel/PowerStrip.tsx` (create), `ui/duel/DuelUi.tsx` | modify (T7) | the console power strips, the throttle cap, the Science range |
-| `src/renderer/src/ui/duel/WeaponsStation.tsx` (rewrite), `app/duel/contactController.ts`, `render/duel/contactModel.ts` | modify (T8) | pew pew, beam and torpedo with bar pips; pew pew in the targeting flow |
+| `src/renderer/src/ui/duel/WeaponsStation.tsx` (rewrite), `render/duel/situationModel.ts`, `render/duel/consoleLayout.ts` | modify (T8) | pew pew (W-1 note), beam and torpedo with bar pips; WEAPONS OFFLINE by the beam and the torpedo |
 | `src/renderer/src/render/tactical/fogModel.ts` (create), `tacticalModel.ts`, `weaponsModel.ts`, `tacticalLayer.ts` | modify (T9) | the fog of war, the range ring, the ghosts |
 | `docs/superpowers/research/2026-11-18-engineering-spike.md` | modify (T11) | Part ii's sections of Part i's report |
 | `tests/shipHudModel.test.ts`, `tests/uiShipHud.test.tsx` | rewrite (T1, T4) | the new HUD view |
@@ -124,7 +124,7 @@ So both modes behave the same. HUD clicks come from React (`actions.ship.*`). In
 
 Run each one. If any prints nothing, stop and report:
 ```bash
-git grep -n "SIM_VERSION = 54" -- src/renderer/src/sim/tuning.ts
+git grep -n "SIM_VERSION = 55" -- src/renderer/src/sim/tuning.ts
 git grep -n "export function capacityOf" -- src/renderer/src/sim/duel/power.ts
 git grep -n "export function sparesOf" -- src/renderer/src/sim/duel/power.ts
 git grep -n "export function coolantFree" -- src/renderer/src/sim/duel/power.ts
@@ -143,13 +143,13 @@ npx tsx -e "import c from './src/renderer/src/sim/ship/cutter.json'; import { pa
 ```
 Expected: `[ 2, 2, 3, 1, 1 ] 5 [ 5, 10, 5, 4, 2 ]`. If it throws, stop and report: Part i must give every layout its power state (contract change 1).
 
-- [ ] **Step 2: Record both baselines at SIM_VERSION 54, before anything changes**
+- [ ] **Step 2: Record both baselines at SIM_VERSION 55, before anything changes**
 
 Run: `npx tsx scripts/golden/canonical-trace.ts baseline`
-Expected: `baseline at sim version 54: …`, exit 0.
+Expected: `baseline at sim version 55: …`, exit 0.
 
 Run: `npx tsx scripts/golden/duel-oracle.ts baseline`
-Expected: `duel oracle baseline at sim version 54: <R> runs, <T> ticks, <F> named fields per tick; …`, exit 0. Note `<R>`, `<T>` and `<F>`.
+Expected: `duel oracle baseline at sim version 55: <R> runs, <T> ticks, <F> named fields per tick; …`, exit 0. Note `<R>`, `<T>` and `<F>`.
 
 - [ ] **Step 3: Write the failing test** (replace `tests/shipHudModel.test.ts` whole)
 
@@ -1778,77 +1778,84 @@ git commit -m "feat(engineering-spike): each console's power strip, the Helm's t
 
 ---
 
-### Task 8: The Weapons console: pew pew, beam and torpedo, their bars, and pew pew in the targeting flow (spec §10.3)
+### Task 8: The Weapons console: pew pew, beam and torpedo bars, and WEAPONS OFFLINE (spec §10.3, §11)
+
+> **Spec §11 (Amendment 3).** Pew pew is the W-1 skill-shot weapon, built on branch `w1-pew-pew`. This spike gives pew pew's slot bars that have no effect. The PEW PEW card shows its bars and "ARRIVES WITH W-1". It has no charge bar, no lock and no pick-up, and the laser commands get no `weapon` field. The beam is today's laser, with its shots set by its own bars.
 
 **Files:**
-- Modify: `src/renderer/src/render/duel/consoleModel.ts` (`WeaponsPanel`, the card reason), `src/renderer/src/render/duel/situationModel.ts` (offline only when no weapon can fire), `src/renderer/src/ui/duel/DuelUi.tsx` (FlightStation's aim narrowed), `src/renderer/src/render/duel/consoleLayout.ts` (`weaponCard`), `src/renderer/src/render/duel/contactModel.ts` (the weapon type), `src/renderer/src/render/duel/shipControls.ts` (`ShipCommand` gains `weaponPower`), `src/renderer/src/app/duel/input.ts` (`pewLock`, `weaponPower`), `src/renderer/src/app/duel/contactController.ts` (`Weapon` gains `'pew'`), `src/renderer/src/ui/actions.ts`, `src/renderer/src/app/duel/runtime.ts`, `src/renderer/src/app/duel/onlineDuel.ts`, `src/renderer/src/ui/duel/TargetingLine.tsx`
+- Modify:
+  - `src/renderer/src/render/duel/consoleModel.ts` (`WeaponsPanel`, the card reason);
+  - `src/renderer/src/render/duel/situationModel.ts` (WEAPONS OFFLINE only when the beam and the torpedo are both dark);
+  - `src/renderer/src/render/duel/consoleLayout.ts` (`weaponCard`, three cards);
+  - `src/renderer/src/render/duel/shipControls.ts` (`ShipCommand` gains `weaponPower`);
+  - `src/renderer/src/app/duel/input.ts` (`ConsoleInput.weaponPower?`);
+  - `src/renderer/src/ui/actions.ts`;
+  - `tests/feelIiModels.test.ts`.
 - Rewrite: `src/renderer/src/ui/duel/WeaponsStation.tsx`
 - Test: `tests/engineeringWeapons.test.ts`, `tests/engineeringWeaponsUi.test.tsx`
 
 **Interfaces:**
-- Consumes (Part i, spec §10.3; contract needs 3 and 4):
-  - `ShipSystems.weaponPower: number[]`, three long in `WeaponSlot` order (`{ Pew: 0, Beam: 1, Torpedo: 2 }`), each 0..4 bars (4 = the overdrive bar on that weapon), starting `[1, 0, 1]`;
-  - `trimmedWeaponPower(sys): number[]` and `weaponBarsUsable(sys): number` (`sim/tactical/bars.ts`): the bars each weapon stands on now, and the Weapons bars the officer can spend;
-  - `ShipSystems.pewCharge`, `pewLock` and `pewTargeted` (pew pew's state, Part i Task 9b);
-  - `barrelShots(state, i, barrel: 'beam' | 'pew')` (`sim/tactical/weapons.ts`): pew pew 0/2/3/3/3, the beam 0/1/2/2/2 by its bars;
-  - the commands `{ kind: 'weaponPower'; slot: number; delta: number }` and `laserLock`/`laserCharge` with `weapon?: 'beam' | 'pew'`.
-  - From Part ii: Task 2's keyboard queue.
+- Consumes (Part i, spec §10.3 and §11):
+  - `ShipSystems.weaponPower: number[]`: three entries in `WeaponSlot` order (`{ Pew: 0, Beam: 1, Torpedo: 2 }`), each 0..4 bars (4 is the overdrive bar on that weapon), starting `[1, 0, 1]`;
+  - `trimmedWeaponPower(sys): number[]`, `weaponBars(sys, slot): number` and `weaponBarsUsable(sys): number` (`sim/tactical/bars.ts`);
+  - `BEAM_SHOTS_BY_BARS = [0, 1, 2, 2, 2]` (`sim/tactical/bars.ts`);
+  - `laserOffline(state, i)` (`sim/tactical/weapons.ts`, beam only);
+  - the command `{ kind: 'weaponPower'; slot: number; delta: number }`, Weapons seat only;
+  - from Part ii: Task 2's keyboard queue.
 - Produces:
-  - `CardWeapon = 'pew' | 'laser' | 'torpedo'` (`'laser'` stays the beam's name in the view code, so the Valkyrn's Flight cards keep theirs) and `CARD_ORDER`;
-  - `weaponCard(weapon: CardWeapon)` with `pipsY`;
-  - `WeaponsPanel.pew?: { fill: number; ready: boolean; target: number; shots: number }`, `WeaponsPanel.weaponBars?: number[]` and `WeaponsPanel.weaponFree?: number`;
-  - `ConsoleInput.pewLock?(room)`, `ConsoleInput.weaponPower?(slot, delta)` and `KeySample.pewTo`;
-  - `actions.console.pewLock(room)` and `actions.console.weaponPower(slot, delta)`;
-  - the test ids `console-card-pew`, `console-weapon-pips-<slot>` and the attribute `data-ui-weapon-pip`.
+  - `CardWeapon = 'pew' | 'laser' | 'torpedo'` (layout only; `'laser'` stays the beam's name, and the contact controller's `Weapon` stays `'laser' | 'torpedo'`);
+  - `CARD_ORDER` and `weaponCard(weapon: CardWeapon)` with `pipsY`;
+  - `WeaponsPanel.weaponBars?: number[]` and `WeaponsPanel.weaponFree?: number`;
+  - `ConsoleInput.weaponPower?(slot, delta)` and `actions.console.weaponPower(slot, delta)`;
+  - `weaponsOffline(t)` (`situationModel.ts`);
+  - the test ids `console-weapon-pips-<slot>` and the attributes `data-ui-weapon-pip` and `data-ui-card-frame="pew"`.
 
 - [ ] **Step 1: Pre-flight: Part i's §10.3 names exist**
 
 Run each one. If any prints nothing, stop and report:
 ```bash
-git grep -n "pewCharge" -- src/renderer/src/sim/tactical/state.ts
-git grep -n "pewTargeted" -- src/renderer/src/sim/tactical/state.ts
-git grep -n "export function barrelShots" -- src/renderer/src/sim/tactical/weapons.ts
 git grep -n "export function trimmedWeaponPower" -- src/renderer/src/sim/tactical/bars.ts
 git grep -n "export function weaponBarsUsable" -- src/renderer/src/sim/tactical/bars.ts
+git grep -n "export function weaponBars" -- src/renderer/src/sim/tactical/bars.ts
+git grep -n "BEAM_SHOTS_BY_BARS" -- src/renderer/src/sim/tactical/bars.ts
+git grep -n "WeaponSlot = { Pew: 0, Beam: 1, Torpedo: 2 }" -- src/renderer/src/sim/tactical/bars.ts
 git grep -n "kind: 'weaponPower'; slot: number; delta: number" -- src/renderer/src/net/contracts.ts
-git grep -n "weapon?: 'beam' | 'pew'" -- src/renderer/src/net/contracts.ts
 ```
+If `BEAM_SHOTS_BY_BARS` has another name in Part i's final code, use that name in Step 4 and say so in the report.
 
 - [ ] **Step 2: Write the failing model test** `tests/engineeringWeapons.test.ts`
 
 ```ts
-// Engineering spike §10.3: the Weapons panel carries the three weapons' bars and the free Weapons bars, pew pew's charge,
-// target and volley, the beam's shots by its bars; the keyboard queues weaponPower and pew pew's lock; the contact
-// controller picks pew pew up and drops it on a room as a pew lock.
-import { describe, expect, it, vi } from 'vitest';
+// Engineering spike §10.3, §11: the Weapons panel carries the three weapons' trimmed bars and the free Weapons bars; the
+// beam's shots follow its bars (pew pew's bars do nothing on this branch: W-1's weapon); the keyboard queues weaponPower;
+// WEAPONS OFFLINE only when the beam and the torpedo are both dark.
+import { describe, expect, it } from 'vitest';
 import hound from '../src/renderer/src/sim/ship/hound.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
-import { Room } from '../src/renderer/src/sim/tactical/state';
 import { consoleModel } from '../src/renderer/src/render/duel/consoleModel';
 import { CARD_ORDER, STATION, weaponCard } from '../src/renderer/src/render/duel/consoleLayout';
+import { laserSituation, refusal, weaponsOffline } from '../src/renderer/src/render/duel/situationModel';
 import { createDuelKeyboard, NO_HELD_FLAGS, type EventSource } from '../src/renderer/src/app/duel/input';
-import { createContactController } from '../src/renderer/src/app/duel/contactController';
+import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
+import { lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
+import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
 import { seatDuelCrew } from './helpers/duelSeat';
 
 const HOUND = parseShip(hound);
 const OVERLAY = { zoomText: 'ZOOM 1.00', scaleBar: { px: 90, units: 100 }, snapHint: false };
 const quiet: EventSource = { addEventListener() {}, removeEventListener() {} };
 
-describe('the Weapons panel (spec §10.3)', () => {
-  it('round start: pew pew 1, beam 0, torpedo 1, no free bar; the beam fires 0 shots, pew pew a 2-shot volley', () => {
+describe('the Weapons panel (spec §10.3, §11)', () => {
+  it('round start: pew pew 1, beam 0, torpedo 1, no free bar, the beam fires 0 shots; two beam bars fire 2', () => {
     const d = createDuel(HOUND, 5);
     try {
       seatDuelCrew(d);
-      const w = consoleModel({ duel: d, me: 1, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: OVERLAY })!.weapons!;
-      expect(w.weaponBars).toEqual([1, 0, 1]);
-      expect(w.weaponFree).toBe(0);
-      expect(w.burst).toBe(0);
-      expect(w.pew).toMatchObject({ shots: 2, target: Room.Shields, ready: true });   // Part i Decision 17: pew pew starts full, targeted on Shields
+      const panel = () => consoleModel({ duel: d, me: 1, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: OVERLAY })!.weapons!;
+      expect(panel()).toMatchObject({ weaponBars: [1, 0, 1], weaponFree: 0, burst: 0 });
       const sys = d.tactical.systems[0];
       sys.bars[1] = 4; sys.weaponPower[1] = 2;   // two more Weapons bars, both on the beam
-      const w2 = consoleModel({ duel: d, me: 1, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: OVERLAY })!.weapons!;
-      expect(w2.weaponBars).toEqual([1, 2, 1]); expect(w2.weaponFree).toBe(0); expect(w2.burst).toBe(2);
+      expect(panel()).toMatchObject({ weaponBars: [1, 2, 1], weaponFree: 0, burst: 2 });
     } finally { disposeDuel(d); }
   });
   it('three cards side by side in slot order, inside the block', () => {
@@ -1858,26 +1865,33 @@ describe('the Weapons panel (spec §10.3)', () => {
     expect(t!.x + t!.w).toBeLessThanOrEqual(STATION.x + STATION.w - 8);
     expect(p!.pipsY).toBe(p!.y + p!.hitH + 2);
   });
-});
-
-describe('the weapon inputs (spec §10.3)', () => {
-  it('weaponPower and the pew lock ride the keyboard: weaponPower in the ship queue, pewTo as a lock request', () => {
+  it('weaponPower rides the keyboard\'s ship queue', () => {
     const kb = createDuelKeyboard(quiet);
-    kb.ui.weaponPower?.(1, 1); kb.ui.weaponPower?.(2, -1); kb.ui.pewLock?.(2);
-    const s = kb.sample();
-    expect(s.ship).toEqual([{ kind: 'weaponPower', slot: 1, delta: 1 }, { kind: 'weaponPower', slot: 2, delta: -1 }]);
-    expect(s.pewTo).toBe(2);
-    expect(kb.sample().pewTo ?? null).toBeNull();
+    kb.ui.weaponPower?.(1, 1); kb.ui.weaponPower?.(2, -1);
+    expect(kb.sample().ship).toEqual([{ kind: 'weaponPower', slot: 1, delta: 1 }, { kind: 'weaponPower', slot: 2, delta: -1 }]);
     kb.destroy();
   });
-  it('the contact controller picks pew pew up and drops it on a room as pew\'s lock', () => {
-    const c = createContactController(), lock = vi.fn();
-    c.sync({ shown: true, station: 'weapons', target: 1, active: () => true, epoch: 0, enemyKnown: 2 });
-    c.pickUp('pew');
-    expect(c.aimWeapon()).toBe('pew');
-    c.pick(2, lock);
-    expect(lock).toHaveBeenCalledWith(2, 'pew');
-    expect(c.aimWeapon()).toBeNull();
+});
+
+describe('WEAPONS OFFLINE only when the beam and the torpedo are both dark (spec §10.3, §11)', () => {
+  it('round start: not offline, FIRE says BEAM UNPOWERED; the torpedo dark too: offline, whatever pew pew holds', () => {
+    const d = createDuel(HOUND, 5), t = d.tactical, sys = t.systems[0], me = t.ships[0]!, e = t.ships[1]!;
+    try {
+      seatDuelCrew(d);
+      t.map = { ...t.map, asteroids: [] }; t.grid = buildGrid([], t.map.rMap);   // no rocks: the line is clear by construction (nothing steps)
+      e.x = me.x + hx(me.heading) * 200; e.y = me.y + hy(me.heading) * 200; e.active = true;   // dead ahead, in range and arc
+      expect(lineOfSight(t, me.x, me.y, e.x, e.y)).toBe(true);   // the precondition
+      expect(weaponsOffline(t)).toBe(false);
+      expect(laserSituation(t).kind).toBe('none');   // the beam dark, the torpedo powered: the torpedo's card speaks
+      expect(refusal(d, 'fire')).toBe('BEAM UNPOWERED');
+      sys.weaponPower[2] = 0;   // pew pew keeps its 1 bar: it does not count
+      expect(weaponsOffline(t)).toBe(true);
+      expect(laserSituation(t).kind).toBe('offline');
+      expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual(['WEAPONS OFFLINE', 'WEAPONS OFFLINE']);
+      sys.weaponPower.splice(0, 3, 0, 2, 0);   // the beam on 2 bars
+      expect(weaponsOffline(t)).toBe(false);
+      expect(refusal(d, 'fire')).toBeNull();
+    } finally { disposeDuel(d); }
   });
 });
 ```
@@ -1885,38 +1899,41 @@ describe('the weapon inputs (spec §10.3)', () => {
 - [ ] **Step 3: Run it to verify it fails**
 
 Run: `npx vitest run tests/engineeringWeapons.test.ts`
-Expected: FAIL (`CARD_ORDER` is not exported; `weaponBars`, `pew`, `weaponPower` and `pewLock` are undefined; `pickUp('pew')` is a type error under vitest's esbuild, so it runs but `aimWeapon` is still asserted).
+Expected: FAIL (`CARD_ORDER` and `weaponsOffline` are not exported; `weaponBars` and `weaponFree` are undefined; `weaponPower` isn't on the keyboard).
 
 - [ ] **Step 4: The panel and the cards** (`consoleModel.ts`, `consoleLayout.ts`)
 
-In `src/renderer/src/render/duel/consoleModel.ts`, extend the `WeaponsPanel` interface. Replace
+In `src/renderer/src/render/duel/consoleModel.ts`, extend `WeaponsPanel`. Replace
 ```ts
   laserTarget: number; torpTarget: number; burst: number; laserReason?: string | null; goal?: boolean; refused?: RefusedView | null }
 ```
 with
 ```ts
   laserTarget: number; torpTarget: number; burst: number; laserReason?: string | null; goal?: boolean; refused?: RefusedView | null;
-  /** Engineering spike §10.3: pew pew's charge 0..1, full, target room (−1 none) and volley (0, 2 or 3); the bars on each
-   *  weapon (pew pew, beam, torpedo; 0..4) and the Weapons bars not yet spent. Optional, so a hand-built panel may leave
-   *  them out (the probe's fixture). */
-  pew?: { fill: number; ready: boolean; target: number; shots: number }; weaponBars?: number[]; weaponFree?: number }
+  /** Engineering spike §10.3: the bars each weapon stands on now (pew pew, beam, torpedo; 0..4, trimmed) and the Weapons
+   *  bars not yet spent. Optional, so a hand-built panel may leave them out (the probe's fixture). */
+  weaponBars?: number[]; weaponFree?: number }
 ```
-Replace `import { laserOffline } from '../../sim/tactical/weapons';` with `import { barrelShots, laserOffline } from '../../sim/tactical/weapons';`, and change Task 7's `import { throttleCap } from '../../sim/tactical/bars';` to `import { throttleCap, trimmedWeaponPower, weaponBarsUsable } from '../../sim/tactical/bars';`. In `weaponsPanel`, replace
+Change Task 7's `import { throttleCap } from '../../sim/tactical/bars';` to:
+```ts
+import { BEAM_SHOTS_BY_BARS, throttleCap, trimmedWeaponPower, weaponBarsUsable, WeaponSlot } from '../../sim/tactical/bars';
+```
+In `weaponsPanel`, replace
 ```ts
       laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock, burst: classOf(t, 0).slots.laser?.shots ?? 0,   // Valkyrn-i: Part ii gives the gun its own card
 ```
 with
 ```ts
-      laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock, burst: barrelShots(t, 0, 'beam'),   // Engineering spike §10.3: the beam's shots by its bars
-      pew: (() => { const units = classOf(t, 0).slots.laser?.chargeUnits ?? 0; return { fill: units > 0 ? Math.min(1, sys.pewCharge / units) : 0, ready: units > 0 && sys.pewCharge >= units, target: sys.pewTargeted ? sys.pewLock : -1, shots: barrelShots(t, 0, 'pew') }; })(),
-      ...(() => { const w = trimmedWeaponPower(sys); return { weaponBars: w, weaponFree: weaponBarsUsable(sys) - (w[0]! + w[1]! + w[2]!) }; })(),   // the bars each weapon stands on now
+      laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock,
+      ...(() => { const w = trimmedWeaponPower(sys);   // Engineering spike §10.3: the bars each weapon stands on now; the beam's shots by its bars
+        return { burst: classOf(t, 0).slots.laser ? BEAM_SHOTS_BY_BARS[w[WeaponSlot.Beam]!] ?? 0 : 0, weaponBars: w, weaponFree: weaponBarsUsable(sys) - (w[0]! + w[1]! + w[2]!) }; })(),
 ```
 In `src/renderer/src/render/duel/consoleLayout.ts`, replace the whole `weaponCard` function and its doc comment with:
 ```ts
-/** FTL targeting spec §1, Engineering spike §10.3: the Weapons block's three weapon cards, PEW PEW, BEAM ('laser') and
- *  TORPEDO, side by side at its top. `hit` is the card's clickable part (the pick-up); `pipsY` the bar pips under it (left
- *  click adds a bar, right click removes one); the FIRE / LAUNCH button sits below them; the targeting line starts at
- *  `anchor` (the card's right edge mid-height of `hit`). */
+/** FTL targeting spec §1, Engineering spike §10.3, §11: the Weapons block's three weapon cards, PEW PEW, BEAM ('laser')
+ *  and TORPEDO, side by side at its top. `hit` is the card's clickable part (the beam's and the torpedo's pick-up; PEW
+ *  PEW has none on this branch); `pipsY` the bar pips under it (left click adds a bar, right click removes one); FIRE /
+ *  LAUNCH sits below them; the targeting line starts at `anchor` (the card's right edge mid-height of `hit`). */
 export type CardWeapon = 'pew' | 'laser' | 'torpedo';
 export const CARD_ORDER: readonly CardWeapon[] = ['pew', 'laser', 'torpedo'];
 export function weaponCard(weapon: CardWeapon): { x: number; y: number; w: number; h: number; hitH: number; pipsY: number; anchor: { x: number; y: number } } {
@@ -1924,8 +1941,9 @@ export function weaponCard(weapon: CardWeapon): { x: number; y: number; w: numbe
   return { x, y, w, h, hitH, pipsY: y + hitH + 2, anchor: { x: x + w, y: y + hitH / 2 } };
 }
 ```
+`TargetingLine.tsx` and `DuelUi.tsx` keep calling `weaponCard(weapon)` with the contact controller's `'laser' | 'torpedo'`, which still fits.
 
-- [ ] **Step 5: The inputs** (`shipControls.ts`, `input.ts`, `contactController.ts`, `actions.ts`, `runtime.ts`, `onlineDuel.ts`)
+- [ ] **Step 5: The inputs** (`shipControls.ts`, `input.ts`, `actions.ts`)
 
 In `src/renderer/src/render/duel/shipControls.ts`, replace
 ```ts
@@ -1941,116 +1959,40 @@ export type ShipCommand = Extract<DuelCommand, { kind: 'shipPower' | 'shipCoolan
 In `src/renderer/src/app/duel/input.ts`:
 - In `ConsoleInput`, after the `ship?(command: ShipCommand): void` member, add:
 ```ts
-  /** Engineering spike §10.3: pew pew's target room (−1 clears it), and a bar on or off a weapon slot. Optional, as ship. */
-  pewLock?(room: number): void;
+  /** Engineering spike §10.3: a bar on or off a weapon slot. Optional, as ship. */
   weaponPower?(slot: number, delta: 1 | -1): void;
 ```
-- In `KeySample`, after the `ship?` member, add:
-```ts
-  /** Engineering spike §10.3: the last pew pew lock request since the previous sample (a room, −1 to clear), or null. */
-  pewTo?: number | null;
-```
-- In `createDuelKeyboard`, replace `  let ship: ShipCommand[] = [];   // Engineering spike §7: kept by clearUi, dropped by clear` with:
-```ts
-  let ship: ShipCommand[] = [];   // Engineering spike §7: kept by clearUi, dropped by clear
-  let pewTo: number | null = null;   // §10.3
-```
-- Append `pewTo = null;` inside both `clearUi`'s and `clear`'s bodies, right after `freqTo = null;`.
-- In `consoleInput`, replace `    ship(command) { ship.push(command); if (ship.length > SHIP_QUEUE_MAX) ship.shift(); }` with:
+- In `createDuelKeyboard`'s `consoleInput`, replace `    ship(command) { ship.push(command); if (ship.length > SHIP_QUEUE_MAX) ship.shift(); }` with:
 ```ts
     ship(command) { ship.push(command); if (ship.length > SHIP_QUEUE_MAX) ship.shift(); },
-    pewLock(room) { pewTo = room; },
     weaponPower(slot, delta) { ship.push({ kind: 'weaponPower', slot, delta }); if (ship.length > SHIP_QUEUE_MAX) ship.shift(); }
 ```
-- In `sample()`, replace `throttleTo, freqTo, ...(ship.length > 0 ? { ship } : {}) };` with `throttleTo, freqTo, pewTo, ...(ship.length > 0 ? { ship } : {}) };`, and replace `freqTo = null; ship = [];` with `freqTo = null; pewTo = null; ship = [];`.
-
-In `src/renderer/src/app/duel/contactController.ts`, replace
+In `src/renderer/src/ui/actions.ts`, after `    ship: (command) => consoleInput?.ship?.(command)` add (with a comma after it):
 ```ts
-/** The weapon a Weapons card picks up (FTL targeting spec §1). */
-export type Weapon = 'laser' | 'torpedo';
-```
-with
-```ts
-/** The weapon a Weapons card picks up (FTL targeting spec §1; Engineering spike §10.3 adds pew pew; 'laser' is the beam). */
-export type Weapon = 'pew' | 'laser' | 'torpedo';
-```
-(`pickUp`, `pick` and `aimWeapon` already carry the weapon through. The E/Q branch treats any non-torpedo pick-up as the beam's, which drops pew pew's pick-up too. `WEAPON_CODES` keeps 1 for the beam and 2 for the torpedo: pew pew has no key in the spike, Decision 14.)
-
-In `src/renderer/src/ui/actions.ts`:
-- After `    ship: (command) => consoleInput?.ship?.(command)` add (with a comma after it):
-```ts
-    pewLock: (room) => consoleInput?.pewLock?.(room),
     weaponPower: (slot, delta) => consoleInput?.weaponPower?.(slot, delta)
 ```
-- Replace
-```ts
-    pick: (room: number): void => contactInput?.pick(room, (r, weapon) => (weapon === 'torpedo' ? consoleActions.torpLock(r) : consoleActions.lock(r))),
-```
-with
-```ts
-    pick: (room: number): void => contactInput?.pick(room, (r, weapon) => (weapon === 'torpedo' ? consoleActions.torpLock(r) : weapon === 'pew' ? consoleActions.pewLock?.(r) : consoleActions.lock(r))),
-```
-- Replace `    pickUp: (weapon: 'laser' | 'torpedo'): void => contactInput?.pickUp(weapon)` with `    pickUp: (weapon: 'pew' | 'laser' | 'torpedo'): void => contactInput?.pickUp(weapon)`.
+Task 3's `play` already forwards every `k.ship` command in both modes, so a `weaponPower` reaches the sim with no runtime change. The sim refuses it off the Weapons seat (`not-at-weapons`).
 
-In `src/renderer/src/app/duel/runtime.ts`, replace
-```ts
-    if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });   // a room click or a card's clear
-```
-with
-```ts
-    if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });   // a room click or a card's clear
-    if (k.pewTo !== undefined && k.pewTo !== null && k.pewTo >= -1 && k.pewTo <= 2) queue({ kind: 'laserLock', room: k.pewTo, weapon: 'pew' });   // Engineering spike §10.3
-```
-In `src/renderer/src/app/duel/onlineDuel.ts`, replace
-```ts
-    if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) send({ kind: 'laserLock', room: k.lockTo });   // a room click or a card's clear
-```
-with
-```ts
-    if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) send({ kind: 'laserLock', room: k.lockTo });   // a room click or a card's clear
-    if (k.pewTo !== undefined && k.pewTo !== null && k.pewTo >= -1 && k.pewTo <= 2) send({ kind: 'laserLock', room: k.pewTo, weapon: 'pew' });   // Engineering spike §10.3
-```
-Pew pew's lock joins the Weapons seat's other console commands: in `runtime.ts`, `isWeaponsCommand` already lists `laserLock`, so a Tab or a stand drops a pending pew lock as it drops the beam's.
+- [ ] **Step 6: WEAPONS OFFLINE only when the beam and the torpedo are both dark** (`situationModel.ts`, `consoleModel.ts`, `tests/feelIiModels.test.ts`)
 
-Widen the weapon types the targeting view reads:
-- In `src/renderer/src/render/duel/contactModel.ts`, replace `  aimWeapon: 'laser' | 'torpedo' | null;` with `  aimWeapon: 'pew' | 'laser' | 'torpedo' | null;`, and `  weapon?: 'laser' | 'torpedo';` with `  weapon?: 'pew' | 'laser' | 'torpedo';`.
-- In `src/renderer/src/ui/duel/TargetingLine.tsx`, nothing changes. It calls `weaponCard(weapon)`, which now takes all three.
+The beam starts dark (spec §10.3), and pew pew does nothing on this branch (§11). Today's `laserSituation` (`situationModel.ts:46`) and `refusal` (`:187`) read the beam alone, so the console would say WEAPONS OFFLINE all round.
 
-- [ ] **Step 5b: WEAPONS OFFLINE only when no weapon can fire** (`src/renderer/src/render/duel/situationModel.ts`, `consoleModel.ts`)
-
-The beam starts dark (spec §10.3), and today's `laserSituation` (`situationModel.ts:46`) and `refusal` (`:187`) read the beam alone, so the console would say WEAPONS OFFLINE all round.
-
-`laserOffline` and `laserFull` are already imported (Part i gave them a `barrel` argument). Add `import { trimmedWeaponPower, WeaponSlot } from '../../sim/tactical/bars';`, then add above `laserSituation`:
+Add `import { trimmedWeaponPower, WeaponSlot } from '../../sim/tactical/bars';` to `src/renderer/src/render/duel/situationModel.ts`, then add above `laserSituation`:
 ```ts
-/** Engineering spike §10.3: every crew weapon is dark (the beam, pew pew and the torpedo). Bars only, one source of truth:
- *  a level-2 Weapons Room zeroes every weapon's trimmed bars (Part i's trimmedWeaponPower reads effectiveBars). */
+/** Engineering spike §10.3, §11: the beam and the torpedo are both dark (pew pew's bars do nothing on this branch). Bars
+ *  only, one source of truth: a level-2 Weapons Room zeroes every weapon's trimmed bars (trimmedWeaponPower reads
+ *  effectiveBars), and laserOffline reads the beam's. */
 export function weaponsOffline(t: TacticalState): boolean {
-  const sys = t.systems[CREW_SLOT];
-  return laserOffline(t, CREW_SLOT, 'beam') && laserOffline(t, CREW_SLOT, 'pew') && trimmedWeaponPower(sys)[WeaponSlot.Torpedo] === 0;
+  return laserOffline(t, CREW_SLOT) && trimmedWeaponPower(t.systems[CREW_SLOT])[WeaponSlot.Torpedo] === 0;
 }
 ```
 In `laserSituation`, replace
 ```ts
   if (laserOffline(t, CREW_SLOT)) return { kind: 'offline' };
-  const targeted = sys.laserTargeted;
-  if (sys.laserBurst > 0 || sinceShot < SOLUTION_HOLD_S) return { kind: 'solution', targeted };   // the burst fires attended or not
 ```
 with
 ```ts
-  // Engineering spike §10.3: the words follow the beam, or pew pew while the beam is dark; with both lasers dark, the
-  // torpedo alone says nothing here (its own card speaks), and only with every weapon dark is it OFFLINE.
-  if (laserOffline(t, CREW_SLOT, 'beam') && laserOffline(t, CREW_SLOT, 'pew')) return weaponsOffline(t) ? { kind: 'offline' } : { kind: 'none' };
-  const barrel = laserOffline(t, CREW_SLOT, 'beam') ? 'pew' as const : 'beam' as const;
-  const targeted = barrel === 'pew' ? sys.pewTargeted : sys.laserTargeted;
-  if ((barrel === 'pew' ? sys.pewBurst : sys.laserBurst) > 0 || sinceShot < SOLUTION_HOLD_S) return { kind: 'solution', targeted };   // the burst fires attended or not
-```
-and in the same function replace
-```ts
-  if (laserFull(t, CREW_SLOT) && laserEligible(t, CREW_SLOT, target)) return { kind: 'solution', targeted };
-```
-with
-```ts
-  if (laserFull(t, CREW_SLOT, barrel) && laserEligible(t, CREW_SLOT, target)) return { kind: 'solution', targeted };
+  if (laserOffline(t, CREW_SLOT)) return weaponsOffline(t) ? { kind: 'offline' } : { kind: 'none' };   // Engineering spike §10.3: the beam dark, the torpedo powered: its card speaks
 ```
 In `refusal`, replace
 ```ts
@@ -2060,13 +2002,15 @@ In `refusal`, replace
 ```
 with
 ```ts
-    if (control === 'fire') return !laserOffline(t, CREW_SLOT, 'beam') ? null : weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'BEAM UNPOWERED';   // Space fires the beam (spec §10.3)
+    if (control === 'fire') return !laserOffline(t, CREW_SLOT) ? null : weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'BEAM UNPOWERED';   // Space fires the beam (spec §10.3)
     if (sys.magazine <= 0) return 'NO TORPEDOES';
     if (trimmedWeaponPower(sys)[WeaponSlot.Torpedo] === 0) return weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'TORPEDO UNPOWERED';   // a level-2 Weapons Room lands here too
 ```
 The LAUNCH checks are now flying, the magazine, the torpedo's trimmed bars, then range. Check that Part i's `canLaunch` reads exactly these (`git grep -n "export function canLaunch" -A4 -- src/renderer/src/sim/tactical/weapons.ts`), so `refusal(d, 'launch') === null` exactly when `canLaunch` is true. If it reads anything else, stop and report.
 
-Update `tests/feelIiModels.test.ts` (it pins the old reasons on the Cutter, whose crew starts pew pew 1, beam 0, torpedo 1):
+In `consoleModel.ts`'s `weaponsPanel`, replace `laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), laserOffline(t, 0))` with `laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), weaponsOffline(t))`, and add `weaponsOffline` to its `./situationModel` import.
+
+Update `tests/feelIiModels.test.ts`. It pins the old reasons on the Cutter, whose crew starts pew pew 1, beam 0, torpedo 1:
 - Line 213: the round-start FIRE refusal is now BEAM UNPOWERED. Replace
 ```ts
       expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual([null, 'OUT OF RANGE']);
@@ -2075,60 +2019,28 @@ with
 ```ts
       expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual(['BEAM UNPOWERED', 'OUT OF RANGE']);   // Engineering spike §10.3: the beam starts dark
 ```
-- Line 218: the offline case by bars. FIRE is `weaponsOffline` (every weapon dark) → WEAPONS OFFLINE, and LAUNCH passes the magazine (2) and reaches the torpedo's 0 bars → WEAPONS OFFLINE. Replace
+- Line 218: the offline case by bars. FIRE sees both weapons dark → WEAPONS OFFLINE; LAUNCH passes the magazine (2) and reaches the torpedo's 0 bars → WEAPONS OFFLINE. Replace
 ```ts
       sys.rooms[Room.Weapons] = 2; expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual(['WEAPONS OFFLINE', 'WEAPONS OFFLINE']); sys.rooms[Room.Weapons] = 0;
 ```
 with
 ```ts
-      sys.weaponPower.fill(0); expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual(['WEAPONS OFFLINE', 'WEAPONS OFFLINE']); sys.weaponPower.splice(0, 3, 1, 0, 1);   // Engineering spike §10.3: every weapon dark
+      sys.weaponPower.fill(0); expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual(['WEAPONS OFFLINE', 'WEAPONS OFFLINE']); sys.weaponPower.splice(0, 3, 1, 0, 1);   // Engineering spike §10.3: the beam and the torpedo dark
 ```
-- Lines 233-237 (LAUNCH refused exactly when canLaunch says no) stay as they are. The loop's `sys.rooms[Room.Weapons] = (k >> 2) % 3` still covers level 2: it zeroes the torpedo's trimmed bars, which both `canLaunch` and `refusal` read. The FIRE line holds because the round-start FIRE reason is BEAM UNPOWERED, never TORPEDO FLYING, when no torpedo flies.
+- Lines 233-237 (LAUNCH refused exactly when canLaunch says no) stay as they are. The loop's `sys.rooms[Room.Weapons] = (k >> 2) % 3` still covers level 2, because level 2 zeroes the torpedo's trimmed bars, which both `canLaunch` and `refusal` read. The FIRE line holds because, with no torpedo flying, the FIRE reason is BEAM UNPOWERED and never TORPEDO FLYING.
 
-In `consoleModel.ts`'s `weaponsPanel`, replace `laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), laserOffline(t, 0))` with `laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), weaponsOffline(t))`, and add `weaponsOffline` to its `./situationModel` import.
+- [ ] **Step 7: Run the model tests**
 
-Append to `tests/engineeringWeapons.test.ts`:
-```ts
-import { laserSituation, refusal, weaponsOffline } from '../src/renderer/src/render/duel/situationModel';
-import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
-import { lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
-import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
-
-describe('WEAPONS OFFLINE only when no weapon can fire (spec §10.3)', () => {
-  it('round start (pew pew 1, beam 0, torpedo 1): not offline; FIRE says BEAM UNPOWERED; every weapon dark: WEAPONS OFFLINE', () => {
-    const d = createDuel(HOUND, 5), t = d.tactical, sys = t.systems[0], me = t.ships[0]!, e = t.ships[1]!;
-    try {
-      seatDuelCrew(d);
-      t.map = { ...t.map, asteroids: [] }; t.grid = buildGrid([], t.map.rMap);   // no rocks: the line is clear by construction (nothing steps)
-      e.x = me.x + hx(me.heading) * 200; e.y = me.y + hy(me.heading) * 200; e.active = true;   // dead ahead, in range and arc
-      expect(lineOfSight(t, me.x, me.y, e.x, e.y)).toBe(true);   // the precondition
-      expect(weaponsOffline(t)).toBe(false);
-      expect(laserSituation(t).kind).not.toBe('offline');
-      expect(refusal(d, 'fire')).toBe('BEAM UNPOWERED');
-      sys.weaponPower[0] = 0;
-      expect(laserSituation(t).kind).toBe('none');   // both lasers dark, the torpedo still powered
-      expect(refusal(d, 'fire')).toBe('BEAM UNPOWERED');
-      sys.weaponPower[2] = 0;
-      expect(weaponsOffline(t)).toBe(true);
-      expect(laserSituation(t).kind).toBe('offline');
-      expect(refusal(d, 'fire')).toBe('WEAPONS OFFLINE');
-      expect(refusal(d, 'launch')).toBe('WEAPONS OFFLINE');
-    } finally { disposeDuel(d); }
-  });
-});
-```
-- [ ] **Step 6: Run the model test**
-
-Run: `npx vitest run tests/engineeringWeapons.test.ts tests/engineeringInput.test.ts tests/duelConsoleModel.test.ts tests/contactController.test.ts tests/duelRuntime.test.ts tests/feelPresentation.test.ts tests/feelIiModels.test.ts`
+Run: `npx vitest run tests/engineeringWeapons.test.ts tests/engineeringInput.test.ts tests/duelConsoleModel.test.ts tests/duelRuntime.test.ts tests/feelPresentation.test.ts tests/feelIiModels.test.ts`
 Expected: PASS. A pre-existing test that pins the old two cards' x positions or the 138 px width (`git grep -n "weaponCard(" -- tests`) is updated to the three-card layout from `weaponCard`, not to literals. Say which tests in the report.
 
-- [ ] **Step 7: Write the failing UI test** `tests/engineeringWeaponsUi.test.tsx`
+- [ ] **Step 8: Write the failing UI test** `tests/engineeringWeaponsUi.test.tsx`
 
 ```tsx
 // @vitest-environment jsdom
-// Engineering spike §10.3: the Weapons block's three cards, PEW PEW (its own charge bar, no FIRE: it fires itself on a
-// target), BEAM and TORPEDO; each with four bar pips (the fourth the overdrive's, dashed), a left click adding a bar and
-// a right click removing one (weaponPower); a click on PEW PEW picks it up for the targeting flow.
+// Engineering spike §10.3, §11: the Weapons block's three cards: PEW PEW (its bars and ARRIVES WITH W-1; no charge, no
+// lock, no pick-up on this branch), BEAM (today's laser) and TORPEDO; each with four bar pips (the fourth the
+// overdrive's, dashed), a left click adding a bar and a right click removing one (weaponPower).
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { UiContext } from '../src/renderer/src/ui/context';
@@ -2144,8 +2056,7 @@ afterEach(() => { cleanup(); });
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((c) => c.dataset.text!);
 const all = (attr: string) => Array.from(document.querySelectorAll<HTMLElement>(`[${attr}]`)).map((e) => e.getAttribute(attr));
 const panel: WeaponsPanel = { lock: 1, charge: { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } }, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false,
-  fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: -1, torpTarget: -1, burst: 0,
-  pew: { fill: 0.5, ready: false, target: 2, shots: 2 }, weaponBars: [1, 0, 4], weaponFree: 1 };
+  fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: -1, torpTarget: -1, burst: 0, weaponBars: [1, 0, 4], weaponFree: 1 };
 const weapons: ConsoleView = { station: 'weapons', tabs: { helm: 'locked', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
   helm: null, weapons: panel, science: null, side: null };
 const view = (): DuelUiView => ({ readout: { rows: [{ label: 'CREW', value: '2', labelTint: TEXT, valueTint: TEXT }], help: [] }, end: null,
@@ -2158,44 +2069,45 @@ function mount() {
   return { duel, weaponPower, pickUp };
 }
 
-describe('the three weapons (spec §10.3)', () => {
-  it('PEW PEW, BEAM and TORPEDO with their words, pew pew\'s volley and target, and the pips by bars', () => {
+describe('the three weapons (spec §10.3, §11)', () => {
+  it('PEW PEW with its bars and the W-1 note, no pick-up; BEAM and TORPEDO as today; the pips by bars', () => {
     const { duel } = mount(); act(() => duel.frame(view()));
-    for (const w of ['PEW PEW', 'BEAM', 'TORPEDO', 'x2', 'x0', 'TGT ENG', 'MAG 4/4', '50%']) expect(texts()).toContain(w);
-    expect(screen.queryByTestId('console-fire')).not.toBeNull();   // the beam's FIRE
-    expect(screen.getByTestId('console-card-pew')).not.toBeNull();
+    for (const w of ['PEW PEW', 'ARRIVES', 'WITH W-1', 'BEAM', 'x0', 'TORPEDO', 'MAG 4/4', 'FREE 1']) expect(texts()).toContain(w);
+    expect(all('data-ui-card-frame')).toEqual(['pew', 'laser', 'torpedo']);
+    expect(screen.queryByTestId('console-card-pew')).toBeNull();   // no pick-up on this branch
+    expect(screen.queryByTestId('console-card-laser')).not.toBeNull();
+    expect(screen.queryByTestId('console-fire')).not.toBeNull();
     expect(all('data-ui-weapon-pip')).toEqual([
       '0:0:on', '0:1:off', '0:2:off', '0:3:off', '1:0:off', '1:1:off', '1:2:off', '1:3:off', '2:0:on', '2:1:on', '2:2:on', '2:3:on'
     ]);
   });
-  it('a left click on a weapon\'s pips adds a bar, a right click removes one; a click on PEW PEW picks it up', () => {
-    const { duel, weaponPower, pickUp } = mount(); act(() => duel.frame(view()));
+  it('a left click on a weapon\'s pips adds a bar, a right click removes one; pew pew\'s pips too', () => {
+    const { duel, weaponPower } = mount(); act(() => duel.frame(view()));
     fireEvent.pointerDown(screen.getByTestId('console-weapon-pips-1'), { button: 0 });
     fireEvent.pointerDown(screen.getByTestId('console-weapon-pips-2'), { button: 2 });
-    expect(weaponPower.mock.calls).toEqual([[1, 1], [2, -1]]);
-    fireEvent.pointerDown(screen.getByTestId('console-card-pew'), { button: 0 });
-    expect(pickUp).toHaveBeenCalledWith('pew');
+    fireEvent.pointerDown(screen.getByTestId('console-weapon-pips-0'), { button: 2 });
+    expect(weaponPower.mock.calls).toEqual([[1, 1], [2, -1], [0, -1]]);
   });
 });
 ```
 
-- [ ] **Step 8: Run it to verify it fails**
+- [ ] **Step 9: Run it to verify it fails**
 
 Run: `npx vitest run tests/engineeringWeaponsUi.test.tsx`
 Expected: FAIL (there is no PEW PEW card and no pips).
 
-- [ ] **Step 9: Write** `src/renderer/src/ui/duel/WeaponsStation.tsx` (replace the whole file)
+- [ ] **Step 10: Write** `src/renderer/src/ui/duel/WeaponsStation.tsx` (replace the whole file)
 
 ```tsx
-// The Weapons station block (spec 2026-11-17-artemis-consoles §4.1; FTL targeting spec §1; Engineering spike §10.3): one
-// card per weapon, FTL-style, in slot order. PEW PEW (the burst laser): its own charge bar and value, the volley mark,
-// its target room; it fires by itself on a target, so it has no FIRE. BEAM (today's laser): its charge, the burst mark,
-// its target and FIRE (Space). TORPEDO: the magazine, IN RANGE / OUT OF RANGE or FLYING, its target and LAUNCH (F). A
-// click on a card picks that weapon up (the contact window opens and a targeting line runs to the pointer); the same card
-// again cancels; a right-click clears its target. Under each card four pips show the bars on that weapon (the fourth is
-// the overdrive's, dashed): a left click adds a bar, a right click removes one. 1 and 2 pick the beam and the torpedo up.
-// Sci-1 spec §7.4: the frequency row, A B C (keys 3/4/5), shared by the beam and pew pew. Feel-i: the BEAM card flashes
-// FIRING and glows as the goal; the row under the cards says why the beam can't fire.
+// The Weapons station block (spec 2026-11-17-artemis-consoles §4.1; FTL targeting spec §1; Engineering spike §10.3, §11):
+// one card per weapon slot, FTL-style, in slot order. PEW PEW: its bars and ARRIVES WITH W-1 (the W-1 skill-shot weapon
+// arrives from its own branch; on this one its bars do nothing, and the card has no charge, lock or pick-up). BEAM
+// (today's laser): its charge, the burst mark by its bars, its target and FIRE (Space). TORPEDO: the magazine, IN RANGE
+// / OUT OF RANGE or FLYING, its target and LAUNCH (F). A click on BEAM or TORPEDO picks it up (the contact window opens
+// and a targeting line runs to the pointer); the same card again cancels; a right-click clears its target. Under each
+// card four pips show the bars on that weapon (the fourth is the overdrive's, dashed): a left click adds a bar, a right
+// click removes one. 1 and 2 pick the beam and the torpedo up. Sci-1 spec §7.4: the frequency row, A B C (keys 3/4/5).
+// Feel-i: the BEAM card flashes FIRING and glows as the goal; the row under the cards says why the beam can't fire.
 import { memo, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from 'react';
 import type { WeaponsPanel } from '../../render/duel/consoleModel';
 import { STATION, stationTop, weaponCard, type CardWeapon } from '../../render/duel/consoleLayout';
@@ -2212,6 +2124,7 @@ import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
 import { crtRowLook } from './ReadoutPanel';
 
+type Weapon = 'laser' | 'torpedo';
 /** The room words, rooms[0] Weapons, rooms[1] Shields, rooms[2] Engines (as the contact window's labels). */
 const ROOM_LABELS = ['WEAP', 'SHLD', 'ENG'] as const;
 /** A target room's words on a card: `TGT SHLD`, or `TGT --` with none. */
@@ -2223,29 +2136,28 @@ export const FIRING_FLASH_HZ = 4, GOAL_GLOW_HZ = 1.2;
 export const WEAPON_PIPS = 4, PIP_W = 16, PIP_H = 10, PIP_GAP = 4;
 const SLOT: Record<CardWeapon, number> = { pew: 0, laser: 1, torpedo: 2 };
 
-/** One weapon card's frame and its clickable part (FTL targeting spec §1): lit while picked up. Feel-i: `flash` (FIRING)
- *  blinks the frame hot, `glow` (the goal) pulses it hot and mid. */
-function Card({ weapon, lit, crt, flash = false, glow = false, now = 0 }: { weapon: CardWeapon; lit: boolean; crt: boolean; flash?: boolean; glow?: boolean; now?: number }) {
+/** A card's frame (FTL targeting spec §1): lit while picked up. Feel-i: `flash` (FIRING) blinks it hot, `glow` (the goal)
+ *  pulses it hot and mid. */
+function Frame({ weapon, lit, crt, flash = false, glow = false, now = 0 }: { weapon: CardWeapon; lit: boolean; crt: boolean; flash?: boolean; glow?: boolean; now?: number }) {
+  const c = weaponCard(weapon), on = (hz: number): boolean => Math.floor(now * 2 * hz) % 2 === 0;
+  const edge = lit || (flash && on(FIRING_FLASH_HZ)) || (glow && on(GOAL_GLOW_HZ)) ? (crt ? CRT.hot : AMBER) : crt ? CRT.mid : DIM;
+  return <Box x={c.x} y={c.y} w={c.w} h={c.h} attrs={{ 'data-ui-card-frame': weapon, ...(glow ? { 'data-ui-card-goal': '1' } : {}), ...(flash ? { 'data-ui-card-firing': '1' } : {}) }}
+    style={{ border: `${flash || glow ? 2 : 1}px solid ${hex(edge)}`, pointerEvents: 'none' }} />;
+}
+/** The beam's or the torpedo's clickable part: a left click picks it up, a right click clears its target. */
+function Pick({ weapon, lit, crt }: { weapon: Weapon; lit: boolean; crt: boolean }) {
   const actions = useActions(), c = weaponCard(weapon);
   const down = (e: ReactPointerEvent<HTMLDivElement>): void => {
     e.preventDefault();
-    if (e.button === 2) { if (weapon === 'torpedo') actions.console.torpLock(-1); else if (weapon === 'pew') actions.console.pewLock?.(-1); else actions.console.lock(-1); return; }   // clear its target
+    if (e.button === 2) { if (weapon === 'torpedo') actions.console.torpLock(-1); else actions.console.lock(-1); return; }   // clear its target
     if (e.button === 0) actions.contact.pickUp(weapon);
   };
-  const on = (hz: number): boolean => Math.floor(now * 2 * hz) % 2 === 0;
-  const edge = lit || (flash && on(FIRING_FLASH_HZ)) || (glow && on(GOAL_GLOW_HZ)) ? (crt ? CRT.hot : AMBER) : crt ? CRT.mid : DIM;
-  const thick = flash || glow ? 2 : 1;
   return (
-    <>
-      <Box x={c.x} y={c.y} w={c.w} h={c.h} attrs={{ 'data-ui-card-frame': weapon, ...(glow ? { 'data-ui-card-goal': '1' } : {}), ...(flash ? { 'data-ui-card-firing': '1' } : {}) }}
-        style={{ border: `${thick}px solid ${hex(edge)}`, pointerEvents: 'none' }} />
-      <div data-testid={`console-card-${weapon}`} data-ui-card={lit ? 'lit' : 'idle'} role="button" onPointerDown={down} onContextMenu={stop} onMouseDown={stop} onAuxClick={stop}>
-        <Box x={c.x} y={c.y} w={c.w} h={c.hitH} style={{ pointerEvents: 'auto', cursor: 'pointer', background: lit ? hex(crt ? CRT.glass : BAR_OFF) : 'transparent' }} />
-      </div>
-    </>
+    <div data-testid={`console-card-${weapon}`} data-ui-card={lit ? 'lit' : 'idle'} role="button" onPointerDown={down} onContextMenu={stop} onMouseDown={stop} onAuxClick={stop}>
+      <Box x={c.x} y={c.y} w={c.w} h={c.hitH} style={{ pointerEvents: 'auto', cursor: 'pointer', background: lit ? hex(crt ? CRT.glass : BAR_OFF) : 'transparent' }} />
+    </div>
   );
 }
-
 /** Engineering spike §10.3: a weapon's bar pips under its card; a left click adds a bar, a right click removes one. */
 function Pips({ weapon, bars, crt }: { weapon: CardWeapon; bars: number; crt: boolean }) {
   const actions = useActions(), c = weaponCard(weapon), slot = SLOT[weapon], x0 = c.x + 6;
@@ -2264,33 +2176,32 @@ function Pips({ weapon, bars, crt }: { weapon: CardWeapon; bars: number; crt: bo
   );
 }
 
-export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null }: { weapons: WeaponsPanel; aim?: CardWeapon | null }) {
+export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null }: { weapons: WeaponsPanel; aim?: Weapon | null }) {
   const actions = useActions(), { crt, now } = useCrt();
   const top = stationTop('weapons'), x0 = STATION.x + 8, y0 = top + 6, right = STATION.x + STATION.w - 8;
   const dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT, hot = crt ? CRT.hot : AMBER, c = weapons.charge;
   const barColour = crt ? crtRowLook(c, now).bar : c.bar?.colour ?? TEXT;
   const P = weaponCard('pew'), L = weaponCard('laser'), T = weaponCard('torpedo'), px = P.x + 6, lx = L.x + 6, tx = T.x + 6;
-  const reason = weapons.laserReason ?? null, firing = reason === 'FIRING', pew = weapons.pew ?? null, bars = weapons.weaponBars ?? null;
+  const reason = weapons.laserReason ?? null, firing = reason === 'FIRING', bars = weapons.weaponBars ?? null;
   // Feel-ii §2.8: a refused FIRE or LAUNCH flashes, and the row under the cards names why for REFUSAL_SHOW_S.
   const refused = weapons.refused ?? null, flash = (k: string): boolean => refused?.control === k && refused.flash;
   return (
     <>
       <Panel x={STATION.x} y={top} w={STATION.w} h={STATION.h.weapons} />
-      <Card weapon="pew" lit={aim === 'pew'} crt={crt} />
-      <PixelText text="PEW PEW" x={px} y={P.y + 4} size={FONT_NATIVE} tint={aim === 'pew' ? hot : dim} />
-      <PixelText text={`x${pew?.shots ?? 0}`} x={P.x + P.w - 6} y={P.y + 4} size={FONT_NATIVE} tint={main} anchorX={1} />
-      <PixelText text={pew ? (pew.ready ? 'READY' : `${Math.round(pew.fill * 100)}%`) : '--'} x={px} y={P.y + 20} size={FONT_NATIVE} tint={pew?.ready ? hot : main} />
-      <Bar x={px} y={P.y + 36} w={P.w - 12} h={6} fill={pew?.fill ?? 0} colour={crt ? CRT.main : AMBER} />
-      <PixelText text={targetText(pew?.target ?? -1)} x={px} y={P.y + 44} size={FONT_NATIVE} tint={(pew?.target ?? -1) >= 0 ? hot : dim} />
-      <PixelText text="AUTO" x={px} y={P.pipsY + 16} size={FONT_NATIVE} tint={dim} />
-      <Card weapon="laser" lit={aim === 'laser'} crt={crt} flash={firing} glow={weapons.goal === true && aim !== 'laser'} now={now} />
+      <Frame weapon="pew" lit={false} crt={crt} />
+      <PixelText text="PEW PEW" x={px} y={P.y + 4} size={FONT_NATIVE} tint={dim} />
+      <PixelText text="ARRIVES" x={px} y={P.y + 20} size={FONT_NATIVE} tint={dim} />
+      <PixelText text="WITH W-1" x={px} y={P.y + 36} size={FONT_NATIVE} tint={dim} />
+      <Frame weapon="laser" lit={aim === 'laser'} crt={crt} flash={firing} glow={weapons.goal === true && aim !== 'laser'} now={now} />
+      <Pick weapon="laser" lit={aim === 'laser'} crt={crt} />
       <PixelText text="BEAM" x={lx} y={L.y + 4} size={FONT_NATIVE} tint={aim === 'laser' ? hot : dim} />
       <PixelText text={`x${weapons.burst}`} x={L.x + L.w - 6} y={L.y + 4} size={FONT_NATIVE} tint={main} anchorX={1} />
       <PixelText text={firing ? 'FIRING' : c.value} x={lx} y={L.y + 20} size={FONT_NATIVE} tint={firing ? hot : main} />
       <Bar x={lx} y={L.y + 36} w={L.w - 12} h={6} fill={c.bar?.fill ?? 0} colour={barColour} />
       <PixelText text={targetText(weapons.laserTarget)} x={lx} y={L.y + 44} size={FONT_NATIVE} tint={weapons.laserTarget >= 0 ? hot : dim} />
       <Button name="fire" label="FIRE" hint="SPC" x={lx} y={L.pipsY + 14} w={L.w - 12} h={24} flash={flash('fire')} onPress={() => actions.console.press('fireDown')} />
-      <Card weapon="torpedo" lit={aim === 'torpedo'} crt={crt} />
+      <Frame weapon="torpedo" lit={aim === 'torpedo'} crt={crt} />
+      <Pick weapon="torpedo" lit={aim === 'torpedo'} crt={crt} />
       <PixelText text="TORPEDO" x={tx} y={T.y + 4} size={FONT_NATIVE} tint={aim === 'torpedo' ? hot : dim} />
       <PixelText text={`MAG ${weapons.magazine}`} x={tx} y={T.y + 20} size={FONT_NATIVE} tint={main} />
       {weapons.missileFlying
@@ -2317,22 +2228,11 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
   );
 });
 ```
-The card heights add up: the pips start at `y + 62` and are 10 px tall, and the buttons sit at `pipsY + 14` (y + 76), 24 px tall, ending at y + 100, inside the 104 px card. The FREE count shares the y0 + 116 row with the reason text, right-aligned; a refused LAUNCH reason starts at `tx` (x 220), which stays clear of FREE at the right end.
+The card heights add up: the pips start at `y + 62` and are 10 px tall, and the buttons sit at `pipsY + 14` (y + 76), 24 px tall, ending at y + 100, inside the 104 px card. The FREE count shares the y0 + 116 row with the reason text, right-aligned; a refused LAUNCH reason starts at `tx` (x 220), which stays clear of FREE at the right end. `actions.console` is typed `ConsoleInput` (`ui/actions.ts:49`), whose `weaponPower` is optional, so the pips call it with `?.(…)`. The W-1 note takes two lines (ARRIVES / WITH W-1), because it doesn't fit the card's 78 px text width at FONT_NATIVE.
 
-`actions.console` is typed `ConsoleInput` (`ui/actions.ts:49`), whose `pewLock` and `weaponPower` are optional, so the block calls them with `?.(…)`.
+`DuelUi.tsx` keeps passing `aim={duel.contact?.aimWeapon ?? null}` (the contact controller's `'laser' | 'torpedo'`) to `WeaponsStation` and to `FlightStation`. Neither changes.
 
-`DuelUi.tsx` passes `aim={duel.contact?.aimWeapon ?? null}` to `WeaponsStation`. The widened `aimWeapon` type flows through unchanged.
-
-`FlightStation` (`ui/duel/FlightStation.tsx:22`, `type Weapon = 'laser' | 'torpedo'`) can't take `'pew'`, and the Flight seat never picks pew pew up. In `src/renderer/src/ui/duel/DuelUi.tsx`, narrow it at the call site. Replace
-```tsx
-          {duel.console?.flight && <FlightStation flight={duel.console.flight} aim={duel.contact?.aimWeapon ?? null} />}
-```
-with
-```tsx
-          {duel.console?.flight && <FlightStation flight={duel.console.flight} aim={duel.contact?.aimWeapon === 'pew' ? null : duel.contact?.aimWeapon ?? null} />}   {/* Engineering spike §10.3: no pew pew on Flight */}
-```
-
-- [ ] **Step 10: Run the tests**
+- [ ] **Step 11: Run the tests**
 
 Run: `npx vitest run tests/engineeringWeaponsUi.test.tsx tests/engineeringWeapons.test.ts tests/targetingUi.test.tsx tests/uiConsole.test.tsx tests/contactWindow.test.tsx tests/flightConsole.test.tsx tests/feelUi.test.tsx tests/feelIiUi.test.tsx`
 Expected: PASS.
@@ -2340,15 +2240,15 @@ Expected: PASS.
 A pre-existing UI test that asserts the old block's words is updated to the new ones, and the report lists each test so changed: `LASER` becomes `BEAM`, the FONT_SIZE charge value becomes FONT_NATIVE, the second hint row reads `PIPS: L ADD  R REMOVE` where it read `RIGHT-CLICK A WEAPON: CLEAR`, and the card x positions follow `weaponCard`.
 
 Run: `npx tsc -b`
-Expected: no errors (`app/uiProbe.ts`'s fixture compiles, since the new `WeaponsPanel` fields are optional).
+Expected: no errors (`app/uiProbe.ts`'s fixture compiles, because the new `WeaponsPanel` fields are optional).
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
-git add src/renderer/src/render/duel/consoleModel.ts src/renderer/src/render/duel/situationModel.ts src/renderer/src/ui/duel/DuelUi.tsx src/renderer/src/render/duel/consoleLayout.ts src/renderer/src/render/duel/contactModel.ts src/renderer/src/render/duel/shipControls.ts src/renderer/src/app/duel/input.ts src/renderer/src/app/duel/contactController.ts src/renderer/src/ui/actions.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/ui/duel/WeaponsStation.tsx tests/engineeringWeapons.test.ts tests/engineeringWeaponsUi.test.tsx tests/feelIiModels.test.ts
-git commit -m "feat(engineering-spike): the Weapons console's pew pew, beam and torpedo with bar pips, and pew pew in the targeting flow" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add src/renderer/src/render/duel/consoleModel.ts src/renderer/src/render/duel/situationModel.ts src/renderer/src/render/duel/consoleLayout.ts src/renderer/src/render/duel/shipControls.ts src/renderer/src/app/duel/input.ts src/renderer/src/ui/actions.ts src/renderer/src/ui/duel/WeaponsStation.tsx tests/engineeringWeapons.test.ts tests/engineeringWeaponsUi.test.tsx tests/feelIiModels.test.ts
+git commit -m "feat(engineering-spike): the Weapons console's pew pew (W-1 note), beam and torpedo with bar pips; WEAPONS OFFLINE only with the beam and torpedo dark" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
-(Stage by name any pre-existing test you updated in Steps 6 and 10.)
+(Stage by name any pre-existing test you updated in Steps 7 and 11.)
 
 ---
 
@@ -2762,7 +2662,7 @@ for (let k = 0; k < 8 && (await rt(() => window.__ftliteDuel.view())) !== 'weapo
   await page.keyboard.press('KeyE'); await wait(300);
 }
 check((await rt(() => window.__ftliteDuel.view())) === 'weapons', 'seated at Weapons');
-await wait(500); await shot('4-weapons-three-weapons');   // PEW PEW 1 bar, BEAM 0, TORPEDO 1; the WEAP strip beside the block
+await wait(500); await shot('4-weapons-three-weapons');   // PEW PEW 1 bar (ARRIVES WITH W-1), BEAM 0, TORPEDO 1; the WEAP strip beside the block
 // Spec §10.4: stage a contact seen, then lost. Sensors to 3 (range 2000) with the Hunter 1200 ahead; then Sensors to 0
 // (range 300): it becomes a ghost at its last seen place, fading over 10 s. (A staged edit of the state, as the
 // Valkyrn shots do; the reactor's spares are not kept consistent for the picture.)
@@ -2792,7 +2692,7 @@ Open each PNG and check:
 2. `2-overdriven-heating`: ENG 5 of 5 with its top slot hot and dashed, its heat bar partly filled, one pip lit; the Ops–Quarters door drawn held open.
 3. `3-hold-venting`: the Hold's airlock open with specks streaming out, and the Hold tinted red.
 4. `4-weapons-three-weapons`:
-   - the Weapons block's three cards, PEW PEW (x2, its own charge bar, AUTO), BEAM (x0, FIRE) and TORPEDO (MAG, LAUNCH);
+   - the Weapons block's three cards: PEW PEW (its bars and ARRIVES WITH W-1, nothing else), BEAM (x0, FIRE) and TORPEDO (MAG, LAUNCH);
    - pips 1, 0 and 1 lit;
    - FREE 0;
    - the WEAP power strip beside the block.
@@ -2807,7 +2707,7 @@ Read the file first. Part i's three sections (Sim measurements, Gates and bands,
 - FTL reactor bars (10) over five systems (Shields 4, Weapons 9, Engines 4, Sensors 3, Oxygen 2), each with an overdrive
   slot except Oxygen, heat and 8 shared coolant; damage knocks out slots; an overheated system fails until it cools.
 - Each station spends its own bars (spec §10): 1 Engines bar is 25 % throttle; the Weapons officer spreads the Weapons bars
-  over pew pew (a burst laser), the beam and the torpedo; Sensors sets the sensor range, and every crew map has a fog of
+  over pew pew (W-1's weapon: its bars do nothing yet), the beam and the torpedo; Sensors sets the sensor range, and every crew map has a fog of
   war with fading ghosts.
 - Oxygen per room, breaches from hits, airlocks that vent, fire that needs air and spreads through open doors, low air hurts.
 - The ship view is the Engineering station: an amber CRT panel (left click adds a bar, right click removes one, a pip
@@ -2837,7 +2737,7 @@ the file, the test, and why (a new ConsoleView key, the three-card layout, the e
 
 - Does Engineering feel like a full-time job for the 4th seat or whoever is on foot?
 - Does it change how Helm and Weapons fight (shields at 1 layer, 75 % throttle and the beam dark until Engineering moves bars)?
-- Is spreading the Weapons bars over pew pew, beam and torpedo a real choice? Is the fog's 900 start range right?
+- Is spreading the Weapons bars over the beam and the torpedo a real choice (pew pew comes with W-1)? Is the fog's 900 start range right?
 - Can you read power, heat, air, fire and breaches at a glance?
 - Is the 1-layer shield start right? The 25 % air line? The 20 s cool-down after an overheat?
 
@@ -2845,7 +2745,7 @@ the file, the test, and why (a new ConsoleView key, the three-card layout, the e
 
 - The panel may cover the Hound's lower-left rooms at the zoom-0 fit; zoom or pan to reach a covered door.
 - The Helm's locked notches and the Science strip's range are covered by jsdom tests, not screenshots; the owner sees them on a console.
-- Pew pew has no number key, and its target shows on its card only (the contact window marks the beam's and the torpedo's).
+- Pew pew is not playable in this spike (spec §11): it is the W-1 skill-shot weapon from branch `w1-pew-pew`. Its slot takes bars that do nothing until the merge wires them into W-1's recharge.
 - Sensors and Oxygen take no weapon damage (no tactical Room).
 - Fire spread, overheat ignitions and breaches push no events: no sound cue or callout yet.
 - Candidates: Artemis presets (SHIFT+number), sealed doors, a refusal flash on a full reactor, keys for the panel.
@@ -2891,15 +2791,15 @@ The final report to the owner lists:
   - §7 (the commands reach the sim for any present, conscious player): Task 3, through the keyboard queue in both modes.
   - §8 (the app smoke: a power column, a coolant counter and a door, with state asserted; the screenshots): Task 11, Decision 10. The sim tests are Part i's.
   - §9.3 (each console's strip) with §10.2's locked notches and capped requests and §10.4's Science range: Task 7.
-  - §10.3 (three weapons at 0–3 bars, pew pew's charge bar, pew pew in the targeting flow): Task 8, Decision 14.
+  - §10.3 with §11 (three weapon slots at 0–3 bars, the beam's shots by its bars, pew pew's card with the W-1 note, WEAPONS OFFLINE by the beam and the torpedo): Task 8, Decision 14.
   - §10.4 (the fog on every crew map and the contact window, ghosts over 10 s, the range ring, planets and asteroids always): Task 9, Decision 15.
-- **No sim change.** Part ii touches no file under `sim/` or `net/`, and Task 10 proves `same` against Task 1's 54 baselines.
+- **No sim change.** Part ii touches no file under `sim/` or `net/`, and Task 10 proves `same` against Task 1's 55 baselines.
 - **Types.** The names match across tasks:
   - `ShipCommand` (Task 2) is used by input.ts, actions.ts, scene.ts and the tests.
   - `ShipControl.tile` (Task 2) is used by the hover (Task 5).
   - `Placement` (interiorCamera.ts) is used by `shipControlAt`, `InteriorView.placement` and `DuelScene.interiorPlacement`.
   - `PowerColumn` and `ShipHudView.power` (Task 1) are used by Task 4.
   - `hud-power-<n>` and `hud-coolant-<n>` (Task 4) are used by the smoke (Task 11).
-  - `Weapon`, `CardWeapon` (`'pew' | 'laser' | 'torpedo'`, Task 8) are used by the controller, the layout, the block and the targeting line.
+  - `CardWeapon` (`'pew' | 'laser' | 'torpedo'`, Task 8) is used by the layout and the block only; the contact controller's `Weapon` stays `'laser' | 'torpedo'`.
   - `FogView` (Task 9) is used by the map models and the scene.
 - **Placeholders.** Only the report's `<…>` measured values are left open, and they are filled from named runs.

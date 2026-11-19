@@ -18,10 +18,10 @@
 - A new duel module `power` (`sim/duel/power.ts`, between `helm` and `interior`) holds heat, coolant and failed flags and the rules that move bars.
 - `sim/duel/hazards.ts` holds the duel's own Life Support injection, door and airlock toggles, breach patching and the work-job picker.
 - `stepDuelTick` gains the spec §7 order: power commands → work → movement → doorSystem → stepDuel → hit damage → firePhase (cadence, fire roll, breach roll) → clampToCapacity → on the hazard tick injection, oxygenStep, fireStep, heat → health (fire, then low air).
-- SIM_VERSION goes 53 → 54 as a version-only, blessed step first (Task 1). Every gameplay change after it is a same-version bless at 54 (Task 12).
+- SIM_VERSION goes 54 → 55 as a version-only, blessed step first (Task 1). Every gameplay change after it is a same-version bless at 55 (Task 12).
 - **What each system's bars do, isolated (coordinator 2026-11-18).** Spec §10 (Amendment 2) is binding and overrides §2 and §9 where they differ. Each of the Engines, Weapons and Sensors effects has its own self-contained task near the end, so it can be replaced without touching the rest:
   - **Task 8:** Engines → throttle cap (1 bar = 25 %) and engine factor;
-  - **Tasks 9a and 9b:** Weapons → the officer's allocation across pew pew, the beam and the torpedo (`weaponPower`), then each weapon's effects;
+  - **Tasks 9a and 9b:** Weapons → the officer's allocation across pew pew, the beam and the torpedo (`weaponPower`), then the beam's and the torpedo's effects. Pew pew is W-1's weapon (spec §11) and gets no effect here;
   - **Task 10:** Sensors → range and the fog gates, scan rate, and capacity lost to Ops hazards.
   Each one can be replaced without touching Tasks 1 to 7 (bars, the ship module, effectiveBars, shields, heat, coolant, the clamp, oxygen, breaches, fire, doors, the command plumbing). Until its task lands, that system's bars are counted and clamped but read by nothing: Engines, Weapons and Sensors keep today's Room-damage rules.
 
@@ -33,21 +33,21 @@
 
 **Branch and worktree:**
 
-- All work happens in the git worktree `C:\Users\djuar\FTLite\.worktrees\engineering` on branch `spike/engineering`, made from master (SIM_VERSION 53, after Valkyrn and Sci-2).
+- All work happens in the git worktree `C:\Users\djuar\FTLite\.worktrees\engineering` on branch `spike/engineering`, made from master (SIM_VERSION 54, after Valkyrn, Sci-2 and asteroids-ii).
 - The controller creates the worktree with its junctions (`node_modules`, `services\signalling\node_modules`, `.art`, `public\assets\paid`). Executors do not.
 - Every command runs from the worktree root. The oracle and trace baselines check their `cwd`, so record them in this worktree.
 
 ## Global Constraints
 
-- **Version.** Part i owns SIM_VERSION **53 → 54 on `spike/engineering` only**.
-  1. Task 1 records the baselines at 53 (`npx tsx scripts/golden/canonical-trace.ts baseline`, `npx tsx scripts/golden/duel-oracle.ts baseline`).
+- **Version.** Part i owns SIM_VERSION **54 → 55 on `spike/engineering` only**.
+  1. Task 1 records the baselines at 54 (`npx tsx scripts/golden/canonical-trace.ts baseline`, `npx tsx scripts/golden/duel-oracle.ts baseline`).
   2. Task 1 bumps the version alone and runs `npm run bless`. The bless guard runs the per-tick proofs and they must pass, because no gameplay has changed yet.
-  3. Tasks 2 to 11 change gameplay at 54. Task 12 re-blesses with a same-version `npm run bless`, which is allowed as "a deliberate gameplay change" (`scripts/golden/blessGuard.ts`).
+  3. Tasks 2 to 11 change gameplay at 55. Task 12 re-blesses with a same-version `npm run bless`, which is allowed as "a deliberate gameplay change" (`scripts/golden/blessGuard.ts`).
   4. Never pass `--fresh`. Never hand-edit goldens. Never re-record the baselines after Task 1.
 - **Generated files come only from `npm run bless`:** `tests/golden/basic.json`, `tests/golden/duel-1.json`, `tests/golden/duel-rematch.json`, `tests/fixtures/determinism-v2.json`.
 - **The fallout rule (Decision 9, binding on every task).** Doors now close, fire follows oxygen and spreads, shields start at 1 layer, hits breach, and Weapons and Engines damage 1 no longer slows a ship holding 2 bars. Existing tests will fail. Classify each failure exactly once:
   - **(a) The test pins a rule the spec replaces.** Examples: doors held open at creation, `DUEL_FIRE_GROW` growth, "a fire never goes out by itself", shields start at 2, one draw per hit, `rooms[Weapons] ≥ 2` as the crew's laser gate, the ENGINE_FACTOR level table for ship 0, the duel module kind list, the snapshot layout, the flatten key list. Update the test to the new rule, citing "Engineering spike spec §n" in a comment on the changed line.
-  - **(b) The test pins a number that comes from a whole run.** Examples: tick counts, outcomes, telemetry totals, golden hashes, scripted-duel results such as `tests/tacticalSlots.test.ts:161`. Goldens change only through Task 12's bless. Any other pinned number changes to the new value, with the comment `// Engineering spike (SIM 54): was <old>`.
+  - **(b) The test pins a number that comes from a whole run.** Examples: tick counts, outcomes, telemetry totals, golden hashes, scripted-duel results such as `tests/tacticalSlots.test.ts:161`. Goldens change only through Task 12's bless. Any other pinned number changes to the new value, with the comment `// Engineering spike (SIM 55): was <old>`.
   - **(c) The test is a balance gate or band.** Examples: `tests/duelGates.test.ts` aggregates, the survival and passive bands, the Valkyrn pilot gate bands. Mark it `it.skip`, with a comment on the line above: `// Engineering spike (branch only): band out of range after the spike's rules; recorded in docs/superpowers/research/2026-11-18-engineering-spike.md, not re-tuned`. Copy the failing values into the report's gate table (Task 12).
   - Never edit a band's limits. Never delete a test. Never skip a test of kind (a) or (b).
 - **Sim rules:**
@@ -62,12 +62,12 @@
     - the functions `knock(k)`, `damageCapacity(sys, k)`, `effectiveBars(sys, k)`;
     - Task 8 (Engines, spec §10.2): `THROTTLE_CAP_BY_BARS = [0,1,2,3,4,4]`, `ENGINE_FACTOR_BY_BARS = [0,1,1,1,1,1.25]`, `throttleCap(sys)`, `throttleAllowed(sys, level)`;
     - Task 9a (Weapons allocation, spec §10.3): `WeaponSlot = { Pew: 0, Beam: 1, Torpedo: 2 }`, `WEAPON_SLOTS = 3`, `WEAPON_BAR_MAX = 3`, `START_WEAPON_POWER = [1,0,1]`, `weaponBarsUsable(sys)`, `trimmedWeaponPower(sys)`, `weaponBars(sys, slot)`;
-    - Task 9b (Weapons effects, spec §10.3), by a weapon's bars 0..4 (4 = the overdrive bar: 3's effect at 1.25× the rate): `PEW_SHOTS_BY_BARS = [0,2,3,3,3]`, `PEW_RATE_BY_BARS = [0,27,27,40,50]`, `BEAM_SHOTS_BY_BARS = [0,1,2,2,2]`, `BEAM_RATE_BY_BARS = [0,40,40,60,75]`, `TORPEDO_RELOAD_BY_BARS = [0,4,6,8,10]`, `TORPEDO_LEVELS_BY_BARS = [1,1,1,2,2]`, `MAGAZINE_REGEN_UNITS = 10800`;
+    - Task 9b (Weapons effects, spec §10.3, §11), by a weapon's bars 0..4 (4 = the overdrive bar: 3's effect at 1.25× the rate): `BEAM_SHOTS_BY_BARS = [0,1,2,2,2]`, `BEAM_RATE_BY_BARS = [0,40,40,60,75]`, `TORPEDO_RELOAD_BY_BARS = [0,4,6,8,10]`, `TORPEDO_LEVELS_BY_BARS = [1,1,1,2,2]`, `MAGAZINE_REGEN_UNITS = 10800`. There is no pew pew table.
     - Task 10 (Sensors, spec §10.4): `SCAN_SCIENCE_BY_BARS = [0,5,6,7,8]`, `SCAN_OTHER_BY_BARS = [0,2,2,3,3]`, `SENSOR_RANGE_BY_BARS = [300,900,1400,2000,2800]`.
-  - **`ShipSystems`** gains `bars: number[5]` (Task 2), `weaponPower: number[3]` (Task 9a, 0..4 each, after `bars` in the `ship` module) and pew pew's `pewCharge`, `pewHold`, `pewLock`, `pewTargeted`, `pewBurst`, `pewBurstClock` (Task 9b, at the end of the systems tail).
-  - **`sim/tactical/weapons.ts` (Task 9b):** `type Barrel = 'beam' | 'pew'`, `barrelShots(state, i, barrel)`, `laserFull(state, i, barrel = 'beam')`, `laserOffline(state, i, barrel = 'beam')`, `crewSees(state, j)`; `ShipInput.pewLock?` and `pewCharge?`. The laser event gains an optional `weapon?: 'pew'`.
+  - **`ShipSystems`** gains `bars: number[5]` (Task 2) and `weaponPower: number[3]` (Task 9a, 0..4 each, after `bars` in the `ship` module). There are no pew pew fields (spec §11).
+  - **`sim/tactical/weapons.ts` (Task 9b):** `beamShots(state, i)`. `laserFull(state, i)` and `laserOffline(state, i)` keep today's signatures, because the beam is the laser. `ShipInput` and the laser event are unchanged.
   - **`sim/tactical/science.ts` (Task 10):** `sensorRange(sys)`, `pointSeen(t, x, y)`, `shipSeen(t, i)`, `contactSeen(t, contact)`, `scanProgressRate(t)`. Part ii's fog drawing reads these.
-  - **The `weaponPower` command** `{ kind: 'weaponPower'; slot: number; delta: number }` (Task 9a) is for the Weapons seat only. Its reasons, in order: `stale-tick` → `not-at-weapons` → `malformed` → `unavailable`. `laserLock` and `laserCharge` gain `weapon?: 'beam' | 'pew'` (absent means the beam; Task 9b).
+  - **The `weaponPower` command** `{ kind: 'weaponPower'; slot: number; delta: number }` (Task 9a) is for the Weapons seat only. Its reasons, in order: `stale-tick` → `not-at-weapons` → `malformed` → `unavailable`. The laser commands are unchanged: they get no `weapon` field (spec §11).
   - **`sim/duel/power.ts`:**
     - it re-exports the bars.ts names, plus `COOLANT_POOL_DUEL = 8`, `COOLANT_MAX_PER_SYSTEM = 2`, `POWER_VALUES = 15`;
     - `interface PowerState { heat: number[]; coolant: number[]; failed: number[] }`, each 5 long, `failed` holding 0 or 1;
@@ -113,40 +113,35 @@ Line numbers were verified against master at `cf4d6775`, which already carries V
 14. **The door toggle** is Closed/Open → HeldOpen and HeldOpen → Closed, each zeroing `closeTimer` and `sealRequested`. Sealed is unreachable in the duel. `createDuel` no longer fills `HeldOpen`, so doors start `DoorState.Closed` (createSimState's default).
 15. **No quirk.** createDuel passes `{ quirk: 3 }` (Lucky Hull) to createSimState. Its only hook is sector debris (`sim/quirks.ts`), which the duel never runs. The quirk draw itself is still made, as createSimState always does.
 16. **The throttle cap and the bots (Task 8).** Both bots ask for throttle 4 at full thrust: the scripted pair (`sim/duel/scripted.ts:318-320`) and the Valkyrn pilot (`sim/duel/scriptedPilot.ts`, via `flight` and `PILOT_AWAY_THROTTLE`). `runDuel` and `runValkyrnDuel` throw on any refused scripted command (`tests/helpers/scriptedDuel.ts:39`). With a cap of 3 at the start (Engines 3 bars, spec §10.2), every golden and gate run would throw. So both bots pass their wanted level through `levelWithinCap` (the cap for forward, 0 for a reverse at cap 0) before comparing it with `d.throttle`. This is a sim change to the bots, recorded in the report.
-17. **Weapons (Tasks 9a and 9b).**
+17. **Weapons (Tasks 9a and 9b; spec §10.3, §11).**
     - **The trim is computed, not stored, for every reader.** `trimmedWeaponPower` first drops any 4th bar when the Weapons system lacks its overdrive bar, then takes bars one at a time from the highest slot (torpedo, then beam, then pew pew) until no more are spent than the effective Weapons bars. A hit inside stepDuel therefore trims at once, and `clampToCapacity` writes the trimmed values back.
     - **A 4th bar** is allowed only while the Weapons system's effective bars exceed `SYSTEM_MAX` (9), and on one weapon at a time. A weapon at 4 has 3's effect at 1.25× its charge or reload (the tables' last column).
-    - **Pew pew** is a second laser on the crew's class laser (range, arc, hull, burst gap, charge units) with its own six fields. It shares `freq` and the `shots`, `laserHits` and `layersStripped` counters, so hostility and telemetry count its shots as laser shots. Its events carry `weapon: 'pew'`.
-    - **Starting state.** Pew pew starts full and targeted on Shields, like the beam. The beam at 0 bars is offline, so its charge is zeroed every tick.
-    - **The Valkyrn gun class (laser null)** has neither laser.
-    - **A crew torpedo already in flight when its bars go** hits for 1 level (`TORPEDO_LEVELS_BY_BARS[0] = 1`).
-    - **The torpedo's auto-launch** needs the target seen, like auto-fire (`crewSees`).
-    - **`ShipInput.pewLock` and `pewCharge` are optional,** so the dozen ShipInput literals in tests compile unchanged.
+    - **Pew pew (slot 0) is W-1's weapon (spec §11).** Its bars count in the allocation and the trim and have no effect. There are no pew pew fields, commands or events.
+    - **The beam is the laser.** The crew's laser fires `beamShots` (by the beam's bars) per release and charges at `BEAM_RATE_BY_BARS`. At 0 beam bars `laserOffline` is true, which zeroes the charge as today's offline laser does, and the round starts that way.
+    - **The torpedo.** At 0 torpedo bars it cannot launch and its magazine clock holds. A crew torpedo already in flight when its bars go hits for 1 level (`TORPEDO_LEVELS_BY_BARS[0] = 1`).
+    - **The Valkyrn gun class (laser null)** has no beam. Its gun keeps today's rules.
 18. **Sensors (Task 10).**
-    - **The fog lives in `science.ts`.** `weapons.ts` imports `shipSeen` from it, and science.ts imports nothing from weapons.ts, so there is no import cycle.
+    - **The fog lives in `science.ts`.** `weapons.ts` imports `shipSeen` from it for auto-fire and auto-launch on the enemy (a rock target needs no sight: rocks are always shown). science.ts imports nothing from weapons.ts, so there is no import cycle.
     - **"Seen" means within sensor range of the crew ship's centre.** The enemy contact is the crew's target ship. The derelict uses `derelictPos`.
     - **Hazard capacity.** Sensors capacity from hazards is a duel rule (`sim/duel/sensors.ts`, via `capacityOf`), because tactical code can't see the interior. A clamp after the hazard tick catches fires that spread or ignite there.
-    - **The gates** are on `contactScan`, `laserLock` and `torpLock` with a room ≥ 0 (clearing needs nothing seen), and on `designate` with a contact ≥ 0. A running scan pauses while its contact is unseen.
+    - **The gates** are on `contactScan`, `laserLock` and `torpLock` with a room ≥ 0 (clearing needs nothing seen), and on `designate` with a contact ≥ 0. `rockLock` is not gated, because rocks are always shown. A running scan pauses while its contact is unseen.
     - **The scripted gunner** sends no lock while the target is unseen.
-19. **Measurements for the report (spec §1)** come from `scripts/engineering-spike-measure.ts`, run at 53 (Task 1) and at the end (Task 12): the flattened duel length for a Hound duel, and the mean ms per tick over a 3600-tick scripted Cutter duel. Task 12 adds the gate table. Part ii adds feel and screenshots to the same report file.
-20. **The bots fight with pew pew (Task 9b Step 7b).** The beam starts dark, so:
-    - the scripted Helm lines up when either laser is full and targeted;
-    - the scripted gunner re-locks with `laserLock { weapon: 'pew' }` and holds the torpedo while pew pew has a shot;
-    - telemetry's `weaponsIdleTicks` counts a full laser on either barrel.
-    The console's "WEAPONS OFFLINE" situation is Part ii's.
+19. **Measurements for the report (spec §1)** come from `scripts/engineering-spike-measure.ts`, run at 54 (Task 1) and at the end (Task 12): the flattened duel length for a Hound duel, and the mean ms per tick over a 3600-tick scripted Cutter duel. Task 12 adds the gate table. Part ii adds feel and screenshots to the same report file.
+20. **The bots move pew pew's bar to the beam (Task 9b Step 6; spec §11).** The beam starts dark and pew pew does nothing on this branch. So the scripted gunner, on its first seated tick (whenever pew pew still holds a bar), sends `weaponPower { slot: 0, delta: −1 }` and then `{ slot: 1, delta: +1 }`. Both always apply, as `runDuel`'s `requireApplied` requires. It then fights with the beam and the torpedo as today. The Valkyrn pilot needs no move: the gun Valkyrn has no laser, and its torpedo starts powered. Telemetry stays on the beam. Human players keep the owner's start [1, 0, 1].
 21. **The Shield loot is cancelled by the cap (spike only).** The derelict's Shield loot (`sim/tactical/science.ts:74`) adds a layer over the class layers, but the crew's shield cap (Task 3) drops any layer above `SHIELD_LAYERS_BY_BARS[bars]` the same tick. In the spike that loot does nothing. Task 12 notes it in the report's known limits; the bar cap is not changed for it.
+22. **The pew pew plug-in at merge (spec §11) is out of this plan.** Whichever branch merges second (this one or `w1-pew-pew`) wires pew pew's bars into W-1's recharge (`PEW_TICKS_BY_BARS`). Task 12's report lists "pew pew not playable in the spike" under Known limits.
 
 ## File structure
 
 | File | Change | Responsibility |
 |---|---|---|
-| `src/renderer/src/sim/tuning.ts` | modify (T1) | SIM_VERSION 54 |
+| `src/renderer/src/sim/tuning.ts` | modify (T1) | SIM_VERSION 55 |
 | `scripts/engineering-spike-measure.ts` | create (T1) | snapshot length and tick cost |
 | `docs/superpowers/research/2026-11-18-engineering-spike.md` | create (T1), modify (T12) | the report's sim measurements, gate table, determinism |
 | `src/renderer/src/sim/tactical/bars.ts` | create (T2), append (T8, T9a, T9b, T10) | systems, slots, shield and oxygen tables, `knock`, `damageCapacity`, `effectiveBars`; then the isolated Engines, Weapons and Sensors sections |
-| `src/renderer/src/sim/tactical/state.ts` | modify (T2, T9a, T9b) | `ShipSystems.bars`, `weaponPower`, the pew fields, the laser event's `weapon?`; the start values; the 1-layer start |
-| `src/renderer/src/sim/tactical/hash.ts` | modify (T2, T9a, T9b) | the `bars`, `weaponPower` and pew fields, rules and clone |
-| `src/renderer/src/sim/tactical/weapons.ts` | modify (T3), replace (T9b), modify (T10) | shields by bars (T3); the beam and pew pew barrels, per-weapon shots, rates and the torpedo (T9b); `crewSees` (T10) |
+| `src/renderer/src/sim/tactical/state.ts` | modify (T2, T9a) | `ShipSystems.bars`, `weaponPower`; the start values; the 1-layer start |
+| `src/renderer/src/sim/tactical/hash.ts` | modify (T2, T9a) | the `bars` and `weaponPower` fields, rules and clone |
+| `src/renderer/src/sim/tactical/weapons.ts` | modify (T3, T9b, T10) | shields by bars (T3); the beam's shots and charge and the torpedo by their bars (T9b); auto-fire and auto-launch need the enemy seen (T10) |
 | `src/renderer/src/sim/tactical/missiles.ts` | modify (T9b) | the crew torpedo's levels |
 | `src/renderer/src/sim/tactical/physics.ts`, `predict.ts` | modify (T8) | `shipEngineFactor`, `flyShip(…, factor)`, flySlot and predictFlight |
 | `src/renderer/src/sim/tactical/science.ts` | modify (T10) | the fog (`sensorRange`, `pointSeen`, `shipSeen`, `contactSeen`), `scanProgressRate`, the scan pause |
@@ -157,10 +152,10 @@ Line numbers were verified against master at `cf4d6775`, which already carries V
 | `src/renderer/src/sim/duel/state.ts` | modify (T4, T6, T7) | `power`, `systemRooms`, quirk 3, doors Closed, cause `'air'` |
 | `src/renderer/src/sim/duel/modules.ts` | modify (T4) | powerModule in DUEL_MODULES, `systemRooms` excluded |
 | `src/renderer/src/sim/duel/snapshot.ts` | modify (T4) | the power values' offset and validation |
-| `src/renderer/src/net/contracts.ts`, `net/codec.ts` | modify (T5, T9a, T9b) | the four ship commands; `weaponPower`; the laser commands' `weapon` |
+| `src/renderer/src/net/contracts.ts`, `net/codec.ts` | modify (T5, T9a) | the four ship commands; `weaponPower` |
 | `src/renderer/src/sim/duel/hazards.ts` | create (T5), modify (T6, T7) | toggles; injection; sites, fire tiles, jobs, patching |
-| `src/renderer/src/sim/duel/step.ts` | modify (T5 to T10) | commands, clamp, doorSystem, hazard tick, the work phase, the throttle cap, weaponPower, `weapon`, the fog gates |
-| `src/renderer/src/sim/duel/scripted.ts` | modify (T8, T10) | the scripted pair's throttle within the cap; no lock on an unseen target |
+| `src/renderer/src/sim/duel/step.ts` | modify (T5 to T10, not T9b) | commands, clamp, doorSystem, hazard tick, the work phase, the throttle cap, weaponPower, the fog gates |
+| `src/renderer/src/sim/duel/scripted.ts`, `scriptedPilot.ts` | modify (T6, T8, T9b, T10) | bot pathing through auto doors (T6); throttle within the cap (T8); pew pew's bar to the beam (T9b); no lock on an unseen target (T10) |
 | `src/renderer/src/sim/duel/fire.ts`, `duel/tuning.ts` | modify (T6, T7) | no DUEL_FIRE_GROW; extinguishRoomWork, hitRolls; breach and air constants |
 | `src/renderer/src/sim/duel/health.ts` | modify (T7) | low-air damage |
 | `tests/engBars`, `engPower`, `engCommands`, `engHazards`, `engWork`, `engEngines`, `engWeaponPower`, `engWeapons`, `engSensors`, `engDeterminism` `.test.ts` | create | the spec §8 and §10 sim tests |
@@ -168,7 +163,7 @@ Line numbers were verified against master at `cf4d6775`, which already carries V
 
 ---
 
-### Task 1: The version-only bump to 54, and the baseline measurements
+### Task 1: The version-only bump to 55, and the baseline measurements
 
 **Files:**
 - Modify: `src/renderer/src/sim/tuning.ts:7`
@@ -178,9 +173,9 @@ Line numbers were verified against master at `cf4d6775`, which already carries V
 
 **Interfaces:**
 - Consumes: `runDuel` (`tests/helpers/scriptedDuel.ts:49`), `createDuel`, `flattenDuel`, `parseShip`.
-- Produces: SIM_VERSION 54; the report file with a "Sim measurements" table that Task 12 completes.
+- Produces: SIM_VERSION 55; the report file with a "Sim measurements" table that Task 12 completes.
 
-- [ ] **Step 1: Record the baselines at 53**
+- [ ] **Step 1: Record the baselines at 54**
 
 Run, in this order:
 
@@ -189,7 +184,7 @@ npx tsx scripts/golden/canonical-trace.ts baseline
 npx tsx scripts/golden/duel-oracle.ts baseline
 ```
 
-Expected: both print that a baseline was written, at sim version 53.
+Expected: both print that a baseline was written, at sim version 54.
 
 - [ ] **Step 2: Write the measurement script**
 
@@ -220,12 +215,12 @@ for (let k = 0; k < 3; k++) {
 console.log(JSON.stringify({ simVersion: SIM_VERSION, houndDuelValues: values, msPerTick: Number(best.toFixed(4)), ticks: TICKS }));
 ```
 
-- [ ] **Step 3: Run it at 53 and write the report skeleton**
+- [ ] **Step 3: Run it at 54 and write the report skeleton**
 
 Run: `npx tsx scripts/engineering-spike-measure.ts`
-Expected: one JSON line with `"simVersion":53`.
+Expected: one JSON line with `"simVersion":54`.
 
-Create `docs/superpowers/research/2026-11-18-engineering-spike.md`, putting the printed numbers in place of `<v53>` and `<ms53>`:
+Create `docs/superpowers/research/2026-11-18-engineering-spike.md`, putting the printed numbers in place of `<v54>` and `<ms54>`:
 
 ```markdown
 # Engineering spike report (2026-11-18)
@@ -234,10 +229,10 @@ Spec: docs/superpowers/specs/2026-11-18-engineering-spike-design.md. Branch `spi
 
 ## Sim measurements (Part i)
 
-| Measure | Before (SIM 53) | After (SIM 54) |
+| Measure | Before (SIM 54) | After (SIM 55) |
 |---|---|---|
-| Hound duel flattened values | <v53> | (Task 12) |
-| ms per tick, 3600-tick scripted Cutter duel, best of 3 | <ms53> | (Task 12) |
+| Hound duel flattened values | <v54> | (Task 12) |
+| ms per tick, 3600-tick scripted Cutter duel, best of 3 | <ms54> | (Task 12) |
 
 ## Gates and bands after the spike (Part i, Task 12)
 
@@ -250,7 +245,7 @@ Spec: docs/superpowers/specs/2026-11-18-engineering-spike-design.md. Branch `spi
 
 - [ ] **Step 4: Bump the version alone**
 
-In `src/renderer/src/sim/tuning.ts`, change `export const SIM_VERSION = 53;` to `export const SIM_VERSION = 54;`.
+In `src/renderer/src/sim/tuning.ts`, change `export const SIM_VERSION = 54;` to `export const SIM_VERSION = 55;`.
 
 - [ ] **Step 5: Bless**
 
@@ -266,7 +261,7 @@ Expected: PASS.
 
 ```bash
 git add src/renderer/src/sim/tuning.ts scripts/engineering-spike-measure.ts docs/superpowers/research/2026-11-18-engineering-spike.md tests/golden/basic.json tests/golden/duel-1.json tests/golden/duel-rematch.json tests/fixtures/determinism-v2.json
-git commit -m "chore(engineering-spike): SIM_VERSION 54 (version only, blessed) and the baseline measurements" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "chore(engineering-spike): SIM_VERSION 55 (version only, blessed) and the baseline measurements" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -517,9 +512,9 @@ with
 - [ ] **Step 6: Update the flatten key guard**
 
 In `tests/tacticalDeterminism.test.ts`:
-- change the systems key list (line 115) to begin with `'bars'`: the sorted list starts `['bars', 'cls', 'fireHeld', ...`;
-- change `2 * 37` to `2 * 42` in the `expect(flattenTactical(st).length)` line (line 123);
-- append `; Engineering spike spec §2: per slot the 5 bars.` to the end of the comment just above it (the comment's last line is line 122).
+- change the systems key list (line 116) to begin with `'bars'`: the sorted list starts `['bars', 'cls', 'fireHeld', ...`;
+- change `2 * 41` to `2 * 46` in the `expect(flattenTactical(st).length)` line (line 127);
+- append `; Engineering spike spec §2: per slot the 5 bars.` to the end of the comment just above it (lines 124 to 126).
 
 - [ ] **Step 7: Run the tests**
 
@@ -972,7 +967,7 @@ In `tests/duelModules.test.ts`:
 - Line 42: add `powerModule` to the `duelNames` list after `helmModule`.
 - Line 107: the hash loop `for (const { module, state } of DUEL_MODULES.slice(0, 5)) {` becomes `for (const { module, state } of DUEL_MODULES.filter(({ module }) => module.id !== 'interior')) {   // Engineering spike spec §7: every non-interior module, power included`. With power added after helm, `slice(0, 5)` would silently skip helm and power.
 - Line 140 (the explicit flatten expectation): after `d.throttle, d.holdHeading,` insert `...d.power.heat, ...d.power.coolant, ...d.power.failed,`.
-- Line 150: the sorted kind list becomes `['contactScan', 'designate', 'heading', 'laserCharge', 'laserFrequency', 'laserLock', 'missileLaunch', 'presence', 'rematch', 'shipAirlock', 'shipCoolant', 'shipDoor', 'shipPower', 'sit', 'stand', 'throttle', 'torpLock']`.
+- Line 150: the sorted kind list becomes `['contactScan', 'designate', 'heading', 'laserCharge', 'laserFrequency', 'laserLock', 'missileLaunch', 'presence', 'rematch', 'rockLock', 'shipAirlock', 'shipCoolant', 'shipDoor', 'shipPower', 'sit', 'stand', 'throttle', 'torpLock']`.
 - Mark each changed line `// Engineering spike spec §7`.
 
 - [ ] **Step 8: Run the tests**
@@ -1195,13 +1190,13 @@ import { toggleAirlock, toggleDoor, validAirlock, validDoor } from './hazards';
 (b) Replace
 
 ```ts
-const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'torpLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency'];
+const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency'];
 ```
 
 with
 
 ```ts
-const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'torpLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency',
+const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency',
   'shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock'];   // Engineering spike spec §7
 /** Engineering spike spec §7: the ship-view commands. */
 const SHIP_KINDS = new Set(['shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock']);
@@ -2325,7 +2320,7 @@ Append to `src/renderer/src/sim/tactical/bars.ts`:
 
 ```ts
 // ---- Weapons, the allocation (Task 9a; Engineering spike spec §10.3, Amendment 2; isolated) ----
-/** Spec §10.3: the three crew weapons in slot order: pew pew (a burst laser), the beam (today's laser), the torpedo. */
+/** Spec §10.3, §11: the three crew weapons in slot order: pew pew (W-1's weapon: its bars have no effect on this branch), the beam (today's laser), the torpedo. */
 export const WeaponSlot = { Pew: 0, Beam: 1, Torpedo: 2 } as const;
 export const WEAPON_SLOTS = 3;
 /** A weapon's bars without the overdrive bar; the overdrive bar can be one weapon's 4th (spec §10.3). */
@@ -2377,7 +2372,7 @@ In `src/renderer/src/sim/tactical/hash.ts`:
 
 In `tests/tacticalDeterminism.test.ts`:
 - add `'weaponPower'` at the end of the sorted systems key list;
-- change `2 * 42` to `2 * 45`, appending `and the 3 weaponPower values` to the comment.
+- change `2 * 46` to `2 * 49`, appending `and the 3 weaponPower values` to the comment.
 
 - [ ] **Step 5: `sim/duel/weaponSlots.ts` and the clamp**
 
@@ -2467,137 +2462,123 @@ git commit -m "feat(engineering-spike): the Weapons officer splits the Weapons b
 
 ---
 
-### Task 9b (isolated): Weapons → pew pew, the beam and the torpedo by their bars (spec §10.3)
+### Task 9b (isolated): Weapons → the beam and the torpedo by their bars (spec §10.3, §11)
 
-**Isolation:** everything this task adds lives in:
+**Isolation and §11:** pew pew is W-1's weapon (spec §11, built on branch `w1-pew-pew`), so this task builds no pew pew. Its slot 0 keeps its bars in `weaponPower` and in the trim, with no effect. Everything this task adds lives in:
 - the second part of the "Weapons" section of `bars.ts`;
-- the six pew fields on `ShipSystems`;
-- the rewritten `sim/tactical/weapons.ts`;
+- the crew branches of `laserOffline`, `canLaunch`, `fireLaser`, `stepBurst` and `tickWeapons` in `sim/tactical/weapons.ts`;
 - the torpedo's levels in `missiles.ts`;
-- the `weapon` field of the laser commands;
-- the laser event's optional `weapon`.
-The Hunter's laser and torpedo are unchanged.
+- the scripted gunner's first move.
+`laserFull` and `laserOffline` keep today's signatures (the beam is the laser). The Hunter's laser and torpedo are unchanged.
 
 **Files:**
 - Modify: `src/renderer/src/sim/tactical/bars.ts` (append the Weapons effects section)
-- Modify: `src/renderer/src/sim/tactical/state.ts` (the pew fields; the laser event's `weapon?`)
-- Modify: `src/renderer/src/sim/tactical/hash.ts` (the pew fields, rules)
-- Replace: `src/renderer/src/sim/tactical/weapons.ts` (the whole file, below)
+- Modify: `src/renderer/src/sim/tactical/weapons.ts` (laserOffline, canLaunch, fireLaser, stepBurst, tickWeapons)
 - Modify: `src/renderer/src/sim/tactical/missiles.ts` (`land`: the crew torpedo's levels)
-- Modify: `src/renderer/src/net/contracts.ts`, `src/renderer/src/net/codec.ts` (the laser commands' `weapon`)
-- Modify: `src/renderer/src/sim/duel/step.ts` (the laser commands fold into `pewLock` and `pewCharge`)
-- Modify: `src/renderer/src/sim/duel/scripted.ts` (the Helm and gunner treat pew pew as the primary weapon), `src/renderer/src/sim/duel/telemetry.ts:161` (weaponsIdleTicks counts either barrel)
-- Modify: `tests/tacticalDeterminism.test.ts`, `tests/duelModules.test.ts:58`
+- Modify: `src/renderer/src/sim/duel/scripted.ts` (`gunner`: pew pew's bar to the beam, Decision 20)
 - Test: `tests/engWeapons.test.ts`
 
 **Interfaces:**
-- Consumes: Task 9a's `weaponBars` and `WeaponSlot`; Task 3's shield tables.
-- Produces:
-  - `BEAM_SHOTS_BY_BARS`, `BEAM_RATE_BY_BARS`, `PEW_SHOTS_BY_BARS`, `PEW_RATE_BY_BARS`, `TORPEDO_RELOAD_BY_BARS`, `TORPEDO_LEVELS_BY_BARS`, `MAGAZINE_REGEN_UNITS` (bars.ts);
-  - `type Barrel = 'beam' | 'pew'`, `barrelShots(state, i, barrel)`, `laserFull(state, i, barrel = 'beam')`, `laserOffline(state, i, barrel = 'beam')`, `crewSees(state, j)` (weapons.ts; Task 10 replaces the body of `crewSees`);
-  - `ShipInput.pewLock?` and `pewCharge?`;
-  - `ShipSystems.pewCharge`, `pewHold`, `pewLock`, `pewTargeted`, `pewBurst`, `pewBurstClock`;
-  - the laser commands' `weapon?: 'beam' | 'pew'`.
+- Consumes: Task 9a's `weaponBars` and `WeaponSlot`.
+- Produces: `BEAM_SHOTS_BY_BARS`, `BEAM_RATE_BY_BARS`, `TORPEDO_RELOAD_BY_BARS`, `TORPEDO_LEVELS_BY_BARS`, `MAGAZINE_REGEN_UNITS` (bars.ts); `beamShots(state, i): number` (weapons.ts).
 
 - [ ] **Step 1: Write the failing test**
 
 Create `tests/engWeapons.test.ts`:
 
 ```ts
-// Engineering spike spec §10.3 (Amendment 2): pew pew (a second laser on today's rules and its own state: 2/3/3 shots,
-// charge 27/27/40), the beam (today's laser: 1/2/2 shots, charge 40/40/60), the torpedo (reload 4/6/8, 3 bars → hits
-// raise the Room 2 levels), the overdrive 4th bar (3's effect at 1.25× the rate), 0 bars off; the Hunter unchanged.
+// Engineering spike spec §10.3, §11 (Amendments 2 and 3): the beam (today's laser: 1/2/2 shots, charge 40/40/60, 75 on
+// the overdrive bar) and the torpedo (reload 4/6/8, 10 on the overdrive bar; 3 bars hit 2 Room levels) by the bars the
+// officer gave them; 0 bars is off; pew pew's slot holds bars with no effect; the Hunter unchanged; the scripted gunner
+// moves pew pew's bar to the beam.
 import { describe, expect, it } from 'vitest';
-import { barrelShots, canLaunch, IDLE_INPUT, laserOffline, tickWeapons, applyWeaponsInput, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
+import { beamShots, canLaunch, IDLE_INPUT, laserOffline, tickWeapons } from '../src/renderer/src/sim/tactical/weapons';
 import { MAGAZINE_REGEN_UNITS, WeaponSlot } from '../src/renderer/src/sim/tactical/bars';
-import { createTacticalState, placeMissile, Room, type DuelEvent, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { createTacticalState, placeMissile, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { resolveMissiles } from '../src/renderer/src/sim/tactical/missiles';
-import { LASER_BURST_GAP_TICKS, LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
-import { makeHostile } from './helpers/hostile';
+import { CUTTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
+import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
+import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
+import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
+import { requireApplied, CUTTER } from './helpers/scriptedDuel';
 
-/** The crew facing the enemy 300 units east, in arc and range, no asteroids (tests/weaponsUpdate.test.ts's idiom). */
-function facing(): TacticalState {
-  const st = makeHostile(createTacticalState(5));
-  st.map = { ...st.map, asteroids: [] };
-  Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
-  Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
+/** A tactical state whose crew Weapons holds 10 bars (all spendable) split as `power`. */
+function powered(power: number[]): TacticalState {
+  const st = createTacticalState(1), sys = st.systems[0];
+  sys.bars[1] = 10; sys.weaponPower = power;
   return st;
 }
-function tick(st: TacticalState, input: ShipInput = IDLE_INPUT): Extract<DuelEvent, { kind: 'laser' }>[] {
-  st.events = [];
-  applyWeaponsInput(st, 0, input); tickWeapons(st, 0, input);
-  st.tick++;
-  return st.events.filter((e): e is Extract<DuelEvent, { kind: 'laser' }> => e.kind === 'laser' && e.ship === 0);
-}
-/** All of ship 0's laser events over n ticks. */
-function volley(st: TacticalState, n: number): Extract<DuelEvent, { kind: 'laser' }>[] { const out = []; for (let k = 0; k < n; k++) out.push(...tick(st)); return out; }
 
-describe('engineering spike: three weapons (spec §10.3)', () => {
-  it('shots by bars: pew pew 0/2/3/3/3, the beam 0/1/2/2/2; 0 bars is offline', () => {
-    const st = createTacticalState(1), sys = st.systems[0];
-    expect([0, 1, 2, 3, 4].map((b) => { sys.weaponPower = [b, b, 0]; sys.bars[1] = 10; return [barrelShots(st, 0, 'pew'), barrelShots(st, 0, 'beam')]; }))
-      .toEqual([[0, 0], [2, 1], [3, 2], [3, 2], [3, 2]]);
-    sys.weaponPower = [1, 0, 1]; sys.bars[1] = 2;
-    expect(laserOffline(st, 0, 'beam')).toBe(true); expect(laserOffline(st, 0, 'pew')).toBe(false);
+describe('engineering spike: the beam and the torpedo by bars (spec §10.3, §11)', () => {
+  it('the beam: 0/1/2/2/2 shots; 0 bars is offline; pew pew\'s bars change nothing', () => {
+    expect([0, 1, 2, 3, 4].map((b) => beamShots(powered([0, b, 0]), 0))).toEqual([0, 1, 2, 2, 2]);
+    expect(laserOffline(powered([1, 0, 1]), 0)).toBe(true);              // the round start: the beam is dark
+    expect(laserOffline(powered([3, 1, 0]), 0)).toBe(false);
+    expect(beamShots(powered([3, 1, 0]), 0)).toBe(beamShots(powered([0, 1, 0]), 0));
   });
-  it('the round start: pew pew fires a 2-shot volley on its own (auto-fire), the beam stays dark', () => {
-    const st = facing();
-    const shots = volley(st, 1 + LASER_BURST_GAP_TICKS + 2);
-    expect(shots.map((e) => e.weapon)).toEqual(['pew', 'pew']);
-    expect(st.systems[0].laserCharge).toBe(0);                          // the dark beam holds no charge
-  });
-  it('charge rates: pew pew 27/27/40/50, the beam 40/40/60/75 per tick', () => {
-    for (const [b, pew, beam] of [[1, 27, 40], [2, 27, 40], [3, 40, 60], [4, 50, 75]] as const) {
-      const st = createTacticalState(1), sys = st.systems[0];
-      sys.bars[1] = 10; sys.weaponPower = [b, b === 4 ? 3 : b, 0];
-      sys.pewCharge = 0; sys.laserCharge = 0; sys.laserTargeted = false; sys.pewTargeted = false;
+  it('the beam charges 40/40/60/75 a tick by its bars', () => {
+    for (const [b, rate] of [[1, 40], [2, 40], [3, 60], [4, 75]] as const) {
+      const st = powered([0, b, 0]), sys = st.systems[0];
+      sys.laserCharge = 0; sys.laserTargeted = false;
       tickWeapons(st, 0, IDLE_INPUT);
-      expect(sys.pewCharge).toBe(pew);
-      if (b !== 4) expect(sys.laserCharge).toBe(beam);
+      expect(sys.laserCharge, `${b} bars`).toBe(rate);
     }
   });
-  it('the torpedo: reload 4/6/8 a tick on the 10800 clock; 0 bars cannot launch or reload; 3 bars hit 2 levels', () => {
-    for (const [b, rate] of [[1, 4], [2, 6], [3, 8]] as const) {
-      const st = createTacticalState(1), sys = st.systems[0];
-      sys.bars[1] = 10; sys.weaponPower = [0, 0, b]; sys.magazine -= 1; sys.magazineClock = 0;
+  it('the torpedo reloads 4/6/8/10 a tick on the 10800 clock; at 0 bars it neither launches nor reloads', () => {
+    for (const [b, rate] of [[1, 4], [2, 6], [3, 8], [4, 10]] as const) {
+      const st = powered([0, 0, b]), sys = st.systems[0];
+      sys.magazine -= 1; sys.magazineClock = 0;
       tickWeapons(st, 0, IDLE_INPUT);
-      expect(sys.magazineClock).toBe(rate);
+      expect(sys.magazineClock, `${b} bars`).toBe(rate);
     }
-    const st = createTacticalState(1), sys = st.systems[0];
-    sys.weaponPower = [1, 0, 0]; sys.magazine -= 1; sys.magazineClock = 0;
+    const st = powered([1, 1, 0]), sys = st.systems[0];
+    sys.magazine -= 1; sys.magazineClock = 0;
     for (let k = 0; k < 3000; k++) tickWeapons(st, 0, IDLE_INPUT);
     expect(sys.magazineClock).toBe(0); expect(canLaunch(st, 0)).toBe(false);
     expect(MAGAZINE_REGEN_UNITS).toBe(10800);
-    const hit = facing(), hs = hit.systems[0];
-    hs.bars[1] = 10; hs.weaponPower = [0, 0, 3]; hs.torpRoom = Room.Engines;
-    placeMissile(hit, 0, { x: hit.ships[1].x, y: hit.ships[1].y, vx: 0, vy: 0, heading: 64, headingAcc: 0, age: 30 });
-    resolveMissiles(hit);
-    expect(hit.systems[1].rooms[Room.Engines]).toBe(2);
   });
-  it('the Hunter keeps today\'s single laser', () => {
+  it('a crew torpedo on 3 bars raises the struck Room 2 levels', () => {
+    const st = powered([0, 0, 3]), hs = st.systems[0];
+    st.ships[0].x = -600; st.ships[0].y = -300; st.ships[1].x = -300; st.ships[1].y = -300;
+    hs.torpRoom = Room.Engines;
+    placeMissile(st, 0, { x: st.ships[1].x, y: st.ships[1].y, vx: 0, vy: 0, heading: 64, headingAcc: 0, age: 30 });
+    resolveMissiles(st);
+    expect(st.systems[1].rooms[Room.Engines]).toBe(2);
+  });
+  it('the Hunter keeps today\'s laser', () => {
     const st = createTacticalState(1);
-    expect(barrelShots(st, 1, 'beam')).toBe(1); expect(barrelShots(st, 1, 'pew')).toBe(0);
-    expect(st.systems[1].laserCharge).toBe(0); expect(LASER_CHARGE_UNITS).toBeGreaterThan(0);
+    expect(beamShots(st, 1)).toBe(1);
+    st.systems[1].rooms[Room.Weapons] = 2; expect(laserOffline(st, 1)).toBe(true);
+    expect(CUTTER_CLASS.slots.laser!.shots).toBe(2);                     // the class keeps 2; the crew's bars decide
+  });
+  it('the scripted gunner moves pew pew\'s bar to the beam on its first seated tick, and every command applies', () => {
+    const d = createDuel(CUTTER, 1), pair = createScriptedPair(1);
+    try {
+      for (let k = 0; k < 1500 && d.tactical.systems[0].weaponPower[WeaponSlot.Beam] === 0; k++) {
+        const input = scriptedInput(pair, d);
+        requireApplied(1, d, input, stepDuelTick(d, input));
+      }
+      expect(d.tactical.systems[0].weaponPower).toEqual([0, 1, 1]);
+    } finally { disposeDuel(d); }
   });
 });
 ```
 
-The hit test assumes a missile at the target's centre lands on it in `resolveMissiles` (the spec §4 contact order). If `land` needs a `torpLock` or owner target, `hs.torpRoom` and `systems[0].target === 1` already hold, because createTacticalState locks slot 0 on slot 1.
+The torpedo-hit test assumes that a missile placed at the target's centre lands on it in `resolveMissiles`. If `land` needs a rock check (`rockBorn`), the fresh state's masks are empty. If the missile is detonated by a rock first, move both ships to a spot the map's asteroids clear (`touchesSolid(st, x, y, 30)` false) before placing it.
 
 - [ ] **Step 2: Run to verify it fails**
 
 Run: `npx vitest run tests/engWeapons.test.ts`
-Expected: FAIL, because `barrelShots` is not exported and `pewCharge` does not exist.
+Expected: FAIL, because `beamShots` is not exported.
 
 - [ ] **Step 3: The Weapons effects section of `bars.ts`**
 
 Append to `src/renderer/src/sim/tactical/bars.ts`:
 
 ```ts
-// ---- Weapons, the effects (Task 9b; Engineering spike spec §10.3, Amendment 2; isolated) ----
-// Indexed by a weapon's bars 0..4; 4 is the overdrive bar, 3's effect at 1.25× the charge or reload rate.
-export const PEW_SHOTS_BY_BARS: readonly number[] = [0, 2, 3, 3, 3];
-export const PEW_RATE_BY_BARS: readonly number[] = [0, 27, 27, 40, 50];
+// ---- Weapons, the effects (Task 9b; Engineering spike spec §10.3, §11; isolated) ----
+// Indexed by a weapon's bars 0..4; 4 is the overdrive bar, 3's effect at 1.25× the charge or reload rate. Pew pew's
+// slot has no table here: it is W-1's weapon (spec §11) and its bars have no effect on this branch.
 export const BEAM_SHOTS_BY_BARS: readonly number[] = [0, 1, 2, 2, 2];
 export const BEAM_RATE_BY_BARS: readonly number[] = [0, 40, 40, 60, 75];
 export const TORPEDO_RELOAD_BY_BARS: readonly number[] = [0, 4, 6, 8, 10];
@@ -2607,317 +2588,104 @@ export const TORPEDO_LEVELS_BY_BARS: readonly number[] = [1, 1, 1, 2, 2];
 export const MAGAZINE_REGEN_UNITS = 10800;
 ```
 
-- [ ] **Step 4: The pew fields and the event's `weapon`**
+- [ ] **Step 4: The crew's beam and torpedo read their bars**
 
-In `src/renderer/src/sim/tactical/state.ts`:
+In `src/renderer/src/sim/tactical/weapons.ts`:
 
-(a) In `ShipSystems`, after `  weaponPower: number[];` add:
+(a) Change the Task 3 bars import to `import { BEAM_RATE_BY_BARS, BEAM_SHOTS_BY_BARS, DuelSystem, effectiveBars, MAGAZINE_REGEN_UNITS, SHIELD_LAYERS_BY_BARS, SHIELD_RATE_BY_BARS, TORPEDO_RELOAD_BY_BARS, weaponBars, WeaponSlot } from './bars';`.
 
-```ts
-  /** Engineering spike spec §10.3 (the crew only; zeros elsewhere): pew pew, a second laser on today's laser rules with
-   *  its own charge, hold, lock Room, targeted flag, burst shots still to fire and burst clock. It shares `freq`. */
-  pewCharge: number; pewHold: number; pewLock: number; pewTargeted: boolean; pewBurst: number; pewBurstClock: number;
-```
-
-(b) In `systemsFor`, replace `    weaponPower: crew ? [...START_WEAPON_POWER] : Array<number>(WEAPON_SLOTS).fill(0)   // spec §10.3` with:
+(b) Directly above `/** Whether ship i's laser is fully charged`, add:
 
 ```ts
-    weaponPower: crew ? [...START_WEAPON_POWER] : Array<number>(WEAPON_SLOTS).fill(0),   // spec §10.3
-    // spec §10.3: pew pew starts full and targeted on the enemy's Shields, as the beam does (the FTL opener).
-    pewCharge: crew && laser ? laser.chargeUnits : 0, pewHold: 0, pewLock: Room.Shields, pewTargeted: crew && laser !== null, pewBurst: 0, pewBurstClock: 0
-```
-
-(c) In `emptySystems`, change `weaponPower: Array<number>(WEAPON_SLOTS).fill(0) };` to `weaponPower: Array<number>(WEAPON_SLOTS).fill(0), pewCharge: 0, pewHold: 0, pewLock: 0, pewTargeted: false, pewBurst: 0, pewBurstClock: 0 };`.
-
-(d) In `DuelEvent`, replace
-
-```ts
-  | { kind: 'laser'; ship: number; hit: boolean; stripped: boolean; room: number; x1: number; y1: number; x2: number; y2: number }
-```
-
-with
-
-```ts
-  | { kind: 'laser'; ship: number; hit: boolean; stripped: boolean; room: number; x1: number; y1: number; x2: number; y2: number; weapon?: 'pew' }   // weapon: a pew pew shot (Engineering spike spec §10.3); absent for the beam
-```
-
-In `src/renderer/src/sim/tactical/hash.ts`:
-- in `SYSTEMS_TAIL`, replace the line
-
-```ts
-  'gunHeat', 'gunLocked', 'gunCooldown', 'gunMuzzle', 'gunWear', 'gunHull', 'gunShots', 'gunHits'] as const satisfies readonly (keyof ShipSystems)[];   // the gun's, Valkyrn spec §7.3; gunRoomWear closes the record
-```
-
-with
-
-```ts
-  'gunHeat', 'gunLocked', 'gunCooldown', 'gunMuzzle', 'gunWear', 'gunHull', 'gunShots', 'gunHits',   // the gun's, Valkyrn spec §7.3; gunRoomWear closes the record
-  'pewCharge', 'pewHold', 'pewLock', 'pewTargeted', 'pewBurst', 'pewBurstClock'] as const satisfies readonly (keyof ShipSystems)[];   // pew pew's, Engineering spike spec §10.3
-```
-
-- change `const FLAGS = new Set<string>(['released', 'fireHeld', 'laserTargeted', 'gunLocked']);` to `const FLAGS = new Set<string>(['released', 'fireHeld', 'laserTargeted', 'gunLocked', 'pewTargeted']);`;
-- in `systemsRules`, replace `  weaponPower: within(0, WEAPON_BAR_MAX + 1)   // spec §10.3` with:
-
-```ts
-  weaponPower: within(0, WEAPON_BAR_MAX + 1),   // spec §10.3
-  pewCharge: within(0, most((c) => c.slots.laser?.chargeUnits)), pewHold: count, pewLock: room, pewTargeted: flagBit,
-  pewBurst: within(0, Math.max(...PEW_SHOTS_BY_BARS) - 1), pewBurstClock: within(0, most((c) => c.slots.laser?.burstGapTicks))
-```
-
-- add `PEW_SHOTS_BY_BARS` to the bars import.
-
-In `tests/duelModules.test.ts:58`, add `pewTargeted` to the flag alternation in `changedFirst`'s first regex, so it reads `/\.(active|released|fireHeld|laserTargeted|gunLocked|pewTargeted)$/` (a flag flips; `+1` on a boolean field would write 2). Mark it `// Engineering spike spec §10.3`.
-
-In `tests/tacticalDeterminism.test.ts`:
-- add `'pewBurst', 'pewBurstClock', 'pewCharge', 'pewHold', 'pewLock', 'pewTargeted'` in sorted position in the systems key list, after `'missilesLost'`;
-- change `2 * 45` to `2 * 51`, appending `and pew pew's 6` to the comment.
-
-- [ ] **Step 5: Replace `sim/tactical/weapons.ts`**
-
-Replace the whole file with:
-
-```ts
-// Laser, shields and the magazine (spec §5, §7a, the §7 weapons state transitions table), on each ship's systems record
-// and its class's weapon definitions. A ship's laser fires at its locked target (engine refactor spec §5). The crew ship
-// (Engineering spike spec §10.3) has two lasers on today's laser rules, the beam (today's, on the laser* fields) and pew
-// pew (a burst laser on the pew* fields), and every crew weapon reads the bars the Weapons officer gave it (bars.ts).
-// Commands arrive as one ShipInput per ship per tick; the duel step builds these from the authority's admitted commands.
-import { inArc, lineOfSight } from './geometry';
-import { launchMissile } from './missiles';
-import { tickGun } from './gun';
-import {
-  BEAM_RATE_BY_BARS, BEAM_SHOTS_BY_BARS, DuelSystem, effectiveBars, MAGAZINE_REGEN_UNITS, PEW_RATE_BY_BARS, PEW_SHOTS_BY_BARS, SHIELD_LAYERS_BY_BARS, SHIELD_RATE_BY_BARS,
-  TORPEDO_RELOAD_BY_BARS, weaponBars, WeaponSlot
-} from './bars';
-import { classOf, CREW_SLOT, missileOf, Room, type Axes, type TacticalState } from './state';
-
-/** One ship's inputs for one tick. `helm` / `weapons`: a present player is seated at that console ("attended", spec §8). */
-export interface ShipInput {
-  helm: boolean;
-  weapons: boolean;
-  /** Turn and thrust, read only while `helm`. */
-  axes: Axes;
-  /** `laserLock {room}`: the target Room to lock, −1 to clear the crew laser's target (FTL targeting spec §2), or null
-   *  for no command this tick. */
-  laserLock: number | null;
-  /** `torpLock {room}` (FTL targeting spec §2, the crew only): the torpedo's target Room, −1 to clear, or null. */
-  torpLock: number | null;
-  /** `laserCharge {held}`: true = press, false = release, null = no command this tick. The crew's laser charges by
-   *  itself, so for the crew a press fires a full laser and a release does nothing (FTL targeting spec §2). */
-  laserCharge: boolean | null;
-  /** `missileLaunch`. */
-  missileLaunch: boolean;
-  /** Valkyrn spec §7.1: the gun's trigger, held at the Weapons station by its attendant (the duel step computes it from
-   *  the held input; every other input sets false). Read only by a class with a gun. */
-  gunHeld: boolean;
-  /** Sci-1 spec §4.6: whether the station running the ship's scan is attended (true when no scan runs). The duel step
-   *  computes it for the crew; every other input sets true. */
-  scanner: boolean;
-  /** Engineering spike spec §10.3 (the crew only): pew pew's lock and press (`laserLock` / `laserCharge` with
-   *  `weapon: 'pew'`), as laserLock and laserCharge are the beam's; absent or null for none. */
-  pewLock?: number | null;
-  pewCharge?: boolean | null;
-}
-
-/** A crew that sits at both consoles and does nothing. */
-export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, gunHeld: false, scanner: true };
-/** Nobody at either console: a ship nobody flies. */
-export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, gunHeld: false, scanner: true };
-
-/** Engineering spike spec §10.3: the crew's two lasers. The beam is today's laser on the laser* fields; pew pew has its own. */
-export type Barrel = 'beam' | 'pew';
-interface BarrelKeys {
-  charge: 'laserCharge' | 'pewCharge'; hold: 'laserHold' | 'pewHold'; lock: 'lock' | 'pewLock';
-  targeted: 'laserTargeted' | 'pewTargeted'; burst: 'laserBurst' | 'pewBurst'; clock: 'laserBurstClock' | 'pewBurstClock';
-}
-const KEYS: Readonly<Record<Barrel, BarrelKeys>> = {
-  beam: { charge: 'laserCharge', hold: 'laserHold', lock: 'lock', targeted: 'laserTargeted', burst: 'laserBurst', clock: 'laserBurstClock' },
-  pew: { charge: 'pewCharge', hold: 'pewHold', lock: 'pewLock', targeted: 'pewTargeted', burst: 'pewBurst', clock: 'pewBurstClock' }
-};
-
-/** Engineering spike spec §10.3: the shots one release of ship i's `barrel` fires: the crew's by its weapon's bars
- *  (pew pew 2/3/3, the beam 1/2/2), any other ship's beam by its class (pew pew: none). 0 without a laser slot. */
-export function barrelShots(state: TacticalState, i: number, barrel: Barrel = 'beam'): number {
-  const laser = classOf(state, i).slots.laser, s = state.systems[i]!;
+/** Engineering spike spec §10.3: the shots one release of ship i's laser fires: the crew's by the beam's bars (1/2/2,
+ *  0 off), any other ship's by its class. 0 without a laser. */
+export function beamShots(state: TacticalState, i: number): number {
+  const laser = classOf(state, i).slots.laser;
   if (!laser) return 0;
-  if (i !== CREW_SLOT) return barrel === 'beam' ? laser.shots : 0;
-  return barrel === 'beam' ? BEAM_SHOTS_BY_BARS[weaponBars(s, WeaponSlot.Beam)]! : PEW_SHOTS_BY_BARS[weaponBars(s, WeaponSlot.Pew)]!;
+  return i === CREW_SLOT ? BEAM_SHOTS_BY_BARS[weaponBars(state.systems[i]!, WeaponSlot.Beam)]! : laser.shots;
 }
-/** The charge per tick of ship i's `barrel`: the crew's by its weapon's bars, any other ship's by its Weapons level. */
-function barrelRate(state: TacticalState, i: number, barrel: Barrel): number {
-  const laser = classOf(state, i).slots.laser!, s = state.systems[i]!;
-  if (i !== CREW_SLOT) return laser.chargeRate[s.rooms[Room.Weapons]]!;
-  return barrel === 'beam' ? BEAM_RATE_BY_BARS[weaponBars(s, WeaponSlot.Beam)]! : PEW_RATE_BY_BARS[weaponBars(s, WeaponSlot.Pew)]!;
-}
+```
 
-/** Whether ship i's `barrel` is fully charged; never for a class without a laser (Valkyrn spec §6.1). */
-export function laserFull(state: TacticalState, i: number, barrel: Barrel = 'beam'): boolean {
-  const laser = classOf(state, i).slots.laser;
-  return laser !== null && state.systems[i]![KEYS[barrel].charge] >= laser.chargeUnits;
-}
+(c) In `canLaunch`, replace
 
-/** Admission (spec §7 table; the duel step uses these to give reject reasons): laserCharge is accepted only with no missile in flight. */
-export function canCharge(state: TacticalState, i: number): boolean { return missileOf(state, i) === null; }
-/** Weapons update spec §2: whether ship i's target ship is active and its centre within the class's torpedo range of
- *  ship i's, from any bearing. */
-export function torpedoInRange(state: TacticalState, i: number): boolean {
-  const a = state.ships[i]!, j = state.systems[i]!.target, b = state.ships[j], range = classOf(state, i).slots.missile.range;
-  if (!b || !b.active || j === i) return false;
-  const dx = b.x - a.x, dy = b.y - a.y;
-  return dx * dx + dy * dy <= range * range;
-}
-/** missileLaunch is accepted only with no missile in flight, a missile in the magazine, the torpedo powered (the crew,
- *  spec §10.3: its weapon's bars ≥ 1; any other ship: Weapons below level 2) and the target within torpedo range. */
-export function canLaunch(state: TacticalState, i: number): boolean {
-  const s = state.systems[i]!;
-  const up = i === CREW_SLOT ? weaponBars(s, WeaponSlot.Torpedo) >= 1 : s.rooms[Room.Weapons] < 2;
-  return missileOf(state, i) === null && s.magazine > 0 && up && torpedoInRange(state, i);
-}
-/** A lock target must be a Room index. */
-export function validLock(room: number): boolean { return Number.isInteger(room) && room >= 0 && room <= 2; }
-/** FTL targeting spec §2: a `laserLock` or `torpLock` command's room, a Room index or −1 (clear the target). */
-export function validTarget(room: number): boolean { return room === -1 || validLock(room); }
+```ts
+  return missileOf(state, i) === null && s.magazine > 0 && s.rooms[Room.Weapons] < 2 && torpedoInRange(state, i, torpRock);
+```
 
-/** Whether ship i's `barrel` is off: the crew's with 0 bars on that weapon (spec §10.3), any other ship's beam at Weapons
- *  damage level 2 (owner 2026-11-17, FTL-style), and any other ship's pew pew always. An off laser cannot charge, hold or
- *  fire and keeps no charge. A laserCharge command is still admitted (canCharge), to no effect. */
-export function laserOffline(state: TacticalState, i: number, barrel: Barrel = 'beam'): boolean {
-  if (i === CREW_SLOT) return barrelShots(state, i, barrel) === 0;
-  return barrel === 'pew' || state.systems[i]!.rooms[Room.Weapons] >= 2;
+with
+
+```ts
+  const up = i === CREW_SLOT ? weaponBars(s, WeaponSlot.Torpedo) >= 1 : s.rooms[Room.Weapons] < 2;   // spec §10.3: the crew's torpedo bars
+  return missileOf(state, i) === null && s.magazine > 0 && up && torpedoInRange(state, i, torpRock);
+```
+
+(d) Replace
+
+```ts
+export function laserOffline(state: TacticalState, i: number): boolean { return state.systems[i]!.rooms[Room.Weapons] >= 2; }
+```
+
+with
+
+```ts
+export function laserOffline(state: TacticalState, i: number): boolean {
+  return i === CREW_SLOT ? beamShots(state, i) === 0 : state.systems[i]!.rooms[Room.Weapons] >= 2;   // spec §10.3: the beam's bars
 }
+```
 
-/** The laser cannot charge, hold or fire while its ship's missile flies or its Weapons console is empty (spec §7 table). */
-export function laserFrozen(state: TacticalState, i: number, input: ShipInput): boolean {
-  return missileOf(state, i) !== null || !input.weapons;
-}
+(e) In `fireLaser`, replace
 
-/** Whether ship i's laser would hit ship j now: j an active slot inside the ±60° arc and range, with line of sight (spec §7a). */
-export function laserEligible(state: TacticalState, i: number, j: number): boolean {
-  const a = state.ships[i]!, b = state.ships[j], laser = classOf(state, i).slots.laser;
-  if (!laser || !b || !b.active || j === i) return false;   // Valkyrn spec §6.1: no laser, no shot
-  const dx = b.x - a.x, dy = b.y - a.y;
-  if (dx * dx + dy * dy > laser.range * laser.range) return false;
-  return inArc(a.heading, dx, dy, laser.arcCos) && lineOfSight(state, a.x, a.y, b.x, b.y);
-}
+```ts
+  as.laserBurst = laser.shots - 1; as.laserBurstClock = as.laserBurst > 0 ? laser.burstGapTicks : 0;
+```
 
-/** Engineering spike spec §10.4: whether the crew sees ship j, for auto-fire and the torpedo's auto-launch. Task 10
- *  (Sensors) replaces this body with the sensor-range check; until then the crew sees everything. */
-export function crewSees(state: TacticalState, j: number): boolean { return state.ships[j] !== undefined; }
+with
 
-/** One shot of ship i's `barrel` at its target and that barrel's lock room as they stand now (spec §7a; weapons update
- *  spec §1: every shot of a burst re-checks eligibility, strips shields or strikes the room, counts and pushes its own
- *  `laser` event; a pew pew shot's event carries `weapon: 'pew'`). */
-function shoot(state: TacticalState, i: number, barrel: Barrel): void {
-  const laser = classOf(state, i).slots.laser;
-  if (!laser) return;
-  const a = state.ships[i]!, as = state.systems[i]!, j = as.target, b = state.ships[j] ?? a, bs = state.systems[j], hit = laserEligible(state, i, j);
-  const lock = as[KEYS[barrel].lock];
-  let stripped = false, room = -1;
-  as.shots++;
-  if (hit && bs) {
-    as.laserHits++;
-    if (bs.shields > 0) {   // Sci-1 spec §4.4: the crew laser tuned to the weak frequency strips 2 layers (as many as are up)
-      const n = i === CREW_SLOT && as.freq === state.weakFreq ? Math.min(2, bs.shields) : 1;
-      bs.shields -= n; bs.shieldClock = 0; bs.gunWear = 0; as.layersStripped += n; stripped = true;   // Valkyrn spec §7.2: any strip zeroes the gun wear
-    }
-    else {
-      room = lock;
-      if (bs.rooms[lock]! < 2) bs.rooms[lock as 0 | 1 | 2]++;
-      bs.hull = Math.max(0, bs.hull - laser.hull);
-    }
+```ts
+  as.laserBurst = Math.max(0, beamShots(state, i) - 1); as.laserBurstClock = as.laserBurst > 0 ? laser.burstGapTicks : 0;   // spec §10.3
+```
+
+(f) In `stepBurst`, replace
+
+```ts
+  if (laserOffline(state, i)) { s.laserBurst = 0; s.laserBurstClock = 0; return; }
+  if (--s.laserBurstClock > 0) return;
+```
+
+with
+
+```ts
+  if (laserOffline(state, i)) { s.laserBurst = 0; s.laserBurstClock = 0; return; }
+  if (s.laserBurst > beamShots(state, i) - 1) {   // spec §10.3: a shot whose bar is gone never fires
+    s.laserBurst = Math.max(0, beamShots(state, i) - 1);
+    if (s.laserBurst === 0) { s.laserBurstClock = 0; return; }
   }
-  state.events.push(barrel === 'pew'
-    ? { kind: 'laser', ship: i, hit, stripped, room, x1: a.x, y1: a.y, x2: b.x, y2: b.y, weapon: 'pew' }
-    : { kind: 'laser', ship: i, hit, stripped, room, x1: a.x, y1: a.y, x2: b.x, y2: b.y });
-}
+  if (--s.laserBurstClock > 0) return;
+```
 
-/** A full charge's release: the first shot now, the rest of the burst queued a burst gap apart. */
-function fireLaser(state: TacticalState, i: number, barrel: Barrel): void {
-  const as = state.systems[i]!, laser = classOf(state, i).slots.laser, k = KEYS[barrel];
-  if (!laser) return;
-  shoot(state, i, barrel);
-  as[k.charge] = 0; as[k.hold] = 0;
-  as[k.burst] = Math.max(0, barrelShots(state, i, barrel) - 1); as[k.clock] = as[k.burst] > 0 ? laser.burstGapTicks : 0;
-}
+(g) In `tickWeapons`, replace
 
-/** Weapons update spec §1: a pending burst shot fires a burst gap after the one before, attended or not, whatever flies;
- *  an off laser drops it, and (spec §10.3) a shot whose bar is gone never fires. */
-function stepBurst(state: TacticalState, i: number, barrel: Barrel): void {
-  const s = state.systems[i]!, k = KEYS[barrel];
-  if (s[k.burst] === 0) return;
-  if (laserOffline(state, i, barrel)) { s[k.burst] = 0; s[k.clock] = 0; return; }
-  const left = Math.max(0, barrelShots(state, i, barrel) - 1);
-  if (s[k.burst] > left) { s[k.burst] = left; if (left === 0) { s[k.clock] = 0; return; } }
-  s[k.clock] = s[k.clock] - 1;
-  if (s[k.clock] > 0) return;
-  shoot(state, i, barrel);
-  s[k.burst] = s[k.burst] - 1; s[k.clock] = s[k.burst] > 0 ? classOf(state, i).slots.laser?.burstGapTicks ?? 0 : 0;
-}
+```ts
+    if (i === CREW_SLOT) { if (!laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + laser.chargeRate[s.rooms[Room.Weapons]]!); }
+```
 
-/** Apply ship i's weapon commands for this tick, before anything moves (spec §7 table). The crew's ship (FTL targeting
- *  spec §2; Engineering spike spec §10.3): `laserLock` / `pewLock` set each laser's target (−1 clears it, keeping the
- *  lock room for a manual shot) and `torpLock` the torpedo's; a press fires a full laser; then, attended, a laser with a
- *  target fires its burst when full, eligible and seen, and a torpedo with a target launches when legal and seen. */
-export function applyWeaponsInput(state: TacticalState, i: number, input: ShipInput): void {
-  const s = state.systems[i]!, crew = i === CREW_SLOT, armed = classOf(state, i).slots.laser !== null;   // Valkyrn spec §6.1: a null laser skips lock, charge and auto-fire
-  if (armed && input.weapons && input.laserLock !== null) {   // first: a burst shot reads this tick's lock
-    if (validLock(input.laserLock)) { s.lock = input.laserLock; if (crew) s.laserTargeted = true; }
-    else if (input.laserLock === -1 && crew) s.laserTargeted = false;
-  }
-  if (armed && crew && input.weapons && input.pewLock !== undefined && input.pewLock !== null) {   // spec §10.3
-    if (validLock(input.pewLock)) { s.pewLock = input.pewLock; s.pewTargeted = true; }
-    else if (input.pewLock === -1) s.pewTargeted = false;
-  }
-  if (input.weapons && crew && input.torpLock !== null && validTarget(input.torpLock)) s.torpLock = input.torpLock;
-  stepBurst(state, i, 'beam');
-  if (crew) stepBurst(state, i, 'pew');
-  tickGun(state, i, input);   // Valkyrn spec §7.1: before anything moves; its clocks run attended or not (Decision 8)
-  if (!input.weapons) { s.fireHeld = false; return; }   // unattended: Fire lets go without firing or discarding
-  if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; }   // a hit after its clock ran last tick: no shot
-  if (crew && laserOffline(state, i, 'pew')) { s.pewCharge = 0; s.pewHold = 0; }
-  if (armed && input.laserCharge !== null && canCharge(state, i)) {
-    if (crew) { if (input.laserCharge && s.laserBurst === 0 && laserFull(state, i)) fireLaser(state, i, 'beam'); }   // a single press
-    else if (input.laserCharge) s.fireHeld = true;
-    else if (s.fireHeld) {
-      s.fireHeld = false;
-      if (laserFull(state, i)) fireLaser(state, i, 'beam');
-      else { s.laserCharge = 0; s.laserHold = 0; }
-    }
-  }
-  if (armed && crew && input.pewCharge === true && canCharge(state, i) && s.pewBurst === 0 && laserFull(state, i, 'pew')) fireLaser(state, i, 'pew');   // a single press
-  const seen = crew && crewSees(state, s.target);
-  if (armed && crew && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && laserEligible(state, i, s.target) && seen) fireLaser(state, i, 'beam');   // auto-fire
-  if (armed && crew && s.pewTargeted && s.pewBurst === 0 && laserFull(state, i, 'pew') && !laserFrozen(state, i, input) && laserEligible(state, i, s.target) && seen) fireLaser(state, i, 'pew');
-  if (input.missileLaunch && canLaunch(state, i)) {
-    launchMissile(state, i);
-    s.fireHeld = false;
-  }
-  if (crew && s.torpLock >= 0 && canLaunch(state, i) && seen) launchMissile(state, i);   // auto-launch, once
-}
+with
 
-/** One tick of ship i's `barrel` charge and hold (spec §7; FTL targeting spec §2: the crew's lasers charge by themselves,
- *  with no hold, and stay full until they fire; any other ship's charges while Fire is held and vents after the hold). */
-function tickBarrel(state: TacticalState, i: number, input: ShipInput, barrel: Barrel): void {
-  const s = state.systems[i]!, laser = classOf(state, i).slots.laser, k = KEYS[barrel];
-  if (laserOffline(state, i, barrel)) { s[k.charge] = 0; s[k.hold] = 0; s[k.burst] = 0; s[k.clock] = 0; return; }   // off: every tick, frozen or not
-  if (laser === null || s[k.burst] !== 0 || laserFrozen(state, i, input)) return;   // no charging while a burst shot is pending
-  if (i === CREW_SLOT) { if (!laserFull(state, i, barrel)) s[k.charge] = Math.min(laser.chargeUnits, s[k.charge] + barrelRate(state, i, barrel)); }
-  else if (s.fireHeld && !laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + barrelRate(state, i, 'beam'));
-  else if (laserFull(state, i) && ++s.laserHold >= laser.holdTicks) { s.laserCharge = 0; s.laserHold = 0; }   // vents; recharges if still held
-}
+```ts
+    if (i === CREW_SLOT) { if (!laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + BEAM_RATE_BY_BARS[weaponBars(s, WeaponSlot.Beam)]!); }   // spec §10.3
+```
 
-/** Advance ship i's lasers, shields and magazine by one tick (spec §5, §7; Engineering spike spec §2, §10.3). */
-export function tickWeapons(state: TacticalState, i: number, input: ShipInput): void {
-  const s = state.systems[i]!, c = classOf(state, i);
-  tickBarrel(state, i, input, 'beam');
-  if (i === CREW_SLOT) tickBarrel(state, i, input, 'pew');
-  if (i === CREW_SLOT) {   // Engineering spike spec §2: the crew's shields by bars; layers above the cap drop at once
-    const bars = effectiveBars(s, DuelSystem.Shields), cap = Math.min(c.shields.layers, SHIELD_LAYERS_BY_BARS[bars]!);
-    if (s.shields > cap) { s.shields = cap; s.shieldClock = 0; }
-    if (s.shields >= cap) s.shieldClock = 0;
-    else if ((s.shieldClock += SHIELD_RATE_BY_BARS[bars]!) >= c.shields.rechargeUnits) { s.shields++; s.shieldClock = 0; }   // rate 0: held
-  } else if (s.shields >= c.shields.layers) s.shieldClock = 0;
-  else if ((s.shieldClock += c.shields.rate[s.rooms[Room.Shields]]!) >= c.shields.rechargeUnits) { s.shields++; s.shieldClock = 0; }   // rate 0: held
+and replace
+
+```ts
+  if (s.magazine >= c.slots.missile.magazine) s.magazineClock = 0;
+  else if (++s.magazineClock >= c.slots.missile.regenTicks) { s.magazine++; s.magazineClock = 0; }
+}
+```
+
+with
+
+```ts
   if (s.magazine >= c.slots.missile.magazine) s.magazineClock = 0;
   else if (i === CREW_SLOT) {   // spec §10.3: the torpedo's reload by its bars on a units clock; 0 bars holds the clock
     const rate = TORPEDO_RELOAD_BY_BARS[weaponBars(s, WeaponSlot.Torpedo)]!;
@@ -2926,9 +2694,9 @@ export function tickWeapons(state: TacticalState, i: number, input: ShipInput): 
 }
 ```
 
-Before writing it, diff the current file against this text. The only intended behaviour changes are: the two barrels, `barrelShots`, the crew's per-weapon rates and shots, `crewSees`, and the torpedo reload. Everything else, including the Valkyrn `tickGun` call and Task 3's shields block, is carried over verbatim. If the branch's file has gained anything since Task 3, keep it.
+(h) Update `laserOffline`'s doc comment to say that the crew's laser is off with 0 beam bars (spec §10.3), and any other ship's at Weapons damage level 2.
 
-- [ ] **Step 6: The crew torpedo's levels**
+- [ ] **Step 5: The crew torpedo's levels**
 
 In `src/renderer/src/sim/tactical/missiles.ts`:
 - change `import { classOf, emptyMissile, missileOf, placeMissile, type DuelEvent, type Missile, type TacticalState } from './state';` to `import { classOf, CREW_SLOT, emptyMissile, missileOf, placeMissile, type DuelEvent, type Missile, type TacticalState } from './state';`;
@@ -2940,117 +2708,37 @@ In `src/renderer/src/sim/tactical/missiles.ts`:
   sys.rooms[room] = Math.min(2, sys.rooms[room] + levels);
 ```
 
-- [ ] **Step 7: The laser commands name a weapon**
-
-In `src/renderer/src/net/contracts.ts`, replace
-
-```ts
-  | { kind: 'laserLock'; room: number }
-```
-
-with
-
-```ts
-  | { kind: 'laserLock'; room: number; weapon?: 'beam' | 'pew' }   // weapon: Engineering spike spec §10.3, absent = the beam
-```
-
-and `  | { kind: 'laserCharge'; held: boolean }` with `  | { kind: 'laserCharge'; held: boolean; weapon?: 'beam' | 'pew' }`.
-
-In `src/renderer/src/net/codec.ts`, replace
-
-```ts
-      z.object({ kind: z.literal('laserLock'), room: z.number().int().min(-1).max(MAX_INDEX) }).strict(),
-```
-
-with
-
-```ts
-      z.object({ kind: z.literal('laserLock'), room: z.number().int().min(-1).max(MAX_INDEX), weapon: z.enum(['beam', 'pew']).optional() }).strict(),   // Engineering spike spec §10.3
-```
-
-and `      z.object({ kind: z.literal('laserCharge'), held: z.boolean() }).strict(),` with `      z.object({ kind: z.literal('laserCharge'), held: z.boolean(), weapon: z.enum(['beam', 'pew']).optional() }).strict(),`.
-
-In `src/renderer/src/sim/duel/step.ts`, in the weapons loop, replace
-
-```ts
-    if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.laserLock = c.room; }   // −1 clears the target
-    else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.torpLock = c.room; }
-    else if (c.kind === 'laserCharge') { if (!canCharge(d.tactical, 0)) { result(e, 'missile-in-flight'); continue; } crew.laserCharge = c.held; }
-```
-
-with
-
-```ts
-    if ((c.kind === 'laserLock' || c.kind === 'laserCharge') && c.weapon !== undefined && c.weapon !== 'beam' && c.weapon !== 'pew') { result(e, 'malformed'); continue; }
-    if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.weapon === 'pew') crew.pewLock = c.room; else crew.laserLock = c.room; }   // −1 clears; spec §10.3: weapon
-    else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.torpLock = c.room; }
-    else if (c.kind === 'laserCharge') { if (!canCharge(d.tactical, 0)) { result(e, 'missile-in-flight'); continue; } if (c.weapon === 'pew') crew.pewCharge = c.held; else crew.laserCharge = c.held; }
-```
-
-Also add a `weapon` round-trip to `tests/duelCheckpoint.test.ts`'s examples: change `laserLock: { kind: 'laserLock', room: 1 }` to `laserLock: { kind: 'laserLock', room: 1, weapon: 'pew' }`.
-
-- [ ] **Step 7b: The bots fight with pew pew; telemetry counts either barrel (Decision 20)**
-
-The beam starts the round dark (0 bars), so a bot that only lines up and locks the beam would never fire.
+- [ ] **Step 6: The scripted gunner moves pew pew's bar to the beam (Decision 20)**
 
 In `src/renderer/src/sim/duel/scripted.ts`:
-
-(a) In the Helm's facing rule (`:118`), replace
-
-```ts
-  if (laserFull(t, 0) && t.systems[0].laserTargeted && ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE && !inArc(s.heading, ex, ey, LASER_ARC_COS))
-```
-
-with
+- add `import { weaponBars, WeaponSlot } from '../tactical/bars';`, merging it with the Task 8 import from that module;
+- in `gunner`, directly after its first line (`  const t = d.tactical, target = targetOf(t, 0), sys = t.systems[0];`), add:
 
 ```ts
-  const ready = (laserFull(t, 0, 'pew') && t.systems[0].pewTargeted) || (laserFull(t, 0) && t.systems[0].laserTargeted);   // Engineering spike Decision 20: pew pew first
-  if (ready && ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE && !inArc(s.heading, ex, ey, LASER_ARC_COS))
+  // Engineering spike Decision 20 (spec §11): pew pew does nothing on this branch and the beam starts dark, so on its
+  // first seated tick the gunner moves pew pew's bar to the beam (−1 then +1, applied in sequence order), then fights
+  // with the beam and the torpedo as before.
+  if (weaponBars(sys, WeaponSlot.Pew) > 0) out.push({ kind: 'weaponPower', slot: WeaponSlot.Pew, delta: -1 }, { kind: 'weaponPower', slot: WeaponSlot.Beam, delta: 1 });
 ```
 
-(b) In `gunner`, replace
+Both moves always apply. The gunner sends them only while seated at Weapons. The −1 needs a bar on pew pew, which the condition checks. The +1 then has a free bar, since it was just freed, and the beam holds at most that one bar.
 
-```ts
-  if (!sys.laserTargeted || sys.lock !== want) out.push({ kind: 'laserLock', room: want });
-```
+- [ ] **Step 7: Run the tests**
 
-with
-
-```ts
-  if (!sys.pewTargeted || sys.pewLock !== want) out.push({ kind: 'laserLock', room: want, weapon: 'pew' });   // Engineering spike Decision 20: pew pew is the primary
-```
-
-and replace
-
-```ts
-  if (canLaunch(t, 0) && !(laserFull(t, 0) && laserEligible(t, 0, target)) && sys.laserBurst === 0 && t.tick - pair.lastLaunch >= MISSILE_GAP) {
-```
-
-with
-
-```ts
-  if (canLaunch(t, 0) && !(laserFull(t, 0, 'pew') && laserEligible(t, 0, target)) && sys.pewBurst === 0 && t.tick - pair.lastLaunch >= MISSILE_GAP) {
-```
-
-In `src/renderer/src/sim/duel/telemetry.ts:161`, replace `laserFull(tac, 0) && !canLaunch(tac, 0)` with `(laserFull(tac, 0) || laserFull(tac, 0, 'pew')) && !canLaunch(tac, 0)`, and append to the comment above it: `; either laser (Engineering spike Decision 20)`.
-
-The beam keeps today's lock, so a scenario that powers the beam still auto-fires it on its old lock. The console's "WEAPONS OFFLINE" situation (`render/duel/situationModel.ts`) belongs to Part ii.
-
-- [ ] **Step 8: Run the tests**
-
-Run: `npx vitest run tests/engWeapons.test.ts tests/engWeaponPower.test.ts tests/engBars.test.ts tests/tacticalDeterminism.test.ts tests/duelModules.test.ts tests/duelCheckpoint.test.ts tests/duelScripted.test.ts tests/duelTelemetry.test.ts tests/weaponsUpdate.test.ts tests/ftlTargeting.test.ts tests/tacticalWeapons.test.ts tests/tacticalMissiles.test.ts tests/disabledSystems.test.ts tests/duelWeaponsView.test.ts tests/valkyrnGun.test.ts`, then `npx tsc -b`.
+Run: `npx vitest run tests/engWeapons.test.ts tests/engWeaponPower.test.ts tests/engBars.test.ts tests/duelScripted.test.ts tests/duelTelemetry.test.ts tests/weaponsUpdate.test.ts tests/ftlTargeting.test.ts tests/tacticalWeapons.test.ts tests/tacticalMissiles.test.ts tests/disabledSystems.test.ts tests/duelWeaponsView.test.ts tests/valkyrnGun.test.ts tests/duelGates.test.ts`, then `npx tsc -b`.
 
 Expected:
-- engWeapons, engWeaponPower, engBars, tacticalDeterminism, duelModules and duelCheckpoint PASS.
-- The crew's 2-shot beam at the start, its level-based Weapons gate, today's magazine for the crew, and one-level crew torpedo hits are now kind (a): update those assertions to the §10.3 rules, setting `weaponPower` where a test needs the beam powered.
+- engWeapons PASS.
+- The crew's 2-shot laser at the start, its level-based Weapons gate, today's crew magazine, and one-level crew torpedo hits are now kind (a): update them to the §10.3 rules, setting `weaponPower` (for example `[0, 2, 1]`) where a test needs today's crew laser.
 - Hunter assertions must still pass unchanged. If one fails, that is a bug.
-- `tsc -b` is clean. If a render model narrows the laser event exhaustively, the optional `weapon` field needs no change.
+- A refused scripted command thrown by `requireApplied` is a bug in Step 6, not fallout.
+- `tsc -b` is clean.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/renderer/src/sim/tactical/bars.ts src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/tactical/weapons.ts src/renderer/src/sim/tactical/missiles.ts src/renderer/src/net/contracts.ts src/renderer/src/net/codec.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/duel/scripted.ts src/renderer/src/sim/duel/telemetry.ts tests/engWeapons.test.ts tests/tacticalDeterminism.test.ts tests/duelModules.test.ts tests/duelCheckpoint.test.ts
-git commit -m "feat(engineering-spike): pew pew, the beam and the torpedo by the officer's bars (Amendment 2, isolated)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add src/renderer/src/sim/tactical/bars.ts src/renderer/src/sim/tactical/weapons.ts src/renderer/src/sim/tactical/missiles.ts src/renderer/src/sim/duel/scripted.ts tests/engWeapons.test.ts
+git commit -m "feat(engineering-spike): the beam and the torpedo by the officer's bars; pew pew's slot waits for W-1 (Amendments 2 and 3, isolated)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 Add the fallout test files you fixed to the `git add` line by name.
@@ -3062,7 +2750,7 @@ Add the fallout test files you fixed to the `git add` line by name.
 **Isolation:** everything this task adds lives in:
 - the "Sensors" section at the end of `bars.ts`;
 - the fog functions in `sim/tactical/science.ts`;
-- `crewSees`'s body in `weapons.ts`;
+- the enemy-sight checks on auto-fire and auto-launch in `weapons.ts`;
 - `sim/duel/sensors.ts` (the hazard capacity) and its call in `capacityOf`;
 - the gates in the step;
 - the scripted gunner's seen check;
@@ -3071,7 +2759,7 @@ Add the fallout test files you fixed to the `git add` line by name.
 **Files:**
 - Modify: `src/renderer/src/sim/tactical/bars.ts` (append the Sensors section)
 - Modify: `src/renderer/src/sim/tactical/science.ts` (`sensorRange`, `pointSeen`, `shipSeen`, `contactSeen`, `scanProgressRate`; scanStep)
-- Modify: `src/renderer/src/sim/tactical/weapons.ts` (`crewSees` body)
+- Modify: `src/renderer/src/sim/tactical/weapons.ts` (auto-fire and auto-launch need the enemy seen)
 - Create: `src/renderer/src/sim/duel/sensors.ts`
 - Modify: `src/renderer/src/sim/duel/power.ts` (`capacityOf` for Sensors)
 - Modify: `src/renderer/src/sim/duel/step.ts` (the gates; a clamp after the hazard tick)
@@ -3091,7 +2779,7 @@ Create `tests/engSensors.test.ts` (`contactScan` at 0 Sensors bars stays `unavai
 
 ```ts
 // Engineering spike spec §10.4 (Amendment 2): sensor range by Sensors bars, contacts seen within it, the sim gates
-// (contactScan, laser/pew/torpedo locks, designate: unavailable when unseen; a running scan pauses unseen; auto-fire
+// (contactScan, laser and torpedo locks, designate: unavailable when unseen; a running scan pauses unseen; auto-fire
 // needs the target seen), the scan rate table, and Sensors capacity lost to fire and breach in Ops.
 import { describe, expect, it } from 'vitest';
 import hound from '../src/renderer/src/sim/ship/hound.json';
@@ -3102,7 +2790,6 @@ import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { capacityOf, clampToCapacity, DuelSystem } from '../src/renderer/src/sim/duel/power';
 import { contactSeen, scanProgressRate, scanStep, sensorRange, shipSeen } from '../src/renderer/src/sim/tactical/science';
-import { crewSees } from '../src/renderer/src/sim/tactical/weapons';
 import { Contact, createTacticalState } from '../src/renderer/src/sim/tactical/state';
 import { SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../src/renderer/src/sim/tactical/tuning';
 import { activateBreach } from '../src/renderer/src/sim/hazards/breach';
@@ -3126,22 +2813,22 @@ describe('engineering spike: Sensors (spec §10.4)', () => {
     s.scan.rate = SCAN_RATE_OTHER;
     expect([0, 1, 2, 3, 4].map((b) => { sys.bars[DuelSystem.Sensors] = b; return scanProgressRate(s); })).toEqual([0, 2, 2, 3, 3]);
   });
-  it('seen within range of the crew ship\'s centre; a running scan pauses unseen; crewSees follows', () => {
+  it('seen within range of the crew ship\'s centre; a running scan pauses unseen', () => {
     const d = createDuel(HOUND, 13);
     try {
       const t = d.tactical;
-      enemyAt(d, 800); expect(shipSeen(t, 1)).toBe(true); expect(contactSeen(t, Contact.Enemy)).toBe(true); expect(crewSees(t, 1)).toBe(true);
-      enemyAt(d, 1000); expect(shipSeen(t, 1)).toBe(false); expect(crewSees(t, 1)).toBe(false);
+      enemyAt(d, 800); expect(shipSeen(t, 1)).toBe(true); expect(contactSeen(t, Contact.Enemy)).toBe(true);
+      enemyAt(d, 1000); expect(shipSeen(t, 1)).toBe(false); expect(contactSeen(t, Contact.Enemy)).toBe(false);
       t.scan.contact = 0; t.scan.level = 1; t.scan.progress = 10; t.scan.rate = SCAN_RATE_SCIENCE;
       scanStep(t, true); expect(t.scan.progress).toBe(10);
       enemyAt(d, 500); scanStep(t, true); expect(t.scan.progress).toBe(15);
     } finally { disposeDuel(d); }
   });
-  it('the gates: contactScan, laser and pew pew and torpedo locks, and designate need the contact seen', () => {
+  it('the gates: contactScan, laser and torpedo locks, and designate need the contact seen', () => {
     const d = createDuel(HOUND, 13);
     try {
       sitDown(d.interior, 0, d.nav); sitDown(d.interior, 1, d.weapons); enemyAt(d, 1200);
-      for (const [pid, c] of [[0, { kind: 'contactScan', contact: 0 }], [1, { kind: 'laserLock', room: 1 }], [1, { kind: 'laserLock', room: 1, weapon: 'pew' }], [1, { kind: 'torpLock', room: 2 }]] as [number, DuelCommand][])
+      for (const [pid, c] of [[0, { kind: 'contactScan', contact: 0 }], [1, { kind: 'laserLock', room: 1 }], [1, { kind: 'torpLock', room: 2 }], [1, { kind: 'designate', contact: 0 }]] as [number, DuelCommand][])
         expect(step(d, [env(d, pid, c)])[0], c.kind).toMatchObject({ status: 'rejected', reason: 'unavailable' });
       enemyAt(d, 600);
       expect(step(d, [env(d, 1, { kind: 'laserLock', room: 1 })])[0]).toMatchObject({ status: 'applied' });
@@ -3238,23 +2925,33 @@ with
   s.progress += scanProgressRate(t);         // spec §2, §10.4: no longer s.rate
 ```
 
-- [ ] **Step 5: `crewSees` reads the fog**
+- [ ] **Step 5: Auto-fire and auto-launch need the enemy seen**
 
 In `src/renderer/src/sim/tactical/weapons.ts`:
 - add `import { shipSeen } from './science';` (science.ts imports nothing from weapons.ts, so there is no cycle);
-- replace
+- replace the auto-fire line
 
 ```ts
-export function crewSees(state: TacticalState, j: number): boolean { return state.ships[j] !== undefined; }
+  if (armed && crew && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && (s.laserRock >= 0 ? rockOnTarget(state, i, s.laserRock) : laserEligible(state, i, s.target) || laserDiggable(state, i))) fireLaser(state, i);
 ```
 
 with
 
 ```ts
-export function crewSees(state: TacticalState, j: number): boolean { return shipSeen(state, j); }   // Task 10, spec §10.4
+  if (armed && crew && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && (s.laserRock >= 0 ? rockOnTarget(state, i, s.laserRock) : (laserEligible(state, i, s.target) || laserDiggable(state, i)) && shipSeen(state, s.target))) fireLaser(state, i);   // Task 10, spec §10.4: the enemy only when seen (rocks are always shown)
 ```
 
-and update its doc comment to: `/** Engineering spike spec §10.4 (Task 10): whether the crew sees ship j, for auto-fire and the torpedo's auto-launch. */`.
+- replace the auto-launch line
+
+```ts
+  if (crew && (s.torpLock >= 0 || s.torpRock >= 0) && canLaunch(state, i)) launchMissile(state, i);   // auto-launch, once (spike ii: or on a rock target)
+```
+
+with
+
+```ts
+  if (crew && (s.torpLock >= 0 || s.torpRock >= 0) && canLaunch(state, i) && (s.torpRock >= 0 || shipSeen(state, s.target))) launchMissile(state, i);   // auto-launch, once (spike ii: or on a rock target); Task 10: the enemy only when seen
+```
 
 - [ ] **Step 6: Sensors capacity from hazards**
 
@@ -3307,18 +3004,18 @@ In `src/renderer/src/sim/duel/step.ts`:
 
 (a) Add `import { contactSeen, shipSeen } from '../tactical/science';` (merge it with the existing `scanCommand` import from that module), and merge `DuelSystem, effectiveBars` into the existing `../tactical/bars` import.
 
-(b) In the weapons loop, replace Task 9b's two lock branches
+(b) In the weapons loop, replace the two lock branches
 
 ```ts
-    if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.weapon === 'pew') crew.pewLock = c.room; else crew.laserLock = c.room; }   // −1 clears; spec §10.3: weapon
-    else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.torpLock = c.room; }
+    if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.laserLock = c.room; }   // −1 clears the target
+    else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.torpLock = c.room; torpLocked = true; }
 ```
 
 with
 
 ```ts
-    if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; } if (c.weapon === 'pew') crew.pewLock = c.room; else crew.laserLock = c.room; }   // −1 clears; spec §10.3: weapon; §10.4: seen
-    else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; } crew.torpLock = c.room; }   // spec §10.4: seen
+    if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; } crew.laserLock = c.room; }   // −1 clears the target; Task 10, spec §10.4: seen
+    else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; } crew.torpLock = c.room; torpLocked = true; }   // spec §10.4: seen
 ```
 
 A malformed room is still `malformed`, and clearing (−1) needs nothing seen.
@@ -3487,7 +3184,7 @@ git commit -m "test(engineering-spike): hash agreement over a seed sweep and a s
 
 ---
 
-### Task 12: The fallout, the re-bless at 54, the gates and the report's sim numbers
+### Task 12: The fallout, the re-bless at 55, the gates and the report's sim numbers
 
 **Files:**
 - Modify: any failing test file, by the fallout rule only
@@ -3501,7 +3198,7 @@ git commit -m "test(engineering-spike): hash agreement over a seed sweep and a s
 - [ ] **Step 1: Bless the gameplay change at 54**
 
 Run: `npm run bless`
-Expected: a same-version bless (every artifact is stored at 54 since Task 1), so no bump proof runs, and four `blessed ...` lines print. If it refuses, read the message. A refusal here means an artifact is not at 54: rerun Task 1 Step 5's state check with `git log -- tests/golden`.
+Expected: a same-version bless (every artifact is stored at 55 since Task 1), so no bump proof runs, and four `blessed ...` lines print. If it refuses, read the message. A refusal here means an artifact is not at 54: rerun Task 1 Step 5's state check with `git log -- tests/golden`.
 
 - [ ] **Step 2: Build and run the full suite**
 
@@ -3527,7 +3224,7 @@ Expected: both are clean. The app smoke runs the duel in the real app with no ne
 - [ ] **Step 5: Measure, and write the report's sim sections**
 
 Run: `npx tsx scripts/engineering-spike-measure.ts`
-Expected: one JSON line with `"simVersion":54`.
+Expected: one JSON line with `"simVersion":55`.
 
 In `docs/superpowers/research/2026-11-18-engineering-spike.md`:
 - Fill the After column of the measurements table with the new numbers.
@@ -3535,15 +3232,16 @@ In `docs/superpowers/research/2026-11-18-engineering-spike.md`:
 - Below that table, add the per-seed `telemetryLine` output that `npx vitest run tests/duelGates.test.ts` prints, which is logged even for skipped aggregate tests. Run that file's per-seed tests with `--reporter=verbose` to capture the lines.
 - Add a "Known limits" section listing:
   - the Shield loot cancelled by the bar cap (Decision 21);
-  - the bots fighting with pew pew only (Decision 20);
+  - pew pew not playable in the spike: its slot holds bars with no effect until W-1's plug-in at merge (spec §11, Decision 22);
+  - the scripted gunner moving pew pew's bar to the beam (Decision 20);
   - the bots never moving bars.
-- Replace the determinism section's `(Task 12)` with: `tests/engDeterminism.test.ts: hash agreement over seeds 1-5 (1800 ticks, every 60) and a snapshot reload at tick 950: PASS. Goldens re-blessed at SIM 54 (same-version bless).` Add the duel golden's new outcome and ticks from the bless output.
+- Replace the determinism section's `(Task 12)` with: `tests/engDeterminism.test.ts: hash agreement over seeds 1-5 (1800 ticks, every 60) and a snapshot reload at tick 950: PASS. Goldens re-blessed at SIM 55 (same-version bless).` Add the duel golden's new outcome and ticks from the bless output.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add tests/golden/basic.json tests/golden/duel-1.json tests/golden/duel-rematch.json tests/fixtures/determinism-v2.json docs/superpowers/research/2026-11-18-engineering-spike.md
-git commit -m "test(engineering-spike): re-bless at SIM 54, the fallout rule applied, gates recorded in the report" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "test(engineering-spike): re-bless at SIM 55, the fallout rule applied, gates recorded in the report" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 Stage every fallout test file you changed by name in the same `git add`; list them with `git status --short tests`.
@@ -3560,7 +3258,7 @@ Stage every fallout test file you changed by name in the same `git add`; list th
 | §10.1 reactor 10, maxima, the start (9 used, 1 spare), knock | Tasks 2 and 4 |
 | §10.2 Engines: the throttle cap (1 bar = 25 %), the engine factor, flight and prediction, reverse, the clamp; the scripted pair within the cap | Task 8 (isolated) |
 | §10.3 Weapons: the allocation (0..3, a 4th with overdrive), `weaponPower {slot, delta}`, the trim (overdrive bar first, highest slot down) | Task 9a (isolated) |
-| §10.3 Weapons: pew pew (its own laser state, 2/3/3 shots, 27/27/40), the beam (1/2/2, 40/40/60), the torpedo (reload 4/6/8, 2 levels at 3), `weapon` on the laser commands, the Hunter unchanged | Task 9b (isolated) |
+| §10.3, §11 Weapons: the beam (1/2/2, 40/40/60, 75 overdrive), the torpedo (reload 4/6/8, 10 overdrive, 2 levels at 3), pew pew's bars without effect, the Hunter unchanged, the scripted gunner's move | Task 9b (isolated) |
 | §10.4 Sensors: range, seen, the gates (scan, locks, designate), the scan pause, auto-fire seen, the scan table, hazard capacity | Task 10 (isolated) |
 | §2 the readers see damage at once (effectiveBars); admission reads start-of-tick bars | Tasks 2, 8, 9a, 9b and 10 (the admissions stay above the power block) |
 | §3 overdrive, coolant (8, 0..2, wrap), heat per hazard tick, overheat (fail, bars, one draw always, ascending), recovery at 0, fire heat out | Task 4 (and the hazard tick in Task 6) |
@@ -3572,6 +3270,7 @@ Stage every fallout test file you changed by name in the same `git add`; list th
 | §7 clampToCapacity placement; the step order; rng order | Tasks 5 to 10 (Decision 13) |
 | §8 every sim test; determinism; goldens re-blessed | Tasks 2 to 12 |
 | §1 snapshot size, tick cost, determinism in the report | Tasks 1 and 12 (Part ii adds feel and screenshots) |
-| §9.3 console power strips, locked notches; §10.3 the Weapons console's three weapons and their bars; §10.4 ghosts and fog drawing | Part ii |
+| §9.3 console power strips, locked notches; §10.3 and §11 the Weapons console's three weapons and their bars (the PEW PEW card "ARRIVES WITH W-1"); §10.4 ghosts and fog drawing | Part ii |
+| §11 the pew pew plug-in at merge | out of this plan (Decision 22) |
 
 Out of scope for Part i, and owned by Part ii: the HUD, actions, interior clicks, the app smoke clicks, screenshots, and the report's feel sections.
