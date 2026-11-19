@@ -35,6 +35,7 @@ export function Menu() {
       <section className={playing ? undefined : SCREEN_CLASS} style={playing ? PANEL_STRIP : PANEL_OVERLAY}>
         {!playing && <><h1>FTLite</h1><p>Crew together. Keep the ship flying.</p></>}
         {(page === 'multiplayer' || page === 'settings' || page === 'ship') && <h2 data-testid="page-title">{page === 'multiplayer' ? 'Multiplayer' : page === 'ship' ? 'Single player' : 'Settings'}</h2>}
+        {!playing && page === 'session' && online.status?.phase === 'lobby' && <h2 data-testid="page-title">Lobby</h2>}
         <p data-testid="status" role="status" aria-live="polite">{menuMessage({ menu, online })}</p>
         {page === 'home' ? <Home /> : page === 'multiplayer' ? <Multiplayer /> : page === 'settings' ? <Settings /> : page === 'ship' ? <ShipPicker />
           : page === 'host' ? <HostForm /> : page === 'join' ? <JoinForm /> : <SessionPage playing={playing} />}
