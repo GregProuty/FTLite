@@ -261,6 +261,10 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         bodies.circle(p.x, p.y, Math.max(1, p.r)).stroke({ width: 1, color: CRT.mid, alpha: 0.6 });
       }
       for (const a of d.asteroids) {
+        if (a.trail) for (let i = 1; i < a.trail.length; i++) {   // §7.1, §13.5: the free rock's fading trail, oldest faintest
+          const p0 = a.trail[i - 1]!, p1 = a.trail[i]!;
+          bodies.moveTo(p0.x, p0.y).lineTo(p1.x, p1.y).stroke({ width: 1, color: CRT.dim, alpha: (0.5 * i) / a.trail.length });
+        }
         if (a.streak) {   // spike ii §7 item 3: a moving rock's fading streak behind it
           const mx = (a.x + a.streak.x) / 2, my = (a.y + a.streak.y) / 2;
           bodies.moveTo(a.x, a.y).lineTo(mx, my).stroke({ width: Math.max(1, Math.min(3, a.r * 0.5)), color: CRT.mid, alpha: a.streak.alpha });
@@ -268,12 +272,14 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         }
         if (a.dot) { bodies.rect(Math.round(a.x) - 1, Math.round(a.y) - 1, 2, 2).fill(CRT.mid); continue; }
         const shape = asteroidShape(a.index), pts: number[] = [];
-        shape.forEach((m, k) => { const ang = (k / shape.length) * Math.PI * 2; pts.push(a.x + Math.cos(ang) * a.r * m, a.y + Math.sin(ang) * a.r * m); });
+        shape.forEach((m, k) => { const ang = (k / shape.length) * Math.PI * 2 + (a.spin ?? 0); pts.push(a.x + Math.cos(ang) * a.r * m, a.y + Math.sin(ang) * a.r * m); });
         const wear = a.wear ?? 0;   // §7.3: the fill dims at wear ≥ 0.5; the outline keeps CRT.main once worn
         bodies.poly(pts).fill(wear >= 0.5 ? CRT.faint : CRT.dim).stroke({ width: 1, color: wear > 0 ? CRT.main : CRT.mid });
         // §7.3 step 6: cut into the rock: a 1 px CRT.glass line at 0.85, then a 1 px CRT.mid highlight 0.6 px off at 0.5
-        for (const s of crackDraw(a.index, wear, a.x, a.y, a.r)) bodies.moveTo(s.x1, s.y1).lineTo(s.x2, s.y2).stroke({ width: 1, color: s.light ? CRT.mid : CRT.glass, alpha: s.light ? 0.5 : 0.85 });
+        for (const s of crackDraw(a.index, wear, a.x, a.y, a.r, a.spin ?? 0)) bodies.moveTo(s.x1, s.y1).lineTo(s.x2, s.y2).stroke({ width: 1, color: s.light ? CRT.mid : CRT.glass, alpha: s.light ? 0.5 : 0.85 });
       }
+
+      for (const q of d.rockPath ?? []) bodies.rect(Math.round(q.x) - 1, Math.round(q.y) - 1, 2, 2).fill({ color: CRT.mid, alpha: 0.8 });   // §7.2: the target's next 20 s
 
       // Spike ii §6.5: rock brackets: the laser's four hot corners, the torpedo's dashed main ring; a hover mark in mid.
       for (const m of d.rockMarks ?? []) {

@@ -2,13 +2,15 @@
 // the interpolation alpha, the console's camera and the current Helm axes into screen-space draw lists. The Pixi layer
 // (tacticalLayer.ts) only draws what this returns. Render code, so it may use any Math (not under the determinism guard).
 import { gravityAccel } from '../../sim/tactical/physics';
-import { predictFlight } from '../../sim/tactical/predict';
+import { predictFlight, predictRock } from '../../sim/tactical/predict';
 import { derelictPos } from '../../sim/tactical/science';
 import { classOf, Contact, CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
+import { circularVelocity } from '../../sim/tactical/rails';
 import { rockAlive, rockAt, rockHpMax, RockKind, rockSlots } from '../../sim/tactical/rocks';
 import { AIM_STEPS, HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
+import { rockDrawPos, rockTrail, type RockTrack } from './rockTrack';
 import { hullFor, type HullId } from './hullModel';
 import type { HelmVent } from '../../sim/duel/helmFlight';
 import type { FogView, GhostKind } from './fogModel';
@@ -51,9 +53,11 @@ export interface GridDraw { spacing: number; lines: (Line & { major: boolean })[
 export interface CircleDraw { x: number; y: number; r: number }
 /** Spike ii: `wear` 0 (whole) .. 1 from hp / hpMax, drawn as cracks and a dimmer fill; `streak` (§7 item 3) the screen end of
  *  a moving rock's fading streak behind it, with its alpha. */
-export interface AsteroidDraw extends CircleDraw { index: number; dot: boolean; wear?: number; streak?: { x: number; y: number; alpha: number } }
-/** Spike ii §7 item 3: rocks faster than STREAK_MIN_SPEED (u/s) streak STREAK_S seconds of their motion, at most STREAK_MAX_U. */
-export const STREAK_MIN_SPEED = 20, STREAK_S = 0.25, STREAK_MAX_U = 90;
+export interface AsteroidDraw extends CircleDraw { index: number; dot: boolean; wear?: number; streak?: { x: number; y: number; alpha: number }; spin?: number; trail?: Point[] }
+/** Asteroids-iii §7.1: a free rock streaks along its velocity relative to V_c(p) when that is above STREAK_MIN_REL (u/s), for STREAK_S seconds of that motion, at most STREAK_MAX_U (plan deviation 12). */
+export const STREAK_MIN_REL = 8, STREAK_S = 1, STREAK_MAX_U = 90;
+/** §7.2: the predicted path of the Weapons map's rock target: ticks and the dot spacing (20 s, a dot every 0.5 s). */
+export const ROCK_PATH_TICKS = 1200, ROCK_PATH_EVERY = 30;
 export interface ShipDraw {
   index: number; x: number; y: number;
   /** Radians clockwise from north (the screen's up). */
@@ -117,6 +121,8 @@ export interface TacticalDraw {
   sensor?: CircleDraw | null; ghosts?: GhostDraw[];
   /** Spike ii §6.5 (only with contacts): the rock brackets. */
   rockMarks?: RockMarkDraw[];
+  /** Asteroids-iii §7.2: the Weapons map's rock target's predicted path (screen px). */
+  rockPath?: Point[];
   /** Playtest2feedback §6: the crew ship's cold gas puffs this frame. */
   puffs?: PuffDraw[];
 }
@@ -133,6 +139,8 @@ export interface TacticalModelInput {
   contacts?: boolean;
   /** Spike ii §6.5: the rock under the pointer while a weapon is picked up (the scene's pickRock), for its hover bracket. */
   rockHover?: { rock: number; weapon: 'laser' | 'torpedo' } | null;
+  /** Asteroids-iii §7.1: the scene's rock track (smooth motion and trails); absent: rocks at their tick positions. */
+  rockTrack?: RockTrack | null;
   /** The Helm's effective axes the runtime last sent to the sim. */
   axes: Axes;
   /** Ships to draw (the flight view draws only ship 0). The crew ship is index 0. */
@@ -385,12 +393,17 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   const asteroids: AsteroidDraw[] = [];
   for (let index = 0, n = rockSlots(state); index < n; index++) {   // SPIKE: the live rock pool, not the seeded map
     if (!rockAlive(state, index)) continue;
-    const a = rockAt(state, index), r = a.r * z;
-    if (r < DOT_MIN_PX || !onScreen(a.x, a.y, a.r)) continue;
-    const p = toS(a.x, a.y), speed = Math.hypot(a.vx, a.vy);
-    const tail = a.kind === RockKind.Free && speed > STREAK_MIN_SPEED ? Math.min(STREAK_MAX_U, speed * STREAK_S) / speed : 0;
-    const streak = tail > 0 ? { ...toS(a.x - a.vx * tail, a.y - a.vy * tail), alpha: Math.min(1, (speed - STREAK_MIN_SPEED) / 120) } : null;
-    asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX, wear: Math.max(0, Math.min(1, 1 - a.hp / rockHpMax(a.r))), ...(streak ? { streak } : {}) });
+    const a = rockAt(state, index), r = a.r * z, w = rockDrawPos(input.rockTrack ?? null, state, index, alpha);
+    if (r < DOT_MIN_PX || !onScreen(w.x, w.y, a.r)) continue;
+    const p = toS(w.x, w.y);
+    let streak: { x: number; y: number; alpha: number } | null = null;
+    if (a.kind === RockKind.Free) {   // §7.1: by its speed relative to the circular orbit there, never its absolute speed
+      const [cx, cy] = circularVelocity(a.x, a.y), ux = a.vx - cx, uy = a.vy - cy, rel = Math.hypot(ux, uy);
+      if (rel > STREAK_MIN_REL) { const tail = Math.min(STREAK_MAX_U, rel * STREAK_S) / rel; streak = { ...toS(w.x - ux * tail, w.y - uy * tail), alpha: Math.min(1, (rel - STREAK_MIN_REL) / 40) }; }
+    }
+    const trail = input.rockTrack && a.kind === RockKind.Free ? rockTrail(input.rockTrack, state, index).map((q) => toS(q.x, q.y)) : [];
+    asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX, wear: Math.max(0, Math.min(1, 1 - a.hp / rockHpMax(a.r))), spin: (asteroidSpin(index) * (state.tick + alpha)) / TICK_HZ,
+      ...(streak ? { streak } : {}), ...(trail.length > 1 ? { trail } : {}) });
   }
 
   const ships: ShipDraw[] = [];
@@ -521,6 +534,13 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     if (input.rockHover) mark(input.rockHover.rock, input.rockHover.weapon, true);
   }
 
+  // Asteroids-iii §7.2: the Weapons map's rock target (the laser's, else the torpedo's, else the flying torpedo's) and its next 20 s.
+  let rockPath: Point[] | undefined;
+  if (input.contacts && input.console === 'weapons') {
+    const sys = state.systems[CREW_SLOT]!, k = sys.laserRock >= 0 ? sys.laserRock : sys.torpRock >= 0 ? sys.torpRock : sys.torpRockFlying;
+    if (k >= 0 && rockAlive(state, k)) rockPath = predictRock(state, k, ROCK_PATH_TICKS, ROCK_PATH_EVERY).map((q) => toS(q.x, q.y));
+  }
+
   // Engineering spike §10.4: the sensor range ring and the ghosts of contacts last seen.
   let sensor: CircleDraw | null = null, ghosts: GhostDraw[] = [];
   if (input.fog) {
@@ -535,6 +555,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     ...(gravity ? { gravity } : {}),
     ...(input.fog ? { sensor, ghosts } : {}),
     ...(rockMarks ? { rockMarks } : {}),
+    ...(rockPath ? { rockPath } : {}),
     ...(puffs.length > 0 ? { puffs } : {}),
     overlay: { zoomText: `ZOOM ${z.toFixed(2)}`, scaleBar: { px: units * z, units }, snapHint: cam.follow === 'free', paused: input.paused },
     stars: starOffset(cam.centreX, cam.centreY, vp)
@@ -590,6 +611,11 @@ export function pickRock(input: Pick<TacticalModelInput, 'state' | 'camera' | 'v
 }
 
 const shapeCache = new Map<number, number[]>();
+/** Asteroids-iii §13.5: rock `index`'s outline spin, a hashed ±0.1 to 0.5 rad/s (drawing only; the cracks turn with it). */
+export function asteroidSpin(index: number): number {
+  const h = Math.imul(((index + 1) * 2654435761) >>> 0 ^ 0x9e3779b9, 2246822519) >>> 0, f = (h % 10000) / 10000;
+  return (h & 1 ? 1 : -1) * (0.1 + 0.4 * f);
+}
 /** A rough asteroid outline as radius multipliers (9 vertices, 0.72..1.08), seeded by the asteroid's index. Render-only randomness. */
 export function asteroidShape(index: number): number[] {
   let out = shapeCache.get(index);
@@ -695,12 +721,13 @@ export function crackPaths(index: number, wear: number): CrackLine[] {
 /** One crack stroke in screen px: a cut segment, or its highlight (`light`) 0.6 px off along the segment's normal. */
 export interface CrackSegDraw { x1: number; y1: number; x2: number; y2: number; light: boolean }
 /** §7.3 steps 6–7: the screen strokes of a rock's cracks at centre (cx, cy) and screen radius r: every cut segment, then
- *  every highlight; none when r < CRACK_MIN_PX. */
-export function crackDraw(index: number, wear: number, cx: number, cy: number, r: number): CrackSegDraw[] {
+ *  every highlight; none when r < CRACK_MIN_PX. `spin`: the outline's turn (§13.5). */
+export function crackDraw(index: number, wear: number, cx: number, cy: number, r: number, spin = 0): CrackSegDraw[] {
   if (r < CRACK_MIN_PX) return [];
-  const cuts: CrackSegDraw[] = [], lights: CrackSegDraw[] = [];
+  const cuts: CrackSegDraw[] = [], lights: CrackSegDraw[] = [], c = Math.cos(spin), sn = Math.sin(spin);
   for (const line of crackPaths(index, wear)) for (let i = 1; i < line.length; i++) {
-    const x1 = cx + line[i - 1]!.x * r, y1 = cy + line[i - 1]!.y * r, x2 = cx + line[i]!.x * r, y2 = cy + line[i]!.y * r;
+    const lx0 = line[i - 1]!.x * c - line[i - 1]!.y * sn, ly0 = line[i - 1]!.x * sn + line[i - 1]!.y * c, lx1 = line[i]!.x * c - line[i]!.y * sn, ly1 = line[i]!.x * sn + line[i]!.y * c;
+    const x1 = cx + lx0 * r, y1 = cy + ly0 * r, x2 = cx + lx1 * r, y2 = cy + ly1 * r;
     const len = Math.hypot(x2 - x1, y2 - y1);
     if (len === 0) continue;
     const ox = (-(y2 - y1) / len) * 0.6, oy = ((x2 - x1) / len) * 0.6;

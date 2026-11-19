@@ -69,4 +69,8 @@ describe('crack paths (spec §7.3)', () => {
       expect(Math.hypot(l.x1 - c.x1, l.y1 - c.y1)).toBeCloseTo(0.6, 9);
     });
   });
+  it('the cracks turn with the outline (§13.5): crackDraw with a spin is the unspun strokes turned about the centre', () => {
+    const a = crackDraw(9, 1, 100, 100, 40), b = crackDraw(9, 1, 100, 100, 40, Math.PI / 2);
+    a.forEach((s, i) => { expect(b[i]!.x1).toBeCloseTo(100 - (s.y1 - 100), 9); expect(b[i]!.y1).toBeCloseTo(100 + (s.x1 - 100), 9); });
+  });
 });

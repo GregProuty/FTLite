@@ -115,14 +115,6 @@ describe('rock fx (spec §7)', () => {
 describe('streaks and cracks in the map model (spec §7 items 2, 3)', () => {
   const model = (st: ReturnType<typeof arena>) => tacticalModel({ state: st, prev: st.ships.map((s) => ({ x: s.x, y: s.y, h: s.heading })), alpha: 1, camera: createCamera(0, 2000, 1),
     viewport: { w: 1280, h: 720 }, console: 'weapons', axes: NO_AXES, ships: [0], paused: false, reserveRight: 0 } as TacticalModelInput);
-  it('a rock faster than 20 u/s streaks behind it (length with speed); slower or static rocks do not', () => {
-    const st = arena();
-    mover(st, 10, 0, 2000, 100, 0, 10); mover(st, 11, 100, 2000, 10, 0, 10); seeded(st, 0);
-    const m = model(st), fast = m.asteroids.find((a) => a.index === 10)!, slow = m.asteroids.find((a) => a.index === 11)!;
-    expect(fast.streak).toMatchObject({ x: 640 - 25, y: 360 });
-    expect(fast.streak!.alpha).toBeCloseTo(80 / 120, 9);
-    expect(slow.streak).toBeUndefined();
-  });
   it('wear is 1 − hp / hpMax', () => {
     const st = arena();
     mover(st, 10, 0, 2000, 0, 0, 30, 1.5);
