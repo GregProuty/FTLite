@@ -1,7 +1,7 @@
 // W-1 pew pew (spec 2026-11-18-pew-pew-weapons-design §1, §4, §5): the pew's definition, the charge in thirds, the cone
 // clamp in fine heading units, a round fired from the nose, and the new state in the hash, the clone and the validator.
 import { describe, expect, it } from 'vitest';
-import { CUTTER_CLASS, HUNTER_CLASS, HUNTER_PEW, PEW, ShipClass, VALKYRN_CLASS, VALKYRN_LASER_CLASS } from '../src/renderer/src/sim/tactical/defs';
+import { CUTTER_CLASS, HOUND_PEW, HUNTER_CLASS, HUNTER_PEW, PEW, PEW_TURRET, ShipClass, VALKYRN_CLASS, VALKYRN_LASER_CLASS } from '../src/renderer/src/sim/tactical/defs';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { placeRound } from '../src/renderer/src/sim/tactical/gun';
 import { flattenTactical, hashTactical, TACTICAL_MODULES, validateTacticalValues } from '../src/renderer/src/sim/tactical/hash';
@@ -27,12 +27,13 @@ const offsetOf = (s: TacticalState, name: string): number => {
 
 describe('the pew definition (spec §1)', () => {
   it('has the spec numbers, on the Cutter and the Hunter only', () => {
-    expect(PEW).toEqual({ kind: 'pew', shots: 3, rechargeTicks: 60, speed: 900, lifeTicks: 30, hull: 1, arcSteps: PEW_ARC_STEPS, muzzleForward: SHIP_RADIUS + 1 });
+    expect(PEW).toEqual({ kind: 'pew', shots: 3, rechargeTicks: 60, speed: 900, lifeTicks: 30, hull: 1, arcSteps: PEW_ARC_STEPS, muzzleForward: SHIP_RADIUS + 1, turret: null });   // W-4 spec §2: the base pew has no turret
     expect([PEW_SHOTS, PEW_RECHARGE_TICKS, PEW_POOL, PEW_SPEED, PEW_LIFE, PEW_HULL, PEW_ARC]).toEqual([3, 60, 16, 900, 30, 1, 60]);
     expect(AIM_STEPS).toBe(65536);
     expect(PEW_ARC_STEPS).toBe(10922);   // 60° of 65536, rounded down so the cone never exceeds 60°
     expect(PEW_RANGE).toBeCloseTo(450, 9);
-    expect([CUTTER_CLASS.slots.pew, HUNTER_CLASS.slots.pew, VALKYRN_CLASS.slots.pew, VALKYRN_LASER_CLASS.slots.pew]).toEqual([PEW, HUNTER_PEW, null, null]);
+    expect([CUTTER_CLASS.slots.pew, HUNTER_CLASS.slots.pew, VALKYRN_CLASS.slots.pew, VALKYRN_LASER_CLASS.slots.pew]).toEqual([HOUND_PEW, HUNTER_PEW, null, null]);   // W-4 spec §2: the Hound's pew pew is on its turret (was PEW)
+    expect(HOUND_PEW).toEqual({ ...PEW, turret: PEW_TURRET });
     expect(HUNTER_PEW).toEqual({ ...PEW, rechargeTicks: HUNTER_PEW_RECHARGE_TICKS });   // W-1 Task 6: the Hunter's own recharge
   });
 });

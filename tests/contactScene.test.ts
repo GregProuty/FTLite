@@ -21,6 +21,7 @@ import { createUiStore } from '../src/renderer/src/ui/store';
 import { RockKind, rockSlots, writeRock } from '../src/renderer/src/sim/tactical/rocks';
 import { resetSits } from '../src/renderer/src/render/duel/sitModel';
 import { CONTACT, STATION, stationTop, TABS } from '../src/renderer/src/render/duel/consoleLayout';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const layout = parseShip(cutter);
 const assets: GameAssets = {
@@ -34,11 +35,11 @@ const vp = { w: 1280, h: 720 };
 const LIVE = { banner: null, layerPaused: false, end: null };
 const PAUSED = { banner: 'PAUSED', layerPaused: true, end: null };
 
-function rig() {
+function rig(cls?: number) {
   let now = 0, keys: KeySample = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() };
   const tasks: { at: number; cb: () => void }[] = [];
   const rt = createDuelRuntime({
-    now: () => now, seed: 5, viewport: vp, layout,
+    now: () => now, seed: 5, viewport: vp, layout, cls,
     scheduler: { schedule(delay, cb) { const t = { at: now + delay, cb }; tasks.push(t); return () => { const i = tasks.indexOf(t); if (i >= 0) tasks.splice(i, 1); }; } },
     sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses() }; return k; },
     samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }),
@@ -61,7 +62,7 @@ function rig() {
 
 describe('the scene and the contact window (spec §6.5)', () => {
   it('T over the enemy at the Weapons console opens the contact view; a pause clears it on that frame', () => {
-    const r = rig();
+    const r = rig(ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     try {
       expect(r.rt.view()).toBe('weapons');
       r.rt.duel.tactical.known[0] = 2;   // Sci-1: the full window needs the enemy at Level 2

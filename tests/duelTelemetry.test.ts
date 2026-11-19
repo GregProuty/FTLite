@@ -136,7 +136,7 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
     expect(bait(true, BAIT_WINDOW_TICKS)).toBe(0);
   });
   it('counts Weapons as idle only with nothing to do: full, no launch possible, enemy out of the arc', () => {
-    const d = createSeatedDuel(layout, 5), t = createTelemetry(d), s = d.tactical.systems[0];
+    const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser), t = createTelemetry(d), s = d.tactical.systems[0];   // W-4 spec §14.1: the beam's idle rule, on the laser fit
     todaysCrewWeapons(d.tactical);   // Engineering spike spec §10.3: the round starts the beam dark; give it its bars
     s.laserCharge = LASER_CHARGE_UNITS;
     step(d, t);                                                             // the duel's start: the enemy beyond torpedo range (weapons update spec §2)

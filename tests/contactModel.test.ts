@@ -7,12 +7,14 @@ import { CONTACT_BOX } from '../src/renderer/src/render/duel/consoleLayout';
 import { blink, CRT, DAMAGE_BLINK_HZ, roomLook } from '../src/renderer/src/render/tactical/crtTheme';
 import { derelictPos } from '../src/renderer/src/sim/tactical/science';
 import { classOf, createTacticalState, Loot, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { TEXT } from '../src/renderer/src/render/theme';
 
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
 const model = (state: TacticalState, over: Partial<ContactModelInput> = {}): ContactView | null =>
   contactModel({ state, contact: 0, aim: false, station: 'weapons', t: 0, weapons: { charge }, ...over });
-const known = (level: number): TacticalState => { const st = createTacticalState(4); st.known[0] = level; return st; };
+const known = (level: number, cls: number = ShipClass.Cutter): TacticalState => { const st = createTacticalState(4, 2, cls); st.known[0] = level; return st; };
+const LASER_FIT = ShipClass.ValkyrnLaser;   // W-4 spec §14.1: the beam's rules, on the laser fit
 const pointsOf = (v: ContactView): number[] => [...v.outline, ...v.rooms.flatMap((r) => [...r.points, ...(r.hatch?.segments ?? []), r.centre.x, r.centre.y])];
 
 describe('the enemy at Level 2 (enemy ship window spec §4.2)', () => {
@@ -51,7 +53,7 @@ describe('the enemy at Level 2 (enemy ship window spec §4.2)', () => {
     }
   });
   it('Weapons: LASER is the station\'s charge row, lit while armed; MISSILE the magazine. The Helm: no weapon list, no aim', () => {
-    const st = known(2), v = model(st, { aim: true })!;
+    const st = known(2, LASER_FIT), v = model(st, { aim: true })!;
     expect(v.weapons).toEqual({ laser: { label: 'CHARGE', value: '40%', fill: 0.4, lit: true, enabled: true, note: null }, missile: { magazine: st.systems[0].magazine, lit: false } });
     expect([v.aim, v.aimWeapon]).toEqual([true, 'laser']);
     const torp = model(st, { aim: true, weapon: 'torpedo' })!;   // FTL targeting spec §1: the torpedo picked up
@@ -60,7 +62,7 @@ describe('the enemy at Level 2 (enemy ship window spec §4.2)', () => {
     expect([h.weapons, h.aim, h.aimWeapon]).toEqual([null, false, null]);
   });
   it('FTL targeting spec §1: the target marks are the laser target (only while it has one) and the torpedo target, at Level 1 too', () => {
-    const st = known(1);
+    const st = known(1, LASER_FIT);
     expect([model(st)!.lockRoom, model(st)!.torpRoom]).toEqual([1, null]);   // Feel-i: a round starts at the SHIELDS opener
     st.systems[0].laserTargeted = false;
     expect([model(st)!.lockRoom, model(st)!.torpRoom]).toEqual([null, null]);
@@ -82,7 +84,7 @@ describe('the enemy at Level 2 (enemy ship window spec §4.2)', () => {
 
 describe('the enemy below Level 2 (Sci-1 spec §7.2)', () => {
   it('Level 0 (Feel-i): UNKNOWN CONTACT and the "?" silhouette of three targetable rooms (WEAP nose, SHLD, ENG stern), the weapon list, SCAN 1 (SLOW)', () => {
-    const v = model(known(0))!;
+    const v = model(known(0, LASER_FIT))!;
     expect(v).toMatchObject({ contact: 0, title: 'UNKNOWN CONTACT', shields: null, hull: null, unknown: true, lockRoom: 1, aim: false,
       scan: { label: 'SCAN 1 (SLOW)', enabled: true, progress: null }, lines: [] });
     expect(v.rooms.map((r) => r.label)).toEqual(['?', '?', '?']);
@@ -91,7 +93,7 @@ describe('the enemy below Level 2 (Sci-1 spec §7.2)', () => {
     for (const r of v.rooms) for (let k = 0; k < r.points.length; k += 2) {
       expect(r.points[k]!).toBeGreaterThanOrEqual(v.box.x); expect(r.points[k]!).toBeLessThanOrEqual(v.box.x + v.box.w);
     }
-    const picked = model(known(0), { aim: true })!;
+    const picked = model(known(0, LASER_FIT), { aim: true })!;
     expect([picked.aim, picked.aimWeapon]).toEqual([true, 'laser']);
   });
   it('Level 1 on the Weapons station: the weapon block is present and the aim passes through (spec §7.2)', () => {

@@ -143,7 +143,7 @@ describe('the gun state in the hash, the snapshot and the validator (spec §7.3)
     };
     bad('systems.0.gunHeat', 0, 1001, /out of range/);
     bad('systems.0.gunLocked', 0, 2, /out of range/);
-    bad('systems.0.gunCooldown', 0, 7, /out of range/);
+    bad('systems.0.gunCooldown', 0, 11, /out of range/);   // W-4 spec §13.1: the bound is every gun's largest interval, the autocannon's 10 (was 7, above GUN's 6)
     bad('systems.0.gunMuzzle', 0, 2, /out of range/);
     bad('systems.1.gunWear', 0, GUN.hitsPerLayer, /out of range/);
     bad('systems.1.gunHull', 0, GUN.hitsPerHull, /out of range/);

@@ -8,6 +8,7 @@ import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
 import { contactModel, type ContactView } from '../src/renderer/src/render/duel/contactModel';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { TEXT } from '../src/renderer/src/render/theme';
 import { CRT } from '../src/renderer/src/render/tactical/crtTheme';
 import { hex } from '../src/renderer/src/ui/stage/color';
@@ -16,7 +17,7 @@ import { makeUi } from './helpers/uiStore';
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
 const contactOf = (station: 'helm' | 'weapons', aim: boolean, targets: { laser?: number; torp?: number } = {}): ContactView => {
-  const st = createTacticalState(4); st.known[0] = 2;   // Sci-1: the full window is Level 2
+  const st = createTacticalState(4, 2, ShipClass.ValkyrnLaser); st.known[0] = 2;   // W-4 spec §14.1: the beam's window, on the laser fit. Sci-1: the full window is Level 2
   st.systems[0].laserTargeted = false;   // no target unless asked (a round starts at the Feel-i SHIELDS opener)
   if (targets.laser !== undefined) { st.systems[0].lock = targets.laser; st.systems[0].laserTargeted = true; }
   if (targets.torp !== undefined) st.systems[0].torpLock = targets.torp;

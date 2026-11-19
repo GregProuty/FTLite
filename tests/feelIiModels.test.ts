@@ -27,8 +27,8 @@ import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 const vp = { w: 1280, h: 720 };
 /** Crew at rest far out, the enemy 2000 units north (out of every range), no asteroids. */
-function open(seed = 5): TacticalState {
-  const st = createTacticalState(seed), me = st.ships[0], e = st.ships[1];
+function open(seed = 5, cls?: number): TacticalState {
+  const st = createTacticalState(seed, 2, cls), me = st.ships[0], e = st.ships[1];
   clearRocks(st);
   Object.assign(me, { x: 3000, y: 0, vx: 0, vy: 0, heading: 0 });
   Object.assign(e, { x: 3000, y: -2000, vx: 0, vy: 0 });
@@ -74,7 +74,7 @@ describe('the collision warning (Feel-ii §1.2)', () => {
     expect(tacticalModel(input(open(), 'helm')).helm!.collision).toBeNull();
   });
   it('the status sentence leads with COLLISION under 2 s, then TORPEDO INBOUND, then the laser\'s words, on every seat', () => {
-    const st = open(), p = st.map.planet, me = st.ships[0];
+    const st = open(5, ShipClass.ValkyrnLaser), p = st.map.planet, me = st.ships[0];   // W-4 spec §14.1: the beam's rule, on the laser fit (its words)
     expect(flightAlert(st, { turn: 0, thrust: 0 })).toBeNull();
     placeMissile(st, 1, { x: 3000, y: -1500, vx: 0, vy: 200, heading: 128, headingAcc: 0, age: 30 });
     expect(flightAlert(st, { turn: 0, thrust: 0 })).toEqual({ kind: 'torpedo' });
@@ -246,7 +246,7 @@ describe('never a dead click (Feel-ii §2.8): the reasons are the sim\'s own che
     } finally { disposeDuel(d); }
   });
   it('LAUNCH is refused exactly when canLaunch says no, over many states', () => {
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit (FIRE's TORPEDO FLYING)
     try {
       const t = d.tactical, sys = t.systems[0], me = t.ships[0], e = t.ships[1];
       for (let k = 0; k < 64; k++) {

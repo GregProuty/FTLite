@@ -196,7 +196,7 @@ describe('shields (spec §5)', () => {
     expect([b.shields, b.shieldClock]).toEqual([2, 0]);
   });
   it('a stripping hit resets the recharge clock', () => {
-    const st = duel(), b = st.systems[1];
+    const st = duel(ShipClass.ValkyrnLaser), b = st.systems[1];   // W-4 spec §14.1: the beam's hit, on the laser fit
     b.shields = 1; b.shieldClock = 0;
     charge(st, 240);
     expect(b.shieldClock).toBe(240 * SHIELD_RATE[0]!);

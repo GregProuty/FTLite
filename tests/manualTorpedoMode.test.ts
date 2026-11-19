@@ -3,6 +3,7 @@
 // auto-launches, and the launch copies the mode onto the torpedo, leaving the locks alone. The mode and the flag are
 // hashed, cloned and bounded: only the crew is ever MANUAL, and only the crew flies a MANUAL torpedo.
 import { describe, expect, it } from 'vitest';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { flattenTactical, hashTactical, TACTICAL_MODULES, validateTacticalValues } from '../src/renderer/src/sim/tactical/hash';
 import { launchMissile } from '../src/renderer/src/sim/tactical/missiles';
 import { beginRockTick, rockAlive } from '../src/renderer/src/sim/tactical/rocks';
@@ -90,7 +91,7 @@ describe('the MANUAL launch (spec §3, §5)', () => {
   });
   it('a MANUAL launch on the tick its stored rock target breaks still launches; the AUTO launch is skipped, as today', () => {
     for (const manual of [true, false]) {
-      const st = arena(), s = st.systems[0];   // as rockBlast.test.ts's R1-F3 case: a laser shot in this call breaks the rock
+      const st = arena(5, ShipClass.ValkyrnLaser), s = st.systems[0];   // W-4 spec §14.1: the beam's shot, on the laser fit. As rockBlast.test.ts's R1-F3 case: a laser shot in this call breaks the rock
       st.ships[0].heading = 64;   // east, at (0, −2500): the laser is full and targeted
       st.ships[1].active = true; Object.assign(st.ships[1], { x: 0, y: -2200 });
       mover(st, 100, 200, -2500, 0, 0, 12, 2);   // r 12, hp 2: the laser's 2 damage turns it to dust

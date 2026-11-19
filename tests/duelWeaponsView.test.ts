@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import type { Container } from 'pixi.js';
 import { flyMissile, launchMissile } from '../src/renderer/src/sim/tactical/missiles';
 import { Contact, createTacticalState, type DuelEvent, missileOf, removeMissile, type TacticalState } from '../src/renderer/src/sim/tactical/state';
@@ -79,7 +80,7 @@ describe('the combat model (H-1 spec §7)', () => {
     // Feel-i: the arc's words moved into the status sentence; the info line is bearing, range and the torpedo, under it.
     expect(weaponsInfoText(263, 3987, false)).toBe('BRG 263  RNG 3987  TORP OUT');
     expect(weaponsInfoText(7, 120, true)).toBe('BRG 007  RNG 120  TORP IN');
-    const st = createTacticalState(11), band = { left: TABS_RIGHT, right: SIDE.x }, seenRange = sensorRange(st.systems[0]!);
+    const st = createTacticalState(11, 2, ShipClass.ValkyrnLaser), band = { left: TABS_RIGHT, right: SIDE.x }, seenRange = sensorRange(st.systems[0]!);   // W-4 spec §14.1: the beam's sentence, on the laser fit
     expect([TABS_RIGHT, SIDE.x]).toEqual([408, 1136]);
     for (const far of [300, 600, 3987, 99999]) {   // Engineering spike §10.4: 600 is seen at the start sensor range, so its sentence is measured
       Object.assign(st.ships[1], { x: st.ships[0].x + far, y: st.ships[0].y });
