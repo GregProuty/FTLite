@@ -4,7 +4,7 @@
 // test-only first seed (FTLITE_DUEL_TEST_SEED) whose round is decided on tick 3472 when nobody flies or fires, so in it
 // both players only stand up and sit down again (their records' command samples); then Enter starts round 2 on both,
 // and a duel-*.jsonl with latency figures is on both machines. In round 2 the Helm (the guest) holds W for 2 s and the
-// ship's speed rises on both screens; Weapons (the host) presses and releases Space and, the beam unpowered (Engineering spike spec §10.3), no beam is fired on either; both
+// ship's speed rises on both screens; Weapons (the host) presses Space with the beam unpowered (Engineering spike §10.3: nothing fires), clicks the beam's pips for a bar, presses Space again and a beam fires on both; both
 // renderers agree on a hash at a common publication; the guest is killed and restarted (presence false and the host
 // paused for the lost partner, then the rejoin, its ACK before any input and its presence true, then an Escape
 // unpause). H-2b: the host's records read loopback and the guest's lan with an RTT; F3 shows the latency overlay on
@@ -152,13 +152,22 @@ async function main() {
     // 5. The Weapons machine (the host) presses Space with the beam unpowered: no beam on either screen. Engineering spike
     //    spec §10.3 (Decision 17): the beam is the laser and starts the round at 0 bars (the owner's start [1, 0, 1]), so it is
     //    offline and one press fires nothing (was: the crew laser starts the round full and one press fires a beam on both).
-    //    Part ii's Weapons power action restores a beam-on-both step.
+    //    Part ii restores the beam-on-both step below: the Weapons seat clicks the beam's pips (weaponPower, slot 1), then Space.
     const shotsBefore = [latest(await status(h)).shots, latest(await status(g)).shots];
     await h.request('key', { key: 'Space', down: true }); await delay(200); await h.request('key', { key: 'Space', down: false });
     await delay(2000);
     const dark = [latest(await status(h)), latest(await status(g))];
     assert(dark[0].shots === shotsBefore[0] && dark[1].shots === shotsBefore[1], `an unpowered beam fired: shots ${JSON.stringify(shotsBefore)} -> ${dark[0].shots}, ${dark[1].shots}`);
-    proof.beam = { before: shotsBefore, host: dark[0].shots, guest: dark[1].shots };
+    // Give the beam a bar through the real UI (Engineering spike §10.3), then one Space fires a beam on both screens.
+    //    The start is [1, 0, 1] over pew pew, beam and torpedo on 2 Weapons bars, so a bar is freed first (right click pew pew's pips).
+    await h.request('right-click', { id: 'console-weapon-pips-0' });
+    await delay(300);
+    await h.request('click', { id: 'console-weapon-pips-1' });
+    //    One beam bar charges 9600 units at 40 a tick (4 s); Space is a single press that fires a full laser, so wait for the charge, then press.
+    await delay(6000);
+    await h.request('key', { key: 'Space', down: true }); await delay(200); await h.request('key', { key: 'Space', down: false });
+    const lit = await until(async () => [latest(await status(h)), latest(await status(g))], ([a, b]: any) => a.shots > shotsBefore[0] && b.shots > shotsBefore[1], 'a powered beam fires on both', 8000);
+    proof.beam = { before: shotsBefore, dark: [dark[0].shots, dark[1].shots], host: lit[0].shots, guest: lit[1].shots };
     step = 'step 6';
     // 6. Both renderers agree on the hash at a common publication.
     const agreement = await until(async () => { const [a, b] = [await status(h), await status(g)]; const hp = a.observations.at(-1).publications, gp = b.observations.at(-1).publications;
