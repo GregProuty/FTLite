@@ -931,7 +931,7 @@ Electron's online stack (service client, RTC, lease owner) now runs in the page,
    - `npx vercel env add FTLITE_PASSCODE production` (the code friends type). Choose a long passcode (several words or 16+ random characters): the 1 s failure delay is per request, so parallel guessing is only slowed, not stopped.
    - `npx vercel env add FTLITE_COOKIE_SECRET production` with 32 random bytes in base64, made by `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`.
    Changing `FTLITE_PASSCODE` changes the code; changing `FTLITE_COOKIE_SECRET` signs everyone out. A missing or short secret makes every page answer "FTLite is not configured." (fail closed).
-4. Each deploy: `FTLITE_WEB_SERVICE_ORIGIN=https://<signalling worker origin> npm run deploy:web` (exactly one https origin; no trailing slash).
+4. Each deploy, in PowerShell: `$env:FTLITE_WEB_SERVICE_ORIGIN='https://<signalling worker origin>'; npm run deploy:web` (in Git Bash: `FTLITE_WEB_SERVICE_ORIGIN=https://<signalling worker origin> npm run deploy:web`). Use exactly one https origin, with no trailing slash.
 5. After the first deploy, put `https://<project>.vercel.app` into Cloudflare's `ALLOWED_ORIGINS` (spec §6), then run these live checks with `curl -I`. Use `-b ftlite_pass=<value>` for the cookie; copy the value from a browser sign-in (DevTools → Application → Cookies).
    - Without the cookie: `/`, `/assets/authorityWorker.js` and `/assets/paid/<a real file from public/assets/paid>` each answer `401` (the passcode page).
    - With the cookie: `/`, `/assets/authorityWorker.js` and the same paid file each answer `200` with `cache-control: private, no-cache`, and `/version.json` answers `200` with `cache-control: no-store`.
