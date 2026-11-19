@@ -16,7 +16,7 @@ import { BUTTON, MENU_CLASS, menuCss, PANEL_OVERLAY, PANEL_STRIP, ROOT_OVERLAY, 
 import { versionText } from '../version';
 
 export function Menu() {
-  const menu = useUi((s) => s.menu), online = useUi((s) => s.online), update = useUi((s) => s.browser.update), actions = useActions();
+  const menu = useUi((s) => s.menu), online = useUi((s) => s.online), update = useUi((s) => s.browser.update), note = useUi((s) => s.browser.note), actions = useActions();
   const ref = useRef<HTMLDivElement>(null), playing = isPlaying(menu);
   useLayoutEffect(() => {
     const el = ref.current; if (!playing || !el) return;
@@ -39,6 +39,7 @@ export function Menu() {
         <p data-testid="status" role="status" aria-live="polite">{menuMessage({ menu, online })}</p>
         {page === 'home' ? <Home /> : page === 'multiplayer' ? <Multiplayer /> : page === 'settings' ? <Settings /> : page === 'ship' ? <ShipPicker />
           : page === 'host' ? <HostForm /> : page === 'join' ? <JoinForm /> : <SessionPage playing={playing} />}
+        {!playing && note && <p data-testid="browser-note" style={VERSION}>{note}</p>}
         {!playing && <p data-testid="version" style={VERSION}>{versionText()}</p>}
       </section>
     </div>

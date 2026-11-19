@@ -20,6 +20,9 @@ import { watchHostVisibility } from './app/online/hostVisibility';
 import { versionPollActive, watchVersion } from './app/web/versionWatch';
 import { inMatch, installPageGuards } from './app/web/pageGuards';
 import { createBrowserFullscreen, type KeyboardLockApi } from './app/web/browserFullscreen';
+import { checkBrowserSupport, ONE_TAB_TEXT, SAFARI_NOTE, UNSUPPORTED_TEXT, type SupportGlobals } from './app/web/browserSupport';
+import { acquireOnlineLock, type OnlineLock } from './app/web/onlineLock';
+import { installAudioUnlock } from './app/audioUnlock';
 import { validatePageOnlineConfig } from '../../shared/onlineConfig';
 import { createOnlineRendererSession } from './app/onlineSession';
 import { createOnlineModeSession } from './app/onlineModeSession';
@@ -85,9 +88,19 @@ async function startApp(): Promise<void> {
   renderer.setShake?.(settings.shake);   // Feel-i: the console maps' screen shake
   const scheduler = { schedule(delay: number, cb: () => void) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } };
   // The online session runs in this page (web build spec §3.3): Electron's preload hands it main's resolved config, and
-  // the web build bakes its own in (§5.1).
-  const onlineConfig = window.ftlite ? window.ftlite.onlineConfig : __FTLITE_WEB_CONFIG__;
-  const pageOnline = onlineConfig && validatePageOnlineConfig(onlineConfig) ? createPageOnline(onlineConfig, { window }) : null;
+  // the web build bakes its own in (§5.1). A browser must have the online APIs (§7.7), and only the tab holding the
+  // ftlite-online lock runs the session (§7.5).
+  const web = !window.ftlite;
+  const support = web ? checkBrowserSupport(globalThis as unknown as SupportGlobals) : null;
+  const configured = window.ftlite ? window.ftlite.onlineConfig : support?.ok ? __FTLITE_WEB_CONFIG__ : null;
+  const lock: OnlineLock = web && configured ? await acquireOnlineLock(navigator.locks) : { state: 'unavailable' };
+  const onlineConfig = configured && (!web || lock.state === 'held') ? configured : null;
+  const pageOnline = onlineConfig && validatePageOnlineConfig(onlineConfig)
+    ? createPageOnline(onlineConfig, { window, persistStorage: web ? () => navigator.storage?.persist?.() : undefined }) : null;
+  // A lock manager that fails or never answers (review R1-F2, R1-F6) leaves online off with the unsupported text, not
+  // the "configured local service" one.
+  const browserInit = web ? { web: true, unsupported: support?.ok ? null : UNSUPPORTED_TEXT, note: support?.safari ? SAFARI_NOTE : null,
+    onlineBlocked: lock.state === 'busy' ? ONE_TAB_TEXT : lock.state === 'unavailable' && configured ? UNSUPPORTED_TEXT : null } : undefined;
   const bridge = pageOnline ? createOnlineBridge(pageOnline) : null;
   const offVisibility = bridge && !window.ftlite ? watchHostVisibility({ document, onStatus: cb => bridge.onStatus(cb) }) : undefined;   // Electron does not throttle its page, so the warning is browser-only
   const offPrepareExit = window.ftlite?.onPrepareExit?.(() => pageOnline ? pageOnline.prepareExit() : Promise.resolve());
@@ -101,7 +114,7 @@ async function startApp(): Promise<void> {
       removeEventListener: (type, fn, capture) => window.removeEventListener(type, fn as (e: KeyboardEvent) => void, capture),
       dispatchEscape: () => { for (const type of ['keydown', 'keyup']) window.dispatchEvent(new KeyboardEvent(type, { code: 'Escape', key: 'Escape', bubbles: true })); } },
     matchRunning: () => inMatch(store.getState().menu), now: () => performance.now(), onChange: () => actions.windowResized() });
-  const store = createUiStore({ onlineAvailable: !!bridge, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, fullscreenAvailable: !!win || !!pageFullscreen?.available, controls: controlSections(),
+  const store = createUiStore({ onlineAvailable: !!bridge, browser: browserInit, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, fullscreenAvailable: !!win || !!pageFullscreen?.available, controls: controlSections(),
     ships: SOLO_SHIPS.map(({ id, name, line }) => ({ id, name, line })), soloShip: settings.soloShip, valkyrnLaserFit: settings.valkyrnLaserFit } });   // Valkyrn spec §9
   bootCrt(renderer, store);
   const offGuards = installPageGuards(window, () => inMatch(store.getState().menu));   // web build spec §7.1 (harmless in Electron)
@@ -173,8 +186,7 @@ async function startApp(): Promise<void> {
   window.addEventListener('resize', () => actions.windowResized());   // F11 fullscreen changes keep the Settings label true
   const uiRoot = document.createElement('div'); uiRoot.id = 'ui'; document.body.append(uiRoot);
   const unmountUi = await mountUi({ el: uiRoot, store, actions, images });
-  const unlockOnce = (): void => audio.unlock();   // first gesture (and every focus) resumes a suspended AudioContext; guarded inside
-  window.addEventListener('keydown', unlockOnce, { once: true }); window.addEventListener('pointerdown', unlockOnce, { once: true }); window.addEventListener('focus', unlockOnce);
+  const offAudio = installAudioUnlock(window, audio);   // web build spec §7.3: the first gesture (and every focus) resumes a suspended AudioContext
   window.addEventListener('blur', () => session.pause());
   document.addEventListener('visibilitychange', () => {   // Audio-i spec section 5: a hidden window is paused and silent
     if (document.hidden) { session.pause(); audio.suspend(); }

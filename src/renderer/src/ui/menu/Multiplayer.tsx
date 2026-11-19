@@ -4,7 +4,7 @@ import { MenuButton } from './MenuButton';
 
 /** Host, Join, the saved-seat actions when offered, the availability note and Back (main menu spec decision 3). */
 export function Multiplayer() {
-  const menu = useUi((s) => s.menu), online = useUi((s) => s.online), actions = useActions();
+  const menu = useUi((s) => s.menu), online = useUi((s) => s.online), blocked = useUi((s) => s.browser.onlineBlocked), actions = useActions();
   const v = { menu, online }, offered = online.status?.actions ?? [];
   return (
     <>
@@ -12,7 +12,7 @@ export function Multiplayer() {
       <MenuButton id="join" text="Join" onClick={actions.openJoin} enabled={can(v, 'join')} />
       {offered.includes('reconnect') && <MenuButton id="reconnect" text="Reconnect saved seat" onClick={actions.reconnect} enabled={can(v, 'reconnect')} />}
       {offered.includes('forget-seat') && <MenuButton id="forget-seat" text="Forget saved seat" onClick={actions.forgetSavedSeat} enabled={can(v, 'forget-seat')} />}
-      <p data-testid="online-availability">{availabilityText(v)}</p>
+      <p data-testid="online-availability">{blocked ?? availabilityText(v)}</p>
       <MenuButton id="back" text="Back" onClick={actions.back} enabled={!menu.pending} />
     </>
   );
