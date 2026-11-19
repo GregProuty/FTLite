@@ -17,7 +17,7 @@ import { shipHud } from '../../render/duel/shipHudModel';
 import { READOUT_COLUMN } from '../../render/duel/interiorModel';
 import { createInteriorView, type InteriorView } from '../../render/duel/interiorView';
 import { readoutHelp, readoutRows } from '../../render/duel/readoutModel';
-import { createFx, fxDt, pushEvents, pushGunHits, pushKill, recordTrails, resetFx, shakeOffset, stepFx, trackSolution, type ViewEvent } from '../../render/tactical/fxModel';
+import { createFx, fxDt, pushEvents, pushGunHits, pushKill, pushPewHits, recordTrails, resetFx, shakeOffset, stepFx, trackSolution, type ViewEvent } from '../../render/tactical/fxModel';
 import { gunnerPresent, laserSituation, linedUp } from '../../render/duel/situationModel';
 import { countSit, createSitTracker, frameZoom, sitCard, trackSit, type SitSeat } from '../../render/duel/sitModel';
 import { shakeScale } from '../../render/shake';
@@ -222,7 +222,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       }
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       const events = source.drainEvents();
-      pushEvents(fx, events); pushHits(fx, events, d.tactical); pushGunHits(fx, events);   // Valkyrn spec §7.4: the gun's sparks, pops and -1   // duel polish i spec §B: the callouts and the struck-room flashes
+      pushEvents(fx, events); pushHits(fx, events, d.tactical); pushGunHits(fx, events); pushPewHits(fx, events);   // Valkyrn spec §7.4: the gun's sparks, pops and -1; W-1: the pew's   // duel polish i spec §B: the callouts and the struck-room flashes
       // Feel-i §3: the kill, seen as the round's outcome turning with the enemy's hull gone (both modes read the same state).
       const enemySlot = targetOf(d.tactical, CREW_SLOT);
       if (lastOutcome === Outcome.Running && d.tactical.outcome !== Outcome.Running && (d.tactical.systems[enemySlot]?.hull ?? 1) <= 0) {
@@ -264,7 +264,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         const input = {
           state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, console: camKey!, axes: source.axes(),
           ships: fx.kill ? [0] : [0, 1], paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: { left: TABS_RIGHT, right: SIDE.x } } : { reserveRight: READOUT_COLUMN }), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
-          holdHeading: view === 'flight' ? -1 : preview ?? d.holdHeading, holdPreview: preview !== null, crewHull: hullFor(true, d.interior.layout.hull), gravity: camKey === 'helm', flight: view === 'flight', alert, pings   // Feel-ii; Valkyrn spec §4.5: the crew hull
+          holdHeading: view === 'flight' ? -1 : preview ?? d.holdHeading, holdPreview: preview !== null, crewHull: hullFor(true, d.interior.layout.hull), gravity: camKey === 'helm', flight: view === 'flight', alert, pings, pewPointer: station === 'weapons' && view === 'weapons' ? options.pointer?.() ?? null : null   // W-1: the pew's aim line follows the pointer on the Weapons map; Feel-ii; Valkyrn spec §4.5: the crew hull
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting

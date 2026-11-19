@@ -111,6 +111,19 @@ export function pushGunHits(fx: FxState, events: readonly ViewEvent[]): void {
   }
 }
 
+/** W-1 (pew pew spec §1): the pew's hits: a hot spark at the hit point; the shield pop when it stripped a layer; `-1` when
+ *  a crew round cost the enemy hull; a 1 px shake when a round hits the crew ship (the console maps; the interior shows
+ *  only the hit's effect). The online view's gap events carry neither strip nor hull, so online only sparks. */
+export function pushPewHits(fx: FxState, events: readonly ViewEvent[]): void {
+  for (const e of events) {
+    if (e.kind !== 'pewHit') continue;
+    fx.items.push({ kind: 'spark', age: 0, life: SPARK_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.hot });
+    if (e.stripped) fx.items.push({ kind: 'pop', age: 0, life: POP_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.hot });
+    if (e.hull && e.owner === CREW_SLOT) float(fx, '-1', e.x, e.y);
+    if (e.ship === CREW_SLOT) startShake(fx, 1, 0.12);
+  }
+}
+
 /** Feel-i: the enemy destroyed at (x, y) heading h (its drawn place): the explosion, the break-apart, the slow motion, a
  *  big shake and TARGET DESTROYED over it. Once per kill: a second call while one runs does nothing. */
 export function pushKill(fx: FxState, x: number, y: number, h: number): void {

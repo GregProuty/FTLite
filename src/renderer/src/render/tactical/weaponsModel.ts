@@ -6,7 +6,8 @@
 import { classOf, Contact, Outcome, targetOf } from '../../sim/tactical/state';
 import { predictMissile } from '../../sim/tactical/predict';
 import { laserEligible, torpedoInRange } from '../../sim/tactical/weapons';
-import { LASER_ARC_COS, LASER_RANGE, MISSILE_RADIUS, MISSILE_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
+import { clampAim } from '../../sim/tactical/pew';
+import { AIM_STEPS, LASER_ARC_COS, LASER_RANGE, MISSILE_RADIUS, MISSILE_RANGE, PEW_ARC, PEW_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { ROOM_NAMES } from '../duel/interiorModel';
 import { alertSentence, evadeDir, gunReason, gunSentence, laserSituation, linedUp, type FlightAlert } from '../duel/situationModel';
 import { gunSightDraw, roundDraws, type GunSightDraw } from '../duel/leadModel';
@@ -16,7 +17,7 @@ import { FONT_NATIVE, FONT_SIZE, textPx } from '../theme';
 import { worldToScreen, type Point } from './camera';
 import { CORE_S, FLOAT_RISE_PX, FLOAT_S, FLOAT_STEP_PX, interpolatedMissile, KILL_S, type FxState } from './fxModel';
 import {
-  BEARING_RING_ZOOM, headingAngle, interpolatedShip, drawnScale, ringDraw, SHIP_CHEVRON_PX, type Label, type PrevBody, type RingDraw,
+  BEARING_RING_ZOOM, fineHeadingOf, headingAngle, interpolatedShip, drawnScale, ringDraw, SHIP_CHEVRON_PX, type Label, type PrevBody, type RingDraw,
   type TacticalModelInput
 } from './tacticalModel';
 import { HULLS, hullFor, roomCentre } from './hullModel';
@@ -24,6 +25,11 @@ import { calloutDraws, CHARGE_COLOUR, CHARGE_RING_MIN_PX, CHARGE_RING_RADII, cha
 
 /** The laser arc's half-angle in radians: ±60° (cos 0.5). */
 export const ARC_HALF = Math.acos(LASER_ARC_COS);
+/** W-1 (pew pew spec §1): the pew cone's half-angle in radians (±PEW_ARC), and a round's streak in seconds of its flight. */
+export const PEW_HALF = (PEW_ARC * Math.PI) / 180;
+export const PEW_STREAK_S = 0.03;
+/** A screen-space line segment. */
+export interface Segment { x1: number; y1: number; x2: number; y2: number }
 
 /** `bright` (Feel-i, console feel spec §2): the enemy is inside the arc and the laser is ready, so the wedge lights up. */
 export interface ArcDraw { x: number; y: number; r: number; /** Radians clockwise from north. */ angle: number; half: number; bright?: boolean }
@@ -69,6 +75,9 @@ export interface CombatDraw {
   torpedoPath?: Point[]; evade?: EvadeDraw | null; pings?: PingDraw[];
   /** Valkyrn spec §7.4: the gun sight on the Flight map, and the rounds in flight as tracers (a gun class only). */
   gunSight?: GunSightDraw | null; rounds?: { x1: number; y1: number; x2: number; y2: number }[];
+  /** W-1 (pew pew spec §1): on the Weapons map the pew cone (its edges drawn dim) and the aim line toward the pointer,
+   *  clamped into the cone (mid); on every console map each pew round as a short streak (hot). */
+  pewCone?: ArcDraw | null; pewAim?: Segment | null; pewRounds?: Segment[];
 }
 /** Feel-ii §1.6: the EVADE arrow beside the own ship (its tip, the way it points in radians clockwise from north) and its word. */
 export interface EvadeDraw { x: number; y: number; angle: number; label: Label }
@@ -103,6 +112,8 @@ export interface CombatModelInput extends TacticalModelInput {
   pings?: readonly Ping[];
   /** Valkyrn spec §5: the Flight seat's map (the Helm map with the Weapons side tools): the gun sight, the torpedo circle lit. */
   flight?: boolean;
+  /** W-1: the pointer on the Weapons map (screen px), for the pew's aim line; absent or null draws none. */
+  pewPointer?: Point | null;
 }
 
 /** Bearing in whole degrees, 0 to 359, north 0, clockwise. */
@@ -254,5 +265,22 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   // Feel-ii §2.7: the pings, target pings riding on the enemy's drawn marker while it is shown.
   const pings = pingDraws(input.pings ?? [], toS, enemyShown ? enemyS : null);
   const gun = cls.slots.gun ? { gunSight: input.flight ? gunSightDraw({ state, prev, alpha, camera: cam, viewport: vp, t: input.t ?? 0 }) : null, rounds: roundDraws(state, toS) } : {};   // Valkyrn spec §7.4
-  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange, status, helmArc, solution, goal, floats, torpedoPath, evade, pings, ...gun };
+  // W-1 (pew pew spec §1): the pew cone about the nose (the sim's integer heading, which it clamps about), the aim line toward
+  // the pointer clamped as the sim will clamp it, and every round as a streak ending at the round.
+  const pewDef = cls.slots.pew;
+  let pewCone: ArcDraw | null = null, pewAim: Segment | null = null;
+  if (input.console === 'weapons' && pewDef && input.ships.includes(0)) {
+    const heading = state.ships[0].heading, r = PEW_RANGE * z;
+    pewCone = { x: ownS.x, y: ownS.y, r, angle: headingAngle(heading), half: PEW_HALF };
+    const p = input.pewPointer ?? null;
+    if (p && Math.hypot(p.x - ownS.x, p.y - ownS.y) > 1) {
+      const a = (clampAim(heading, fineHeadingOf(p.x - ownS.x, p.y - ownS.y), pewDef.arcSteps) / AIM_STEPS) * 2 * Math.PI;
+      pewAim = { x1: ownS.x, y1: ownS.y, x2: ownS.x + Math.sin(a) * r, y2: ownS.y - Math.cos(a) * r };
+    }
+  }
+  const pewRounds: Segment[] = state.pew.filter((q) => q.active).map((q) => {
+    const a = toS(q.x - q.vx * PEW_STREAK_S, q.y - q.vy * PEW_STREAK_S), b = toS(q.x, q.y);
+    return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+  });
+  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange, status, helmArc, solution, goal, floats, torpedoPath, evade, pings, pewCone, pewAim, pewRounds, ...gun };
 }

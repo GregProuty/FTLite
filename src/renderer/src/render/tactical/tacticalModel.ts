@@ -5,7 +5,7 @@ import { gravityAccel } from '../../sim/tactical/physics';
 import { predictFlight } from '../../sim/tactical/predict';
 import { derelictPos } from '../../sim/tactical/science';
 import { classOf, Contact, CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
-import { HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS } from '../../sim/tactical/tuning';
+import { AIM_STEPS, HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
 import { hullFor, type HullId } from './hullModel';
@@ -153,6 +153,13 @@ export function gravityRadius(g: number, thrust: number): number {
   if (hit !== undefined) return hit;
   const r = contourRadius(a); gravityRadii.set(a, r); return r;
 }
+/** W-1 (pew pew spec §4): the fine heading (0..AIM_STEPS − 1, a heading index × HEADING_COUNT + its fraction) of a screen
+ *  direction (dx, dy), north 0 clockwise. The view's aim; the sim clamps it. */
+export function fineHeadingOf(dx: number, dy: number): number {
+  const a = Math.atan2(dx, -dy), k = Math.round((a / (2 * Math.PI)) * AIM_STEPS);
+  return ((k % AIM_STEPS) + AIM_STEPS) % AIM_STEPS;
+}
+
 /** The heading index (0..255) of a screen direction (dx, dy), north 0 clockwise. */
 export function headingOf(dx: number, dy: number): number {
   const a = Math.atan2(dx, -dy), k = Math.round((a / (2 * Math.PI)) * HEADING_COUNT);
