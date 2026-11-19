@@ -50,9 +50,11 @@ function rig() {
   const scene = createDuelScene(renderer as never, { seed: 5, pauseText: 'PAUSED', ui: createDuelSink(store), contact, requests, takeClick: () => null, pointer: () => pointerAt });
   seatDuelCrew(rt.duel);   // player 0 at the Helm, player 1 at Weapons; Tab takes the gunner
   press('switch'); tick(); tick();
-  const point = (p: { x: number; y: number } | null): void => { pointerAt = p; scene.draw(rt, 1 / 60, LIVE); };
+  let round = 0;   // the scene's epoch: bumping it is a new round
+  const source = Object.create(rt, { epoch: { value: () => round } });
+  const point = (p: { x: number; y: number } | null): void => { pointerAt = p; scene.draw(source, 1 / 60, LIVE); };
   const marker = () => { const b = interpolatedShip(rt.duel.tactical, rt.prev, rt.alpha(), 0); return worldToScreen(rt.cameras.weapons, vp, b.x, b.y); };
-  return { rt, scene, requests, point, marker };
+  return { rt, scene, requests, point, marker, newRound: () => { round++; } };
 }
 
 describe('the map requests (spec §2)', () => {
@@ -82,6 +84,21 @@ describe('the scene keeps the laser\'s aim (spec §2)', () => {
       expect(r.requests.laserAim()).toBe(16384);
       r.point({ x: m.x, y: m.y - 100 });
       expect(r.requests.laserAim()).toBe(0);   // north
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+});
+
+describe('a new round clears the aim (spec §2, plan Decision 10)', () => {
+  it('an epoch change in the scene resets the kept aim to none', () => {
+    const r = rig();
+    try {
+      r.point(null);
+      const m = r.marker();
+      r.point({ x: m.x + 100, y: m.y });
+      expect(r.requests.laserAim()).toBe(16384);
+      r.newRound();
+      r.point(null);   // the draw that sees the new epoch; no pointer to give a fresh aim
+      expect(r.requests.laserAim()).toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
 });

@@ -291,6 +291,7 @@ export function validateTacticalValues(shape: TacticalState, values: ArrayLike<n
         if (ship[1] === 'systems' && key === 'cls') clsOf.set(i, slice[0]!);   // validated above; read by pewCharge later in the record
         if (ship[1] === 'systems' && key === 'laserBurst') burstOf.set(i, slice[0]!);   // W-2: read by laserAim later in the record
         if (ship[1] === 'systems' && key === 'laserManual' && i !== CREW_SLOT && slice[0] !== 0) bad('only the crew laser has a manual mode');   // W-2: the Hunter is always AUTO
+        if (ship[1] === 'systems' && key === 'laserAim' && i !== CREW_SLOT && slice[0] !== -1) bad('only the crew laser has a manual aim');   // W-2: the Hunter is always AUTO
         if (ship[1] === 'systems' && key === 'laserAim' && slice[0] !== -1 && (burstOf.get(i) ?? 0) === 0) bad('a manual aim with no burst pending');   // W-2: it waits only for a burst's next shot
       }
     } else if (missile) {

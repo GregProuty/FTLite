@@ -46,6 +46,9 @@ const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.
  * contact counter increment is a spark at the ship; each gunHits increment is a gun hit at the target (Valkyrn spec §7.3).
  * An ending and a relaunch in one gap are told apart because both
  * counters rose: the ending is drawn at the old missile's last position.
+ * W-2 approximation (plan Decision 13): the crew laser's mode is read once per gap, from the replica's current state, for
+ * every shot in it, so a shot fired in the other mode before a Z toggle inside the same gap may name the wrong room; and a
+ * MANUAL hit on a room already at level 2 (the level did not rise) is drawn with no room callout.
  */
 export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: readonly (PrevBody | null)[], t: TacticalState): ViewEvent[] {
   const out: ViewEvent[] = [];

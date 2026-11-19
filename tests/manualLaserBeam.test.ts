@@ -126,6 +126,36 @@ describe('the double laser\'s burst (spec §2)', () => {
   });
 });
 
+describe('a mode toggle mid-burst (plan Decision 5)', () => {
+  it('a MANUAL burst finishes MANUAL after a switch to AUTO: the second shot follows the stored aim, not the lock', () => {
+    const st = open();
+    Object.assign(st.ships[1], { x: 0, y: 1300 });
+    st.systems[0].lock = Room.Weapons;
+    applyWeaponsInput(st, 0, fire(NORTH));
+    st.systems[0].laserManual = false;
+    st.ships[1]!.x = 300;   // off the line north, so only the stored aim could miss it
+    for (let k = 0; k < LASER_BURST_GAP_TICKS; k++) applyWeaponsInput(st, 0, IDLE_INPUT);
+    const [ux, uy] = aimDir(NORTH), last = beams(st).at(-1)!;
+    expect([st.systems[0].shots, st.systems[0].laserBurst, st.systems[0].laserAim]).toEqual([2, 0, -1]);
+    expect(last).toMatchObject({ hit: false, x1: 0, y1: 1500 });
+    expect(last.x2).toBeCloseTo(ux * LASER_RANGE, 6); expect(last.y2).toBeCloseTo(1500 + uy * LASER_RANGE, 6);
+  });
+  it('an AUTO burst finishes AUTO after a switch to MANUAL: the second shot goes to the lock room', () => {
+    const st = open();
+    st.systems[0].laserManual = false;
+    Object.assign(st.ships[1], { x: 0, y: 1300 });
+    st.systems[1].shields = 0;
+    st.systems[0].lock = Room.Weapons; st.systems[0].laserCharge = LASER_CHARGE_UNITS;
+    applyWeaponsInput(st, 0, { ...IDLE_INPUT, laserCharge: true });
+    expect([st.systems[0].shots, st.systems[0].laserBurst, st.systems[0].laserAim]).toEqual([1, 1, -1]);
+    st.systems[0].laserManual = true;
+    for (let k = 0; k < LASER_BURST_GAP_TICKS; k++) applyWeaponsInput(st, 0, IDLE_INPUT);
+    expect([st.systems[0].shots, st.systems[0].laserBurst]).toEqual([2, 0]);
+    expect(beams(st).at(-1)).toMatchObject({ hit: true, room: Room.Weapons });
+    expect(st.systems[1].rooms[Room.Weapons]).toBe(2);   // the lock room twice, whatever the mode now
+  });
+});
+
 describe('when it does not fire (spec §2)', () => {
   it('not while its own torpedo flies, nor without a full charge, with a burst pending, offline, or with a bad aim', () => {
     const flying = open();

@@ -94,6 +94,10 @@ describe('the mode in the modules (spec §4)', () => {
     bad('systems.0.laserAim', AIM_STEPS, /out of range/);
     bad('systems.0.laserAim', -2, /out of range/);
     bad('systems.0.laserAim', 0.5, /out of range/);
-    bad('systems.1.laserAim', 7, /a manual aim with no burst pending/);   // the Hunter's laserBurst is 0
+    bad('systems.1.laserAim', 7, /only the crew laser has a manual aim/);   // the Hunter is always AUTO
+    const idle = [...values]; idle[offsetOf(st, 'systems.0.laserBurst')] = 0;   // the crew's aim with no burst pending
+    expect(() => validateTacticalValues(shape, idle)).toThrow(/a manual aim with no burst pending/);
+    const hunter = [...values]; hunter[offsetOf(st, 'systems.1.laserBurst')] = 1; hunter[offsetOf(st, 'systems.1.laserAim')] = 7;   // a burst pending, but the Hunter is never MANUAL
+    expect(() => validateTacticalValues(shape, hunter)).toThrow(/only the crew laser has a manual aim/);
   });
 });
