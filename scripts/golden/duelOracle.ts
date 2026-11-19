@@ -121,7 +121,11 @@ export const ADDITIONS: Readonly<Record<number, Migration>> = {
   /** Valkyrn-i (53): the gun's state on every systems record and the round pool; no oracle run has a gun, so they stay
    *  at their first recorded value (0), which `frozen` makes recordRun check at every tick. */
   53: { change: 'Valkyrn-i: the gun state and the round pool', rename: () => undefined, derived: [], frozen: true,
-    added: [/^space\.rounds\.\d+\.(active|owner|flight)$/, /^ship\.systems\.\d+\.gun(Heat|Locked|Cooldown|Muzzle|Wear|Hull|RoomWear|Shots|Hits)$/] }
+    added: [/^space\.rounds\.\d+\.(active|owner|flight)$/, /^ship\.systems\.\d+\.gun(Heat|Locked|Cooldown|Muzzle|Wear|Hull|RoomWear|Shots|Hits)$/] },
+  /** W-2 (56): the laser mode and the MANUAL burst aim on every systems record; no oracle run sends laserMode, so they stay
+   *  at their first recorded values (false and −1), which `frozen` makes recordRun check at every tick. */
+  56: { change: 'W-2: the laser mode and the MANUAL burst aim', rename: () => undefined, derived: [], frozen: true,
+    added: [/^ship\.systems\.\d+\.(laserManual|laserAim)$/] }
 };
 
 /** The duel's named canonical fields after SIM_VERSION, in flattenDuel order: `<module id>.<field name>`, with the
