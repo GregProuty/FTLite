@@ -229,7 +229,7 @@ if (main) {
 - [ ] **Step 3: Type-check and run it on master's code**
 
 Run: `npm run typecheck && npx tsx scripts/spike-asteroids-iii-idle.ts --json docs/superpowers/research/2026-11-19-asteroids-iii-master-idle.json`
-Expected: typecheck clean; for each idle seed 1–3 the summary shows `outcome: 0`, `leftKind1: 0` and three window medians in the 800–900 byte range (a planning probe of this scene at ρ 2750 measured 826–865 bytes per delta for seeds 1–3); the burst rows show master's after-burst delta median and free counts (informational). The JSON file holds `simVersion: 59`. Runtime: about a minute.
+Expected: typecheck clean; for each idle seed 1–3 the summary shows `outcome: 0`, `leftKind1: 0` and three window medians in the 800–900 byte range (a planning probe of this scene at ρ 2750 measured 826–865 bytes per delta for seeds 1–3); the burst rows show master's after-burst delta median and free counts (informational). The JSON file holds `simVersion: 60`. Runtime: about a minute.
 
 - [ ] **Step 4: Commit**
 
