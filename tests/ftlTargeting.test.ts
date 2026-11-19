@@ -20,11 +20,12 @@ import { createSeatedDuel } from './helpers/duelSeat';
 import { holdInSight } from './helpers/sensorSight';
 import { makeHostile } from './helpers/hostile';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const layout = parseShip(cutter);
 /** The crew at (−600, −300) facing east, the enemy 300 east facing west: in arc, laser range and torpedo range. */
 function facing(): TacticalState {
-  const st = todaysCrewWeapons(makeHostile(createTacticalState(5)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 2, ShipClass.ValkyrnLaser)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)   // W-4 spec §14.1: the beam's rule, on the laser fit
   st.map = { ...st.map, asteroids: [] };
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
@@ -44,7 +45,7 @@ const behind = (st: TacticalState): void => { st.ships[1].x = -900; };   // behi
 
 describe('the crew laser always charges (spec §2)', () => {
   it('every round starts with the crew laser and magazine full; the Hunter laser starts empty', () => {
-    const st = createTacticalState(9);
+    const st = createTacticalState(9, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     expect([st.systems[0].laserCharge, st.systems[0].magazine]).toEqual([LASER_CHARGE_UNITS, CUTTER_CLASS.slots.missile.magazine]);
     // Feel-i (console feel spec §3): the laser starts targeted at Shields, the FTL opener; the torpedo untargeted.
     expect([st.systems[0].laserTargeted, st.systems[0].lock, st.systems[0].torpLock, st.systems[0].torpRoom]).toEqual([true, Room.Shields, -1, -1]);
@@ -155,7 +156,7 @@ describe('the commands through the duel step and the wire (spec §2)', () => {
   const cmd = (d: DuelState, player: number, command: DuelCommand): DuelEnvelope => ({ runId: 'duel', id: { player, sequence: ++seq }, requestedTick: d.interior.tick, command });
   const step = (d: DuelState, commands: DuelEnvelope[]) => stepDuelTick(d, { held: [{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }], commands });
   it('laserLock accepts −1 to clear; torpLock accepts −1..2; anything else is malformed; only the gunner may send them', () => {
-    const d = createSeatedDuel(layout, 5), s = d.tactical.systems[0];
+    const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser), s = d.tactical.systems[0];   // W-4 spec §14.1: the beam's rule, on the laser fit
     try {
       expect(validTarget(-1) && validTarget(0) && validTarget(2)).toBe(true);
       expect([validTarget(-2), validTarget(3), validTarget(0.5)]).toEqual([false, false, false]);
@@ -177,7 +178,7 @@ describe('the commands through the duel step and the wire (spec §2)', () => {
       expect(() => codec.encodeMessage(envelope(command))).toThrow();
   });
   it('snapshot validation bounds laserTargeted to 0/1 and torpLock and torpRoom to −1..2', () => {
-    const st = createTacticalState(5), base = Array.from(flattenTactical(st));
+    const st = createTacticalState(5, 2, ShipClass.ValkyrnLaser), base = Array.from(flattenTactical(st));   // W-4 spec §14.1: the beam's rule, on the laser fit
     expect(() => validateTacticalValues(st, base)).not.toThrow();
     /** The flat index of a ship-module field: the space module's values come first. */
     const field = (name: string): number => {

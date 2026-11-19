@@ -6,10 +6,11 @@ import { LASER_ARC_COS, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, LASER_RANGE, MAGAZ
 import { HUNTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
 import { makeHostile } from './helpers/hostile';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 /** Crew at (−600, −300) heading east, enemy 300 units east of it: inside the belt, clear of the planet, in arc and range. */
 function duel(): TacticalState {
-  const st = todaysCrewWeapons(makeHostile(createTacticalState(5)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 2, ShipClass.ValkyrnLaser)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)   // W-4 spec §14.1: the beam's rule, on the laser fit
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
   return st;
