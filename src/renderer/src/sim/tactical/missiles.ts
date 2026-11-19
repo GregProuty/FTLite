@@ -13,14 +13,18 @@ import { DT, MISSILE_CRUISE_SPEED, MISSILE_LEAD_CAP_S, MISSILE_MIN_CLOSING, R_MA
 
 type EndCause = Extract<DuelEvent, { kind: 'missileEnd' }>['cause'];
 
+/** Ship i launches its torpedo from its nose (spec §7b). W-3 (pew pew spec §3): it carries the ship's torpedo mode; a
+ *  MANUAL torpedo homes on nothing and strikes the room under its impact point, so it takes no target room and no rock,
+ *  and it leaves the torpedo's room and rock targets for a later AUTO launch. */
 export function launchMissile(state: TacticalState, i: number): void {
   const s = state.ships[i]!, sys = state.systems[i]!, def = classOf(state, i).slots.missile, h0 = hx(s.heading), h1 = hy(s.heading);
   placeMissile(state, i, {
     x: s.x + h0 * def.spawnOffset, y: s.y + h1 * def.spawnOffset,
     vx: s.vx + h0 * def.launchSpeed, vy: s.vy + h1 * def.launchSpeed,
     heading: s.heading, headingAcc: 0, age: 0
-  });
+  }, sys.torpManual);
   sys.magazine--; sys.missilesLaunched++;
+  if (sys.torpManual) { sys.torpRoom = -1; sys.torpRockFlying = -1; return; }   // W-3: no lock is read or consumed
   // FTL targeting spec §2: the torpedo strikes the room its target names at launch (−1: the lock room as it lands), and
   // a torpedo's target is a single shot, so it clears.
   sys.torpRoom = sys.torpLock; sys.torpLock = -1;

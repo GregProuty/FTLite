@@ -12,8 +12,9 @@ import { AIM_STEPS, DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DEREL
 import { rockCapacity, ROCK_RESERVE, ROCK_STRIDE } from './rocks';
 import { CREW_SLOT, emptyMissile, emptyRound, HunterMode, Outcome, type GunRound, type Missile, type MissileFlight, type Ship, type ShipSystems, type TacticalState } from './state';
 
-/** Values per missile pool entry: active, owner, then the flight x, y, vx, vy, heading, headingAcc, age (zeros when free). */
-export const MISSILE_SLOT = 9;
+/** Values per missile pool entry: active, owner, then the flight x, y, vx, vy, heading, headingAcc, age, then (W-3) the
+ *  manual flag (zeros when free). */
+export const MISSILE_SLOT = 10;
 
 /** A ship body's scalar fields in canonical order after `active`; `graceUntil` closes the body. */
 const BODY = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'planetHits', 'asteroidHits', 'shipHits', 'released', 'skidBudget', 'skidSign'] as const satisfies readonly (keyof Ship)[];
@@ -21,11 +22,11 @@ const BODY = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'planetHits', 'aste
 const SYSTEMS_HEAD = ['cls', 'target', 'hull'] as const satisfies readonly (keyof ShipSystems)[];
 const SYSTEMS_TAIL = ['shields', 'shieldClock', 'laserCharge', 'laserHold', 'fireHeld', 'lock', 'freq', 'laserTargeted', 'torpLock', 'torpRoom', 'laserBurst', 'laserBurstClock', 'magazine', 'magazineClock',
   'shots', 'laserHits', 'layersStripped', 'missilesLaunched', 'missileHits', 'missilesLost', 'laserRock', 'torpRock', 'torpRockFlying', 'rocksBroken',   // the rock targets, spike ii §8
-  'gunHeat', 'gunLocked', 'gunCooldown', 'gunMuzzle', 'gunWear', 'gunHull', 'gunShots', 'gunHits', 'pewCharge', 'pewShots', 'pewHits', 'laserManual', 'laserAim'] as const satisfies readonly (keyof ShipSystems)[];   // the gun's, Valkyrn spec §7.3; the pew's, W-1; the laser mode and burst aim, W-2; gunRoomWear closes the record
-const FLAGS = new Set<string>(['released', 'fireHeld', 'laserTargeted', 'gunLocked', 'laserManual']);
+  'gunHeat', 'gunLocked', 'gunCooldown', 'gunMuzzle', 'gunWear', 'gunHull', 'gunShots', 'gunHits', 'pewCharge', 'pewShots', 'pewHits', 'laserManual', 'laserAim', 'torpManual'] as const satisfies readonly (keyof ShipSystems)[];   // the gun's, Valkyrn spec §7.3; the pew's, W-1; the laser mode and burst aim, W-2; the torpedo mode, W-3; gunRoomWear closes the record
+const FLAGS = new Set<string>(['released', 'fireHeld', 'laserTargeted', 'gunLocked', 'laserManual', 'torpManual']);
 export const MISSILE_KEYS = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'age'] as const satisfies readonly (keyof MissileFlight)[];
 /** Compile-time completeness: a `Missile` member missing from these keys makes this `never` assignment fail typecheck. */
-type MissingMissileKeys = Exclude<keyof Missile, (typeof MISSILE_KEYS)[number] | 'active' | 'owner'>;
+type MissingMissileKeys = Exclude<keyof Missile, (typeof MISSILE_KEYS)[number] | 'active' | 'owner' | 'manual'>;   // W-3: manual is its own bit
 const missileKeysComplete: MissingMissileKeys extends never ? true : never = true;
 void missileKeysComplete;
 /** Values per round pool entry: active, owner, then x, y, vx, vy, age (zeros when free); Valkyrn spec §7.3. */
@@ -62,7 +63,8 @@ function missileFields(k: number): ModuleField<TacticalState>[] {
         if (!m.active && (m.owner !== 0 || MISSILE_KEYS.some((_, j) => values[offset + j] !== 0))) throw new Error(`missiles.${k}: a free entry holds values`);
         MISSILE_KEYS.forEach((key, j) => { m[key] = values[offset + j]!; });
       }
-    }
+    },
+    bit(`missiles.${k}.manual`, (s) => s.missiles[k]!.manual, (s, v) => { s.missiles[k]!.manual = v; })   // W-3 (pew pew spec §4): the mode copied at launch
   ];
 }
 /** Round pool entry k of `pool` (Valkyrn spec §7.3: the gun's `rounds`; W-1: the pew's `pew`): active, owner, then its
@@ -243,7 +245,9 @@ const systemsRules = (slots: number, rocks: number): Readonly<Record<string, (v:
   // W-1 (pew pew spec §4): the counters ≥ 0; the charge is checked against the slot's own class (pewChargeRule).
   pewShots: count, pewHits: count,
   // W-2 (pew pew spec §4): the mode a bit, the burst aim a fine aim or −1 (validateTacticalValues adds the crew-only and burst checks).
-  laserManual: flagBit, laserAim: within(-1, AIM_STEPS - 1)
+  laserManual: flagBit, laserAim: within(-1, AIM_STEPS - 1),
+  // W-3 (pew pew spec §4): the torpedo mode a bit (validateTacticalValues adds the crew-only check).
+  torpManual: flagBit
 });
 /** W-1 (pew pew spec §4; Task 6 review): a slot's pew charge, 0..its own class's full pew (0 for a class without one). */
 const pewChargeRule = (cls: number): ((v: number) => boolean) => {
@@ -268,7 +272,7 @@ const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
  *  writing them anywhere: heading indices, integer counters, room levels 0..2, shields, the laser and the magazine
  *  against the largest class, the hunter's and the outcome's enums, the map's asteroid count and the slot count; an
  *  inactive ship slot holds only zeros; each missile pool entry: active 0 or 1, a free entry holds only zeros, a missile's
- *  owner is an active slot with no other missile in flight, its heading index and age. Each round pool entry likewise: active 0 or 1, a free entry holds only zeros, an owner that is an active slot, an age within the longest gun life (the gun's round pool and the pew's alike, W-1). W-2: only the crew slot's laser is MANUAL, and a slot's laserAim is −1 unless a burst shot is pending. `shape` is any tactical state made
+ *  owner is an active slot with no other missile in flight, its heading index and age. Each round pool entry likewise: active 0 or 1, a free entry holds only zeros, an owner that is an active slot, an age within the longest gun life (the gun's round pool and the pew's alike, W-1). W-2: only the crew slot's laser is MANUAL, and a slot's laserAim is −1 unless a burst shot is pending. W-3: only the crew slot's torpedo mode is MANUAL, and only the crew's torpedo is manual. `shape` is any tactical state made
  *  from the same seed and slot count (only its map and slot count are read). Throws naming the first bad field; returns
  *  the offset after the values. */
 export function validateTacticalValues(shape: TacticalState, values: ArrayLike<number>, offset = 0): number {
@@ -293,9 +297,11 @@ export function validateTacticalValues(shape: TacticalState, values: ArrayLike<n
         if (ship[1] === 'systems' && key === 'laserManual' && i !== CREW_SLOT && slice[0] !== 0) bad('only the crew laser has a manual mode');   // W-2: the Hunter is always AUTO
         if (ship[1] === 'systems' && key === 'laserAim' && i !== CREW_SLOT && slice[0] !== -1) bad('only the crew laser has a manual aim');   // W-2: the Hunter is always AUTO
         if (ship[1] === 'systems' && key === 'laserAim' && slice[0] !== -1 && (burstOf.get(i) ?? 0) === 0) bad('a manual aim with no burst pending');   // W-2: it waits only for a burst's next shot
+        if (ship[1] === 'systems' && key === 'torpManual' && i !== CREW_SLOT && slice[0] !== 0) bad('only the crew torpedo has a manual mode');   // W-3: the Hunter is always AUTO
       }
     } else if (missile) {
-      const key = missile[2]!, active = values[at - (key === 'active' ? 0 : key === 'owner' ? 1 : 2)]!;
+      // W-3: the manual bit closes the entry, after the flight's MISSILE_KEYS.length values.
+      const key = missile[2]!, active = values[at - (key === 'active' ? 0 : key === 'owner' ? 1 : key === 'flight' ? 2 : 2 + MISSILE_KEYS.length)]!;
       if (key === 'active' && !flagBit(slice[0]!)) bad('active is not 0 or 1');
       if (active === 0 && slice.some((v) => v !== 0)) bad('a free entry holds values');
       if (active === 1 && key === 'owner') {
@@ -303,6 +309,10 @@ export function validateTacticalValues(shape: TacticalState, values: ArrayLike<n
         if (!within(0, slots - 1)(o) || inactive.has(o)) bad('its owner is not an active ship slot');
         if (owners.has(o)) bad(`ship ${o} has two missiles in flight`);
         owners.add(o);
+      }
+      if (active === 1 && key === 'manual') {   // W-3 (pew pew spec §3, §4): a bit, and only the crew flies a MANUAL torpedo
+        if (!flagBit(slice[0]!)) bad('manual is not 0 or 1');
+        if (slice[0] === 1 && values[at - 1 - MISSILE_KEYS.length] !== CREW_SLOT) bad('only the crew flies a manual torpedo');   // the entry's owner
       }
       if (active === 1 && key === 'flight') { const [, , , , head, headAcc, age] = slice as number[]; if (!heading(head!) || !acc(headAcc!) || !count(age!)) bad('heading, headingAcc or age out of range'); }
     } else if (round) {   // Valkyrn spec §7.3: a round's entry as a missile's, its age within the longest gun life; W-1: a pew round's within the longest pew life

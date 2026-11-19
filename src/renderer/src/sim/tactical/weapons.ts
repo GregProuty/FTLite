@@ -41,15 +41,19 @@ export interface ShipInput {
   /** W-2 (pew pew spec §2, §4): the MANUAL laser's fine aim this tick (pewAim's format, 0..65535), or −1 for no shot. Read
    *  only by the crew's laser in MANUAL; the duel step admits the first laserFire, the Hunter never sends one. */
   laserFire: number;
+  /** W-3 (pew pew spec §3): the Weapons attendant's steering of a MANUAL torpedo in flight this tick: `torpTurn` A/D (−1,
+   *  0 or 1) and `torpHeading` the heading it holds (a heading index 0..255, −1 none). The duel step reads them from the
+   *  held input; every other input sets 0 and −1. Read only while the ship's torpedo in flight is MANUAL (duel.ts). */
+  torpTurn: number; torpHeading: number;
   /** Sci-1 spec §4.6: whether the station running the ship's scan is attended (true when no scan runs). The duel step
    *  computes it for the crew; every other input sets true. */
   scanner: boolean;
 }
 
 /** A crew that sits at both consoles and does nothing. */
-export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, scanner: true };
+export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, torpTurn: 0, torpHeading: -1, scanner: true };
 /** Nobody at either console: a ship nobody flies. */
-export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, scanner: true };
+export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, torpTurn: 0, torpHeading: -1, scanner: true };
 
 /** Whether ship i's laser is fully charged; never for a class without a laser (Valkyrn spec §6.1). */
 export function laserFull(state: TacticalState, i: number): boolean {
@@ -75,10 +79,11 @@ export function torpedoInRange(state: TacticalState, i: number, torpRock = state
   return dx * dx + dy * dy <= range * range;
 }
 /** missileLaunch is accepted only with no missile in flight, a missile in the magazine, Weapons below level 2 and the
- *  target (spike ii: the rock target, `torpRock`) within torpedo range (weapons update spec §2). */
-export function canLaunch(state: TacticalState, i: number, torpRock = state.systems[i]!.torpRock): boolean {
+ *  target (spike ii: the rock target, `torpRock`) within torpedo range (weapons update spec §2). W-3 (pew pew spec §3): in
+ *  MANUAL (`manual`, default the ship's torpedo mode) there is no target and no range test. */
+export function canLaunch(state: TacticalState, i: number, torpRock = state.systems[i]!.torpRock, manual = state.systems[i]!.torpManual): boolean {
   const s = state.systems[i]!;
-  return missileOf(state, i) === null && s.magazine > 0 && s.rooms[Room.Weapons] < 2 && torpedoInRange(state, i, torpRock);
+  return missileOf(state, i) === null && s.magazine > 0 && s.rooms[Room.Weapons] < 2 && (manual || torpedoInRange(state, i, torpRock));
 }
 /** A lock target must be a Room index. */
 export function validLock(room: number): boolean { return Number.isInteger(room) && room >= 0 && room <= 2; }
@@ -268,7 +273,7 @@ function stepBurst(state: TacticalState, i: number): void {
 /** Apply ship i's weapon commands for this tick, before anything moves (spec §7 table). The crew's ship (FTL targeting
  *  spec §2): `laserLock` sets the laser's target (−1 clears it, keeping the lock room for a manual shot) and `torpLock`
  *  the torpedo's, and an accepted room lock clears the matching rock target; `rockLock` sets that weapon's rock target (a rock lock clears its room lock); a charge press fires a full laser; then, attended, the laser with a target fires its burst when full
- *  and eligible, and a torpedo with a target launches when the launch is legal (launchMissile clears torpLock). W-2 (pew pew spec §2): in MANUAL the laser fires neither on a charge press nor by itself. */
+ *  and eligible, and a torpedo with a target launches when the launch is legal (launchMissile clears torpLock). W-2 (pew pew spec §2): in MANUAL the laser fires neither on a charge press nor by itself. W-3 (pew pew spec §3): in MANUAL a torpedo lock never auto-launches, missileLaunch needs no range, and a stored rock target breaking this call does not cancel a launch. */
 export function applyWeaponsInput(state: TacticalState, i: number, input: ShipInput): void {
   const s = state.systems[i]!, crew = i === CREW_SLOT, armed = classOf(state, i).slots.laser !== null;   // Valkyrn spec §6.1: a null laser skips lock, charge and auto-fire
   if (armed && input.weapons && input.laserLock !== null && validTarget(input.laserLock)) {   // first: a burst shot reads this tick's lock
@@ -303,12 +308,12 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
   // Weapons online and no torpedo of its own in flight (laserFrozen).
   if (armed && crew && s.laserManual && input.laserFire >= 0 && manualLaserReady(state, i) && !laserFrozen(state, i, input)) fireLaserAlong(state, i, input.laserFire);
   // W-1 merge: the torpedo launch is skipped when this call broke its rock target (impl review R1-F3), but the pew still fires.
-  if (!(torpOnRock && s.torpRock < 0)) {   // the torpedo's rock broke this call: no launch this tick (the command can still read 'applied')
+  if (s.torpManual || !(torpOnRock && s.torpRock < 0)) {   // AUTO: the torpedo's rock broke this call: no launch this tick (the command can still read 'applied'); W-3: a MANUAL launch needs no rock, so it still launches
     if (input.missileLaunch && canLaunch(state, i)) {
       launchMissile(state, i);
       s.fireHeld = false;
     }
-    if (crew && (s.torpLock >= 0 || s.torpRock >= 0) && canLaunch(state, i)) launchMissile(state, i);   // auto-launch, once (spike ii: or on a rock target)
+    if (crew && !s.torpManual && (s.torpLock >= 0 || s.torpRock >= 0) && canLaunch(state, i)) launchMissile(state, i);   // auto-launch, once (spike ii: or on a rock target); W-3: never in MANUAL
   }
   if (input.pewAim >= 0) firePew(state, i, input.pewAim);   // W-1 (pew pew spec §1): last, as WEAPON_ORDER admits it; attended (above)
 }

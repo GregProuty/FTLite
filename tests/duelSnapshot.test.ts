@@ -95,6 +95,8 @@ describe('the duel snapshot (spec §6)', () => {
         ['systems.1.cls', 0, 0, /systems\.1\.pewCharge: out of range/],   // Task 6 review: the Hunter's charge (above the Cutter's full 180) is now bounded by the claimed class first; the identity case alone is below
         ['systems.1.laserManual', 0, 1, /systems\.1\.laserManual: only the crew laser has a manual mode/],   // W-2: the Hunter is always AUTO
         ['systems.0.laserAim', 0, 65536, /systems\.0\.laserAim: out of range/],   // W-2: a fine aim 0..65535, or −1
+        ['systems.1.torpManual', 0, 1, /systems\.1\.torpManual: only the crew torpedo has a manual mode/],   // W-3: the Hunter is always AUTO
+        [`${slot}.manual`, 0, 2, /manual is not 0 or 1/], [`${free}.manual`, 0, 1, /a free entry holds values/],   // W-3: the per-torpedo mode
         ['systems.0.target', 0, 0, /duel slot identity/], ['systems.1.target', 0, 1, /duel slot identity/]
       ];
       const created = vi.spyOn(duelState, 'createDuel');

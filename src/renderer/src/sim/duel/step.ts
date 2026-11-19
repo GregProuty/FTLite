@@ -208,7 +208,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins. W-1: pewFire last; only the first in a tick fires (the rest noop). W-2: laserMode first, set at once (as laserFrequency is), so a same-tick laserCharge or laserFire is judged in the new mode; laserFire after laserCharge, the first in a tick fires.
   const helm = attendant(d, d.nav), gunner = attendant(d, d.weapons);
   const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false,
-    gunHeld: gunner >= 0 && (input.held[gunner] ?? NO_HELD).gunHeld === true, pewAim: -1, laserFire: -1, scanner: true };   // Valkyrn spec §7.1: the trigger of Weapons' attendant; W-1: pewFire sets pewAim; W-2: laserFire sets laserFire (Task 4)
+    gunHeld: gunner >= 0 && (input.held[gunner] ?? NO_HELD).gunHeld === true, pewAim: -1, laserFire: -1, torpTurn: 0, torpHeading: -1, scanner: true };   // Valkyrn spec §7.1: the trigger of Weapons' attendant; W-1: pewFire sets pewAim; W-2: laserFire sets laserFire
   // Spike ii §6.1: missileLaunch is admitted with this tick's effective torpedo rock target: the last accepted
   // rockLock(torpedo), else −1 after an accepted torpLock (it clears torpRock first), else the stored value.
   let torpRockNext: number | null = null, torpLocked = false;

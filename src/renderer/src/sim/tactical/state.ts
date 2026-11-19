@@ -79,13 +79,18 @@ export interface ShipSystems {
    *  round starts AUTO. `laserAim`: the fine aim (0..AIM_STEPS − 1) a MANUAL burst's pending shots fire along, −1 while no
    *  MANUAL burst is pending. An inactive slot holds zeros. */
   laserManual: boolean; laserAim: number;
+  /** W-3 (pew pew spec §3, §4): the torpedo's mode, false AUTO (launched on a lock in range, homing, as before) or true
+   *  MANUAL (launched by missileLaunch alone, with no lock or range, and flown by the Weapons seat); only the crew's is
+   *  ever MANUAL (torpMode), and every round starts AUTO. A launch copies it onto the torpedo (Missile.manual). */
+  torpManual: boolean;
 }
 
 /** A cruise missile's flight (spec §7b). */
 export interface MissileFlight { x: number; y: number; vx: number; vy: number; heading: number; headingAcc: number; age: number }
 /** A missile pool entry: in flight or free, and the ship slot that launched it. At most one in flight per ship; a free
- *  entry holds zeros. */
-export interface Missile extends MissileFlight { active: boolean; owner: number }
+ *  entry holds zeros. W-3 (pew pew spec §3): `manual`, the launcher's torpedo mode at launch (a MANUAL torpedo flies its
+ *  ship's Weapons input and strikes the room under its impact point); a toggle during the flight never changes it. */
+export interface Missile extends MissileFlight { active: boolean; owner: number; manual: boolean }
 /** Valkyrn spec §7.2: a gun round in the pool: its position, velocity (u/s) and ticks flown, the ship slot that fired
  *  it, and whether it flies. A free entry holds zeros. */
 export interface GunRound { x: number; y: number; vx: number; vy: number; age: number; owner: number; active: boolean }
@@ -213,16 +218,17 @@ function systemsFor(cls: number, target: number, crew = false): ShipSystems {
     magazine: c.slots.missile.magazine, magazineClock: 0, laserRock: -1, torpRock: -1, torpRockFlying: -1, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
     gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0,
     pewCharge: pew ? pew.shots * pew.rechargeTicks : 0, pewShots: 0, pewHits: 0,   // W-1: a pew starts the round full
-    laserManual: false, laserAim: -1   // W-2: every round starts AUTO, with no MANUAL burst pending
+    laserManual: false, laserAim: -1,   // W-2: every round starts AUTO, with no MANUAL burst pending
+    torpManual: false   // W-3: and the torpedo too
   };
 }
 function emptySystems(): ShipSystems {
   return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, laserTargeted: false, torpLock: 0, torpRoom: 0, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: 0, magazineClock: 0, laserRock: 0, torpRock: 0, torpRockFlying: 0, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
-    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0, pewCharge: 0, pewShots: 0, pewHits: 0, laserManual: false, laserAim: 0 };
+    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0, pewCharge: 0, pewShots: 0, pewHits: 0, laserManual: false, laserAim: 0, torpManual: false };
 }
 /** A free missile pool entry. */
-export function emptyMissile(): Missile { return { active: false, owner: 0, x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 }; }
+export function emptyMissile(): Missile { return { active: false, owner: 0, x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0, manual: false }; }
 
 function hunterFor(crew: Spawn): Hunter {
   const trail = new Float64Array(2 * HUNTER_TRAIL_TICKS);
@@ -283,11 +289,11 @@ export function missileOf(state: TacticalState, i: number): Missile | null {
   return null;
 }
 /** Put a missile in flight for ship i with these flight values: in the entry it already flies in, or the first free one
- *  (the launch, and tests). Returns it. */
-export function placeMissile(state: TacticalState, i: number, f: MissileFlight): Missile {
+ *  (the launch, and tests). W-3: `manual` its mode (default AUTO). Returns it. */
+export function placeMissile(state: TacticalState, i: number, f: MissileFlight, manual = false): Missile {
   const m = missileOf(state, i) ?? state.missiles.find((e) => !e.active);
   if (!m) throw new Error(`no free missile pool entry for ship ${i}`);
-  Object.assign(m, { active: true, owner: i, x: f.x, y: f.y, vx: f.vx, vy: f.vy, heading: f.heading, headingAcc: f.headingAcc, age: f.age });
+  Object.assign(m, { active: true, owner: i, x: f.x, y: f.y, vx: f.vx, vy: f.vy, heading: f.heading, headingAcc: f.headingAcc, age: f.age, manual });
   return m;
 }
 /** Free ship i's missile entry, with no event (a missile ending goes through the missile step). */
