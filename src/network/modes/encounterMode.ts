@@ -9,6 +9,7 @@ import { boundedHostBytes } from '../../shared/netSession';
 import type { CaptureCause, ModeCheckpoint } from '../../shared/sessionCheckpoint';
 import { validStreamAttachmentOptions, type StreamAttachmentOptions } from '../../shared/hostProcessProtocol';
 import type { AdmissionPolicy, Link, ModeDefinition, ModeHost, ModeHostDeps, Unsubscribe } from './contracts';
+import { createSharedStateImage, type SharedStateImage } from './streamBinding';
 
 /** A mode's producers: bots and local hooks, bound at the authority's completed-boundary hooks. */
 export interface EncounterProducers<T extends EncounterTypes> {
@@ -41,7 +42,8 @@ export interface EncounterModeOptions<T extends EncounterTypes> {
   /** Which player ids an attachment may own (default: distinct integers below the player count, at least one). */
   validPlayers?(players: readonly number[], playerCount: number): boolean;
   producers(options: ProducerOptions<T>): EncounterProducers<T>;
-  publication(link: Link, options: ModeHostDeps & { resolveLayout: ResolveLayout; latestPayloadLimit: number }): StreamBinding<T>;
+  /** `images`: the host's shared image store for its current authority (Perf-i spec §2.3). */
+  publication(link: Link, options: ModeHostDeps & { resolveLayout: ResolveLayout; latestPayloadLimit: number; images?: SharedStateImage }): StreamBinding<T>;
   latestStreamKey?(bytes: Uint8Array): string;
 }
 
@@ -76,6 +78,8 @@ export function defineEncounterMode<T extends EncounterTypes>(options: Encounter
     const attached = new Set<Unsubscribe>();
     const streamDisposals = new Set<Unsubscribe>();
     const captures = new WeakMap<CheckpointOf<T>, ModeCheckpoint>();
+    // One image store per authority (Perf-i spec §2.3): renewed with the authority, whose publication sequence keys it.
+    let images = createSharedStateImage();
     function candidate(checkpoint: CheckpointOf<T>, cause: CaptureCause): ModeCheckpoint {
       let value = captures.get(checkpoint);
       if (!value) {
@@ -102,7 +106,7 @@ export function defineEncounterMode<T extends EncounterTypes>(options: Encounter
         pause: (reason) => { if (!reason.length || reason.length > 128) throw Error(`${label} pause reason`); nextPause?.({ paused: true, reason }); } });
       try { if (restore) next.restore(value as CheckpointOf<T>); else next.start(init); }
       catch (error) { nextProducers.dispose(); next.dispose(); throw error; }
-      const old = authority; authority = next; pause = nextPause;
+      const old = authority; authority = next; pause = nextPause; images = createSharedStateImage();
       count = init.playerCount;
       producers?.dispose(); producers = nextProducers;
       old?.dispose();
@@ -114,7 +118,7 @@ export function defineEncounterMode<T extends EncounterTypes>(options: Encounter
       attach(link, players, policy: AdmissionPolicy, attachOptions?: StreamAttachmentOptions) {
         if (disposed || !authority || !validPlayers(players, count)) throw Error(`invalid ${label} ownership`);
         if (!validStreamAttachmentOptions(attachOptions)) throw Error('invalid stream attachment');
-        const stream = attachOptions?.streamed ? options.publication(link, { ...deps, resolveLayout, latestPayloadLimit: attachOptions.latestPayloadLimit! }) : undefined;
+        const stream = attachOptions?.streamed ? options.publication(link, { ...deps, resolveLayout, latestPayloadLimit: attachOptions.latestPayloadLimit!, images }) : undefined;
         let off: Unsubscribe;
         try { off = producers!.attachHuman(stream?.link ?? link, players, { admissionPolicy: policy, ...stream?.attachOptions }, attachOptions?.origin); }
         catch (error) { stream?.dispose(); throw error; }

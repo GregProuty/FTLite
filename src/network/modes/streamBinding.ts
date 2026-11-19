@@ -5,11 +5,18 @@ import type { AttachOptions } from '../../renderer/src/authority/authority';
 import type { AuthorityMessage, ChannelKind, Link, MonotonicClock, PublishedState } from '../../renderer/src/net/contracts';
 import type { MessageCodec } from '../../renderer/src/net/codec';
 import { classifyStreamPacket, createTransportSequence, decodeOpaquePacket, decodeStatePacket, inspectState, encodeOpaquePacket, MAX_RETAINED_IMAGES, type StateImage } from '../state/imageCodec';
-import { createStateSender } from '../state/sender';
+import { createStateSender, onStateCadence } from '../state/sender';
 
 type Notification<S> = Extract<AuthorityMessage<S>, { kind: 'result' | 'event' }>;
+/** The latest publication's image, shared by the stream bindings of one authority (Perf-i spec §2.3): the image is the
+ *  same for every binding, so the first to need it validates and builds it and the rest take it. One store per
+ *  authority, never across two: its key is the authority's publication sequence. */
+export interface SharedStateImage { sequence: number; image: StateImage | null }
+export function createSharedStateImage(): SharedStateImage { return { sequence: 0, image: null }; }
 export interface ModeStreamOptions<S> {
   clock: MonotonicClock; latestPayloadLimit: number;
+  /** The authority's shared image store; without one the binding builds every image itself. */
+  images?: SharedStateImage;
   /** Validate a publication and turn it into a state image (throws on an invalid publication). */
   toImage(publication: PublishedState<S>): StateImage;
   codec: MessageCodec<S>;
@@ -79,7 +86,18 @@ export function createModeStreamBinding<S>(link: Link, options: ModeStreamOption
   const attachOptions: AttachOptions<S> = {
     publicationSink(publication, reliable) {
       if (closed) return;
-      try { sender.publish(options.toImage(publication), reliable); } catch { link.close(`${label}-stream-invalid`); }
+      // Perf-i spec §2.2: the sender transmits ordinary state on cadence ticks only, so nothing is validated, built or
+      // copied for any other. A reliable publication always goes through.
+      if (!reliable && !onStateCadence(publication.tick)) return;
+      try {
+        const shared = options.images;
+        let image = shared && shared.sequence === publication.publicationSequence ? shared.image : null;
+        if (!image) {
+          image = options.toImage(publication);
+          if (shared) { shared.sequence = publication.publicationSequence; shared.image = image; }
+        }
+        sender.publish(image, reliable);   // the sender copies what it keeps, so the shared image is never mutated
+      } catch { link.close(`${label}-stream-invalid`); }
     },
     notificationSink(message, floor) {
       if (closed) return;

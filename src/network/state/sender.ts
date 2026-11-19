@@ -9,6 +9,11 @@ export interface StateSenderOptions {
   close(reason: string): void;
   nextTransportSequence?: () => number;
 }
+/** Ordinary (not immediate) state goes out on every tick that is a multiple of this: 20 a second at 60 ticks. */
+export const STATE_CADENCE_TICKS = 3;
+/** Whether an ordinary publication at `tick` is one the sender may transmit. A caller may skip building any other
+ *  (Perf-i spec §2.2); the sender then holds the last cadence or immediate image as its newest. */
+export function onStateCadence(tick: number): boolean { return tick % STATE_CADENCE_TICKS === 0; }
 export function createStateSender(options: StateSenderOptions) {
   if (!Number.isSafeInteger(options.latestPayloadLimit) || options.latestPayloadLimit < 4096 || options.latestPayloadLimit > RTC_MAX_PACKET_BYTES - RTC_MAX_HEADER_BYTES) throw new Error('state-payload-limit');
   const images = new ImageStore(), sent = new Set<number>(), nextSequence = options.nextTransportSequence ?? createTransportSequence();
@@ -43,7 +48,7 @@ export function createStateSender(options: StateSenderOptions) {
         images.put(owned, [newest, baseSequence]);
         for (const sequence of sent) if (!images.get(sequence)) sent.delete(sequence);
         if (immediate) { transmit(owned, true); return; }
-        if (owned.tick % 3 !== 0 || owned.tick <= lastOrdinaryTick) return;
+        if (!onStateCadence(owned.tick) || owned.tick <= lastOrdinaryTick) return;
         lastOrdinaryTick = owned.tick; transmit(owned, false);
       } catch { fail(); }
     },
