@@ -1,0 +1,60 @@
+{
+  "verdict": "ready",
+  "findings": [],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "debugCouldLogPasscode (plan L265-L269) splits DEBUG on whitespace and commas. It refuses any non-negated pattern that contains * or starts with pw, and any non-empty DEBUG_FILE or PWDEBUG. parseLiveArgs calls it (L274). The tests at L128-L134 cover pw:api, *, pw*, foo,*, vite:*, 'express pw:protocol', DEBUG_FILE and PWDEBUG. They also cover the allowed values '', express, vite:config, -pw:* and -*. I traced each case through the predicate and it gives the expected result. The Global Constraint (L22) and gates step 5 match the code."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "clip redacts and then slices (L305-L307). It is used for request failures, with [o.passcode, ...secrets], where secrets is declared at L322 before the closure runs. It is also used for page errors (L725), the Firefox launch error (L754) and the entry's message() (L974, L984, L1010). secretVariants adds JSON.stringify(s).slice(1,-1) (L298). I traced both tests by hand. The quote case gives {\"failure\":\"x [redacted] y\"} through the JSON-escaped variant. The 695+passcode case gives 'x'*695+'[reda'."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "The pure playStep (L634-L651) is used by the loop at L784-L787. An early end needs both sides ended, the first end at or after MIN_EARLY_END_MS, and the second within END_AGREE_MS. A one-sided end against a non-running phase, a timeout, a 'came back from ended', and any other phase all fail. I traced every playStep test at L511-L532 and each gives the expected result. validateLiveReport re-checks both rules (L947-L948), and the tests are at L872-L877. playedMs (L792) is at least the first-ended time, so the report floor agrees with playStep."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "compareDeployedVersion (L310-L314) deep-compares the live version.json with the local file. It returns versionCompared:false when the file is absent. When the file exists, a null live version or a mismatch is a problem. The entry calls it with resolve('.vercel/output/static/version.json') (L998-L1000). build-web.ts:L16-L20 confirms the production build writes static/version.json under .vercel/output. The tests (L206-L217) cover absent, equal, a differing digest and null. The LiveReport type and the passing() fixture carry versionCompared."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "The dry run at L1051 uses https://ftlite-dry-run.invalid, and the expected text explains the DNS failure. Header problems throw before compareDeployedVersion runs, so a .vercel/output left in the worktree cannot change the result."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "TAKE_DOWN (L976-L977) and gates step 6 (L1095-L1098) give delete as the first-deploy action (npx vercel rm <url> --yes, or Dashboard delete) and rollback for later deploys. L-8 (L37) matches."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "FIREFOX_MISSING (L690) is checked against the launch error (L752-L756). bounded (scripts/web/net/players.ts:L43-L47) passes the original rejection through unchanged, so Playwright's 'Executable doesn't exist \u2026 npx playwright install' text reaches the regex. Any other error throws, with its text clipped. L-7 (L36) matches."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "UI_READ_SOURCE reads sessionHome from [data-testid=\"home\"] (L614-L615). uiPhase returns error when sessionHome is set and the status is not a phase word, after the Lobby and phase-word checks (L621-L627). SessionPage.tsx:L103 shows `home` only when !pending and the status is null, idle or error. The tests at L500-L502 cover a known ERRORS text, which gives error, and 'idle', which stays idle. The view() helper sets the new field."
+    }
+  ],
+  "verified": [
+    "The Global Constraints secrets bullet (L22) and decisions L-3, L-5, L-7, L-8 and L-9 (L32-L38) agree with the code in Tasks 1-3.",
+    "Task 3 imports (L920-L921, L970) match what Tasks 1 and 2 export: clip, compareDeployedVersion and MIN_EARLY_END_MS. The duel.ts import of clip from './headers' (L685) has no cycle with relay.ts.",
+    "Typing in the entry: report.headers is assigned at L995 and then used at L999-L1000. The assignment narrows the type with no intervening reset, so `report.headers.versionCompared` type-checks without a non-null assertion.",
+    "Early-end sampling: the first relay sample is taken at began (L775) and the second at began+10 s. An early end that playStep accepts (first end \u2265 20 s) therefore has at least two samples for relayVerdict. A missing sample can only make the run fail, never pass falsely.",
+    "Leave flow: actions.ts:L144-L150 moves the page home once the phase is idle. The 'idle' phase word or v.home satisfies the leave `until` before the new sessionHome\u2192error rule can trigger.",
+    "The dry run's grep for dry-run-code still applies, and the report path still redacts the whole JSON (L1019)."
+  ],
+  "not_verified": [
+    "Whether a session page can show status null without menu.pending during the live flow. In that state menuMessage prints 'Connecting' and the `home` button shows (SessionPage.tsx:L103), so uiPhase would now return 'error' and `until` would fail fast. That would be a spurious failure, not a false pass. I did not trace invoke()'s pending and page handling to rule it out.",
+    "Whether real host and guest pages read 'ended' within END_AGREE_MS of each other when one loop tick includes a sample() of up to about 12 s. A slow tick could fail a genuinely finished round. This would be a spurious failure only, and I could not check it without a live run.",
+    "The exact wording of Playwright 1.48's missing-browser error on Windows. I took the regex from the familiar message and did not check it against installed node_modules, which I was told not to read.",
+    "I ran no tsc or tests, as the constraints required."
+  ]
+}
