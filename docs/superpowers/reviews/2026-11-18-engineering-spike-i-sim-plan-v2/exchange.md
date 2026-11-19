@@ -96,3 +96,43 @@ Confirmed. Decision 18 now marks it as a plan extension and gives the reason. Th
 
 ---
 
+# Round 2 (delta, reviewing d660bb1c, effort medium, 141 s, 879901 in / 826194 cached / 9797 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — plan L2857-2864: createDuel(HOUND, 13, 0, 3) (state.ts:84 takes crew as the 4th arg, DUEL_CREW_MAX 4), player 2 seated at d.science sends designate, so step.ts:270's seat check passes and Task 10's seen check answers. The two-entry held array is safe: step.ts:72/293/304 all use `?? NO_HELD`. The positive case at 600 is applied because designated starts at -1 (tactical/state.ts:250) and the rejected call left it there.
+- R1-F2: resolved — plan L3262 now sources the lines from scripts/duel-telemetry.ts. That script exists and prints telemetryLine per GATE_SEEDS run, the gateSummary and the passive survival lines (scripts/duel-telemetry.ts:9-15). The false 'logged even for skipped' sentence is gone.
+- R1-F3: resolved — plan L3226, L3228 and L3231 now say 55, and the refusal hint points at Task 1's bless commit in tests/golden and tests/fixtures. A grep for \b54\b finds only baselines, the 'before' column, the master description and Task 1's bump (L21, 36, 42-43, 130, 179-249).
+- R1-F4: resolved — Task 8 (plan L2008-2022) steps until (tick - baseTick) % 900 === 899, then steps once more. firePhase computes damage with that same tick argument (duel/fire.ts:47, step.ts:310), so the Engines Room goes 0→1, and bars 2 and throttle 2 pin the clamp after firePhase. FIRE_DAMAGE 3/s over 15 s is 45 < HEALTH_MAX 100, so no crew is downed early. Task 9b (plan L2559-2566): at 4 units/tick against MAGAZINE_REGEN_UNITS 10800, plan L2721 regains on the 2700th call (10796 after 2699, not yet). The self-review row (L3301) names both tests.
+- R1-F5: resolved — plan L2569-2571 sets every rock slot to RockKind.Gone. rocksNear (rocks.ts:60-72) returns only Static and Moving rocks, so neither resolveMissiles' rock check (missiles.ts:122) nor touchesSolid (predict.ts:11-19) sees them. The touchesSolid assert covers the planet. Task 11's note (L3201) now forbids weakening the assertion.
+- R1-F6: resolved — Decision 18 (plan L125) marks the auto-launch sight gate as a plan-level extension, gives its reason, and says manual missileLaunch stays ungated on purpose.
+
+## Verified
+- Imports added to the Task 8 and Task 9b tests exist with the quoted shapes: igniteRoom(state, room) at hazards/fire.ts:6; ROCK_STRIDE, RockKind.Gone and rockSlots at tactical/rocks.ts:17-18 and :44; touchesSolid(state, x, y, r) at tactical/predict.ts:11
+- An inactive enemy does not decide the round: tactical/duel.ts:45-47 counts only active non-crew ships, so the 900-tick quiet run in Task 8 keeps Outcome.Running
+- The re-ignite loop keeps room E burning on the cadence tick: igniteRoom refuses only while fire > 0 (hazards/fire.ts:7), and the loop re-ignites after every step
+- The magazine test's arithmetic matches the plan's tickWeapons edit (plan L2718-2722): one bar gives 4 units per tick, so the clock reaches 10800 on the 2700th call
+- Task 12 Step 5's telemetry source matches scripts/duel-telemetry.ts:9-15 (scripted per-seed lines, gate summary, passive lines)
+
+## Not verified
+- Whether a Moving asteroid can strike the stationary crew Hound during Task 8's ~900-tick quiet run, raising the Engines Room before the cadence tick and breaking `toBe(0)` at plan L2016. The same quiet pattern is used elsewhere (plan L1306, L1626). I did not run the test.
+- That Task 5 Step 5(d) puts clampToCapacity after firePhase in the final step order. I took this from the ledger and the round-1 evidence and did not re-read it in this delta.
+- That the planet is clear of (-300,-300) on the default map, beyond the in-test touchesSolid assertion, which fails loudly if it is not.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the subject at `d660bb1c`. 0 accepted, 0 rejected, 0 deferred. Every R1 ID is confirmed resolved.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
