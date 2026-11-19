@@ -7,9 +7,11 @@
 // applyWeaponsInput (before anything moves); stepPew (Task 3) after the gun rounds. Only + − × ÷ and sqrt.
 import type { PewDef } from './defs';
 import { dirBetween, hx, hy } from './direction';
-import { placeRound } from './gun';
-import { classOf, type TacticalState } from './state';
-import { AIM_STEPS, HEADING_COUNT } from './tuning';
+import { queryGrid } from './grid';
+import { placeRound, segmentEntry } from './gun';
+import { shootDown } from './missiles';
+import { classOf, emptyRound, type TacticalState } from './state';
+import { AIM_STEPS, DT, HEADING_COUNT } from './tuning';
 
 /** A full charge in ticks: every third stored. */
 export function pewFull(def: PewDef): number { return def.shots * def.rechargeTicks; }
@@ -63,4 +65,55 @@ export function firePew(state: TacticalState, i: number, aim: number): boolean {
 export function tickPew(state: TacticalState, i: number): void {
   const def = classOf(state, i).slots.pew, s = state.systems[i]!;
   if (def && s.pewCharge < pewFull(def)) s.pewCharge++;
+}
+
+/** Owner's pew round hit ship k at (x, y) (spec §1): with a shield layer up it strips one (the shield clock and the gun's
+ *  wear go to 0, as any strip); else it costs the owner's pew hull. Never a room level. The owner counts the hit; a pewHit
+ *  event marks it. */
+function pewHit(state: TacticalState, owner: number, k: number, x: number, y: number): void {
+  const def = classOf(state, owner).slots.pew, t = state.systems[k]!;
+  if (!def) return;
+  state.systems[owner]!.pewHits++;
+  const stripped = t.shields > 0;
+  if (stripped) { t.shields--; t.shieldClock = 0; t.gunWear = 0; }
+  else t.hull = Math.max(0, t.hull - def.hull);
+  state.events.push({ kind: 'pewHit', ship: k, owner, stripped, hull: !stripped, x, y });
+}
+
+/**
+ * Every pew round in flight, in pool order (spec §1): it flies straight one tick (no gravity, no drag; it also moves on its
+ * spawn tick) and ages; its segment from the old to the new position is swept (gun.ts segmentEntry) against the asteroids,
+ * the planet, every torpedo in flight that another ship owns (its post-move position) and every other active ship (its
+ * post-move circle). The smallest entry wins; on a tie the earlier of rock, planet, torpedo, ship (strict <, in that order).
+ * A torpedo is shot down (missiles.ts shootDown), a ship takes pewHit at the entry point, a rock or the planet only stops
+ * it. A round that hit anything, or reached its life, ends; an ended entry holds zeros. Never its own ship or torpedo.
+ */
+export function stepPew(state: TacticalState): void {
+  for (const r of state.pew) {
+    if (!r.active) continue;
+    const ox = r.x, oy = r.y, life = classOf(state, r.owner).slots.pew?.lifeTicks ?? 0;
+    r.x += r.vx * DT; r.y += r.vy * DT; r.age++;
+    let best = 2, hit: 'none' | 'solid' | 'torpedo' | 'ship' = 'none', k = -1;   // entry parameters are at most 1
+    const half = Math.max(Math.abs(r.x - ox), Math.abs(r.y - oy)) / 2;
+    for (const a of queryGrid(state.grid, (ox + r.x) / 2, (oy + r.y) / 2, half)) {
+      const rock = state.map.asteroids[a]!, t = segmentEntry(ox, oy, r.x, r.y, rock.x, rock.y, rock.r);
+      if (t >= 0 && t < best) { best = t; hit = 'solid'; }
+    }
+    const p = state.map.planet, tp = segmentEntry(ox, oy, r.x, r.y, p.x, p.y, p.r);
+    if (tp >= 0 && tp < best) { best = tp; hit = 'solid'; }
+    for (const m of state.missiles) {
+      if (!m.active || m.owner === r.owner) continue;
+      const t = segmentEntry(ox, oy, r.x, r.y, m.x, m.y, classOf(state, m.owner).slots.missile.radius);
+      if (t >= 0 && t < best) { best = t; hit = 'torpedo'; k = m.owner; }
+    }
+    for (let j = 0; j < state.ships.length; j++) {   // a loop, not forEach: TypeScript would narrow `hit` past a closure's assignment
+      const s = state.ships[j]!;
+      if (!s.active || j === r.owner) continue;
+      const t = segmentEntry(ox, oy, r.x, r.y, s.x, s.y, classOf(state, j).radius);
+      if (t >= 0 && t < best) { best = t; hit = 'ship'; k = j; }
+    }
+    if (hit === 'torpedo') shootDown(state, k);
+    else if (hit === 'ship') pewHit(state, r.owner, k, ox + (r.x - ox) * best, oy + (r.y - oy) * best);
+    if (hit !== 'none' || r.age >= life) Object.assign(r, emptyRound());
+  }
 }

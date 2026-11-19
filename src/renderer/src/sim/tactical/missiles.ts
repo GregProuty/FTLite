@@ -32,6 +32,13 @@ function end(state: TacticalState, m: Missile, cause: EndCause, target = -1, roo
   Object.assign(m, emptyMissile());
 }
 
+/** W-1 (pew pew spec §1): ship i's torpedo in flight is shot down by a pew round: it ends with cause 'shot' (a loss for
+ *  its owner, its torpedo target cleared), as any other ending. Nothing when none flies. */
+export function shootDown(state: TacticalState, i: number): void {
+  const m = missileOf(state, i);
+  if (m) end(state, m, 'shot');
+}
+
 /** sin of one heading step, from the table: a wanted thrust direction within one step of the nose needs no turn. */
 const STEP_SIN = hx(1);
 

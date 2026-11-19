@@ -6,7 +6,7 @@
 import type { DuelTelemetry, MissileLoss, PlayerTelemetry, TerminalCause } from './telemetry';
 
 /** The accumulator's order of terminal causes (telemetry.ts recordTick). */
-export const TERMINAL_CAUSES = ['planet', 'asteroid', 'ship', 'laser', 'gun', 'missile', 'downed'] as const satisfies readonly TerminalCause[];   // 'gun': Valkyrn spec §7.3
+export const TERMINAL_CAUSES = ['planet', 'asteroid', 'ship', 'laser', 'gun', 'pew', 'missile', 'downed'] as const satisfies readonly TerminalCause[];   // 'gun': Valkyrn spec §7.3
 /** The accumulator's missile loss causes, in its order. */
 export const MISSILE_LOSSES = ['planet', 'asteroid', 'edge', 'expired', 'own', 'missile'] as const satisfies readonly MissileLoss[];
 type Pair = readonly [number, number];
