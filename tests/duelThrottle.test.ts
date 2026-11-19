@@ -193,7 +193,7 @@ describe('quarter-thrust flight (Artemis spec §5.3)', () => {
       expect(a, `${cls.id} engines ${engines} turn ${turn} thrust ${thrust}`).toEqual(b);
     }
   });
-  it('thrust is quantised to quarters: 0.5 is half the forward push, 0.3 flies as 0.25, 0.1 as none; any reverse is full reverse', () => {
+  it('playtest2feedback §3: thrust is rounded to thousandths, not quarters, and reverse is proportional', () => {
     const NO_FIELD: FlightTuning = { gravity: false, edge: false, drag: 0, stabilise: DEFAULT_FLIGHT.stabilise };
     const push = (thrust: number): number => {
       const s: Ship = { ...createTacticalState(1).ships[0], x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0 };
@@ -202,9 +202,8 @@ describe('quarter-thrust flight (Artemis spec §5.3)', () => {
     };
     expect(push(1)).toBeCloseTo(-THRUST * DT, 12);
     expect(push(0.5)).toBeCloseTo(-0.5 * THRUST * DT, 12);
-    expect(push(0.75)).toBeCloseTo(-0.75 * THRUST * DT, 12);
-    expect(push(0.3)).toBe(push(0.25)); expect(push(0.9)).toBe(push(1)); expect(push(0.1)).toBe(push(0));
-    expect(push(-0.25)).toBe(push(-1)); expect(push(-1)).toBeCloseTo(0.4 * THRUST * DT, 12);
+    expect(push(0.3)).toBeCloseTo(-0.3 * THRUST * DT, 12);
+    expect(push(-0.25)).toBeCloseTo(0.25 * 0.4 * THRUST * DT, 12); expect(push(-1)).toBeCloseTo(0.4 * THRUST * DT, 12);
     expect(push(NaN)).toBe(push(0));
   });
 });

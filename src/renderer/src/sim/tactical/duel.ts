@@ -4,13 +4,13 @@
 import { hunterThink } from './hunter';
 import { flyMissile, resolveMissiles } from './missiles';
 import { stepRounds } from './gun';
-import { flySlot } from './physics';
+import { flightFor, flySlot } from './physics';
 import { hostilityStep, salvageStep, scanStep } from './science';
 import { resolveContacts } from './contacts';
 import { beginRockTick } from './rocks';
 import { stepRocks } from './rockContacts';
 import { classOf, CREW_SLOT, NO_AXES, Outcome, type TacticalState } from './state';
-import { DEFAULT_FLIGHT, type FlightTuning } from './tuning';
+import type { FlightTuning } from './tuning';
 import { applyWeaponsInput, tickWeapons, UNCREWED_INPUT, type ShipInput } from './weapons';
 
 /** The active slot the hunter's brain flies (its class's AI profile), or −1. There is one hunter brain per encounter. */
@@ -23,7 +23,7 @@ export function hunterSlot(state: TacticalState): number {
  * ships fly, missiles fly, ship contacts, missile contacts, gun rounds (Valkyrn spec §7.2), weapon clocks, hostility, scan progress (the crew input's scanner), salvage, outcome, tick. The crew wins when every other
  * active ship's hull is gone. Does nothing once the duel has ended.
  */
-export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTuning = DEFAULT_FLIGHT): void {
+export function stepDuel(state: TacticalState, crew: ShipInput, tuning?: FlightTuning): void {   // playtest2feedback §2: `tuning` overrides every slot; absent, flightFor
   if (state.outcome !== Outcome.Running) return;
   state.events = []; beginRockTick(state);   // spike ii §3.1: the transient masks start empty every tick
   const hunter = hunterSlot(state), n = state.ships.length;
@@ -31,7 +31,7 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning: FlightTu
   const hunterLaunches = hunter >= 0 ? state.systems[hunter]!.missilesLaunched : 0;
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) applyWeaponsInput(state, i, inputs[i]!);
   if (hunter >= 0 && state.systems[hunter]!.missilesLaunched > hunterLaunches) state.hunter.lastLaunch = state.tick;   // a refused launch costs no cooldown
-  for (let i = 0; i < n; i++) if (state.ships[i]!.active) flySlot(state, i, inputs[i]!.helm ? inputs[i]!.axes : NO_AXES, tuning);
+  for (let i = 0; i < n; i++) if (state.ships[i]!.active) flySlot(state, i, inputs[i]!.helm ? inputs[i]!.axes : NO_AXES, tuning ?? flightFor(state, i));
   for (let i = 0; i < n; i++) if (state.ships[i]!.active) flyMissile(state, i);   // homing torpedo spec: it steers itself, attended or not
   stepRocks(state);   // SPIKE (destructible asteroids): fragments fly and meet the planet and the other rocks
   resolveContacts(state, true);   // spike ii §5.1: rocks are bodies in the duel

@@ -180,3 +180,17 @@ export const GUN_HITS_PER_HULL = 12;
 /** Valkyrn spec §7.2, §12: gun hits on a Room per damage level. 6, kept at the start value; the Valkyrn gate
  *  (tests/duelGates.test.ts): median 229.8 s, 9 crew wins, 1 Hunter win over seeds 1 to 10. */
 export const GUN_HITS_PER_LEVEL = 6;
+
+// Playtest2feedback (spec 2026-11-18-playtest2feedback-design §2, §4, §4a): the crew Helm's Newtonian flight, on a class
+// whose `newtonianHelm` is true (the Cutter). Start values, tuned in playtest.
+/** §2: the top speed thrust may not push a ship past (u/s); gravity, the edge and bounces still can. */
+export const MAX_SPEED = 400;
+/** §4: one vented cold gas axis's push (u/s²), in the ship frame; never scaled by Engines damage. */
+export const RCS_THRUST = 35;
+/** §4a: a gas-boosted turn steps this many times the class's turn a tick. */
+export const RCS_TURN_BOOST = 2;
+/** §4a: a turn toward an aim or a held heading is far (boosted) while the signed index difference is beyond this; it is
+ *  wider than a boosted step (2 × 1.78 = 3.56), so the boost never reaches the aim's own |d| ≤ 1 band. */
+export const BOOST_FAR = 4;
+/** §2: the crew Helm's flight: gravity and the edge spring, no drag, no stabilise. */
+export const CREW_FLIGHT: FlightTuning = { gravity: true, edge: true, drag: 0, stabilise: 0 };
