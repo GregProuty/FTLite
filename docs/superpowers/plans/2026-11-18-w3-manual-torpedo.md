@@ -29,7 +29,7 @@
     - `MapRequests.torpHeading(h)` and `takeTorpHeading()`.
     - `DuelRuntimeDeps.takeTorpHeading?()`.
     - `app/duel/torpedoCamera.ts`: `TorpedoFollow`, `createTorpedoFollow()` and `trackManualTorpedo(cam, memo, flying)`.
-    - `WeaponsPanel.torpManual?` and `torpFlyingManual?`.
+    - `WeaponsPanel.torpManual?`, `torpSteer?` and `torpCoast?`.
     - `refusal(d, control, manual?)`.
 - **No new tuning knob:** a MANUAL torpedo uses the missile def's own `thrust` (`MISSILE_THRUST` 160), `turnStepsPerTick`, `boostTicks`, `fuelTicks`, `lifeTicks`, `armTicks`, `radius` and `hull` (`MISSILE_HULL` 3).
 - **Sim rules:**
@@ -68,6 +68,7 @@
   - Every commit message ends with a blank line then `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` (passed as the last `-m`).
   - Files are UTF-8.
   - Line numbers below were read on master at `92733195`: **match every edit by the quoted text**, not the number.
+  - **Branch:** all W-3 work is on the branch `w3-manual-torpedo`, cut from master at `92733195`. The controller creates the worktree; Task 1 Step 1 checks the branch (and creates it from `92733195` if the worktree is on another). Every task commits to it. Task 8's "unchanged" diffs use the fixed base `92733195`, never `master`.
 - **Comments:** a header comment citing the spec section on each new file; doc comments on exports; cite "W-3 (pew pew spec §x)" on changed lines that need a reason.
 
 ## Decisions where the spec leaves room, and where the code forces a choice
@@ -93,7 +94,7 @@
 7. **The mode is set during admission.** `torpMode` is set in `sim/duel/step.ts`, as `laserMode` is, so a same-tick `missileLaunch` is judged in the new mode. `WEAPON_ORDER` becomes `laserMode, torpMode, laserLock, torpLock, rockLock, laserCharge, laserFire, missileLaunch, pewFire`, and `shipModule.commands` matches it. A same-value `torpMode` is `noop`. Every class has a torpedo, so there is no `unavailable` for the class.
 8. **The right button on the Weapons map.** While the crew's MANUAL torpedo flies, the right button sets its heading:
    - A press, every held frame of a drag, and a release on the open map each ask for the bearing from the torpedo's drawn marker to the pointer. On the torpedo itself, inside `pickRadius`, the request is −1, which clears the hold.
-   - Nothing is asked while a weapon card is picked up, over a console block, or with the contact window under the pointer.
+   - Nothing is asked while a weapon card is picked up, nor on the frame after one was (the right press that cancels a pick-up is the cancel's, as on the Flight seat; `lastAimed`), over a console block, or with the contact window under the pointer.
    - While it flies, the Weapons camera's right drag does not pan (`createCameraInput.apply`'s `aims`).
 9. **The camera** is handled by `trackManualTorpedo`, which runs on the Weapons camera every frame before the existing follow update.
    - **At launch:** when a MANUAL torpedo's flight starts, it remembers the camera's follow mode and centre, then follows the missile (`followBody`).
@@ -116,7 +117,11 @@
 11. **What the card says:**
     - **The tag:** the TORPEDO card's `AUTO` / `MAN` tag sits where the LASER card's does (card x 72..108), is lit in MANUAL, and presses `torpMode` as V does.
     - **Not flying:** in MANUAL the card says `MANUAL` instead of IN RANGE / OUT OF RANGE.
-    - **Flying:** a MANUAL torpedo in flight says `STEER A/D` instead of FLYING.
+    - **Flying:** the words follow what the torpedo can do, using Decision 3's own condition (`m.age > boostTicks && m.age <= fuelTicks`; the panel reads the crew's missile):
+      - A MANUAL torpedo that can turn says `STEER A/D` (`torpSteer`).
+      - During its boost it says `FLYING`.
+      - Once its fuel is spent it says `COASTING` (`torpCoast`).
+      - An AUTO torpedo says `FLYING` throughout, as today.
     - **The lock tone** (`torpedoTone`) is off in MANUAL, because a lock never launches there.
     - **The map's torpedo path prediction** (`predictMissile`) is unchanged, so a MANUAL torpedo's path shows its unsteered flight.
 12. **Out of scope, by spec §6:**
@@ -140,6 +145,9 @@
   - A duel-oracle baseline at 57 in the temp folder (Task 8's additive proof).
 
 - [ ] **Step 1: Pre-flight**
+
+Run: `git branch --show-current`
+Expected: `w3-manual-torpedo`. If it prints another name, run `git switch -c w3-manual-torpedo 92733195`, then `git log --oneline -1` must start with `92733195`. Work on this branch for every task.
 
 Run: `git grep -n "export const SIM_VERSION = " -- src/renderer/src/sim/tuning.ts`
 Expected: `src/renderer/src/sim/tuning.ts:7:export const SIM_VERSION = 56;`
@@ -168,10 +176,10 @@ Nothing else in `src/` changes in this task; `MIGRATIONS` and `ADDITIONS` in `sc
 - [ ] **Step 4: Both proofs before the bless**
 
 Run: `npx tsx scripts/golden/canonical-trace.ts check`
-Expected: `per-tick canonical trace identical, sim version 56 -> 57: golden 7200 ticks, determinism-v2 108000 ticks in 13 runs (baseline HEAD <sha>)`, exit 0.
+Expected: `per-tick canonical trace identical, sim version 56 → 57: golden 7200 ticks, determinism-v2 108000 ticks in 13 runs (baseline HEAD <sha>)`, exit 0.
 
 Run: `npx tsx scripts/golden/duel-oracle.ts check`
-Expected: `duel oracle: <R> runs, <T> ticks, <F> named fields, results, events and telemetry identical at every tick field for field, sim version 56 -> 57 (baseline HEAD <sha>)`, exit 0, with Step 2's numbers.
+Expected: `duel oracle: <R> runs, <T> ticks, <F> named fields, results, events and telemetry identical at every tick field for field, sim version 56 → 57 (baseline HEAD <sha>)`, exit 0, with Step 2's numbers. (The scripts print the arrow `→`, not `->`.)
 
 A check may refuse because its baseline is stale: another sim version, another checkout's cwd, or a HEAD other than `92733195`. If so:
 1. Set line 7 back to `export const SIM_VERSION = 56;` with Edit.
@@ -188,7 +196,7 @@ Expected, exit 0 (new hashes; counts, ticks and outcomes are master's):
 ```
 blessed tests/golden/basic.json: 120 checkpoints, final <hex>
 blessed tests/golden/duel-1.json: 24 checkpoints, 14687 ticks, outcome 1, final <hex>
-blessed tests/fixtures/determinism-v2.json: sim version 56 -> 57, 1800 samples and 330 boundaries unchanged apart from the version and hashes
+blessed tests/fixtures/determinism-v2.json: sim version 56 → 57, 1800 samples and 330 boundaries unchanged apart from the version and hashes
 blessed tests/golden/duel-rematch.json: 39 checkpoints, rematch on tick 14687, rounds 14687 ticks outcome 1 then 8785 ticks outcome 2, final <hex>
 ```
 
@@ -267,9 +275,10 @@ Create `tests/manualTorpedoMode.test.ts`:
 import { describe, expect, it } from 'vitest';
 import { flattenTactical, hashTactical, TACTICAL_MODULES, validateTacticalValues } from '../src/renderer/src/sim/tactical/hash';
 import { launchMissile } from '../src/renderer/src/sim/tactical/missiles';
-import { beginRockTick } from '../src/renderer/src/sim/tactical/rocks';
+import { beginRockTick, rockAlive } from '../src/renderer/src/sim/tactical/rocks';
 import { cloneTactical, createTacticalState, missileOf, placeMissile, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { applyWeaponsInput, canLaunch, IDLE_INPUT, tickWeapons, UNCREWED_INPUT, torpedoInRange } from '../src/renderer/src/sim/tactical/weapons';
+import { arena, mover } from './helpers/rockArena';
 
 /** The crew at (0, 1500) nose north and still, no rocks, the Hunter at `enemyAt` (default far off, out of torpedo range),
  *  still, a fresh tick's rock masks, no events. */
@@ -348,6 +357,18 @@ describe('the MANUAL launch (spec §3, §5)', () => {
     weaponsTick(auto);
     expect(missileOf(auto, 0)?.manual).toBe(false);
     expect([auto.systems[0].torpLock, auto.systems[0].torpRoom]).toEqual([-1, Room.Shields]);   // the AUTO launch consumes the lock
+  });
+  it('a MANUAL launch on the tick its stored rock target breaks still launches; the AUTO launch is skipped, as today', () => {
+    for (const manual of [true, false]) {
+      const st = arena(), s = st.systems[0];   // as rockBlast.test.ts's R1-F3 case: a laser shot in this call breaks the rock
+      st.ships[0].heading = 64;   // east, at (0, −2500): the laser is full and targeted
+      st.ships[1].active = true; Object.assign(st.ships[1], { x: 0, y: -2200 });
+      mover(st, 100, 200, -2500, 0, 0, 12, 2);   // r 12, hp 2: the laser's 2 damage turns it to dust
+      s.laserRock = 100; s.torpRock = 100; s.torpManual = manual;
+      applyWeaponsInput(st, 0, { ...IDLE_INPUT, missileLaunch: true });
+      expect(rockAlive(st, 100), `manual ${manual}`).toBe(false);
+      expect([s.torpRock, s.missilesLaunched, missileOf(st, 0)?.manual ?? null], `manual ${manual}`).toEqual(manual ? [-1, 1, true] : [-1, 0, null]);
+    }
   });
 });
 
@@ -519,7 +540,19 @@ becomes:
     if (crew && !s.torpManual && (s.torpLock >= 0 || s.torpRock >= 0) && canLaunch(state, i)) launchMissile(state, i);   // auto-launch, once (spike ii: or on a rock target); W-3: never in MANUAL
 ```
 
-and `applyWeaponsInput`'s doc comment gains, before its closing `*/`: ` W-3 (pew pew spec §3): in MANUAL a torpedo lock never auto-launches, and missileLaunch needs no range.`
+and the rock-broke guard just below it, the line
+
+```ts
+  if (!(torpOnRock && s.torpRock < 0)) {   // the torpedo's rock broke this call: no launch this tick (the command can still read 'applied')
+```
+
+becomes (a MANUAL launch needs no rock, so a stored rock breaking this call must not cancel it; AUTO is unchanged):
+
+```ts
+  if (s.torpManual || !(torpOnRock && s.torpRock < 0)) {   // AUTO: the torpedo's rock broke this call: no launch this tick (the command can still read 'applied'); W-3: a MANUAL launch needs no rock, so it still launches
+```
+
+and `applyWeaponsInput`'s doc comment gains, before its closing `*/`: ` W-3 (pew pew spec §3): in MANUAL a torpedo lock never auto-launches, missileLaunch needs no range, and a stored rock target breaking this call does not cancel a launch.`
 
 (e) In `src/renderer/src/sim/tactical/hunter.ts`, the `input` literal in `hunterThink` becomes:
 
@@ -1542,7 +1575,7 @@ function rig() {
     placeMissile(rt.duel.tactical, 0, { x: s.x, y: s.y - 40, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 30 }, manual);
   };
   const marker = () => { const m = missileOf(rt.duel.tactical, 0)!; return worldToScreen(rt.cameras.weapons, vp, m.x, m.y); };
-  return { rt, scene, requests, aim, launch, marker, tick };
+  return { rt, scene, requests, contact, aim, launch, marker, tick };
 }
 
 describe('the right button while a MANUAL torpedo flies (spec §3)', () => {
@@ -1562,6 +1595,25 @@ describe('the right button while a MANUAL torpedo flies (spec §3)', () => {
       expect(r.requests.takeTorpHeading()).toBe(-1);   // on the torpedo: clear the hold
       r.aim({ x: STATION.x + 20, y: stationTop('weapons') + 10 });   // over the Weapons block: not the map
       expect(r.requests.takeTorpHeading()).toBeNull();
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+  it('asks nothing while a weapon is picked up, nor on the right press that cancels the pick-up; the next press asks', () => {
+    const r = rig();
+    try {
+      r.aim(null);
+      r.launch();
+      const m = r.marker(), east = { x: m.x + 100, y: m.y };
+      r.contact.pickUp('laser');
+      r.aim(null);   // a drawn frame with the laser picked up: lastAimed is 'laser'
+      expect(r.contact.aimWeapon()).toBe('laser');
+      r.aim(east);   // a right press while it is picked up: nothing
+      expect(r.requests.takeTorpHeading()).toBeNull();
+      r.contact.close();   // the targeting line's own listener drops the pick-up and the window before the scene draws
+      expect(r.contact.aimWeapon()).toBeNull();
+      r.aim(east);   // the press that cancelled it: aimWeapon() is already null, but the last frame's pick-up counts
+      expect(r.requests.takeTorpHeading()).toBeNull();
+      r.aim(east);   // the next press steers the torpedo
+      expect(r.requests.takeTorpHeading()).toBe(64);
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
   it('asks nothing with an AUTO torpedo or none flying', () => {
@@ -1704,8 +1756,10 @@ import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 ```ts
       // W-3 (pew pew spec §3): at Weapons, while the crew's MANUAL torpedo flies, the right button steers it: a press, every
       // frame of a drag and a release on the open map ask for the bearing from the torpedo's drawn marker to the pointer as
-      // the heading it holds (on the torpedo itself: clear). Not while a weapon is picked up (its right button cancels that).
-      if (aim && onMap && station === 'weapons' && view === 'weapons' && running && !overlay.layerPaused && manualTorpedoFlying(d.tactical) && (contact?.aimWeapon() ?? null) === null
+      // the heading it holds (on the torpedo itself: clear). Not while a weapon is picked up, and not on the frame its right
+      // button cancels the pick-up: the targeting line's own listener has already dropped it, so the last frame's pick-up
+      // counts too (`lastAimed`, as the Flight seat below does).
+      if (aim && onMap && station === 'weapons' && view === 'weapons' && running && !overlay.layerPaused && manualTorpedoFlying(d.tactical) && lastAimed === null && (contact?.aimWeapon() ?? null) === null
         && onWeaponsMap(aim, contact?.state() != null, readoutRows({ duel: d, mode: 'weapons', active: source.active(), console: onConsole }).length)) {
         const m = interpolatedMissile(d.tactical, source.missilePrev, alpha, CREW_SLOT);
         if (m) {
@@ -2372,10 +2426,10 @@ git commit -m "feat(w3): V toggles the torpedo mode; in MANUAL F launches with n
 - Create: `tests/manualTorpedoUi.test.tsx`
 
 **Interfaces:**
-- Consumes: Task 2's `torpManual`, `canLaunch`; Task 3's `manualTorpedoFlying`; Task 6's `KeyAction 'torpMode'`.
+- Consumes: Task 2's `torpManual`, `canLaunch`, `Missile.manual`; Task 6's `KeyAction 'torpMode'`; the missile def's `boostTicks` and `fuelTicks`.
 - Produces:
   ```ts
-  // render/duel/consoleModel.ts: WeaponsPanel.torpManual?: boolean; WeaponsPanel.torpFlyingManual?: boolean
+  // render/duel/consoleModel.ts: WeaponsPanel.torpManual?: boolean; torpSteer?: boolean (a MANUAL torpedo that can turn now); torpCoast?: boolean (a MANUAL torpedo past its fuel)
   // ui/duel/WeaponsStation.tsx: <Button name="torp-mode"> (data-testid console-torp-mode), label AUTO / MAN, lit in MANUAL
   ```
 
@@ -2387,7 +2441,8 @@ Create `tests/manualTorpedoUi.test.tsx`:
 // @vitest-environment jsdom
 // W-3 manual torpedo (spec 2026-11-18-pew-pew-weapons-design §3, §5): the TORPEDO card.
 // - Its AUTO / MAN tag shows the mode (MAN lit), and a click presses torpMode, as V does.
-// - In MANUAL the card says MANUAL instead of the range words, and a flying MANUAL torpedo says STEER A/D.
+// - In MANUAL the card says MANUAL instead of the range words, and a flying MANUAL torpedo says STEER A/D only while it can turn
+//   (past its boost, fuel left), FLYING during the boost and COASTING once its fuel is spent.
 // - The Weapons panel carries the mode and the flying torpedo's, and LAUNCH is live out of range in MANUAL.
 // - The lock tone is off in MANUAL.
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -2401,7 +2456,7 @@ import { NO_HELD_FLAGS, type ConsoleInput } from '../src/renderer/src/app/duel/i
 import { torpedoTone } from '../src/renderer/src/app/duel/scene';
 import { TEXT } from '../src/renderer/src/render/theme';
 import { disposeDuel } from '../src/renderer/src/sim/duel/state';
-import { placeMissile, Room } from '../src/renderer/src/sim/tactical/state';
+import { classOf, missileOf, placeMissile, Room } from '../src/renderer/src/sim/tactical/state';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
 import { makeUi } from './helpers/uiStore';
@@ -2444,13 +2499,20 @@ describe('the TORPEDO card\'s AUTO / MAN tag (spec §3, §5)', () => {
     fireEvent.pointerDown(tag()!, { button: 0 });
     expect(press).toHaveBeenCalledWith('torpMode');
   });
-  it('a flying MANUAL torpedo says STEER A/D; an AUTO one FLYING', () => {
+  it('a flying MANUAL torpedo says STEER A/D while it can turn, FLYING in its boost, COASTING once its fuel is spent; an AUTO one FLYING', () => {
     const { duel } = mount();
-    act(() => duel.frame(view(weapons({ torpManual: false, missileFlying: true, torpFlyingManual: true }))));
+    act(() => duel.frame(view(weapons({ torpManual: true, missileFlying: true, torpSteer: true, torpCoast: false }))));
     expect(texts()).toContain('STEER A/D');
-    act(() => duel.frame(view(weapons({ torpManual: true, missileFlying: true, torpFlyingManual: false }))));
+    expect(texts()).not.toContain('COASTING');
+    act(() => duel.frame(view(weapons({ torpManual: true, missileFlying: true, torpSteer: false, torpCoast: false }))));   // the boost
     expect(texts()).toContain('FLYING');
     expect(texts()).not.toContain('STEER A/D');
+    act(() => duel.frame(view(weapons({ torpManual: true, missileFlying: true, torpSteer: false, torpCoast: true }))));   // the fuel is spent
+    expect(texts()).toContain('COASTING');
+    expect(texts()).not.toContain('STEER A/D');
+    expect(texts()).not.toContain('FLYING');
+    act(() => duel.frame(view(weapons({ torpManual: false, missileFlying: true, torpSteer: false, torpCoast: false }))));   // an AUTO torpedo
+    expect(texts()).toContain('FLYING');
   });
 });
 
@@ -2462,11 +2524,16 @@ describe('the Weapons panel and the tone in MANUAL (spec §3)', () => {
       Object.assign(d.tactical.ships[1], { x: 0, y: -1500, vx: 0, vy: 0 });
       d.tactical.systems[0].torpLock = Room.Shields;
       const panel = () => consoleModel({ duel: d, me: 1, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null })!.weapons!;
-      expect([panel().torpManual, panel().canLaunch, panel().torpFlyingManual, torpedoTone(d).locked]).toEqual([false, false, false, true]);
+      expect([panel().torpManual, panel().canLaunch, panel().torpSteer, panel().torpCoast, torpedoTone(d).locked]).toEqual([false, false, false, false, true]);
       d.tactical.systems[0].torpManual = true;
       expect([panel().torpManual, panel().canLaunch, torpedoTone(d).locked]).toEqual([true, true, false]);
       placeMissile(d.tactical, 0, { x: 0, y: 1300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 30 }, true);
-      expect([panel().missileFlying, panel().torpFlyingManual]).toEqual([true, true]);
+      const def = classOf(d.tactical, 0).slots.missile, flightOf = () => missileOf(d.tactical, 0)!;
+      expect([panel().missileFlying, panel().torpSteer, panel().torpCoast]).toEqual([true, true, false]);   // age 30: past the boost, fuelled
+      flightOf().age = def.boostTicks;   // still in its boost: A/D turns nothing
+      expect([panel().missileFlying, panel().torpSteer, panel().torpCoast]).toEqual([true, false, false]);
+      flightOf().age = def.fuelTicks + 1;   // the fuel is spent
+      expect([panel().missileFlying, panel().torpSteer, panel().torpCoast]).toEqual([true, false, true]);
     } finally { disposeDuel(d); }
   });
 });
@@ -2481,25 +2548,28 @@ Expected: FAIL (no `console-torp-mode`; `torpManual` is absent from the panel; t
 
 In `src/renderer/src/render/duel/consoleModel.ts`:
 
-(a) After the line `import { laserOffline } from '../../sim/tactical/weapons';` insert:
-
-```ts
-import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
-```
+(a) No new import: `classOf` and `missileOf` are already imported from `sim/tactical/state`.
 
 (b) In `WeaponsPanel`, after the `laserManual?: boolean;` member (and its doc line) insert:
 
 ```ts
-  /** W-3 (pew pew spec §3): the torpedo's mode for the TORPEDO card's AUTO / MAN tag (true MANUAL; absent draws no tag), and
-   *  whether the torpedo in flight is a MANUAL one (the card says STEER A/D). */
-  torpManual?: boolean; torpFlyingManual?: boolean;
+  /** W-3 (pew pew spec §3): the torpedo's mode for the TORPEDO card's AUTO / MAN tag (true MANUAL; absent draws no tag);
+   *  `torpSteer`: the crew's torpedo in flight is a MANUAL one that can turn now (past its boost, fuel left: the card says
+   *  STEER A/D); `torpCoast`: it is a MANUAL one whose fuel is spent (COASTING). Both false during its boost (FLYING). */
+  torpManual?: boolean; torpSteer?: boolean; torpCoast?: boolean;
 ```
 
-(c) In `weaponsPanel`, the line starting `      laserReason: sys.laserManual ? manualCardReason(reason) : reason,` becomes:
+(c) In the function around `weaponsPanel`, the line `  const flying = missileOf(t, 0) !== null, sys = t.systems[0];` becomes:
+
+```ts
+  const flightM = missileOf(t, 0), flying = flightM !== null, sys = t.systems[0], torpDef = classOf(t, 0).slots.missile;   // W-3: the crew's torpedo in flight and its def, for the card's words
+```
+
+and, in `weaponsPanel`, the line starting `      laserReason: sys.laserManual ? manualCardReason(reason) : reason,` becomes:
 
 ```ts
       laserReason: sys.laserManual ? manualCardReason(reason) : reason, goal: (i.goal ?? false) && !sys.laserTargeted && !sys.laserManual, laserManual: sys.laserManual,
-      torpManual: sys.torpManual, torpFlyingManual: manualTorpedoFlying(t),   // W-3 (pew pew spec §3): canLaunch above reads the mode (no range in MANUAL)
+      torpManual: sys.torpManual, torpSteer: flightM?.manual === true && flightM.age > torpDef.boostTicks && flightM.age <= torpDef.fuelTicks, torpCoast: flightM?.manual === true && flightM.age > torpDef.fuelTicks,   // W-3 (pew pew spec §3): canLaunch above reads the mode (no range in MANUAL); the words follow flyMissile's steering window
 ```
 
 - [ ] **Step 4: The tag and the words on the TORPEDO card**
@@ -2509,7 +2579,7 @@ In `src/renderer/src/ui/duel/WeaponsStation.tsx` (Edit; the file is CRLF):
 (a) After the header comment line starting `// W-2 (pew pew spec §2): the LASER card's AUTO / MAN tag` insert:
 
 ```ts
-// W-3 (pew pew spec §3): the TORPEDO card's AUTO / MAN tag likewise (V); in MANUAL the card says MANUAL, and a MANUAL torpedo in flight STEER A/D.
+// W-3 (pew pew spec §3): the TORPEDO card's AUTO / MAN tag likewise (V); in MANUAL the card says MANUAL, and a MANUAL torpedo in flight STEER A/D while it can turn (FLYING in its boost, COASTING once its fuel is spent).
 ```
 
 (b) After the line `      <PixelText text="2" x={T.x + T.w - 6} y={T.y + 6} size={FONT_NATIVE} tint={dim} anchorX={1} />` insert:
@@ -2534,7 +2604,7 @@ become:
 
 ```tsx
       {weapons.missileFlying
-        ? <PixelText text={weapons.torpFlyingManual === true ? 'STEER A/D' : 'FLYING'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={hot} />
+        ? <PixelText text={weapons.torpSteer === true ? 'STEER A/D' : weapons.torpCoast === true ? 'COASTING' : 'FLYING'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={hot} />
         : weapons.torpManual === true
         ? <PixelText text="MANUAL" x={tx} y={T.y + 42} size={FONT_NATIVE} tint={main} />
         : <PixelText text={weapons.torpedoInRange ? 'IN RANGE' : 'OUT OF RANGE'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={weapons.torpedoInRange ? main : dim} />}
@@ -2581,7 +2651,7 @@ git commit -m "feat(w3): the TORPEDO card's AUTO / MAN tag (lit in MANUAL, a cli
 
 **Interfaces:**
 - Consumes: Tasks 1 to 7, Task 1's commit message (the gate numbers) and Task 1's duel-oracle baseline at 57.
-- Produces: the merge-ready branch.
+- Produces: the merge-ready branch `w3-manual-torpedo`.
 
 - [ ] **Step 1: Every AUTO run is unchanged per tick (the additive oracle)**
 
@@ -2602,7 +2672,7 @@ becomes (a comma after its brace, then the new entry, before the table's closing
 ```
 
 Run: `npx tsx scripts/golden/duel-oracle.ts added`
-Expected: `duel oracle: <R> runs, <T> ticks, <F'> named fields, results, events and telemetry identical at every tick with the fields declared added at 57 (W-3: the torpedo mode and the per-torpedo manual flag), sim version 57 -> 57 (baseline HEAD <Task 1 sha>)`, exit 0. `<R>` and `<T>` are Task 1's, and `<F'>` is Task 1's `<F>` + 4: two `torpManual` and two `missiles.<k>.manual`.
+Expected: `duel oracle: <R> runs, <T> ticks, <F> named fields, results, events and telemetry identical at every tick with the fields declared added at 57 (W-3: the torpedo mode and the per-torpedo manual flag), sim version 57 → 57 (baseline HEAD <Task 1 sha>)`, exit 0. `<R>`, `<T>` and `<F>` are all Task 1's: the script prints the baseline's own field count (the 57 baseline of Task 1 Step 8), not the count with the four added fields (two `torpManual`, two `missiles.<k>.manual`). The arrow is `→`, as the scripts print it.
 
 If it fails with a value, event or telemetry difference, stop. The AUTO path changed; the message names the run, the tick and the field. Fix the code in the task that introduced it and re-run; never tune.
 
@@ -2633,8 +2703,8 @@ Run: `npx tsx scripts/duel-telemetry.ts`
 Run: `npx tsx scripts/valkyrn-telemetry.ts`
 Expected: the gate summary lines, the passive median and the Valkyrn summary are character for character the ones in Task 1's commit message. If any line differs, stop, as in Step 1.
 
-Run: `git diff --stat master -- tests/duelGates.test.ts`
-Expected: no output (the gates test is unchanged).
+Run: `git diff --stat 92733195 -- tests/duelGates.test.ts`
+Expected: no output (the gates test is unchanged since the fixed base, master at `92733195`; a diff against `master` or `HEAD` could not show an edit made on this branch).
 
 Run: `npx vitest run tests/duelGates.test.ts`
 Expected: PASS.
@@ -2773,4 +2843,4 @@ No knob is tuned, and no pin is re-pinned.
   - `KeyAction 'torpMode'` (Task 6) is pressed by the tag (Task 7).
   - `refusal(d, control, manual?)` (Task 6) is used in `runtime.ts` and `onlineDuel.ts` (Task 6).
   - `DuelRuntimeDeps.takeTorpHeading` (Task 6) is wired in `duelMode.ts` (Task 6).
-  - `WeaponsPanel.torpManual` / `torpFlyingManual` (Task 7) are drawn by `WeaponsStation.tsx` (Task 7).
+  - `WeaponsPanel.torpManual` / `torpSteer` / `torpCoast` (Task 7) are drawn by `WeaponsStation.tsx` (Task 7).
