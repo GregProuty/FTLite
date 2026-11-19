@@ -99,4 +99,45 @@ describe('main RTC transport owner', () => {
     h.reply(req, 'port-ready'); h.reply(req, 'ready', { latestPayloadLimit: 16088 }); await ready;
     await vi.advanceTimersByTimeAsync(31000); await rejected; expect(h.dispose).not.toHaveBeenCalled(); await h.owner.dispose();
   });
+  it('tells the far end of a retired attempt\'s port it closed before closing it (Web-ii Task 11: peer loss never reached the host Worker)', async () => {
+    // The page transport hands the owner's port to the controller as the same object, so a port the owner closes first
+    // swallows the controller's later portLink close frame; browsers fire no MessagePort close event at the far end.
+    const h = harness(), { port1, port2 } = new MessageChannel(), frames: unknown[] = [];
+    const received = new Promise<void>(done => { port2.onmessage = event => { frames.push((event as MessageEvent).data); done(); }; });
+    const ready = h.owner.startAttempt(config('live'), port1 as never), request = h.requests[0]!;
+    h.reply(request, 'port-ready'); h.reply(request, 'ready', { latestPayloadLimit: 16088 }); await ready;
+    const closing = h.owner.closeAttempt('live'); h.reply(h.requests.at(-1)!, 'closed'); await closing;
+    await Promise.race([received, new Promise(done => setTimeout(done, 200))]);
+    expect(frames).toEqual([{ version: 1, type: 'close', reason: 'rtc-cancelled' }]);
+    port2.close(); await h.owner.dispose();
+  });
+  // Web-ii R1-F3: the other retire paths. A far-end port's frames are gathered after a macrotask turn.
+  async function readyWithFrames(h: ReturnType<typeof harness>, id: string, remote: string) {
+    const { port1, port2 } = new MessageChannel(), frames: unknown[] = [];
+    port2.onmessage = event => { frames.push((event as MessageEvent).data); };
+    const ready = h.owner.startAttempt(config(id, remote), port1 as never), request = h.requests.at(-1)!;
+    h.reply(request, 'port-ready'); h.reply(request, 'ready', { latestPayloadLimit: 16088 }); await ready;
+    return { frames, request, stop: () => port2.close() };
+  }
+  const settle = () => new Promise(done => setTimeout(done, 100));
+  for (const kind of ['closed', 'failed'] as const) {
+    it(`sends exactly one rtc-attempt-failed close frame when the wire reports '${kind}' for a ready attempt`, async () => {
+      const h = harness(), a = await readyWithFrames(h, 'live', 'guest');
+      h.reply(a.request, kind); h.reply(a.request, kind); await settle();
+      expect(a.frames).toEqual([{ version: 1, type: 'close', reason: 'rtc-attempt-failed' }]);
+      a.stop(); await h.owner.dispose();
+    });
+  }
+  it('sends one rtc-replaced frame on the old port when a second attempt starts for the same remote', async () => {
+    const h = harness(), a = await readyWithFrames(h, 'first', 'guest');
+    const second = h.owner.startAttempt(config('second', 'guest'), h.port()); void second.catch(() => {}); await settle();
+    expect(a.frames).toEqual([{ version: 1, type: 'close', reason: 'rtc-replaced' }]);
+    a.stop(); await h.owner.dispose();
+  });
+  it('sends no second frame when a closed attempt receives its own closed reply again', async () => {
+    const h = harness(), a = await readyWithFrames(h, 'live', 'guest');
+    const closing = h.owner.closeAttempt('live'); h.reply(h.requests.at(-1)!, 'closed'); await closing; h.reply(a.request, 'closed'); await settle();
+    expect(a.frames).toHaveLength(1);
+    a.stop(); await h.owner.dispose();
+  });
 });
