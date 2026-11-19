@@ -138,7 +138,7 @@ Expected: `duel oracle baseline at sim version 56: <R> runs, <T> ticks, <F> name
 **Files:**
 - Modify: `src/renderer/src/sim/tactical/tuning.ts` (append), `src/renderer/src/sim/tactical/state.ts`, `src/renderer/src/sim/tactical/weapons.ts`, `src/renderer/src/sim/tactical/hunter.ts:129`, `src/renderer/src/sim/tactical/hash.ts`, `src/renderer/src/sim/duel/step.ts:210-211`
 - Create: `tests/manualLaserMode.test.ts`
-- Modify (tests the new shapes touch): `tests/tacticalDeterminism.test.ts:115,122-128`, `tests/duelSnapshot.test.ts` (the `cases` list)
+- Modify (tests the new shapes touch): `tests/tacticalDeterminism.test.ts:116,122-128`, `tests/duelSnapshot.test.ts` (the `cases` list)
 
 **Interfaces:**
 - Consumes: Task 1.
@@ -443,7 +443,7 @@ and after the line `        if (ship[1] === 'systems' && key === 'cls') clsOf.se
 
 - [ ] **Step 7: The tests the new shapes touch**
 
-(a) `tests/tacticalDeterminism.test.ts` line 115 becomes:
+(a) In `tests/tacticalDeterminism.test.ts`, the line starting `    expect(Object.keys(st.systems[0]).sort()).toEqual(['cls', 'fireHeld',` (line 116) becomes:
 
 ```ts
     expect(Object.keys(st.systems[0]).sort()).toEqual(['cls', 'fireHeld', 'freq', 'gunCooldown', 'gunHeat', 'gunHits', 'gunHull', 'gunLocked', 'gunMuzzle', 'gunRoomWear', 'gunShots', 'gunWear', 'hull', 'laserAim', 'laserBurst', 'laserBurstClock', 'laserCharge', 'laserHits', 'laserHold', 'laserManual', 'laserRock', 'laserTargeted', 'layersStripped', 'lock', 'magazine', 'magazineClock', 'missileHits', 'missilesLaunched', 'missilesLost', 'pewCharge', 'pewHits', 'pewShots', 'rocksBroken', 'rooms', 'shieldClock', 'shields', 'shots', 'target', 'torpLock', 'torpRock', 'torpRockFlying', 'torpRoom']);
@@ -531,6 +531,7 @@ function open(rocks: { x: number; y: number; r: number }[] = [], crewY = 1500): 
   Object.assign(st.ships[0], { x: 0, y: crewY, vx: 0, vy: 0, heading: 0, headingAcc: 0 });
   Object.assign(st.ships[1], { x: 2000, y: 2000, vx: 0, vy: 0, heading: 0, headingAcc: 0 });
   st.systems[0].laserManual = true;
+  st.systems[0].freq = (st.weakFreq + 1) % 3;   // off the weak frequency: one layer a hit (as tests/helpers/hostile.ts does)
   st.events = [];
   return st;
 }
@@ -1104,6 +1105,12 @@ const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserMode', 'laserLock', 'torpL
     expect(shipModule.commands).toEqual(['laserMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire']);   // W-1: the pew last; W-2: the laser mode first, its MANUAL shot after the charge
 ```
 
+(d) `tests/rockLock.test.ts` line 90 (the line `    expect(shipModule.commands).toEqual(['laserLock', 'torpLock', 'rockLock', 'laserCharge', 'missileLaunch', 'pewFire']);`) becomes:
+
+```ts
+    expect(shipModule.commands).toEqual(['laserMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire']);   // W-1 merge: the pew last; W-2: the laser mode first
+```
+
 - [ ] **Step 6: Run the tests**
 
 Run: `npx tsc -b`
@@ -1115,7 +1122,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/renderer/src/net/contracts.ts src/renderer/src/net/codec.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/tactical/hash.ts tests/manualLaserCommands.test.ts tests/duelModules.test.ts tests/duelCheckpoint.test.ts tests/ftlTargeting.test.ts
+git add src/renderer/src/net/contracts.ts src/renderer/src/net/codec.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/tactical/hash.ts tests/manualLaserCommands.test.ts tests/duelModules.test.ts tests/duelCheckpoint.test.ts tests/ftlTargeting.test.ts tests/rockLock.test.ts
 git commit -m "feat(w2): laserMode {manual} and laserFire {aim, aimAcc} on the wire and through the duel step (mode first in WEAPON_ORDER, one MANUAL shot a tick, NO CHARGE unavailable)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -1714,7 +1721,7 @@ const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserMode' || 
 
 In `src/renderer/src/app/duel/onlineDuel.ts`:
 
-(a) The state import line becomes:
+(a) The line `import { CONTACT_MAX_LEVEL, missileOf } from '../../sim/tactical/state';` (the second state import; the `{ Outcome }` one stays) becomes:
 
 ```ts
 import { classOf, CONTACT_MAX_LEVEL, missileOf } from '../../sim/tactical/state';
@@ -1809,7 +1816,7 @@ import { classOf, CONTACT_MAX_LEVEL, missileOf } from '../../sim/tactical/state'
     expect(action('Z')).toMatch(/Weapons.*AUTO.*MANUAL/);   // W-2: the laser's mode
 ```
 
-(c) In `tests/onlineDuelSession.test.ts`, after the closing `});` of `describe('the online pew (W-1 review F2)', …)` insert:
+(c) In `tests/onlineDuelSession.test.ts`, first widen both `requests` annotations (the hoisted `sceneOpts` array type near line 53 and the scene mock's `opts` parameter type near line 66): each `requests?: { pew(aim: number): void }` becomes `requests?: { pew(aim: number): void; aimLaser(aim: number): void }`. Then, after the closing `});` of `describe('the online pew (W-1 review F2)', …)` insert:
 
 ```ts
 describe('the online manual laser (W-2)', () => {
