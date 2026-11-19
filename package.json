@@ -9,6 +9,7 @@
     "dev:duel": "tsx scripts/dev-mode.ts duel",
     "build": "electron-vite build",
     "build:web": "tsx scripts/web/build-web.ts",
+    "deploy:web": "npm run build:web && tsx scripts/web/check-output.ts .vercel/output && vercel deploy --prebuilt --prod",
     "test:web-output": "tsx scripts/web/build-web.ts --test --allow-missing-paid --service-origin=http://127.0.0.1:8787 --out=out/web-output-check && tsx scripts/web/check-output.ts out/web-output-check",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -55,6 +56,7 @@
     "pngjs": "7.0.0",
     "tsx": "^4.19.0",
     "typescript": "~5.8.0",
+    "vercel": "65.10.0",
     "vite": "^7.0.0",
     "vitest": "3.2.7"
   },
