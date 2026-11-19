@@ -2,24 +2,24 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** The gunner flies the crew's MANUAL torpedo with the left mouse button, as the Helm steers the ship: while it flies, LMB held on the open Weapons map turns it toward the pointer, and letting go holds the last heading. A/D steering and the right-button heading go. A/D now select weapons during a flight too, and the right button pans the Weapons map again. While the torpedo flies, MAN guns neither aim nor fire, and AUTO guns fight on. When the flight ends, LMB needs a fresh press, and a torpedo selection goes back to the last gun. Then W-4 is closed with a gameplay proof, a same-version bless and the SIM_VERSION bump.
+**Goal:** The gunner flies the crew's MANUAL torpedo with the left mouse button, as the Helm steers the ship: while it flies, LMB held on the open Weapons map turns it toward the pointer, and letting go holds the last heading. A/D steering and the right-button heading go. A/D now select weapons during a flight too, and the right button pans the Weapons map again. While the torpedo flies, no gun is aimed or fired by hand, and every powered gun, a MAN one included, fights on AUTO (owner 2026-11-19, spec §3.4). When the flight ends, LMB needs a fresh press, and a torpedo selection goes back to the last gun. Then W-4 is closed with a gameplay proof, a same-version bless and the SIM_VERSION bump.
 
 **Architecture:**
 
 - **The sim law is W-3's, minus A/D.** `manualTorpTurn(m, heading)` turns a MANUAL torpedo by `holdTurn` toward the held `torpHeading`. `torpTurn` leaves `HeldInput`, every held schema, the authority's expiry and pause lists, `ShipInput`, `IDLE_INPUT`, `UNCREWED_INPUT`, the Hunter's literal and the step. `heldTorpSteer` becomes `heldTorpHeading(h): number`.
-- **The guns during a flight.** These are sim rules, gated on `manualTorpedoFlying(state)` as the tick starts, and fenced to a turret class:
+- **The guns during a flight.** These are sim rules, read from the crew's MANUAL torpedo in flight, and fenced to a turret class:
+  - no gun is in hand: W-4b's `handControl` (`state.ts`) gains `&& missileOf(state, i)?.manual !== true`. So the reticle slews nothing, and both guns are AUTO-driven with AUTO's traverse, rates and rules, a MAN one included (Decision 13);
   - the step sends no `gunHeld`;
   - `pewFire` is refused `missile-in-flight`, after W-4b's AUTO refusal;
-  - `slewTurrets` holds a MAN turret;
-  - AUTO is untouched.
+  - AUTO itself is untouched.
 - **The LMB steer is the Helm's path, aimed from the torpedo.** A new pure `torpedoSteer` in `app/duel/flightPointer.ts`, a twin of `helmSteer`, gives the bearing from the torpedo's drawn marker to the pointer on the open Weapons map. The scene calls it every frame while LMB is held and the crew's MANUAL torpedo flies, and feeds W-3's existing `MapRequests.torpHeading`. W-3's right-button block in the scene and the Weapons pan exemption in `cameraInput.apply` (local and online) are removed.
 - **The seat around a flight is a pure helper.** `flightFrame` in `app/duel/weaponsSeat.ts` returns this frame's state:
   - the flight latch;
   - the selection (the torpedo returns to the last gun when a flight ends);
   - whether the left click may fire;
-  - the gated trigger: no trigger while flying, and a trigger held across the flight's end is stale until released.
+  - the gated trigger: no trigger while flying, and a left button still down when the flight ends, on the map or off it, makes the trigger stale until it is released (the latch reads the raw button, not the map-gated trigger).
   Both runtimes call it in their Hound Weapons-seat branch. W-4b's online turret prediction counts no frames while a MANUAL torpedo flies.
-- **The close.** Task 1 records a duel-oracle baseline at the W-4c start. No scripted or passive oracle run uses a MANUAL torpedo or MAN guns, so Task 7 proves every run unchanged per tick (`duel-oracle.ts same`) before a same-version bless. The bless refreshes only `basic.json`'s content digest. Task 8 then bumps SIM_VERSION alone, proved and blessed, as aec698e1 and 7f9cc710 did.
+- **The close.** Task 1 records a duel-oracle baseline at the W-4c start. No scripted or passive oracle run uses a MANUAL torpedo or MAN guns (so `handControl`'s new flight term never changes one), and Task 7 proves every run unchanged per tick (`duel-oracle.ts same`) before a same-version bless. The bless refreshes only `basic.json`'s content digest. Task 8 then bumps SIM_VERSION alone, proved and blessed, as aec698e1 and 7f9cc710 did.
 
 **Tech Stack:** TypeScript 5.8 (strict, `noUncheckedIndexedAccess`), Vitest 3.2 (+ jsdom for UI tests), React + zustand (console), zod 3 (wire), Pixi.js (map), Electron/electron-vite, the golden scripts under `scripts/golden/`.
 
@@ -53,15 +53,15 @@
   - `app/duel/flightPointer.ts`: `torpedoSteer(i: { pointer: Point | null; torpedo: Point; zoom: number; contactShown: boolean; statusRows: number }): number | null`.
   - `app/duel/weaponsSeat.ts`:
     - `interface FlightLatch { flying: boolean; stale: boolean }` and `const NO_FLIGHT: FlightLatch`;
-    - `flightFrame(latch, flyingNow, sel, lastGun, triggerNow): { latch: FlightLatch; sel: number; trigger: boolean; clicks: boolean }`;
+    - `flightFrame(latch, flyingNow, sel, lastGun, triggerNow, buttonNow): { latch: FlightLatch; sel: number; trigger: boolean; clicks: boolean }` (`buttonNow` the raw left button, anywhere on the canvas);
     - W-4a's `nextWeaponSel(sel, k, steering)` loses its `steering` parameter and becomes `nextWeaponSel(sel, k)`.
   - The TORPEDO card's steering word is `STEER LMB` (was `STEER A/D`), on the Hound's block and the laser class's block alike.
 - **The fences (spec §13.4).**
   - `tests/valkyrnIdentity.test.ts`, as W-4b left it (the three new names skipped, their zero asserted), must pass unchanged from Task 1 to the end. Its five digests do not change.
   - `tests/w4HunterIdentity.test.ts` (W-4a Task 1) passes unchanged. `tests/valkyrnRoundsRocks.test.ts`, `tests/pewHunter.test.ts` and `tests/torpedoGuidance.test.ts` pass unchanged.
-  - The flight gates of Task 3 are fenced to a turret class (`hasTurret(classOf(state, 0))`), so the Valkyrn, the laser fit and the Hunter take today's branches. The Valkyrn's Flight seat never flies a MANUAL torpedo (spec §15).
+  - The flight gates of Task 3 are fenced to a turret class (`hasTurret(classOf(state, 0))` in the step; `handControl` is false off a turret class, since only the crew slot of a turret class is ever MAN), so the Valkyrn, the laser fit and the Hunter take today's branches. The Valkyrn's Flight seat never flies a MANUAL torpedo (spec §15).
 - **The fallout rule (binding on every task; spec §14.1).** Classify each failing test exactly once:
-  - **(a) The test pins a rule W-4c replaces.** Examples: A/D (`torpTurn`) steering a MANUAL torpedo, the right button's heading at Weapons, the Weapons pan exemption, `STEER A/D`, the controls-list A/D and right-drag clauses, the guns firing during a MANUAL flight. Rewrite it for the new rule, citing "W-4 spec §n" on the changed line.
+  - **(a) The test pins a rule W-4c replaces.** Examples: A/D (`torpTurn`) steering a MANUAL torpedo, the right button's heading at Weapons, the Weapons pan exemption, `STEER A/D`, the controls-list A/D and right-drag clauses, a gun aimed or fired by hand during a MANUAL flight. Rewrite it for the new rule, citing "W-4 spec §n" on the changed line.
   - **(b) The test pins a number from a whole run.** W-4c moves no scripted or passive run (Task 7 proves it), so a kind (b) failure before Task 8 is a defect: stop and find it.
   - Never edit a band's limits. Never delete a test except a kind (a) one whose rule no class keeps (name it in the commit body). Never skip a test.
 - **Known-red window:** from Task 2 (the first sim file change) until Task 7's bless, only `tests/golden.test.ts` fails (its `basic.json` embeds every sim file's content digest). Every other test must pass at the end of each task. Each task runs its own targeted tests. The full suite runs in Tasks 1, 7 and 8.
@@ -88,7 +88,7 @@
 
 1. **The bump is V → V + 1, read at Task 1, not 59 → 60.** Master moved to SIM 60 with fire-venting (0dbe1be6, after the W-4 spec at b4d5dba4). W-4a's and W-4b's "same-version bless at 59" are at V too (the controller reconciles those plans). Task 8 bumps whatever V is to V + 1 and changes nothing else.
 2. **The LMB steer works at any Weapons seat, not only the Hound's.** `torpTurn` and the right-button heading leave the sim, the wire and the app for every class (spec §7, "Removed"). So the laser fit at a Weapons seat (the developer combination, spec §13.4) flies its MANUAL torpedo by LMB as well, or it could not steer one at all. On the laser class the left button has no other use at Weapons: it has no pew, and its laser fires on Space. The Valkyrn's Flight seat has no MANUAL flight (spec §15), so it is untouched.
-3. **The flight gates read the flight at the tick's start.** The step admits commands and builds the crew input before `applyWeaponsInput` launches anything. So `gunHeld` is dropped, and `pewFire` refused, from the tick after a launch, while `manualTorpedoFlying(d.tactical)` is true. `slewTurrets` runs before the launch inside `applyWeaponsInput` (spec §8's order: slew 3, launch 6), so it reads the same flag the same way. On the launch tick itself the guns behave as before the flight. This matches the W-3 rule for the laser (`canCharge` reads the torpedo in flight as the tick starts).
+3. **The flight gates read the flight at the tick's start.** The step admits commands and builds the crew input before `applyWeaponsInput` launches anything. So `gunHeld` is dropped, and `pewFire` refused, from the tick after a launch, while `manualTorpedoFlying(d.tactical)` is true. The slew and `tickGun` run before the launch inside `applyWeaponsInput` (spec §8's order: slew 3, gun 4, launch 6), so their `handControl` reads the same flight the same way. On the launch tick itself the guns behave as before the flight. `tickPew` runs in `tickWeapons`, after the launch, so on the launch tick the pew already charges at AUTO's rate: one tick's gain, deterministic, and only in a MAN round. This matches the W-3 rule for the laser (`canCharge` reads the torpedo in flight as the tick starts).
 4. **`gunHeld`'s flight gate lives in the step, not in `tickGun`.** Spec §5 defines MAN fire as "a round fires when `input.gunHeld` (§8: LMB held, the autocannon selected, no MANUAL torpedo flying)". So the step folds the flight into `gunHeld`, as W-4a folds in the selection, and `tickGun` stays W-4b's.
 5. **`pewFire`'s order (spec §6):** stale-tick, `not-at-weapons`, `unavailable` without a pew, `unavailable` in AUTO (W-4b), then **`missile-in-flight`** (new), then the noop, then `pewReady`. The reason is in `COMMAND_REASONS` already (`net/contracts.ts`, used by `laserCharge` and `laserFire`).
 6. **The app stops using LMB for fire during a flight.** At the Hound's seat, while the crew's MANUAL torpedo flies (the local state, or the replica online):
@@ -96,12 +96,15 @@
    - the held trigger sends no `gunHeld`;
    - LMB held steers through `torpHeading`.
    The sim gates (Task 3) are the authority's guarantee, and these app gates keep the client from sending what the sim would drop.
-7. **The fresh press is a latch on the trigger only.** A left click is a press event (`PointerSource.takeClick`), so a button held across the flight's end makes no new click: it can neither fire the pew nor launch a second torpedo. Only the held trigger (the autocannon) could carry over. So `flightFrame` sets `stale` when the flight ends with the trigger held, and clears it once the trigger is released. While `stale`, the trigger counts as released.
+   **A click-launch also sets the flight's heading.** With the torpedo selected in MANUAL, a left click on the map launches it (W-4a). The same press, if it stays down, is an LMB hold over the map once the torpedo flies, so from the next drawn frame the scene steers toward the pointer, and the torpedo turns that way once its boost ends. A click released in the launch frame sends no heading, so the torpedo flies straight on its launch heading (the nose). This is intended: "click and hold where you want it to go". It needs no extra code. It is pinned by a runtime test (Task 5) and a gate line (Task 7).
+7. **The fresh press is a latch on the raw left button.** A left click is a press event (`PointerSource.takeClick`), so a button held across the flight's end makes no new click: it can neither fire the pew nor launch a second torpedo. Only the held trigger (the autocannon) could carry over. The trigger is map-gated: the scene reports it only while the pointer is on the open map. So a latch on the trigger would miss a button held over a console block when the flight ends and then dragged onto the map. `flightFrame` therefore takes the raw button too (`buttonNow`: locally `deps.gunHeld`, duelMode's `pointer.leftHeld()`, which only the Flight seat reads otherwise; online `pointer.leftHeld()`). It sets `stale` when the flight ends with the button down, wherever it is, and clears it once the button is released. While `stale`, the trigger counts as released.
 8. **The selection returns on the flight's end frame, before this frame's keys.** If `weaponSel` is the torpedo (2) when the latch sees the flight end, it becomes `lastGunSel` (W-4a's: the last of 0 or 1 selected, 0 by default). A select key pressed on the same frame then wins, because `nextWeaponSel` runs after `flightFrame`. Both runtimes already keep `lastGunSel` (W-4a: local Task 10, online Task 11). **A stated deviation from spec §7's wording:** the spec says "if the torpedo was selected at launch"; this plan tests the selection at the flight's end. Since A/D and 1-3 select during a flight (spec §7), the selection at the end is the gunner's latest intent: a gunner who launched with F on a gun and then pressed 3 mid-flight gets the gun back, and one who launched with the torpedo selected and then pressed A keeps the gun they chose. No launch-time state is needed.
 9. **`torpHold` is cleared only when no MANUAL torpedo flies** (or off the Weapons seat, a new round, a sit or stand, and an attach online, as today). A/D no longer clear it. A pointer over the torpedo's own marker gives no bearing (`torpedoSteer` returns null, as `helmSteer` does on the ship), so the last heading stands. W-3's "a right click on the torpedo clears the hold" goes with the right button.
-10. **The online prediction (W-4b's `turret(slot)`) counts 0 frames while a MANUAL torpedo flies**, read from the replica (spec §11's "from W-4c"). The replica's turret is drawn, and it holds while flying, since the authority holds a MAN turret.
+10. **The online prediction (W-4b's `turret(slot)`) counts 0 frames while a MANUAL torpedo flies**, read from the replica (spec §11's "from W-4c"). The replica's turret is drawn: the authority slews every gun on AUTO during the flight (Decision 13), and the replica shows that.
 11. **The additive proof uses the oracle's `same` mode.** W-4c adds and removes no hashed field: `torpTurn` was never state, and `Missile.manual` and `torpManual` stay. No oracle run (the scripted and passive gate seeds and the rematch) sends `torpMode` or `gunMode`. So Task 1's baseline must match Task 7's code field for field, and Task 7's bless leaves `duel-1.json` and `duel-rematch.json` byte for byte (only `basic.json`'s content digest moves). If a duel golden moves, the AUTO path changed: stop, never re-bless around it.
 12. **The duel app smoke's seed** (`DUEL_TEST_SEED`) is re-picked in Task 8 only if step 3's forced round end times out at V + 1, by b7c0919e's search (seeds 1..8000, no flight or weapon input, the earliest decided round). The bump changes no run, so a re-pick should not be needed. If W-4a or W-4b moved the seed, Task 8 only verifies it.
+13. **During a MANUAL flight a MAN gun fights on AUTO (owner 2026-11-19, spec §3.4, Decision 10 of the spec).** Under the owner's call that in MAN only the selected gun is in hand and every other gun is AUTO-driven, the flight takes every gun out of hand: `handControl` gains `&& missileOf(state, i)?.manual !== true`, the one place W-4b's slew, `tickGun`, `tickPew`, the tags and the bracket read. So a MAN-selected gun neither holds nor follows the reticle while the torpedo flies. It slews to its own lead and fires by AUTO's rules (the hold, the 80 % stop, ship only, line of sight). The owner's text is "guns left on auto keep firing; can't aim or fire guns by hand". Nothing is aimed or fired by hand, since the left button is the torpedo's, and no gun stops fighting. Holding the selected gun instead would make the guns' fire depend on whether the gunner launched with F on a gun or with the torpedo selected. `missileOf` is used, not `manualTorpedoFlying`: `state.ts` cannot import `manualTorpedo.ts`, and `turret.ts` importing it would close the cycle turret → manualTorpedo → hunter → weapons → turret. The step's `gunHeld` gate (Decision 4) and `pewFire`'s `missile-in-flight` refusal stay, so the authority also refuses what the client should not send.
+14. **A MANUAL launch drops a weapon pick-up (review finding 18).** A click on the TORPEDO card selects it and also picks it up for room targeting (W-4a). The scene's LMB steer is off while a weapon is picked up, because the button is the contact window's then. So after a card click and a MANUAL launch the steer would be dead until the gunner cancels by hand. On the first drawn frame of a crew MANUAL flight at Weapons, the scene calls `contact.cancelAim()` once (an edge, `manualPrev`). A pick-up made during the flight is left alone, because the window is the gunner's choice then.
 
 ---
 
@@ -210,12 +213,55 @@ with
 - Every other `manualTorpTurn(m, 0, h)` becomes `manualTorpTurn(m, h)`.
 - In "flies a MANUAL torpedo by its ship's Weapons input only": replace `stepDuel(st, { ...IDLE_INPUT, torpTurn: 1 })` with `stepDuel(st, { ...IDLE_INPUT, torpHeading: 64 })`. The expected heading stays `Math.floor(10 * classOf(st, 0).slots.missile.turnStepsPerTick)`: a hold toward 64 from 0 turns by +1 each tick, as `torpTurn: 1` did, so W-3's numbers stay. Replace `{ ...IDLE_INPUT, weapons: false, torpTurn: 1, torpHeading: 64 }` with `{ ...IDLE_INPUT, weapons: false, torpHeading: 64 }`.
 - In "keeps the mode it launched with", both `{ ...IDLE_INPUT, torpTurn: 1 }` (L105 and L113) become `{ ...IDLE_INPUT, torpHeading: 64 }`. The expectations stay: a hold toward 64 from 0 is +1 a tick, as `torpTurn: 1` was, and the AUTO twin ignores the steer either way.
-- The file's header (L3-L4, "A and D turn it at the torpedo's turn rate, and a held heading turns it …") becomes "A held heading turns it by the Helm's hold law until the nose is on it (W-4 spec §7: the LMB steer sets it; A/D steering is gone)". `tests/manualTorpedoInput.test.ts`'s header (L4-L5) gets the same change, citing W-4 spec §7.
+- The file's header is wrapped. Replace its two lines (L3-L4)
+
+```ts
+// homes. A and D turn it at the torpedo's turn rate, and a held heading turns it by the Helm's hold law until the nose is
+// on it. It flies only with its ship's Weapons input. On a ship it strikes the room under its impact point for its hull,
+```
+
+  with
+
+```ts
+// homes. A held heading turns it by the Helm's hold law until the nose is on it (W-4 spec §7: the LMB steer sets it; A/D
+// steering is gone). It flies only with its ship's Weapons input. On a ship it strikes the room under its impact point for its hull,
+```
+
+- `tests/manualTorpedoInput.test.ts`'s header: replace its two lines (L4-L5)
+
+```ts
+// - While the crew's MANUAL torpedo flies, the Weapons seat's A/D are its torpTurn, and the map's held heading is its
+//   torpHeading until A or D clears it.
+```
+
+  with
+
+```ts
+// - While the crew's MANUAL torpedo flies, the map's held heading (the LMB steer) is its torpHeading until the flight
+//   ends; A/D no longer steer it (W-4 spec §7).
+```
 
 `tests/manualTorpedoMode.test.ts`: `expect([input.torpTurn, input.torpHeading]).toEqual([0, -1])` becomes `expect(['torpTurn' in input, input.torpHeading]).toEqual([false, -1])` (W-4 spec §7).
 
 `tests/manualTorpedoCommands.test.ts`:
-- Header comment: "The codec round-trips torpMode and the held torpHeading (W-4 spec §7: torpTurn is gone, and a frame carrying it is malformed)".
+- Header comment, three separate lines (L1-L2 are one wrapped sentence, L3 and L6 are single lines): replace
+
+```ts
+// W-3 manual torpedo (spec 2026-11-18-pew-pew-weapons-design §3, §4, §5): torpMode and the held steering on the wire and
+// through the duel step and the authority.
+// - The codec round-trips torpMode and the held torpTurn and torpHeading, and refuses anything else.
+```
+
+  with
+
+```ts
+// W-3 manual torpedo (spec 2026-11-18-pew-pew-weapons-design §3, §4, §5): torpMode and the held heading on the wire and
+// through the duel step and the authority.
+// - The codec round-trips torpMode and the held torpHeading, and refuses anything else (W-4 spec §7: a frame carrying
+//   torpTurn is malformed).
+```
+
+  and replace `// - The Weapons attendant's held torpTurn and torpHeading fly a MANUAL torpedo; anyone else's do not.` with `// - The Weapons attendant's held torpHeading flies a MANUAL torpedo; anyone else's does not.`
 - Import `heldTorpHeading` in place of `heldTorpSteer`.
 - "the held frame carries …" becomes:
 
@@ -351,9 +397,25 @@ export function heldTorpHeading(h: HeldInput): number {
 
 - [ ] **Step 4: The wire and the authority**
 
-`net/contracts.ts`, `HeldInput`: delete `torpTurn?: number; `. In its doc comment, replace "W-3 (pew pew spec §3): `torpTurn` the MANUAL torpedo's A/D (−1, 0 or 1; absent 0) and `torpHeading` the heading it holds (0..255; −1 or absent none)" with "W-3 (pew pew spec §3), W-4 spec §7: `torpHeading` the heading the MANUAL torpedo holds (0..255; −1 or absent none), from the Weapons seat's LMB steer". In "`gunHeld`, `torpTurn` and `torpHeading` from Weapons'", drop `torpTurn`.
+`net/contracts.ts`, `HeldInput`: delete `torpTurn?: number; `. Its doc comment is wrapped, so match these exact lines (L34-L37 at `1ddb8a19`; W-4a and W-4b append their own sentences elsewhere in the comment and leave these):
 
-`net/codec.ts`, the `held` schema: delete `torpTurn: z.number().int().min(-1).max(1).optional(), ` and change "torpTurn, torpHeading: W-3" in its comment to "torpHeading: W-3 (W-4: torpTurn removed)".
+```ts
+ *  other value as none). `gunHeld` (Valkyrn spec §7.1): the gun's trigger; absent means false. W-3 (pew pew spec §3):
+ *  `torpTurn` the MANUAL torpedo's A/D (−1, 0 or 1; absent 0) and `torpHeading` the heading it holds (0..255; −1 or
+ *  absent none). Only the duel reads them: `face` and `aim` from the Helm's attendant (A/D, moveX, overrides both),
+ *  `gunHeld`, `torpTurn` and `torpHeading` from Weapons'. Playtest2feedback §7: `throttleHeld` (1 W, −1 S), `rcsX`
+```
+
+and replace them with
+
+```ts
+ *  other value as none). `gunHeld` (Valkyrn spec §7.1): the gun's trigger; absent means false. W-3 (pew pew spec §3),
+ *  W-4 spec §7: `torpHeading` the heading the MANUAL torpedo holds (0..255; −1 or absent none), from the Weapons seat's
+ *  LMB steer. Only the duel reads them: `face` and `aim` from the Helm's attendant (A/D, moveX, overrides both),
+ *  `gunHeld` and `torpHeading` from Weapons'. Playtest2feedback §7: `throttleHeld` (1 W, −1 S), `rcsX`
+```
+
+`net/codec.ts`, the `held` schema: delete `torpTurn: z.number().int().min(-1).max(1).optional(), ` and change "torpTurn, torpHeading: W-3" in its comment to "torpHeading: W-3 (W-4 spec §7: the A/D turn field is gone)". The comment must not name the removed field, because Step 6's `git grep -n "torpTurn\|heldTorpSteer" -- src` expects no output.
 
 `authority/checkpoint.ts` (the `held` array's object), `authority/duelCheckpoint.ts` and `authority/replay.ts` (each `const held = z.object({ ... })`): delete `torpTurn: z.number().int().min(-1).max(1).optional(), ` from each.
 
@@ -407,7 +469,19 @@ In the `activeHeld` literal, replace `...(torpTurn !== 0 ? { torpTurn } : {}), .
 
 Until Task 4, the right button's W-3 heading still reaches `torpHold` through `takeTorpHeading`, and its −1 "clear" is now ignored (`torpNow >= 0`, Decision 9). Task 4 replaces that source with the LMB steer.
 
-Also in `src/renderer/src/net/contracts.ts`, the `torpMode` doc (L112) "flown by the Weapons seat's held torpTurn and torpHeading" becomes "flown by the Weapons seat's held torpHeading (W-4 spec §7: the LMB steer)". The `HeldInput` doc (L32-L38) drops its `torpTurn` clause the same way.
+Also in `src/renderer/src/net/contracts.ts`, the `torpMode` doc's middle line (L111, one line)
+
+```ts
+   *  range, and flown by the Weapons seat's held torpTurn and torpHeading), false AUTO (as before). A torpedo in flight
+```
+
+becomes
+
+```ts
+   *  range, and flown by the Weapons seat's held torpHeading, W-4 spec §7: the LMB steer), false AUTO (as before). A torpedo in flight
+```
+
+(The `HeldInput` doc was Step 4's.)
 
 - [ ] **Step 6: Run**
 
@@ -429,23 +503,23 @@ git commit -m "feat(w4c): torpTurn goes from the sim, the wire, the authority an
 
 ---
 
-### Task 3: The guns during a MANUAL flight (sim): no MAN slew, no trigger, `pewFire` refused; AUTO fights on
+### Task 3: The guns during a MANUAL flight (sim): no gun in hand, no trigger, `pewFire` refused; every gun fights on AUTO
 
 **Files:**
-- Modify: `src/renderer/src/sim/duel/step.ts` (the crew's `gunHeld`, `pewFire`'s admission), `src/renderer/src/sim/tactical/turret.ts` (`slewTurrets`' MAN branch)
+- Modify: `src/renderer/src/sim/duel/step.ts` (the crew's `gunHeld`, `pewFire`'s admission), `src/renderer/src/sim/tactical/state.ts` (W-4b's `handControl`, Decision 13)
 - Create: `tests/w4Flight.test.ts`
 
 **Interfaces:**
-- Consumes: `manualTorpedoFlying(state, i?)` (`sim/tactical/manualTorpedo.ts`), `hasTurret(cls)` (defs.ts, W-4a), `placeMissile(state, i, f, manual)` (state.ts), W-4b's `slewTurrets(state, i, input)`, `gunsManual`, `pewTurret`, `gunTurret`, `ShipInput.turretAim`, `gunMode` admission, W-4a's `houndWeapons` test helper and `createSeatedDuel(layout, seed, helm?, crew?, cls?)` (`tests/helpers/duelSeat.ts`).
+- Consumes: `manualTorpedoFlying(state, i?)` (`sim/tactical/manualTorpedo.ts`), `missileOf(state, i)` (state.ts), `hasTurret(cls)` (defs.ts, W-4a), `placeMissile(state, i, f, manual)` (state.ts), W-4b's `handControl(state, i, weaponSel, slot)`, `slewTurrets(state, i, input)`, `gunsManual`, `pewTurret`, `gunTurret`, `ShipInput.turretAim`, `gunMode` admission, W-4a's `houndWeapons` test helper and `createSeatedDuel(layout, seed, helm?, crew?, cls?)` (`tests/helpers/duelSeat.ts`).
 - Produces: the flight gates the app relies on (Task 5) and the gate entry checks (Task 7).
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-// W-4 spec §3.4, §6, §7 (W-4c): while the crew's MANUAL torpedo flies, MAN guns neither aim nor fire: no MAN slew toward the
-// reticle, the held trigger fires no autocannon round, and pewFire is refused missile-in-flight (after the AUTO refusal, before
-// the noop); AUTO guns keep slewing and firing; gunMode still toggles. An AUTO torpedo in flight changes nothing. The
-// Valkyrn's trigger is unchanged (it never flies a MANUAL torpedo, and its gun is no turret).
+// W-4 spec §3.4, §6, §7 (W-4c): while the crew's MANUAL torpedo flies, no gun is in hand: nothing slews toward the reticle,
+// the held trigger fires no round, and pewFire is refused missile-in-flight (after the AUTO refusal, before the noop); every
+// powered gun, a MAN one included, slews and fires on AUTO (owner 2026-11-19); gunMode still toggles. An AUTO torpedo in
+// flight changes nothing. The Valkyrn's trigger is unchanged (it never flies a MANUAL torpedo, and its gun is no turret).
 import { describe, expect, it } from 'vitest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
@@ -472,7 +546,7 @@ const fly = (d: DuelState, manual: boolean): void => { placeMissile(d.tactical, 
 const held = (d: DuelState, g: number, h: Partial<HeldInput>): HeldInput[] => { const out = [N, N]; out[g] = { ...N, ...h }; return out; };
 
 describe('the guns during a MANUAL flight (W-4 spec §7)', () => {
-  it('MAN: the reticle slews nothing and the trigger fires nothing while it flies; both work again once it ends', () => {
+  it('MAN: the reticle slews nothing and the trigger fires nothing while it flies (with no target the AUTO-driven gun stays on the nose); both work again once it ends', () => {
     const { d, g } = hound();
     try {
       const s = d.tactical.systems[0]!;
@@ -528,6 +602,21 @@ describe('the guns during a MANUAL flight (W-4 spec §7)', () => {
       expect(s.pewShots + s.gunShots).toBeGreaterThan(0);
     } finally { disposeDuel(d); }
   });
+  it('a MAN gun, selected and triggered, fights on AUTO while a MANUAL torpedo flies: it slews to the ship, not the reticle, and fires (owner 2026-11-19)', () => {
+    const { d, g } = hound();
+    try {
+      const t = d.tactical, s = t.systems[0]!;
+      t.hostileAt = 0;
+      Object.assign(t.ships[1], { x: 150, y: 1500 - 300, vx: 0, vy: 0 });   // as the AUTO case: inside both arcs, about 27° to starboard
+      stepDuelTick(d, { held: [], commands: [env(d, g, { kind: 'gunMode', manual: true }, 1)] });
+      fly(d, true);
+      const west = 49152;   // a reticle due west: a gun in hand would slew to its −30° stop
+      for (let k = 0; k < 120; k++) stepDuelTick(d, { held: held(d, g, { weaponSel: 1, gunHeld: true, turretAim: west }), commands: [] });
+      expect(s.gunsManual).toBe(true);
+      expect(s.gunTurret).toBeGreaterThan(0);   // toward the ship to starboard, not the reticle to port
+      expect(s.gunShots).toBeGreaterThan(0);   // the trigger is dropped in flight, so every round is AUTO's
+    } finally { disposeDuel(d); }
+  });
   it('the Valkyrn\'s trigger is today\'s: it fires with a MANUAL torpedo of its own in flight (no turret, no flight gate)', () => {
     const v = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.Valkyrn), g = 1 - v.helmPlayer;
     try {
@@ -562,32 +651,40 @@ Expected: FAIL. The MAN case slews and fires during the flight, and `pewFire` re
 3. In the `pewFire` branch of the `WEAPON_ORDER` loop, insert directly after W-4b's AUTO refusal, which is the line that answers `unavailable` while `!d.tactical.systems[0].gunsManual`:
 
 ```ts
-      if (manualTorpedoFlying(d.tactical)) { result(e, 'missile-in-flight'); continue; }   // W-4 spec §6, §7: MAN guns are quiet while the MANUAL torpedo flies
+      if (manualTorpedoFlying(d.tactical)) { result(e, 'missile-in-flight'); continue; }   // W-4 spec §6, §7: no gun is fired by hand while the MANUAL torpedo flies
 ```
 
 So the order is the spec's: stale, seat, no pew, AUTO, `missile-in-flight`, the noop (`crew.pewTrigger`), `pewReady`.
 
-- [ ] **Step 4: The turret**
+- [ ] **Step 4: Hand control ends while it flies (Decision 13)**
 
-`sim/tactical/turret.ts`, in `slewTurrets(state, i, input)` (W-4b): find the MAN branch, which slews the selected gun toward `input.turretAim` at its MAN traverse while `state.systems[i].gunsManual`. Add the flight to its condition, so that MAN holds both turrets while the ship's own MANUAL torpedo flies:
+`sim/tactical/state.ts`, W-4b's `handControl` (W-4b's "Seam for W-4c"): replace its body
 
 ```ts
-  // W-4 spec §3.4, §7: while the crew's MANUAL torpedo flies, MAN guns hold (the reticle is ignored); AUTO is untouched.
-  if (missileOf(state, i)?.manual === true) continue;   // the first statement of W-4b's MAN branch (`if (s.gunsManual) { ... }`), inside its per-gun loop: hold this gun
+  return state.systems[i]!.gunsManual && weaponSel === slot;
 ```
 
-Write the check inline: `if (missileOf(state, i)?.manual === true) continue;`. Do not import `manualTorpedo.ts` into `turret.ts`: that would close a cycle, turret.ts → manualTorpedo.ts → hunter.ts → weapons.ts → turret.ts (hunter.ts L16 imports weapons.ts, and W-4b's weapons.ts imports `slewTurrets`). Add `missileOf` to `turret.ts`'s import from `./state` if W-4b did not import it. Place it as the MAN branch's first statement (W-4b's "Seam for W-4c": `if (s.gunsManual) { ... }` inside `for (const gun of ['pew', 'gun'] as const)`). The AUTO branch is not touched.
+with
+
+```ts
+  // W-4 spec §3.4, §7 (owner 2026-11-19): while the ship's own MANUAL torpedo flies, no gun is in hand: the reticle is
+  // ignored and every powered gun, a MAN one included, slews and fires on AUTO ("guns left on auto keep firing; can't aim or
+  // fire guns by hand"). AUTO itself is untouched.
+  return state.systems[i]!.gunsManual && weaponSel === slot && missileOf(state, i)?.manual !== true;
+```
+
+and add to its doc comment: "W-4c: never while the ship's MANUAL torpedo flies." `missileOf` is in `state.ts` itself, so no import is added. Do not use `manualTorpedoFlying` here: `state.ts` cannot import `manualTorpedo.ts` (which imports `state.ts`), and `turret.ts` importing it would close the cycle turret.ts → manualTorpedo.ts → hunter.ts → weapons.ts → turret.ts (hunter.ts L16 imports weapons.ts, and W-4b's weapons.ts imports `slewTurrets`). The slew, `tickGun`, `tickPew` (through `tickWeapons`), the console's `gunsHand` and the map's bracket all read `handControl`, so this one line moves every one of them. If W-4b's executed `handControl` differs from its plan, match it by name and meaning, and say so in the commit body.
 
 - [ ] **Step 5: Run**
 
-Run: `npx tsc -b` then `npx vitest run tests/w4Flight.test.ts tests/w4Turret.test.ts tests/w4Auto.test.ts tests/w4Manual.test.ts tests/w4PewFire.test.ts tests/manualTorpedoMode.test.ts tests/manualTorpedoCommands.test.ts tests/valkyrnIdentity.test.ts tests/w4HunterIdentity.test.ts tests/valkyrnRounds.test.ts`
-Expected: tsc clean; all PASS. W-4b's tests (`w4Turret`, `w4Auto`, `w4Manual`) have no MANUAL flight in them, so they are unchanged. If one launches a MANUAL torpedo and expects MAN fire, it is kind (a): rewrite it with an AUTO torpedo, citing W-4 spec §7.
+Run: `npx tsc -b` then `npx vitest run tests/w4Flight.test.ts tests/w4Turret.test.ts tests/w4Auto.test.ts tests/w4Manual.test.ts tests/w4PewFire.test.ts tests/w4Map.test.ts tests/w4Ui.test.tsx tests/manualTorpedoMode.test.ts tests/manualTorpedoCommands.test.ts tests/valkyrnIdentity.test.ts tests/w4HunterIdentity.test.ts tests/valkyrnRounds.test.ts`
+Expected: tsc clean; all PASS. W-4b's tests (`w4Turret`, `w4Auto`, `w4Manual`, `w4Map`) have no MANUAL flight in them, so they are unchanged. If one launches a MANUAL torpedo and expects fire by hand, it is kind (a): rewrite it with an AUTO torpedo, citing W-4 spec §7.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/renderer/src/sim/duel/step.ts src/renderer/src/sim/tactical/turret.ts tests/w4Flight.test.ts
-git commit -m "feat(w4c): while the MANUAL torpedo flies, MAN guns neither aim nor fire and pewFire is refused missile-in-flight; AUTO fights on (W-4 spec §3.4, §6, §7)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add src/renderer/src/sim/duel/step.ts src/renderer/src/sim/tactical/state.ts tests/w4Flight.test.ts
+git commit -m "feat(w4c): while the MANUAL torpedo flies no gun is in hand: nothing follows the reticle, the trigger fires nothing, pewFire is refused missile-in-flight, and every gun fights on AUTO (W-4 spec §3.4, §6, §7; owner 2026-11-19)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -658,11 +755,12 @@ If (640, 200) or (740, 300) falls on a Weapons block in `consoleLayout`, use poi
       expect(r.requests.takeTorpHeading()).toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
-  it('asks nothing while a weapon is picked up', () => {
+  it('asks nothing while a weapon is picked up during the flight', () => {
     const r = rig();
     try {
       r.steer(null);
       r.launch();
+      r.steer(null);   // the flight's first drawn frame (Decision 14: a pick-up from before the launch is dropped here)
       const m = r.marker();
       r.contact.pickUp('torpedo');
       r.steer({ x: m.x + 100, y: m.y });
@@ -672,6 +770,23 @@ If (640, 200) or (740, 300) falls on a Weapons block in `consoleLayout`, use poi
       expect(r.requests.takeTorpHeading()).toBe(64);
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
+  it('a pick-up made before a MANUAL launch (a TORPEDO card click) is dropped on the flight\'s first frame, so the held button steers at once (Decision 14)', () => {
+    const r = rig();
+    try {
+      r.steer(null);
+      r.contact.pickUp('torpedo');   // the card click selects and picks up
+      r.launch();
+      const m = r.marker();
+      r.steer({ x: m.x + 100, y: m.y });
+      expect(r.contact.aimWeapon()).toBeNull();
+      expect(r.requests.takeTorpHeading()).toBe(64);
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
+```
+
+`cancelAim` drops the pick-up but leaves the contact window open, so `onWeaponsMap` still keeps the window's own rectangle off the map. If that rectangle covers `(m.x + 100, m.y)`, steer at `(m.x − 100, m.y)` instead and expect 192; keep the `aimWeapon()` assertion.
+
+```ts
   it('the right button no longer steers it (W-4 spec §7: at Weapons it pans)', () => {
     const r = rig();
     try {
@@ -701,10 +816,10 @@ If (640, 200) or (740, 300) falls on a Weapons block in `consoleLayout`, use poi
 Add a pan case to the same file. In `rig()`, replace `samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }),` with a settable sample:
 
 ```ts
-    samplePointer: () => { const v = ptr; ptr = NO_PTR; return v; },
+    samplePointer: () => { const v = sample; sample = NO_PTR; return v; },
 ```
 
-Declare it above `createDuelRuntime`: `const NO_PTR: PointerSample = { x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }; let ptr: PointerSample = NO_PTR;`. Import `type PointerSample` from `../src/renderer/src/app/duel/input`. Return `drag: (v: PointerSample): void => { ptr = v; }` with the rig's other members. Then:
+Declare it above `createDuelRuntime`: `const NO_PTR: PointerSample = { x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }; let sample: PointerSample = NO_PTR;`. It is named `sample`, not `ptr`, because the rig's `ptr` (above) is already the scene's pointer position, a different type. Import `type PointerSample` from `../src/renderer/src/app/duel/input`. Return `drag: (v: PointerSample): void => { sample = v; }` with the rig's other members. Then:
 
 ```ts
 describe('the right button pans the Weapons map during a MANUAL flight (W-4 spec §7, §9)', () => {
@@ -726,7 +841,7 @@ describe('the right button pans the Weapons map during a MANUAL flight (W-4 spec
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `npx vitest run tests/flightPointer.test.ts tests/manualTorpedoScene.test.ts`
-Expected: FAIL. `torpedoSteer` is not exported, the left button asks nothing, the right button still asks, and the right drag does not pan.
+Expected: FAIL. `torpedoSteer` is not exported, the left button asks nothing, the right button still asks, a pick-up from before the launch stays, and the right drag does not pan.
 
 - [ ] **Step 3: `torpedoSteer`**
 
@@ -748,9 +863,14 @@ export function torpedoSteer(i: { pointer: Point | null; torpedo: Point; zoom: n
 
 `app/duel/scene.ts`:
 1. Delete the W-3 block that starts with the comment `// W-3 (pew pew spec §3): at Weapons, while the crew's MANUAL torpedo flies, the right button steers it: a press, every` and ends with that `if (aim && onMap && station === 'weapons' && … ) { … }` statement's closing brace. `lastAimed` stays: the Flight seat's block still reads it.
-2. After the crew Helm's steer block (the one that ends `if (h !== null) { options.requests?.steer(h); steerTo = p; }   // final review M1: the marker only while a steer goes out` and its closing `}`), add:
+2. After the crew Helm's steer block (the one that ends `if (h !== null) { options.requests?.steer(h); steerTo = p; }   // final review M1: the marker only while a steer goes out` and its closing `}`), add the pick-up drop (Decision 14) and then the steer. Declare `let manualPrev = false;   // W-4c Decision 14: whether the crew's MANUAL torpedo flew on the last drawn frame` beside `let lastAimed: string | null = null;` in the scene's closure.
 
 ```ts
+      // W-4c Decision 14: a MANUAL launch drops a weapon pick-up (a TORPEDO card click both selects and picks it up), so the
+      // held left button steers at once instead of belonging to the contact window. Once, on the flight's first drawn frame.
+      const manualNow = manualTorpedoFlying(d.tactical);
+      if (manualNow && !manualPrev && station === 'weapons') contact?.cancelAim();
+      manualPrev = manualNow;
       // W-4 spec §7 (W-4c): at Weapons, while the crew's MANUAL torpedo flies, the held left button steers it, every frame: the
       // bearing from the torpedo's drawn marker to the pointer while it is on the open map and off the marker (else the last
       // bearing stands). Not while a weapon is picked up (the button is the window's then).
@@ -805,7 +925,7 @@ Expected: tsc clean; all PASS.
 
 ```bash
 git add src/renderer/src/app/duel/flightPointer.ts src/renderer/src/app/duel/scene.ts src/renderer/src/app/duel/mapRequests.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/onlineSource.ts tests/flightPointer.test.ts tests/manualTorpedoScene.test.ts
-git commit -m "feat(w4c): the held left button flies the MANUAL torpedo toward the pointer; the right button pans the Weapons map again (W-4 spec §7)" -m "Kind (a): manualTorpedoScene's right-button steer rewritten for the left button." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(w4c): the held left button flies the MANUAL torpedo toward the pointer; a MANUAL launch drops a weapon pick-up; the right button pans the Weapons map again (W-4 spec §7)" -m "Kind (a): manualTorpedoScene's right-button steer rewritten for the left button." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -819,7 +939,7 @@ git commit -m "feat(w4c): the held left button flies the MANUAL torpedo toward t
 - Create: `tests/w4TorpedoSeat.test.ts`
 
 **Interfaces:**
-- Consumes: W-4a's `weaponSel`, `lastGunSel`, `triggerPrev`, `weaponsSeatHeld(sel, trigger)`, `MapRequests.triggerHeld()`, `DuelRuntimeDeps.triggerHeld?()`, `houndWeaponsSeat`, `WeaponSlot`; W-4b's Hound branch additions (Z → `gunMode`) and `onlineSource.turret(slot)` / `predictTurret`.
+- Consumes: W-4a's `weaponSel`, `lastGunSel`, `triggerPrev`, `weaponsSeatHeld(sel, trigger)`, `MapRequests.triggerHeld()`, `DuelRuntimeDeps.triggerHeld?()`, `houndWeaponsSeat`, `WeaponSlot`; the raw left button (`DuelRuntimeDeps.gunHeld?()`, wired to `pointer.leftHeld()` by `duelMode.ts`; `pointer.leftHeld()` in `onlineDuel.ts`); `DuelRuntimeDeps.takeTorpHeading?()`; W-4b's Hound branch additions (Z → `gunMode`) and `onlineSource.turret(slot)` / `predictTurret`.
 - Produces: `FlightLatch`, `NO_FLIGHT`, `flightFrame(...)`, `nextWeaponSel(sel, k)`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -838,43 +958,60 @@ git commit -m "feat(w4c): the held left button flies the MANUAL torpedo toward t
 
 ```ts
 // W-4 spec §7 (W-4c): the Hound's Weapons seat around a MANUAL flight. The pure latch: no trigger and no left-click fire while
-// it flies; when it ends, a torpedo selection goes back to the last gun and a trigger still held is stale until released.
-// Then Single player and online: A/D select during a flight, LMB clicks fire nothing while it flies, the held trigger sends
-// no gunHeld, Z still toggles, and the online turret prediction counts no frames.
+// it flies; when it ends, a torpedo selection goes back to the last gun and a left button still down (on the map or off it)
+// makes the trigger stale until released. Then Single player and online: A/D select during a flight, LMB clicks fire
+// nothing while it flies, the held trigger sends no gunHeld, Z still toggles, a click-launch held down steers at once, and
+// the online turret prediction counts no frames.
 import { describe, expect, it } from 'vitest';
 import { flightFrame, NO_FLIGHT } from '../src/renderer/src/app/duel/weaponsSeat';
 
+// flightFrame(latch, flyingNow, sel, lastGun, triggerNow, buttonNow): the trigger is the map-gated one (the left button on
+// the open map), the button the raw left button anywhere (Decision 7).
 describe('flightFrame (W-4 spec §7)', () => {
   it('while flying: no trigger and no clicks; the selection is untouched', () => {
-    const f = flightFrame(NO_FLIGHT, true, 2, 1, true);
+    const f = flightFrame(NO_FLIGHT, true, 2, 1, true, true);
     expect(f).toEqual({ latch: { flying: true, stale: false }, sel: 2, trigger: false, clicks: false });
   });
-  it('the end frame: the torpedo selection returns to the last gun; a held trigger goes stale', () => {
-    const f = flightFrame({ flying: true, stale: false }, false, 2, 1, true);
+  it('the end frame: the torpedo selection returns to the last gun; a button still down goes stale', () => {
+    const f = flightFrame({ flying: true, stale: false }, false, 2, 1, true, true);
     expect(f).toEqual({ latch: { flying: false, stale: true }, sel: 1, trigger: false, clicks: true });
   });
-  it('a gun selected at the end stays; a released trigger at the end is not stale', () => {
-    expect(flightFrame({ flying: true, stale: false }, false, 0, 1, false)).toEqual({ latch: { flying: false, stale: false }, sel: 0, trigger: false, clicks: true });
+  it('a gun selected at the end stays; a button released at the end is not stale', () => {
+    expect(flightFrame({ flying: true, stale: false }, false, 0, 1, false, false)).toEqual({ latch: { flying: false, stale: false }, sel: 0, trigger: false, clicks: true });
   });
-  it('stale until the trigger is released, then a fresh hold fires', () => {
-    let f = flightFrame({ flying: false, stale: true }, false, 1, 1, true);
+  it('stale until the button is released, then a fresh hold fires', () => {
+    let f = flightFrame({ flying: false, stale: true }, false, 1, 1, true, true);
     expect([f.trigger, f.latch.stale]).toEqual([false, true]);
-    f = flightFrame(f.latch, false, 1, 1, false);
+    f = flightFrame(f.latch, false, 1, 1, false, false);
     expect([f.trigger, f.latch.stale]).toEqual([false, false]);
-    f = flightFrame(f.latch, false, 1, 1, true);
+    f = flightFrame(f.latch, false, 1, 1, true, true);
+    expect([f.trigger, f.latch.stale]).toEqual([true, false]);
+  });
+  it('the flight ends with the button down off the map (no trigger), then the pointer drags onto the map: still stale, no fire (review finding 8)', () => {
+    let f = flightFrame({ flying: true, stale: false }, false, 1, 1, false, true);
+    expect([f.trigger, f.latch.stale]).toEqual([false, true]);
+    f = flightFrame(f.latch, false, 1, 1, true, true);   // onto the map, never let go
+    expect([f.trigger, f.latch.stale]).toEqual([false, true]);
+    f = flightFrame(f.latch, false, 1, 1, false, false);
+    f = flightFrame(f.latch, false, 1, 1, true, true);   // a fresh press on the map
     expect([f.trigger, f.latch.stale]).toEqual([true, false]);
   });
   it('no flight at all: the trigger passes, clicks fire', () => {
-    expect(flightFrame(NO_FLIGHT, false, 1, 1, true)).toEqual({ latch: NO_FLIGHT, sel: 1, trigger: true, clicks: true });
+    expect(flightFrame(NO_FLIGHT, false, 1, 1, true, true)).toEqual({ latch: NO_FLIGHT, sel: 1, trigger: true, clicks: true });
   });
 });
 ```
 
-Append to `tests/w4Runtime.test.ts` (W-4a's file-local `rig(cls?)` with W-4b's `aim` addition; import `removeMissile` from `../src/renderer/src/sim/tactical/state` and `DuelSystem` from `../src/renderer/src/sim/tactical/bars`):
+Append to `tests/w4Runtime.test.ts` (W-4a's file-local `rig(cls?)` with W-4b's `aim` addition; import `removeMissile` from `../src/renderer/src/sim/tactical/state` and `DuelSystem` from `../src/renderer/src/sim/tactical/bars`). First extend the rig, kind (a) for its two new inputs:
+- the raw left button (Decision 7): `let left = false` beside `trigger`, the dep `gunHeld: () => left` beside `triggerHeld` (duelMode wires `gunHeld` to `pointer.leftHeld()`; at the Hound's Weapons seat only `flightFrame` reads it). `hold(on)` becomes `(on: boolean): void => { trigger = on; left = on; }` (the button down on the open map), and a new `holdOff(on)` is `(on: boolean): void => { left = on; trigger = false; }` (down over a console block);
+- the map's torpedo steer: `let torpAt: number | null = null` and the dep `takeTorpHeading: () => { const v = torpAt; torpAt = null; return v; }`, with `steerTo = (h: number): void => { torpAt = h; }` (one frame's bearing, as the scene asks it while LMB is held).
+Return `holdOff` and `steerTo` with the others. W-4a's and W-4b's cases keep passing: they never read `left` or `torpAt`.
+
+These cases assert on what the seat sends (the held frame, the queued commands and the refusals), not on round counts while the torpedo flies: from Task 3 every gun fights on AUTO during a flight once the launch has ended the hold (owner 2026-11-19), so a round count could move without any input.
 
 ```ts
 describe('Single player around a MANUAL flight (W-4 spec §7)', () => {
-  it('during a flight: A/D select, the held trigger and clicks do nothing, Z still toggles', () => {
+  it('during a flight: A/D select, the held trigger and clicks send nothing, Z still toggles', () => {
     const r = rig(), sys = r.d.tactical.systems[0];
     try {
       sys.bars[DuelSystem.Weapons] = 3; sys.weaponPower = [1, 1, 1];
@@ -883,17 +1020,49 @@ describe('Single player around a MANUAL flight (W-4 spec §7)', () => {
       r.press('selectNext'); r.tick();
       expect(r.rt.held()[0]!.weaponSel).toBe(1);
       expect('torpTurn' in r.rt.held()[0]!).toBe(false);
-      const shots = sys.gunShots;
       r.hold(true); r.tick(); r.tick();
-      expect(r.rt.held()[0]!.gunHeld).toBeUndefined();
-      expect(sys.gunShots).toBe(shots);
+      expect(r.rt.held()[0]!.gunHeld).toBeUndefined();   // no trigger goes out (the sim drops it too, Task 3)
       r.hold(false); r.set({ selectTo: 0 }); r.tick(); r.rt.takeRefusals();
-      const pews = sys.pewShots;
       r.click(); r.tick();
-      expect([sys.pewShots, sys.missilesLaunched, r.rt.takeRefusals()]).toEqual([pews, 1, []]);
+      expect([r.statuses(), sys.missilesLaunched, r.rt.takeRefusals()]).toEqual([[], 1, []]);   // the click queued nothing: no pewFire, no second launch, no refusal
       r.press('weaponMode'); r.tick();
       expect(sys.gunsManual).toBe(false);
     } finally { r.rt.dispose(); }
+  });
+  it('a flight that ends with the button held off the map, then dragged onto it, sends no trigger until a fresh press (review finding 8)', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      sys.bars[DuelSystem.Weapons] = 3; sys.weaponPower = [1, 1, 1];
+      r.press('weaponMode'); r.tick(); r.set({ selectTo: 1 }); r.tick();
+      r.press('torpMode'); r.tick(); r.press('launch'); r.tick();
+      expect(sys.missilesLaunched).toBe(1);
+      r.holdOff(true); r.tick();   // the button down over a console block: no trigger
+      removeMissile(r.d.tactical, 0); r.tick();   // the flight ends with it still down
+      r.hold(true);   // the pointer drags onto the open map; the button was never let go
+      for (let n = 0; n < 10; n++) { r.tick(); expect(r.rt.held()[0]!.gunHeld, `frame ${n}`).toBeUndefined(); }
+      r.hold(false); r.tick(); r.hold(true); r.tick();
+      expect(r.rt.held()[0]!.gunHeld).toBe(true);   // a fresh press fires
+    } finally { r.rt.dispose(); }
+  });
+  it('a click-launch whose press stays down steers at once: the next frames carry the held bearing, kept after the release; a quick click sends none (W-4c Decision 6)', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      r.set({ selectTo: 2 }); r.press('torpMode'); r.tick();
+      r.click(); r.tick();
+      expect(sys.missilesLaunched).toBe(1);
+      expect('torpHeading' in r.rt.held()[0]!).toBe(false);   // the launch frame: no bearing yet
+      r.steerTo(40); r.tick();   // the scene's LMB steer: the launch press still down over the map
+      expect(r.rt.held()[0]).toMatchObject({ torpHeading: 40 });
+      r.tick();   // let go: no new bearing, the last one holds
+      expect(r.rt.held()[0]).toMatchObject({ torpHeading: 40 });
+      expect(sys.missilesLaunched).toBe(1);   // the press never launches a second
+    } finally { r.rt.dispose(); }
+    const q = rig(), qs = q.d.tactical.systems[0];
+    try {
+      q.set({ selectTo: 2 }); q.press('torpMode'); q.tick();
+      q.click(); q.tick(); q.tick(); q.tick();   // released in the launch frame: the scene asks nothing
+      expect([qs.missilesLaunched, 'torpHeading' in q.rt.held()[0]!]).toEqual([1, false]);   // it flies on its launch heading
+    } finally { q.rt.dispose(); }
   });
   it('the flight ends: a torpedo selection returns to the last gun; a trigger held across it is stale until a fresh press; no second launch', () => {
     const r = rig(), sys = r.d.tactical.systems[0];
@@ -965,12 +1134,14 @@ export const NO_FLIGHT: FlightLatch = Object.freeze({ flying: false, stale: fals
 
 /** W-4 spec §7 (Decisions 6-8 of the W-4c plan): one frame of the seat around a MANUAL flight, before this frame's keys.
  *  `flyingNow` the crew's MANUAL torpedo flies (local state, or the replica online); `sel` / `lastGun` the selection and the last
- *  gun selected; `triggerNow` the left button held over the open map. Returns the next latch, the selection (on the frame
- *  the flight ends, the torpedo goes back to the last gun), the trigger to send (never while flying, nor while stale) and
- *  whether a left click may fire or launch (never while flying: the press is the steer). */
-export function flightFrame(latch: FlightLatch, flyingNow: boolean, sel: number, lastGun: number, triggerNow: boolean): { latch: FlightLatch; sel: number; trigger: boolean; clicks: boolean } {
+ *  gun selected; `triggerNow` the left button held over the open map (the map-gated trigger); `buttonNow` the raw left
+ *  button, anywhere. Returns the next latch, the selection (on the frame the flight ends, the torpedo goes back to the last
+ *  gun), the trigger to send (never while flying, nor while stale: stale from a flight's end with the button down, on the
+ *  map or off it, until the button is released) and whether a left click may fire or launch (never while flying: the press
+ *  is the steer). */
+export function flightFrame(latch: FlightLatch, flyingNow: boolean, sel: number, lastGun: number, triggerNow: boolean, buttonNow: boolean): { latch: FlightLatch; sel: number; trigger: boolean; clicks: boolean } {
   const ended = latch.flying && !flyingNow;
-  const stale = flyingNow ? false : ended ? triggerNow : latch.stale && triggerNow;
+  const stale = flyingNow ? false : ended ? buttonNow : latch.stale && buttonNow;
   return { latch: { flying: flyingNow, stale }, sel: ended && sel === WeaponSlot.Torpedo ? lastGun : sel, trigger: triggerNow && !flyingNow && !stale, clicks: !flyingNow };
 }
 ```
@@ -994,7 +1165,7 @@ export function flightFrame(latch: FlightLatch, flyingNow: boolean, sel: number,
 ```ts
       // W-4 spec §7: around a MANUAL flight: the latch first (a torpedo selection returns to the last gun when it ends), then this
       // frame's keys (A/D select during a flight too); LMB clicks and the trigger are dropped while it flies.
-      const ff = flightFrame(flight, manualTorpedoFlying(d.tactical), weaponSel, lastGunSel, deps.triggerHeld?.() ?? false);
+      const ff = flightFrame(flight, manualTorpedoFlying(d.tactical), weaponSel, lastGunSel, deps.triggerHeld?.() ?? false, deps.gunHeld?.() ?? false);   // gunHeld: the raw left button (duelMode's pointer.leftHeld(); the Flight seat's trigger elsewhere)
       flight = ff.latch; triggerLive = ff.trigger;
       weaponSel = nextWeaponSel(ff.sel, k);
       if (weaponSel !== WeaponSlot.Torpedo) lastGunSel = weaponSel;
@@ -1016,7 +1187,7 @@ export function flightFrame(latch: FlightLatch, flyingNow: boolean, sel: number,
 3. At the top of the online Hound branch, replace W-4a's two lines `weaponSel = nextWeaponSel(weaponSel, k, manualTorpedoFlying(d.tactical));` and `if (weaponSel !== WeaponSlot.Torpedo) lastGunSel = weaponSel;` with:
 
 ```ts
-      const ff = flightFrame(flight, manualTorpedoFlying(d.tactical), weaponSel, lastGunSel, triggerNow());   // W-4 spec §7: the replica's flight
+      const ff = flightFrame(flight, manualTorpedoFlying(d.tactical), weaponSel, lastGunSel, triggerNow(), pointer.leftHeld());   // W-4 spec §7: the replica's flight; the raw left button (Decision 7)
       flight = ff.latch; triggerLive = ff.trigger;
       weaponSel = nextWeaponSel(ff.sel, k);
       if (weaponSel !== WeaponSlot.Torpedo) lastGunSel = weaponSel;
@@ -1091,7 +1262,19 @@ Expected: FAIL (`STEER A/D` is drawn; the rows still name A/D and the right butt
 
 `ui/duel/WeaponsStation.tsx`: `git grep -n "STEER A/D" -- src/renderer/src/ui/duel/WeaponsStation.tsx` lists the laser block's line and W-4a's `HoundWeapons` copy. In each, `'STEER A/D'` becomes `'STEER LMB'`. In the file's W-3 header line, "a MANUAL torpedo in flight STEER A/D while it can turn" becomes "a MANUAL torpedo in flight STEER LMB while it can turn (W-4 spec §10: the left mouse flies it)".
 
-`render/duel/consoleModel.ts`, the `torpSteer` doc: "(past its boost, fuel left: the card says STEER A/D)" becomes "(past its boost, fuel left: the card says STEER LMB, W-4 spec §10)".
+`render/duel/consoleModel.ts`, the `torpSteer` doc is wrapped (L59-L60 at `1ddb8a19`): replace the two lines
+
+```ts
+   *  `torpSteer`: the crew's torpedo in flight is a MANUAL one that can turn now (past its boost, fuel left: the card says
+   *  STEER A/D); `torpCoast`: it is a MANUAL one whose fuel is spent (COASTING). Both false during its boost (FLYING). */
+```
+
+with
+
+```ts
+   *  `torpSteer`: the crew's torpedo in flight is a MANUAL one that can turn now (past its boost, fuel left: the card says
+   *  STEER LMB, W-4 spec §10); `torpCoast`: it is a MANUAL one whose fuel is spent (COASTING). Both false during its boost (FLYING). */
+```
 
 - [ ] **Step 4: The controls list**
 
@@ -1192,13 +1375,14 @@ Append to `docs/gates.md` with Edit (the file is CRLF), after its last line (W-4
 
 Spec `docs/superpowers/specs/2026-11-19-w4-weapons-controls-design.md` §7, §9, §10, §11, §19; plan `docs/superpowers/plans/2026-11-19-w4c-manual-torpedo.md`.
 
-- [x] Automated (W-4c): `npx vitest run` passes (<files> files, <tests> tests). This includes the held heading as the only MANUAL steer (`torpTurn` gone from every schema; a frame carrying it is malformed), the left button's bearing from the torpedo's marker, the right button panning at Weapons, MAN guns quiet and `pewFire` refused `missile-in-flight` while it flies with AUTO firing on, the fresh press and the selection's return after the flight, and no turret prediction while it flies (`tests/w4Flight.test.ts`, `tests/w4TorpedoSeat.test.ts`, `tests/manualTorpedo*.test.ts`). The duel oracle proves every scripted and passive run unchanged per tick at SIM_VERSION <V>. `npx tsc -b` is clean. Determinism passes on Node, Electron and Firefox.
+- [x] Automated (W-4c): `npx vitest run` passes (<files> files, <tests> tests). This includes the held heading as the only MANUAL steer (`torpTurn` gone from every schema; a frame carrying it is malformed), the left button's bearing from the torpedo's marker, a pick-up from before the launch dropped so the button steers at once, a click-launch held down steering at once, the right button panning at Weapons, no gun in hand while it flies (nothing follows the reticle, the trigger fires nothing, `pewFire` refused `missile-in-flight`) with every gun, MAN ones included, firing on AUTO, the fresh press after the flight (a button held off the map and dragged on included) and the selection's return, and no turret prediction while it flies (`tests/w4Flight.test.ts`, `tests/w4TorpedoSeat.test.ts`, `tests/manualTorpedo*.test.ts`). The duel oracle proves every scripted and passive run unchanged per tick at SIM_VERSION <V>. `npx tsc -b` is clean. Determinism passes on Node, Electron and Firefox.
 - [ ] Manual (owner): play a Single player duel at the Hound's Weapons seat.
   1. V to MAN on the TORPEDO card, then F (or select it with 3 and click the map).
   2. Hold the left button on the map: the torpedo swings toward the cursor, and the card reads STEER LMB. Let go: it holds that heading.
-  3. While it flies, with the guns on MAN, the muzzle lines do not follow the reticle and nothing fires. Press Z for AUTO: the guns track and fire on their own.
+  3. While it flies, the muzzle lines do not follow the reticle and the left button fires nothing. Once the enemy is hostile the guns, on MAN or AUTO, track it and fire on their own (owner 2026-11-19: no gun is in your hands during the flight); in MAN both tags read AUTO (or HOLD) until it ends.
   4. A / D and 1 / 2 / 3 still move the selection during the flight. The right drag pans the map.
-  5. When it ends, the selection is the gun you had before. A held left button fires nothing until you let go and press again.
+  5. When it ends, the selection is the gun you had before. A held left button fires nothing until you let go and press again, even if it was held over the console and dragged onto the map.
+  6. Select the torpedo (3), V to MAN, and click the map: it launches. Keep the button down and it turns toward the pointer once its boost ends; a quick click leaves it flying straight on the nose's heading. A torpedo picked up by its card before the launch is dropped, so holding the button steers at once.
 
   Screenshots for the look gate:
   1. A MANUAL torpedo under the left-button steer, with the STEER LMB card.
@@ -1349,9 +1533,10 @@ git commit -m "docs(w4c): W-4 complete at SIM_VERSION <V + 1>: the bump, the smo
   - §7 sim law kept (`holdTurn`, W-3's numbers): Task 2, whose tests keep W-3's numbers.
   - §7 "Removed" (`torpTurn` everywhere, the right-button heading, the pan exemption): Tasks 2 and 4.
   - §7 camera: unchanged (`trackManualTorpedo` stays).
-  - §7 the guns while it flies (no MAN slew, no `gunHeld`, `missile-in-flight`, AUTO on, Z, A/D, 1-3 and W/S): Task 3 (sim) and Task 5 (app).
-  - §7 when the flight ends (fresh press, selection returns): Task 5.
-  - §3.4 the MAN flight hold: Task 3.
+  - §7 the guns while it flies (no gun in hand: no reticle slew, no `gunHeld`, `missile-in-flight`; every gun on AUTO, a MAN one included, owner 2026-11-19; Z, A/D, 1-3 and W/S): Task 3 (sim) and Task 5 (app).
+  - §7 the pick-up dropped on a MANUAL launch, and the click-launch's held steer: Tasks 4 and 5.
+  - §7 when the flight ends (fresh press on the raw button, selection returns): Task 5.
+  - §3.4 the flight rule (no gun in hand, both AUTO-driven, through `handControl`): Task 3.
   - §6's admission order: Task 3.
   - §9 rows (LMB held steer, A/D, RMB pan, the `torpMode` text): Tasks 4 and 6.
   - §10 `STEER LMB`: Task 6.

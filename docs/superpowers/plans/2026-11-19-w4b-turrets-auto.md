@@ -2,17 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Put the Hound's two guns on slewing turrets that follow a mouse reticle, give both guns one AUTO / MAN mode (Z, and the shared tag), make AUTO aim with lead and fire at a seen, hostile enemy ship in range, arc and line of sight (the pew on each charged third, the autocannon until 80 % heat; track but hold fire during the 30 s hold), give MAN +25 % traverse and about +20 % fire rate, draw the selected arc, the muzzle lines, the reticle and the AUTO bracket, predict the own seat's selected turret online, and move the scripted gunner onto AUTO guns, tuned by spec §12's ladder.
+**Goal:** Put the Hound's two guns on slewing turrets that follow a mouse reticle, give both guns one AUTO / MAN mode (Z, and the shared tag), make AUTO aim with lead and fire within a small tolerance of its solution at a seen, hostile enemy ship in range, arc and line of sight (the pew on each charged third, the autocannon until 80 % heat; track but hold fire during the 30 s hold). In MAN put only the selected gun in the gunner's hands, with +25 % traverse and about +20 % fire rate, while the other gun fights on AUTO (owner 2026-11-19). Draw the selected arc, the muzzle lines, the reticle and the AUTO bracket, predict the own seat's selected turret online, have the scripted Helm line the guns up, and move the scripted gunner onto AUTO guns, tuned by spec §12's ladder.
 
 **Architecture:**
 
 - **New hashed state.** `ShipSystems.pewTurret`, `gunTurret` (signed fine-step offsets from the nose) and `gunsManual` (one flag for both guns) are appended to the ship module's `SYSTEMS_TAIL` after `torpManual`, `gunsManual` in `FLAGS`, with per-class bounds in `validateTacticalValues`. Snapshots and clones follow from the module, as W-3's fields did.
 - **One slew law.** `slewTurret(turret, heading, aim, rate, arcSteps)` in the new `sim/tactical/turret.ts` (integers, `+ −` and the integer modulo) is the only turret arithmetic. The step calls it through `slewTurrets(state, i, input)` (also in `turret.ts`), which runs in `applyWeaponsInput` right after `stepBurst` and before `tickGun`, and returns which AUTO guns are on solution. The app's prediction calls the same `slewTurret`.
-- **AUTO.** `autoSolution(state, i, 'pew' | 'gun')` (turret.ts) returns the lead aim's offset from the nose (W-1's `pewLead`, the new `gunLead` in `gun.ts` with the velocity relative to the Hound), or null when the enemy is unseen, out of range, behind the planet or a rock, has no intercept, or lies outside the arc. A gun is on solution when the slew leaves it exactly on that offset. `tickGun` gains an `auto` argument (on solution and hostile); the pew's AUTO round is fired at the end of `applyWeaponsInput`, where `firePew` runs today.
-- **MAN.** `gunMode {manual}` is admitted first in `WEAPON_ORDER` beside `laserMode` and `torpMode`. W-4a's seams change body only: `gunInterval` reads the MAN row, `pewGain` reads `PEW_MAN_GAIN_BY_BARS`, and `gunAimFine` / `pewAimFine` add the turrets. `pewFire {}` is refused `unavailable` in AUTO.
+- **Hand control (owner 2026-11-19, spec §3.4).** One helper, `handControl(state, i, weaponSel, slot)` in `state.ts` (`gunsManual && weaponSel === slot`; W-4c adds "and no MANUAL flight"), says which gun is in the gunner's hands. The gun in hand follows the reticle at MAN traverse, fires on LMB and takes MAN's rates. Every other powered gun is AUTO-driven, in MAN too. The slew, `tickGun`, `tickPew` (through `tickWeapons`), the console's tag and the map's bracket all read it.
+- **AUTO.** `autoSolution(state, i, 'pew' | 'gun')` (turret.ts) returns the lead aim's offset from the nose (W-1's `pewLead`, the new `gunLead` in `gun.ts` with the velocity relative to the Hound), or null when the enemy is unseen, out of range, behind the planet or a rock, has no intercept (or none inside the round's life, for the autocannon), or lies outside the arc. A gun is on solution when the slew leaves it within `AUTO_FIRE_TOLERANCE` (182 fine steps) of that offset (`onSolution`, owner 2026-11-19). `tickGun` gains an `auto` argument (on solution and hostile); the pew's AUTO round is fired at the end of `applyWeaponsInput`, where `firePew` runs today.
+- **MAN.** `gunMode {manual}` is admitted first in `WEAPON_ORDER` beside `laserMode` and `torpMode`. W-4a's seams gain a `manual` flag (the caller's hand control) and keep their bodies otherwise: `gunInterval(state, i, manual)` reads the MAN row, `pewGain(state, i, manual)` reads `PEW_MAN_GAIN_BY_BARS`, and `gunAimFine` / `pewAimFine` add the turrets. `pewFire {}` is refused `unavailable` in AUTO.
 - **The wire.** `HeldInput.turretAim` (the reticle's world bearing, a fine aim, −1 none) rides every held schema, the authority's expiry and pause lists and `ShipInput.turretAim`.
 - **The app.** `MapRequests.aimLaser` becomes `reticle` (the laser fit's MANUAL laser and the Hound's turrets share it). `KeyAction 'laserMode'` becomes `'weaponMode'`: Z sends `gunMode` on the Hound and `laserMode` on the laser fit. LMB fires a gun only in MAN. A pure `predictTurret` (in `app/duel/weaponsSeat.ts`) is the online seat's selected-turret prediction, the throttle's analogue.
-- **The scripted gunner** drops W-4a's stand-in pew and leaves the guns on AUTO.
+- **The scripted gunner** drops W-4a's stand-in pew and leaves the guns on AUTO. **The scripted Helm's line-up** (W-4a) moves to the autocannon's 600 u and ±30°.
 
 **Tech Stack:** TypeScript 5.8 (strict, `noUncheckedIndexedAccess`), Vitest 3.2 (+ jsdom for UI tests), React + zustand (console), zod 3 (wire), Pixi.js (map), Electron/electron-vite, the golden scripts under `scripts/golden/`.
 
@@ -28,13 +29,16 @@
 - **Generated files come only from `npm run bless`:** `tests/golden/basic.json`, `tests/golden/duel-1.json`, `tests/golden/duel-rematch.json`, `tests/fixtures/determinism-v2.json`.
 - **Exact names and values (binding):**
   - **State:** `ShipSystems.pewTurret: number`, `gunTurret: number` (signed integers within ± their class's `arcSteps`, 0 without a turret), `gunsManual: boolean` (false AUTO, true MAN; true only on the crew slot of a turret class). All 0 / false at every round's start.
-  - **`sim/tactical/turret.ts`:** `turretOffset(heading, aim): number`, `slewTurret(turret, heading, aim, rate, arcSteps): number`, `turretWorldAim(heading, turret): number`, `autoSolution(state, i, gun: 'pew' | 'gun'): number | null`, `interface AutoOnSolution { pew: boolean; gun: boolean }`, `slewTurrets(state, i, input): AutoOnSolution`.
-  - **`sim/tactical/gun.ts`:** `gunLead(state, i, tx, ty, tvx, tvy): number`; `tickGun(state, i, input, auto = false)`.
+  - **`sim/tactical/turret.ts`:** `turretOffset(heading, aim): number`, `slewTurret(turret, heading, aim, rate, arcSteps): number`, `turretWorldAim(heading, turret): number`, `onSolution(turret: number, sol: number | null): boolean`, `autoSolution(state, i, gun: 'pew' | 'gun'): number | null`, `interface AutoOnSolution { pew: boolean; gun: boolean }`, `slewTurrets(state, i, input): AutoOnSolution`.
+  - **`sim/tactical/state.ts`:** `handControl(state: TacticalState, i: number, weaponSel: number, slot: number): boolean` (Task 3).
+  - **`sim/tactical/tuning.ts`:** `AUTO_FIRE_TOLERANCE = 182` (Task 4); `AUTOCANNON_ARC_COS = 0.8660254037844386` (cos 30°, Task 6).
+  - **`sim/tactical/gun.ts`:** `gunLead(state, i, tx, ty, tvx, tvy): number`; `gunInterval(state, i, manual = false)`; `tickGun(state, i, input, auto = false)`.
+  - **`sim/tactical/pew.ts`:** `pewGain(state, i, manual = false)`, `tickPew(state, i, manual = false)` (Task 3); `pewAutoReady(state, i)` (Task 6).
   - **Command:** `{ kind: 'gunMode'; manual: boolean }`; `WEAPON_ORDER = ['laserMode', 'torpMode', 'gunMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire']`.
   - **Held input:** `HeldInput.turretAim?: number` (−1..65535; absent or −1 none). **Ship input:** `ShipInput.turretAim: number` (−1 in `IDLE_INPUT`, `UNCREWED_INPUT`, hunter.ts's literal and an unattended Weapons). `step.ts` `heldTurretAim(h): number`.
-  - **Tuning (Task 10, the ladder's knobs, base values):** `AUTOCANNON_HITS_PER_HULL = 12` (`tuning.ts`; `AUTOCANNON.hitsPerHull` reads it, `GUN` keeps `GUN_HITS_PER_HULL`), `HOUND_MISSILE_GAP = 1500` and `HOUND_GUNNER_AUTOCANNON_BARS: 1 | 2 = 1` (`scripted.ts`; `houndGunner` reads them, the Valkyrn's `gunner` keeps `MISSILE_GAP`).
+  - **Tuning (Task 10, the ladder's knobs, base values):** `HOUND_HELM_LINEUP = true` (`scripted.ts`; rung 0's reference row turns it off), `AUTOCANNON_HITS_PER_HULL = 12` (`tuning.ts`; `AUTOCANNON.hitsPerHull` reads it, `GUN` keeps `GUN_HITS_PER_HULL`), `HOUND_MISSILE_GAP = 1500` and `HOUND_GUNNER_AUTOCANNON_BARS: 1 | 2 = 1` (`scripted.ts`; `houndGunner` reads them, the Valkyrn's `gunner` keeps `MISSILE_GAP`).
   - **App:** `MapRequests.reticle(aim)`, `reticleAim(): number | null`, `resetReticle()` (renamed from `aimLaser`, `laserAim`, `resetLaserAim`); `DuelRuntimeDeps.reticleAim?()` (renamed from `laserAim?`); `KeyAction 'weaponMode'` (renamed from `'laserMode'`, still `KeyZ`); `weaponsSeatHeld(sel, trigger, aim = -1)`; `sessionHeld(k, d, me, steer, weapons?: { sel: number; trigger: boolean; aim?: number })`; `predictTurret(t, slot, held, manual, k): number`; `DuelViewSource.turret?(slot: 0 | 1): number`; the online source's `turret(slot)` and `gunModeBase(manual: boolean | null)`; `gunModeSent` in `onlineDuel.ts`.
-  - **View:** `CombatModelInput.turrets?`, `weaponSel?`, `reticle?`; `CombatDraw.turretArc`, `muzzles`, `reticle`, `bracket`; `WeaponsPanel.gunsManual?`, `gunsHold?`; Buttons `gun-mode-pew`, `gun-mode-autocannon`.
+  - **View:** `CombatModelInput.turrets?`, `weaponSel?`, `reticle?`; `CombatDraw.turretArc`, `muzzles`, `reticle`, `bracket`; `WeaponsPanel.gunsManual?`, `gunsHand?`, `gunsHold?`; Buttons `gun-mode-pew`, `gun-mode-autocannon`.
 - **The fences (spec §13.4).** The Valkyrn and its laser fit have no turret: `slewTurrets` returns at once on them, `gunMode` is `unavailable`, their turret fields stay 0 / false, and `tickGun`'s `turret === null` branch is today's code. `tests/valkyrnIdentity.test.ts`'s five digests do not change (Task 1 rebuilds its hashed array without the three new fields, by name). `tests/valkyrnRoundsRocks.test.ts`, `tests/w4HunterIdentity.test.ts`, `tests/pewHunter.test.ts` and `tests/torpedoGuidance.test.ts` pass unchanged at the end of every task.
 - **The fallout rule (binding on every task; as W-4a's).** Classify each failing test exactly once: a rule W-4b replaces (kind (a): rewrite, citing "W-4 spec §n"); a whole-run number (kind (b): re-pick in Task 11 with `// W-4b (SIM V): was <old>`); a band (kind (c): stays as it is). Never edit a band's limits, never skip a kind (a) or (b) test, never delete a test except a kind (a) test whose rule no class keeps (name it in the commit).
 - **Known-red window:** these fail by design, and only these:
@@ -53,7 +57,7 @@
 ## Decisions where the spec leaves room, and where the code forces a choice
 
 1. **`turret.ts` holds the slew law and AUTO; `pew.ts` and `gun.ts` do not import it.** `turret.ts` imports `pewLead` / `pewMuzzle` (pew.ts) and `gunLead` (gun.ts), so the reverse import would be a cycle. `pewAimFine` and `gunAimFine` therefore write `turretWorldAim`'s formula inline (`(heading × HEADING_COUNT + turret + AIM_STEPS) % AIM_STEPS`), and Task 4's test pins them equal to `turretWorldAim`. `turretOffset` is `clampAim`'s signed difference (pew.ts L55) without the clamp.
-2. **`slewTurrets` returns the AUTO on-solution flags** (`{ pew, gun }`), and `applyWeaponsInput` passes them on: `tickGun(state, i, input, auto.gun && enemyHostile(state))` and, last, the AUTO pew round. So the hold rule (§4.3: track, no fire while `hostileAt` is −1) lives in `weapons.ts`, beside the slew, and `gun.ts` needs no science import. MAN never sets a flag.
+2. **`slewTurrets` returns the AUTO on-solution flags** (`{ pew, gun }`), and `applyWeaponsInput` passes them on: `tickGun(state, i, input, auto.gun && enemyHostile(state))` and, last, the AUTO pew round. So the hold rule (§4.3: track, no fire while `hostileAt` is −1) lives in `weapons.ts`, beside the slew, and `gun.ts` needs no science import. The gun in hand never sets a flag; an AUTO-driven gun does, in MAN too (Decision 14).
 3. **The range test is centre to centre, the line of sight muzzle to centre.** §4.2 says "its centre is within the gun's AUTO range" and "the line from the muzzle to it is clear": the range is the own ship's centre to the enemy's centre (squared, so no sqrt); the sight line runs from the gun's muzzle point (`pewMuzzle`; for the autocannon the nose point between its muzzles, `muzzleForward` along the heading) to the enemy's centre, through `geometry.ts lineOfSight` (planet and rocks).
 4. **The AUTO pew never bursts (spec §4.3).** The pew starts every round full (`state.ts` L230) and stays full through the hold, so the literal `pewReady` rule would open every round with three rounds on three ticks: a burst, which §4.3 rules out ("it fires each time a third has charged, and it never bursts"). The AUTO pew therefore fires only when it is on solution, hostile, and `pewAutoReady(state, i)` holds (new in `pew.ts`). That means `pewReady`, and either a full charge or a third completed by the last `tickPew`:
    - `s.pewCharge >= pewFull(def)`, or
@@ -64,18 +68,21 @@
 6. **`predictTurret` is a pure app helper,** `predictTurret(t, slot, held, manual, k)` in `app/duel/weaponsSeat.ts`, beside W-4a's seat rules. The online source's `turret(slot)` calls it with its `sentHeld`, the mode in flight (`gunModeBase`, the throttle's `throttleBase` pattern) and `unackedFrames`; Single player's `turret(slot)` returns the sim's value. This makes spec §11's agreement test a unit test against the stepped sim.
 7. **LMB in AUTO does nothing.** Both runtimes send `pewFire` only in MAN and put `gunHeld` in the held frame only in MAN (`weaponsSeatHeld(sel, trigger && manual, aim)`), and the autocannon's dead-trigger refusal is shown only in MAN, so an AUTO gun gets no command and no refusal (§4.3). The mode the runtimes judge by is the latest queued / in-flight `gunMode`, else the sim's.
 8. **Z is `KeyAction 'weaponMode'`.** The runtimes send `gunMode` at the Hound's Weapons seat (W-4a's branch) and `laserMode` in the laser class's branch (unchanged code, renamed press). The BEAM card's tag and both gun tags press `'weaponMode'`.
-9. **The tags.** The two gun tags are one switch: both read `MAN` (lit) in MAN; in AUTO both read `HOLD` while the hold keeps AUTO quiet (`!enemyHostile(t)`) and `AUTO` once hostile. With no enemy ship the hold never ends, so `HOLD` stays; no duel has no enemy.
-10. **The bracket** is drawn in AUTO on the enemy's drawn marker when either powered gun's current turret equals its `autoSolution` (the sim's own on-solution test, recomputed from the state), `hot` once hostile and `dim` in the hold. The view reads the replica's turrets for this, never the prediction.
-11. **The ladder's knobs are Hound-only constants (Task 10).** `MISSILE_GAP` is also the Valkyrn pair's (`gunner` on the Valkyrn class, pinned by `tests/valkyrnIdentity.test.ts`), and `AUTOCANNON` copies `GUN`'s hit numbers. So Task 10 first adds `AUTOCANNON_HITS_PER_HULL`, `HOUND_MISSILE_GAP` and `HOUND_GUNNER_AUTOCANNON_BARS` at their base values (a no-op), then moves only those. Rung 4's 0 / 2 / 1 is the gunner sending `weaponPower {Pew, −1}` then `{Autocannon, +1}` twice after the `shipPower`, each pre-checked as §12 requires.
+9. **The tags.** The two gun tags are one switch: both are lit in MAN, and a click on either presses `weaponMode`. Each tag's word is what its gun does (Decision 14): `MAN` on the gun in hand (`WeaponsPanel.gunsHand`, the slot in hand or −1), else `HOLD` while the hold keeps AUTO quiet (`!enemyHostile(t)`), else `AUTO`. So in MAN with pew pew selected they read MAN and AUTO (or HOLD), and with the torpedo selected both read AUTO (or HOLD). With no enemy ship the hold never ends, so `HOLD` stays; no duel has no enemy.
+10. **The bracket** is drawn on the enemy's drawn marker when an AUTO-driven powered gun (not in hand, Decision 14) is on solution. It is `hot` once hostile and `dim` in the hold. The view's test is the sim's own one tick ahead: `onSolution(slewTurret(turret, heading, turretWorldAim(heading, sol), traverse[0], arcSteps), sol)` from the replica's turret and heading. So a target whose lead drifts a step between ticks keeps the bracket, where "the turret equals the solution now" would blink every time the lead moved (review finding 11). The view reads the replica's turrets for this, never the prediction.
+11. **The ladder's knobs are Hound-only constants (Task 10).** `MISSILE_GAP` is also the Valkyrn pair's (`gunner` on the Valkyrn class, pinned by `tests/valkyrnIdentity.test.ts`), and `AUTOCANNON` copies `GUN`'s hit numbers. So Task 10 first adds `HOUND_HELM_LINEUP`, `AUTOCANNON_HITS_PER_HULL`, `HOUND_MISSILE_GAP` and `HOUND_GUNNER_AUTOCANNON_BARS` at their base values (a no-op), then moves only those. Rung 4's 0 / 2 / 1 is the gunner sending `weaponPower {Pew, −1}` then `{Autocannon, +1}` twice after the `shipPower`, each pre-checked as §12 requires.
 12. **The duel app smoke presses Z before its quiet check (Task 5).** W-4a's step 5 asserts that Space fires nothing for 2 s. From Task 6 an AUTO gun may fire on its own once hostile, so the step first sets both guns to MAN (Z), where nothing fires without the left button.
 13. **The scripted gunner sends no `gunMode` and no held aim** (§12). Its `houndGunner` keeps W-4a's bar move and torpedo rule and loses the stand-in pew; its AUTO guns open the tick after its torpedo launch ends the hold, or at the 30 s clock.
+14. **Hand control (owner 2026-11-19, spec §3.4, §17 item 19).** In MAN only the selected gun is the gunner's: `handControl(state, i, weaponSel, slot) = gunsManual && weaponSel === slot` (`state.ts`, so `gun.ts`, `pew.ts`, `turret.ts`, `weapons.ts` and the view share it without a cycle). It reads the held `weaponSel` through `ShipInput`, so it is not hashed state. The gun in hand slews to the reticle at MAN traverse (holding with no reticle), fires on the trigger (`gunHeld`, `pewFire`) and takes MAN's rates (`gunInterval(…, true)`, `pewGain(…, true)`). Every other powered gun is AUTO-driven with AUTO's numbers and rules: the unselected one in MAN, and both with the torpedo or nothing selected. `pewFire`'s admission stays on the mode (spec §6): a held `weaponSel` can trail the command by a frame online, and the app sends `pewFire` only with pew pew selected in MAN. W-4c adds "no MANUAL flight" to the helper's condition, so the whole sim changes in one place.
+15. **The AUTO fire tolerance (owner 2026-11-19, spec §4.2, §17 item 20).** `onSolution(turret, sol)` is `sol !== null && |turret − sol| ≤ AUTO_FIRE_TOLERANCE` (182). The round still flies along the real turret. 182 + the lead's 128 half step is 17.8 u at 600 u, inside the Hunter's 20 u radius. 182 is also the autocannon's per-tick lag in a 150°/s turn (455 − 273), which with the pew's 91 keeps a trailing gun on solution for a tick or two after it meets the target. A model scan (4096 starts, two turns each) found no pass without an on-solution tick at 128 or more, and 531 under the exact rule.
+16. **The scripted Helm's line-up moves to the autocannon (spec §12, Task 6).** W-4a's ±60° / `PEW_RANGE` stand-in becomes ±30° (`AUTOCANNON_ARC_COS`) within `AUTOCANNON_AUTO_RANGE`. A target inside ±30° is inside both arcs, so both AUTO guns can bear, and the Helm goes back to its orbit. Task 10 rung 0 records what it is worth (`HOUND_HELM_LINEUP`).
 
 
 ## Seam for W-4c
 
 W-4c (`docs/superpowers/plans/2026-11-19-w4c-manual-torpedo.md`) adds the MANUAL-torpedo flight gates on top of these exact shapes. W-4c's plan anchors on them as written here:
 - **The online prediction:** the online source's `turret(slot: 0 | 1)` returns `predictTurret(d.tactical, slot, sentHeld, gunModeShown ?? d.tactical.systems[0].gunsManual, unackedFrames)` at the Hound's Weapons seat (Task 7). W-4c's flight gate is the `k` argument at that call: `manualTorpedoFlying(d.tactical) ? 0 : unackedFrames`.
-- **The MAN slew:** in `slewTurrets` (`turret.ts`, Task 4), each gun is one pass of `for (const gun of ['pew', 'gun'] as const) { ... }`. The MAN branch is `if (s.gunsManual) { if (input.weaponSel !== slot || input.turretAim < 0) continue; next = slewTurret(...); }` inside that loop. W-4c's guard is `if (manualTorpedoFlying(state, i)) continue;` as the MAN branch's first statement, a `continue`, not a `return`.
+- **Hand control:** `handControl(state, i, weaponSel, slot)` in `state.ts` (Task 3) is `return state.systems[i]!.gunsManual && weaponSel === slot;`. The slew (`slewTurrets`' per-gun branch `if (handControl(state, i, input.weaponSel, slot)) { … } else { … AUTO … }`, Task 4), `tickGun` (Task 3, Task 6), `tickPew` through `tickWeapons` (Task 3), the console's `gunsHand` (Task 9) and the map's bracket (Task 8) all read it. W-4c's flight rule (spec §3.4, §7: during a MANUAL flight no gun is in hand, so both are AUTO-driven) is one added condition there, `&& missileOf(state, i)?.manual !== true` (`missileOf` is in `state.ts` itself, so no import and no cycle; `manualTorpedoFlying` lives in `manualTorpedo.ts`, which `turret.ts` cannot import). It replaces the old seam, a `manualTorpedoFlying` guard in the MAN slew.
 - **The `pewFire` AUTO refusal:** in `step.ts`'s `pewFire` block (Task 6), `if (!sys0.gunsManual) { result(e, 'unavailable'); continue; }`, just before the noop. W-4c's `missile-in-flight` refusal goes right after it.
 - **The crew literal:** `turretAim: gunner >= 0 ? heldTurretAim(gunnerHeld) : -1` (Task 2).
 - **The online held frame:** after Task 5, `pump` builds it as `sessionHeld(k, d, me, steer, { sel: weaponSel, trigger: triggerNow() && (gunModeSent ? gunModeSent.manual : d.tactical.systems[0].gunsManual), aim: reticleNow() ?? -1 })`.
@@ -402,33 +409,35 @@ git commit -m "feat(w4b): turretAim rides every held schema, the authority's exp
 
 ---
 
-### Task 3: `gunMode`, and MAN's fire-rate tables
+### Task 3: `gunMode`, hand control, and MAN's fire-rate tables
 
 **Files:**
 - Modify: `src/renderer/src/net/contracts.ts`, `net/codec.ts`, `sim/tactical/hash.ts` (`shipModule.commands`), `sim/duel/step.ts` (`WEAPON_ORDER`, `DUEL_KINDS`, the admission), `app/duel/runtime.ts` (`isWeaponsCommand`)
-- Modify: `src/renderer/src/sim/tactical/gun.ts` (`gunInterval`), `sim/tactical/pew.ts` (`pewGain`)
-- Modify: `tests/duelModules.test.ts` (the kinds list)
+- Modify: `src/renderer/src/sim/tactical/state.ts` (`handControl`), `sim/tactical/gun.ts` (`gunInterval`, `fireRound`, `tickGun`), `sim/tactical/pew.ts` (`pewGain`, `tickPew`), `sim/tactical/weapons.ts` (`tickWeapons`' `tickPew` call)
+- Modify: `tests/duelModules.test.ts` (the kinds list), `tests/duelCheckpoint.test.ts` (its codec case's `examples` map gains `gunMode`)
 - Create: `tests/w4Manual.test.ts`
 
 **Interfaces:**
-- Consumes: W-4a's `gunInterval(state, i)` (body quoted in Step 4), `PEW_MAN_GAIN_BY_BARS`, `AUTOCANNON_MAN_INTERVAL_BY_BARS`, `hasTurret`, `houndWeapons(st, bars)` (W-4a helper).
-- Produces: `DuelCommand { kind: 'gunMode'; manual: boolean }`; `gunsManual` set by the step.
+- Consumes: W-4a's `gunInterval(state, i)` (body quoted in Step 4), `PEW_MAN_GAIN_BY_BARS`, `AUTOCANNON_MAN_INTERVAL_BY_BARS`, `hasTurret`, `houndWeapons(st, bars)` (W-4a helper), `ShipInput.weaponSel` (W-4a).
+- Produces: `DuelCommand { kind: 'gunMode'; manual: boolean }`; `gunsManual` set by the step; `handControl(state, i, weaponSel, slot)` (Decision 14); `gunInterval(state, i, manual = false)`, `pewGain(state, i, manual = false)`, `tickPew(state, i, manual = false)`.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-// W-4 spec §4.1, §4.4: gunMode {manual} (Weapons seat only; unavailable without a turret; malformed; noop), set at once;
-// MAN's fire rate: the pew's gain 7 / 10 / 14 / 18 units a tick and the autocannon's interval 8 / 7 / 5 / 4.
+// W-4 spec §3.4, §4.1, §4.4: gunMode {manual} (Weapons seat only; unavailable without a turret; malformed; noop), set at
+// once; hand control (MAN and selected: owner 2026-11-19); the gun in hand's fire rate: the pew's gain 7 / 10 / 14 / 18
+// units a tick and the autocannon's interval 8 / 7 / 5 / 4.
 import { describe, expect, it } from 'vitest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import type { DuelCommand } from '../src/renderer/src/sim/duel/commands';
+import { WeaponSlot } from '../src/renderer/src/sim/tactical/bars';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { gunInterval, tickGun } from '../src/renderer/src/sim/tactical/gun';
 import { pewGain } from '../src/renderer/src/sim/tactical/pew';
-import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
+import { createTacticalState, handControl } from '../src/renderer/src/sim/tactical/state';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { houndWeapons } from './helpers/crewWeapons';
@@ -441,7 +450,9 @@ describe('gunMode (W-4 spec §4.1)', () => {
     const d = createSeatedDuel(CUTTER, 5), g = 1 - d.helmPlayer, s = d.tactical.systems[0];
     try {
       const r = stepDuelTick(d, { held: [], commands: [env(d, g, { kind: 'gunMode', manual: true }, 1), env(d, d.helmPlayer, { kind: 'gunMode', manual: false }, 1)] });
-      expect(r.map((x) => [x.status, x.reason ?? null])).toEqual([['applied', null], ['rejected', 'not-at-weapons']]);
+      // stepDuelTick sorts its results by player, then sequence (step.ts, its last line); the Helm is player 0 here.
+      expect(d.helmPlayer).toBe(0);
+      expect(r.map((x) => [x.status, x.reason ?? null])).toEqual([['rejected', 'not-at-weapons'], ['applied', null]]);
       expect(s.gunsManual).toBe(true);
       expect(stepDuelTick(d, { held: [], commands: [env(d, g, { kind: 'gunMode', manual: true }, 2)] })[0]).toMatchObject({ status: 'noop' });
       expect(stepDuelTick(d, { held: [], commands: [env(d, g, { kind: 'gunMode', manual: 1 } as never, 3)] })[0]).toMatchObject({ status: 'rejected', reason: 'malformed' });
@@ -458,30 +469,42 @@ describe('gunMode (W-4 spec §4.1)', () => {
   });
 });
 
-describe("MAN's fire rate (W-4 spec §4.4)", () => {
-  it('the pew gains 7 / 10 / 14 / 18 units a tick in MAN and keeps 6 / 8 / 12 / 15 in AUTO', () => {
+describe('hand control (W-4 spec §3.4, owner 2026-11-19)', () => {
+  it('a gun is in hand only in MAN and selected; the Hunter never', () => {
+    const st = createTacticalState(5), s = st.systems[0]!;
+    expect([handControl(st, 0, WeaponSlot.Pew, WeaponSlot.Pew), handControl(st, 0, WeaponSlot.Autocannon, WeaponSlot.Autocannon)]).toEqual([false, false]);   // AUTO
+    s.gunsManual = true;
+    expect([handControl(st, 0, WeaponSlot.Pew, WeaponSlot.Pew), handControl(st, 0, WeaponSlot.Pew, WeaponSlot.Autocannon)]).toEqual([true, false]);
+    expect([handControl(st, 0, WeaponSlot.Torpedo, WeaponSlot.Pew), handControl(st, 0, -1, WeaponSlot.Autocannon)]).toEqual([false, false]);   // the torpedo or nothing selected: both AUTO-driven
+    expect(handControl(st, 1, -1, WeaponSlot.Pew)).toBe(false);
+  });
+});
+
+describe("the gun in hand's fire rate (W-4 spec §4.4)", () => {
+  it('the pew gains 7 / 10 / 14 / 18 units a tick in hand and keeps 6 / 8 / 12 / 15 otherwise, MAN or not', () => {
     for (const [bars, man, auto] of [[1, 7, 6], [2, 10, 8], [3, 14, 12], [4, 18, 15]] as const) {
       const st = houndWeapons(createTacticalState(5), [bars, 0, 0]); st.systems[0]!.bars[1] = 10;   // the overdrive bar allows a 4th
       expect(pewGain(st, 0), `${bars} bars AUTO`).toBe(auto);
       st.systems[0]!.gunsManual = true;
-      expect(pewGain(st, 0), `${bars} bars MAN`).toBe(man);
+      expect(pewGain(st, 0), `${bars} bars MAN, not in hand`).toBe(auto);   // owner 2026-11-19: an AUTO-driven gun keeps AUTO's rate
+      expect(pewGain(st, 0, true), `${bars} bars in hand`).toBe(man);
     }
-    const hunter = createTacticalState(5); hunter.systems[1]!.gunsManual = false;
-    expect(pewGain(hunter, 1)).toBe(6);   // the Hunter's rate is its class's (720 / 120), unchanged
+    const hunter = createTacticalState(5);
+    expect([pewGain(hunter, 1), pewGain(hunter, 1, true)]).toEqual([6, 6]);   // the Hunter's rate is its class's (720 / 120), unchanged
   });
-  it('the autocannon fires every 8 / 7 / 5 / 4 ticks in MAN, measured between gunFire events', () => {
+  it('the autocannon in hand fires every 8 / 7 / 5 / 4 ticks, measured between gunFire events; MAN with it unselected keeps AUTO\'s row', () => {
     for (const [bars, interval] of [[1, 8], [2, 7], [3, 5], [4, 4]] as const) {
       const st = houndWeapons(createTacticalState(5), [0, bars, 0]), s = st.systems[0]!; s.bars[1] = 10; s.gunsManual = true;
-      expect(gunInterval(st, 0), `${bars} bars`).toBe(interval);
+      expect([gunInterval(st, 0), gunInterval(st, 0, true)], `${bars} bars`).toEqual([[0, 10, 8, 6, 5][bars], interval]);
       const at: number[] = [];
-      for (let k = 0; k < 80; k++) { st.events = []; tickGun(st, 0, { ...IDLE_INPUT, gunHeld: true }); if (st.events.some((e) => e.kind === 'gunFire')) at.push(k); }
+      for (let k = 0; k < 80; k++) { st.events = []; tickGun(st, 0, { ...IDLE_INPUT, gunHeld: true, weaponSel: WeaponSlot.Autocannon }); if (st.events.some((e) => e.kind === 'gunFire')) at.push(k); }
       expect(new Set(at.slice(1).map((t, j) => t - at[j]!)), `${bars} bars`).toEqual(new Set([interval]));
     }
   });
 });
 ```
 
-(`tickGun`'s MAN trigger in this task is W-4a's `input.gunHeld`; Task 6 keeps it for MAN.) A noop result is `{ status: 'noop' }` (`step.ts` L317, L322: `result(e, undefined, 'noop')`), as the test reads.
+(`tickGun`'s trigger in this task is still W-4a's `input.gunHeld` for any turret gun; Task 6 keeps it for the gun in hand only. The interval row is the hand control of the tick, `weaponSel` 1 here.) A noop result is `{ status: 'noop' }` (`step.ts` L317, L322: `result(e, undefined, 'noop')`), as the test reads.
 
 - [ ] **Step 2: Run it to see it fail**
 
@@ -522,34 +545,70 @@ Expected: FAIL (`gunMode` is `not-in-duel`; MAN gains equal AUTO's).
 
 `tests/duelModules.test.ts`: in the kinds expectation insert `'gunMode'` (alphabetically, after `'designate'`), and add "W-4 spec §4.1 (gunMode)" to its comment.
 
-- [ ] **Step 4: MAN's tables**
+`tests/duelCheckpoint.test.ts`, the case "the duel codec admits exactly the duel modules' command kinds plus the core's setPaused": its `examples` map must name every module command (`expect(kinds.sort()).toEqual(Object.keys(examples).sort())`), so after `torpMode: { kind: 'torpMode', manual: true },` add `gunMode: { kind: 'gunMode', manual: true },   // W-4 spec §4.1`.
 
-`sim/tactical/gun.ts`, W-4a's `gunInterval`: replace `return g.intervalByBars[0]![weaponBars(state.systems[i]!, WeaponSlot.Autocannon)] ?? 0;` with
+- [ ] **Step 4: Hand control and MAN's tables (Decision 14)**
+
+`sim/tactical/state.ts`, after `missileOf` (or beside `classOf`), add:
 
 ```ts
-  const s = state.systems[i]!;
-  return g.intervalByBars[s.gunsManual ? 1 : 0]![weaponBars(s, WeaponSlot.Autocannon)] ?? 0;   // W-4 spec §4.4: MAN's row (W-4b)
+/** W-4 spec §3.4 (owner 2026-11-19): whether ship i's gun `slot` (0 pew pew, 1 the autocannon) is in the gunner's hands this
+ *  tick: MAN, and the Weapons seat's selected weapon (`weaponSel`, held input, −1 none). The gun in hand follows the
+ *  reticle, fires on the trigger and takes MAN's rates; every other powered gun is AUTO-driven, in MAN too. Only the crew
+ *  slot of a turret class is ever MAN (hash.ts), so this is false elsewhere. W-4c adds the MANUAL flight here. */
+export function handControl(state: TacticalState, i: number, weaponSel: number, slot: number): boolean {
+  return state.systems[i]!.gunsManual && weaponSel === slot;
+}
 ```
 
-and update its doc comment: "W-4a: row 0 (AUTO); W-4b reads the mode." → "the row is the mode's (gunsManual: MAN), read when a round fires."
+`sim/tactical/gun.ts`:
+1. Add `handControl` to the `./state` import.
+2. W-4a's `gunInterval`: change its signature to `export function gunInterval(state: TacticalState, i: number, manual = false): number {` and replace `return g.intervalByBars[0]![weaponBars(state.systems[i]!, WeaponSlot.Autocannon)] ?? 0;` with
 
-`sim/tactical/pew.ts` `pewGain`: replace
+```ts
+  return g.intervalByBars[manual ? 1 : 0]![weaponBars(state.systems[i]!, WeaponSlot.Autocannon)] ?? 0;   // W-4 spec §4.4: MAN's row for the gun in hand (W-4b)
+```
+
+   and update its doc comment: "W-4a: row 0 (AUTO); W-4b reads the mode." → "`manual`: the autocannon is in hand this tick (handControl, the caller's), read when a round fires."
+3. W-4a's `fireRound(state, i, g)` becomes `fireRound(state: TacticalState, i: number, g: GunDef, manual = false)`, and its cooldown `s.gunCooldown = g.turret === null ? g.intervalTicks : gunInterval(state, i);` becomes `s.gunCooldown = g.turret === null ? g.intervalTicks : gunInterval(state, i, manual);`.
+4. In `tickGun`, replace W-4a's
+
+```ts
+  if (g.turret !== null && gunInterval(state, i) === 0) return;   // W-4 spec §5: a turret gun on 0 bars fires nothing
+  fireRound(state, i, g);
+```
+
+   with
+
+```ts
+  const hand = g.turret !== null && handControl(state, i, input.weaponSel, WeaponSlot.Autocannon);   // W-4 spec §3.4, §4.4: the autocannon in hand
+  if (g.turret !== null && gunInterval(state, i, hand) === 0) return;   // W-4 spec §5: a turret gun on 0 bars fires nothing
+  fireRound(state, i, g, hand);
+```
+
+   (Task 6 replaces these three lines and the condition above them.) The Valkyrn's gun has no turret, so `hand` is false and `fireRound` sets `intervalTicks` as before.
+
+`sim/tactical/pew.ts`:
+1. `pewGain`: change its signature to `export function pewGain(state: TacticalState, i: number, manual = false): number {` and replace
 
 ```ts
   const ticks = PEW_TICKS_BY_BARS[weaponBars(state.systems[i]!, WeaponSlot.Pew)]!;
   return ticks > 0 ? pewThird(def) / ticks : 0;
 ```
 
-with
+   with
 
 ```ts
-  const s = state.systems[i]!, bars = weaponBars(s, WeaponSlot.Pew);
-  if (def.turret !== null && s.gunsManual) return PEW_MAN_GAIN_BY_BARS[bars]!;   // W-4 spec §4.4: the Hound's pew in MAN, about +20 %
+  const bars = weaponBars(state.systems[i]!, WeaponSlot.Pew);
+  if (manual && def.turret !== null) return PEW_MAN_GAIN_BY_BARS[bars]!;   // W-4 spec §4.4: the Hound's pew in hand, about +20 %
   const ticks = PEW_TICKS_BY_BARS[bars]!;
   return ticks > 0 ? pewThird(def) / ticks : 0;
 ```
 
-adding `PEW_MAN_GAIN_BY_BARS` to pew.ts's bars import and "W-4 spec §4.4: the Hound's in MAN by PEW_MAN_GAIN_BY_BARS" to its doc comment.
+   adding `PEW_MAN_GAIN_BY_BARS` to pew.ts's bars import and "W-4 spec §4.4: `manual` (the pew in hand this tick, handControl) reads PEW_MAN_GAIN_BY_BARS on the Hound's turret pew" to its doc comment. (The `i !== CREW_SLOT` line above stays first, so the Hunter's rate never changes.)
+2. `tickPew`: `export function tickPew(state: TacticalState, i: number, manual = false): void {`, and its gain `pewGain(state, i)` becomes `pewGain(state, i, manual)`.
+
+`sim/tactical/weapons.ts` `tickWeapons`: replace `  tickPew(state, i);   // W-1: the pew refills every tick, …` (keep the comment) with `  tickPew(state, i, handControl(state, i, input.weaponSel, WeaponSlot.Pew));   // W-1: …; W-4 spec §4.4: MAN's gain while the pew is in hand`, adding `handControl` to weapons.ts's `./state` import.
 
 - [ ] **Step 5: Run**
 
@@ -559,8 +618,8 @@ Expected: tsc clean; all PASS except a known-red pin (nobody sends `gunMode` yet
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/renderer/src/net/contracts.ts src/renderer/src/net/codec.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/duel/step.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/sim/tactical/gun.ts src/renderer/src/sim/tactical/pew.ts tests/duelModules.test.ts tests/w4Manual.test.ts
-git commit -m "feat(w4b): gunMode sets both guns AUTO / MAN; MAN's fire-rate tables (W-4 spec §4.1, §4.4)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add src/renderer/src/net/contracts.ts src/renderer/src/net/codec.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/duel/step.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/tactical/gun.ts src/renderer/src/sim/tactical/pew.ts src/renderer/src/sim/tactical/weapons.ts tests/duelModules.test.ts tests/duelCheckpoint.test.ts tests/w4Manual.test.ts
+git commit -m "feat(w4b): gunMode sets both guns AUTO / MAN; hand control (MAN and selected, owner 2026-11-19) and its fire-rate tables (W-4 spec §3.4, §4.1, §4.4)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -568,16 +627,16 @@ git commit -m "feat(w4b): gunMode sets both guns AUTO / MAN; MAN's fire-rate tab
 ### Task 4: The turrets slew: AUTO's solutions, MAN's reticle, and rounds along the turrets
 
 **Files:**
-- Modify: `src/renderer/src/sim/tactical/turret.ts` (`autoSolution`, `slewTurrets`), `sim/tactical/gun.ts` (`gunLead`, `gunAimFine`), `sim/tactical/pew.ts` (`pewAimFine`), `sim/tactical/weapons.ts` (`applyWeaponsInput`)
+- Modify: `src/renderer/src/sim/tactical/turret.ts` (`onSolution`, `autoSolution`, `slewTurrets`), `sim/tactical/tuning.ts` (`AUTO_FIRE_TOLERANCE`), `sim/tactical/gun.ts` (`gunLead`, `gunAimFine`), `sim/tactical/pew.ts` (`pewAimFine`), `sim/tactical/weapons.ts` (`applyWeaponsInput`)
 - Modify: `tests/w4Turret.test.ts`
 
 **Interfaces:**
-- Consumes: `pewLead(state, i, tx, ty, tvx, tvy)`, `pewMuzzle(state, i)` (pew.ts), `interceptTime`, `nearestHeading` (lead.ts), `lineOfSight(state, ax, ay, bx, by)` (geometry.ts), `shipSeen(t, i)` (science.ts), `weaponBars`, `WeaponSlot.Pew | Autocannon`, `hasTurret`, `PEW_RANGE`, `AUTOCANNON_AUTO_RANGE`, W-4a's `gunAimFine` / `pewAimFine` bodies (quoted in Step 4).
-- Produces: `gunLead`, `autoSolution`, `AutoOnSolution`, `slewTurrets` (turret.ts). Task 6 consumes `slewTurrets`' return.
+- Consumes: `pewLead(state, i, tx, ty, tvx, tvy)`, `pewMuzzle(state, i)` (pew.ts), `interceptTime`, `nearestHeading` (lead.ts), `lineOfSight(state, ax, ay, bx, by)` (geometry.ts), `shipSeen(t, i)` (science.ts), `handControl` (Task 3), `weaponBars`, `WeaponSlot.Pew | Autocannon`, `hasTurret`, `PEW_RANGE`, `AUTOCANNON_AUTO_RANGE`, W-4a's `gunAimFine` / `pewAimFine` bodies (quoted in Step 4).
+- Produces: `AUTO_FIRE_TOLERANCE`, `gunLead`, `onSolution`, `autoSolution`, `AutoOnSolution`, `slewTurrets` (turret.ts). Task 6 consumes `slewTurrets`' return; Task 8 `onSolution`.
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `tests/w4Turret.test.ts` (add the imports it needs: `applyWeaponsInput`, `IDLE_INPUT`, `type ShipInput` from weapons; `autoSolution`, `slewTurrets` from turret; `gunLead`, `gunAimFine`, `tickGun` from gun; `pewAimFine`, `pewLead`, `firePewTrigger`, `aimDir` from pew; `houndWeapons` from `./helpers/crewWeapons`; `mover` from `./helpers/rockArena`; `hx`, `hy` from direction; `HEADING_COUNT` from tuning):
+Append to `tests/w4Turret.test.ts` (add the imports it needs: `applyWeaponsInput`, `IDLE_INPUT`, `type ShipInput` from weapons; `autoSolution`, `slewTurrets` from turret; `gunLead`, `gunAimFine`, `tickGun` from gun; `pewAimFine`, `pewLead`, `firePewTrigger`, `aimDir` from pew; `houndWeapons` from `./helpers/crewWeapons`; `mover` from `./helpers/rockArena`; `hx`, `hy` from direction; `AUTO_FIRE_TOLERANCE`, `HEADING_COUNT` from tuning):
 
 ```ts
 /** The Hound at (0, 1500) nose `heading`, still, no rocks; the Hunter at `ahead` u along heading `bearing` from it, still;
@@ -593,15 +652,33 @@ function scene(bars: readonly [number, number, number], heading = 0, bearing = 0
 const tick = (st: ReturnType<typeof createTacticalState>, input: ShipInput) => slewTurrets(st, 0, input);
 
 describe('when a turret slews (W-4 spec §3.4)', () => {
-  it('MAN: only the selected gun follows the reticle, at 455 / 341 a tick; the torpedo selected or no reticle moves nothing', () => {
-    const st = scene([1, 1, 1]), s = st.systems[0]!; s.gunsManual = true;
+  it('MAN: the gun in hand follows the reticle at 455 / 341 a tick; the other gun is AUTO-driven (no target: back to the nose at 364 / 273); the torpedo selected, both are; no reticle, the gun in hand holds', () => {
+    const st = scene([1, 1, 1], 0, 0, 5000), s = st.systems[0]!; s.gunsManual = true;   // the Hunter 5000 u off: no AUTO solution
     tick(st, { ...IDLE_INPUT, weaponSel: 0, turretAim: 4000 });
     expect([s.pewTurret, s.gunTurret]).toEqual([455, 0]);
     tick(st, { ...IDLE_INPUT, weaponSel: 1, turretAim: 4000 });
-    expect([s.pewTurret, s.gunTurret]).toEqual([455, 341]);
+    expect([s.pewTurret, s.gunTurret]).toEqual([455 - 364, 341]);   // owner 2026-11-19: the pew, out of hand, slews on AUTO
     tick(st, { ...IDLE_INPUT, weaponSel: 2, turretAim: 4000 });
-    tick(st, { ...IDLE_INPUT, weaponSel: 0, turretAim: -1 });
-    expect([s.pewTurret, s.gunTurret]).toEqual([455, 341]);
+    expect([s.pewTurret, s.gunTurret]).toEqual([0, 341 - 273]);   // the torpedo selected: both AUTO-driven
+    tick(st, { ...IDLE_INPUT, weaponSel: 1, turretAim: -1 });
+    expect([s.pewTurret, s.gunTurret]).toEqual([0, 68]);   // the autocannon in hand with no reticle holds
+  });
+  it('MAN: the gun out of hand fights on AUTO: it slews onto its own lead at its AUTO traverse and reports on solution; the gun in hand never reports (owner 2026-11-19)', () => {
+    const st = scene([1, 1, 1], 0, 6), s = st.systems[0]!; s.gunsManual = true;
+    const pewSol = autoSolution(st, 0, 'pew')!, gunSol = autoSolution(st, 0, 'gun')!;
+    const pewInHand = { ...IDLE_INPUT, weaponSel: 0, turretAim: 60000 };   // the reticle 5536 steps left of the nose
+    let on = tick(st, pewInHand);
+    expect([s.pewTurret, s.gunTurret, on.pew, on.gun]).toEqual([-455, 273, false, false]);
+    for (let k = 0; k < 10; k++) on = tick(st, pewInHand);
+    expect([s.gunTurret, on.gun, on.pew]).toEqual([gunSol, true, false]);
+    for (let k = 0; k < 30; k++) on = tick(st, { ...IDLE_INPUT, weaponSel: 2, turretAim: 60000 });
+    expect([s.pewTurret, on.pew, on.gun]).toEqual([pewSol, true, true]);   // the torpedo selected: both on AUTO
+  });
+  it('AUTO is on solution within AUTO_FIRE_TOLERANCE (182 fine steps) of its lead, both sides, and not at 183 (owner 2026-11-19)', () => {
+    expect(AUTO_FIRE_TOLERANCE).toBe(182);
+    const sol = 6 * 256;   // the Hunter 6 heading steps right, still: the lead is the bearing (the AUTO case below)
+    const from = (start: number): boolean => { const st = scene([1, 0, 1], 0, 6); st.systems[0]!.pewTurret = start; return tick(st, IDLE_INPUT).pew; };
+    expect([from(sol - 364 - 182), from(sol - 364 - 183), from(sol + 364 + 182), from(sol + 364 + 183)]).toEqual([true, false, true, false]);
   });
   it('AUTO: each powered gun slews onto its lead at 364 / 273 a tick and reports on solution once it sits there', () => {
     const st = scene([1, 1, 1], 0, 6), s = st.systems[0]!;   // the Hunter 6 heading steps (8.4°) right of the nose
@@ -671,6 +748,12 @@ describe('rounds along the turrets, and the leads (W-4 spec §3.2, §4.2, §5, �
     expect(gunLead(st, 0, e.x, e.y, e.vx, e.vy)).toBe(0);
     expect(pewLead(st, 0, e.x, e.y, e.vx, e.vy)).toBeGreaterThan(0);   // the pew leads the target's own motion
   });
+  it("gunLead gives none for an intercept past the round's life (W-4 spec §4.2)", () => {
+    const st = scene([1, 1, 1], 0, 0, 1000), e = st.ships[1]!;   // 1000 u dead ahead, still: about 1.4 s at GUN_SPEED, past a round's life (its reach is about 607 u)
+    expect(gunLead(st, 0, e.x, e.y, 0, 0)).toBe(-1);
+    Object.assign(e, { y: 1500 + hy(0) * 400 });   // 400 u: inside its reach
+    expect(gunLead(st, 0, e.x, e.y, 0, 0)).toBe(0);
+  });
 });
 ```
 
@@ -689,19 +772,20 @@ In `sim/tactical/gun.ts`, add `import { interceptTime, nearestHeading } from './
 /** W-4 spec §4.2: ship i's autocannon lead on a target at (tx, ty) moving at (tvx, tvy): the fine aim (a whole heading
  *  index × HEADING_COUNT) from the nose point between its muzzles to where a round fired now meets the target holding its
  *  velocity. A gun round inherits the ship's velocity (fireRound), so the velocity relative to ship i is used. −1 without a
- *  gun or an intercept. */
+ *  gun, without an intercept, or when the intercept comes after the round's life (lifeTicks · DT, in seconds as
+ *  interceptTime's). */
 export function gunLead(state: TacticalState, i: number, tx: number, ty: number, tvx: number, tvy: number): number {
   const g = classOf(state, i).slots.gun;
   if (!g) return -1;
   const s = state.ships[i]!, mx = s.x + hx(s.heading) * g.muzzleForward, my = s.y + hy(s.heading) * g.muzzleForward;
   const rx = tx - mx, ry = ty - my, vx = tvx - s.vx, vy = tvy - s.vy, t = interceptTime(rx, ry, vx, vy, g.speed);
-  if (t < 0) return -1;
+  if (t < 0 || t > g.lifeTicks * DT) return -1;   // no intercept, or one the round would not live to reach
   const h = nearestHeading(rx + vx * t, ry + vy * t);
   return h < 0 ? -1 : h * HEADING_COUNT;
 }
 ```
 
-(`lead.ts` imports only `direction`, `state` and `tuning`, so there is no cycle.)
+(`lead.ts` imports only `direction`, `state` and `tuning`, so there is no cycle. `gun.ts` already imports `DT` from `./tuning`. `interceptTime` returns seconds (`lead.ts` L8), so the life is `lifeTicks · DT`.)
 
 - [ ] **Step 4: The aim seams read the turrets (Decision 1)**
 
@@ -739,6 +823,15 @@ and its doc comment likewise ("the nose plus pewTurret").
 
 - [ ] **Step 5: AUTO's solutions and the per-tick slew**
 
+In `sim/tactical/tuning.ts`, after `GUN_AUTO_HEAT_STOP` (W-4a), add:
+
+```ts
+/** W-4 spec §4.2 (owner 2026-11-19): AUTO is on solution when its turret ends the tick within this many fine steps (1.0°)
+ *  of the lead. With the lead's half step the worst aim error is 310 steps, 17.8 u at the autocannon's 600 u (the Hunter's
+ *  radius is 20); 182 is also the autocannon's per-tick lag in a 150°/s turn (455 − 273), so a trailing gun still fires. */
+export const AUTO_FIRE_TOLERANCE = 182;
+```
+
 Append to `sim/tactical/turret.ts` (and extend its imports):
 
 ```ts
@@ -749,9 +842,15 @@ import { lineOfSight } from './geometry';
 import { gunLead } from './gun';
 import { pewLead, pewMuzzle } from './pew';
 import { shipSeen } from './science';
-import { classOf, CREW_SLOT, type TacticalState } from './state';
-import { AUTOCANNON_AUTO_RANGE, PEW_RANGE } from './tuning';
+import { classOf, CREW_SLOT, handControl, type TacticalState } from './state';
+import { AUTO_FIRE_TOLERANCE, AUTOCANNON_AUTO_RANGE, PEW_RANGE } from './tuning';
 import type { ShipInput } from './weapons';   // type only: weapons.ts imports this file
+
+/** W-4 spec §4.2 (owner 2026-11-19): whether a turret at offset `turret` is on AUTO solution `sol`: within
+ *  AUTO_FIRE_TOLERANCE fine steps of it (null: no solution). The step's test after the slew, and the view's bracket. */
+export function onSolution(turret: number, sol: number | null): boolean {
+  return sol !== null && Math.abs(turret - sol) <= AUTO_FIRE_TOLERANCE;
+}
 
 /** W-4 spec §4.2: ship i's AUTO solution for its pew or its autocannon: the lead aim's offset from the nose (a whole heading
  *  × 256 less the nose), when the crew's target ship is seen (shipSeen), its centre lies within the gun's AUTO range of the
@@ -780,10 +879,10 @@ const NONE: AutoOnSolution = Object.freeze({ pew: false, gun: false });
 /**
  * W-4 spec §3.4: one tick of ship i's turrets, before anything moves (the pre-move heading), from applyWeaponsInput after
  * stepBurst and before tickGun. Only the crew slot of a turret class, only while Weapons is attended; a gun on 0 bars holds.
- * MAN (gunsManual): the selected gun (input.weaponSel) slews toward the reticle (input.turretAim) at its MAN traverse; the
- * other holds; no reticle or the torpedo selected, nothing slews. AUTO: each powered gun slews toward its solution
- * (autoSolution) at its AUTO traverse, or back to the nose with none, and reports on solution when it sits exactly on it.
- * It slews in the hold too; only firing waits (§4.3, applyWeaponsInput).
+ * The gun in hand (handControl: MAN and the selected weapon, owner 2026-11-19) slews toward the reticle (input.turretAim)
+ * at its MAN traverse, and holds with no reticle. Every other powered gun is AUTO-driven, in MAN too: it slews toward its
+ * solution (autoSolution) at its AUTO traverse, or back to the nose with none, and reports on solution when it ends
+ * within AUTO_FIRE_TOLERANCE of it (onSolution). It slews in the hold too; only firing waits (§4.3, applyWeaponsInput).
  */
 export function slewTurrets(state: TacticalState, i: number, input: ShipInput): AutoOnSolution {
   const cls = classOf(state, i);
@@ -794,13 +893,13 @@ export function slewTurrets(state: TacticalState, i: number, input: ShipInput): 
     if (!turret || weaponBars(s, slot) < 1) continue;   // no power, no slew
     const now = gun === 'pew' ? s.pewTurret : s.gunTurret;
     let next = now;
-    if (s.gunsManual) {
-      if (input.weaponSel !== slot || input.turretAim < 0) continue;
+    if (handControl(state, i, input.weaponSel, slot)) {   // the gun in hand (W-4c adds the MANUAL flight inside handControl)
+      if (input.turretAim < 0) continue;   // no reticle: it holds
       next = slewTurret(now, heading, input.turretAim, turret.traverse[1], turret.arcSteps);
-    } else {
+    } else {   // AUTO-driven: AUTO, and in MAN the gun out of hand (taking control never costs firepower)
       const sol = autoSolution(state, i, gun);
       next = slewTurret(now, heading, turretWorldAim(heading, sol ?? 0), turret.traverse[0], turret.arcSteps);
-      out[gun] = sol !== null && next === sol;
+      out[gun] = onSolution(next, sol);
     }
     if (gun === 'pew') s.pewTurret = next; else s.gunTurret = next;
   }
@@ -837,8 +936,8 @@ Expected: tsc clean; all PASS except the known-red trajectory pins in `duelScrip
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/renderer/src/sim/tactical/turret.ts src/renderer/src/sim/tactical/gun.ts src/renderer/src/sim/tactical/pew.ts src/renderer/src/sim/tactical/weapons.ts tests/w4Turret.test.ts
-git commit -m "feat(w4b): the turrets slew: AUTO onto its lead (pewLead, gunLead), MAN onto the reticle; rounds fly along the turrets (W-4 spec §3.4, §4.2, §5, §6)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add src/renderer/src/sim/tactical/turret.ts src/renderer/src/sim/tactical/tuning.ts src/renderer/src/sim/tactical/gun.ts src/renderer/src/sim/tactical/pew.ts src/renderer/src/sim/tactical/weapons.ts tests/w4Turret.test.ts
+git commit -m "feat(w4b): the turrets slew: AUTO onto its lead (pewLead, gunLead) within a 182-step tolerance, the gun in hand onto the reticle, the other on AUTO; rounds fly along the turrets (W-4 spec §3.4, §4.2, §5, §6)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -847,7 +946,7 @@ git commit -m "feat(w4b): the turrets slew: AUTO onto its lead (pewLead, gunLead
 
 **Files:**
 - Modify: `src/renderer/src/app/duel/mapRequests.ts`, `app/duel/scene.ts`, `app/duel/duelMode.ts`, `app/duel/runtime.ts`, `app/duel/onlineDuel.ts`, `app/duel/input.ts`, `app/duel/weaponsSeat.ts`, `app/controlsList.ts`, `ui/duel/WeaponsStation.tsx` (the BEAM tag's press), `scripts/network/duel-app-smoke.ts` (Decision 12)
-- Modify (kind (a) renames): `tests/manualLaserScene.test.ts`, `tests/manualLaserInput.test.ts`, `tests/manualLaserUi.test.tsx`, `tests/onlineDuelSession.test.ts`, `tests/duelCheckpoint.test.ts` (each `presses.laserMode` / `press('laserMode')` / `aimLaser` / `laserAim()` / `resetLaserAim` they use)
+- Modify (kind (a) renames): `tests/manualLaserScene.test.ts`, `tests/manualLaserInput.test.ts`, `tests/manualLaserUi.test.tsx`, `tests/onlineDuelSession.test.ts` (each `presses.laserMode` / `press('laserMode')` / `aimLaser` / `laserAim()` / `resetLaserAim` they use; `tests/duelCheckpoint.test.ts`'s `laserMode` is the command kind, which stays)
 - Modify: `tests/w4Input.test.ts`, `tests/w4Runtime.test.ts`, `tests/w4Online.test.ts` (W-4a's files)
 
 **Interfaces:**
@@ -924,10 +1023,15 @@ describe("the Hound's Weapons seat in W-4b (W-4 spec §4.1, §4.3, §9)", () => 
 });
 ```
 
-Append to `tests/w4Online.test.ts`:
+Append to `tests/w4Online.test.ts` (W-4a's file already imports `heldChanged` and declares `N`, the empty held frame):
 
 ```ts
 describe('the online reticle and mode (W-4 spec §11, W-4b)', () => {
+  it('a change of the reticle alone is a held change (the latency stamp); the same reticle is not', () => {
+    expect(heldChanged({ ...N, weaponSel: 0, turretAim: 4000 }, { ...N, weaponSel: 0, turretAim: 5000 })).toBe(true);
+    expect(heldChanged({ ...N, weaponSel: 0, turretAim: 4000 }, { ...N, weaponSel: 0 })).toBe(true);
+    expect(heldChanged({ ...N, weaponSel: 0, turretAim: 4000 }, { ...N, weaponSel: 0, turretAim: 4000 })).toBe(false);
+  });
   it('sessionHeld carries turretAim at the Hound\'s Weapons seat only', () => {
     const d = createSeatedDuel(CUTTER, 5), fit = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.ValkyrnLaser);
     try {
@@ -959,17 +1063,19 @@ In `tests/onlineDuelSession.test.ts`, add `reticle(aim: number): void;` to both 
     expect(c.commands().filter((x) => x.kind === 'pewFire')).toEqual([{ kind: 'pewFire' }]);
     r.dispose();
   });
-  it('a change of the reticle alone is a held change', () => {
+  it('the held frame follows the reticle, pump by pump (the latest kept, not drained)', () => {
     const r = rig(1), c = r.attach(); r.session.frame();
     h.sceneOpts[0]!.requests!.reticle(4000); r.pump();
-    const n = c.helds().length;
     expect(c.helds().at(-1)).toMatchObject({ turretAim: 4000 });
+    r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ turretAim: 4000 });   // no new pointer sample: the last reticle stands
     h.sceneOpts[0]!.requests!.reticle(5000); r.pump();
-    expect(c.helds().length).toBeGreaterThan(n);
     expect(c.helds().at(-1)).toMatchObject({ turretAim: 5000 });
     r.dispose();
   });
 ```
+
+The pump sends a held frame every pump whether or not it changed (`client.held` each pump; `heldChanged` only stamps the change for the latency report), so a rising `c.helds()` count proves nothing. The "a reticle change alone is a held change" rule is `heldChanged`'s, tested as a unit in `tests/w4Online.test.ts` (below).
 
 - [ ] **Step 2: Run them to see them fail**
 
@@ -1003,7 +1109,7 @@ Rename the uses in `tests/manualLaserScene.test.ts` and the `onlineDuelSession.t
 
 In the laser class's Weapons branch of `runtime.ts` and `onlineDuel.ts`, `p.laserMode` → `p.weaponMode` (the code is otherwise unchanged).
 
-Rename `presses.laserMode` / `press('laserMode')` / `laserMode:` (the press field) in `tests/manualLaserInput.test.ts`, `tests/manualLaserUi.test.tsx`, `tests/onlineDuelSession.test.ts`, `tests/duelCheckpoint.test.ts` and any other test tsc names (kind (a); the `laserMode` **command** kind is unchanged).
+Rename `presses.laserMode` / `press('laserMode')` / `laserMode:` (the press field) in `tests/manualLaserInput.test.ts`, `tests/manualLaserUi.test.tsx`, `tests/onlineDuelSession.test.ts` and any other test tsc names (kind (a); the `laserMode` **command** kind is unchanged, so `tests/duelCheckpoint.test.ts`, whose only `laserMode` is a command in its codec examples, and the commands in `tests/manualLaserCommands.test.ts`, `tests/ftlTargeting.test.ts` and `tests/rockLock.test.ts` stay as they are).
 
 - [ ] **Step 5: The seat's held fields**
 
@@ -1081,7 +1187,7 @@ and add "(both guns in MAN)" to the step's comment.
 
 - [ ] **Step 9: Run**
 
-Run: `npx tsc -b` then `npx vitest run tests/w4Input.test.ts tests/w4Runtime.test.ts tests/w4Online.test.ts tests/onlineDuelSession.test.ts tests/manualLaserScene.test.ts tests/manualLaserInput.test.ts tests/manualLaserUi.test.tsx tests/onlineDuelSession.test.ts tests/duelCheckpoint.test.ts tests/duelRuntime.test.ts tests/settingsAndControls.test.ts tests/scienceInput.test.ts`
+Run: `npx tsc -b` then `npx vitest run tests/w4Input.test.ts tests/w4Runtime.test.ts tests/w4Online.test.ts tests/onlineDuelSession.test.ts tests/manualLaserScene.test.ts tests/manualLaserInput.test.ts tests/manualLaserUi.test.tsx tests/duelCheckpoint.test.ts tests/duelRuntime.test.ts tests/settingsAndControls.test.ts tests/scienceInput.test.ts`
 Expected: tsc clean; all PASS (a `duelCheckpoint` whole-run pin may stay known-red). Then `npm run test:duel-app-runtime`: the smoke passes.
 
 - [ ] **Step 10: Commit**
@@ -1096,13 +1202,13 @@ git commit -m "feat(w4b): the reticle drives turretAim, Z toggles both guns (gun
 ### Task 6: AUTO fires: the pew on each third, the autocannon to 80 % heat, nothing in the hold; the scripted gunner on AUTO
 
 **Files:**
-- Modify: `src/renderer/src/sim/tactical/gun.ts` (`tickGun`), `sim/tactical/pew.ts` (`pewAutoReady`), `sim/tactical/weapons.ts` (`applyWeaponsInput`), `sim/duel/step.ts` (`pewFire`'s AUTO refusal), `sim/duel/scripted.ts` (`houndGunner`)
+- Modify: `src/renderer/src/sim/tactical/gun.ts` (`tickGun`), `sim/tactical/pew.ts` (`pewAutoReady`), `sim/tactical/weapons.ts` (`applyWeaponsInput`), `sim/tactical/tuning.ts` (`AUTOCANNON_ARC_COS`), `sim/duel/step.ts` (`pewFire`'s AUTO refusal), `sim/duel/scripted.ts` (`houndGunner`, `helmAxes`' line-up)
 - Create: `tests/w4Auto.test.ts`
-- Modify: `tests/w4Manual.test.ts`, `tests/duelScripted.test.ts` (kind (a): W-4a's stand-in tests), `tests/w4PewFire.test.ts`, `tests/w4Autocannon.test.ts`, `tests/w4Turret.test.ts` (kind (a): AUTO ignores the held trigger, Step 4)
+- Modify: `tests/w4Manual.test.ts`, `tests/duelScripted.test.ts` (kind (a): W-4a's stand-in tests and the Helm line-up's geometry), `tests/w4PewFire.test.ts`, `tests/w4Autocannon.test.ts`, `tests/w4Turret.test.ts` (kind (a): AUTO ignores the held trigger, Step 4)
 
 **Interfaces:**
-- Consumes: `slewTurrets` → `AutoOnSolution` (Task 4), `enemyHostile(t)` (science.ts L29), `GUN_AUTO_HEAT_STOP` (tuning.ts), W-4a's `tickGun` (quoted in Step 3), W-4a's `houndGunner` (quoted in Step 5), W-4a's `pewFire` admission block (quoted in Step 4).
-- Produces: `tickGun(state, i, input, auto = false)`; `pewAutoReady(state, i): boolean` (pew.ts).
+- Consumes: `slewTurrets` → `AutoOnSolution` (Task 4), `handControl` (Task 3), `enemyHostile(t)` (science.ts L29), `GUN_AUTO_HEAT_STOP`, `AUTOCANNON_AUTO_RANGE` (tuning.ts), Task 3's `tickGun` lines (quoted in Step 3), W-4a's `houndGunner` and `helmAxes` line-up (quoted in Step 5), W-4a's `pewFire` admission block (quoted in Step 4).
+- Produces: `tickGun(state, i, input, auto = false)`; `pewAutoReady(state, i): boolean` (pew.ts); `AUTOCANNON_ARC_COS` (tuning.ts).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1200,7 +1306,48 @@ describe('AUTO holds fire during the hold (W-4 spec §4.3, owner 2026-11-19)', (
     expect(next.gun + next.pew).toBeGreaterThan(0);
   });
 });
+
+describe('AUTO in a sustained Helm turn (W-4 spec §4.2, owner 2026-11-19: the fire tolerance)', () => {
+  it('both guns still fire while the nose sweeps across the Hunter at the full unboosted 150°/s (455 fine steps a tick), the autocannon less often than at rest', () => {
+    /** 120 ticks with the Hunter 300 u north, the Hound turning clockwise from heading index `start` (or still at 0). */
+    const count = (turning: boolean): { gun: number; pew: number } => {
+      const st = scene([1, 1, 1]), n = { gun: 0, pew: 0 };
+      let fine = turning ? 212 * 256 : 0;   // turning: the Hunter starts 44 heading steps (62°) right of the nose, outside both arcs
+      for (let k = 0; k < 120; k++) {
+        st.ships[0].heading = Math.floor(fine / 256) % 256;   // the heading index a 150°/s turn reaches each tick (headingAcc's whole part)
+        const f = tick(st); n.gun += f.gun; n.pew += f.pew;
+        if (turning) fine += 455;
+      }
+      return n;
+    };
+    const rest = count(false), turn = count(true);
+    expect(turn.gun, 'the autocannon in the turn').toBeGreaterThanOrEqual(1);
+    expect(turn.pew, 'the pew in the turn').toBeGreaterThanOrEqual(1);
+    expect(turn.gun).toBeLessThan(rest.gun);
+  });
+});
+
+describe('MAN never costs firepower (W-4 spec §3.4, owner 2026-11-19)', () => {
+  it('with pew pew in hand the autocannon fires on its own at the hostile ship; with the torpedo selected both do; the hold still keeps them quiet', () => {
+    const run = (st: TacticalState, sel: number): { gun: number; pew: number } => {
+      const n = { gun: 0, pew: 0 };
+      for (let k = 0; k < 120; k++) { const f = tick(st, { ...IDLE_INPUT, weaponSel: sel, turretAim: -1 }); n.gun += f.gun; n.pew += f.pew; }
+      return n;
+    };
+    const man = scene([1, 1, 1], 6); man.systems[0]!.gunsManual = true;
+    const pewInHand = run(man, 0);
+    expect(pewInHand.gun).toBeGreaterThan(0);   // the autocannon, out of hand, fights on AUTO
+    expect(pewInHand.pew).toBe(0);   // the pew in hand fires only on a pewFire (none here)
+    const both = run(man, 2);
+    expect([both.gun > 0, both.pew > 0]).toEqual([true, true]);   // the torpedo selected: both AUTO-driven
+    const held = scene([1, 1, 1], 6, 300, true); held.systems[0]!.gunsManual = true;
+    const quiet = run(held, 0);
+    expect(quiet.gun + quiet.pew).toBe(0);   // AUTO's rules: nothing in the hold
+  });
+});
 ```
+
+The turning case's start (heading index 212) puts the Hunter outside both arcs, so each gun must meet it on the sweep and then trail it. A turret-and-bearing model of this geometry (the solution as the bearing's whole index, the slew law as written) gave the autocannon no on-solution tick under an exact-only rule and two ticks within the tolerance. If the real lead's muzzle offset moves those ticks, keep the start and the assertions, and report the counts.
 
 Append to `tests/w4Manual.test.ts`:
 
@@ -1239,26 +1386,29 @@ Expected: FAIL (AUTO fires nothing; `pewFire` applies in AUTO; the held trigger 
 
 - [ ] **Step 3: `tickGun`'s AUTO and MAN triggers**
 
-In `sim/tactical/gun.ts`, add `GUN_AUTO_HEAT_STOP` to the tuning import, change the signature to `export function tickGun(state: TacticalState, i: number, input: ShipInput, auto = false): void {`, and replace W-4a's two lines
+In `sim/tactical/gun.ts`, add `GUN_AUTO_HEAT_STOP` to the tuning import, change the signature to `export function tickGun(state: TacticalState, i: number, input: ShipInput, auto = false): void {`, and replace W-4a's trigger line and Task 3's three lines
 
 ```ts
   if (!input.weapons || !input.gunHeld || s.gunLocked || s.rooms[Room.Weapons] >= 2 || s.gunCooldown > 0) return;
-  if (g.turret !== null && gunInterval(state, i) === 0) return;   // W-4 spec §5: a turret gun on 0 bars fires nothing
-  fireRound(state, i, g);
+  const hand = g.turret !== null && handControl(state, i, input.weaponSel, WeaponSlot.Autocannon);   // W-4 spec §3.4, §4.4: the autocannon in hand
+  if (g.turret !== null && gunInterval(state, i, hand) === 0) return;   // W-4 spec §5: a turret gun on 0 bars fires nothing
+  fireRound(state, i, g, hand);
 ```
 
-(W-4a puts `fireRound(state, i, g);` right after them) with
+with
 
 ```ts
   if (!input.weapons || s.gunLocked || s.rooms[Room.Weapons] >= 2 || s.gunCooldown > 0) return;
   if (g.turret === null) { if (input.gunHeld) fireRound(state, i, g); return; }   // the Valkyrn: its trigger, as before
-  if (gunInterval(state, i) === 0) return;   // W-4 spec §5: a turret gun on 0 bars fires nothing
-  // W-4 spec §4.3, §5: MAN fires on the held trigger (the step sets it only with the autocannon selected); AUTO fires on
-  // solution once hostile (`auto`, applyWeaponsInput) while below the 80 % heat stop, so it never locks; no hysteresis.
-  if (s.gunsManual ? input.gunHeld : auto && s.gunHeat < GUN_AUTO_HEAT_STOP) fireRound(state, i, g);
+  const hand = handControl(state, i, input.weaponSel, WeaponSlot.Autocannon);   // W-4 spec §3.4: in hand (MAN and selected), else AUTO-driven
+  if (gunInterval(state, i, hand) === 0) return;   // W-4 spec §5: a turret gun on 0 bars fires nothing
+  // W-4 spec §4.3, §5: in hand it fires on the held trigger (the step sets it only with the autocannon selected); AUTO-driven
+  // (AUTO, or MAN with the pew in hand: owner 2026-11-19) it fires on solution once hostile (`auto`, applyWeaponsInput) while
+  // below the 80 % heat stop, so it never locks; no hysteresis. A held trigger does nothing to an AUTO-driven gun.
+  if (hand ? input.gunHeld : auto && s.gunHeat < GUN_AUTO_HEAT_STOP) fireRound(state, i, g, hand);
 ```
 
-and extend its doc comment: "W-4 spec §4.3: a turret gun fires in MAN on the trigger, in AUTO on `auto` (on solution and hostile) below GUN_AUTO_HEAT_STOP." For the Valkyrn the checks and their order are equivalent to master's single condition (each is a pure read before the one `fireRound`).
+and extend its doc comment: "W-4 spec §4.3: a turret gun in hand fires on the trigger, an AUTO-driven one on `auto` (on solution and hostile) below GUN_AUTO_HEAT_STOP." For the Valkyrn the checks and their order are equivalent to master's single condition (each is a pure read before the one `fireRound`, which with `manual` false sets `intervalTicks`).
 
 - [ ] **Step 4: `applyWeaponsInput` and the step**
 
@@ -1321,7 +1471,7 @@ with
 
 Kind (a) rewrites, each citing W-4 spec §4.3 (from this task on, a turret gun in AUTO ignores `gunHeld`, and every round starts AUTO):
 - `tests/w4PewFire.test.ts` (W-4a): its admission test sets MAN first (`d.tactical.systems[0].gunsManual = true` after creating the duel). Its case "on the Hound gunHeld fires the autocannon only with weaponSel 1" also sets `gunsManual = true` on the Hound duel before stepping.
-- `tests/w4Autocannon.test.ts` (W-4a): the `gaps()` helper calls `tickGun(st, 0, IDLE_INPUT, true)` instead of `tickGun(st, 0, TRIGGER)`, which fixes the interval-by-bars case. The direct `TRIGGER` calls in the rounds-along-the-aim, cooldown, six-hits-a-level and 0-bar cases change the same way (W-4a plan's w4Autocannon at its L584, L604, L609, L616, L619 and L628). That is AUTO on solution with the AUTO rows, so W-4a's 10 / 8 / 6 / 5 assertions stand. The heat-and-lock case sets `s.gunsManual = true` and keeps `TRIGGER`, because only MAN can lock. It asserts heat, lock and cooling only, so it needs no re-pin.
+- `tests/w4Autocannon.test.ts` (W-4a): the `gaps()` helper calls `tickGun(st, 0, IDLE_INPUT, true)` instead of `tickGun(st, 0, TRIGGER)`, which fixes the interval-by-bars case. The direct `TRIGGER` calls in the rounds-along-the-aim, cooldown, six-hits-a-level and 0-bar cases change the same way (W-4a plan's w4Autocannon at its L584, L604, L609, L616, L619 and L628). That is AUTO on solution with the AUTO rows, so W-4a's 10 / 8 / 6 / 5 assertions stand. The heat-and-lock case sets `s.gunsManual = true` and fires with `{ ...TRIGGER, weaponSel: 1 }` (the autocannon in hand, Decision 14: `TRIGGER` alone has `weaponSel` −1, which leaves the gun AUTO-driven and never locking), because only the gun in hand can lock. It asserts heat, lock and cooling only, so it needs no re-pin.
 - `tests/w4Turret.test.ts` (Task 4's "a pew round and an autocannon round leave along them"): `tickGun(st, 0, { ...IDLE_INPUT, gunHeld: true })` becomes `tickGun(st, 0, IDLE_INPUT, true)`.
 
 - [ ] **Step 5: The scripted gunner on AUTO (spec §12)**
@@ -1336,7 +1486,39 @@ In `sim/duel/scripted.ts` `houndGunner`, delete the stand-in pew block:
   }
 ```
 
-and rewrite its doc comment: "W-4 spec §12: the gunner on a turret class (the Hound). Its first seated tick spends the spare bar on the autocannon (pre-checked, so both commands are admitted) and does nothing else that tick. The guns stay AUTO (no gunMode, no held aim, no pewFire): they track and, once the enemy is hostile, fire by themselves (applyWeaponsInput). Its torpedo rule (a torpLock while the target is seen, canLaunch and the gap) launches the AUTO torpedo, which also ends the 30 s hold if the clock has not. No laser command." Remove imports that are now unused (tsc names them; `gunnerPew` on other classes still uses some).
+and rewrite its doc comment: "W-4 spec §12: the gunner on a turret class (the Hound). Its first seated tick spends the spare bar on the autocannon (pre-checked, so both commands are admitted) and does nothing else that tick. The guns stay AUTO (no gunMode, no held aim, no pewFire): they track and, once the enemy is hostile, fire by themselves (applyWeaponsInput). Its torpedo rule (a torpLock while the target is seen, canLaunch and the gap) launches the AUTO torpedo, which also ends the 30 s hold if the clock has not. No laser command." Remove imports that are now unused (tsc names them; `gunnerPew` on other classes still uses some, and the Helm's line-up below uses `inArc` and `shipSeen`).
+
+**The Helm's line-up moves to the autocannon (Decision 16).** In `sim/tactical/tuning.ts`, after `AUTOCANNON_AUTO_RANGE`, add:
+
+```ts
+/** W-4 spec §12: cos 30°, the autocannon's ±30° arc as inArc's cosine: the scripted Helm lines the guns up outside it. */
+export const AUTOCANNON_ARC_COS = 0.8660254037844386;
+```
+
+In `sim/duel/scripted.ts` `helmAxes`, replace W-4a's line-up
+
+```ts
+  if (hasTurret(classOf(t, 0)) && e.active && shipSeen(t, targetOf(t, 0)) && ex * ex + ey * ey <= PEW_RANGE * PEW_RANGE && !inArc(s.heading, ex, ey, PEW_ARC_COS))
+```
+
+with
+
+```ts
+  if (hasTurret(classOf(t, 0)) && e.active && shipSeen(t, targetOf(t, 0)) && ex * ex + ey * ey <= AUTOCANNON_AUTO_RANGE * AUTOCANNON_AUTO_RANGE && !inArc(s.heading, ex, ey, AUTOCANNON_ARC_COS))
+```
+
+(the `return { turn: autoFaceTurn(t, 0), … }` line under it stays), add `AUTOCANNON_ARC_COS, AUTOCANNON_AUTO_RANGE` to scripted.ts's tuning import, and change its comment's "(the stand-in pew's cone; W-4b: …)" to "(W-4b: inside the autocannon's ±30° both AUTO guns bear, so outside it, within its 600 u, the Helm turns the nose on)". Task 10 adds `HOUND_HELM_LINEUP` to this condition.
+
+In `tests/duelScripted.test.ts`'s describe "the scripted Helm lines the guns up (W-4 spec §12, §19.1: W-4a's ±60° stand-in)" (kind (a), W-4 spec §12: the autocannon's geometry), rename it to "the scripted Helm lines the guns up (W-4 spec §12: outside the autocannon's ±30°, within 600 u)", and replace the first case's three `place(...)` lines with:
+
+```ts
+      place(d, 32, 300); expect(faces(d)).toBe(true);    // 45° right: outside ±30° (inside the pew's ±60°, but the autocannon cannot bear)
+      place(d, 16, 300); expect(faces(d)).toBe(false);   // 22.5° right: inside ±30°, so it orbits
+      place(d, 64, 520); expect(faces(d)).toBe(true);    // 520 u: beyond PEW_RANGE, inside the autocannon's 600
+      place(d, 64, 700); expect(faces(d)).toBe(false);   // beyond 600
+```
+
+and its title to "on the Hound: face while the Hunter is seen within 600 u outside the autocannon's ±30°; not inside it, not beyond 600". The Valkyrn case stays. Keep `movedPair`, which the line-up describe uses.
 
 In `tests/duelScripted.test.ts`, replace W-4a's describe ("the scripted gunner on the Hound (… W-4a's stand-in pew)") with (kind (a), W-4 spec §12):
 
@@ -1383,7 +1565,7 @@ describe('the scripted gunner on the Hound (W-4 spec §12: AUTO guns)', () => {
 });
 ```
 
-and in the whole-duel kinds expectation drop `'pewFire'`: `['shipPower', 'sit', 'stand', 'torpLock', 'weaponPower']` (comment: "W-4 spec §12, §14 (kind a): AUTO guns, so no pewFire (W-4b removed W-4a's stand-in)"); if the seed's duel no longer uses every kind, re-pick it as W-4a's Task 8 says. Drop helpers (`pewFires`, `movedPair`) and imports that are now unused.
+and in the whole-duel kinds expectation drop `'pewFire'`: `['shipPower', 'sit', 'stand', 'torpLock', 'weaponPower']` (comment: "W-4 spec §12, §14 (kind a): AUTO guns, so no pewFire (W-4b removed W-4a's stand-in)"); if the seed's duel no longer uses every kind, re-pick it as W-4a's Task 8 says. Drop the `pewFires` helper and imports that are now unused; keep `movedPair` (the Helm line-up's describe uses it).
 
 - [ ] **Step 6: Run**
 
@@ -1400,8 +1582,8 @@ Expected: only the known-red window. Any other red test: apply the fallout rule 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/renderer/src/sim/tactical/gun.ts src/renderer/src/sim/tactical/weapons.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/duel/scripted.ts tests/w4Auto.test.ts tests/w4Manual.test.ts tests/w4PewFire.test.ts tests/duelScripted.test.ts docs/superpowers/research/2026-11-19-w4-report.md <each kind (a) test fixed in Step 7>
-git commit -m "feat(w4b): AUTO fires at a seen, hostile ship on solution (the pew per third, the autocannon to 80 % heat), holds fire in the hold; pewFire is MAN only; the scripted gunner leaves the guns on AUTO (W-4 spec §4.3, §6, §12)" -m "<kind (a) tests changed>" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add src/renderer/src/sim/tactical/gun.ts src/renderer/src/sim/tactical/pew.ts src/renderer/src/sim/tactical/weapons.ts src/renderer/src/sim/tactical/tuning.ts src/renderer/src/sim/duel/step.ts src/renderer/src/sim/duel/scripted.ts tests/w4Auto.test.ts tests/w4Manual.test.ts tests/w4PewFire.test.ts tests/w4Autocannon.test.ts tests/w4Turret.test.ts tests/duelScripted.test.ts docs/superpowers/research/2026-11-19-w4-report.md <each kind (a) test fixed in Step 7>
+git commit -m "feat(w4b): AUTO fires at a seen, hostile ship on solution (the pew per third, the autocannon to 80 % heat), holds fire in the hold, and keeps the gun out of hand firing in MAN; pewFire is MAN only; the scripted gunner leaves the guns on AUTO and the Helm lines up the autocannon (W-4 spec §3.4, §4.3, §6, §12)" -m "<kind (a) tests changed>" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1550,7 +1732,7 @@ git commit -m "feat(w4b): the online seat predicts its own selected turret over 
 - Create: `tests/w4Map.test.ts`
 
 **Interfaces:**
-- Consumes: `combatModel(input)` locals `own` (the interpolated own ship, `h` its fractional heading), `ownS`, `cls`, `z`, `enemyS`, `enemyShown`; `headingAngle(h)`, `drawnScale(z)` (tacticalModel.ts); `hasTurret`, `autoSolution`, `enemyHostile`, `weaponBars`, `WeaponSlot`, `PEW_RANGE`, `AUTOCANNON_AUTO_RANGE`, `AIM_STEPS`, `SHIP_RADIUS`; `DuelViewSource.turret?` / `weaponSel?`; the scene's `reticlePointer` (Task 5).
+- Consumes: `combatModel(input)` locals `own` (the interpolated own ship, `h` its fractional heading), `ownS`, `cls`, `z`, `enemyS`, `enemyShown`; `headingAngle(h)`, `drawnScale(z)` (tacticalModel.ts); `hasTurret`, `autoSolution`, `onSolution`, `slewTurret`, `turretWorldAim`, `handControl`, `enemyHostile`, `weaponBars`, `WeaponSlot`, `PEW_RANGE`, `AUTOCANNON_AUTO_RANGE`, `AIM_STEPS`, `SHIP_RADIUS`; `DuelViewSource.turret?` / `weaponSel?`; the scene's `reticlePointer` (Task 5).
 - Produces: `CombatModelInput.turrets?: { pew: number; gun: number } | null`, `weaponSel?: number`, `reticle?: Point | null`; `CombatDraw.turretArc: ArcDraw | null`, `muzzles: MuzzleDraw[]`, `reticle: Point | null`, `bracket: BracketDraw | null`; `interface MuzzleDraw extends Segment { selected: boolean }`, `interface BracketDraw { x: number; y: number; r: number; live: boolean }`.
 
 - [ ] **Step 1: Write the failing test**
@@ -1560,8 +1742,9 @@ Write `tests/w4Map.test.ts` on `tests/pewViews.test.ts`'s rig (its `input()` hel
 ```ts
 // W-4 spec §10 (W-4b): on the Hound's Weapons map the selected gun's arc about the nose (dim), each gun's muzzle line along
 // its turret (the selected one mid, the other dim; the pew to PEW_RANGE, the autocannon to 600), the reticle at the pointer,
-// and in AUTO a bracket on the enemy while a gun is on solution (hot once hostile, dim in the hold); no W-1 cone or aim line;
-// on the Helm map the muzzle lines only, dim, and no reticle.
+// and a bracket on the enemy while an AUTO-driven gun is on solution, tested one slew ahead within the tolerance (hot once
+// hostile, dim in the hold; never for the gun in hand); no W-1 cone or aim line; on the Helm map the muzzle lines only,
+// dim, and no reticle.
 import { describe, expect, it } from 'vitest';
 import { createCamera, worldToScreen, type Camera } from '../src/renderer/src/render/tactical/camera';
 import { createFx } from '../src/renderer/src/render/tactical/fxModel';
@@ -1569,7 +1752,8 @@ import { headingAngle, type PrevBody } from '../src/renderer/src/render/tactical
 import { combatModel, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
-import { autoSolution } from '../src/renderer/src/sim/tactical/turret';
+import { autoSolution, slewTurrets } from '../src/renderer/src/sim/tactical/turret';
+import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import { AIM_STEPS, AUTOCANNON_ARC_STEPS, AUTOCANNON_AUTO_RANGE, PEW_ARC_STEPS, PEW_RANGE } from '../src/renderer/src/sim/tactical/tuning';
 
@@ -1613,15 +1797,36 @@ describe("the Hound's Weapons map (W-4 spec §10)", () => {
     expect(combatModel(input(st, cam, 'weapons', { reticle: at })).reticle).toEqual(at);
     expect(combatModel(input(st, cam, 'helm', { reticle: at })).reticle ?? null).toBeNull();
   });
-  it('the AUTO bracket: on solution, live when hostile and not in the hold; absent in MAN or off solution', () => {
+  it('the AUTO bracket: when the next AUTO slew lands within the tolerance, live when hostile, dim in the hold; the gun in hand gets none, the gun out of hand in MAN does', () => {
     const { st, cam } = scene(6), s = st.systems[0]!, e = worldToScreen(cam, vp, st.ships[1].x, st.ships[1].y);
-    expect(combatModel(input(st, cam, 'weapons')).bracket ?? null).toBeNull();   // turrets at 0, the solution at bearing 6
+    expect(combatModel(input(st, cam, 'weapons')).bracket ?? null).toBeNull();   // turrets at 0, the solutions 1536 away: more than a slew and the tolerance
     s.pewTurret = autoSolution(st, 0, 'pew')!;
     expect(combatModel(input(st, cam, 'weapons')).bracket).toMatchObject({ x: e.x, y: e.y, live: true });
     st.hostileAt = -1;
     expect(combatModel(input(st, cam, 'weapons')).bracket).toMatchObject({ live: false });
-    s.gunsManual = true;
+    st.hostileAt = 0; s.gunsManual = true;
+    expect(combatModel(input(st, cam, 'weapons', { weaponSel: 0 })).bracket ?? null).toBeNull();   // the pew is in hand; the autocannon (at 0) is off its solution
+    s.gunTurret = autoSolution(st, 0, 'gun')!;
+    expect(combatModel(input(st, cam, 'weapons', { weaponSel: 0 })).bracket).toMatchObject({ live: true });   // owner 2026-11-19: the autocannon fights on AUTO in MAN
+    expect(combatModel(input(st, cam, 'weapons', { weaponSel: 1 })).bracket).toMatchObject({ live: true });   // the pew, now out of hand, sits on its solution
+  });
+  it('the bracket does not flicker: a turret one slew behind its lead still shows it; one beyond a slew and the tolerance does not (Decision 10)', () => {
+    const { st, cam } = scene(6), s = st.systems[0]!, sol = autoSolution(st, 0, 'pew')!;
+    s.pewTurret = sol - 364 - 182;   // the next slew (364) ends 182 short: on solution
+    expect(combatModel(input(st, cam, 'weapons')).bracket ?? null).not.toBeNull();
+    s.pewTurret = sol - 364 - 183;
     expect(combatModel(input(st, cam, 'weapons')).bracket ?? null).toBeNull();
+  });
+  it('the bracket stays on, frame after frame, while the moving Hound keeps its pew tracking a drifting lead (Decision 10)', () => {
+    const { st, cam } = scene(0), own = st.ships[0];
+    own.vx = 240;   // crossing under the Hunter 300 u ahead: the lead's whole-index bearing drifts every few ticks
+    const shown: boolean[] = [];
+    for (let k = 0; k < 60; k++) {
+      slewTurrets(st, 0, IDLE_INPUT);   // the sim's AUTO slew, on the pre-move position
+      own.x += own.vx / 60;   // then the ship moves, as the tick does
+      if (k >= 10) shown.push((combatModel(input(st, cam, 'weapons')).bracket ?? null) !== null);   // the replica after the tick
+    }
+    expect(shown.every(Boolean)).toBe(true);
   });
   it('on the Helm map: two dim muzzle lines, no arc, no reticle, no bracket', () => {
     const { st, cam } = scene(6);
@@ -1646,7 +1851,7 @@ Expected: FAIL (no `turretArc` / `muzzles`).
 
 In `render/tactical/weaponsModel.ts`:
 
-1. Imports: `hasTurret` from `../../sim/tactical/defs`; `autoSolution` from `../../sim/tactical/turret`; `enemyHostile` from `../../sim/tactical/science` (beside `pointSeen`); `weaponBars, WeaponSlot` from `../../sim/tactical/bars`; add `AUTOCANNON_AUTO_RANGE` to the tuning import.
+1. Imports: `hasTurret` from `../../sim/tactical/defs`; `autoSolution, onSolution, slewTurret, turretWorldAim` from `../../sim/tactical/turret`; `handControl` from `../../sim/tactical/state`; `enemyHostile` from `../../sim/tactical/science` (beside `pointSeen`); `weaponBars, WeaponSlot` from `../../sim/tactical/bars`; add `AUTOCANNON_AUTO_RANGE` to the tuning import.
 2. After `Segment`, add:
 
 ```ts
@@ -1674,8 +1879,9 @@ export interface BracketDraw { x: number; y: number; r: number; live: boolean }
 ```ts
   // W-4 spec §10: on a turret class (the Hound) the selected gun's arc about the drawn nose (dim), each gun's muzzle line
   // along its turret offset about the drawn nose (Decision 5: the hull carries the turret; the selected one mid on the
-  // Weapons map, dim elsewhere), the reticle at the pointer, and in AUTO a bracket on the enemy while a gun sits on its
-  // solution (the sim's own test, on the replica's turrets; hot once hostile, dim in the hold).
+  // Weapons map, dim elsewhere), the reticle at the pointer, and a bracket on the enemy while an AUTO-driven gun (not in
+  // hand: AUTO, or the other gun in MAN) is on its solution: the sim's test one tick ahead, from the replica's turret and
+  // heading (Decision 10), so a drifting lead does not flicker it; hot once hostile, dim in the hold.
   let turretArc: ArcDraw | null = null, reticle: Point | null = null, bracket: BracketDraw | null = null;
   const muzzles: MuzzleDraw[] = [];
   if (hasTurret(cls) && input.ships.includes(0)) {
@@ -1690,11 +1896,12 @@ export interface BracketDraw { x: number; y: number; r: number; live: boolean }
     }
     if (onWeapons) reticle = input.reticle ?? null;
     const on = (gun: 'pew' | 'gun'): boolean => {
-      if (weaponBars(sys, gun === 'pew' ? WeaponSlot.Pew : WeaponSlot.Autocannon) < 1) return false;
-      const s = autoSolution(state, 0, gun);
-      return s !== null && s === (gun === 'pew' ? sys.pewTurret : sys.gunTurret);
+      const slot = gun === 'pew' ? WeaponSlot.Pew : WeaponSlot.Autocannon, t = (gun === 'pew' ? cls.slots.pew : cls.slots.gun)?.turret ?? null;
+      if (!t || weaponBars(sys, slot) < 1 || handControl(state, 0, sel, slot)) return false;   // the gun in hand gets no bracket
+      const s = autoSolution(state, 0, gun), h = state.ships[0]!.heading, now = gun === 'pew' ? sys.pewTurret : sys.gunTurret;
+      return s !== null && onSolution(slewTurret(now, h, turretWorldAim(h, s), t.traverse[0], t.arcSteps), s);   // the next AUTO slew lands within the tolerance
     };
-    if (onWeapons && !sys.gunsManual && enemyShown && (on('pew') || on('gun'))) bracket = { x: enemyS.x, y: enemyS.y, r: SHIP_RADIUS * drawnScale(z) + 6, live: enemyHostile(state) };
+    if (onWeapons && enemyShown && (on('pew') || on('gun'))) bracket = { x: enemyS.x, y: enemyS.y, r: SHIP_RADIUS * drawnScale(z) + 6, live: enemyHostile(state) };
   }
 ```
 
@@ -1754,26 +1961,46 @@ git commit -m "feat(w4b): the Weapons map draws the selected arc, both muzzle li
 - Modify: `tests/w4Ui.test.tsx`
 
 **Interfaces:**
-- Consumes: W-4a's `WeaponsPanel.autocannon` / `selected` and its `weaponsPanel()` spread (quoted in Step 3), `HoundWeapons`, `weaponCard('autocannon')`, `Button` (`ui/stage/Button.tsx`), `enemyHostile`.
-- Produces: `WeaponsPanel.gunsManual?: boolean`, `gunsHold?: boolean`; Buttons `gun-mode-pew`, `gun-mode-autocannon` (testids `console-gun-mode-pew`, `console-gun-mode-autocannon`, following `Button`'s `console-${name}` rule as W-3's `console-torp-mode`).
+- Consumes: W-4a's `WeaponsPanel.autocannon` / `selected` and its `weaponsPanel()` spread (quoted in Step 3), `HoundWeapons`, `HOUND_PEW_PIPS_X`, `weaponCard('autocannon')`, `Button` (`ui/stage/Button.tsx`), `textPx` (`render/theme.ts`), `enemyHostile`, `handControl` (Task 3).
+- Produces: `WeaponsPanel.gunsManual?: boolean`, `gunsHand?: number` (the gun slot in hand, −1 none), `gunsHold?: boolean`; Buttons `gun-mode-pew`, `gun-mode-autocannon` (testids `console-gun-mode-pew`, `console-gun-mode-autocannon`, following `Button`'s `console-${name}` rule as W-3's `console-torp-mode`).
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/w4Ui.test.tsx` (W-4a's rig: `mount()`, `texts()`, `q()`, `view()`, `weapons(over)`, `AC`, `input()`). The panel fields `gunsManual` and `gunsHold` are set directly in the view, and `Button`'s `lit` state is `dataset.uiButton === 'lit'`, as the `console-torp-mode` test reads it:
+Append to `tests/w4Ui.test.tsx` (W-4a's rig: `mount()`, `texts()`, `q()`, `view()`, `weapons(over)`, `AC`, `input()`, and its `STATION` / `textPx` imports). The panel fields `gunsManual`, `gunsHand` and `gunsHold` are set directly in the view, and `Button`'s `lit` state is `dataset.uiButton === 'lit'`, as the `console-torp-mode` test reads it:
 
 ```tsx
+/** An element's rectangle from its inline style (jsdom does no layout), as tests/engineeringWeaponsUi.test.tsx reads it. */
+const rect = (e: HTMLElement): [number, number, number, number] => { const l = parseFloat(e.style.left), t = parseFloat(e.style.top); return [l, t, l + parseFloat(e.style.width), t + parseFloat(e.style.height)]; };
+const overlap = (a: [number, number, number, number], b: [number, number, number, number]): boolean => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+
 describe('the shared AUTO / MAN / HOLD tag (W-4 spec §4.3, §10)', () => {
   const tags = () => ['pew', 'autocannon'].map((w) => q(`[data-testid="console-gun-mode-${w}"]`)!);
-  it('the two gun tags read AUTO once hostile, HOLD in the hold, MAN (both lit) in MAN', () => {
+  const words = (): string[] => texts().filter((t) => t === 'AUTO' || t === 'HOLD' || t === 'MAN');
+  it('AUTO: both read AUTO once hostile and HOLD in the hold, unlit; MAN: both lit, the gun in hand reads MAN and the other AUTO (or HOLD); the torpedo selected, both AUTO-driven', () => {
     const { duel } = mount();
-    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, gunsManual: false, gunsHold: false }))));
+    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, gunsManual: false, gunsHand: -1, gunsHold: false }))));
     expect(tags().map((t) => t.dataset.uiButton === 'lit')).toEqual([false, false]);
-    expect(texts().filter((t) => t === 'AUTO')).toHaveLength(2);
-    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, gunsManual: false, gunsHold: true }))));
-    expect(texts().filter((t) => t === 'HOLD')).toHaveLength(2);
-    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, gunsManual: true, gunsHold: true }))));
+    expect(words()).toEqual(['AUTO', 'AUTO']);
+    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, gunsManual: false, gunsHand: -1, gunsHold: true }))));
+    expect(words()).toEqual(['HOLD', 'HOLD']);
+    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, gunsManual: true, gunsHand: 0, gunsHold: false }))));
     expect(tags().map((t) => t.dataset.uiButton === 'lit')).toEqual([true, true]);
-    expect(texts().filter((t) => t === 'MAN')).toHaveLength(2);
+    expect(words().sort()).toEqual(['AUTO', 'MAN']);   // owner 2026-11-19: the autocannon, out of hand, fights on AUTO
+    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 2, gunsManual: true, gunsHand: -1, gunsHold: true }))));
+    expect(tags().map((t) => t.dataset.uiButton === 'lit')).toEqual([true, true]);
+    expect(words()).toEqual(['HOLD', 'HOLD']);
+  });
+  it('the tags clear the PEW PEW label, the charge pips, the bar pips, the AUTOCANNON title and each other (8 px from the text)', () => {
+    const { duel } = mount();
+    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, gunsManual: false, gunsHand: -1, gunsHold: false, weaponBars: [1, 1, 1], weaponFree: 0 }))));
+    const [pew, gun] = tags().map(rect), x0 = STATION.x + 8;
+    expect(pew[0]).toBeGreaterThanOrEqual(x0 + textPx('PEW PEW', 1) + 8);
+    expect(pew[2] + 8).toBeLessThanOrEqual(x0 + HOUND_PEW_PIPS_X);
+    expect(gun[0]).toBeGreaterThanOrEqual(STATION.x + 8 + 6 + textPx('AUTOCANNON', 1) + 8);   // the card's text x (lx) plus the title
+    const others = [...document.querySelectorAll<HTMLElement>('[data-ui-pew-pip], [data-ui-weapon-pip]')].map(rect);
+    expect(others.length).toBeGreaterThan(0);
+    for (const o of others) for (const t of [pew, gun]) expect(overlap(t, o), `${t} vs ${o}`).toBe(false);
+    expect(overlap(pew, gun)).toBe(false);
   });
   it('a click on either tag presses weaponMode', () => {
     const { ui, duel } = mount(), i = input();
@@ -1783,10 +2010,14 @@ describe('the shared AUTO / MAN / HOLD tag (W-4 spec §4.3, §10)', () => {
     expect(i.press).toHaveBeenCalledTimes(2);
     expect(i.press).toHaveBeenCalledWith('weaponMode');
   });
-  it('the hint row reads LMB FIRE · A/D SELECT · W/S POWER · Z AUTO/MAN', () => {
+  it('the hint rows: LMB FIRE · A/D SELECT · W/S POWER, then Z AUTO/MAN · RIGHT-CLICK TORPEDO: CLEAR, each clear of FREE / ROCKS by 8 px', () => {
     const { duel } = mount();
     act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, gunsManual: false, gunsHold: false }))));
-    expect(texts()).toContain('LMB FIRE · A/D SELECT · W/S POWER · Z AUTO/MAN');
+    expect(texts()).toContain('LMB FIRE · A/D SELECT · W/S POWER');
+    expect(texts()).toContain('Z AUTO/MAN · RIGHT-CLICK TORPEDO: CLEAR');
+    const x0 = STATION.x + 8, right = STATION.x + STATION.w - 8;
+    expect(x0 + textPx('LMB FIRE · A/D SELECT · W/S POWER', 1) + 8).toBeLessThanOrEqual(right - textPx(freeText(9), 1));
+    expect(x0 + textPx('Z AUTO/MAN · RIGHT-CLICK TORPEDO: CLEAR', 1) + 8).toBeLessThanOrEqual(right - textPx('ROCKS 99', 1));
   });
   it("the laser fit's BEAM tag presses weaponMode too", () => {
     const { ui, duel } = mount(), i = input();
@@ -1810,34 +2041,33 @@ Expected: FAIL (no gun tags).
 In `render/duel/consoleModel.ts`, in `WeaponsPanel` after W-4a's `autocannon?` / `selected?`, add:
 
 ```ts
-  /** W-4 spec §10 (W-4b): both guns' mode (the one shared tag), and whether the 30 s hold keeps AUTO guns quiet (the tag
-   *  then reads HOLD instead of AUTO). */
-  gunsManual?: boolean; gunsHold?: boolean;
+  /** W-4 spec §10 (W-4b): both guns' mode (the shared switch, both tags lit in MAN); the gun slot in the gunner's hands (0
+   *  or 1, −1 none: handControl, owner 2026-11-19), whose tag reads MAN while the other's reads AUTO; and whether the 30 s
+   *  hold keeps the AUTO-driven guns quiet (their tags then read HOLD instead of AUTO). */
+  gunsManual?: boolean; gunsHand?: number; gunsHold?: boolean;
 ```
 
-and in W-4a's `weaponsPanel()` spread (the `...(hasTurret(classOf(t, 0)) && classOf(t, 0).slots.gun ? { autocannon: { ... }, selected: i.weaponSel ?? 0 } : {})` entry), add after `selected: i.weaponSel ?? 0` the fields `gunsManual: sys.gunsManual, gunsHold: !sys.gunsManual && !enemyHostile(t)` (import `enemyHostile` from `../../sim/tactical/science`).
+and in W-4a's `weaponsPanel()` spread (the `...(hasTurret(classOf(t, 0)) && classOf(t, 0).slots.gun ? { autocannon: { ... }, selected: i.weaponSel ?? 0 } : {})` entry), add after `selected: i.weaponSel ?? 0` the fields `gunsManual: sys.gunsManual, gunsHand: [0, 1].find((g) => handControl(t, 0, i.weaponSel ?? 0, g)) ?? -1, gunsHold: !enemyHostile(t)` (import `enemyHostile` from `../../sim/tactical/science` and `handControl` from `../../sim/tactical/state`). W-4c's flight rule reaches the tag through `handControl` with no change here. W-4a's AUTOCANNON `rate` (`autocannonRateText(gunInterval(t, 0))`) becomes `autocannonRateText(gunInterval(t, 0, handControl(t, 0, i.weaponSel ?? 0, 1)))`, so the card shows the rate the gun fires at: MAN's only in hand.
 
 - [ ] **Step 4: The station**
 
-In `ui/duel/WeaponsStation.tsx`, in W-4a's `HoundWeapons`:
-- add a helper `const gunTag = (): string => (weapons.gunsManual ? 'MAN' : weapons.gunsHold ? 'HOLD' : 'AUTO');`;
-- on the PEW PEW row, right of its `PEW PEW` label: `<Button name="gun-mode-pew" label={gunTag()} x={x0 + textPx('PEW PEW', 1) + 8} y={top + 2} w={36} h={18} lit={weapons.gunsManual === true} onPress={() => actions.console.press('weaponMode')} />`;
-- in the AUTOCANNON card's header, where W-2's BEAM tag sat (`x={lx + 66} y={L.y + 2}` with `L = weaponCard('autocannon')`, `lx` its text x): `<Button name="gun-mode-autocannon" label={gunTag()} x={lx + 66} y={L.y + 2} w={36} h={18} lit={weapons.gunsManual === true} onPress={() => actions.console.press('weaponMode')} />`;
-- the hint text `LMB FIRE · A/D SELECT · W/S POWER` → `LMB FIRE · A/D SELECT · W/S POWER · Z AUTO/MAN`;
-- update the file's header comment: "W-4 spec §10 (W-4b): the two gun tags are one AUTO / MAN switch (Z), reading HOLD while the hold keeps AUTO quiet."
-
-If the PEW PEW button's x overlaps W-4a's `1` hint, move the button left of the hint (`x={right - 36 - textPx('1', 1) - 12}`) instead; the test reads it by testid, not position.
+In `ui/duel/WeaponsStation.tsx`, add `textPx` to the `../../render/theme` import, and in W-4a's `HoundWeapons`:
+- add a helper `const gunTag = (slot: 0 | 1): string => (weapons.gunsHand === slot ? 'MAN' : weapons.gunsHold ? 'HOLD' : 'AUTO');` (each tag names what its gun does, Decision 9);
+- on the PEW PEW row, between its `PEW PEW` label (45 px) and the charge pips at `x0 + HOUND_PEW_PIPS_X` (W-4a): `<Button name="gun-mode-pew" label={gunTag(0)} x={x0 + textPx('PEW PEW', 1) + 8} y={top + 4} w={36} h={18} lit={weapons.gunsManual === true} onPress={() => actions.console.press('weaponMode')} />`. That spans `x0 + 53` to `x0 + 89`, 11 px short of the first charge pip, and `top + 4` to `top + 22`, above the bar pips at `top + 24`;
+- in the AUTOCANNON card's header, right of its title: `<Button name="gun-mode-autocannon" label={gunTag(1)} x={lx + textPx('AUTOCANNON', 1) + 8} y={L.y + 2} w={36} h={18} lit={weapons.gunsManual === true} onPress={() => actions.console.press('weaponMode')} />` with `L = weaponCard('autocannon')` and `lx = L.x + 6`. The title is 60 px, so the tag spans `lx + 68` to `lx + 104`, inside the card and left of the `2` hint. W-2's BEAM tag sat at `lx + 66`, which the longer title would touch;
+- the second hint row: W-4a's `RIGHT-CLICK TORPEDO: CLEAR` → `Z AUTO/MAN · RIGHT-CLICK TORPEDO: CLEAR` (225 px, left of `ROCKS n` with 8 px to spare). The first row stays `LMB FIRE · A/D SELECT · W/S POWER`: with Z added it would be 268 px, which runs into `FREE n` (241 px is the room);
+- update the file's header comment: "W-4 spec §10 (W-4b): the two gun tags are one AUTO / MAN switch (Z), lit in MAN; each names what its gun does: MAN for the gun in hand, else AUTO, or HOLD while the hold keeps AUTO quiet."
 
 - [ ] **Step 5: Run**
 
-Run: `npx tsc -b` then `npx vitest run tests/w4Ui.test.tsx tests/manualLaserUi.test.tsx tests/manualTorpedoUi.test.tsx tests/targetingUi.test.tsx`
-Expected: tsc clean; all PASS.
+Run: `npx tsc -b` then `npx vitest run tests/w4Ui.test.tsx tests/manualLaserUi.test.tsx tests/manualTorpedoUi.test.tsx tests/targetingUi.test.tsx tests/engineeringWeaponsUi.test.tsx tests/rockTargetUi.test.tsx`
+Expected: tsc clean; all PASS (the last two are the existing "+8 clear" and overlap tests on the laser block, which W-4b does not move).
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add src/renderer/src/render/duel/consoleModel.ts src/renderer/src/ui/duel/WeaponsStation.tsx tests/w4Ui.test.tsx
-git commit -m "feat(w4b): the shared AUTO / MAN / HOLD tag on both gun cards, and Z in the hint row (W-4 spec §10)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(w4b): the shared AUTO / MAN / HOLD tag on both gun cards (MAN on the gun in hand), and Z in the second hint row (W-4 spec §10)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1850,7 +2080,7 @@ git commit -m "feat(w4b): the shared AUTO / MAN / HOLD tag on both gun cards, an
 
 **Interfaces:**
 - Consumes: `AUTOCANNON`, `GUN_HITS_PER_HULL`, `AUTOCANNON_AUTO_RANGE`, `MISSILE_GAP`, `houndGunner` (Task 6), `runDuel`, `telemetryLine`, `gateSummary` (`tests/helpers/scriptedDuel.ts`), `scripts/duel-telemetry.ts`.
-- Produces: `AUTOCANNON_HITS_PER_HULL`, `HOUND_MISSILE_GAP`, `HOUND_GUNNER_AUTOCANNON_BARS` (Decision 11), and the shipped values.
+- Produces: `HOUND_HELM_LINEUP`, `AUTOCANNON_HITS_PER_HULL`, `HOUND_MISSILE_GAP`, `HOUND_GUNNER_AUTOCANNON_BARS` (Decision 11), the shipped values and the whole sweep's table.
 
 - [ ] **Step 1: The knobs at their base values (a no-op)**
 
@@ -1871,7 +2101,12 @@ export const AUTOCANNON_HITS_PER_HULL = 12;
  *  MISSILE_GAP. */
 export const HOUND_MISSILE_GAP = 1500;
 export const HOUND_GUNNER_AUTOCANNON_BARS = 1 as 1 | 2;   // `as`, so `=== 2` type-checks while it holds 1
+/** W-4 spec §12: rung 0, the Hound Helm's line-up (helmAxes). Always true in a shipped build; the ladder's reference row
+ *  sets it false once to record what the line-up is worth. */
+export const HOUND_HELM_LINEUP = true as boolean;   // `as`, so the reference row's `false` type-checks
 ```
+
+In `helmAxes`, add `HOUND_HELM_LINEUP && ` at the front of Task 6's line-up condition (`if (HOUND_HELM_LINEUP && hasTurret(classOf(t, 0)) && e.active && …)`).
 
 In `houndGunner`: the torpedo rule's `MISSILE_GAP` → `HOUND_MISSILE_GAP`; the bar move becomes
 
@@ -1892,20 +2127,22 @@ In `tests/w4Loadout.test.ts`, add `hitsPerHull` to both destructurings of the "h
 Run: `npx tsc -b` then `npx vitest run tests/w4Loadout.test.ts tests/duelScripted.test.ts tests/valkyrnIdentity.test.ts` then `npx tsx scripts/duel-telemetry.ts > ../w4b-ladder-base.txt`
 Expected: tsc clean; PASS (bar the known-red pins); the telemetry equals Task 6's (the knobs hold their base values).
 
-- [ ] **Step 2: The base result**
+- [ ] **Step 2: Rung 0, the base and its reference row**
 
-From `../w4b-ladder-base.txt` take `crew wins N` and run `npx vitest run tests/duelGates.test.ts`. If N ≥ 1 and every per-seed test passes, the ladder stops here: go to Step 4 with the base numbers.
+From `../w4b-ladder-base.txt` take `crew wins N` and run `npx vitest run tests/duelGates.test.ts`. Record the base row (rung 0: the Helm line-up on, every knob at base): setting, crew wins, crew losses, median length, per-seed pass or the failing seeds.
 
-- [ ] **Step 3: The rungs, in order (spec §12)**
+Then the reference row: set `HOUND_HELM_LINEUP = false as boolean`, run `npx tsx scripts/duel-telemetry.ts > ../w4b-ladder-lineup-off.txt` and `npx vitest run tests/duelGates.test.ts`, record the row marked "reference, never kept", and set it back to `true as boolean`.
 
-Try each setting below in order, with every earlier knob back at its base value. For each: change the one constant, run `npx tsx scripts/duel-telemetry.ts > ../w4b-ladder-<name>.txt` and `npx vitest run tests/duelGates.test.ts`, and record a row (setting, crew wins, crew losses, median length, per-seed pass or the failing seeds). Stop at the first setting with crew wins ≥ 1 and every per-seed test passing, and keep it.
+- [ ] **Step 3: The rungs, in order, all of them (spec §12)**
+
+Run every setting below in order, with every other knob at its base value. Record the whole sweep, whichever rung passes. For each: change the one constant, run `npx tsx scripts/duel-telemetry.ts > ../w4b-ladder-<name>.txt` and `npx vitest run tests/duelGates.test.ts`, record a row as in Step 2, then put the constant back to its base value.
 
 1. `AUTOCANNON_HITS_PER_HULL`: 10, then 8, then 6.
 2. `AUTOCANNON_AUTO_RANGE` (tuning.ts): 450.
 3. `HOUND_MISSILE_GAP`: 1125, then 750.
 4. `HOUND_GUNNER_AUTOCANNON_BARS`: 2.
 
-Never touch a Hunter or a Valkyrn knob. If no setting meets the target, restore every knob to its base value; the base numbers ship.
+The setting kept is the first in this order that meets the target (crew wins ≥ 1 with every per-seed test passing), counting rung 0's base row first: if the base meets it, the base numbers ship. Set the kept setting's constant (none for the base) once the sweep is done. Never touch a Hunter or a Valkyrn knob. If no setting meets the target, every knob stays at its base value and the base numbers ship.
 
 For the setting kept, update the tests it pins (kind (a), citing W-4 spec §12):
 - rung 1: `tests/w4Loadout.test.ts`'s `AUTOCANNON.hitsPerHull` assertion reads the constant, so it needs no change;
@@ -1917,7 +2154,7 @@ Add the changed test files to Step 5's commit. `tests/w4Loadout.test.ts` is alwa
 
 - [ ] **Step 4: The report**
 
-Under `## W-4b` in `docs/superpowers/research/2026-11-19-w4-report.md` write: the ladder table (every setting tried, in order), the setting kept (or "none met the target: base numbers ship; the owner decides"), and for the kept setting the per-seed table (seed, length s, outcome, pew rounds, gun rounds, torpedo launches, hold end rt, hold cause) from `telemetryLine` and the `gateSummary` lines. The aggregate gate stays `it.skip` (kind (c)); its numbers are these.
+Under `## W-4b` in `docs/superpowers/research/2026-11-19-w4-report.md` write: the ladder table (every setting of the sweep, in order: rung 0's base row and its line-up-off reference row, then every value of rungs 1 to 4), the setting kept (or "none met the target: base numbers ship; the owner decides"), and for the kept setting the per-seed table (seed, length s, outcome, pew rounds, gun rounds, torpedo launches, hold end rt, hold cause) from `telemetryLine` and the `gateSummary` lines. The aggregate gate stays `it.skip` (kind (c)); its numbers are these.
 
 Run: `npx tsc -b` then `npx vitest run tests/duelGates.test.ts tests/w4Loadout.test.ts tests/valkyrnIdentity.test.ts tests/w4HunterIdentity.test.ts`
 Expected: the per-seed gates PASS (if no setting met the target and a per-seed test still fails, stop and report to the controller with the table: the owner decides, spec §12); the fences PASS.
@@ -1926,7 +2163,7 @@ Expected: the per-seed gates PASS (if no setting met the target and a per-seed t
 
 ```bash
 git add src/renderer/src/sim/tactical/tuning.ts src/renderer/src/sim/tactical/defs.ts src/renderer/src/sim/duel/scripted.ts tests/w4Loadout.test.ts docs/superpowers/research/2026-11-19-w4-report.md <tests/duelScripted.test.ts if rung 4 is kept>
-git commit -m "tune(w4b): the spec §12 ladder on the Hound-only knobs; <the setting kept, or base numbers>" -m "<the ladder table, one line per setting>" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "tune(w4b): the spec §12 ladder on the Hound-only knobs (rung 0 the Helm line-up, the whole sweep recorded); <the setting kept, or base numbers>" -m "<the ladder table, one line per setting>" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1944,8 +2181,8 @@ git commit -m "tune(w4b): the spec §12 ladder on the Hound-only knobs; <the set
 
 - [ ] **Step 1: The fences, unchanged**
 
-Run: `git diff --stat W4_BASE -- tests/valkyrnRoundsRocks.test.ts tests/pewHunter.test.ts tests/torpedoGuidance.test.ts tests/w4HunterIdentity.test.ts` then `git diff W4_BASE -- tests/valkyrnIdentity.test.ts | grep "^[-+] *'" ` then `npx vitest run tests/valkyrnIdentity.test.ts tests/valkyrnRoundsRocks.test.ts tests/w4HunterIdentity.test.ts tests/pewHunter.test.ts tests/torpedoGuidance.test.ts`
-Expected: no diff in the first four (`w4HunterIdentity` unchanged since W-4a's Task 1); no changed pinned digest line in `valkyrnIdentity` (only Task 1's flatten helper); all PASS.
+Run: `git diff --stat W4_BASE -- tests/valkyrnRoundsRocks.test.ts tests/pewHunter.test.ts tests/torpedoGuidance.test.ts` then `git log --oneline W4_BASE..HEAD -- tests/w4HunterIdentity.test.ts` then `git diff W4_BASE -- tests/valkyrnIdentity.test.ts | grep "^[-+] *'" ` then `npx vitest run tests/valkyrnIdentity.test.ts tests/valkyrnRoundsRocks.test.ts tests/w4HunterIdentity.test.ts tests/pewHunter.test.ts tests/torpedoGuidance.test.ts`
+Expected: no diff in the first three. `w4HunterIdentity` was created after `W4_BASE` (W-4a Task 1), so it is not diffed against it: the log lists exactly one commit, W-4a Task 1's, and the run passes. No changed pinned digest line in `valkyrnIdentity` (only Task 1's flatten helper). All PASS.
 
 - [ ] **Step 2: The same-version bless**
 
@@ -1977,13 +2214,14 @@ Append to `docs/gates.md`, in the W-2 / W-3 / W-4a entries' format:
 
 Spec `docs/superpowers/specs/2026-11-19-w4-weapons-controls-design.md` §3, §4, §6, §8-§12, §13.1, §13.4, §19; plan `docs/superpowers/plans/2026-11-19-w4b-turrets-auto.md`.
 
-- [x] Automated (W-4b): `npx vitest run` passes (<files> files, <tests> tests). This includes the turret state (hashed, bounded per class), the slew law (rate, arc, wrap, integers), MAN slewing only the selected gun at 455 / 341 and AUTO at 364 / 273, AUTO's solutions (seen, range, line of sight, arc, ship only) and firing (the pew per third, the autocannon to 80 % heat and never locking, nothing in the 30 s hold), MAN's fire-rate tables, `gunMode` and `pewFire`'s AUTO refusal, `turretAim` in every held schema, Z and the shared tag, the map's arc, muzzle lines, reticle and bracket, the online turret prediction equal to the stepped turret, and the scripted gunner on AUTO guns (`tests/w4*.test.ts`). `npx tsc -b` is clean; SIM_VERSION V (60 today), goldens blessed at V, no bump; `tests/valkyrnIdentity.test.ts`'s digests and `tests/w4HunterIdentity.test.ts` unchanged; determinism passes on Node, Electron and Firefox. Tuning ladder: <the setting kept, or "base numbers">.
+- [x] Automated (W-4b): `npx vitest run` passes (<files> files, <tests> tests). This includes the turret state (hashed, bounded per class), the slew law (rate, arc, wrap, integers), MAN slewing only the gun in hand at 455 / 341 while the other fights on AUTO, AUTO at 364 / 273 and on solution within 182 fine steps (firing through a sustained Helm turn), AUTO's solutions (seen, range, line of sight, arc, ship only) and firing (the pew per third, the autocannon to 80 % heat and never locking, nothing in the 30 s hold), the scripted Helm lining the guns up, MAN's fire-rate tables, `gunMode` and `pewFire`'s AUTO refusal, `turretAim` in every held schema, Z and the shared tag, the map's arc, muzzle lines, reticle and bracket, the online turret prediction equal to the stepped turret, and the scripted gunner on AUTO guns (`tests/w4*.test.ts`). `npx tsc -b` is clean; SIM_VERSION V (60 today), goldens blessed at V, no bump; `tests/valkyrnIdentity.test.ts`'s digests and `tests/w4HunterIdentity.test.ts` unchanged; determinism passes on Node, Electron and Firefox. Tuning ladder: <the setting kept, or "base numbers">.
 - [ ] Manual (owner): play a Single player duel at the Hound's Weapons seat.
   1. Move the mouse over the map: the reticle follows; in MAN (Z) the selected gun's muzzle line trails it and stops at the arc's edge.
   2. Press Z: both tags flip between AUTO and MAN together.
   3. In the first 30 s, on AUTO, the guns track the enemy and the tags read HOLD; nothing fires.
   4. Once hostile, on AUTO, both guns track and fire at the ship with no input; the bracket lights on the enemy.
-  5. MAN feels quicker to traverse and fire than AUTO.
+  5. In MAN, with pew pew selected, its tag reads MAN and the autocannon's AUTO, and the autocannon keeps firing on its own while you aim the pew.
+  6. MAN feels quicker to traverse and fire than AUTO.
 
   Screenshots for the look gate:
   1. The map in MAN, with the reticle, the selected arc and two muzzle lines.
@@ -2009,4 +2247,5 @@ git commit -m "test(w4b): same-version bless at SIM_VERSION V for the turrets an
 
 - **Spec coverage (W-4b scope):** §3.1 state → Task 1; §3.2 slew law → Task 1, wired in Task 4; §3.3 numbers → W-4a's tuning constants, exercised in Tasks 1 and 4; §3.4 when a turret slews → Task 4 (§19.1: the MANUAL-torpedo hold is W-4c's); §4.1 the mode and `gunMode` → Task 3, the keys in Task 5; §4.2 targets and solutions (ship only, `pewLead`, `gunLead`, line of sight) → Task 4; §4.3 AUTO firing, the heat stop, LMB on an AUTO gun, the hold → Task 6 (sim) and Task 5 (app); §4.4 MAN tables → Task 3; §6 `pewFire`'s AUTO refusal → Task 6; §8 `turretAim`, `gunMode`, the tick order → Tasks 2, 3, 4, 6; §9 the mouse reticle and Z → Task 5; §10 the tags and hint → Task 9, the map → Task 8; §11 online (the authority decides, held fields, prediction, `gunModeSent`) → Tasks 5 and 7; §12 AUTO gunner and the ladder → Tasks 6 and 10; §13.1 hash and bounds → Task 1 (the cooldown bound is W-4a's Task 3); §13.4 the Valkyrn identity → Task 1, the fences → every sim task; §14's turret, AUTO, MAN, online, hash and snapshot tests → Tasks 1-9; §19.1 the per-part bless and gates → Tasks 10 and 11.
 - **Placeholders:** every test body, sim and app, is written in full. The app tests extend W-4a's rigs (`w4Runtime`'s `rig()`, `onlineDuelSession`'s `rig()`, `w4Ui`'s `mount()`) and `pewViews`' `input()`.
-- **Type consistency:** `turretOffset`, `slewTurret`, `turretWorldAim`, `autoSolution`, `AutoOnSolution`, `slewTurrets`, `gunLead`, `tickGun(…, auto)`, `heldTurretAim`, `predictTurret`, `weaponsSeatHeld(sel, trigger, aim)`, `sessionHeld(…, { sel, trigger, aim })`, `gunModeSent`, `gunModeBase`, `DuelViewSource.turret`, `MapRequests.reticle/reticleAim/resetReticle`, `DuelRuntimeDeps.reticleAim`, `KeyAction 'weaponMode'`, `CombatModelInput.turrets/weaponSel/reticle`, `CombatDraw.turretArc/muzzles/reticle/bracket` and `WeaponsPanel.gunsManual/gunsHold` are each defined once and used with the same signature in later tasks.
+- **The owner's 2026-11-19 calls:** hand control (MAN and selected; the other gun AUTO) → Task 3 (`handControl`, the rates), Task 4 (the slew), Task 6 (`tickGun`, firing tests), Task 8 (bracket), Task 9 (tags); the AUTO tolerance → Task 4 (`AUTO_FIRE_TOLERANCE`, `onSolution`), Task 6 (the turning test), Task 8 (the bracket one slew ahead). The Helm line-up (§12) → Task 6, rung 0 in Task 10.
+- **Type consistency:** `handControl`, `onSolution`, `AUTO_FIRE_TOLERANCE`, `AUTOCANNON_ARC_COS`, `HOUND_HELM_LINEUP`, `gunInterval(…, manual)`, `pewGain(…, manual)`, `tickPew(…, manual)`, `WeaponsPanel.gunsHand`, `turretOffset`, `slewTurret`, `turretWorldAim`, `autoSolution`, `AutoOnSolution`, `slewTurrets`, `gunLead`, `tickGun(…, auto)`, `heldTurretAim`, `predictTurret`, `weaponsSeatHeld(sel, trigger, aim)`, `sessionHeld(…, { sel, trigger, aim })`, `gunModeSent`, `gunModeBase`, `DuelViewSource.turret`, `MapRequests.reticle/reticleAim/resetReticle`, `DuelRuntimeDeps.reticleAim`, `KeyAction 'weaponMode'`, `CombatModelInput.turrets/weaponSel/reticle`, `CombatDraw.turretArc/muzzles/reticle/bracket` and `WeaponsPanel.gunsManual/gunsHold` are each defined once and used with the same signature in later tasks.
