@@ -70,12 +70,16 @@ export function inputBlockedOf(s: Pick<UiState, 'menu'>): boolean { return !isPl
 export function can(v: MenuView, action: MenuAction): boolean { return v.online.available && !!v.online.status?.actions.includes(action) && !v.menu.pending; }
 export function failureText(code: string): string { return ERRORS[code as OnlineErrorCode] ?? `Online request failed (${code}). Try again.`; }
 
+/** The lobby's status line (owner 2026-11-18: the bare phase word read as a bug). */
+export const LOBBY_MESSAGE = 'Everyone presses Ready, then the host starts.';
+
 export function menuMessage(v: MenuView): string {
   const m = v.menu, status = v.online.status;
   const phaseMessage = status?.phase === 'rehosting' ? 'Restoring the mirrored checkpoint…'
     : status?.phase === 'saving' ? 'Saving the final checkpoint…'
     : m.recovering && status?.phase === 'paused' && status.mirror.committed ? `Restored at tick ${status.mirror.committed.capturedTick}. Paused.` : null;
   return m.localError || phaseMessage || (status?.error ? ERRORS[status.error] ?? `Online stopped (${status.error}). Retry or leave.`
+    : m.page === 'session' && status?.phase === 'lobby' && !m.pending ? LOBBY_MESSAGE
     : m.page === 'session' ? `${status?.phase ?? 'Connecting'}${m.pending ? '…' : ''}`
     : m.page === 'multiplayer' ? 'Host a crew or join one with its room code.' : m.page === 'ship' ? 'Choose your ship.' : m.page === 'settings' ? '' : 'Choose how to play.');
 }

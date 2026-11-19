@@ -198,11 +198,25 @@ describe('the session page and the strip', () => {
     const seats = [{ seatId: 0, occupied: true, connected: true, ready: false }, { seatId: 1, occupied: true, connected: true, ready: true }];
     const lobby: OnlineStatus = { ...idle, phase: 'lobby', role: 'guest', ownSeat: 1, actions: ['ready', 'leave'], snapshot: { capacity: 2, joinCode: 'ABCDEFGH', seats } as never };
     act(() => actions.setStatus(lobby));
-    expect(text('room-code')).toBe('ROOM ABCDEFGH'); expect(text('assigned-seat')).toBe('You are Player 2');
+    expect(text('room-code')).toBe('ABCDEFGH'); expect(text('assigned-seat')).toBe('You are Player 2'); expect(text('page-title')).toBe('Lobby');
     expect(text('roster')).toContain('P1: Not ready'); expect(text('ready')).toBe('Not ready'); expect((screen.getByTestId('ready') as HTMLButtonElement).disabled).toBe(false); expect(screen.queryByTestId('start')).toBeNull();
     const host: OnlineStatus = { ...lobby, role: 'host', ownSeat: 0, actions: ['start', 'ready', 'remove-seat', 'leave'] };
     act(() => actions.setStatus(host)); expect((screen.getByTestId('start') as HTMLButtonElement).disabled).toBe(true);
     click('remove-seat-1'); expect(removeSeat).toHaveBeenCalledWith(1); expect(screen.queryByTestId('remove-seat-0')).toBeNull();
+  });
+  it('the room code sits on its own line and a click copies it to the clipboard (owner 2026-11-18)', async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const { actions } = renderUi();
+    const seats = [{ seatId: 0, occupied: true, connected: true, ready: false }];
+    act(() => actions.setStatus({ ...idle, phase: 'lobby', role: 'host', ownSeat: 0, actions: ['ready', 'leave'], snapshot: { capacity: 2, joinCode: 'ZQMGJ76S', seats } as never }));
+    const code = screen.getByTestId('room-code'), seat = screen.getByTestId('assigned-seat');
+    expect(code.tagName).toBe('BUTTON'); expect(code.textContent).toBe('ZQMGJ76S');
+    expect(code.parentElement).not.toBe(seat.parentElement);   // its own block, not inline with "You are Player 1"
+    expect(text('room-code-hint')).toBe('Click the code to copy it.');
+    await act(async () => { click('room-code'); await Promise.resolve(); });
+    expect(writeText).toHaveBeenCalledWith('ZQMGJ76S'); expect(text('room-code-hint')).toContain('Copied');
+    expect(text('roster')).toContain('(you)');
   });
   it("a duel lobby has no Swap seats and no seat plan for the host or the guest (owner 2026-11-17); Start carries the host's seat", () => {
     const start = vi.fn(async () => ({ ok: true as const })), { actions } = renderUi({ api: { start } });
