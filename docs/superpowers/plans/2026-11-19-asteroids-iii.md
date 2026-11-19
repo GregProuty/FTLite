@@ -12,7 +12,7 @@
 
 - Work only in `C:/Users/djuar/FTLite/.worktrees/asteroids-iii` (branch `spike/asteroids-iii`). Never touch `C:/Users/djuar/FTLite` or another worktree. Never `git stash`. Never merge or push. Commit only the files a task names.
 - Commands run from the worktree root in Git Bash: `cd /c/Users/djuar/FTLite/.worktrees/asteroids-iii`. Tests: `npx vitest run <files>`; types: `npm run typecheck`; whole suite: `npx vitest run`.
-- SIM_VERSION goes 59 → **60** in Task 14 only, by the two-step bless: a same-version `npm run bless` of the gameplay at 59, then `npx tsx scripts/golden/canonical-trace.ts baseline` and `npx tsx scripts/golden/duel-oracle.ts baseline` at 59, then the bump to 60 and a version-only `npm run bless` after both `check`s pass. No `--fresh`.
+- SIM_VERSION goes 60 → **61** in Task 14 only, by the two-step bless: a same-version `npm run bless` of the gameplay at 60, then `npx tsx scripts/golden/canonical-trace.ts baseline` and `npx tsx scripts/golden/duel-oracle.ts baseline` at 60, then the bump to 61 and a version-only `npm run bless` after both `check`s pass. No `--fresh`.
 - Determinism guard (`tests/helpers/determinismGuard.ts`, run by `tests/boundary.test.ts` over every file under `src/renderer/src/sim` and what it imports): sim code uses only `+ − × ÷`, `Math.abs`, `ceil`, `floor`, `round`, `min`, `max`, `sign`, `imul`, `sqrt`. No `**`, `Math.pow`, `Math.hypot`, trigonometry, `Date`, `performance`. Fixed constants are literals (`S45 = 0.7071067811865476`). Renderer files (`src/renderer/src/render/**`) may use any Math.
 - Spec values, exact (revision 3 where it amends): `ROCK_STRIDE 8`; kinds `Gone 0, Rail 1, Free 2, Tumble 3`; a rail slot is centre (x, y) and offset (vx, vy) at tick t, ρω = |centre|; `CLUSTER_SPIN_PERIOD 200` s; `ROCK_RESERVE 160`; `GM 2.5e6` (unchanged); `ROCK_GRAVITY 1.0`; `ROCK_MAX_SPEED 300` (a safety net, counted in `rockCapHits`); drag `k = 0.06 · clamp((age − 20) / 40, 0, 1)` toward V* = V_c(p) (everywhere) by symmetric half steps around the kick; in a lane zone ([1092, 1161) inner, [1161, 1239) main, [1239, 1308] outer) the kick adds the lane pull `−LANE_PULL · (ρ − ρ_lane) · p/ρ · (k / SETTLE_K_MAX)`, `LANE_PULL 0.004`/s²; lane capture only within `LANE_CAPTURE_DR 5` u of the lane radius; soft edge `K_EDGE_ROCK 0.25`, `EDGE_SETTLE_K 0.3`, slack 700 (400 and `K_EDGE` off); Roche `ROCHE_R 175`, r ≥ 13, age ≥ 30 ticks, tidal fan kick 0.03–0.08 v_esc; `REJOIN_MIN_TICKS 120`; `REJOIN_SPEED 0.5`; rejoin bounds `ρ + r ≤ R_MAP − 50`, `ρ − r ≥ PLANET_RADIUS + 80`; group snap `1.5 · ω · |Δρ| < 2`; restore: `|centre| ≥ 150`, `|offset| ≤ 200`, `r` in `[8, 60]`; mass `r³ / 30` (r² off); `BOUNCE_MIN 4`; `e = 0.3 + 0.5 · clamp((vc − 4) / 26, 0, 1)` above it, an e = 0 impulse at or below; separation `0.5 · max(0, overlap − 0.5)` a tick, each rock at most `ROCK_SEPARATE_MAX 8`; `TOUCH_MIN 8`; `ROCK_CRUSH_SPEED 30`; `ROCK_CRUSH_STEP 40`; grid cell 96 u, `ROCK_GRID_PAD 14`; `SHIP_MASS 900`; ship restitution 0.5; `RAM_SOFT 15`; burst 8/6/4 at parent r ≥ 40/30/20 (else dust), offsets 0.85/0.80/0.70 r, kick `v_esc · (0.15 + 0.25 f_j)`; fan 3 at r ≥ 40, 2 at r ≥ 13, offset 0.6 r, kick `v_esc · (0.10 + 0.15 f_j)`; `f_j = frac(j · 0.6180339887498949)`; piece r `0.9 r / √n`; push caps blast `0.5 v_esc(ρ)`, laser `0.25 v_esc(ρ)`; lanes (ρ, r band, count) inner (1122, 15–20, 17), main (1200, 25–45, 36), outer (1278, 15–20, 17); cluster centre ρ separation 420; trails 25 s at 4 Hz while younger than 60 s, else 6 s; outline spin ±0.1–0.5 rad/s; `LASER_ROCK_PUSH 4000`, `BLAST_PUSH 60000`, `BLAST_RADIUS 120` (unchanged).
 - The four switches `ROCK_SWITCHES.{massCube, softEdge, clusterTumble, rocheBreak}` (rockTuning.ts) are all `true`; tests that flip one use `withSwitches` (tests/helpers/rockArena.ts), which always restores them; nothing in the app sets them (plan deviation 19).
@@ -94,7 +94,7 @@ Modified:
 | `src/renderer/src/audio/rockSounds.ts` | The touch knock. |
 | `src/renderer/src/app/duel/scene.ts` | The rock track and hit-stop. |
 | `scripts/profile-duel-publication.ts` | Kind names. |
-| `src/renderer/src/sim/tuning.ts` | SIM_VERSION 60 (Task 14). |
+| `src/renderer/src/sim/tuning.ts` | SIM_VERSION 61 (Task 14). |
 | Tests: `tests/helpers/rockArena.ts`, `rockPool`, `rockContacts`, `rockShips`, `rockLaser`, `rockBreak`, `rockBlast`, `rockFx`, `rockSounds`, `tacticalMap`, `tacticalDeterminism`, `contactScene`, plus pinned fixtures in Task 14. Deleted: `scripts/spike-asteroids-ii-measure.ts`, `scripts/spike-asteroids-ii-shots.cjs` (spec §11: replaced). |
 
 Asteroids-ii tests deleted by this design (spec §11), each in the task that removes its rule: the wake speed (`rockPool` "wakes a static rock only above ROCK_WAKE_SPEED", Task 4), a still rock infinitely heavy (`rockContacts` "a static rock touched at vc ≤ 40 stays static", `rockShips` "rammed at 40 u/s stays static", Task 4), edge dust at R_MAP (`rockContacts` "a rock touching the planet, or whose centre leaves the map" is rewritten for the slack, Task 6), fixed fling speeds (`rockBreak`, `rockBlast` 150 and 200 u/s cases, rewritten in Task 10). Spike ii cases whose arithmetic is in r² masses run with `massCube` off (Task 8) rather than being deleted.
@@ -127,7 +127,7 @@ Expected: one file, `docs/superpowers/specs/2026-11-19-asteroids-iii-design.md` 
 // every tick with its weapons emptied (the duel snapshot needs both slots active and locked on each other). `bursts`
 // (seconds) break the largest live kind-1 belt rock with a torpedo-style burst at those times (script-side, between
 // ticks). Reported per run: the 20 Hz delta image sizes in each window, how many slots ever left kind 1, and the kind-2
-// count each second. Only APIs that exist on master (SIM 59) and on spike/asteroids-iii are used and kinds are compared
+// count each second. Only APIs that exist on master (SIM 60) and on spike/asteroids-iii are used and kinds are compared
 // as numbers (1 Static/Rail, 2 Moving/Free), so this one file measured master's baseline (Task 1) and measures the branch.
 //   npx tsx scripts/spike-asteroids-iii-idle.ts [--json <path>]
 // The duel helpers read the bundler-defined __GAMEPLAY_CONTENT_DIGEST__; tsx defines nothing, so it is supplied here.
@@ -235,7 +235,7 @@ Expected: typecheck clean; for each idle seed 1–3 the summary shows `outcome: 
 
 ```bash
 git add scripts/spike-asteroids-iii-idle.ts docs/superpowers/research/2026-11-19-asteroids-iii-master-idle.json
-git commit -m "chore(asteroids-iii): the quiet-scene script and master's idle and after-burst baseline (SIM 59)" -m "<attribution line>"
+git commit -m "chore(asteroids-iii): the quiet-scene script and master's idle and after-burst baseline (SIM 60)" -m "<attribution line>"
 ```
 
 ---
@@ -3962,15 +3962,15 @@ git commit -m "chore(asteroids-iii): the measure script and its results: feel (s
 
 ---
 
-### Task 14: Duel gates, SIM_VERSION 60 by the two-step bless, the whole suite, the app smoke
+### Task 14: Duel gates, SIM_VERSION 61 by the two-step bless, the whole suite, the app smoke
 
 **Files:**
-- Modify: `src/renderer/src/sim/tuning.ts:7` (SIM_VERSION 60); `tests/golden/basic.json`, `tests/golden/duel-1.json`, `tests/golden/duel-rematch.json`, `tests/fixtures/determinism-v2.json` (by `npm run bless` only)
+- Modify: `src/renderer/src/sim/tuning.ts:7` (SIM_VERSION 61); `tests/golden/basic.json`, `tests/golden/duel-1.json`, `tests/golden/duel-rematch.json`, `tests/fixtures/determinism-v2.json` (by `npm run bless` only)
 - Modify (only their pinned values and history comments): trajectory-pinned tests found failing, typically `tests/duelCheckpoint.test.ts`, `tests/duelModules.test.ts`, `tests/duelSnapshot.test.ts`, `tests/duelScripted.test.ts`, `tests/tacticalSlots.test.ts`, `tests/contactScene.test.ts`; `scripts/network/duel-app-smoke.ts` (`DUEL_TEST_SEED`) only if the smoke's forced round end no longer comes inside its step
 - Conditional: `src/renderer/src/sim/tactical/tuning.ts` (`SHIP_HULL` only, spec §10 risk 3)
 
 **Interfaces:**
-- Consumes: everything above. Produces: no new interfaces; the goldens at SIM_VERSION 60.
+- Consumes: everything above. Produces: no new interfaces; the goldens at SIM_VERSION 61.
 
 - [ ] **Step 1: Full-suite triage before any bless**
 
@@ -3984,40 +3984,40 @@ Expected: typecheck clean; every per-seed gate passes (an outcome before the cap
 
 - [ ] **Step 2: If a duel gate fails** (spec §10 risk 3: the Hunter hits moving rocks), change only `SHIP_HULL` in `src/renderer/src/sim/tactical/tuning.ts`, by +10 % a step (round to a whole number), re-running Step 1b after each, at most three steps. Commit a kept change by itself: `git commit -m "tune(asteroids-iii): SHIP_HULL <old> -> <new> for duelGates (spec §10)"` with the session's attribution line. If three steps do not pass, revert, record the lines and report BLOCKED.
 
-- [ ] **Step 3: Same-version bless of the gameplay at SIM 59**
+- [ ] **Step 3: Same-version bless of the gameplay at SIM 60**
 
 Run: `npm run bless`
-Expected: it writes `tests/golden/basic.json`, `duel-1.json`, `duel-rematch.json` and `tests/fixtures/determinism-v2.json` at simVersion 59 (a same-version bless is a deliberate gameplay change); no refusal.
+Expected: it writes `tests/golden/basic.json`, `duel-1.json`, `duel-rematch.json` and `tests/fixtures/determinism-v2.json` at simVersion 60 (a same-version bless is a deliberate gameplay change); no refusal.
 
-- [ ] **Step 4: Record the baselines at 59**
+- [ ] **Step 4: Record the baselines at 60**
 
 Run: `npx tsx scripts/golden/canonical-trace.ts baseline && npx tsx scripts/golden/duel-oracle.ts baseline`
-Expected: `baseline at sim version 59: ...` and `duel oracle baseline at sim version 59: ...`.
+Expected: `baseline at sim version 60: ...` and `duel oracle baseline at sim version 60: ...`.
 
 - [ ] **Step 5: Commit the same-version bless**
 
 ```bash
 git add tests/golden/basic.json tests/golden/duel-1.json tests/golden/duel-rematch.json tests/fixtures/determinism-v2.json
-git commit -m "test(asteroids-iii): same-version bless at SIM_VERSION 59 for the orbiting belt (duel goldens re-recorded)" -m "<attribution line>"
+git commit -m "test(asteroids-iii): same-version bless at SIM_VERSION 60 for the orbiting belt (duel goldens re-recorded)" -m "<attribution line>"
 ```
 
 (Add `tests/fixtures/determinism-v2.json` only if the bless changed it; `git status` shows which.)
 
-- [ ] **Step 6: Bump SIM_VERSION to 60 and bless version-only**
+- [ ] **Step 6: Bump SIM_VERSION to 61 and bless version-only**
 
-Edit `src/renderer/src/sim/tuning.ts` line 7 to `export const SIM_VERSION = 60;`, then run:
+Edit `src/renderer/src/sim/tuning.ts` line 7 to `export const SIM_VERSION = 61;`, then run:
 
 ```bash
 npx tsx scripts/golden/canonical-trace.ts check && npx tsx scripts/golden/duel-oracle.ts check && npm run bless && npx tsx scripts/golden/canonical-trace.ts golden
 ```
 
-Expected: both checks report identical per-tick traces (59 → 60, no alias table: the schema did not change between the baseline and now); the bless writes all four artifacts at 60; `golden` reports basic.json differs only in version, content digest and hashes.
+Expected: both checks report identical per-tick traces (60 → 61, no alias table: the schema did not change between the baseline and now); the bless writes all four artifacts at 61; `golden` reports basic.json differs only in version, content digest and hashes.
 
 - [ ] **Step 7: Commit the bump**
 
 ```bash
 git add src/renderer/src/sim/tuning.ts tests/golden/basic.json tests/golden/duel-1.json tests/golden/duel-rematch.json tests/fixtures/determinism-v2.json
-git commit -m "chore(asteroids-iii): SIM_VERSION 59 -> 60 alone, blessed (canonical trace and duel oracle prove every run unchanged per tick)" -m "<attribution line>"
+git commit -m "chore(asteroids-iii): SIM_VERSION 60 -> 61 alone, blessed (canonical trace and duel oracle prove every run unchanged per tick)" -m "<attribution line>"
 ```
 
 - [ ] **Step 9: Run the whole suite and re-pin trajectory fixtures only**
@@ -4032,7 +4032,7 @@ Re-run `npx vitest run` until it is green, then commit only the re-pinned tests:
 
 ```bash
 git add tests/duelCheckpoint.test.ts tests/duelModules.test.ts tests/duelSnapshot.test.ts tests/duelScripted.test.ts tests/tacticalSlots.test.ts tests/contactScene.test.ts
-git commit -m "test(asteroids-iii): re-pin the trajectory fixtures at SIM 60" -m "<attribution line>"
+git commit -m "test(asteroids-iii): re-pin the trajectory fixtures at SIM 61" -m "<attribution line>"
 ```
 
 (List only the files that changed.)
