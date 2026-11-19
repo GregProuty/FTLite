@@ -81,9 +81,9 @@ describe('seat phase guards', () => {
 
 describe('consoles are roles (spec §8, §13)', () => {
   it('the Helm player’s held moveX turns the ship clockwise and the throttle thrusts along the nose; held W does not (Artemis spec §5.3)', () => {
-    const d = createSeatedDuel(layout, 5), s = d.tactical.ships[0], h0 = s.heading;
+    const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn), s = d.tactical.ships[0], h0 = s.heading;   // playtest2feedback Decision 17: A/D turns only the Valkyrn class
     step(d, [], [{ moveX: 1, moveY: 0, interactHeld: false }, NONE]);
-    expect(s.heading).toBe((h0 + 1) % 256);                              // 1.78 steps per tick: one whole step on the first tick
+    expect(s.heading).toBe((h0 + 2) % 256);                              // the Valkyrn's turn (playtest2feedback Decision 17; the Cutter's 1.78 steps a tick no longer answers moveX): two whole steps on the first tick
     const coast = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn), thrust = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn), held = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn);
     step(coast); step(thrust, [cmd(thrust, 0, { kind: 'throttle', level: 4 })]); step(held, [], [{ moveX: 0, moveY: -1, interactHeld: false }, NONE]);
     const [a, b, w] = [coast.tactical.ships[0], thrust.tactical.ships[0], held.tactical.ships[0]];

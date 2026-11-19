@@ -188,7 +188,7 @@ describe('the online interior zoom camera (interior zoom spec rule 5)', () => {
 
 describe('the online source follows the throttle (Artemis spec §5.3, §6.1)', () => {
   it('the Helm seat flies the replica throttle; throttle() is the session base, else the replica', () => {
-    const d = createSeatedDuel(CUTTER, 3), c = confirmed();
+    const d = createSeatedDuel(CUTTER, 3, 0, 2, ShipClass.Valkyrn), c = confirmed();   // playtest2feedback Decision 17: moveX turns only the Valkyrn class
     const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });
     try {
       d.throttle = 2; c.publish(d); source.observe();

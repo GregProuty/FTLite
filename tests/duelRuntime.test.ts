@@ -226,7 +226,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     rt.dispose();
   });
   it('Feel-i: Space held at the Helm sends face (auto-face) and the axes show its turn; at Weapons it never sends face', () => {
-    const { rt, hold, tick } = rig();
+    const { rt, hold, tick } = rig(5, undefined, true, ShipClass.Valkyrn);   // playtest2feedback Decision 17: A/D turns only the Valkyrn class
     hold({ fireHeld: true }); tick();
     expect(rt.held()[0]).toMatchObject({ moveX: 0, face: true });
     expect(rt.axes().turn).not.toBe(0);   // seed 5's start: the enemy is off the nose

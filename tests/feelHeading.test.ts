@@ -82,7 +82,7 @@ describe('the heading command (Feel-ii §1.1)', () => {
   });
   it('A/D or auto-face held at the Helm clears it, a −1 clears it; Weapons\' held keys do not', () => {
     for (const [held, cleared] of [[{ ...NONE, moveX: 1 }, true], [{ ...NONE, moveX: -1 }, true], [{ ...NONE, face: true }, true], [NONE, false]] as const) {
-      const d = createSeatedDuel(CUTTER, 5);
+      const d = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.Valkyrn);   // playtest2feedback Decision 17: A/D turns only the Valkyrn class
       try {
         step(d, [cmd(d, 0, heading(40))]);
         step(d, [], [held, { ...NONE, moveX: 1, face: true }]);
@@ -97,7 +97,7 @@ describe('the heading command (Feel-ii §1.1)', () => {
     } finally { disposeDuel(d); }
   });
   it('A/D wins the tick it clears it; the predicted turn (helmTurn, the runtime\'s heldTurn) is the sim\'s', () => {
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.Valkyrn);   // playtest2feedback Decision 17
     try {
       const target = (d.tactical.ships[0].heading + 60) % 256;
       step(d, [cmd(d, 0, heading(target))]);

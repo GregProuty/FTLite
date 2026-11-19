@@ -58,7 +58,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
     const d = createSeatedDuel(layout, 1), s = d.tactical.ships[0], pair = createScriptedPair(1);
     s.x = 0; s.y = -300; s.vx = 0; s.vy = 150; s.heading = 128;
     const input = scriptedInput(pair, d);
-    expect(input.held[0]).toEqual({ moveX: 1, moveY: 0, interactHeld: false, throttleHeld: 1 });
+    expect(input.held[0]).toEqual({ moveX: 0, moveY: 0, interactHeld: false, aim: 0, throttleHeld: 1 });   // playtest2feedback §4a: it steers by the aim (north, away from the planet), never moveX
     expect(input.commands.filter((e) => e.id.player === 0 && e.command.kind === 'throttle')).toEqual([]);
     disposeDuel(d);
   });

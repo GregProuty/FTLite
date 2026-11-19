@@ -5,6 +5,7 @@ import type { HeldInput } from '../src/renderer/src/net/contracts';
 import { duelCodec } from '../src/renderer/src/net/codec';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import { autoFaceTurn } from '../src/renderer/src/sim/tactical/hunter';
 import { inArc } from '../src/renderer/src/sim/tactical/geometry';
@@ -57,7 +58,7 @@ describe('the duel admits face from the Helm like the turn (console feel spec §
     } finally { disposeDuel(d); }
   });
   it('A/D overrides it, Weapons cannot send it, and a standing Helm turns nothing', () => {
-    const a = createSeatedDuel(CUTTER, 5), b = createSeatedDuel(CUTTER, 5), c = createSeatedDuel(CUTTER, 5), w = createSeatedDuel(CUTTER, 5), n = createSeatedDuel(CUTTER, 5);
+    const a = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.Valkyrn), b = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.Valkyrn), c = createSeatedDuel(CUTTER, 5), w = createSeatedDuel(CUTTER, 5), n = createSeatedDuel(CUTTER, 5);
     try {
       for (let k = 0; k < 30; k++) {
         step(a, [{ ...FACE, moveX: -1 }, NONE]); step(b, [{ ...NONE, moveX: -1 }, NONE]);   // A/D wins

@@ -14,6 +14,7 @@ import { autoFaceTurn } from '../tactical/hunter';
 import { rockAt, rocksNear } from '../tactical/rocks';
 import { circularSpeed } from '../tactical/map';
 import { predictPath } from '../tactical/predict';
+import { nearestHeading } from '../tactical/lead';
 import { classOf, missileOf, Room, targetOf, type Axes } from '../tactical/state';
 import { BELT_OUTER, LASER_ARC_COS, LASER_RANGE, R_MAP, SHIP_RADIUS } from '../tactical/tuning';
 import { canLaunch, laserEligible, laserFull } from '../tactical/weapons';
@@ -21,7 +22,7 @@ import { CREW_SPEED, DT, HEALTH_MAX, REACH } from '../tuning';
 import { isDowned, medbayOnline, medbayRoom, revivers } from './health';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope } from './commands';
 import type { DuelState } from './state';
-import type { DuelInput } from './step';
+import { aimTurn, type DuelInput } from './step';
 import { THROTTLE_MAX, THROTTLE_MIN, throttleThrust } from './throttle';
 import { crewThrust } from './helmFlight';
 
@@ -100,11 +101,15 @@ export function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } |
 
 /** The Helm's axes (spec §3): avoid, then dodge an inbound torpedo, then line up (a full laser with a target, FTL targeting
  *  spec §3; Feel-i: by holding auto-face, as a player would, so `face` is set and `turn` is the turn it will make), then orbit. The hazard check predicts with the thrust the ship flies
- *  at this tick before any new command: the throttle's (Artemis spec §5.5). */
-function helmAxes(pair: ScriptedPair, d: DuelState): Axes & { face?: boolean } {
+ *  at this tick before any new command (the throttle's, Artemis spec §5.5; the held throttle's, playtest2feedback §7).
+ *  Playtest2feedback §4a (Decision 9): every branch but auto-face names its heading as `aim` (the hazard's, the dodge's
+ *  and the orbit's, nearest index), and `turn` is the turn that aim flies. */
+function helmAxes(pair: ScriptedPair, d: DuelState): Axes & { face?: boolean; aim: number } {
   const t = d.tactical, s = t.ships[0], e = t.ships[targetOf(t, 0)]!;
+  const crewClass = classOf(t, 0).newtonianHelm;   // the Valkyrn class keeps its A/D turn law (turnToward), so its scripted pair is unchanged
+  const toward = (dx: number, dy: number): Axes & { aim: number } => { const aim = nearestHeading(dx, dy); return { turn: crewClass ? aimTurn(s.heading, aim) : turnToward(s.heading, dx, dy), thrust: 1, aim }; };
   const away = hazardAway(d, { turn: pair.axes.turn, thrust: classOf(t, 0).newtonianHelm ? crewThrust(d.thrMille) : throttleThrust(d.throttle) });   // playtest2feedback §7: the thrust it flies now
-  if (away) return { turn: turnToward(s.heading, away.x, away.y), thrust: 1 };
+  if (away) return toward(away.x, away.y);
   // Dodge (homing torpedo spec): the enemy's torpedo within EVADE_RANGE, turn the nose square across its line of approach,
   // on the side the ship already moves to, at full thrust.
   const inbound = missileOf(t, targetOf(t, 0));
@@ -112,14 +117,14 @@ function helmAxes(pair: ScriptedPair, d: DuelState): Axes & { face?: boolean } {
     const mx = inbound.x - s.x, my = inbound.y - s.y;
     if (mx * mx + my * my <= EVADE_RANGE * EVADE_RANGE) {
       const side = s.vx * -my + s.vy * mx >= 0 ? 1 : -1;
-      return { turn: turnToward(s.heading, -my * side, mx * side), thrust: 1 };
+      return toward(-my * side, mx * side);
     }
   }
   const ex = e.x - s.x, ey = e.y - s.y;
   if (laserFull(t, 0) && t.systems[0].laserTargeted && ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE && !inArc(s.heading, ex, ey, LASER_ARC_COS))
-    return { turn: autoFaceTurn(t, 0), thrust: 0, face: true };
-  const o = orbitSteer(d, pair.orbitR);
-  return { turn: o.turn, thrust: o.thrust };
+    return { turn: autoFaceTurn(t, 0), thrust: 0, face: true, aim: -1 };
+  const o = orbitSteer(d, pair.orbitR), aim = nearestHeading(o.dx, o.dy);
+  return { turn: crewClass ? aimTurn(s.heading, aim) : o.turn, thrust: o.thrust, aim };
 }
 
 /** The Helm's orbit (spec §3), shared with the Valkyrn pilot (sim/duel/scriptedPilot.ts): the desired direction (dx, dy),
@@ -324,7 +329,9 @@ export function scriptedInput(pair: ScriptedPair, d: DuelState): DuelInput {
         if (level !== d.throttle) cmds[pid]!.push({ kind: 'throttle', level });
       }
       const lever = crewHelm && thr !== 0 ? { throttleHeld: thr } : {};
-      held[pid] = axes.face ? { moveX: 0, moveY: 0, interactHeld: false, face: true, ...lever } : { moveX: axes.turn, moveY: 0, interactHeld: false, ...lever };
+      // Playtest2feedback §4a, §7: the crew Helm turns by aim or face, never moveX (the Valkyrn class still turns by moveX).
+      held[pid] = axes.face ? { moveX: 0, moveY: 0, interactHeld: false, face: true, ...lever }
+        : crewHelm ? { moveX: 0, moveY: 0, interactHeld: false, aim: axes.aim, ...lever } : { moveX: axes.turn, moveY: 0, interactHeld: false, ...lever };
     } else if (seat === d.weapons) {
       gunner(pair, d, cmds[pid]!);
     }

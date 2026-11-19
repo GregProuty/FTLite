@@ -28,8 +28,15 @@ export function pursuitTurn(heading: number, dx: number, dy: number): number {
  *  point, the Hunter's own aim (the target HUNTER_LEAD_S of its velocity ahead), dead astern clockwise as pursuitTurn,
  *  and none once the point is within AUTO_FACE_SIN of the nose. Reads the state as it stands; pure. */
 export function autoFaceTurn(state: TacticalState, i: number): number {
+  const p = autoFacePoint(state, i);
+  return faceTurn(state.ships[i]!.heading, p.x, p.y);
+}
+
+/** Playtest2feedback §4a: auto-face's target as a vector from ship i: its target's position led by HUNTER_LEAD_S (the
+ *  boost's far test reads the same point autoFaceTurn turns to). Pure. */
+export function autoFacePoint(state: TacticalState, i: number): { x: number; y: number } {
   const me = state.ships[i]!, t = state.ships[state.systems[i]!.target]!;
-  return faceTurn(me.heading, t.x - me.x + t.vx * HUNTER_LEAD_S, t.y - me.y + t.vy * HUNTER_LEAD_S);
+  return { x: t.x - me.x + t.vx * HUNTER_LEAD_S, y: t.y - me.y + t.vy * HUNTER_LEAD_S };
 }
 
 /** Feel-ii's click-to-heading (Feel-ii spec §1.1): auto-face's turn law aimed at the fixed bearing of heading index `h`

@@ -2,6 +2,8 @@
 // class, shared by the duel step (sim/duel/step.ts), the scripted crew and the app's prediction: the thrust a held
 // throttle flies, the ramp and its clamp, the ENGINE cap and floor, the compressor, venting, and losing bars. Integers in
 // and out for the state; only + − × ÷.
+import type { Axes } from '../tactical/state';
+import { RCS_TURN_BOOST } from '../tactical/tuning';
 import type { DuelState } from './state';
 import { COMPRESSOR_MAX, COMPRESSOR_RATE, RCS_GAS_PER_TICK, RCS_TANK, THR_MIN, THR_RAMP, THR_RETURN } from './tuning';
 
@@ -54,4 +56,9 @@ export function vents(want: number, gas: number): boolean { return want !== 0 &&
  *  off COMPRESSOR first, and ENGINE is what remains. */
 export function compressorAfterLoss(compressor: number, lost: number, helmBars: number): number {
   return Math.max(0, Math.min(COMPRESSOR_MAX, compressor - lost, helmBars));
+}
+
+/** §4, §6: the vent a set of crew axes shows (the puffs and the hiss): its vented axes, and whether its turn is boosted. */
+export function ventOf(axes: Axes): HelmVent {
+  return { x: axes.rcsX ?? 0, y: axes.rcsY ?? 0, boosted: axes.turnBoost === RCS_TURN_BOOST };
 }
