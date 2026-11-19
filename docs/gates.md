@@ -979,7 +979,7 @@ Electron's online stack (service client, RTC, lease owner) now runs in the page,
 - [ ] Owner: step 0 `npm run test:web-live-local` passes.
 - [ ] Owner: steps 1-3 (Vercel login/link, env vars, `ALLOWED_ORIGINS` and `wrangler deploy`).
 - [ ] Owner: step 4 `deploy:web` (URL printed, `vercel ls` Ready, site up and serving the build despite the root `vercel.json` `buildCommand`).
-- [ ] Owner: step 5 `npm run test:web-live` prints `LIVE SMOKE PASS` (Firefox guest, or note the Chromium fallback). Date, live `version.json` build/sim and notes: pending owner.
+- [x] Owner: step 5 `npm run test:web-live` prints `LIVE SMOKE PASS` (Firefox guest, or note the Chromium fallback). 2026-11-19 against https://ftlite-kohl.vercel.app, live `version.json` rev 26f1e8f, sim 57: PASS with a Chromium host and a Firefox guest, relay/relay on both sides, about 60 s played. 13 of 16 runs passed, the last 8 in a row. The 3 failures came while the PC was loaded just after a restart (VS Code updating, about 60 s to reach the menu): two guest reconnects about 10 s into play (not instrumented) and one host request timeout at Start (instrumented: the page and Worker starved). A mid-play drop was never caught with logging, so a disconnect in the friend playtest is the first thing to investigate.
 - [ ] Owner: step 7 friend playtest on different networks: passcode, host, join by code, a finished duel, rehost after the host tab closes. Date and notes: pending owner.
 
 ## Continuous deployment (owner 2026-11-19)
@@ -1007,7 +1007,7 @@ The owner connected the Vercel project `gregproutys-projects/ftlite` to GitHub f
 5. Push `master`. The deployment builds and goes live at the production address. Then do Web-iii steps 3 (`ALLOWED_ORIGINS` with that exact address), 5 (`npm run test:web-live`; run it from a checkout at the deployed commit, or the version comparison reports the mismatch) and 7. The rollback rule (step 6) is unchanged: `npx vercel rollback`, or Dashboard → Deployments → Instant Rollback.
 
 - [x] Automated: `tests/webFetchPaidArt.test.ts` (it fails closed and never shows the token, unpacks GitHub's tarball layout, and keeps local art); `tests/vercelGuard.test.ts` (the config above); `npm run build:vercel` locally gives WEB OUTPUT PASS (125 static paths need the cookie).
-- [ ] Owner: steps 1-5, then the first Git deployment is Ready and `npm run test:web-live` prints `LIVE SMOKE PASS`.
+- [x] Owner: steps 1-5, then the first Git deployment is Ready and `npm run test:web-live` prints `LIVE SMOKE PASS`. 2026-11-19: art repo GregProuty/FTLite-art (private), env vars set, production branch master; the first Git deployment from 26f1e8f8 built in 46 s (PAID ART fetched, WEB OUTPUT PASS, 125 paths need the cookie), production https://ftlite-kohl.vercel.app; ALLOWED_ORIGINS = null,https://ftlite-kohl.vercel.app; live smoke PASS (step 5 above).
 
 ## W-2: the manual laser (2026-11-18)
 
