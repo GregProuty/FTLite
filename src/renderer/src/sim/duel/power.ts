@@ -5,9 +5,10 @@
 import { chance } from '../../../../shared/rng';
 import { igniteRoom } from '../hazards/fire';
 import { vector, type ModuleField, type SimModule } from '../module';
-import { damageCapacity, DUEL_SYSTEM_COUNT, OVERDRIVE_SYSTEMS, REACTOR_BARS, SYSTEM_MAX } from '../tactical/bars';
+import { damageCapacity, DUEL_SYSTEM_COUNT, DuelSystem, OVERDRIVE_SYSTEMS, REACTOR_BARS, SYSTEM_MAX, SYSTEM_SLOTS } from '../tactical/bars';
 import { HEAT_COOL_IDLE, HEAT_COOL_UNIT, HEAT_MAX, HEAT_RISE, OVERHEAT_FIRE_CHANCE } from '../tuning';
 import { clampThrottle } from './engines';
+import { sensorsHazards } from './sensors';
 import { clampWeaponPower } from './weaponSlots';
 import type { DuelState } from './state';
 export {
@@ -31,7 +32,11 @@ const barsOf = (d: DuelState): number[] => d.tactical.systems[0].bars;
 /** A system index 0..4. */
 export function validSystem(k: number): boolean { return Number.isInteger(k) && k >= 0 && k < DUEL_SYSTEM_COUNT; }
 /** Spec §2: system k's capacity: 0 while failed, else max(0, slots − damage × knock). */
-export function capacityOf(d: DuelState, k: number): number { return d.power.failed[k] ? 0 : damageCapacity(d.tactical.systems[0], k); }
+export function capacityOf(d: DuelState, k: number): number {
+  if (d.power.failed[k]) return 0;
+  if (k === DuelSystem.Sensors) return Math.max(0, SYSTEM_SLOTS[k]! - sensorsHazards(d));   // Task 10, spec §10.4: fire and breach in its room
+  return damageCapacity(d.tactical.systems[0], k);
+}
 /** The reactor's spare bars. */
 export function sparesOf(d: DuelState): number { let used = 0; for (const b of barsOf(d)) used += b; return REACTOR_BARS - used; }
 /** The coolant pool's free units. */

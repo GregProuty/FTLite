@@ -10,6 +10,7 @@ import { hx, hy } from './direction';
 import { tickGun } from './gun';
 import { BEAM_RATE_BY_BARS, BEAM_SHOTS_BY_BARS, DuelSystem, effectiveBars, MAGAZINE_REGEN_UNITS, SHIELD_LAYERS_BY_BARS, SHIELD_RATE_BY_BARS, TORPEDO_RELOAD_BY_BARS, weaponBars, WeaponSlot } from './bars';
 import { classOf, CREW_SLOT, missileOf, Room, type Axes, type TacticalState } from './state';
+import { shipSeen } from './science';
 
 /** One ship's inputs for one tick. `helm` / `weapons`: a present player is seated at that console ("attended", spec §8). */
 export interface ShipInput {
@@ -245,13 +246,13 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
     }
   }
   // Auto-fire: on the enemy when eligible; spike ii §6.2: on a rock target when it is on target (AUTO_DIG is false).
-  if (armed && crew && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && (s.laserRock >= 0 ? rockOnTarget(state, i, s.laserRock) : laserEligible(state, i, s.target) || laserDiggable(state, i))) fireLaser(state, i);
+  if (armed && crew && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && (s.laserRock >= 0 ? rockOnTarget(state, i, s.laserRock) : (laserEligible(state, i, s.target) || laserDiggable(state, i)) && shipSeen(state, s.target))) fireLaser(state, i);   // Task 10, spec §10.4: the enemy only when seen (rocks are always shown)
   if (torpOnRock && s.torpRock < 0) return;   // the torpedo's rock broke this call: no launch this tick (the command can still read 'applied')
   if (input.missileLaunch && canLaunch(state, i)) {
     launchMissile(state, i);
     s.fireHeld = false;
   }
-  if (crew && (s.torpLock >= 0 || s.torpRock >= 0) && canLaunch(state, i)) launchMissile(state, i);   // auto-launch, once (spike ii: or on a rock target)
+  if (crew && (s.torpLock >= 0 || s.torpRock >= 0) && canLaunch(state, i) && (s.torpRock >= 0 || shipSeen(state, s.target))) launchMissile(state, i);   // auto-launch, once (spike ii: or on a rock target); Task 10: the enemy only when seen
 }
 
 /** Advance ship i's laser charge and hold timer, shields and magazine by one tick (spec §5, §7). */

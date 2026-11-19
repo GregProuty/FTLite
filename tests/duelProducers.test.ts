@@ -14,6 +14,7 @@ import { validStreamAttachmentOptions } from '../src/shared/hostProcessProtocol'
 import { duelInit, modeDuelInit, resolveCutter } from './helpers/duelAuthority';
 import { linkPair } from './helpers/linkPair';
 import { onlineDuel } from './helpers/onlineDuel';
+import { holdInSight } from './helpers/sensorSight';
 import { ownTestCleanup } from './helpers/simLifetime';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
@@ -21,7 +22,7 @@ const peerLost = (rig: ReturnType<typeof onlineDuel>) => rig.captures.filter((c)
 
 describe('the away steward and the peer-lost pause (spec §6)', () => {
   it('a remote Weapons seat lost with a target set: the presence false is applied first, then the peer-lost pause, and its capture is delivered', () => {
-    const rig = onlineDuel(2), a = rig.connect(0), b = rig.connect(1);
+    const rig = onlineDuel(2, { place: (d) => holdInSight(d.tactical) }), a = rig.connect(0), b = rig.connect(1);   // Engineering spike spec §10.4: a torpLock needs the target seen
     rig.tick(3);
     expect(b.client.command(1, { kind: 'torpLock', room: 2 })).not.toBeNull();   // FTL targeting spec §2
     rig.tick(6);

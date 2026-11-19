@@ -16,6 +16,7 @@ import { rockAt, rocksNear } from '../tactical/rocks';
 import { circularSpeed } from '../tactical/map';
 import { predictPath } from '../tactical/predict';
 import { missileOf, Room, targetOf, type Axes } from '../tactical/state';
+import { shipSeen } from '../tactical/science';
 import { BELT_OUTER, LASER_ARC_COS, LASER_RANGE, R_MAP, SHIP_RADIUS } from '../tactical/tuning';
 import { canLaunch, laserEligible, laserFull } from '../tactical/weapons';
 import { CREW_SPEED, DT, HEALTH_MAX, REACH } from '../tuning';
@@ -280,6 +281,7 @@ function gunner(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void {
   // with the beam and the torpedo as before.
   if (weaponBars(sys, WeaponSlot.Pew) > 0) out.push({ kind: 'weaponPower', slot: WeaponSlot.Pew, delta: -1 }, { kind: 'weaponPower', slot: WeaponSlot.Beam, delta: 1 });
   const want = t.systems[target]!.shields > 0 ? Room.Shields : Room.Weapons;
+  if (!shipSeen(t, target)) return;   // Engineering spike spec §10.4: a lock on an unseen target is refused
   if (!sys.laserTargeted || sys.lock !== want) out.push({ kind: 'laserLock', room: want });
   if (missileOf(t, 0) || sys.torpLock >= 0) return;
   // Weapons update spec §2: the torpedo launches only within its range, so it is targeted when the laser has no shot to

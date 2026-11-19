@@ -21,6 +21,7 @@ import { soloRecorder } from '../src/renderer/src/app/duel/soloRecorder';
 import { seatDuelCrew } from './helpers/duelSeat';
 import { inTorpedoRange } from './helpers/torpedoRange';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
+import { holdInSight } from './helpers/sensorSight';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 
 const layout = parseShip(cutter);
@@ -215,6 +216,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
   });
   it('Space is one press that fires a full laser; E and Q step the laser target (FTL targeting spec §1, §2)', () => {
     const { rt, press, tick } = rig();
+    holdInSight(rt.duel.tactical);   // Engineering spike spec §10.4: a lock or scan needs the enemy seen
     press('switch'); tick();
     const ship = rt.duel.tactical.systems[0];
     expect(ship.laserCharge).toBe(LASER_CHARGE_UNITS);                  // the round starts full
@@ -258,7 +260,8 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     const ship = rt.duel.tactical.systems[0];
     hold({ lockTo: 0 }); tick(); expect([ship.lock, ship.laserTargeted]).toEqual([Room.Shields, true]);   // at the Helm: no weapons commands (the SHIELDS opener stands)
     rt.dispose();
-    const g = rig(); g.press('switch'); g.tick();
+    const g = rig(); holdInSight(g.rt.duel.tactical);   // Engineering spike spec §10.4: a lock or scan needs the enemy seen
+    g.press('switch'); g.tick();
     const s = g.rt.duel.tactical.systems[0];
     g.hold({ lockTo: 0 }); g.tick(); expect([s.lock, s.laserTargeted]).toEqual([0, true]);
     g.hold({ lockTo: -1 }); g.tick(); expect([s.lock, s.laserTargeted]).toEqual([0, false]);
@@ -273,7 +276,8 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     g.rt.dispose();
   });
   it('a pick-up on an unknown enemy (FTL targeting fix): the contact controller asks for the scan and the runtime starts the Level 1 scan from Weapons', () => {
-    const g = rig(); g.press('switch'); g.tick();
+    const g = rig(); holdInSight(g.rt.duel.tactical);   // Engineering spike spec §10.4: a lock or scan needs the enemy seen
+    g.press('switch'); g.tick();
     const t = g.rt.duel.tactical, c = createContactController();
     t.known[0] = 0;
     c.sync({ shown: true, station: 'weapons', target: 1, active: () => true, epoch: 0, enemyKnown: t.known[0] });
@@ -588,6 +592,7 @@ describe('the interior zoom camera input (interior zoom spec rules 1-4)', () => 
 describe('the Artemis console clicks (Artemis spec §4.1, §6.1)', () => {
   it('a lock click at Weapons queues laserLock to that room; the same click at the Helm changes nothing', () => {
     const { rt, hold, press, tick } = rig();
+    holdInSight(rt.duel.tactical);   // Engineering spike spec §10.4: a lock or scan needs the enemy seen
     const ship = rt.duel.tactical.systems[0], before = ship.lock;
     hold({ lockTo: 2 }); tick(); hold({ lockTo: null });   // player 0 sits at the Helm
     expect(ship.lock).toBe(before);

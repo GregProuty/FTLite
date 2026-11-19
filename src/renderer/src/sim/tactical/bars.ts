@@ -93,3 +93,10 @@ export const TORPEDO_RELOAD_BY_BARS: readonly number[] = [0, 4, 6, 8, 10];
 export const TORPEDO_LEVELS_BY_BARS: readonly number[] = [1, 1, 1, 2, 2];
 /** The crew magazine's units clock: at 4 a tick (1 bar) a missile takes 2700 ticks, today's MAGAZINE_REGEN_TICKS. */
 export const MAGAZINE_REGEN_UNITS = 10800;
+
+// ---- Sensors (Task 10; Engineering spike spec §10.4, Amendment 2; isolated) ----
+/** Spec §10.4: scan progress per tick by effective Sensors bars 0..4, for a Science scan and a Helm/Weapons scan. */
+export const SCAN_SCIENCE_BY_BARS: readonly number[] = [0, 5, 6, 7, 8];
+export const SCAN_OTHER_BY_BARS: readonly number[] = [0, 2, 2, 3, 3];
+/** Spec §10.4: the crew's sensor range (map units) by effective Sensors bars 0..4. */
+export const SENSOR_RANGE_BY_BARS: readonly number[] = [300, 900, 1400, 2000, 2800];

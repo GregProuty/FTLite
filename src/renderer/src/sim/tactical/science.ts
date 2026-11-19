@@ -3,8 +3,9 @@
 // code: the heading tables for trig, never Math.sin, Math.cos or Math.PI (the determinism guard).
 import { dirBetween, wrapHeading } from './direction';
 import { circularSpeed } from './map';
-import { classOf, CREW_SLOT, idleScan, Loot, type TacticalState } from './state';
-import { DT, HEADING_COUNT, HOSTILE_AFTER_TICKS, LOOT_HULL, SALVAGE_RANGE, SALVAGE_SPEED, SALVAGE_TICKS, SCAN_UNITS, TRAP_HULL } from './tuning';
+import { classOf, Contact, CREW_SLOT, idleScan, Loot, type ShipSystems, type TacticalState } from './state';
+import { DT, HEADING_COUNT, HOSTILE_AFTER_TICKS, LOOT_HULL, SALVAGE_RANGE, SALVAGE_SPEED, SALVAGE_TICKS, SCAN_RATE_SCIENCE, SCAN_UNITS, TRAP_HULL } from './tuning';
+import { DuelSystem, effectiveBars, SCAN_OTHER_BY_BARS, SCAN_SCIENCE_BY_BARS, SENSOR_RANGE_BY_BARS } from './bars';
 
 /** A contactScan the duel step admitted (spec §5): scan the next level of `contact` at `rate` from station `by`. On the
  *  same contact and level the progress is kept: a faster station takes the scan over (applied), a slower or equal one
@@ -40,6 +41,32 @@ export function hostilityStep(t: TacticalState, hunter: number): void {
   t.events.push({ kind: 'hostile', cause: crew.shots > 0 ? 'laser' : crew.gunShots > 0 ? 'gun' : crew.missilesLaunched > 0 ? 'missile' : 'clock' });
 }
 
+/** Engineering spike spec §10.4 (Task 10): the crew's sensor range by its effective Sensors bars. */
+export function sensorRange(sys: Pick<ShipSystems, 'rooms' | 'bars'>): number { return SENSOR_RANGE_BY_BARS[effectiveBars(sys, DuelSystem.Sensors)]!; }
+/** Whether a point is within sensor range of the crew ship's centre (a torpedo in flight, for Part ii's fog). */
+export function pointSeen(t: TacticalState, x: number, y: number): boolean {
+  const a = t.ships[CREW_SLOT], r = sensorRange(t.systems[CREW_SLOT]), dx = x - a.x, dy = y - a.y;
+  return dx * dx + dy * dy <= r * r;
+}
+/** Whether ship slot i is seen by the crew: the crew's own slot always; any other active slot within sensor range. */
+export function shipSeen(t: TacticalState, i: number): boolean {
+  if (i === CREW_SLOT) return true;
+  const b = t.ships[i];
+  return b !== undefined && b.active && pointSeen(t, b.x, b.y);
+}
+/** Whether a scan contact (Contact.Enemy: the crew's target ship; Contact.Derelict: the wreck) is seen. */
+export function contactSeen(t: TacticalState, contact: number): boolean {
+  if (contact === Contact.Enemy) return shipSeen(t, t.systems[CREW_SLOT].target);
+  const p = derelictPos(t);
+  return pointSeen(t, p.x, p.y);
+}
+/** Spec §2 Scans (Decision 8), §10.4: a running scan's progress this tick, from its station's row (scan.rate keeps the
+ *  base rate, SCAN_RATE_SCIENCE for Science, so it picks the row) at the crew's current effective Sensors bars. */
+export function scanProgressRate(t: TacticalState): number {
+  const row = t.scan.rate === SCAN_RATE_SCIENCE ? SCAN_SCIENCE_BY_BARS : SCAN_OTHER_BY_BARS;
+  return row[effectiveBars(t.systems[CREW_SLOT], DuelSystem.Sensors)]!;
+}
+
 /** Spec §4.3's progress step, after hostility: a running scan advances by its rate while the station running it is
  *  attended (`scanner`, the crew input's), or goes idle when it is not; at its level's units the contact becomes known to
  *  that level, a scanDone event is pushed and the scanner goes idle. */
@@ -47,7 +74,8 @@ export function scanStep(t: TacticalState, scanner: boolean): void {
   const s = t.scan;
   if (s.contact < 0) return;
   if (!scanner) { Object.assign(s, idleScan()); return; }
-  s.progress += s.rate;
+  if (!contactSeen(t, s.contact)) return;   // spec §10.4: a running scan pauses while its contact is unseen
+  s.progress += scanProgressRate(t);         // spec §2, §10.4: no longer s.rate
   if (s.progress < SCAN_UNITS[s.level]!) return;
   t.known[s.contact as 0 | 1] = s.level;
   t.events.push({ kind: 'scanDone', contact: s.contact, level: s.level });

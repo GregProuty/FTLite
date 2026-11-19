@@ -17,6 +17,7 @@ import { CUTTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
 import { LASER_BURST_GAP_TICKS, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MISSILE_RANGE } from '../src/renderer/src/sim/tactical/tuning';
 import { applyWeaponsInput, IDLE_INPUT, laserEligible, tickWeapons, validTarget, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
 import { createSeatedDuel } from './helpers/duelSeat';
+import { holdInSight } from './helpers/sensorSight';
 import { makeHostile } from './helpers/hostile';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
 
@@ -158,6 +159,7 @@ describe('the commands through the duel step and the wire (spec §2)', () => {
     try {
       expect(validTarget(-1) && validTarget(0) && validTarget(2)).toBe(true);
       expect([validTarget(-2), validTarget(3), validTarget(0.5)]).toEqual([false, false, false]);
+      holdInSight(d.tactical);   // Engineering spike spec §10.4: a lock needs the target seen
       const r1 = step(d, [cmd(d, 1, { kind: 'laserLock', room: Room.Engines }), cmd(d, 1, { kind: 'torpLock', room: Room.Weapons }), cmd(d, 0, { kind: 'torpLock', room: 1 })]);
       expect(r1.map((r) => r.reason ?? r.status)).toEqual(['not-at-weapons', 'applied', 'applied']);
       expect([s.laserTargeted, s.lock, s.torpLock]).toEqual([true, Room.Engines, Room.Weapons]);

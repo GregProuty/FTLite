@@ -11,11 +11,11 @@ import { roomAt } from '../grid';
 import { fireStep } from '../hazards/fire';
 import { oxygenStep } from '../hazards/oxygen';
 import { movementSystem } from '../movement';
-import { throttleAllowed, WEAPON_SLOTS } from '../tactical/bars';
+import { DuelSystem, effectiveBars, throttleAllowed, WEAPON_SLOTS } from '../tactical/bars';
 import { applyWeaponPower } from './weaponSlots';
 import { stepDuel } from '../tactical/duel';
 import { autoFaceTurn, headingTurn } from '../tactical/hunter';
-import { scanCommand } from '../tactical/science';
+import { contactSeen, scanCommand, shipSeen } from '../tactical/science';
 import { HEADING_COUNT, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
 import { classOf, CONTACT_MAX_LEVEL, Outcome } from '../tactical/state';
 import { HAZARD_EVERY } from '../tuning';
@@ -234,8 +234,8 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }   // −1 is the empty-seat value, never a player
     if ((c.kind === 'laserLock' || c.kind === 'laserCharge' || (c.kind === 'rockLock' && c.weapon === 'laser')) && classOf(d.tactical, 0).slots.laser === null) { result(e, 'unavailable'); continue; }   // Valkyrn spec §6.1: no laser
-    if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.laserLock = c.room; }   // −1 clears the target
-    else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } crew.torpLock = c.room; torpLocked = true; }
+    if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; } crew.laserLock = c.room; }   // −1 clears the target; Task 10, spec §10.4: seen
+    else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; } crew.torpLock = c.room; torpLocked = true; }   // spec §10.4: seen
     else if (c.kind === 'rockLock') {
       if (!validRockLock(d.tactical, c.weapon, c.rock)) { result(e, 'malformed'); continue; }
       if (c.rock >= 0 && !rockAlive(d.tactical, c.rock)) { result(e, undefined, 'noop'); continue; }
@@ -287,6 +287,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (scientist < 0 || e.id.player !== scientist) { result(e, 'invalid-seat'); continue; }
     if (c !== -1 && c !== 0 && c !== 1) { result(e, 'malformed'); continue; }
+    if (c >= 0 && !contactSeen(t, c)) { result(e, 'unavailable'); continue; }   // Task 10, spec §10.4
     if (c === t.designated) { result(e, undefined, 'noop'); continue; }
     t.designated = c; result(e);
   }
@@ -296,6 +297,8 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (station < 0) { result(e, 'invalid-seat'); continue; }
     if (c !== 0 && c !== 1) { result(e, 'malformed'); continue; }
     if (t.known[c]! >= CONTACT_MAX_LEVEL[c]!) { result(e, 'unavailable'); continue; }
+    if (effectiveBars(t.systems[0], DuelSystem.Sensors) === 0) { result(e, 'unavailable'); continue; }   // Task 10, spec §2 Scans: no Sensors, no scan
+    if (!contactSeen(t, c)) { result(e, 'unavailable'); continue; }   // Task 10, spec §10.4: unseen
     result(e, undefined, scanCommand(t, c, station === d.science ? SCAN_RATE_SCIENCE : SCAN_RATE_OTHER, station));
   }
   crew.scanner = t.scan.contact < 0 || attendant(d, t.scan.by) >= 0;   // spec §4.6: after admission, so a same-tick takeover keeps it
@@ -363,6 +366,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     oxygenStep(st, st.injectionScratch);
     fireStep(st);
     duelHeatStep(d);   // overheat draws last; each overheat clamps its bars inline
+    clampToCapacity(d);   // Task 10, spec §10.4: a fire that spread into the Sensors room costs it a slot this tick
   }
   healthPhase(d, hits);   // duel-health spec §1: fire damage, downed, pick-up, the Medbay; every character down loses the round
   st.tick++;

@@ -19,6 +19,7 @@ import { createSeatedDuel } from './helpers/duelSeat';
 import { makeHostile } from './helpers/hostile';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { CUTTER } from './helpers/scriptedDuel';
+import { holdInSight } from './helpers/sensorSight';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -116,6 +117,7 @@ describe('snapshots with the behaviour on (spec §10 Snapshots)', () => {
         if (k === 5) commands.push(cmd(auth, 1, { kind: 'designate', contact: 1 }));
         if (k === 7) commands.push(cmd(auth, 0, { kind: 'laserFrequency', freq: 2 }));
         if (k === 200) commands.push(cmd(auth, 1, { kind: 'contactScan', contact: 1 }));
+        if (k < 400) holdInSight(auth.tactical);   // Engineering spike spec §10.4: the scans and the designation need their contacts seen
         if (k >= 400 && k < 720) { const p = derelictPos(auth.tactical); Object.assign(auth.tactical.ships[0], { x: p.x, y: p.y, vx: p.vx, vy: p.vy }); }   // hold the crew on the wreck
         step(auth, commands);
         if (k % 3 === 2) {
