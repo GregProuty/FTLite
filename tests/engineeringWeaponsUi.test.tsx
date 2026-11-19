@@ -54,7 +54,47 @@ describe('the three weapons (spec §10.3, §11)', () => {
   });
   it('every refusal and reason starts at the block\'s left and stays clear of FREE (as rockTargetUi measures the hint)', () => {
     const x0 = STATION.x + 8, right = STATION.x + STATION.w - 8;
-    for (const t of ['LAUNCH: TORPEDO UNPOWERED', 'LAUNCH: WEAPONS OFFLINE', 'LAUNCH: OUT OF RANGE', 'FIRE: BEAM UNPOWERED', 'FIRE: TORPEDO FLYING', 'BEAM: OUT OF ARC: HELM TURN RIGHT', 'BEAM: OUT OF RANGE 2000/450'])
+    for (const t of ['PEW: PEW UNPOWERED', 'PEW: WEAPONS OFFLINE', 'PEW: NO CHARGE', 'LAUNCH: TORPEDO UNPOWERED', 'LAUNCH: WEAPONS OFFLINE', 'LAUNCH: OUT OF RANGE', 'FIRE: BEAM UNPOWERED', 'FIRE: TORPEDO FLYING', 'BEAM: OUT OF ARC: HELM TURN RIGHT', 'BEAM: OUT OF RANGE 2000/450'])
       expect(x0 + textPx(t, 1) + 8, t).toBeLessThanOrEqual(right - textPx(freeText(9), 1));
+  });
+});
+
+/** An element's rectangle from its inline style (jsdom does no layout): [left, top, right, bottom] in px. */
+const rect = (e: HTMLElement): [number, number, number, number] => {
+  const l = parseFloat(e.style.left), t = parseFloat(e.style.top);
+  return [l, t, l + parseFloat(e.style.width), t + parseFloat(e.style.height)];
+};
+const overlap = (a: [number, number, number, number], b: [number, number, number, number]): boolean => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+
+describe('the bar pips on W-1/W-2/W-3\'s cards (merge decision 4)', () => {
+  const masters: WeaponsPanel = { ...panel, weaponBars: [3, 2, 4], weaponFree: 0, pew: [1, 0.5, 0], laserManual: true, torpManual: false, burst: 2 };
+  const mountMasters = () => { const m = mount(); act(() => m.duel.frame({ ...view(), console: { ...weapons, weapons: masters } })); return m; };
+  it('the PEW charge pips, the AUTO / MAN tags and the bar pips all show together', () => {
+    mountMasters();
+    for (const w of ['PEW', 'MAN', 'AUTO', 'BEAM', 'x2', 'TORPEDO', 'IN RANGE', 'FREE 0']) expect(texts()).toContain(w);
+    expect(all('data-ui-pew-fill')).toEqual(['1.00', '0.50', '0.00']);
+    expect(all('data-ui-weapon-pip')).toEqual([
+      '0:0:on', '0:1:on', '0:2:on', '0:3:off', '1:0:on', '1:1:on', '1:2:off', '1:3:off', '2:0:on', '2:1:on', '2:2:on', '2:3:on'
+    ]);
+    expect(screen.getByTestId('console-laser-mode').dataset.uiButton).toBe('lit');   // MAN lit
+    expect(screen.getByTestId('console-torp-mode').dataset.uiButton).not.toBe('lit');
+  });
+  it('the fourth pip is the overdrive\'s, dashed, on every weapon (the PEW row too)', () => {
+    mountMasters();
+    for (const slot of [0, 1, 2]) {
+      const pips = Array.from(document.querySelectorAll<HTMLElement>(`[data-ui-weapon-pip^="${slot}:"]`));
+      expect(pips.map((e) => e.style.border.includes('dashed'))).toEqual([false, false, false, true]);
+    }
+  });
+  it('no bar pip overlaps a charge pip, a mode tag, FIRE or LAUNCH, and the pips\' click areas stay off the buttons', () => {
+    mountMasters();
+    const pips = Array.from(document.querySelectorAll<HTMLElement>('[data-ui-weapon-pip]')).map(rect);
+    const others = [...Array.from(document.querySelectorAll<HTMLElement>('[data-ui-pew-pip]')),
+      ...['laser-mode', 'torp-mode', 'fire', 'launch'].map((n) => screen.getByTestId(`console-${n}`))].map(rect);
+    expect([...pips, ...others].flat().every(Number.isFinite)).toBe(true);   // not vacuous: every rectangle is placed
+    expect(overlap(pips[0]!, pips[0]!)).toBe(true);
+    for (const p of pips) for (const o of others) expect(overlap(p, o), `${p} vs ${o}`).toBe(false);
+    const hits = [0, 1, 2].map((s) => rect(screen.getByTestId(`console-weapon-pips-${s}`).firstElementChild as HTMLElement));
+    for (const h of hits) for (const n of ['laser-mode', 'torp-mode', 'fire', 'launch']) expect(overlap(h, rect(screen.getByTestId(`console-${n}`))), n).toBe(false);
   });
 });
