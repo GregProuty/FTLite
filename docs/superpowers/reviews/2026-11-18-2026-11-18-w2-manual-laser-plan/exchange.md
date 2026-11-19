@@ -94,3 +94,41 @@ Confirmed: onlineDuel.ts:19 and :27. Step 6(a) now quotes the `{ CONTACT_MAX_LEV
 
 ---
 
+# Round 2 (delta, reviewing ea2ca809, effort medium, 31 s, 69648 in / 50491 cached / 1944 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — Task 4 Step 5(d) quotes tests/rockLock.test.ts:L90 exactly as it stands, and replaces it with the same eight-command list that Step 5's other pins use. tests/rockLock.test.ts is now in Step 7's git add.
+- R1-F2: resolved — Task 6 Step 7(c) (plan L1819) widens both `requests?: { pew(aim: number): void }` annotations. Both exist verbatim at tests/onlineDuelSession.test.ts:L53 and :L66, so `requests!.aimLaser` now typechecks. The file is in the commit's git add (plan L1864).
+- R1-F3: resolved — open() now sets `st.systems[0].freq = (st.weakFreq + 1) % 3` (plan L534), as tests/helpers/hostile.ts does. The weak case still sets `freq = st.weakFreq` explicitly after open() (plan L569), so both branches are deterministic whatever seed 5 draws.
+- R1-F4: resolved — Step 7(a) now quotes the start of the systems-keys line and names line 116, which matches tests/tacticalDeterminism.test.ts:L116. The ships-keys assertion at L115 is left alone. The Files entry reads `:116,122-128`.
+- R1-F5: resolved — Step 6(a) quotes `import { CONTACT_MAX_LEVEL, missileOf } from '../../sim/tactical/state';`, which matches onlineDuel.ts:L27, and says explicitly that the `{ Outcome }` import (L19) stays.
+
+## Verified
+- tests/rockLock.test.ts:L90 matches the old text quoted in plan Task 4 Step 5(d), character for character up to the comment
+- tests/onlineDuelSession.test.ts:L53 and :L66 both contain `requests?: { pew(aim: number): void }`, which plan L1819 quotes
+- tests/tacticalDeterminism.test.ts:L115 is the ships-keys assertion and L116 is the systems-keys assertion, which matches the revised plan L446 and the Files entry at L141
+- src/renderer/src/app/duel/onlineDuel.ts:L19 `{ Outcome }` and :L27 `{ CONTACT_MAX_LEVEL, missileOf }` match the revised Step 6(a)
+- The open() rig at plan L526-537 sets freq off the weak frequency; the weak-case override at plan L569 comes after open(), so it takes effect
+- Task 4 Step 7 (plan ~L1125) and Task 6's commit (plan L1864) add every file that the revised steps touch
+
+## Not verified
+- I did not re-check the other shield expectations in Task 3 (the torpedo test's `shields - 1` and the burst test's `[1, 1, NORTH]`) beyond confirming they now inherit the off-weak freq from open(). Those sections of the diff were not changed.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the subject at `ea2ca809`. 0 accepted, 0 rejected, 0 deferred. The reviewer confirmed R1-F1 to R1-F5 resolved and raised no new findings.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
