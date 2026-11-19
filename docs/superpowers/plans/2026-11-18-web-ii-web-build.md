@@ -2203,7 +2203,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: `resolveWebBuildPlan` (Task 2), `buildWeb` (Task 3), `buildDuelObservers` (`scripts/network/online-observer-build.ts`: writes `<dir>/observer/observer.js` (the duel observer, `window.onlineAppObservation()`), `page-probe.js` (`window.onlineProbe` with `set`, `counts`, `openPorts`) and `utility.cjs`), `startLocalRuntime(directory, { allowedOrigins })` (`services/signalling/scripts/local-runtime.ts`), `scripts/network/online-app-smoke.cjs` (the Electron driver: `status`, `click`, `type`, `key`, `resource-counts`, `shutdown`), the page test probe `window.__ftliteOnlineTest` (`testProbe`, Web-i D-1).
 - Produces: `npm run test:web-net`, report `out/web-ii-net/web-net.json`; `GatePlayer`, `GateView`, `runPairing`, `latestPublication`, `commonPublication`, `parseWebNetArgs`, `electronKey`.
 
-How it runs: one local workerd whose `ALLOWED_ORIGINS` lists the preview origin; one `--test --test-probe --duel-test-seed=351` web build baked with that workerd's loopback origin; `vite preview` of its `static/` on a fixed free port; Playwright Chromium and Firefox **headless** (no hidden tabs are needed here; Web-i D-8 concerned hiding only) with host-candidate obfuscation off (Chromium `--disable-features=WebRtcHideLocalIpsWithMdns`, Firefox `media.peerconnection.ice.obfuscate_host_addresses: false`) so loopback ICE pairs across two browsers; each player is its own browser context (its own IndexedDB and Web Lock). The Electron guest is the built app through `online-app-smoke.cjs`. Each pairing runs the four checks of §8: host and join; a short scripted duel (both walk to their consoles, the guest's Helm holds W, the speed rises on both) whose authority publication matches the guest (same run, sequence, tick and hash); guest reconnect with the saved seat (tab closed, reopened in the same context, reloaded in place to prove the Web Lock is re-taken (review R1-F2), Reconnect saved seat, host Esc resumes); rehost from the IndexedDB mirror after the host tab closes through its leave prompt: the guest's own tab (or app) is then closed and reopened too, Reconnect saved seat reaches 'saved' with Re-host offered and the same committed tick, so the mirror can only have come back from IndexedDB (review R1-F4). If that Reconnect never offers Re-host, do not weaken the gate: fall back to reading `mirror-v1` from database `ftlite` with `page.evaluate` before the guest's tab closes and asserting its bytes start with `FTLNMIR1`, then rehost in that tab, and record the fallback in the report. The origin-refused injection also requires network evidence of the 403 (review R1-F3). Finally the rehosted guest leaves, and every page port it opened is closed or transferred and its Worker terminated.
+How it runs: one local workerd whose `ALLOWED_ORIGINS` lists the preview origin; one `--test --test-probe --duel-test-seed=351` web build baked with that workerd's loopback origin; `vite preview` of its `static/` on a fixed free port; Playwright Chromium and Firefox **headless** (no hidden tabs are needed here; Web-i D-8 concerned hiding only) with host-candidate obfuscation off (Chromium `--disable-features=WebRtcHideLocalIpsWithMdns`, Firefox `media.peerconnection.ice.obfuscate_host_addresses: false`) so loopback ICE pairs across two browsers; each player is its own browser context (its own IndexedDB and Web Lock). The Electron guest is the built app through `online-app-smoke.cjs`. Each pairing runs the four checks of §8: host and join; a short scripted duel (both walk to their consoles, the guest's Helm holds W, the speed rises on both) whose authority publication matches the guest (same run, sequence, tick and hash); guest reconnect with the saved seat (tab closed, reopened in the same context, reloaded in place to prove the Web Lock is re-taken (review R1-F2), Reconnect saved seat, host Esc resumes); rehost from the IndexedDB mirror after the host tab closes through its leave prompt: the guest's own tab (or app) is then closed and reopened too. Before Reconnect (whose mirror refresh also fetches the service's checkpoint), a browser guest reads `records`/`mirror-v1` straight from database `ftlite` with `page.evaluate` and must find the `FTLNMIR1` magic and a header whose committed `checkpointSequence` and `capturedTick` equal the last committed checkpoint it saw before closing (review R1-F4, R2). Then Reconnect saved seat reaches 'saved' with Re-host offered, and the guest rehosts. The report records the stored mirror as read; the Electron guest's driver has no page evaluate, so its pairing records "not read" and relies on the status check only. The origin-refused injection also requires network evidence of the 403 (review R1-F3). Finally the rehosted guest leaves, and every page port it opened is closed or transferred and its Worker terminated.
 
 - [ ] **Step 1: Write the failing test** `tests/webNetScenario.test.ts`:
 
@@ -2267,12 +2267,16 @@ export interface GatePlayer {
   reopen(): Promise<void>;
   /** Browser only (review R1-F2): reload the tab in place; throws unless the online session exists again (the Web Lock was re-taken). */
   reload?(): Promise<void>;
+  /** Browser only (review R2-F4): database ftlite's records/mirror-v1 decoded as mirrorStore.ts lays it out (magic at 0-7,
+   *  header length uint32 LE at 8, JSON header at 12); null when nothing is stored. */
+  storedMirror?(): Promise<StoredMirror | null>;
   dispose(): Promise<void>;
   readonly errors: string[];
   /** Browser only (review R1-F3): every response or failed request to the service origin, as Playwright saw it (CORS hides them from page script). */
   readonly network: NetworkEntry[];
 }
 export interface NetworkEntry { method: string; path: string; status: number | null; origin: string | null; failure: string | null }
+export interface StoredMirror { magic: string; checkpointSequence: number | null; capturedTick: number | null }
 const delay = (ms: number) => new Promise<void>(done => setTimeout(done, ms));
 export async function bounded<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -2311,6 +2315,20 @@ export async function createBrowserPlayer(o: { browser: Browser; name: string; u
   return {
     name: o.name, errors, network,
     async reload() { await bounded(page.reload(), 30000, `${o.name} reload`); await online(); },
+    storedMirror: () => bounded(page.evaluate(async () => {
+      // No version: open whatever version the page made (2 after Task 9), so this never triggers an upgrade.
+      const db = await new Promise<IDBDatabase>((resolve, reject) => { const r = indexedDB.open('ftlite'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+      try {
+        if (!db.objectStoreNames.contains('records')) return null;
+        const value = await new Promise<unknown>((resolve, reject) => { const q = db.transaction('records', 'readonly').objectStore('records').get('mirror-v1'); q.onsuccess = () => resolve(q.result); q.onerror = () => reject(q.error); });
+        if (!(value instanceof Uint8Array) || value.length < 12) return null;
+        const magic = new TextDecoder().decode(value.subarray(0, 8));
+        if (magic !== 'FTLNMIR1') return { magic, checkpointSequence: null, capturedTick: null };
+        const length = new DataView(value.buffer, value.byteOffset, value.byteLength).getUint32(8, true);
+        const header = JSON.parse(new TextDecoder().decode(value.subarray(12, 12 + length))) as { committed: { metadata: { checkpointSequence: number; capturedTick: number } } | null };
+        return { magic, checkpointSequence: header.committed?.metadata.checkpointSequence ?? null, capturedTick: header.committed?.metadata.capturedTick ?? null };
+      } finally { db.close(); }
+    }), 6000, `${o.name} stored mirror`),
     read: () => bounded(page.evaluate(async () => { const w = window as any;
       return { status: (await w.__ftliteOnlineTest.readStatus()).status, observations: w.onlineAppObservation(), text: document.body.innerText }; }), 4000, `${o.name} read`),
     async click(id) {
@@ -2494,7 +2512,13 @@ export async function runPairing(h: GatePlayer, g: GatePlayer, deps: { step(labe
   assert(!!last && !lost.status.mirror.localPending, `${g.name} lost its committed mirror`);
   // Review R1-F4: the guest's tab (or app) goes too, so the mirror the rehost uses can only come back from IndexedDB.
   await g.close({ prompt: false });
-  await g.reopen(); await g.click('multiplayer');
+  await g.reopen();
+  // Review R2-F4: Reconnect's mirror refresh also fetches the service's checkpoint, so the status alone cannot show what
+  // IndexedDB kept. Read the stored mirror-v1 straight from the database before Reconnect can touch it.
+  const stored = g.storedMirror ? await g.storedMirror() : undefined;
+  if (stored !== undefined) assert(stored !== null && stored.magic === 'FTLNMIR1' && stored.checkpointSequence === last!.checkpointSequence && stored.capturedTick === last!.capturedTick,
+    `${g.name} IndexedDB mirror-v1 does not hold the committed checkpoint: ${JSON.stringify(stored)} vs sequence ${last!.checkpointSequence}, tick ${last!.capturedTick}`);
+  await g.click('multiplayer');
   await until(() => g.read(), v => v.status.actions.includes('reconnect'), `${g.name} offers its saved seat after the host went`);
   await g.click('reconnect');
   const restored = await until(() => g.read(), v => v.status.phase === 'saved' && v.status.actions.includes('rehost') && v.status.mirror.committed?.capturedTick === last!.capturedTick,
@@ -2505,7 +2529,8 @@ export async function runPairing(h: GatePlayer, g: GatePlayer, deps: { step(labe
     if (v.status.phase === 'error') throw Error(`${g.name} rehost: online error ${v.status.error}`);
     return v.status.role === 'host' && (v.status.phase === 'paused' || v.status.phase === 'running');
   }, `${g.name} rehosted`, 45000);
-  proof.rehost = { mirroredTick: mirrored.status.mirror.committed!.capturedTick, restoredFromIndexedDb: true, phase: rehosted.status.phase, leavePrompt: true };
+  proof.rehost = { mirroredTick: mirrored.status.mirror.committed!.capturedTick, committedSequence: last!.checkpointSequence,
+    indexedDbMirror: stored === undefined ? 'not read (Electron page: the driver has no page evaluate)' : stored, phase: rehosted.status.phase, leavePrompt: true };
 
   deps.step('cleanup');
   await until(() => g.read(), v => v.status.actions.includes('leave'), `${g.name} can leave`);
