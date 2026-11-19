@@ -19,8 +19,9 @@ export function keyLabel(code: string): string {
 const DUEL_ACTION: Readonly<Record<Exclude<KeyAction, 'fireUp'>, string>> = {
   interact: 'Sit at a console; at Weapons, lock the next target',
   prevLock: 'At Weapons, lock the previous target',
-  fireDown: 'At Weapons, fire a full laser; at the Helm, hold to turn the nose onto the enemy (auto-face)',
+  fireDown: 'At Weapons, fire a full laser (in MANUAL, along the map aim); at the Helm, hold to turn the nose onto the enemy (auto-face)',
   launch: 'At Weapons, launch a torpedo',
+  laserMode: 'At Weapons, switch the laser between AUTO (it fires at its target by itself) and MANUAL (Space fires it along the map aim)',
   stand: 'Stand up from a console',
   switch: 'Switch between the Helm and Weapons characters',
   pause: 'Pause and resume',

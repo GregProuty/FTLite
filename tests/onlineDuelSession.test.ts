@@ -50,7 +50,7 @@ function stubClient() {
 type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
   clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null; notice?: string | null }[], overlay: [] as (readonly string[] | null)[],
-  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 }
+  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 }
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
 vi.mock('../src/network/portLink', () => ({
@@ -63,7 +63,7 @@ vi.mock('../src/network/portLink', () => ({
 vi.mock('../src/network/transport/bridge', () => ({ browserPortEndpoint: () => ({}) }));
 vi.mock('../src/renderer/src/app/duel/scene', () => ({
   // Mirrors the real scene: draw hands the UI a frame, dispose clears the sink (scene.ts dispose: options.ui.clear()).
-  createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void } }) => {
+  createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void } }) => {
     h.sceneOpts.push(opts);
     return {
       draw: (source: unknown, _dt: number, o: { banner: string | null; notice?: string | null }) => {
@@ -182,6 +182,36 @@ describe('the online pew (W-1 review F2)', () => {
     h0.session.frame(); h.sceneOpts.at(-1)!.requests!.pew(1234); h0.pump();
     expect(pewCommands(c0)).toHaveLength(0);
     h0.dispose();
+  });
+});
+
+describe('the online manual laser (W-2)', () => {
+  const sent = (c: Stub, kind: string) => c.commands().filter((x) => x.kind === kind);
+  const fireRefusals = () => h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'fire');
+  it('Z sends laserMode from the mode in flight, else the replica\'s', () => {
+    const r = rig(1), c = r.attach();
+    r.session.frame();
+    r.key('keydown', 'KeyZ'); r.key('keyup', 'KeyZ'); r.pump();
+    r.key('keydown', 'KeyZ'); r.key('keyup', 'KeyZ'); r.pump();
+    expect(sent(c, 'laserMode')).toEqual([{ kind: 'laserMode', manual: true }, { kind: 'laserMode', manual: false }]);
+    r.dispose();
+  });
+  it('in MANUAL Space sends laserFire along the map aim even on an uncharged replica; an unavailable answer shows NO CHARGE', () => {
+    const r = rig(1);
+    r.d.tactical.systems[0]!.laserManual = true;
+    r.d.tactical.systems[0]!.laserCharge = 0;   // the lagging replica: empty
+    const c = r.attach();
+    r.session.frame();
+    h.sceneOpts[0]!.requests!.aimLaser(1234);
+    r.key('keydown', 'Space'); r.key('keyup', 'Space'); r.pump();
+    expect(sent(c, 'laserFire')).toEqual([{ kind: 'laserFire', aim: 4, aimAcc: 210 }]);
+    expect(sent(c, 'laserCharge')).toEqual([]);
+    r.session.frame(); expect(fireRefusals()).toEqual([]);   // nothing is shown before the authority answers
+    const id = c.ids[c.commands().map((x) => x.kind).lastIndexOf('laserFire')]!;
+    c.results.push({ id, tick: 3, status: 'rejected', reason: 'unavailable' }); r.pump();
+    r.session.frame();
+    expect(fireRefusals()).toEqual([{ control: 'fire', reason: 'NO CHARGE' }]);
+    r.dispose();
   });
 });
 

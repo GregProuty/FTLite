@@ -43,6 +43,7 @@ describe('the controls list', () => {
     const action = (keys: string): string => sections[0]!.rows.find(r => r.keys === keys)!.action;   // interior zoom spec rule 6
     expect([action('Mouse wheel'), action('Middle drag'), action('C')].every(t => /ship/.test(t))).toBe(true);
     expect(action('Left click')).toMatch(/Weapons.*pew/);   // W-1: the pew's left click
+    expect(action('Z')).toMatch(/Weapons.*AUTO.*MANUAL/);   // W-2: the laser's mode
     expect(action('Right click or drag')).toMatch(/Helm.*heading/);   // Feel-ii: the Helm's right button aims the heading
     expect([action('Shift+W'), action('G / Middle click')]).toEqual(['At the Helm, full throttle', 'Ping the map point (or the enemy) for the crew']);
     expect([keyLabel('KeyE'), keyLabel('Equal'), keyLabel('NumpadAdd'), keyLabel('Escape')]).toEqual(['E', '=', 'Num +', 'Esc']);

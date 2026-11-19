@@ -185,6 +185,9 @@ export interface DuelRuntimeDeps extends FlightRuntimeDeps {
   takeHeading?(): number | null;
   /** W-1 (pew pew spec §1): the Weapons map's pew aim since the last frame (mapRequests.ts), a fine heading, or null. */
   takePew?(): number | null;
+  /** W-2 (pew pew spec §2): the MANUAL laser's aim (mapRequests.ts laserAim, kept, not drained): the latest fine heading the
+   *  pointer gave on the open Weapons map, or null before any (the laser then fires along the nose). */
+  laserAim?(): number | null;
 }
 
 export interface DuelRuntime {
@@ -237,7 +240,7 @@ export interface DuelRuntime {
   dispose(): void;
 }
 
-const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'rockLock' || c.kind === 'laserCharge' || c.kind === 'missileLaunch' || c.kind === 'pewFire';
+const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserMode' || c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'rockLock' || c.kind === 'laserCharge' || c.kind === 'laserFire' || c.kind === 'missileLaunch' || c.kind === 'pewFire';
 /** The commands only a seated console's player sends (Weapons, the Helm's throttle, Sci-1's three): a Tab or a stand drops them. */
 const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'heading' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';
 const NO_REQUESTS: ContactRequests = { designate: null, scan: null };
@@ -360,6 +363,8 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
    *  the Helm (`turning`), since the sim clears the hold after the tick's commands. */
   const headingBase = (turning: boolean): number => { if (turning) return -1; const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'heading')?.command; return c && c.kind === 'heading' ? c.heading : d.holdHeading; };
   const freqBase = (): number => { const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'laserFrequency')?.command; return c && c.kind === 'laserFrequency' ? c.freq : d.tactical.systems[0].freq; };
+  /** W-2 (pew pew spec §2): the active player's latest queued laser mode, else the sim's (as freqBase). */
+  const laserModeBase = (): boolean => { const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'laserMode')?.command; return c && c.kind === 'laserMode' ? c.manual : d.tactical.systems[0].laserManual; };
 
   /** A new round (H-2 spec §7): its seed and presence came with the rematch; the view's state starts again. */
   function newRound(): void {
@@ -473,10 +478,22 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     }
     const freq = frequencyRequest(freqBase(), k.freqTo);   // 3/4/5 or a console button (Sci-1 spec §7.4)
     if (freq !== null) queue({ kind: 'laserFrequency', freq });
-    if (p.fireDown > 0) queue({ kind: 'laserCharge', held: true });   // FTL targeting spec §2: one press fires a full laser
+    // W-2 (pew pew spec §2): Z or the LASER card's AUTO / MAN tag toggles the laser's mode, from the latest queued one (an odd
+    // number of presses this frame toggles it).
+    let manual = laserModeBase();
+    if (p.laserMode % 2 === 1 && hasLaser()) { manual = !manual; queue({ kind: 'laserMode', manual }); }
+    if (manual) {
+      // W-2: in MANUAL Space fires the laser along the Weapons map's aim (else the nose), or says why not (NO CHARGE without a
+      // full charge) and queues nothing.
+      if (p.fireDown > 0) {
+        const why = refusal(d, 'fire', true);
+        if (why) refuse('fire', why);
+        else { const aim = deps.laserAim?.() ?? d.tactical.ships[0].heading * HEADING_COUNT; queue({ kind: 'laserFire', aim: Math.floor(aim / HEADING_COUNT), aimAcc: aim % HEADING_COUNT }); }
+      }
+    } else if (p.fireDown > 0) queue({ kind: 'laserCharge', held: true });   // FTL targeting spec §2: one press fires a full laser
     if (p.launch > 0) queue({ kind: 'missileLaunch' });
     // Feel-ii §2.8: FIRE and LAUNCH say why when the sim would refuse them (the tick drops them by the same checks).
-    const fireWhy = p.fireDown > 0 ? refusal(d, 'fire') : null, launchWhy = p.launch > 0 ? refusal(d, 'launch') : null;
+    const fireWhy = p.fireDown > 0 && !manual ? refusal(d, 'fire', false) : null, launchWhy = p.launch > 0 ? refusal(d, 'launch') : null;
     if (fireWhy) refuse('fire', fireWhy);
     if (launchWhy) refuse('launch', launchWhy);
     // W-1 (pew pew spec §1): a left click on the Weapons map fires the pew along its aim; with less than a third stored it

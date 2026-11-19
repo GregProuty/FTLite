@@ -66,7 +66,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     now: () => performance.now(),
     scheduler: { schedule(delay, cb) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } },
     sampleKeys: () => keyboard.sample(), samplePointer: () => pointer.sample(),
-    takeContactRequests: () => contact.takeRequests(), takeHeading: () => requests.takeHeading(), takePew: () => requests.takePew(),
+    takeContactRequests: () => contact.takeRequests(), takeHeading: () => requests.takeHeading(), takePew: () => requests.takePew(), laserAim: () => requests.laserAim(),   // W-2
     cls: deps.cls, takeSteer: () => requests.takeSteer(), takeLaunches: () => requests.takeLaunches(), gunHeld: () => pointer.leftHeld(),   // Valkyrn spec §5.1, §8
     clearKeys: () => { keyboard.clear(); pointer.clear(); },
     seed: deps.seed, viewport, layout: deps.layout, onRound: (summary) => { void Promise.resolve(deps.recordDuel?.(solo.record(summary))).catch(() => {}); }
