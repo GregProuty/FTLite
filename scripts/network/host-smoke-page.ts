@@ -68,3 +68,94 @@ window.addEventListener('message', event => {
     const now = performance.now(); if (lastCallback) largestGap = Math.max(largestGap, now - lastCallback); lastCallback = now;
   });
 });
+
+import { createWorkerHostPlatform, startWorkerHost, type HostProcessHandle, type WorkerLike } from '../../src/network/host/workerHost';
+import { base64ToBytes, bytesToBase64 } from '../../src/shared/bytes';
+import { trackPagePorts } from './page-port-tracker';
+
+// The owner role (Web-i): production Worker owners over the built production Worker, driven by main through
+// executeJavaScript. Bytes cross the executeJavaScript boundary as base64.
+type StartMode = 'normal' | 'abort-before' | 'abort-after-spawn' | 'crash-on-spawn';
+interface HostEntry { handle?: HostProcessHandle; exit?: string; starting: Promise<void>; abort: AbortController; worker?: Worker;
+  terminated: boolean; errored: boolean; lastOkResponse?: unknown; intercept?: (message: any) => boolean }
+const params = new URLSearchParams(location.search);
+if (params.get('role') === 'owner') {
+  const workerUrl = params.get('worker')!;
+  // Before any host exists: every page MessagePort (transport, Worker and game channels) is observed from creation.
+  trackPagePorts();
+  const suspends = new Set<() => void>(), resumes = new Set<() => void>();
+  const lifecycle = { onSuspend(cb: () => void) { suspends.add(cb); return () => { suspends.delete(cb); }; }, onResume(cb: () => void) { resumes.add(cb); return () => { resumes.delete(cb); }; } };
+  const hosts = new Map<number, HostEntry>();
+  let nextHost = 0;
+  const entry = (id: number) => { const value = hosts.get(id); if (!value) throw Error('host-unknown'); return value; };
+  const handle = (id: number) => { const value = entry(id).handle; if (!value) throw Error('host-unavailable'); return value; };
+  // Each host's Worker is observed from construction; the helpers abort or crash it inside the spawn task itself.
+  function observedWorker(value: HostEntry, mode: StartMode): () => WorkerLike {
+    return () => {
+      const worker = new Worker(workerUrl, { type: 'module' }); value.worker = worker;
+      const terminate = worker.terminate.bind(worker); worker.terminate = () => { value.terminated = true; terminate(); };
+      worker.addEventListener('error', () => { value.errored = true; });
+      // Registered before the spawn adapter's own listener, so an armed interception is consumed first.
+      worker.addEventListener('message', event => {
+        const message = event.data;
+        if (value.intercept?.(message)) { event.stopImmediatePropagation(); return; }
+        if (message?.kind === 'response' && message.response?.ok && value.lastOkResponse === undefined) value.lastOkResponse = structuredClone(message);
+      });
+      if (mode === 'abort-after-spawn') value.abort.abort();
+      // A microtask: after startWorkerHost's synchronous body has subscribed, before any Worker reply can arrive.
+      if (mode === 'crash-on-spawn') queueMicrotask(() => worker.dispatchEvent(new ErrorEvent('error', { message: 'injected worker crash', cancelable: true })));
+      return worker;
+    };
+  }
+  const encodeCommand = (command: any) => command.kind === 'start' ? { ...command, initBytes: base64ToBytes(command.initBytes) }
+    : command.kind === 'restore' ? { ...command, checkpointBytes: base64ToBytes(command.checkpointBytes) } : command;
+  const decodeResponse = (response: any) => response.ok && response.checkpointBytes ? { ...response, checkpointBytes: bytesToBase64(response.checkpointBytes) } : response;
+  const owner = {
+    start(options: object, mode: StartMode = 'normal'): number {
+      const id = ++nextHost, value: HostEntry = { abort: new AbortController(), terminated: false, errored: false, starting: Promise.resolve() };
+      hosts.set(id, value);
+      if (mode === 'abort-before') value.abort.abort();
+      value.starting = startWorkerHost({ ...options, signal: value.abort.signal } as never, createWorkerHostPlatform({ lifecycle, createWorker: observedWorker(value, mode) }))
+        .then(h => { value.handle = h; h.onExit(reason => { value.exit = reason; }); }, error => { value.exit = String(error?.message ?? error); });
+      return id;
+    },
+    async settled(id: number) { await entry(id).starting; const value = entry(id); return { ready: !!value.handle, exit: value.exit ?? null }; },
+    exit: (id: number) => entry(id).exit ?? null,
+    async request(id: number, command: object) { return decodeResponse(await handle(id).request(encodeCommand(command))); },
+    async attachLocal(id: number, peer: string, players: number[], options?: object) {
+      const { port1, port2 } = new MessageChannel();
+      // null crosses executeJavaScript for "no options"; the production owner accepts only undefined there.
+      await handle(id).attachPeer(peer, players, port1, (options ?? undefined) as never);
+      // The preload forwards this port to main, which hands it to the producer page (its existing host-smoke-port path).
+      window.postMessage({ kind: 'host-smoke-port-out' }, '*', [port2]);
+    },
+    async dispose(id: number) { await handle(id).dispose(); },
+    suspend() { for (const cb of [...suspends]) cb(); },
+    resume() { for (const cb of [...resumes]) cb(); },
+    /** A Worker crash: an error event on that host's Worker object, which the spawn adapter treats as an exit. */
+    crashWorker(id: number) { entry(id).worker!.dispatchEvent(new ErrorEvent('error', { message: 'injected worker crash', cancelable: true })); },
+    /** The page transport lost: its controller disposed by its user. */
+    async killTransport(id: number) { await handle(id).transport.dispose(); },
+    /** One real ok response captured from host `from`'s Worker (the stale-generation replay). */
+    lastOkResponse: (from: number) => entry(from).lastOkResponse ?? null,
+    /** Replay a message into host `to`'s owner exactly as if its Worker had posted it. */
+    inject(to: number, message: unknown) { entry(to).worker!.dispatchEvent(new MessageEvent('message', { data: message })); },
+    /** Arm, on host `id`, a one-shot interception of the Worker reply with this request id; resolves with that reply. */
+    intercept(id: number, requestId: number) {
+      const value = entry(id);
+      return new Promise(resolve => { value.intercept = message => {
+        if (message?.kind !== 'response' || message.response?.requestId !== requestId) return false;
+        value.intercept = undefined; resolve(message.response); return true;
+      }; });
+    },
+    /** Post a raw command straight to host `id`'s Worker, bypassing its owner. */
+    rawCommand(id: number, command: object) { entry(id).worker!.postMessage({ kind: 'command', command }); },
+    counts() {
+      const byHost: Record<number, { created: boolean; terminated: boolean; errored: boolean }> = {};
+      for (const [id, value] of hosts) byHost[id] = { created: !!value.worker, terminated: value.terminated, errored: value.errored };
+      const created = [...hosts.values()].filter(v => v.worker);
+      return { workers: created.length, terminated: created.filter(v => v.terminated).length, byHost, ports: trackPagePorts() };
+    }
+  };
+  (window as any).hostSmoke = { owner };
+}

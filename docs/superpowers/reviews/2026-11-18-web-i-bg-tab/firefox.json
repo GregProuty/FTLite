@@ -1,0 +1,23 @@
+{
+  "browser": "firefox",
+  "valid": false,
+  "invalid": [
+    "baseline-hidden"
+  ],
+  "pass": false,
+  "failures": [],
+  "figures": {
+    "minTicksPerWindow": 596,
+    "windows": 60,
+    "relayP99HiddenMs": 10,
+    "relayP99VisibleMs": 9.333251953125,
+    "maxLeaseGapMs": 5003,
+    "leaseCompletions": 120,
+    "controlTabPeriodMs": 1000.4223706176962,
+    "testPageControlPeriodMs": 1000.4240400667779,
+    "maxTickLatenessMs": 74.33333333334303
+  },
+  "minutes": 10,
+  "visibleSeconds": 60,
+  "recordedAt": "2026-11-18T21:13:14.566Z"
+}

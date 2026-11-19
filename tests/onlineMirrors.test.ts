@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { createOnlineMirrors } from '../src/main/network/onlineMirrors';
-import type { MirrorFileV1, SessionMirror } from '../src/main/network/mirrorStore';
+import { createOnlineMirrors } from '../src/network/online/onlineMirrors';
+import type { MirrorFileV1, SessionMirror } from '../src/network/online/mirrorStore';
 const deferred = <T>() => { let resolve!: (value: T) => void, reject!: (error: unknown) => void; const promise = new Promise<T>((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 const compatibility = { protocolVersion: 2 as const, modeId: 'sector', schemaVersion: 1, simVersion: 35, contentDigest: 'c'.repeat(64), layoutHash: '12345678' };
 const candidate = (id = 1, tick = 0) => ({ captureId: id, capturedTick: tick, controlRevision: 0, cause: 'periodic' as const, bytes: new Uint8Array([id]) });

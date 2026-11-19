@@ -26,14 +26,15 @@ import { startOnlineAppRuntime } from './online-app-runtime';
 export const DUEL_TEST_SEED = 351;
 const delay = (ms: number) => new Promise(done => setTimeout(done, ms));
 const assert = (value: unknown, message: string) => { if (!value) throw Error(message); };
-type Application = { child: ChildProcess; pid: number; profile: string; exited: boolean; exit: Promise<void>; request(command: string, data?: object): Promise<any> };
+type Application = { child: ChildProcess; pid: number; profile: string; exited: boolean; exitCode?: number | null; exit: Promise<void>; request(command: string, data?: object): Promise<any> };
 
 async function main() {
   const began = performance.now(), directory = mkdtempSync(join(tmpdir(), 'ftlite-duel-app-'));
   const reportPath = resolve(process.argv.find(a => a.startsWith('--report-path='))?.slice(14) ?? 'out/h2a-duel-app/duel-app.json');
   mkdirSync(resolve(reportPath, '..'), { recursive: true });
   const digest = computeContentDigest(process.cwd()), processes: Application[] = [], proof: Record<string, unknown> = {};
-  const deadline = new AbortController(), watchdog = setTimeout(() => deadline.abort(), 180000);
+  // Web-i: 180 s plus the minimized host's 60 s and the close gate.
+  const deadline = new AbortController(), watchdog = setTimeout(() => deadline.abort(), 270000);
   let runtime: ReturnType<typeof startOnlineAppRuntime> | undefined, failure: string | undefined, step = 'startup';
   async function until<T>(read: () => Promise<T>, predicate: (value: T) => boolean, label: string, ms = 15000): Promise<T> {
     const end = performance.now() + ms; let last: T | undefined;
@@ -42,7 +43,7 @@ async function main() {
   }
   async function launch(profile: 'host' | 'guest'): Promise<Application> {
     if (typeof electron !== 'string') throw Error('Electron executable missing');
-    const env: NodeJS.ProcessEnv = { ...process.env, FTLITE_LOCAL_SERVICE_URL: runtime!.baseUrl, FTLITE_DUEL_TEST_SEED: String(DUEL_TEST_SEED), NODE_PATH: resolve('node_modules') };
+    const env: NodeJS.ProcessEnv = { ...process.env, FTLITE_LOCAL_SERVICE_URL: runtime!.baseUrl, FTLITE_DUEL_TEST_SEED: String(DUEL_TEST_SEED), FTLITE_ONLINE_TEST_PROBE: '1', NODE_PATH: resolve('node_modules') };
     delete env.ELECTRON_RUN_AS_NODE; delete env.CHROME_CRASHPAD_PIPE_NAME; delete env.ELECTRON_RENDERER_URL; delete env.FTLITE_SECTOR_ONLINE_TEST;
     const child = spawn(electron, [resolve('scripts/network/online-app-smoke.cjs'), `--online-app-dir=${directory}`, `--online-app-role=${profile}`, `--user-data-dir=${join(directory, profile)}`],
       { env, windowsHide: false, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
@@ -54,7 +55,9 @@ async function main() {
     } };
     child.on('message', (message: any) => { const item = pending.get(message.id); if (!item) return; pending.delete(message.id); clearTimeout(item.timer); message.error ? item.reject(Error(`app-driver-command-failed (${message.command}: ${message.reason})`)) : item.resolve(message.result); });
     child.stdout!.resume(); child.stderr!.resume();
-    app.exit = new Promise(done => child.once('exit', () => { app.exited = true; for (const item of pending.values()) { clearTimeout(item.timer); item.reject(Error('application exited')); } pending.clear(); done(); }));
+    // Local debugging only (FTL_DEBUG=1): raw wrapper diagnostics; never set by the npm gate.
+    if (process.env.FTL_DEBUG) child.stderr!.pipe(process.stderr);
+    app.exit = new Promise(done => child.once('exit', code => { app.exited = true; app.exitCode = code; for (const item of pending.values()) { clearTimeout(item.timer); item.reject(Error('application exited')); } pending.clear(); done(); }));
     processes.push(app);
     await until(async () => { try { return await app.request('status'); } catch (error) { if (app.exited) throw error; return null; } }, (v: any) => !!v?.status && v.text.includes('Single player'), `${profile} app ready`, 30000);
     return app;
@@ -153,6 +156,21 @@ async function main() {
     const agreement = await until(async () => { const [a, b] = [await status(h), await status(g)]; const hp = a.observations.at(-1).publications, gp = b.observations.at(-1).publications;
       return gp.findLast((p: any) => hp.some((q: any) => q.sequence === p.sequence && q.hash === p.hash && q.tick === p.tick)); }, (same: any) => !!same, 'hash agreement');
     proof.agreement = { tick: agreement.tick, sequence: agreement.sequence, hash: agreement.hash };
+    // Web-i (spec §8): an Electron host minimized for 60 s keeps ticking at 60 Hz and keeps its lease (backgroundThrottling: false).
+    step = 'minimized host';
+    const tickOf = (r: any): number => latest(r)?.tick ?? -1;
+    const beforeHost = await status(h), beforeAt = performance.now();
+    await h.request('blur');   // minimizes the host window
+    await delay(30000); const midway = await h.request('resources'); await delay(30000);
+    const afterHost = await status(h), afterGuest = await status(g), elapsed = (performance.now() - beforeAt) / 1000;
+    await h.request('focus');
+    const rate = (tickOf(afterHost) - tickOf(beforeHost)) / elapsed;
+    assert(midway.minimized === true, 'host was not minimized');
+    assert(rate >= 59, `minimized host ticked at ${rate.toFixed(2)} Hz`);
+    // Mid round 2 nobody pauses: the live phase is the only lease-kept outcome.
+    assert(afterHost.recovery.invalidations.length === 0 && afterHost.status.phase === 'running', 'minimized host lost its lease');
+    assert(tickOf(afterGuest) > tickOf(beforeHost), 'guest stopped receiving the minimized host');
+    proof.minimizedHost = { seconds: elapsed, ticksPerSecond: rate, ticks: tickOf(afterHost) - tickOf(beforeHost), minimized: true, leaseKept: true, phase: afterHost.status.phase };
     // F3 shows the latency overlay on either machine (spec §9): a screenshot of each beside the report, then F3 hides it.
     for (const app of [h, g]) await press(app, 'F3');
     await delay(500);
@@ -175,9 +193,28 @@ async function main() {
     await phase(h, 'running'); await phase(g, 'running');
     await until(() => status(h), (r: any) => latest(r)?.present[1] === 1, 'the guest is present again');
     proof.rejoin = { ackBeforeInput: true, resumedByEscape: true };
-    for (const app of [g, h]) { await app.request('click', { id: 'leave' }); }
-    await phase(h, 'idle'); await phase(g, 'idle');
-    console.log('ACTUAL DUEL APP: menu host/join/start, the forced round end and round 2, records on both, Helm thrust and a beam on both, hash agreement, peer-lost pause and rejoin');
+    // Web-i (spec §8): closing the host window mid-match runs app:prepare-exit and leaves a fresh checkpoint at the service within 3 s.
+    step = 'close gate';
+    const lastPeriodic = (await status(h)).status.mirror.committed?.capturedTick ?? -1;
+    const closed = await h.request('close-window');
+    const fresh = closed.puts.find((p: any) => p.status === 204 && p.elapsedMs <= 3000 && p.metadata?.capturedTick > lastPeriodic);
+    assert(closed.exitAnsweredAt !== null && closed.closed, 'close handshake did not complete');
+    assert(!!fresh, `no fresh checkpoint within 3 s of close: ${JSON.stringify(closed.puts)}`);
+    proof.closeGate = { exitAnsweredMs: closed.exitAnsweredAt - closed.closeAt, putElapsedMs: fresh.elapsedMs, capturedTick: fresh.metadata.capturedTick, lastPeriodic,
+      puts: closed.puts.length, exitSnapshot: closed.snapshot };
+    const s = closed.snapshot;
+    assert(!!s && s.ports === 0 && Number.isSafeInteger(s.workers) && s.workers > 0 && s.workers === s.workerExits && s.workerErrors === 0,
+      `close left page resources: ${JSON.stringify(s && { workers: s.workers, workerExits: s.workerExits, workerErrors: s.workerErrors, ports: s.ports })}`);
+    await Promise.race([h.exit, delay(5000)]);
+    assert(h.exited && h.exitCode === 0, `the closed host app did not exit cleanly (${h.exitCode})`);
+    // Leave -> idle in duel mode: the guest, its host gone mid-match, leaves through the menu and reaches idle.
+    step = 'guest leave';
+    await until(() => status(g), (r: any) => r.status.actions.includes('leave'), 'guest can leave after the host closed');
+    await g.request('click', { id: 'leave' }); await phase(g, 'idle');
+    proof.leave = { guestIdle: true };
+    // Both Web-i scenarios are required evidence: a run that skipped either cannot pass.
+    assert(!!proof.minimizedHost && !!proof.closeGate, 'missing minimized-host or close-gate evidence');
+    console.log('ACTUAL DUEL APP: menu host/join/start, the forced round end and round 2, records on both, Helm thrust and a beam on both, hash agreement, minimized host, peer-lost pause and rejoin, close gate');
   } catch (error) { failure = `${step}: ${String((error as Error)?.message ?? error).slice(0, 160)}`; }
   finally {
     clearTimeout(watchdog);
@@ -201,6 +238,7 @@ async function main() {
     if (!target.startsWith(prefix) || !target.slice(prefix.length).startsWith('ftlite-duel-app-')) throw Error('invalid exact cleanup target');
     try { rmSync(target, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { failure ??= 'exact temporary cleanup failed'; }
   }
+  if (!failure && (!proof.minimizedHost || !proof.closeGate)) failure = 'missing minimized-host or close-gate evidence';
   const report = { version: 1, digest, elapsedMs: Math.ceil(performance.now() - began), processes: processes.map(({ pid, profile, exited }) => ({ pid, profile, exited })), proof, failure, temporaryRemoved: !existsSync(directory) };
   writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n');
   if (failure) throw Error(failure);

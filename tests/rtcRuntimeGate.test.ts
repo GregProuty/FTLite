@@ -5,7 +5,7 @@ import { requiredRtcChecks, validateRtcReport } from '../scripts/network/rtc-smo
 // These objects are not used as RTC or canonical-state evidence.
 function report() {
   const details: Record<string, any> = {
-    'early-cleanup': 'two real pre-spawn kill=false/retry=true exits',
+    'early-cleanup': 'abort inside the spawn task and a Worker error before readiness both rejected; both Workers terminated',
     'wrong-ticket': 'native rejected/cancelled; survivor canonical; native resources closed',
     'stale-generation': 'native rejected/cancelled; survivor canonical; native resources closed',
     'cancel-attempt': 'native rejected/cancelled; survivor canonical; native resources closed',
@@ -13,8 +13,8 @@ function report() {
   };
   Object.assign(details, {
     'first-full-ack': { first: { ack: 1, 'full-received': 1, refresh: 0 }, second: { ack: 1, 'full-received': 1, refresh: 0 } },
-    topology: { distinctProcesses: 6, guestAuthorities: 0, liveUtilities: 1 },
-    'stall-watchdog-command': { busyMs: 500, hiddenRtcContinued: true },
+    topology: { pages: 3, distinctRenderers: 3, liveWorkers: 1, guestAuthorities: 0 },
+    'stall-watchdog-command': { busyMs: 500, hostContinued: true, otherGuestRtcContinued: true },
     'canonical-presentation': { matchedPublications: 32, interpolationSeparate: true },
     'harness-latest-loss-reorder': { dropped: 1, reversedPairs: 1 },
     'harness-base-eviction-refresh': { suppressed: 64, canonicalRecovered: true },
@@ -24,7 +24,7 @@ function report() {
     'two-peer-isolation-disconnect': { activeInterpolationAtDisconnect: true, frozenAtConfirmedPositions: true },
     'native-channels-route': { nativePcs: 4, selectedRoute: 'direct' },
     'native-resource-cleanup': { hostPcsClosed: 6, productionTimers: 0, productionListeners: 0 },
-    'owner-cleanup': { utilities: 3, actualExits: 3, windows: 0, listeners: 0, relayPorts: 0 }
+    'owner-cleanup': { workers: 3, workerExits: 3, windows: 0, listeners: 0, relayPorts: 0, ports: 0, portsCreated: 12 }
   });
   return { electron: '37.10.3', checks: [...requiredRtcChecks], details };
 }
@@ -67,7 +67,8 @@ describe('actual RTC gate evidence admission', () => {
   });
   it.each([
     ['stall-watchdog-command', 'busyMs', undefined], ['stall-watchdog-command', 'busyMs', 499.99],
-    ['stall-watchdog-command', 'busyMs', NaN], ['canonical-presentation', 'matchedPublications', undefined],
+    ['stall-watchdog-command', 'busyMs', NaN], ['stall-watchdog-command', 'hostContinued', false], ['stall-watchdog-command', 'otherGuestRtcContinued', false],
+    ['topology', 'pages', 2], ['topology', 'distinctRenderers', 2], ['topology', 'liveWorkers', 2], ['canonical-presentation', 'matchedPublications', undefined],
     ['harness-base-eviction-refresh', 'suppressed', 63], ['cadence-byte-caps', 'maxImageBytes', 131073],
     ['cadence-byte-caps', 'maxImageBytes', '12'], ['cadence-byte-caps', 'maxInputBytes', '12'],
     ['cadence-byte-caps', 'maxInputBytes', 4097], ['native-channels-route', 'selectedRoute', 'unknown'],
@@ -76,7 +77,7 @@ describe('actual RTC gate evidence admission', () => {
     ['pause-full-checkpoint', 'sameTickNotificationWithheld', false], ['pause-full-checkpoint', 'notificationFloorsChecked', false],
     ['two-peer-isolation-disconnect', 'activeInterpolationAtDisconnect', false], ['two-peer-isolation-disconnect', 'frozenAtConfirmedPositions', false],
     ['native-resource-cleanup', 'productionTimers', 1], ['native-resource-cleanup', 'productionListeners', 1],
-    ['owner-cleanup', 'actualExits', 2], ['owner-cleanup', 'windows', 1], ['owner-cleanup', 'relayPorts', 1]
+    ['owner-cleanup', 'workerExits', 2], ['owner-cleanup', 'ports', 1], ['owner-cleanup', 'portsCreated', 0], ['owner-cleanup', 'windows', 1], ['owner-cleanup', 'relayPorts', 1]
   ])('rejects invalid %s.%s', (check, key, invalid) => {
     const value = report(); value.details[check as string][key as string] = invalid;
     expect(() => validateRtcReport(value)).toThrow('invalid actual RTC evidence');

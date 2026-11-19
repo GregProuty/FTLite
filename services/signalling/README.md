@@ -62,3 +62,10 @@ The normal budget is 90 seconds. Native mouse/keyboard actions exercise Host, Jo
 All driver/observer code lives under `scripts/network`, is absent from packaged entries and requires an exact isolated profile. The observer reads the actual renderer port and native RTC lifecycle; it never supplies a state, ACK, command or alternate coordinator. The Windows gate disables Chromium native-window occlusion calculation so visible automation windows receive input, while retaining the application's focus/visibility guards. Native minimize/restore exercises loss of focus/visibility without replacing DOM properties. Screenshots use Chromium's actual rendered page. Only the visible application processes use visible startup; helpers use hidden startup.
 
 JSON admission requires source revision/artifact hashes, distinct Electron PIDs, full-state receipt and validated ACK before guest input, command results, canonical publication agreement, generations, both layouts and observed exits. Native `RTCPeerConnection.close()` observations are distinguished from resources released by a confirmed owning-window destruction. Unexpected exit zero alone is insufficient. Every normal/fault/timeout invocation removes only its own checked temporary root, and fallback termination targets only its recorded child PID/tree. No `.env`, credentials, deployment, TURN, WAN, independent utility fencing, checkpoint recovery or two-machine proof is involved.
+
+## Local dev with Electron's dev page (Web-i)
+
+The online session now runs in the page. A built Electron page (`file://`) sends `Origin: null` (or `file://` on a
+socket), which the Worker allows in code. `npm run dev` serves the page from the electron-vite dev server instead, so a
+local `wrangler dev` needs that origin listed: put `ALLOWED_ORIGINS=null,http://localhost:5173` in
+`services/signalling/.dev.vars` (gitignored). Production's `ALLOWED_ORIGINS` secret changes only at Web-iii.

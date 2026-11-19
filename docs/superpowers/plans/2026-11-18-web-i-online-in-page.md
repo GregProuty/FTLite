@@ -33,21 +33,28 @@ Every task's requirements implicitly include this section.
 ## Spec deviations (recorded for the reviewer)
 
 - **D-1 `testProbe` config field.** `PageOnlineConfig` gains a seventh, test-only field `testProbe: boolean`, set only by an unpackaged Electron build from `FTLITE_ONLINE_TEST_PROBE=1` (the same rule as `FTLITE_SECTOR_ONLINE_TEST`). When set, the page exposes a frozen copy of the online facade at `window.__ftliteOnlineTest` and dispatches a `ftlite:online:test-port` event with each game port. The Electron gates need this because the status reads (`window.ftlite.online.readStatus()`) and the game-port observers (`ftlite:online:main` window messages) they use today disappear with the IPC path. A packaged build and every production path keep the session off `window`.
-- **D-2 `Origin: file://` is treated like `null`.** Chromium's WebSocket handshake from a `file://` page may send `Origin: file://` rather than `null`. Task 8 allows it in code next to `null`, with a test, so Electron's socket upgrade never depends on the secret list. Like the Expose-Headers change it ships only at Web-iii's deploy.
+- **D-2 `Origin: file://` is treated like `null`.** Chromium's WebSocket handshake from a `file://` page may send `Origin: file://` rather than `null`. Task 8 allows it in code next to `null`, with a test, so Electron's socket upgrade never depends on the secret list. Like the Expose-Headers change, the service change must be deployed before any Electron candidate is built from master (the page now calls the service itself, so the deployed pre-Task-8 service refuses `file://` and throws on immutable Durable Object response headers). It may be deployed ahead of Web-iii because it is backward compatible: older Electron builds call from main with no Origin and never reach the new branches, and `null`/`file://` need no `ALLOWED_ORIGINS` change. Deploying is the owner's step; see `docs/gates.md`, Web-i.
 - **D-3 `rtcTransport.ts` leaves `src/main` but its owner logic is kept.** The attempt-ID, generation and lifetime bookkeeping (`createRtcTransport`) moves to `src/network/transport/owner.ts` with `MessagePort` in place of `MessagePortMain`; `startGuestTransport` (the hidden-window entry) is deleted. The page still needs that bookkeeping between the session and the RTC controller, and its tests carry over.
 - **D-4 `HostPlatform` keeps `onSuspend`/`onResume`,** fed by the page lifecycle, so the Worker owner still invalidates its lease on suspend and resume exactly as `hostProcess.ts:233-240` does.
-- **D-6 (conditional) classic Worker.** Only if Task 7 Step 7 shows that Electron's `file://` page cannot start a module Worker: the product Worker and every harness Worker become classic scripts (the full list of changes is in that step). Spec §3.2 names a module Worker; a classic Worker runs the same bundle and protocol, and both Chromium and Firefox support it, so the spec's intent (the host simulation in a dedicated Worker) is unchanged. Record here whether D-6 was taken.
+- **D-6 (conditional) classic Worker.** Only if Task 7 Step 7 shows that Electron's `file://` page cannot start a module Worker: the product Worker and every harness Worker become classic scripts (the full list of changes is in that step). Spec §3.2 names a module Worker; a classic Worker runs the same bundle and protocol, and both Chromium and Firefox support it, so the spec's intent (the host simulation in a dedicated Worker) is unchanged. Record here whether D-6 was taken. **Not taken** (Task 7: `npm run test:worker-boot` started the module Worker from Electron's `file://` page and it answered `incompatible-identity`).
 - **D-7 Task 1 rules beyond §3.5.** `report.ts` adds two failures (`tick-windows-missing`: fewer than 60 complete 10 s windows; `lease-starved`: fewer than 100 lease completions) and two invalid reasons (`page-errors`; `baseline-hidden`: the visible baseline was hidden). Each only tightens a spec rule or rejects a broken run, so none can turn a spec failure into a pass. Task 1 also counts a tick toward its window only when it ran within two tick periods of its deadline and measures relay delay from each tick's deadline, because the production tick driver catches up in bursts after a late timer and would otherwise hide 1 Hz throttling.
+- **D-8 Task 1 drives the browsers without automation.** As planned, the harness could not hide a tab in either browser. Playwright's Chromium turns on `Emulation.setFocusEmulationEnabled` for every page, which keeps it visible. Playwright's Firefox (Juggler, `chrome/juggler/content/content/main.js`) sets `docShell.forceActiveState = true` on every page. So `run.ts` now spawns the browser headed on `drive.html`, with no automation attached. That page opens the baseline, control and test tabs and a cross-site (`localhost`) foreground tab itself, then POSTs the measurements back. Chromium is Playwright's pinned build launched as a plain binary (without Playwright's three throttling-off switches; `--disable-popup-blocking` only so `drive.html` can open its tabs). Firefox is the installed Firefox (`FIREFOX_BINARY` overrides it). Juggler cannot be switched off, and the stock binary is what players run. Firefox uses a throwaway profile whose `user.js` states the three throttling preferences and silences first-run pages. `report.ts`, the pages, the Worker and every rule are unchanged.
+- **D-9 (Task 11) the `stale` recovery scenario is deferred; tracked follow-up.** `scripts/network/online-recovery-smoke.ts --scenario=stale` now fails at once with the named error `stale scenario not ported to the page topology (needs Worker-target evidence)`. It is not part of `npm run test:online-recovery-runtime` (hound-2), which passes. **What is uncovered:** the old-authority fence under a stalled owner. The scenario proved that when the lease owner stalls past the 12 s local lease (a 25 s main block before a real lease grant), the old host's authority stops admitting ticks, ingress and control at its deadline, rejects the late real grant, and never commits again, while the service expires it and a guest rehosts. **Why it cannot be ported as written:** the owner is now the page, so `blockNextGrant`/`busy(25000)` in `page-probe.ts` blocks the page main thread. That thread also carries the RTC transport and the probe's evidence port, so (a) the guest's Resume cannot reach the old Worker during the stall (the old design kept the hidden transport window and utility alive while main stalled), and (b) the Worker's evidence cannot leave the page until the stall ends. **How to restore it:** (1) read the Worker's evidence without the page: attach the wrapper's debugger after load, `Target.setAutoAttach({ autoAttach: true, waitForDebuggerOnStart: false, flatten: true })`, and `Runtime.evaluate` a `globalThis.__recoveryEvidence` copy kept by the prelude in the Worker session (`webContents.debugger.sendCommand(method, params, sessionId)`); have the probe signal the stall start (for example a `console-message` before `busy`) so main writes `host-block.json`; (2) redefine the admission proof for the page topology: assert that inputs queued during the stall reach the old Worker only after its deadline and are refused (`afterDeadlineInputs`, `unavailableResults` read after the stall), instead of during it; (3) update `validateOnlineRecoveryReport`'s stale branch (`utilityAlive` becomes a Worker-alive check through the debugger session). Until then, the lease-gate unit tests and `tests/onlineRecoveryInstrumentation.test.ts` (the exact deadline, observed in the built Worker chunk) are the remaining coverage.
+- **D-10 (impl review R1-F3) the duel host's leave to idle is no longer asserted.** The duel gate's host closes its window for the close gate, so only the guest leaves through the menu and reaches idle. **Uncovered:** the host's renderer-side duel leave (`onlineDuel`'s `leave`) reaching idle. **Still covers it in part:** the sector host's leave to idle in `online-app-smoke.ts` and `online-recovery-smoke`'s `leave-old-host`. **How to restore:** after the guest leaves, host a second short duel lobby and leave it from the host, before the close gate. The gate is unchanged.
 - **D-5 Task count.** Twelve tasks plus one conditional task (Task 12, run only if Task 1 fails). The Electron gate rewrite is three tasks because each covers a different topology (bare Worker owner; two RTC pages; the whole app).
 
 ## Task 1 ledger (filled in by Task 1)
 
 | Browser | Valid run | Pass | Min ticks per 10 s window | Relay p99 hidden / visible (ms) | Max lease gap (ms) | Control tab period (ms) | Test page control period (ms) | Max tick lateness (ms) |
 |---|---|---|---|---|---|---|---|---|
-| Chromium | _pending_ | _pending_ | | | | | | |
-| Firefox | _pending_ | _pending_ | | | | | | |
+| Chromium | yes | yes | 598 | 10.70 / 9.87 | 5,010 | 1,917 | 1,000 | 52.3 |
+| Firefox | **no** (`baseline-hidden`, 3 of 3 attempts) | no (hidden phase alone met every pass rule in attempts 1 and 3) | 596 | 10.00 / 9.33 | 5,003 | 1,000 | 1,000 | 74.3 |
 
-**Chosen path:** _pending_ — **A**: both browsers pass, Task 12 is skipped; or **B**: a valid run failed in at least one browser, Task 12 runs. Record the commit of the evidence JSON here.
+Chromium 130.0.6723.31 is the Playwright 1.48.2 build; Firefox is the machine's installed Firefox 160. The Firefox row is attempt 3 (`firefox.json`); attempts 1 and 2 are `firefox-attempt-1.json` and `firefox-attempt-2.json`. Their hidden phases: attempt 1 min 599 ticks, relay p99 9.67 / 9.67 ms, max lease gap 5,007 ms (every pass rule met). Attempt 2 min 503 ticks, relay p99 45.3 / 9.67 ms (would fail `worker-ticks` and `relay-delay`; the dips sat in three 10 s windows while the machine was busy with other work). All three were invalid only because the *visible baseline* went hidden partway through (at 2.9 s, 55.8 s and 13.9 s). A diagnostic baseline (not a measurement) showed why: the owner was working on the same desktop. Firefox on Windows reports a fully occluded window as hidden, and the small test window sat over the maximized editor. Chromium's baseline stayed visible.
+
+**Chosen path:** **B** (controller decision 2026-11-18, under the owner's standing order to take the recommendation). Chromium passes. Firefox has no valid run after the three attempts the plan allows: the visible baseline was occluded by other desktop windows, and attempt 2 dipped to 503 ticks per window with relay p99 45 ms, possibly from real throttling. Path B (Task 12: the keep-this-tab-visible warning and an event-driven lease relay) protects Firefox hosts whatever a clean rerun would show. It costs only a warning on a hidden hosting tab, so the Firefox gate is closed conservatively instead of blocking the build. An owner rerun on an idle desktop (`npm run test:bg-tab -- --browser=firefox`) stays optional. If it later passes, the warning can be relaxed for Firefox. Evidence: `docs/superpowers/reviews/2026-11-18-web-i-bg-tab/`, committed with Task 1.
+
+**Web-i gate (Task 13), 2026-11-18, head 38f30b75, Electron 37.10.3, Node 24.18.0:** all PASS. `typecheck` 0; `npm test` 369/370 files, 4943/4944 tests (only the known director soak load flake failed; rerun alone: 35/35 pass); `test:determinism` Node 1800 samples + 330 boundaries, Electron 1800, Firefox UA 1800, all PASS, logs restored, tree clean; `test:signalling`, `typecheck:signalling`, `test:worker-boot`, `test:host-runtime` (15 checks, 8/8 Worker exits), `lease-smoke`, `rtc-config-smoke`, `test:rtc-runtime` (17 checks), `test:room-service-runtime`, `test:online-app-runtime` (2-seat and 4-seat), `test:online-recovery-runtime` (hound-2), `test:duel-app-runtime` (166 s): all exit 0. Invariants: no SIM_VERSION change since the merge base ba07e70e (a diff against current master shows 52 vs 53 only because master moved on); `out/main` and `out/preload` hold only index.js; no `node:`/`electron` imports in the portable dirs. Packaged check (impl review R1-F2), Electron 37.10.3, `npm run package:candidate` then `node scripts/network/worker-boot-packaged.cjs` (the packaged Electron binary loads `out/renderer/index.html` from inside the asar over file://): WORKER BOOT PASS; no `asarUnpack` needed. Not run (out of scope): the stale recovery scenario (D-9), internet-app, browser, passcode and live checks.
 
 ## File structure
 
@@ -57,7 +64,8 @@ New:
 |---|---|
 | `scripts/web/bg-tab/*` | Task 1's background-tab measurement (pages, tick Worker, echo runtime, driver, pure verdict) |
 | `src/shared/sha256.ts` | Synchronous SHA-256 (spec §3.1) |
-| `src/shared/bytes.ts` | Base64, hex, random hex, byte equality |
+| `src/shared/bytes.ts` | Base64, hex, byte equality |
+| `src/network/random.ts` | `randomHex` (platform random source; kept out of the deterministic `src/shared` graph) |
 | `src/network/online/recordStore.ts` | `OnlineRecordStore`, IndexedDB and in-memory implementations |
 | `src/network/online/seatStore.ts`, `mirrorStore.ts` | The seat and mirror stores on `OnlineRecordStore` |
 | `src/network/online/onlineSession.ts` + `onlinePeers.ts`, `onlineDuel.ts`, `onlineSector.ts`, `onlineMirrors.ts`, `onlineModes.ts`, `onlineIce.ts`, `onlineRetry.ts` | The session stack, Node-free |
@@ -644,7 +652,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 2: Portable primitives: SHA-256, bytes and the IndexedDB record stores (spec §3.1)
 
 **Files:**
-- Create: `src/shared/sha256.ts`, `src/shared/bytes.ts`, `src/network/online/recordStore.ts`, `src/network/online/seatStore.ts`, `src/network/online/mirrorStore.ts`
+- Create: `src/shared/sha256.ts`, `src/shared/bytes.ts`, `src/network/random.ts`, `src/network/online/recordStore.ts`, `src/network/online/seatStore.ts`, `src/network/online/mirrorStore.ts`
 - Create: `tests/sha256.test.ts`, `tests/bytes.test.ts`, `tests/recordStore.test.ts`
 - Modify (rewrite): `tests/seatStore.test.ts`, `tests/mirrorStore.test.ts` (they now test the new stores; the old `src/main/network/seatStore.ts` and `mirrorStore.ts` stay, untested, until Task 7 deletes them)
 - Modify: `package.json` (devDependency `fake-indexeddb`)
@@ -652,7 +660,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Interfaces:**
 - Produces:
   - `sha256(input: Uint8Array | string): Uint8Array` and `sha256Hex(input: Uint8Array | string): string` (`src/shared/sha256.ts`)
-  - `bytesToBase64(bytes: Uint8Array): string`, `base64ToBytes(text: string): Uint8Array`, `bytesToHex(bytes: Uint8Array): string`, `randomHex(byteLength: number): string`, `bytesEqual(a: Uint8Array, b: Uint8Array): boolean` (`src/shared/bytes.ts`)
+  - `bytesToBase64(bytes: Uint8Array): string`, `base64ToBytes(text: string): Uint8Array`, `bytesToHex(bytes: Uint8Array): string`, `bytesEqual(a: Uint8Array, b: Uint8Array): boolean` (`src/shared/bytes.ts`)
+  - `randomHex(byteLength: number): string` (`src/network/random.ts`; not in `src/shared`, which `tests/boundary.test.ts` holds to the deterministic rules)
   - `type OnlineRecordKey = 'seat-v1' | 'mirror-v1'`; `interface OnlineRecordStore { get(key): Promise<Uint8Array | null>; put(key, bytes): Promise<void>; delete(key): Promise<void> }`; `createIndexedDbRecordStore(factory?: IDBFactory): OnlineRecordStore`; `createMemoryRecordStore(): OnlineRecordStore & { records: Map<OnlineRecordKey, Uint8Array> }`; constants `ONLINE_RECORD_DATABASE = 'ftlite'`, `ONLINE_RECORD_VERSION = 1`, `ONLINE_RECORD_STORE = 'records'`
   - `createSeatStore(records: OnlineRecordStore)` returning `{ load(): Promise<SavedSeatV1 | null>; save(record): Promise<void>; clear(): Promise<void> }`; `SavedSeatV1`, `validateSavedSeat`, `SeatStore`, `SeatStoreError` (same names as today)
   - `createMirrorStore(records: OnlineRecordStore, validatePayload: (m: SessionMirror) => void): MirrorStore`; `validateMirror`, `SessionMirror`, `MirrorFileV1`, `MirrorStore`, `MirrorStoreError` (same names as today)
@@ -698,7 +707,7 @@ describe('synchronous SHA-256 (web build spec §3.1)', () => {
   });
   it('returns 32 raw bytes and never mutates its input', () => {
     const input = randomBytes(77), copy = Uint8Array.from(input), digest = sha256(input);
-    expect(digest).toBeInstanceOf(Uint8Array); expect(digest.length).toBe(32); expect(input).toEqual(copy);
+    expect(digest).toBeInstanceOf(Uint8Array); expect(digest.length).toBe(32); expect(Uint8Array.from(input)).toEqual(copy);
     expect(Buffer.from(digest).toString('hex')).toBe(node(input));
   });
 });
@@ -710,7 +719,8 @@ describe('synchronous SHA-256 (web build spec §3.1)', () => {
 import { randomBytes } from 'node:crypto';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { base64ToBytes, bytesEqual, bytesToBase64, bytesToHex, randomHex } from '../src/shared/bytes';
+import { base64ToBytes, bytesEqual, bytesToBase64, bytesToHex } from '../src/shared/bytes';
+import { randomHex } from '../src/network/random';
 
 describe('portable byte helpers (web build spec §3.1)', () => {
   it('base64 matches Buffer in both directions, including a 512 KiB input', () => {
@@ -811,14 +821,20 @@ export function base64ToBytes(text: string): Uint8Array {
 export function bytesToHex(bytes: Uint8Array): string {
   let hex = ''; for (const byte of bytes) hex += byte.toString(16).padStart(2, '0'); return hex;
 }
-/** `byteLength` random bytes from crypto.getRandomValues, as lowercase hex (today's randomBytes(n).toString('hex')). */
-export function randomHex(byteLength: number): string {
-  return bytesToHex(crypto.getRandomValues(new Uint8Array(byteLength)));
-}
 export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
+}
+```
+
+`src/network/random.ts` (outside `src/shared`: `tests/boundary.test.ts` holds that directory to the deterministic rules, which ban `crypto`):
+
+```ts
+import { bytesToHex } from '../shared/bytes';
+/** `byteLength` random bytes from crypto.getRandomValues, as lowercase hex (today's randomBytes(n).toString('hex')). */
+export function randomHex(byteLength: number): string {
+  return bytesToHex(crypto.getRandomValues(new Uint8Array(byteLength)));
 }
 ```
 
@@ -1237,7 +1253,7 @@ Expected: PASS; typecheck clean.
 - [ ] **Step 12: Commit**
 
 ```bash
-git add package.json package-lock.json src/shared/sha256.ts src/shared/bytes.ts src/network/online/recordStore.ts src/network/online/seatStore.ts src/network/online/mirrorStore.ts \
+git add package.json package-lock.json src/shared/sha256.ts src/shared/bytes.ts src/network/random.ts src/network/online/recordStore.ts src/network/online/seatStore.ts src/network/online/mirrorStore.ts \
   tests/sha256.test.ts tests/bytes.test.ts tests/recordStore.test.ts tests/seatStore.test.ts tests/mirrorStore.test.ts
 git commit -m "feat(web-i): synchronous SHA-256, byte helpers and the IndexedDB record seam under the seat and mirror stores
 
@@ -1465,7 +1481,8 @@ In `src/network/online/onlineSession.ts`:
 
 ```ts
 import { sha256Hex } from '../../shared/sha256';
-import { bytesToBase64, randomHex } from '../../shared/bytes';
+import { bytesToBase64 } from '../../shared/bytes';
+import { randomHex } from '../random';
 ```
 
 - Replace `utilityEpoch: randomBytes(16).toString('hex')` with `utilityEpoch: randomHex(16)`.
@@ -1933,7 +1950,7 @@ In `src/worker/authorityModes.ts`, replace the first two comment lines with:
 // ran, over browser MessagePorts. The page terminates the Worker; nothing here exits a process.
 import { createUtilityHost } from '../network/utilityHost';
 import { webPortEndpoint } from '../network/platformPort';
-import { randomHex } from '../shared/bytes';
+import { randomHex } from '../network/random';
 import { authorityModes } from './authorityModes';
 
 export interface AuthorityWorkerScope {
@@ -2806,7 +2823,7 @@ import { createPagePlatform } from '../../../../network/online/pagePlatform';
 import { createClockJumpLifecycle, createElectronLifecycle, type OnlineLifecycle } from '../../../../network/online/lifecycle';
 import { createWorkerHostPlatform, type HostPlatform } from '../../../../network/host/workerHost';
 import { createRoomServiceClient } from '../../../../network/session/serviceClient';
-import { randomHex } from '../../../../shared/bytes';
+import { randomHex } from '../../../../network/random';
 import { sessionConfigOf, validatePageOnlineConfig, type PageOnlineConfig } from '../../../../shared/onlineConfig';
 import { copyOnlineStatus, validateOnlineAction, validateOnlineLinkStats, validateOnlineResult, type DuelCrewSize, type FtlitePreloadApi, type OnlineAction,
   type OnlinePortDescriptor, type OnlinePreloadApi, type OnlineResult, type OnlineStatus, type OnlineStatusEnvelope, type Unsubscribe } from '../../../../shared/onlineSession';

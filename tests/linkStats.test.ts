@@ -1,23 +1,17 @@
-// The link figures (H-2 spec §8, §9): the hidden window labels the selected candidate pair's route and reports it with
-// the RTT once a second; main keeps the newest for a ready attempt and answers the renderer's one named channel. Only
-// the label and the RTT cross any boundary, never a candidate or address.
-import { EventEmitter } from 'node:events';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+// The link figures (H-2 spec §8, §9): the page's RTC controller labels the selected candidate pair's route and reports it
+// with the RTT once a second; the page transport owner keeps the newest for a ready attempt and the page session answers
+// linkStats() from it (Web-i: no hidden window, no main channel). Only the label and the RTT cross any boundary, never a
+// candidate or address.
+import { describe, expect, it, vi } from 'vitest';
 import { localAddress, rtcRoute } from '../src/network/rtc/route';
 import { createTransportController, STATS_MS } from '../src/network/transport/controller';
-import { createRtcTransport } from '../src/main/network/rtcTransport';
+import { createRtcTransport } from '../src/network/transport/owner';
 import { isRtcResponse, type RtcAttemptOptions, type RtcRequest, type RtcResponse } from '../src/shared/rtcSession';
 import { validateOnlineLinkStats } from '../src/shared/onlineSession';
 import type { PortEndpoint } from '../src/shared/netSession';
 import type { Link } from '../src/renderer/src/net/contracts';
-import type { OnlineSessionOwner } from '../src/main/network/onlineSession';
-
-const native = vi.hoisted(() => ({ handlers: new Map<string, (...args: any[]) => any>() }));
-vi.mock('electron', async () => {
-  const { EventEmitter } = await import('node:events');
-  return { ipcMain: { handle: (name: string, cb: (...args: any[]) => any) => native.handlers.set(name, cb), removeHandler: (name: string) => native.handlers.delete(name) }, powerMonitor: new EventEmitter() };
-});
-import { registerOnlineIpc } from '../src/main/network/onlineIpc';
+import { createPageOnline } from '../src/renderer/src/app/online/pageSession';
+import { createMemoryRecordStore } from '../src/network/online/recordStore';
 
 const identity = { modeId: 'counter', schemaVersion: 1, simVersion: 9, contentDigest: 'a'.repeat(64), hostGeneration: 7 };
 function config(attemptId: string): RtcAttemptOptions {
@@ -110,25 +104,20 @@ describe('main keeps the figures of a ready attempt and answers one named channe
     expect(seen.mock.calls).toEqual([['a', { rttMs: 5, route: 'lan' }]]);
     await owner.dispose();
   });
-  it('the renderer channel answers validated figures to the trusted window only, and is removed with the rest', () => {
-    const webContents = Object.assign(new EventEmitter(), { mainFrame: {}, isDestroyed: () => false, send: vi.fn() });
-    const win = Object.assign(new EventEmitter(), { webContents, isDestroyed: () => false, isVisible: () => true });
+  it('the page facade answers validated figures only (web build spec §3.3)', async () => {
     let stats: unknown = { route: 'internet', rttMs: 48.5 };
-    const owner: OnlineSessionOwner = { dispatch: vi.fn(async () => ({ ok: true as const })), status: () => ({ phase: 'idle', role: null, ownSeat: null, snapshot: null, attachmentEpoch: 0, error: null, retryAtMs: null,
+    const owner = { dispatch: vi.fn(async () => ({ ok: true as const })), status: () => ({ phase: 'idle', role: null, ownSeat: null, snapshot: null, attachmentEpoch: 0, error: null, retryAtMs: null,
       mirror: { committed: null, receivedAgeMs: null, localPending: false, persistent: false, error: null }, persistent: false, actions: [] }),
-      subscribe: () => () => {}, suspend: async () => {}, resume: async () => {}, prepareExit: async () => {}, dispose: async () => {}, linkStats: () => stats as never };
-    const off = registerOnlineIpc(win as never, owner), event = { sender: webContents, senderFrame: webContents.mainFrame, ports: [] };
-    const ask = (e: object = event, ...args: unknown[]) => native.handlers.get('online:link-stats')!(e, ...args);
-    expect(ask()).toEqual({ route: 'internet', rttMs: 48.5 });
-    expect(ask({ ...event, sender: {} })).toBeNull();
-    expect(ask(event, 'extra')).toBeNull();
-    stats = { route: 'internet', rttMs: 48.5, address: '203.0.113.9' }; expect(ask()).toBeNull();
-    stats = null; expect(ask()).toBeNull();
-    off(); expect(native.handlers.size).toBe(0);
+      subscribe: () => () => {}, suspend: async () => {}, resume: async () => {}, prepareExit: async () => {}, dispose: async () => {}, releaseForUnload() {}, linkStats: () => stats as never };
+    const online = createPageOnline({ serviceOrigin: null, iceMode: 'turn', allowInsecureLocalhost: false, packaged: true, sectorOnlineTest: false, duelTestSeed: null, testProbe: false },
+      { window: new EventTarget(), records: createMemoryRecordStore(), lifecycle: { onSuspend: () => () => {}, onResume: () => () => {}, dispose() {} }, createSession: () => owner as never });
+    expect(await online.linkStats!()).toEqual({ route: 'internet', rttMs: 48.5 });
+    stats = { route: 'internet', rttMs: 48.5, address: '203.0.113.9' }; expect(await online.linkStats!()).toBeNull();
+    stats = null; expect(await online.linkStats!()).toBeNull();
+    await online.dispose();
   });
   it('the shared figures are exactly a route label and a bounded RTT', () => {
     expect(validateOnlineLinkStats({ route: 'lan', rttMs: 0 })).toBe(true);
     for (const bad of [null, { route: 'lan' }, { route: 'wan', rttMs: 1 }, { route: 'lan', rttMs: Number.NaN }, { route: 'lan', rttMs: 1, candidate: 'x' }]) expect(validateOnlineLinkStats(bad)).toBe(false);
   });
 });
-afterEach(() => native.handlers.clear());

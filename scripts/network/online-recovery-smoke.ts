@@ -13,7 +13,7 @@ import { createLauncherDeadline, stopOwnedProcess, removeOwnedDirectory } from '
 const delay = (ms: number) => new Promise(done => setTimeout(done, ms));
 let assertionFailure: string | undefined;
 const assert = (value: unknown, message: string) => { if (!value) { assertionFailure=message; throw Error(message); } };
-type Application = { child: ChildProcess; pid: number; profile: string; exited: boolean; exit: Promise<void>; request(command: string, data?: object): Promise<any>; cleanup?: any; exitCode?: number|null; beforeExit?: any; forcedUtilityExits?: any[]; termination?: 'shutdown'|'restart'|'fault' };
+type Application = { child: ChildProcess; pid: number; profile: string; exited: boolean; exit: Promise<void>; request(command: string, data?: object): Promise<any>; cleanup?: any; exitCode?: number|null; beforeExit?: any; forcedRendererExits?: any[]; termination?: 'shutdown'|'restart'|'fault' };
 async function main() {
   const scenario = process.argv.find(a => a.startsWith('--scenario='))?.slice(11) ?? 'hound-2';
   let proof: any;
@@ -53,13 +53,14 @@ async function main() {
     const deadline = performance.now() + ms; let last;
     while (performance.now() < deadline) { if (timedOut) throw Error('launcher timeout'); last = await read(); if (predicate(last)) return last; await delay(40); }
     if(last?.utilityEpoch) { utilityFailure=last; console.error('UTILITY_WAIT',last); }
+    if(process.env.FTL_DEBUG) console.error('WAIT_LAST',label,JSON.stringify({status:last?.status,recovery:last?.recovery&&{phases:last.recovery.phases,invalidations:last.recovery.invalidations},workers:last?.mirrorProof?.workers}).slice(0,3000));
     waitFailure = onlineAppWaitDiagnostic(label, last?.status?.phase); console.error(waitFailure); throw Error(label + ' timeout');
   }
   async function launch(profile: string) {
     if (typeof electron !== 'string') throw Error('Electron executable missing');
-    const env: NodeJS.ProcessEnv = { ...process.env, FTLITE_LOCAL_SERVICE_URL: runtime!.baseUrl, FTLITE_SECTOR_ONLINE_TEST: '1', NODE_PATH:resolve('node_modules') };
+    const env: NodeJS.ProcessEnv = { ...process.env, FTLITE_LOCAL_SERVICE_URL: runtime!.baseUrl, FTLITE_SECTOR_ONLINE_TEST: '1', FTLITE_ONLINE_TEST_PROBE: '1', NODE_PATH:resolve('node_modules') };
     delete env.ELECTRON_RUN_AS_NODE; delete env.CHROME_CRASHPAD_PIPE_NAME; delete env.ELECTRON_RENDERER_URL;
-    const child = spawn(electron, [resolve('scripts/network/online-app-smoke.cjs'), '--recovery-observe-utility', `--online-app-dir=${directory}`, `--online-app-role=${profile}`,
+    const child = spawn(electron, [resolve('scripts/network/online-app-smoke.cjs'), '--recovery-observe-worker', `--online-app-dir=${directory}`, `--online-app-role=${profile}`,
       `--user-data-dir=${join(directory, profile)}`], { env, windowsHide: false, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
     const pending = new Map<number, { resolve(value: any): void; reject(error: Error): void }>(); let id = 0;
     const record: Application = { child, pid: child.pid!, profile, exited: false, exit: Promise.resolve(), request(command, data = {}) {
@@ -81,6 +82,8 @@ async function main() {
     // Consume every chunk, but report only one fixed category and validated role.
     let stderrReported=false;
     child.stderr!.on('data', () => { if(!stderrReported){stderrReported=true;console.error(onlineAppStderrDiagnostic(profile));} });
+    // Local debugging only (FTL_DEBUG=1): raw wrapper diagnostics; never set by the npm gates.
+    if(process.env.FTL_DEBUG) child.stderr!.pipe(process.stderr);
     record.exit = new Promise(done => child.once('exit', code => { record.exited = true; record.exitCode=code; for (const item of pending.values()) { item.reject(Error('application exited')); } pending.clear(); done(); }));
     processes.push(record);
     const initial=await until(async () => { try { return await record.request('status'); } catch (error) { if (record.exited) throw error; return null; } }, value => !!value?.status && value.text.includes('Single player'), profile + ' app ready');
@@ -100,8 +103,9 @@ async function main() {
     }
     await ownedDeadline.wait(app.exit,'owned Electron exit not observed',2500);
     if(app.beforeExit) {
-      app.forcedUtilityExits=app.beforeExit.utilities.map((u:any)=>{let alive=false;try{process.kill(u.pid,0);alive=true;}catch{} return {pid:u.pid,exited:!alive};});
-      assert(app.forcedUtilityExits!.every(u=>u.exited),'owned forced utility exit not observed');
+      // Web-i: a Worker has no OS process; the killed app's renderer (which ran its Worker) must be gone.
+      app.forcedRendererExits=[app.beforeExit.rendererPid].map((pid:number)=>{let alive=false;try{process.kill(pid,0);alive=true;}catch{} return {pid,exited:!alive};});
+      assert(app.forcedRendererExits!.every(u=>u.exited),'owned forced renderer exit not observed');
     }
   }
   async function shutdown(app: Application) {
@@ -165,8 +169,8 @@ async function main() {
     const mirrored = await until(async()=>({h:await status(h),g:await status(g)}),r=>r.h.mirrorProof.receipts.some((m:any)=>m.capturedTick===300)
       && r.g.recovery.gets.some((m:any)=>m.tick===300),'periodic receipt',12000);
     await commands;
-    assert(mirrored.h.mirrorProof.utilities[0].bootstrapAfterCommit,'initial commit barrier');
-    const before = await status(h), beforeUtility = before.mirrorProof.utilities.at(-1);
+    assert(mirrored.h.mirrorProof.workers[0].bootstrapAfterCommit,'initial commit barrier');
+    const before = await status(h), beforeUtility = before.mirrorProof.workers.at(-1);
     let committed = before.status.mirror.committed, pendingProof: any;
     if(scenario === 'paused') {
       await g.request('click',{id:'pause'}); await phase(h,'paused');
@@ -186,6 +190,11 @@ async function main() {
     let staleEvidence: any, contenders: any[] | undefined;
     if(scenario==='stale') {
       stage='stale-arm';
+      // Web-i: the old main stall is now a page main-thread stall, and the Worker's evidence reaches main only through that
+      // page (the probe's report port). This scenario needs a Worker-target evidence path that a blocked page cannot gate;
+      // until it has one it fails here by name rather than timing out on files no one writes.
+      // Deferred: plan deviation D-9 (what is uncovered and how to restore it).
+      assert(false,'stale scenario not ported to the page topology (needs Worker-target evidence)');
       await h.request('block-next-grant');
       const blockPath=join(directory,'host-block.json'), utilityPath=join(directory,'host-utility-0.json');
       const block=await until(async()=>existsSync(blockPath)?JSON.parse(readFileSync(blockPath,'utf8')):null,r=>!!r,'main actually blocked',7000);
@@ -211,8 +220,8 @@ async function main() {
       const race=await until(async()=>({a:await status(g),b:await status(contender!)}),r=>[r.a,r.b].filter(s=>s.status.role==='host'&&s.status.phase==='paused').length===1,'single claim winner');
       if(race.b.status.role==='host') { const old=g; g=contender; contender=old; seat=1; }
       const loser=await phase(contender,'paused');
-      assert(loser.mirrorProof.utilities.length===0,'loser allocated authority');
-      contenders=[{seat,outcome:'winner',utilitiesCreated:1},{seat:loser.status.ownSeat,outcome:'loser',utilitiesCreated:0}];
+      assert(loser.mirrorProof.workers.length===0,'loser allocated authority');
+      contenders=[{seat,outcome:'winner',workersCreated:1},{seat:loser.status.ownSeat,outcome:'loser',workersCreated:0}];
     } else {
       await g.request('hold-restore'); await g.request('click',{id:'rehost'}); await phase(g,'rehosting');
       await viewportProof(g,`${scenario}-rehosting`); await g.request('release-restore');
@@ -238,7 +247,7 @@ async function main() {
       oldHostFence={utilityAlive:true,mainBlockedMs:old.recovery.mainBlockedMs,lastAdvanceBeforeDeadline:late.permissions.tick.lastAllowedMs<late.deadlineMs && Object.values(late.permissions).every((v:any)=>v.postDeadlineAllowed===0),closedAdmission:true,
         noOldCommit:old.recovery.puts.at(-1).payloadSha256===staleEvidence.block.lastPut.payloadSha256,lateReplyRejected:true,serverExpired:true,evidence:late};
       assert(oldHostFence.noOldCommit,'old generation committed after main stall');
-      contenders=[{seat:0,outcome:'loser',utilitiesCreated:0},{seat,outcome:'winner',utilitiesCreated:1}];
+      contenders=[{seat:0,outcome:'loser',workersCreated:0},{seat,outcome:'winner',workersCreated:1}];
       await until(()=>status(h),r=>r.status.phase==='saved'||r.status.phase==='paused','old host transition',10000);
       if((await status(h)).status.phase==='saved') await h.request('click',{id:'reconnect'});
     } else { h=await launch('host'); await h.request('open-multiplayer'); await h.request('click',{id:'reconnect'}); }
@@ -252,7 +261,7 @@ async function main() {
     assert(inputs.every(r=>r.firstAckOrder>0 && (!r.firstInputOrder || r.firstInputOrder>r.firstAckOrder)),'input before ACK');
     assert(agreement.host.inputs.every((i:any)=>i.player===seat) && agreement.guest.inputs.every((i:any)=>i.player===0),'stale input ownership');
     proof={runId,capacity,seat,layout:agreement.same.layout,hostGenerationBefore:committed.hostGeneration,hostGenerationAfter:restored.status.snapshot.hostGeneration,
-      utilityEpochBefore:beforeUtility.utilityEpoch,utilityEpochAfter:restored.mirrorProof.utilities.at(-1).utilityEpoch,committed,restored:restore,
+      utilityEpochBefore:beforeUtility.utilityEpoch,utilityEpochAfter:restored.mirrorProof.workers.at(-1).utilityEpoch,committed,restored:restore,
       serviceBytesRestored:true,fullAck:true,ackBeforeInput:true,ownership:true,pausedBaselineCommitted:true,explicitResume:true,autoResume:false,
       agreement:agreement.same,initialCommittedTick:0,periodicCapturedTick:300,oldHostRejoinedSeat:rejoined.status.ownSeat,
       seatGenerationBefore:before.status.snapshot.seats[0].seatGeneration,seatGenerationAfter:rejoined.status.snapshot.seats[0].seatGeneration,
@@ -274,9 +283,9 @@ async function main() {
     stage='leave-old-host'; await h.request('click',{id:'leave'}); await phase(h,'idle');
     stage='leave-winner'; await g.request('click',{id:'leave'}); await phase(g,'idle');
     stage='idle-resources';
-    for(const app of [h,g]) await until(()=>app.request('resource-counts'),r=>r.windows===1 && r.utilities.every((u:any)=>u.exited) && r.listeners===0 && r.ports===0,'idle resource release',5000);
+    for(const app of [h,g]) await until(()=>app.request('resource-counts'),r=>r.windows===1 && r.workers.every((w:any)=>w.exited) && r.listeners===1 && r.ports===0,'idle resource release',5000);
     proof.menuClicks=await Promise.all([h,g,...(contender?[contender]:[])].map(async app=>({role:app.profile,clicks:(await status(app)).recovery.clicks})));
-  } catch(error) { failure=stage==='preparation'?(error instanceof Error && error.message==='preparation-timeout'?'preparation-timeout':'preparation-failed'):onlineAppFailureCode(error); firstDriverFailure=driverFailure; failureCategory=error instanceof SyntaxError?'invalid-observation-json':(error as any)?.code==='ENOENT'?'missing-observation-file':'gate-failure'; console.error('RECOVERY_FAILED',{stage,category:failureCategory,assertion:assertionFailure,driver:firstDriverFailure}); }
+  } catch(error) { failure=stage==='preparation'?(error instanceof Error && error.message==='preparation-timeout'?'preparation-timeout':'preparation-failed'):onlineAppFailureCode(error); firstDriverFailure=driverFailure; failureCategory=error instanceof SyntaxError?'invalid-observation-json':(error as any)?.code==='ENOENT'?'missing-observation-file':'gate-failure'; console.error('RECOVERY_FAILED',{stage,category:failureCategory,assertion:assertionFailure,driver:firstDriverFailure}); if(process.env.FTL_DEBUG) console.error('GATE_ERROR', error); }
   finally {
     clearTimeout(watchdog); clearTimeout(injectedDeadline);
     cleaning=true;
@@ -303,8 +312,9 @@ async function main() {
   const cleanups=processes.flatMap(p=>p.cleanup?[p.cleanup]:[]);
   const report={version:1,scenario,source,temporaryName:basename(directory),directoryCleanupAttempted,cleanupFailed,
     preparationProcesses:preparationProcesses.map(({pid,exited,forced,code})=>({kind:'git',pid,exited,forced,code})),nativeAllocated:!!runtime||processes.length>0,runtime:{electron:electronVersion,workerd:runtime?.workerdVersion,workerPid:runtime?.pid,workerExit:runtime?.exited(),temporaryRemoved:!existsSync(directory)},
-    processes:processes.map(({pid,profile,exited,exitCode,beforeExit,cleanup,termination,forcedUtilityExits})=>({pid,profile,exited,exitCode,termination,resourcesBeforeForcedExit:beforeExit,forcedUtilityExits,cleanup})),
-    cleanup:Object.fromEntries(['utilities','utilityExits','windows','ports','listeners','peers','nativeWindows','nativeWindowExits','nativePeersObserved','nativePeerCloses','nativePeersEndedWithWindow','observedMainPorts'].map(k=>[k,cleanups.reduce((n,r)=>n+r[k],0)])),
+    processes:processes.map(({pid,profile,exited,exitCode,beforeExit,cleanup,termination,forcedRendererExits})=>({pid,profile,exited,exitCode,termination,resourcesBeforeForcedExit:beforeExit,forcedRendererExits,cleanup})),
+    // An unobserved counter (e.g. ports: null) stays null so the report cannot pass.
+    cleanup:Object.fromEntries(['workers','workerExits','windows','ports','listeners','peers','nativePeersObserved','nativePeerCloses','nativePeersEndedWithPage','observedPagePorts'].map(k => [k, cleanups.some(r => !Number.isSafeInteger(r[k])) ? null : cleanups.reduce((n,r)=>n+r[k],0)])),
     runtimeHelper:runtime?.observation(),instrumentation,viewports,proof,budgetMs,elapsedMs:Math.ceil(performance.now()-began),failure,assertionFailure,failureCategory,stage,utilityFailure,driverFailure:failure?firstDriverFailure:undefined,waitFailure,limits:['loopback-only','no-TURN','no-WAN','no-two-machine','OS-suspend-NOT-RUN']};
   try {writeFileSync(reportPath,JSON.stringify(report,null,2)+'\n');}
   catch {console.error('RECOVERY_REPORT_WRITE_FAILED');console.log(JSON.stringify(report));failure??='report-write-failed';}

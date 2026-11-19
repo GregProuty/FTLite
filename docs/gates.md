@@ -904,3 +904,18 @@ The main menu takes the console screens' amber phosphor look: every colour is a 
 - [x] Screenshots in `C:\Users\djuar\FTLite-shots\menu-crt\` (Home at full, subtle and off; hover; Settings top and scrolled; Multiplayer).
 - [ ] Owner look check, including the in-game strip during an online duel (not screenshotted: it needs a live room).
   - Date and notes: pending owner.
+
+## Web-i: the online stack in the page (2026-11-18)
+
+Electron's online stack (service client, RTC, lease owner) now runs in the page, and the host authority in a module Web Worker. `src/main` and `src/preload` keep no online code.
+
+- **Redeploy the signalling service before building any Electron candidate from master.** An Electron candidate built at or after commit `31c498d8` (Task 8, the signalling change) needs the service deployed from that revision or later. Until then Electron hosting and joining against the deployed service fail: the page now sends an `Origin` (`null`, or `file://` on the socket), the deployed service rejects `Origin: file://` on the socket, and it throws when setting CORS headers on Durable Object responses (socket, checkpoint, turn).
+  - The change is backward compatible: older Electron builds called the service from main with no `Origin`, so the new branches never run for them. It needs no `ALLOWED_ORIGINS` change for `null`/`file://`. Redeploying early (before Web-iii) is safe.
+  - Redeploy from `services/signalling`: `npx wrangler deploy` (the service has no deploy script; `npm run build:signalling` is only the dry run). Owner step: the deployment needs the owner's Wrangler login and secrets.
+- [ ] Redeploy the signalling service before building any Electron candidate from master.
+- [x] Web-i gate (Task 13), head 38f30b75, Electron 37.10.3: all pass. `typecheck`; `npm test` (only the known director soak load flake, passes alone); `test:determinism` (Node, Electron and Firefox UA); `test:signalling`, `typecheck:signalling`, `test:worker-boot`, `test:host-runtime`, `lease-smoke`, `rtc-config-smoke`, `test:rtc-runtime`, `test:room-service-runtime`, `test:online-app-runtime` (2-seat and 4-seat), `test:online-recovery-runtime` (hound-2), `test:duel-app-runtime`. No SIM_VERSION change. Details in the plan, `docs/superpowers/plans/2026-11-18-web-i-online-in-page.md` (Task 13 results).
+- [x] Packaged check (impl review R1-F2): the module Worker boots from inside `app.asar` in the `package:candidate` build (`node scripts/network/worker-boot-packaged.cjs`, Electron 37.10.3): WORKER BOOT PASS. No `asarUnpack` needed.
+- [ ] Open items (none blocks the merge):
+  - [ ] Firefox background-tab valid run (optional; the plan's path B).
+  - [ ] D-9: the `stale` recovery scenario is deferred (needs Worker-target evidence).
+  - [ ] D-10: the duel host's leave to idle is not asserted by the duel gate.

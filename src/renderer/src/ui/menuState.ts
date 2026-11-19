@@ -51,7 +51,7 @@ export const ROOM_CODE = /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/;
 export const ERRORS: Partial<Record<OnlineErrorCode, string>> = {
   'online-disabled': 'Online play needs a configured local service. Single player is available.',
   'not-found': 'Room not found. Check the eight-character code and try again.',
-  'incompatible': 'The other computer runs a different FTLite build. Install the same build on both, then try again.',
+  'incompatible': 'This lobby runs a different version. Both players should reload.',
   'unauthorized': 'This seat is no longer authorized. Return to the menu or forget the saved seat.',
   'host-lost': 'Host disconnected. Reconnect or re-host the last committed checkpoint when available.',
   'no-checkpoint': 'No committed checkpoint is available for this room.',

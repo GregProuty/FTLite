@@ -17,3 +17,15 @@ export function emitterPortEndpoint(port: EmitterPort, style: 'node' | 'electron
     }
   };
 }
+
+/** The browser counterpart of emitterPortEndpoint (web build spec §3.2): a DOM MessagePort delivers MessageEvent.data. */
+export function webPortEndpoint(port: MessagePort): PortEndpoint {
+  return {
+    postMessage: data => port.postMessage(data), start: () => port.start(), close: () => port.close(),
+    onMessage(callback) { const receive = (event: MessageEvent) => callback(event.data); port.addEventListener('message', receive); return () => port.removeEventListener('message', receive); },
+    onClose(callback) {
+      port.addEventListener('messageerror', callback); port.addEventListener('close', callback);
+      return () => { port.removeEventListener('messageerror', callback); port.removeEventListener('close', callback); };
+    }
+  };
+}

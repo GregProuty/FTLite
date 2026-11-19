@@ -1,9 +1,9 @@
 import { shipForCrew } from '../../src/renderer/src/sim/ship/fleet';
 /** PASS requires independently observed application evidence, never just exit zero. */
-export const ONLINE_APP_ARTIFACTS = ['out/main/index.js','out/main/authorityHost.js','out/main/hostProcess.js','out/main/transportWindow.js','out/renderer/index.html',
-  'scripts/network/online-app-smoke.ts','scripts/network/online-app-smoke.cjs','scripts/network/online-app-click.cjs','scripts/network/online-app-observer.ts','scripts/network/online-app-runtime.ts','scripts/network/online-app-runtime-worker.ts',
-  'src/main/index.ts','src/main/network/onlineSession.ts','src/main/network/onlineMirrors.ts','src/main/network/mirrorStore.ts','src/main/network/onlinePlatform.ts','src/main/network/onlineSector.ts',
-  'src/main/network/hostProcess.ts','src/shared/onlineSession.ts','src/network/session/serviceClient.ts','src/network/utilityHost.ts','src/network/modes/sector.ts'];
+export const ONLINE_APP_ARTIFACTS = ['out/main/index.js','out/preload/index.js','out/renderer/index.html','out/renderer/assets/authorityWorker.js',
+  'scripts/network/online-app-smoke.ts','scripts/network/online-app-smoke.cjs','scripts/network/online-app-click.cjs','scripts/network/online-app-observer.ts','scripts/network/page-probe.ts','scripts/network/online-app-probe-preload.cjs','scripts/network/online-app-runtime.ts','scripts/network/online-app-runtime-worker.ts',
+  'src/main/index.ts','src/main/appExit.ts','src/network/online/onlineSession.ts','src/network/online/onlineMirrors.ts','src/network/online/mirrorStore.ts','src/network/online/pagePlatform.ts','src/network/online/onlineSector.ts',
+  'src/network/host/workerHost.ts','src/renderer/src/app/online/pageSession.ts','src/shared/onlineSession.ts','src/network/session/serviceClient.ts','src/network/utilityHost.ts','src/network/modes/sector.ts'];
 export function validateOnlineAppReport(value: unknown): void {
   const r = value as any;
   const fail = () => { throw Error('missing or invalid actual online application evidence'); };
@@ -18,9 +18,8 @@ export function validateOnlineAppReport(value: unknown): void {
       || p.termination==='restart' && !p.resourcesBeforeForcedExit
       || !['shutdown','restart'].includes(p.termination))) fail();
   const c = r.cleanup;
-  if (!c || !positive(c.utilities) || c.utilities !== c.utilityExits || ['windows', 'ports', 'listeners', 'peers'].some(k => c[k] !== 0)) fail();
-  if(!positive(c.nativeWindows)||c.nativeWindows!==c.nativeWindowExits||!positive(c.nativePeersObserved)
-    || c.nativePeerCloses+c.nativePeersEndedWithWindow!==c.nativePeersObserved||!positive(c.observedMainPorts)) fail();
+  if (!c || !positive(c.workers) || c.workers !== c.workerExits || ['windows', 'ports', 'listeners', 'peers'].some(k => c[k] !== 0)) fail();
+  if (!positive(c.nativePeersObserved) || c.nativePeerCloses + c.nativePeersEndedWithPage !== c.nativePeersObserved || !positive(c.observedPagePorts)) fail();
   if (!Array.isArray(r.scenarios) || r.scenarios.length !== 2) fail();
   // The layout each capacity flies is the production fleet's (the Hound at every crew size since Art-iv-b).
   for (const [index, capacity, seat] of [[0, 2, 1], [1, 4, 2]] as const) {

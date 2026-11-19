@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createOnlineRetry } from '../src/main/network/onlineRetry';
+import { createOnlineRetry } from '../src/network/online/onlineRetry';
 const clock = { nowMs: () => Date.now() };
 const scheduler = { setTimeout: (fn: () => void, ms: number) => setTimeout(fn, ms), clearTimeout: (id: unknown) => clearTimeout(id as ReturnType<typeof setTimeout>) };
 afterEach(() => vi.useRealTimers());

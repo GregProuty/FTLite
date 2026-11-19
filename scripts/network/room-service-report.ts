@@ -17,7 +17,7 @@ export function validateRoomServiceReport(value: unknown): void {
     if (!p || p.seat !== seat || p.from !== from || p.to !== to || p.closedPcs !== 2 || p.ready !== true) fail();
   }
   if (!['fullReceipts', 'validatedAcks', 'appliedCommands', 'matchedPublications'].every(k => positive(g[k]))
-    || g.runIdentity !== true || g.direct !== true || x.pcs !== 6 || x.closedPcs !== 6 || x.utilities !== 1 || x.utilityExits !== 1
+    || g.runIdentity !== true || g.direct !== true || x.pcs !== 6 || x.closedPcs !== 6 || x.workers !== 1 || x.workerExits !== 1 || !positive(x.portsCreated)
     || ['timers', 'listeners', 'windows', 'ports'].some(k => x[k] !== 0)
     || ['sqlite', 'hibernated', 'workerExit', 'electronExit', 'temporaryRemoved'].some(k => t[k] !== true)) fail();
 }

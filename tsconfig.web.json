@@ -7,5 +7,5 @@
     "lib": ["ES2023", "DOM"],
     "jsx": "react-jsx"
   },
-  "include": ["src/renderer/src/**/*", "src/renderer/src/**/*.json", "src/renderer/networkTransport.ts", "src/preload/index.ts", "src/network/**/*", "src/shared/**/*", "src/utility/**/*", "src/main/network/**/*", "tests/**/*", "scripts/**/*", "art/*.stars.json", "services/signalling/scripts/local-runtime.ts", "build/contentDigest.ts", "build/isolatedBuildReporter.ts"]
+  "include": ["src/renderer/src/**/*", "src/renderer/src/**/*.json", "src/preload/index.ts", "src/network/**/*", "src/shared/**/*", "src/worker/**/*", "src/main/appExit.ts", "src/main/network/duelRecords.ts", "tests/**/*", "scripts/**/*", "art/*.stars.json", "services/signalling/scripts/local-runtime.ts", "build/contentDigest.ts", "build/isolatedBuildReporter.ts"]
 }

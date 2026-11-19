@@ -20,7 +20,10 @@ async function main() {
         formats: ['cjs', 'iife'], fileName: format => `rtc-smoke-client.${format === 'cjs' ? 'cjs' : 'js'}` } } });
     await build({ configFile: false, envDir: false, logLevel: 'warn', build: { outDir: join(directory, 'client'), emptyOutDir: false,
       lib: { entry: resolve('src/network/session/serviceClient.ts'), formats: ['cjs'], fileName: () => 'service-client.cjs' } } });
-    writeFileSync(join(directory, 'client/index.html'), '<!doctype html><meta charset="utf-8"><title>Local Worker/native RTC gate</title><p>Actual local service and native RTC guest</p><script src="rtc-smoke-client.js"></script>');
+    await build({ configFile: false, envDir: false, logLevel: 'warn', root: resolve('scripts/network'), base: './', worker: { format: 'es' },
+      define: { __GAMEPLAY_CONTENT_DIGEST__: JSON.stringify(digest) },
+      build: { outDir: join(directory, 'page'), emptyOutDir: true, rollupOptions: { input: { rtc: resolve('scripts/network/rtc-page.html') } } } });
+    if (!existsSync(resolve('out/renderer/assets/authorityWorker.js'))) throw Error('built production Worker missing (run npm run build)');
     if (typeof electron !== 'string') throw Error('Electron executable missing');
     const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.CHROME_CRASHPAD_PIPE_NAME; delete env.ELECTRON_RENDERER_URL;
     child = spawn(electron, [resolve('scripts/network/room-service-smoke.cjs'), `--room-service-dir=${directory}`,

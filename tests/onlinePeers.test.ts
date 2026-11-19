@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
-import { createOnlinePeers } from '../src/main/network/onlinePeers';
-import { createOnlineIce } from '../src/main/network/onlineIce';
-import { sectorCompatibility } from '../src/main/network/onlineSector';
+import { createOnlinePeers } from '../src/network/online/onlinePeers';
+import { createOnlineIce } from '../src/network/online/onlineIce';
+import { sectorCompatibility } from '../src/network/online/onlineSector';
 const owner = { roomId: 'a'.repeat(32), hostGeneration: 1, seatId: 1, seatGeneration: 1, connectionId: 'c'.repeat(32) };
 const iceDeps = () => ({ ice: { get: async () => ({ iceServers: [], expiresAtEpochMs: Date.now() + 3600000 }), invalidate() {}, dispose() {} }, iceOwner: () => ({ ...owner }) });
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };

@@ -16,8 +16,8 @@ export function validateRtcReport(value: unknown): void {
     throw Error('invalid actual RTC evidence');
   const acknowledged = (peer: any) => peer && ['ack', 'full-received'].every(key => atLeast(peer[key], 1) && Number.isSafeInteger(peer[key]));
   if (!acknowledged(d['first-full-ack'].first) || !acknowledged(d['first-full-ack'].second)
-    || d.topology.distinctProcesses !== 6 || d.topology.guestAuthorities !== 0 || d.topology.liveUtilities !== 1
-    || !atLeast(d['stall-watchdog-command'].busyMs, 500) || d['stall-watchdog-command'].hiddenRtcContinued !== true
+    || d.topology.pages !== 3 || d.topology.distinctRenderers !== 3 || d.topology.guestAuthorities !== 0 || d.topology.liveWorkers !== 1
+    || !atLeast(d['stall-watchdog-command'].busyMs, 500) || d['stall-watchdog-command'].hostContinued !== true || d['stall-watchdog-command'].otherGuestRtcContinued !== true
     || !atLeast(d['canonical-presentation'].matchedPublications, 32) || d['canonical-presentation'].interpolationSeparate !== true
     || d['harness-latest-loss-reorder'].dropped !== 1 || d['harness-latest-loss-reorder'].reversedPairs !== 1
     || !atLeast(d['harness-base-eviction-refresh'].suppressed, 64) || d['harness-base-eviction-refresh'].canonicalRecovered !== true
@@ -28,7 +28,7 @@ export function validateRtcReport(value: unknown): void {
     || d['pause-full-checkpoint'].sameTickNotificationWithheld !== true || d['pause-full-checkpoint'].notificationFloorsChecked !== true
     || d['two-peer-isolation-disconnect'].activeInterpolationAtDisconnect !== true || d['two-peer-isolation-disconnect'].frozenAtConfirmedPositions !== true
     || d['native-channels-route'].selectedRoute !== 'direct' || d['native-resource-cleanup'].hostPcsClosed !== 6 || d['native-resource-cleanup'].productionTimers !== 0
-    || d['native-resource-cleanup'].productionListeners !== 0 || d['owner-cleanup'].utilities !== 3
-    || d['owner-cleanup'].actualExits !== 3 || d['owner-cleanup'].windows !== 0 || d['owner-cleanup'].listeners !== 0 || d['owner-cleanup'].relayPorts !== 0)
+    || d['native-resource-cleanup'].productionListeners !== 0 || d['owner-cleanup'].workers !== 3
+    || d['owner-cleanup'].workerExits !== 3 || d['owner-cleanup'].ports !== 0 || !atLeast(d['owner-cleanup'].portsCreated, 1) || d['owner-cleanup'].windows !== 0 || d['owner-cleanup'].listeners !== 0 || d['owner-cleanup'].relayPorts !== 0)
     throw Error('invalid actual RTC evidence');
 }

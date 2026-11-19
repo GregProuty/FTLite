@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync, existsSync } fro
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
 import electron from 'electron';
+import { build } from 'vite';
 import { computeContentDigest } from '../../build/contentDigest';
 import { createLauncherDeadline, removeOwnedDirectory, stopOwnedProcess } from './lease-smoke-lifecycle';
 
@@ -37,11 +38,16 @@ async function main() {
     const revision = await git(['rev-parse', 'HEAD']), dirty = !!await git(['status', '--porcelain']);
     // Safely reproduce missing/unreadable build preparation without changing repository artifacts.
     if (process.argv.includes('--inject-preparation-read-failure')) readFileSync(join(directory, 'missing-build-artifact.js'));
-    const hashes = Object.fromEntries(['scripts/network/rtc-config-smoke.cjs', 'scripts/network/rtc-config-smoke.ts', ...readdirSync('out', { recursive: true }).filter(p => /\.(js|html)$/.test(String(p))).map(p => 'out/' + String(p).replaceAll('\\', '/'))]
+    const hashes = Object.fromEntries(['scripts/network/rtc-config-smoke.cjs', 'scripts/network/rtc-config-smoke.ts', 'scripts/network/rtc-page.ts', 'scripts/network/rtc-page.html', 'scripts/network/page-port-tracker.ts', ...readdirSync('out', { recursive: true }).filter(p => /\.(js|html)$/.test(String(p))).map(p => 'out/' + String(p).replaceAll('\\', '/'))]
       .map(path => { if (!deadline.remaining(5000)) throw Error('preparation-timeout'); return [path, createHash('sha256').update(readFileSync(path)).digest('hex')]; }));
     source = { revision, dirty, hashes };
     if (typeof electron !== 'string') throw Error('native-executable-missing');
     const digest = computeContentDigest(process.cwd());
+    if (!deadline.remaining(5000)) throw Error('preparation-timeout');
+    // The endpoint page: the production page transport bundled by Vite (Web-i).
+    await build({ configFile: false, envDir: false, logLevel: 'warn', root: resolve('scripts/network'), base: './', worker: { format: 'es' },
+      define: { __GAMEPLAY_CONTENT_DIGEST__: JSON.stringify(digest) },
+      build: { outDir: join(directory, 'page'), emptyOutDir: true, rollupOptions: { input: { rtc: resolve('scripts/network/rtc-page.html') } } } });
     if (!deadline.remaining(5000)) throw Error('preparation-timeout');
     const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.ELECTRON_RENDERER_URL; delete env.CHROME_CRASHPAD_PIPE_NAME;
     stage = 'native';
@@ -50,7 +56,7 @@ async function main() {
     await deadline.wait(owned.done, 'native-config-timeout', 5000);
     if (owned.code !== 0) throw Error('native-config-failed');
     proof = JSON.parse(readFileSync(join(directory, 'proof.json'), 'utf8'));
-    if (proof.electron !== '37.10.3' || proof.peersClosed !== 2 || proof.windows !== 0 || proof.routeEstablished !== false
+    if (proof.electron !== '37.10.3' || proof.peersClosed !== 2 || proof.windows !== 0 || proof.routeEstablished !== false || proof.ports !== 0 || !(proof.portsCreated > 0)
       || proof.checks?.length !== 2 || !['all', 'relay'].every(policy => proof.checks.some((c: any) => c.policy === policy && c.servers === 1 && c.urls === 2 && c.credentialsPreserved && c.noGathering && c.noDescription))) throw Error('native-proof-invalid');
   } catch (error) {
     failure = stage === 'preparation' ? (error instanceof Error && error.message === 'preparation-timeout' ? 'preparation-timeout' : 'preparation-failed') : 'native-config-failed';
