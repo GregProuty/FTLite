@@ -13,6 +13,7 @@ import { laserEligible, laserFull, laserOffline, torpedoInRange } from '../../si
 import { TICK_HZ } from '../../sim/tuning';
 import { trimmedWeaponPower, WeaponSlot } from '../../sim/tactical/bars';
 import { pointSeen, shipSeen } from '../../sim/tactical/science';
+import { shipEngineFactor } from '../../sim/tactical/physics';
 
 /** Seconds a released shot keeps the solution lit, so a volley that auto-fires the tick it is ready still reads FIRING. */
 export const SOLUTION_HOLD_S = 0.6;
@@ -198,10 +199,17 @@ export function evadeDir(t: TacticalState): { x: number; y: number } | null {
 export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser';
 /** Valkyrn spec §6.1: the reason a laser key (1, 3/4/5) gives on a class without a laser (the `laser` control, Flight only). */
 export const NO_LASER = 'NO LASER';
+/** Engineering spike §10.4 (final review): why the sim refuses a lock on the target ship (a laserLock or torpLock on a
+ *  room): NO CONTACT while the crew cannot see it, else null. */
+export function lockRefusal(d: DuelState): string | null {
+  return shipSeen(d.tactical, targetOf(d.tactical, CREW_SLOT)) ? null : 'NO CONTACT';
+}
+
 /** Feel-ii §2.8: why the sim would refuse a control's command (or do nothing with it), or null when it would act. FIRE is
  *  laserCharge (the gunner, then canCharge: no torpedo flying, then Weapons offline, where it is admitted to no effect);
  *  LAUNCH is missileLaunch (the gunner, then canLaunch's checks in its order: flying, the magazine, Weapons, range); the
- *  Helm's turn, auto-face, throttle and heading fly nothing while Engines are off (level 2). */
+ *  Helm's turn, auto-face, throttle and heading fly nothing with 0 effective Engines bars: ENGINES OFFLINE when
+ *  the Engines Room is at level 2, else ENGINES UNPOWERED (no bar, or an overheat failure). */
 export function refusal(d: DuelState, control: RefusedControl): string | null {
   const t = d.tactical, sys = t.systems[CREW_SLOT];
   if (control === 'fire' || control === 'launch') {
@@ -213,5 +221,6 @@ export function refusal(d: DuelState, control: RefusedControl): string | null {
     if (trimmedWeaponPower(sys)[WeaponSlot.Torpedo] === 0) return weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'TORPEDO UNPOWERED';   // a level-2 Weapons Room lands here too
     return torpedoInRange(t, CREW_SLOT) ? null : 'OUT OF RANGE';
   }
-  return sys.rooms[Room.Engines] >= 2 ? 'ENGINES OFFLINE' : null;
+  if (shipEngineFactor(t, CREW_SLOT) > 0) return null;   // Engineering spike §10.2: the Engines bars, not the Room alone
+  return sys.rooms[Room.Engines] >= 2 ? 'ENGINES OFFLINE' : 'ENGINES UNPOWERED';
 }

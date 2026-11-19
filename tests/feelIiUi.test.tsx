@@ -62,6 +62,15 @@ describe('never a dead click (Feel-ii §2.8)', () => {
     expect(texts()).not.toContain('HOLD TO TURN');
     expect(texts()).toContain('HOLD: NOSE ON ENEMY');
   });
+  it('Engineering spike §10.4: a refused beam lock (E/Q on an unseen enemy) flashes FIRE and reads BEAM: NO CONTACT', () => {
+    const { duel } = mount();
+    act(() => duel.frame(view(weapons({ refused: { control: 'laser', reason: 'NO CONTACT', flash: true } }))));
+    expect(btn('fire').getAttribute('data-ui-refused')).toBe('1');
+    expect(texts()).toContain('BEAM: NO CONTACT');
+    act(() => duel.frame(view(weapons({ refused: { control: 'launch', reason: 'NO CONTACT', flash: true } }))));
+    expect([btn('launch').getAttribute('data-ui-refused'), btn('fire').getAttribute('data-ui-refused')]).toEqual(['1', null]);
+    expect(texts()).toContain('LAUNCH: NO CONTACT');
+  });
 });
 
 describe('the Helm block (Feel-ii §1.1, §1.4)', () => {

@@ -28,7 +28,7 @@ import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel
 import { consoleInReach, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
 import type { ContactRequests } from './contactController';
 import type { Refusal } from './scene';
-import { NO_LASER, refusal } from '../../render/duel/situationModel';
+import { lockRefusal, NO_LASER, refusal } from '../../render/duel/situationModel';
 import { accumulateWheel, emptyPresses, frequencyRequest, helmAxes, NO_HELD_FLAGS, throttleRequest, WHEEL_IDLE_MS, type HeldFlags, type KeySample, type PointerSample } from './input';
 
 export type PauseReason = 'user' | 'blur' | 'hidden' | 'suspend';
@@ -409,7 +409,9 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       const steps = p.interact - p.prevLock + (requests.torpStep ?? 0);
       if (steps !== 0) {
         const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'torpLock')?.command;
-        queue({ kind: 'torpLock', room: stepTorpRoom(last && last.kind === 'torpLock' ? last.room : d.tactical.systems[0].torpLock, steps) });
+        const room = stepTorpRoom(last && last.kind === 'torpLock' ? last.room : d.tactical.systems[0].torpLock, steps);
+        queue({ kind: 'torpLock', room });
+        const why = room >= 0 ? lockRefusal(d) : null; if (why) refuse('launch', why);   // spec §10.4: the sim refuses a lock on an unseen enemy
       }
       if (k.torpTo !== undefined && k.torpTo !== null && k.torpTo >= -1 && k.torpTo <= 2) queue({ kind: 'torpLock', room: k.torpTo });
       // Spike ii §6.5 on the Flight seat (merge): a rock drop or a card's clear sends rockLock; the laser's only on the laser fit.
@@ -457,6 +459,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       let room = last && last.kind === 'laserLock' && last.room >= 0 ? last.room : d.tactical.systems[0].lock;
       for (let n = 0; n < Math.abs(steps); n++) room = cycleLock(room, steps > 0 ? 1 : -1);
       queue({ kind: 'laserLock', room });
+      const why = lockRefusal(d); if (why) refuse('laser', why);   // spec §10.4: the sim refuses a lock on an unseen enemy
     }
     if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });   // a room click or a card's clear
     // The torpedo's target (FTL targeting spec §1): a room click or a card's clear, then E / Q while it is picked up.
@@ -469,6 +472,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'torpLock')?.command;
       const from = last && last.kind === 'torpLock' ? last.room : d.tactical.systems[0].torpLock;
       queue({ kind: 'torpLock', room: stepTorpRoom(from, requests.torpStep) });
+      const why = lockRefusal(d); if (why) refuse('launch', why);   // spec §10.4: as the laser's E/Q
     }
     const freq = frequencyRequest(freqBase(), k.freqTo);   // 3/4/5 or a console button (Sci-1 spec §7.4)
     if (freq !== null) queue({ kind: 'laserFrequency', freq });

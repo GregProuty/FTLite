@@ -3,6 +3,7 @@
 // side, the enemy torpedo's path, the pings and their rate limit, and the dead-click reasons against the sim's own
 // admission checks. Presentation only: none of it touches the sim's state.
 import { describe, expect, it } from 'vitest';
+import { DuelSystem } from '../src/renderer/src/sim/tactical/bars';
 import { alertSentence, COLLISION_WARN_S, collisionIn, evadeDir, flightAlert, laserSituation, refusal, stateAxes } from '../src/renderer/src/render/duel/situationModel';
 import { PING_GAP_MS, PING_S, PINGS_MAX, pingAllowed, pingDraws, pushPing, stepPings, type Ping } from '../src/renderer/src/render/duel/pingModel';
 import { ARROW_MARGIN, collisionTag, gravityRadius, headingOf, tacticalModel, GRAVITY_RINGS } from '../src/renderer/src/render/tactical/tacticalModel';
@@ -228,6 +229,19 @@ describe('never a dead click (Feel-ii §2.8): the reasons are the sim\'s own che
       expect(refusal(d, 'turn')).toBeNull();
       sys.rooms[Room.Engines] = 2;
       expect(['turn', 'auto-face', 'throttle', 'heading'].map((c) => refusal(d, c as 'turn'))).toEqual(Array(4).fill('ENGINES OFFLINE'));
+    } finally { disposeDuel(d); }
+  });
+  it('Engineering spike §10.2 (final review): the Helm reads the Engines bars: 0 bars is ENGINES UNPOWERED, a level-2 Room ENGINES OFFLINE', () => {
+    const d = createSeatedDuel(CUTTER, 5);
+    try {
+      const sys = d.tactical.systems[0];
+      expect(refusal(d, 'turn')).toBeNull();
+      sys.bars[DuelSystem.Engines] = 0;   // no bar (an overheat failure clamps the bars to 0 the same way)
+      expect(['turn', 'auto-face', 'throttle', 'heading'].map((c) => refusal(d, c as 'turn'))).toEqual(Array(4).fill('ENGINES UNPOWERED'));
+      sys.rooms[Room.Engines] = 2;
+      expect(refusal(d, 'turn')).toBe('ENGINES OFFLINE');
+      sys.bars[DuelSystem.Engines] = 3; sys.rooms[Room.Engines] = 1;   // damaged but flying (5 - 3 slots: 2 effective bars)
+      expect(refusal(d, 'turn')).toBeNull();
     } finally { disposeDuel(d); }
   });
   it('LAUNCH is refused exactly when canLaunch says no, over many states', () => {

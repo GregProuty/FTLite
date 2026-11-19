@@ -19,7 +19,7 @@ import { createInteriorView, type InteriorView } from '../../render/duel/interio
 import { shipCommandOf, shipControlAt, type ShipCommand } from '../../render/duel/shipControls';
 import type { Placement } from '../../render/duel/interiorCamera';
 import { readoutHelp, readoutRows } from '../../render/duel/readoutModel';
-import { createFx, fxDt, pushEvents, pushGunHits, pushKill, recordTrails, resetFx, shakeOffset, stepFx, trackSolution, type ViewEvent } from '../../render/tactical/fxModel';
+import { createFx, fxDt, hitsCrew, pushEvents, pushGunHits, pushKill, recordTrails, resetFx, SHAKE_PX, SHAKE_S, shakeOffset, startShake, stepFx, trackSolution, type FxState, type ViewEvent } from '../../render/tactical/fxModel';
 import { gunnerPresent, laserSituation, linedUp } from '../../render/duel/situationModel';
 import { countSit, createSitTracker, frameZoom, sitCard, trackSit, type SitSeat } from '../../render/duel/sitModel';
 import { shakeScale } from '../../render/shake';
@@ -37,7 +37,7 @@ import { crewLife } from '../../render/duel/healFxModel';
 import type { DuelSink } from '../../ui/sinks';
 import { mapOverlayOf, type Banners, type MapOverlayView } from '../../ui/views';
 import type { DuelState } from '../../sim/duel/state';
-import { classOf, Contact, CREW_SLOT, missileOf, Outcome, Room, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
+import { classOf, Contact, CREW_SLOT, missileOf, Outcome, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
 import type { InteriorCamera } from '../../render/duel/interiorCamera';
 import type { AimSample, HeldFlags } from './input';
 import type { ContactController } from './contactController';
@@ -49,6 +49,7 @@ import { pingAllowed, pushPing, stepPings, type Ping, type PingRequest } from '.
 import type { TorpedoTone } from './duelAudio';
 import { viewCamera, type DuelView } from './runtime';
 import { createFog, stepFog } from '../../render/tactical/fogModel';
+import { weaponBars, WeaponSlot } from '../../sim/tactical/bars';
 
 /** What the scene reads each frame (H-2 spec §3): the duel, its interpolation inputs, the cameras, the view and the readouts. */
 export interface DuelViewSource {
@@ -112,11 +113,11 @@ export function sceneUi(view: DuelView, overlay: SceneOverlay, pauseText: string
 }
 
 /** Feel-ii §2.5: the torpedo lock tone's frame data: the torpedo has a target and is ready (canLaunch's checks bar the
- *  range: none flying, one in the magazine, Weapons on), the enemy's distance and the torpedo's range. Engineering spike
+ *  range: none flying, one in the magazine, the torpedo on at least one bar), the enemy's distance and the torpedo's range. Engineering spike
  *  §10.4: an unseen enemy is never locked, so no beep tracks its distance. */
 export function torpedoTone(d: DuelState): TorpedoTone {
   const t = d.tactical, sys = t.systems[CREW_SLOT]!, me = t.ships[CREW_SLOT]!, e = t.ships[targetOf(t, CREW_SLOT)];
-  const locked = t.outcome === Outcome.Running && sys.torpLock >= 0 && !missileOf(t, CREW_SLOT) && sys.magazine > 0 && sys.rooms[Room.Weapons] < 2 && e?.active === true && shipSeen(t, targetOf(t, CREW_SLOT));
+  const locked = t.outcome === Outcome.Running && sys.torpLock >= 0 && !missileOf(t, CREW_SLOT) && sys.magazine > 0 && weaponBars(sys, WeaponSlot.Torpedo) >= 1 && e?.active === true && shipSeen(t, targetOf(t, CREW_SLOT));
   return { locked, distance: e ? Math.hypot(e.x - me.x, e.y - me.y) : Infinity, range: classOf(t, CREW_SLOT).slots.missile.range, target: sys.torpLock };
 }
 
@@ -124,6 +125,28 @@ export function torpedoTone(d: DuelState): TorpedoTone {
  *  torpedo's blast) plays centred, so its pan reveals no bearing. */
 export function fogPan(t: TacticalState, pan: (x: number, y: number) => number): (x: number, y: number) => number {
   return (x, y) => (pointSeen(t, x, y) ? pan(x, y) : 0);
+}
+
+/** Engineering spike §10.4 (final review): the events the map effects may draw. An unseen ship's contact spark goes (it
+ *  sits at the ship's real place); another ship's laser fired from an unseen point loses its beam (and a rock's chips back
+ *  along it); another ship's torpedo ending at an unseen point loses its burst. The crew's own weapons and ship keep all. */
+export function fogEvents(t: TacticalState, events: readonly ViewEvent[]): ViewEvent[] {
+  return events.filter((e) => {
+    if (e.kind === 'contact') return e.ship === CREW_SLOT || shipSeen(t, e.ship);
+    if (e.kind === 'laser') return e.ship === CREW_SLOT || pointSeen(t, e.x1, e.y1);
+    if (e.kind === 'missileEnd') return e.ship === CREW_SLOT || pointSeen(t, e.x, e.y);
+    return true;
+  });
+}
+
+/** One frame's map effects from its events, under the fog (fogEvents): the beams, bursts and sparks, the callouts and
+ *  struck rooms, the gun's hits and the rock effects. A hit on the crew ship whose event the fog dropped (an unseen
+ *  enemy's beam) still shakes the screen: the crew feels the hit without seeing where it came from. */
+export function pushMapEffects(fx: FxState, events: readonly ViewEvent[], t: TacticalState): void {
+  const shown = fogEvents(t, events);
+  pushEvents(fx, shown); pushHits(fx, shown, t); pushGunHits(fx, shown);   // duel polish i spec §B: the callouts and the struck-room flashes; Valkyrn spec §7.4: the gun's sparks, pops and -1
+  pushRockFx(fx, shown);   // spike ii §7: chips, breaks, blasts, sparks
+  if (shown.length < events.length && events.some((e) => hitsCrew(e) && !shown.includes(e))) startShake(fx, SHAKE_PX, SHAKE_S);
 }
 
 /** Spike ii §6.5: the rock under the pointer when no ship contact is there. Engineering spike §10.4: `at.fog` makes an
@@ -253,8 +276,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       }
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       const events = source.drainEvents();
-      pushEvents(fx, events); pushHits(fx, events, d.tactical); pushGunHits(fx, events);   // duel polish i spec §B: the callouts and the struck-room flashes; Valkyrn spec §7.4: the gun's sparks, pops and -1
-      pushRockFx(fx, events);   // spike ii §7: chips, breaks, blasts, sparks
+      pushMapEffects(fx, events, d.tactical);   // Engineering spike §10.4: under the fog
       if (cam) {   // spike ii §7 item 6: a blast or a break on this screen shakes it
         const c = cam, crewAt = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT);
         pushRockShakes(fx, events, crewAt, (x, y) => { const p = worldToScreen(c, viewport, x, y); return p.x >= 0 && p.x <= viewport.w && p.y >= 0 && p.y <= viewport.h; });

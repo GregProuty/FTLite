@@ -1,4 +1,4 @@
-// Engineering spike §10.4: the fog of war is view state. A contact (the enemy, the derelict, the enemy's torpedo) is seen
+// Engineering spike §10.4: the fog of war is view state. A contact (the enemy, the derelict, the enemy torpedo) is seen
 // inside the sensor range; once unseen it leaves a ghost at its last seen place and heading, fading over 10 s, then gone.
 // The map hides an unseen derelict's mark, draws the range ring and the ghosts; the contact window says CONTACT LOST.
 import { describe, expect, it } from 'vitest';
@@ -30,7 +30,8 @@ import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { Room } from '../src/renderer/src/sim/tactical/state';
 import { readoutRows } from '../src/renderer/src/render/duel/readoutModel';
 import { evadeDir, flightAlert } from '../src/renderer/src/render/duel/situationModel';
-import { fogPan, rockHoverAt, torpedoTone } from '../src/renderer/src/app/duel/scene';
+import { fogEvents, fogPan, pushMapEffects, rockHoverAt, torpedoTone } from '../src/renderer/src/app/duel/scene';
+import { createFx, type ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import { worldToScreen } from '../src/renderer/src/render/tactical/camera';
 import { arena, mover } from './helpers/rockArena';
 
@@ -206,5 +207,44 @@ describe('no fog leaks, review round 1 (spec §10.4)', () => {
     const t = createTacticalState(5);
     for (const contact of [0, 1] as const) expect(contactModel({ state: t, contact, aim: false, station: 'science', t: 0, weapons: null, seen: false })!.scan).toBeNull();
     expect(contactModel({ state: t, contact: 0, aim: false, station: 'science', t: 0, weapons: null, seen: true })!.scan).not.toBeNull();
+  });
+});
+
+describe('no fog leaks through the map effects, final review (spec §10.4)', () => {
+  const setup = (seen: boolean) => {
+    const t = createTacticalState(5), own = t.ships[0]!, e = t.ships[1]!, r = sensorRange(t.systems[0]!);
+    Object.assign(e, { x: own.x + (seen ? r / 2 : r * 2), y: own.y, active: true });
+    return { t, own, e };
+  };
+  const kinds = (events: ViewEvent[], t: ReturnType<typeof createTacticalState>) => { const fx = createFx(); pushMapEffects(fx, events, t); return { kinds: fx.items.map((i) => i.kind), shake: fx.shake }; };
+  it("an unseen enemy's rock or planet bump draws no spark; a seen one does; the crew's own always does", () => {
+    for (const seen of [false, true]) {
+      const { t, own, e } = setup(seen);
+      expect(kinds([{ kind: 'contact', ship: 1, body: 'asteroid', x: e.x, y: e.y }], t).kinds).toEqual(seen ? ['spark'] : []);
+      expect(kinds([{ kind: 'contact', ship: 0, body: 'planet', x: own.x, y: own.y }], t).kinds).toEqual(['spark']);
+    }
+  });
+  it("an unseen enemy's laser draws no beam but still shakes the crew it hit; a seen one draws its beam; the crew's beam always", () => {
+    for (const seen of [false, true]) {
+      const { t, own, e } = setup(seen);
+      const enemyShot: ViewEvent = { kind: 'laser', ship: 1, hit: true, stripped: false, room: 0, x1: e.x, y1: e.y, x2: own.x, y2: own.y };
+      const got = kinds([enemyShot], t);
+      expect(got.kinds).toEqual(seen ? ['beam'] : []);
+      expect(got.shake).toBeGreaterThan(0);   // the hit on the crew is felt either way
+      expect(fogEvents(t, [enemyShot])).toEqual(seen ? [enemyShot] : []);
+      const crewShot: ViewEvent = { kind: 'laser', ship: 0, hit: false, stripped: false, room: -1, x1: own.x, y1: own.y, x2: e.x, y2: e.y };
+      expect(kinds([crewShot], t).kinds).toEqual(['beam']);
+    }
+  });
+  it("an unseen enemy's laser miss does not shake: only a hit on the crew does", () => {
+    const { t, own, e } = setup(false);
+    expect(kinds([{ kind: 'laser', ship: 1, hit: false, stripped: false, room: -1, x1: e.x, y1: e.y, x2: own.x + 50, y2: own.y }], t)).toEqual({ kinds: [], shake: 0 });
+  });
+  it("an enemy torpedo ending at an unseen point draws no burst; at a seen point it does; the crew's own always", () => {
+    for (const seen of [false, true]) {
+      const { t, e } = setup(seen);
+      expect(kinds([{ kind: 'missileEnd', ship: 1, cause: 'expired', target: -1, room: -1, x: e.x, y: e.y }], t).kinds).toEqual(seen ? ['burst'] : []);
+      expect(kinds([{ kind: 'missileEnd', ship: 0, cause: 'expired', target: -1, room: -1, x: e.x, y: e.y }], t).kinds).toEqual(['burst']);
+    }
   });
 });

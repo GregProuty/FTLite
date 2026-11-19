@@ -29,7 +29,7 @@ import { consoleInReach, cycleLock, repairInReach, seatOf, stepTorpRoom } from '
 import { createDuelKeyboard, createPointerSource, emptyPresses, NO_HELD_FLAGS, PING_CODE, throttleRequest, type ConsoleInput, type EventSource, type HeldFlags, type KeySample } from './input';
 import { createMapRequests } from './mapRequests';
 import { pingAllowed, type PingRequest } from '../../render/duel/pingModel';
-import { refusal } from '../../render/duel/situationModel';
+import { lockRefusal, refusal } from '../../render/duel/situationModel';
 import { consoleChange } from './consoleChange';
 import { createContactController, type ContactActions, type ContactRequests } from './contactController';
 import { createOnlineDuelSource, type OnlineDuelSource } from './onlineSource';
@@ -231,12 +231,16 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       let room = sys.lock;
       for (let n = 0; n < Math.abs(steps); n++) room = cycleLock(room, steps > 0 ? 1 : -1);
       send({ kind: 'laserLock', room });
+      const why = lockRefusal(d); if (why) source?.refuse('laser', why);   // Engineering spike §10.4: the sim refuses a lock on an unseen enemy
     }
     if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) send({ kind: 'laserLock', room: k.lockTo });   // a room click or a card's clear
     if (k.torpTo !== undefined && k.torpTo !== null && k.torpTo >= -1 && k.torpTo <= 2) send({ kind: 'torpLock', room: k.torpTo });   // the torpedo's
     if (requests.rockLock) send({ kind: 'rockLock', weapon: requests.rockLock.weapon, rock: requests.rockLock.rock });   // spike ii §6.5
     if (k.rockTo) send({ kind: 'rockLock', weapon: k.rockTo.weapon, rock: k.rockTo.rock });
-    if (requests.torpStep) send({ kind: 'torpLock', room: stepTorpRoom(sys.torpLock, requests.torpStep) });   // E / Q while the torpedo is picked up: its own target
+    if (requests.torpStep) {   // E / Q while the torpedo is picked up: its own target
+      send({ kind: 'torpLock', room: stepTorpRoom(sys.torpLock, requests.torpStep) });
+      const why = lockRefusal(d); if (why) source?.refuse('launch', why);   // spec §10.4: as the laser's E/Q
+    }
     // Sci-1 spec §7.4: a one-shot edge, sent as it comes (the lagging replica is no base, a quick undo would be dropped); the sim answers noop to an unchanged value
     if (k.freqTo !== undefined && k.freqTo !== null && Number.isInteger(k.freqTo) && k.freqTo >= 0 && k.freqTo <= 2) send({ kind: 'laserFrequency', freq: k.freqTo });
     // FTL targeting spec §2: Space is a single press that fires a full laser; there is no release to send.

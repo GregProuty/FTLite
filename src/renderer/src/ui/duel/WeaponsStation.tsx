@@ -99,8 +99,9 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
   const P = weaponCard('pew'), L = weaponCard('laser'), T = weaponCard('torpedo'), px = P.x + 6, lx = L.x + 6, tx = T.x + 6;
   const reason = weapons.laserReason ?? null, firing = reason === 'FIRING', bars = weapons.weaponBars ?? null;
   const laserRock = weapons.laserRock === true, torpRock = weapons.torpRock === true || weapons.torpRockFlying === true;
-  // Feel-ii §2.8: a refused FIRE or LAUNCH flashes, and the row under the cards names why for REFUSAL_SHOW_S.
-  const refused = weapons.refused ?? null, flash = (k: string): boolean => refused?.control === k && refused.flash;
+  // Feel-ii §2.8: a refused FIRE or LAUNCH flashes, and the row under the cards names why for REFUSAL_SHOW_S. Engineering
+  // spike §10.4: a refused beam lock (E/Q on an unseen enemy, the `laser` control) flashes FIRE and reads BEAM.
+  const refused = weapons.refused ?? null, flash = (k: string): boolean => (refused?.control === k || (k === 'fire' && refused?.control === 'laser')) && refused.flash;
   return (
     <>
       <Panel x={STATION.x} y={top} w={STATION.w} h={STATION.h.weapons} />
@@ -130,7 +131,7 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
       {bars && (['pew', 'laser', 'torpedo'] as const).map((w) => <Pips key={w} weapon={w} bars={bars[SLOT[w]] ?? 0} crt={crt} />)}
       {bars && <PixelText text={freeText(weapons.weaponFree ?? 0)} x={right} y={y0 + 116} size={FONT_NATIVE} tint={(weapons.weaponFree ?? 0) > 0 ? hot : dim} anchorX={1} />}
       {refused !== null
-        ? <PixelText text={`${refused.control === 'launch' ? 'LAUNCH' : 'FIRE'}: ${refused.reason}`} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={hot} />
+        ? <PixelText text={`${refused.control === 'launch' ? 'LAUNCH' : refused.control === 'laser' ? 'BEAM' : 'FIRE'}: ${refused.reason}`} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={hot} />
         : reason !== null && !firing
         ? <PixelText text={`BEAM: ${reason}`} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={hot} />
         : <PixelText text={firing ? 'BEAM: FIRING' : WEAPONS_HINT} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={firing ? hot : dim} />}
