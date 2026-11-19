@@ -1,0 +1,15 @@
+# Ledger: 2026-11-19-w4a-plan
+
+| id | sev | title | status | cycles | note |
+|---|---|---|---|---|---|
+| R1-F1 | P1 | The known-red window misses every scripted-pair test that breaks when master's gunner sends laserLock to the laser-less Hound (Task 3 to Task 8) | fixed:R1 | 0 | Task 3 Step 8b parks the gunner on a turret class (hasTurret guard) until Task 8 replaces it with houndGunner; window lists gates Task 3-8 and Step 10's kind (b) finds |
+| R1-F2 | P1 | Task 7 won't type-check: duelScripted's `pewAimOf` reads `c.aim` / `c.aimAcc` on the new `{ kind: 'pewFire' }` | fixed:R1 | 0 | Task 7 greps 'pewFire' across tests and deletes the W-1 gunnerPew block (pewAimOf) there; Task 8 adds its replacement |
+| R1-F3 | P1 | Task 9 won't type-check: `KeyAction` gains selectPrev / selectNext, but controlsList's exhaustive `DUEL_ACTION` record is only updated in Task 12 | fixed:R1 | 0 | Task 9 Step 5b adds selectPrev/selectNext to DUEL_ACTION and the loop's continue; controlsList.ts in Task 9 files; Task 12 text updated |
+| R1-F4 | P1 | Task 11's online branch calls `requests.triggerHeld()` on the ContactRequests, not the MapRequests | fixed:R1 | 0 | Task 11 adds triggerNow closure beside takeSteer0; play and pump call triggerNow() |
+| R1-F5 | P1 | Task 5's 'a static rock wakes on the push' test can't pass: a Static rock written into a free slot isn't in the broad-phase grid | fixed:R1 | 0 | Task 5 static-rock test uses seeded(st, 0) and fires at the map asteroid |
+| R1-F6 | P1 | Task 13's observer reads `systems.0.weaponPower.${k}`, which no field is named; weaponPower is one 3-wide vector | fixed:R1 | 0 | Task 13 observer reads the weaponPower vector at n.at.get('systems.0.weaponPower') + k; hedge dropped |
+| R1-F7 | P2 | Resolve the items left to the executor; each has a definite answer in the code | fixed:R1 | 0 | validator (st, flattenTactical(st)); createFx(); noop shape stated; render imports app stated; online F keeps today's two branches |
+| R1-F8 | P2 | Key-path ports leave tests red between tasks: valkyrnRuntime from Task 9, and scienceInput's Weapons-frequency case from Task 3 | fixed:R1 | 0 | valkyrnRuntime edit moved to Task 10 Step 1b; scienceInput L124-L133 in the window Task 3-6; scienceInput runtime case stays on the Hound with freqTo |
+| R1-F9 | P2 | Spec §14's loadout test 'every laser command from the Hound except laserFrequency is unavailable' has no task | fixed:R1 | 0 | Task 7 w4PewFire adds the every-laser-command-unavailable case, laserFrequency applied |
+| R1-F10 | P2 | The test bodies for Tasks 10, 11 and 12 are titles and comments, not tests | fixed:R1 | 0 | Task 10 w4Runtime written in full on scienceInput's rig; Task 11 online cases in onlineDuelSession's rig with exact calls; Task 12 w4Ui written in full with resolved selectors |
+| R1-F11 | P3 | Task 2 moves every arena-based rock test onto the laser fit, not just the beam's | fixed:R1 | 0 | arena default stays Cutter; rockLaser, rockLock and rockTargetModel laser cases pass ShipClass.ValkyrnLaser |
