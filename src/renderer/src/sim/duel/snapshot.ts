@@ -19,7 +19,7 @@ import { validateMap } from '../tactical/map';
 import { createTacticalState, Outcome, type TacticalState } from '../tactical/state';
 import { DUEL_CLASSES, SHIP_CLASSES, ShipClass } from '../tactical/defs';
 import { TACTICAL_MODULES, hashTactical, tacticalLength, validateTacticalValues } from '../tactical/hash';
-import { RCS_TANK, REPAIR_UNITS, THR_MAX, THR_MIN } from './tuning';
+import { REPAIR_UNITS, THR_MAX, THR_MIN } from './tuning';
 import { SIM_VERSION } from '../tuning';
 import { flattenDuel, hashDuel, mapHash } from './hash';
 import { unflattenDuelModules } from './modules';
@@ -148,7 +148,7 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   // -0 is written as 0 (flattenDuel and here): no sim path distinguishes the two zeros (no 1/x, atan2 or Object.is on state),
   // so the snapshot and the live state hash and behave identically.
   const values = (snap.values as number[]).map((v) => (v === 0 ? 0 : v));
-  const space = seed.spaceLength, repairAt = 1 + space + n, roundAt = repairAt + 3, helmAt = roundAt + 4, powerAt = helmAt + 5, interiorAt = powerAt + POWER_VALUES;   // playtest2feedback §7: the helm module holds five values (owner 2026-11-19: no compressor); Engineering spike spec §7: power after helm
+  const space = seed.spaceLength, repairAt = 1 + space + n, roundAt = repairAt + 3, helmAt = roundAt + 4, powerAt = helmAt + 3, interiorAt = powerAt + POWER_VALUES;   // playtest2feedback §7: the helm module holds three values (owner 2026-11-19: no compressor, no tank); Engineering spike spec §7: power after helm
   if (values.length !== interiorAt + crew.interiorCount) throw new Error('duel snapshot length does not match the layout and map');
   if (values[0] !== SIM_VERSION) throw new Error('duel snapshot sim version does not match its values');
   if (values[2] !== h.seed) throw new Error('duel snapshot seed does not match its values');
@@ -178,13 +178,10 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   // Feel-ii (spec §1.1): the held heading, −1 or a heading index 0..255.
   const holdHeading = values[helmAt + 1]!;
   if (!validHoldHeading(holdHeading)) throw new Error(`duel snapshot held heading ${holdHeading} is invalid`);
-  // Playtest2feedback §7: the crew Helm's held throttle −250..1000, the tank 0..RCS_TANK and its sixtieths 0..59, each an
-  // integer.
+  // Playtest2feedback §7: the crew Helm's held throttle −250..1000, an integer (owner 2026-11-19: no tank).
   const whole = (v: number, lo: number, hi: number): boolean => Number.isInteger(v) && v >= lo && v <= hi;
-  const [thrMille, rcsGas, rcsAcc] = values.slice(helmAt + 2, powerAt) as [number, number, number];
+  const thrMille = values[helmAt + 2]!;
   if (!whole(thrMille, THR_MIN, THR_MAX)) throw new Error(`duel snapshot thrMille ${thrMille} is invalid`);
-  if (!whole(rcsGas, 0, RCS_TANK)) throw new Error(`duel snapshot rcsGas ${rcsGas} is invalid`);
-  if (!whole(rcsAcc, 0, 59)) throw new Error(`duel snapshot rcsAcc ${rcsAcc} is invalid`);
   validatePowerValues(values.slice(powerAt, interiorAt));   // Engineering spike spec §7: heat, coolant, failed
   const interior = values.slice(interiorAt);
   validateCanonicalValues(layout, derived, n, interior);

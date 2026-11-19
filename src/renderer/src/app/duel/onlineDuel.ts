@@ -113,8 +113,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   let lastPhase = '', noticeUntil = 0, notice: string | null = null, lastFrame = 0, cameraKeys = keysOnly(sampleIdle());
   let attaches = 0, pauses = 0, roundAttaches = 1, roundPauses = 0, startedAtIso = new Date().toISOString(), cancel = () => {}, offClose = () => {};
   let lastHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false }, lastFlags: HeldFlags = NO_HELD_FLAGS;
-  // Playtest2feedback §4, §4a: the crew Helm's held steer, its left button and thrusters on the last pump, and the last held sequence sent.
-  let steer = -1, steerPrev = false, rcsPrev = { x: 0, y: 0 }, lastHeldSequence = 0;
+  // Playtest2feedback §4a: the crew Helm's held steer, its left button on the last pump, and the last held sequence sent.
+  let steer = -1, steerPrev = false, lastHeldSequence = 0;
   let crewHelmPrev = false;   // final review I1: this seat flew the crew Helm on the last pump that saw the replica
   const requests0 = (): number | null => requests.takeHeading();   // Feel-ii §1.1: drained every pump
   // Playtest2feedback §4a: the map's steer bearing, drained every pump beside the heading. Inside pump the name `requests`
@@ -253,9 +253,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
         if ((held.up && !prevHeld.up) || (held.down && !prevHeld.down)) source?.refuse('throttle', off);
         if (heading !== null && heading >= 0) source?.refuse('heading', off);
       }
-      const rx = k.rcsX ?? 0, ry = k.rcsY ?? 0, gas = refusal(d, 'thrusters');
-      if (gas && ((rx !== 0 && rcsPrev.x === 0) || (ry !== 0 && rcsPrev.y === 0))) source?.refuse('thrusters', gas);
-      steerPrev = steering && (steerPrev || steered); rcsPrev = { x: rx, y: ry };
+      steerPrev = steering && (steerPrev || steered);   // owner 2026-11-19: the free cold gas has no refusal
       return;
     }
     if (seat === 'helm') {
@@ -420,7 +418,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       observe(); release();
       // This round's gaps before the re-attach stay in its record (the reconnect time itself is never one).
       if (source) { roundGaps.push(...source.takeArrivals()); if (roundGaps.length > 4096) roundGaps.splice(0, roundGaps.length - 4096); }
-      descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; throttleSent = null; headingSent = null; laserModeSent = null; torpModeSent = null; torpHold = -1; steer = -1; steerPrev = false; rcsPrev = { x: 0, y: 0 }; lastHeldSequence = 0; attaches++;
+      descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; throttleSent = null; headingSent = null; laserModeSent = null; torpModeSent = null; torpHold = -1; steer = -1; steerPrev = false; lastHeldSequence = 0; attaches++;
       heldStamps.length = 0; commandStamps.clear(); pewSent.clear(); laserSent.clear(); torpSent.clear();   // the new client restarts its sequences: an old stamp would match a new frame
       // Spec §6.2: a map click counts only while this window has focus and input is not blocked; otherwise it is drained and dropped.
       scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED', ui: deps.ui, audio: deps.audio, contact,

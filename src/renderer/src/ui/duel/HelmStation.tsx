@@ -2,7 +2,7 @@
 // notches; the set one lit with a `<` pointer, and the notches from 25 up to it filled), heading and speed, and the turn
 // buttons that hold A and D. W and S step the throttle a notch (§5.4); a notch click asks for its level. Feel-i (console
 // feel spec §2): AUTO-FACE holds Space, turning the nose onto the enemy's lead point while held.
-// Playtest2feedback §6: on a newtonianHelm class (helm.crew) the block is CrewHelmStation: the held throttle bar, PRESSURE, HELM POWER and the PORT / STBD thrusters.
+// Playtest2feedback §6: on a newtonianHelm class (helm.crew) the block is CrewHelmStation: the held throttle bar, the Engines cap and the PORT / STBD thrusters (owner 2026-11-19: no HELM POWER split, no PRESSURE gauge).
 import { Fragment, memo, useRef } from 'react';
 import { THR_MAX, THR_MIN, type CrewHelmPanel, type HelmPanel } from '../../render/duel/consoleModel';   // the throttle range comes through the model: the UI imports no sim values
 import { STATION, stationTop } from '../../render/duel/consoleLayout';
@@ -77,13 +77,13 @@ const NotchHelmStation = memo(function NotchHelmStation({ helm }: { helm: HelmPa
 
 /** Playtest2feedback §6: the held throttle bar's labels and their per mille, top to bottom. */
 const THR_LABELS: readonly [string, number][] = [['100', 1000], ['75', 750], ['50', 500], ['25', 250], ['0', 0], ['REV', -250]];
-const BAR_H = 150, BAR_W = 18, GAUGE_W = 14;
+const BAR_H = 150, BAR_W = 18;
 
 /** Playtest2feedback §6: the crew Helm's block. On the left, the throttle bar from REV (−25) to 100, filled from 0 to the
- *  shown thrMille. A line marks the Engines cap, and the parts past the cap and the floor are drawn locked (dark). Beside it
- *  is the PRESSURE gauge, with the tank percentage. On the right are the heading and speed, and (owner 2026-11-19, in place
- *  of §5's HELM POWER split) the Engines bars and the cap they set; the bars themselves are Engineering's, on the console's
- *  power strip. Below them are PORT and STBD (they hold A and D, the side thrusters), AUTO-FACE, and the key hints. */
+ *  shown thrMille. A line marks the Engines cap, and the parts past the cap and the floor are drawn locked (dark). Owner
+ *  2026-11-19: no PRESSURE gauge (the cold gas is free). On the right are the heading and speed, and (owner 2026-11-19, in
+ *  place of §5's HELM POWER split) the Engines bars and the cap they set; the bars themselves are Engineering's, on the
+ *  console's power strip. Below them are PORT and STBD (they hold A and D, the side thrusters), AUTO-FACE, and the key hints. */
 const CrewHelmStation = memo(function CrewHelmStation({ helm, crew }: { helm: HelmPanel; crew: CrewHelmPanel }) {
   const actions = useActions(), { crt } = useCrt();
   const top = stationTop('helm'), x0 = STATION.x + 8, y0 = top + 6, rx = STATION.x + 140, h = helm.held;
@@ -94,7 +94,6 @@ const CrewHelmStation = memo(function CrewHelmStation({ helm, crew }: { helm: He
     : <PixelText text={text} x={rx} y={y} size={FONT_NATIVE} tint={dim} />;
   const barX = x0 + 34, barTop = y0 + 18, yAt = (m: number): number => barTop + Math.round(((THR_MAX - m) / (THR_MAX - THR_MIN)) * BAR_H);
   const zeroY = yAt(0), valueY = yAt(crew.thrMille), capY = yAt(crew.cap), floorY = yAt(crew.floor);
-  const gx = x0 + 84, gasY = barTop + Math.round(((100 - crew.gas) / 100) * BAR_H);
   const hold = helm.holdHeading ?? -1, holdDeg = hold >= 0 ? ((Math.round((hold / 256) * 360) % 360) + 360) % 360 : -1;
   return (
     <>
@@ -107,19 +106,15 @@ const CrewHelmStation = memo(function CrewHelmStation({ helm, crew }: { helm: He
       {valueY !== zeroY && <Box x={barX + 2} y={Math.min(zeroY, valueY)} w={BAR_W - 4} h={Math.abs(zeroY - valueY)} attrs={{ 'data-ui-thr-fill': '1' }} style={{ background: hex(hot) }} />}
       <Box x={barX - 2} y={zeroY} w={BAR_W + 4} h={1} style={{ background: hex(dim) }} />
       <Box x={barX - 4} y={capY} w={BAR_W + 8} h={1} attrs={{ 'data-ui-thr-cap': String(crew.cap) }} style={{ background: hex(main) }} />
-      <PixelText text="PRESSURE" x={x0 + 62} y={y0} size={FONT_NATIVE} tint={flash('thrusters') ? hot : dim} />
-      <Box x={gx} y={barTop} w={GAUGE_W} h={BAR_H} attrs={{ 'data-ui-pressure': String(crew.gas) }} style={{ border: `1px solid ${hex(dim)}` }} />
-      {crew.gas > 0 && <Box x={gx + 2} y={gasY} w={GAUGE_W - 4} h={barTop + BAR_H - gasY} style={{ background: hex(crew.gas >= 1 ? main : faint) }} />}
-      <PixelText text={`${crew.gas}%`} x={gx - 6} y={barTop + BAR_H + 4} size={FONT_NATIVE} tint={main} />
       <Box x={STATION.x + 130} y={y0} w={1} h={186} style={{ background: hex(crt ? CRT.dim : BAR_OFF) }} />
       <PixelText text={`HDG ${String(helm.heading).padStart(3, '0')}${holdDeg >= 0 ? ` TO ${String(holdDeg).padStart(3, '0')}` : ''}`} x={rx} y={y0} size={FONT_NATIVE} tint={holdDeg >= 0 ? main : dim} />
       <PixelText text={`SPD ${helm.speed}`} x={rx} y={y0 + 18} size={FONT_SIZE} tint={main} />
       <PixelText text={`ENGINES ${crew.bars}`} x={rx} y={y0 + 40} size={FONT_NATIVE} tint={dim} />
       <PixelText text={`CAP ${crew.cap / 10}%${crew.floor < 0 ? '' : '  NO REV'}`} x={rx} y={y0 + 56} size={FONT_SIZE} tint={crew.cap > 0 ? main : hot} />   {/* owner 2026-11-19: 1 bar = 25 %, reverse needs a bar */}
-      <Button name="rcs-port" label="PORT" hint="A" x={rx} y={y0 + 90} w={70} h={24} lit={h.left} flash={flash('thrusters')} onHold={(on) => actions.console.hold('KeyA', on)} />
-      <Button name="rcs-stbd" label="STBD" hint="D" x={rx + 78} y={y0 + 90} w={70} h={24} lit={h.right} flash={flash('thrusters')} onHold={(on) => actions.console.hold('KeyD', on)} />
+      <Button name="rcs-port" label="PORT" hint="A" x={rx} y={y0 + 90} w={70} h={24} lit={h.left} onHold={(on) => actions.console.hold('KeyA', on)} />
+      <Button name="rcs-stbd" label="STBD" hint="D" x={rx + 78} y={y0 + 90} w={70} h={24} lit={h.right} onHold={(on) => actions.console.hold('KeyD', on)} />
       <Button name="auto-face" label="AUTO-FACE" hint="SPC" x={rx} y={y0 + 118} w={148} h={24} lit={h.fire} flash={flash('auto-face')} onHold={(on) => actions.console.hold('Space', on)} />
-      {hint(['thrusters', 'throttle'], 'W/S THR  A/D Q/E GAS', y0 + 150)}
+      {hint(['throttle'], 'W/S THR  A/D Q/E GAS', y0 + 150)}
       {hint(['turn', 'heading', 'auto-face'], 'LMB STEER  RMB HDG', y0 + 170)}   {/* two rows, the lowest at y0 + 170 as the existing block's; RMB HEADING is in the controls list */}
     </>
   );

@@ -609,7 +609,7 @@ describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () =>
   });
   it('blur drops the local prediction: the vent and thrMille fall back to the replica state', () => {
     const r = rig(0), c = r.attach();
-    r.d.rcsGas = 100; c.publish(r.d); r.pump(); r.session.frame();
+    c.publish(r.d); r.pump(); r.session.frame();
     r.key('keydown', 'ArrowUp'); r.pump(); r.pump();
     expect(h.source!.helmVent()).not.toEqual({ x: 0, y: 0, boosted: false, turn: 0 });
     r.session.setFocused(false); r.pump();

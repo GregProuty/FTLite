@@ -1,12 +1,12 @@
 // Playtest2feedback (spec 2026-11-18-playtest2feedback-design §3, §4, §5): the crew Helm's pure rules on a newtonianHelm
 // class, shared by the duel step (sim/duel/step.ts), the scripted crew and the app's prediction: the thrust a held
-// throttle flies, the ramp and its clamp, the Engines cap and floor, the compressor and venting. Integers in and out for
-// the state; only + − × ÷. Owner 2026-11-19 (the merge with the Engineering spike): no ENGINE/COMPRESSOR split; the cap
-// and the floor come from Engineering's effective Engines bars.
+// throttle flies, the ramp and its clamp, the Engines cap and floor, and the vent record. Integers in and out for the
+// state; only + − × ÷. Owner 2026-11-19 (the merge with the Engineering spike): no ENGINE/COMPRESSOR split, the cap and the
+// floor come from Engineering's effective Engines bars; and the cold gas is free (no tank, no compressor).
 import { DuelSystem, effectiveBars } from '../tactical/bars';
 import type { Axes, ShipSystems } from '../tactical/state';
 import { RCS_TURN_BOOST } from '../tactical/tuning';
-import { COMPRESSOR_RATE, RCS_GAS_PER_TICK, RCS_TANK, THR_MIN, THR_RAMP, THR_RETURN } from './tuning';
+import { THR_MIN, THR_RAMP, THR_RETURN } from './tuning';
 
 /** §4: this tick's vented thruster axes (−1, 0 or 1 each: x port/starboard, y aft/forward), whether the turn was
  *  gas-boosted, and the boosted turn's direction (`turn`: 1 clockwise, −1 anticlockwise, 0 when not boosted; the puffs'
@@ -43,15 +43,6 @@ export function rampTicks(m: number, held: number, floor: number, cap: number, t
   return out;
 }
 
-/** §4: one tick of the compressor: the sixtieths add up, the whole units go into the tank, the tank stops at RCS_TANK, and
- *  a full tank holds no remainder. Owner 2026-11-19: no COMPRESSOR share, so it runs at the old start share's rate. */
-export function compress(gas: number, acc: number): { gas: number; acc: number } {
-  const a = acc + COMPRESSOR_RATE, g = Math.min(gas + Math.floor(a / 60), RCS_TANK);
-  return { gas: g, acc: g === RCS_TANK ? 0 : a % 60 };
-}
-
-/** §4: whether an axis held `want` (−1, 0 or 1) vents from a tank holding `gas`: it needs a tick's gas. */
-export function vents(want: number, gas: number): boolean { return want !== 0 && gas >= RCS_GAS_PER_TICK; }
 
 /** §4, §6: the vent a set of crew axes shows (the puffs and the hiss): its vented axes, and whether its turn is boosted. */
 export function ventOf(axes: Axes): HelmVent {

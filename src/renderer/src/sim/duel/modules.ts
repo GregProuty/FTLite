@@ -67,11 +67,8 @@ export const helmModule: SimModule<DuelState> = {
 const HELM: ModuleField<DuelState>[] = [
   scalar('throttle', (d) => d.throttle, (d, v) => { d.throttle = v; }),
   scalar('holdHeading', (d) => d.holdHeading, (d, v) => { d.holdHeading = v; }),
-  // Playtest2feedback §7: the crew Helm's held throttle, the cold gas tank and its compressor's sixtieths (owner 2026-11-19:
-  // no COMPRESSOR share).
-  scalar('thrMille', (d) => d.thrMille, (d, v) => { d.thrMille = v; }),
-  scalar('rcsGas', (d) => d.rcsGas, (d, v) => { d.rcsGas = v; }),
-  scalar('rcsAcc', (d) => d.rcsAcc, (d, v) => { d.rcsAcc = v; })
+  // Playtest2feedback §7: the crew Helm's held throttle (owner 2026-11-19: no COMPRESSOR share and no cold gas tank).
+  scalar('thrMille', (d) => d.thrMille, (d, v) => { d.thrMille = v; })
 ];
 
 /** The duel ship (the Hound) interior: today's SimState, through the sector snapshot path (flatten / unflatten, validated). */

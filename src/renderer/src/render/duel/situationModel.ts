@@ -9,7 +9,6 @@ import { classOf, CREW_SLOT, missileOf, NO_AXES, Outcome, Room, targetOf, type A
 import type { DuelState } from '../../sim/duel/state';
 import { throttleThrust } from '../../sim/duel/throttle';
 import { crewAxes, helmTurn } from '../../sim/duel/step';
-import { RCS_GAS_PER_TICK } from '../../sim/duel/tuning';
 import { pewPowered, pewReady } from '../../sim/tactical/pew';
 import { laserEligible, laserFull, laserOffline, manualLaserReady, torpedoInRange } from '../../sim/tactical/weapons';
 import { TICK_HZ } from '../../sim/tuning';
@@ -207,7 +206,7 @@ export function evadeDir(t: TacticalState): { x: number; y: number } | null {
 }
 
 /** The console controls a refusal can name (the buttons, and their keys). W-1: `pew`, the Weapons map's left click. */
-export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser' | 'pew' | 'thrusters';   // thrusters: playtest2feedback §4
+export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser' | 'pew';   // owner 2026-11-19: the free cold gas is never refused
 /** Valkyrn spec §6.1: the reason a laser key (1, 3/4/5) gives on a class without a laser (the `laser` control, Flight only). */
 export const NO_LASER = 'NO LASER';
 /** Engineering spike §10.4 (final review): why the sim refuses a lock on the target ship (a laserLock or torpLock on a
@@ -240,7 +239,6 @@ export function refusal(d: DuelState, control: RefusedControl, manual?: boolean)
     if (trimmedWeaponPower(sys)[WeaponSlot.Torpedo] === 0) return weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'TORPEDO UNPOWERED';   // a level-2 Weapons Room lands here too
     return m || torpedoInRange(t, CREW_SLOT) ? null : 'OUT OF RANGE';   // W-3: a MANUAL launch has no range
   }
-  if (control === 'thrusters') return d.rcsGas < RCS_GAS_PER_TICK ? 'NO PRESSURE' : null;   // playtest2feedback §4: cold gas is not the Engines
   if (shipEngineFactor(t, CREW_SLOT) > 0) return null;   // Engineering spike §10.2: the Engines bars, not the Room alone
   return sys.rooms[Room.Engines] >= 2 ? 'ENGINES OFFLINE' : 'ENGINES UNPOWERED';
 }

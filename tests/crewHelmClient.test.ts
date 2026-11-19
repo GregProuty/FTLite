@@ -1,6 +1,6 @@
 // Playtest2feedback (spec 2026-11-18-playtest2feedback-design §3, §4, §4a, §5, §6): Single player's crew Helm: the keys
 // (W/S held, A/D Q/E and the arrows as thrusters), the held frame (moveX 0, the three fields, the steer's aim only while
-// the left button is held), no throttle commands, the NO PRESSURE and steer refusals, the predicted axes, the Helm map's
+// the left button is held), no throttle commands, the steer refusal (owner 2026-11-19: no NO PRESSURE), the predicted axes, the Helm map's
 // steer bearing, and the state's axes for an unattended crew Helm. Owner 2026-11-19 (replaced rule, kind a): 1 and 2 are
 // no longer power keys and no helmPower is sent.
 import { describe, expect, it } from 'vitest';
@@ -133,12 +133,11 @@ describe('Single player at the crew Helm (spec §3, §4, §4a, §5)', () => {
     expect(r.rt.duel.holdHeading).toBe(64);   // the sim holds the last aim as the held heading
     r.rt.dispose();
   });
-  it('a thruster press with under a tick\'s gas says NO PRESSURE; a steer with the Engines off says ENGINES OFFLINE', () => {
+  it('a thruster press is never refused (owner 2026-11-19: free cold gas); a steer with the Engines off says ENGINES OFFLINE', () => {
     const r = rig();
     r.tick();
-    Object.assign(r.rt.duel, { rcsGas: 0, rcsAcc: 0 });
-    r.set({ rcsX: 1 }); r.tick();
-    expect(r.rt.takeRefusals()).toContainEqual({ control: 'thrusters', reason: 'NO PRESSURE' });
+    r.set({ rcsX: 1 }); r.tick(); r.set({ rcsX: 0 }); r.tick(); r.set({ rcsX: -1, rcsY: 1 }); r.tick();
+    expect(r.rt.takeRefusals()).toEqual([]);
     r.rt.duel.tactical.systems[0].rooms[Room.Engines] = 2;
     r.hold(true); r.steer(64); r.tick();
     expect(r.rt.takeRefusals()).toContainEqual({ control: 'turn', reason: 'ENGINES OFFLINE' });
@@ -210,8 +209,6 @@ describe('the duel state alone (spec §3)', () => {
       Object.assign(d, { thrMille: 400, holdHeading: 100 });
       expect(stateAxes(d)).toEqual(crewAxes(d, NONE));
       expect(stateAxes(d).thrust).toBe(crewThrust(400 - THR_RETURN));   // the next tick's return (final review M3)
-      expect(refusal(d, 'thrusters')).toBeNull();
-      d.rcsGas = 7; expect(refusal(d, 'thrusters')).toBe('NO PRESSURE');
     } finally { disposeDuel(d); }
   });
 });

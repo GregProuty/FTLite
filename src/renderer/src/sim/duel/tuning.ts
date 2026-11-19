@@ -53,21 +53,16 @@ export const DUEL_BREACH_CHANCE_LASER = 0.2;
 export const DUEL_BREACH_CHANCE_MISSILE = 0.5;
 /** Engineering spike spec §4: crew in a room below this oxygen fraction lose O2_DAMAGE health a second. */
 export const LOW_AIR_FRAC = 0.25;
-// Playtest2feedback (spec 2026-11-18-playtest2feedback-design §3, §4, §4a, §5): the crew Helm's held throttle, its cold
-// gas, on a newtonianHelm class. Start values, tuned in playtest. Owner 2026-11-19: no power split (the cap is Engineering's
-// Engines bars, sim/duel/helmFlight.ts).
+// Playtest2feedback (spec 2026-11-18-playtest2feedback-design §3, §4a): the crew Helm's held throttle and its boosted turn,
+// on a newtonianHelm class. Start values, tuned in playtest. Owner 2026-11-19: no power split (the cap is Engineering's
+// Engines bars, sim/duel/helmFlight.ts) and free cold gas.
 /** §3: the held throttle in per mille, from full reverse (−250) to full forward (1000). */
 export const THR_MIN = -250;
 export const THR_MAX = 1000;
 /** §3: per mille a tick while W or S is held (0 to 1000 in 143 ticks), and toward 0 while neither is (1000 to 0 in 30). */
 export const THR_RAMP = 7;
 export const THR_RETURN = 34;
-/** §4: the cold gas tank, the gas one vented axis spends a tick, and the gas a boosted turn spends a tick (§4a). */
-export const RCS_TANK = 1000;
-export const RCS_GAS_PER_TICK = 8;
-export const RCS_TURN_GAS = 4;
-/** §4: the compressor's sixtieths of gas a tick (an empty tank refills in 20 s; owner 2026-11-19: the old 1-bar rate, with
- *  no COMPRESSOR share). */
-export const COMPRESSOR_RATE = 50;
+// Owner 2026-11-19 (replacing §4's tank): the cold gas is free. No tank, no gas spend, no compressor: a held thruster vents
+// whenever the Helm is attended, and the far turn is always gas-boosted (sim/duel/step.ts helmBoost).
 /** §4a: sin 6°: auto-face's turn is far (boosted) while its target lies outside this of the nose (about 4.27 indices). */
 export const BOOST_FACE_SIN = 0.10452846326765347;

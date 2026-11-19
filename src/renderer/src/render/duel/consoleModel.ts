@@ -14,7 +14,7 @@ import { DuelSystem } from '../../sim/duel/power';
 import { throttleCap, trimmedWeaponPower, weaponBarsUsable, WeaponSlot } from '../../sim/tactical/bars';
 import { powerStrip, type ConsolePowerStrip } from './shipHudModel';
 import { engineBars, throttleCap as crewThrottleCap, throttleFloor } from '../../sim/duel/helmFlight';
-import { RCS_TANK, THR_MAX, THR_MIN } from '../../sim/duel/tuning';
+import { THR_MAX, THR_MIN } from '../../sim/duel/tuning';
 export { THR_MAX, THR_MIN };   // playtest2feedback §6: the throttle bar's range, for the UI (which imports no sim values)
 
 export type ConsoleStation = 'helm' | 'weapons' | 'science' | 'flight' | 'ship';
@@ -26,12 +26,12 @@ export type ConsoleTabs = Record<TabKey, TabState> & { flight?: TabState };
 export type ConsoleTabActions = Record<TabKey, KeyAction | null> & { flight?: KeyAction | null };
 /** Feel-ii §2.8: a refused control on this block: which, the reason, and whether it is still in its flash. */
 export interface RefusedView { control: RefusedControl; reason: string; flash: boolean }
-/** Playtest2feedback §6: the crew Helm's readings: the shown thrMille, the throttle's cap and floor, the tank in percent,
- *  and (owner 2026-11-19, replacing §5's split) the effective Engines bars that set the cap and the floor. */
-export interface CrewHelmPanel { thrMille: number; cap: number; floor: number; gas: number; bars: number }
+/** Playtest2feedback §6: the crew Helm's readings: the shown thrMille, the throttle's cap and floor, and (owner 2026-11-19,
+ *  replacing §5's split) the effective Engines bars that set them. No tank: the cold gas is free (owner 2026-11-19). */
+export interface CrewHelmPanel { thrMille: number; cap: number; floor: number; bars: number }
 export function crewPanel(d: DuelState, thrMille: number): CrewHelmPanel {
   const engine = engineBars(d);
-  return { thrMille, cap: crewThrottleCap(engine), floor: throttleFloor(engine), gas: Math.round((d.rcsGas * 100) / RCS_TANK), bars: engine };
+  return { thrMille, cap: crewThrottleCap(engine), floor: throttleFloor(engine), bars: engine };
 }
 export interface HelmPanel {
   heading: number; speed: number; held: HeldFlags; throttle: number; refused?: RefusedView | null; holdHeading?: number;
@@ -126,7 +126,7 @@ export function consoleStation(d: DuelState, me: number): ConsoleStation {
   return seat === 'standing' ? 'ship' : seat;
 }
 
-const HELM_CONTROLS: readonly RefusedControl[] = ['turn', 'auto-face', 'throttle', 'heading', 'thrusters'];   // playtest2feedback §4: NO PRESSURE shows on the Helm block
+const HELM_CONTROLS: readonly RefusedControl[] = ['turn', 'auto-face', 'throttle', 'heading'];
 
 /** W-1 (pew pew spec 1): the crew pew's pips, one per third, each its fill 0..1 (a full third 1, the one recharging its
  *  share, the rest 0); null for a class without the pew. A third is the def's pewThird (Engineering spike §11: charge units). */

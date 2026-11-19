@@ -38,13 +38,11 @@ describe('the online source\'s prediction (spec §3, §6)', () => {
       s.sent({ ...NONE, throttleHeld: 1 }); s.unacked(5);
       expect(s.thrMille()).toBe(135);
       s.unacked(200);
-      expect(s.thrMille()).toBe(750);   // the cap at 3 + 1
+      expect(s.thrMille()).toBe(750);   // the cap at Engineering's 3 Engines bars (owner 2026-11-19)
       s.unacked(5);
       expect(s.axes()).toEqual(crewAxes(d, { ...NONE, throttleHeld: 1 }, 135));
       s.sent({ ...NONE, rcsX: 1 }); s.unacked(0);
-      expect([s.thrMille(), s.helmVent()]).toEqual([100, { x: 1, y: 0, boosted: false, turn: 0 }]);
-      d.rcsGas = 7;
-      expect(s.helmVent()).toEqual({ x: 0, y: 0, boosted: false, turn: 0 });
+      expect([s.thrMille(), s.helmVent()]).toEqual([100, { x: 1, y: 0, boosted: false, turn: 0 }]);   // owner 2026-11-19: free cold gas, so it always vents
     } finally { disposeDuel(d); }
   });
   it('away from the Helm it shows the replica\'s thrMille and no vent', () => {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Playtest2feedback (spec 2026-11-18-playtest2feedback-design §6): the crew Helm's console: the model's readings, the
-// throttle bar −25..100 with its Engines cap and locked part, the PRESSURE gauge, the Engines bars and cap (owner
-// 2026-11-19: no HELM POWER cells), PORT and STBD holding A and D, NO PRESSURE on the block; the Valkyrn keeps its notches.
+// throttle bar −25..100 with its Engines cap and locked part, the Engines bars and cap (owner 2026-11-19: no HELM POWER
+// cells, no PRESSURE gauge and no NO PRESSURE), PORT and STBD holding A and D; the Valkyrn keeps its notches.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { UiContext } from '../src/renderer/src/ui/context';
@@ -21,7 +21,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((c) => c.dataset.text!);
 const btn = (name: string) => document.querySelector(`[data-testid="console-${name}"]`) as HTMLElement | null;
 const attr = (name: string) => (document.querySelector(`[${name}]`) as HTMLElement | null)?.getAttribute(name) ?? null;
-const crew = { thrMille: 300, cap: 750, floor: -250, gas: 80, bars: 3 };
+const crew = { thrMille: 300, cap: 750, floor: -250, bars: 3 };
 const helmView = (over: Partial<NonNullable<ConsoleView['helm']>> = {}): ConsoleView => ({
   station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
   helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 0, crew, ...over }, weapons: null, science: null, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } });
@@ -38,9 +38,8 @@ describe('the console model (spec §5, §6)', () => {
   it('gives the crew Helm its readings: the shown thrMille, the cap and floor from the Engines bars, the tank % and the bars (owner 2026-11-19)', () => {
     const d = createSeatedDuel(CUTTER, 5), v = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.Valkyrn);
     try {
-      d.rcsGas = 437;
       const m = consoleModel({ duel: d, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null, thrMille: 120 });
-      expect(m?.helm?.crew).toEqual({ thrMille: 120, cap: 750, floor: -250, gas: 44, bars: 3 });
+      expect(m?.helm?.crew).toEqual({ thrMille: 120, cap: 750, floor: -250, bars: 3 });
       expect(m?.power?.system).toBe(DuelSystem.Engines);   // Engineering spike §9.3: the Helm's own power strip is the Engines'
       d.tactical.systems[0].bars[DuelSystem.Engines] = 1;
       expect(consoleModel({ duel: d, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null })?.helm?.crew).toMatchObject({ thrMille: 0, cap: 250, floor: -250, bars: 1 });
@@ -52,12 +51,13 @@ describe('the console model (spec §5, §6)', () => {
 });
 
 describe('the crew HelmStation (spec §6)', () => {
-  it('draws the throttle bar to the shown value with the cap line, the PRESSURE gauge and the Engines bars and cap; no notches', () => {
+  it('draws the throttle bar to the shown value with the cap line and the Engines bars and cap; no PRESSURE gauge, no notches', () => {
     const { duel } = mount();
     act(() => duel.frame(view(helmView())));
-    expect([attr('data-ui-thr-bar'), attr('data-ui-thr-cap'), attr('data-ui-pressure')]).toEqual(['300', '750', '80']);
+    expect([attr('data-ui-thr-bar'), attr('data-ui-thr-cap'), attr('data-ui-pressure')]).toEqual(['300', '750', null]);
     expect(document.querySelector('[data-ui-thr-locked="cap"]')).not.toBeNull();
-    for (const t of ['THROTTLE', 'REV', '0', '100', 'PRESSURE', '80%', 'ENGINES 3', 'CAP 75%']) expect(texts(), t).toContain(t);
+    for (const t of ['THROTTLE', 'REV', '0', '100', 'ENGINES 3', 'CAP 75%']) expect(texts(), t).toContain(t);
+    expect(texts()).not.toContain('PRESSURE');
     expect(btn('throttle-100')).toBeNull();
     expect(btn('turn-left')).toBeNull();
   });
@@ -69,15 +69,12 @@ describe('the crew HelmStation (spec §6)', () => {
     act(() => duel.frame(view(helmView({ crew: { ...crew, cap: 0, floor: 0, bars: 0 } }))));
     expect(texts()).toContain('ENGINES 0'); expect(texts()).toContain('CAP 0%  NO REV');
   });
-  it('PORT and STBD hold A and D; NO PRESSURE shows on the block and flashes them', () => {
+  it('PORT and STBD hold A and D', () => {
     const { duel, input } = mount();
     act(() => duel.frame(view(helmView())));
     fireEvent.pointerDown(btn('rcs-port')!, { button: 0 }); fireEvent.pointerUp(btn('rcs-port')!);
     fireEvent.pointerDown(btn('rcs-stbd')!, { button: 0 });
     expect(input.hold.mock.calls).toEqual([['KeyA', true], ['KeyA', false], ['KeyD', true]]);
-    act(() => duel.frame(view(helmView({ refused: { control: 'thrusters', reason: 'NO PRESSURE', flash: true } }))));
-    expect(texts()).toContain('NO PRESSURE');
-    expect([btn('rcs-port')!.getAttribute('data-ui-refused'), btn('rcs-stbd')!.getAttribute('data-ui-refused')]).toEqual(['1', '1']);
   });
   it('a Helm panel without `crew` (the Valkyrn\'s Flight seat) keeps the notches', () => {
     const { duel } = mount();

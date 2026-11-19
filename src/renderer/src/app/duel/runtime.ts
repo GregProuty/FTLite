@@ -272,9 +272,9 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   const idleHeld = (): HeldInput[] => Array.from({ length: crew }, () => NEUTRAL);
   // Valkyrn spec §4.4, §5.1: Tab's ship view while seated (n = 1), the Flight seat's held bearing, and the gun's last frame.
   let shipView = false, steer = -1, gunPrev = false, torpHold = -1;   // W-3: the MANUAL torpedo's held heading (−1 none), re-sent every frame
-  // Playtest2feedback §4, §4a: whether this left-button hold has steered yet and the thrusters on the last frame (the
-  // refusals' press edges), and whether the active character flew the crew Helm on the last frame (final review I1).
-  let steerPrev = false, rcsPrev = { x: 0, y: 0 }, crewHelmPrev = false;
+  // Playtest2feedback §4a: whether this left-button hold has steered yet (the refusal's press edge), and whether the active
+  // character flew the crew Helm on the last frame (final review I1).
+  let steerPrev = false, crewHelmPrev = false;
   const newtonian = (): boolean => classOf(d.tactical, 0).newtonianHelm;
   const hasGun = (): boolean => classOf(d.tactical, 0).slots.gun !== null;
   const hasLaser = (): boolean => classOf(d.tactical, 0).slots.laser !== null;
@@ -393,7 +393,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   function newRound(): void {
     round = d.round; pending = []; switching = false; deferred = [];
     activeHeld = NEUTRAL; sentHeld = idleHeld(); sentAxes = NO_AXES;
-    shipView = false; steer = -1; gunPrev = false; torpHold = -1; steerPrev = false; rcsPrev = { x: 0, y: 0 }; crewHelmPrev = false;
+    shipView = false; steer = -1; gunPrev = false; torpHold = -1; steerPrev = false; crewHelmPrev = false;
     events = []; counts = hitCounts(d);
     capture(); freshCameras(); cameraInput.reset(); resetInteriorCamera(interiorCamera);
     deps.clearKeys?.();
@@ -473,9 +473,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
         if ((held.up && !prevHeld.up) || (held.down && !prevHeld.down)) refuse('throttle', off);
         if (heading !== null && heading >= 0) refuse('heading', off);
       }
-      const rx = k.rcsX ?? 0, ry = k.rcsY ?? 0, gas = refusal(d, 'thrusters');
-      if (gas && ((rx !== 0 && rcsPrev.x === 0) || (ry !== 0 && rcsPrev.y === 0))) refuse('thrusters', gas);   // §4: NO PRESSURE
-      steerPrev = steering && (steerPrev || steered); rcsPrev = { x: rx, y: ry };
+      steerPrev = steering && (steerPrev || steered);   // owner 2026-11-19: the free cold gas has no refusal
       return k;
     }
     if (seat === 'helm') {

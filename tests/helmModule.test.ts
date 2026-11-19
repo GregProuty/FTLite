@@ -1,18 +1,19 @@
-// Playtest2feedback (spec 2026-11-18-playtest2feedback-design §3, §4, §7): the helm module's new fields, the pure crew-Helm
-// rules (ramp, cap and floor, compressor), and the fields in the hash, the flatten order, the snapshot and its bounds.
-// Owner 2026-11-19 (replaced rule, kind a): no duel option helmBars, no COMPRESSOR share and no losing-bars rule; the cap
-// and the floor read Engineering's effective Engines bars.
+// Playtest2feedback (spec 2026-11-18-playtest2feedback-design §3, §4, §7): the helm module's new field, the pure crew-Helm
+// rules (ramp, cap and floor), and the field in the hash, the flatten order, the snapshot and its bounds. Owner 2026-11-19
+// (replaced rule, kind a): no duel option helmBars, no COMPRESSOR share and no losing-bars rule (the cap and the floor read
+// Engineering's effective Engines bars), and no cold gas tank (rcsGas, rcsAcc, the compressor and vents are gone).
 import { describe, expect, it } from 'vitest';
 import { hashF64 } from '../src/shared/hash';
 import type { HeldInput } from '../src/renderer/src/net/contracts';
 import { flattenDuel, hashDuel } from '../src/renderer/src/sim/duel/hash';
-import { compress, crewThrust, engineBars, heldAxis, noVent, rampThrottle, rampTicks, throttleCap, throttleFloor, vents } from '../src/renderer/src/sim/duel/helmFlight';
+import { crewThrust, engineBars, heldAxis, noVent, rampThrottle, rampTicks, throttleCap, throttleFloor } from '../src/renderer/src/sim/duel/helmFlight';
 import { DUEL_MODULES, DUEL_NOT_SNAPSHOTTED } from '../src/renderer/src/sim/duel/modules';
 import { moduleLength, type SimModule } from '../src/renderer/src/sim/module';
 import { loadDuelSnapshot, saveDuelSnapshot, validateDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
-import { COMPRESSOR_RATE, RCS_GAS_PER_TICK, RCS_TANK, THR_MAX, THR_MIN, THR_RAMP, THR_RETURN } from '../src/renderer/src/sim/duel/tuning';
+import * as duelTuning from '../src/renderer/src/sim/duel/tuning';
+import { THR_MAX, THR_MIN, THR_RAMP, THR_RETURN } from '../src/renderer/src/sim/duel/tuning';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -28,16 +29,17 @@ function helmOffset(d: DuelState): number {
 
 describe('the numbers (spec §3, §4, §5)', () => {
   it('are the spec\'s start values', () => {
-    expect([THR_MIN, THR_MAX, THR_RAMP, THR_RETURN, RCS_TANK, RCS_GAS_PER_TICK]).toEqual([-250, 1000, 7, 34, 1000, 8]);
-    expect(COMPRESSOR_RATE).toBe(50);   // owner 2026-11-19: the old 1-bar rate, with no COMPRESSOR share
+    expect([THR_MIN, THR_MAX, THR_RAMP, THR_RETURN]).toEqual([-250, 1000, 7, 34]);
+    for (const gone of ['RCS_TANK', 'RCS_GAS_PER_TICK', 'RCS_TURN_GAS', 'COMPRESSOR_RATE', 'COMPRESSOR_MAX', 'HELM_BARS', 'HELM_BARS_MAX']) expect(Object.keys(duelTuning), gone).not.toContain(gone);   // owner 2026-11-19
   });
 });
 
 describe('a fresh duel (spec §4; owner 2026-11-19)', () => {
-  it('starts at throttle 0 with a full tank, no remainder and nothing vented, on Engineering\'s 3 Engines bars', () => {
+  it('starts at throttle 0 with nothing vented, on Engineering\'s 3 Engines bars, with no split and no tank', () => {
     const d = createDuel(CUTTER, 5);
     try {
-      expect([d.thrMille, d.rcsGas, d.rcsAcc, engineBars(d)]).toEqual([0, RCS_TANK, 0, 3]);
+      expect([d.thrMille, engineBars(d)]).toEqual([0, 3]);
+      for (const gone of ['rcsGas', 'rcsAcc']) expect(Object.keys(d), gone).not.toContain(gone);
       expect(d.helmVent).toEqual({ x: 0, y: 0, boosted: false, turn: 0 });
       expect(Object.keys(d)).not.toContain('compressor');
       expect(Object.keys(d)).not.toContain('helmBars');
@@ -46,11 +48,11 @@ describe('a fresh duel (spec §4; owner 2026-11-19)', () => {
   it('a rematch starts the next round with a fresh helm', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
-      Object.assign(d, { thrMille: 500, rcsGas: 10, rcsAcc: 7 });
+      Object.assign(d, { thrMille: 500 });
       d.tactical.outcome = Outcome.CrewWins; d.decidedTick = d.interior.tick;
       stepDuelTick(d, { held: [NONE, NONE], commands: [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: d.interior.tick, command: { kind: 'rematch' } }] });
       expect(d.round).toBe(1);
-      expect([d.thrMille, d.rcsGas, d.rcsAcc]).toEqual([0, RCS_TANK, 0]);
+      expect(d.thrMille).toBe(0);
     } finally { disposeDuel(d); }
   });
 });
@@ -91,18 +93,6 @@ describe('the pure rules (spec §3, §4, §5)', () => {
     expect(rampThrottle(1000, 0, -250, 750)).toBe(750);   // a cap that drops clamps the same tick
     expect([rampTicks(0, 1, 0, 0, 10), rampTicks(0, -1, 0, 0, 10)]).toEqual([0, 0]);
   });
-  it('the compressor refills an empty tank in exactly 1200 ticks (owner 2026-11-19: one rate, no share)', () => {
-    let s = { gas: 0, acc: 0 };
-    for (let k = 0; k < 1199; k++) s = compress(s.gas, s.acc);
-    expect(s.gas).toBeLessThan(RCS_TANK);
-    s = compress(s.gas, s.acc);
-    expect([s.gas, s.acc]).toEqual([RCS_TANK, 0]);
-    expect(compress(s.gas, s.acc)).toEqual({ gas: RCS_TANK, acc: 0 });   // a full tank holds no remainder
-    expect(compress(990, 50)).toEqual({ gas: 991, acc: 40 });
-  });
-  it('an axis vents only when held and the tank holds a tick\'s gas', () => {
-    expect([vents(1, 8), vents(-1, 1000), vents(0, 1000), vents(1, 7)]).toEqual([true, true, false, false]);
-  });
   it('noVent is a fresh unvented record each call', () => {
     const a = noVent(), b = noVent();
     expect(a).toEqual({ x: 0, y: 0, boosted: false, turn: 0 }); expect(a).not.toBe(b);
@@ -110,11 +100,11 @@ describe('the pure rules (spec §3, §4, §5)', () => {
 });
 
 describe('the fields in the hash, the flatten and the snapshot (spec §7)', () => {
-  it('thrMille, rcsGas and rcsAcc move the hash; helmVent does not', () => {
+  it('thrMille moves the hash; helmVent does not', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
       const base = hashDuel(d);
-      for (const [key, value] of [['thrMille', 7], ['rcsGas', 992], ['rcsAcc', 50]] as const) {
+      for (const [key, value] of [['thrMille', 7]] as const) {
         const was = d[key]; d[key] = value;
         expect(hashDuel(d), key).not.toBe(base);
         d[key] = was;
@@ -126,21 +116,22 @@ describe('the fields in the hash, the flatten and the snapshot (spec §7)', () =
       expect(Object.keys(DUEL_NOT_SNAPSHOTTED)).not.toContain('helmBars');
     } finally { disposeDuel(d); }
   });
-  it('flatten carries the helm module as throttle, holdHeading, thrMille, rcsGas, rcsAcc', () => {
+  it('flatten carries the helm module as throttle, holdHeading, thrMille, then the power module', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
-      Object.assign(d, { thrMille: -100, rcsGas: 437, rcsAcc: 17 });
+      Object.assign(d, { thrMille: -100 });
+      d.power.heat[0] = 9;
       const at = helmOffset(d);
-      expect(Array.from(flattenDuel(d)).slice(at, at + 5)).toEqual([d.throttle, d.holdHeading, -100, 437, 17]);
+      expect(Array.from(flattenDuel(d)).slice(at, at + 4)).toEqual([d.throttle, d.holdHeading, -100, 9]);
     } finally { disposeDuel(d); }
   });
   it('round-trips through the snapshot; a restore holds no vent', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
-      Object.assign(d, { thrMille: -100, rcsGas: 437, rcsAcc: 17, helmVent: { x: 1, y: 0, boosted: true, turn: 1 } });
+      Object.assign(d, { thrMille: -100, helmVent: { x: 1, y: 0, boosted: true, turn: 1 } });
       const r = loadDuelSnapshot(CUTTER, JSON.parse(JSON.stringify(saveDuelSnapshot(d, DIGEST))), DIGEST);
       try {
-        expect([r.thrMille, r.rcsGas, r.rcsAcc, hashDuel(r)]).toEqual([-100, 437, 17, hashDuel(d)]);
+        expect([r.thrMille, hashDuel(r)]).toEqual([-100, hashDuel(d)]);
         expect(r.helmVent).toEqual({ x: 0, y: 0, boosted: false, turn: 0 });
       } finally { disposeDuel(r); }
     } finally { disposeDuel(d); }
@@ -149,7 +140,7 @@ describe('the fields in the hash, the flatten and the snapshot (spec §7)', () =
     const d = createSeatedDuel(CUTTER, 5);
     try {
       const snap = saveDuelSnapshot(d, DIGEST), at = helmOffset(d);
-      for (const [k, bad, name] of [[2, 1001, 'thrMille'], [2, -251, 'thrMille'], [2, 0.5, 'thrMille'], [3, -1, 'rcsGas'], [3, 1001, 'rcsGas'], [4, 60, 'rcsAcc'], [4, -1, 'rcsAcc']] as const) {
+      for (const [k, bad, name] of [[2, 1001, 'thrMille'], [2, -251, 'thrMille'], [2, 0.5, 'thrMille']] as const) {
         const s = structuredClone(snap); s.values[at + k] = bad; s.header.hash = hashF64(Float64Array.from(s.values));
         expect(() => validateDuelSnapshot(CUTTER, s, DIGEST), `${name} ${bad}`).toThrow(new RegExp(`${name} ${bad} is invalid`));
       }

@@ -1,12 +1,12 @@
 // Playtest2feedback (spec 2026-11-18-playtest2feedback-design §4, §7, §8): the cold gas thrusters in the duel step: the
-// ship-relative push at two headings, 8 gas an axis, fore/aft before side, never below 0, the compressor's exact refill
-// every running tick attended or not, the thrusters working with the Engines failed, and helmVent as unhashed scratch.
+// ship-relative push at two headings, the thrusters working with the Engines failed, and helmVent as unhashed scratch.
+// Owner 2026-11-19 (replaced rule, kind a): the cold gas is free: no tank, no spend, no compressor; every held axis vents
+// while the Helm is attended, for as long as it is held.
 import { describe, expect, it } from 'vitest';
 import type { HeldInput } from '../src/renderer/src/net/contracts';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
-import { RCS_TANK } from '../src/renderer/src/sim/duel/tuning';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import { Room } from '../src/renderer/src/sim/tactical/state';
 import { DT, RCS_THRUST } from '../src/renderer/src/sim/tactical/tuning';
@@ -46,41 +46,40 @@ describe('the push (spec §4)', () => {
   });
 });
 
-describe('the gas (spec §4)', () => {
-  it('each vented axis costs 8; with 8 gas and both held only rcsY vents; the tank never goes below 0', () => {
-    const d = createSeatedDuel(CUTTER, 5);
+describe('the free cold gas (owner 2026-11-19, replacing spec §4\'s tank)', () => {
+  it('pushes with no tank: both axes vent every tick they are held, 3000 ticks on end, with no tank field on the duel', () => {
+    const [d, twin] = pair(0);
     try {
-      step(d, { ...NONE, rcsY: 1 }); expect(d.rcsGas).toBe(RCS_TANK - 8);
-      d.rcsAcc = 0;   // owner 2026-11-19: one compressor rate, no share to switch off; 50 sixtieths add nothing in one tick
-      step(d, { ...NONE, rcsX: -1, rcsY: -1 }); expect(d.rcsGas).toBe(RCS_TANK - 24);
-      d.rcsGas = 8; d.rcsAcc = 0;
-      step(d, { ...NONE, rcsX: 1, rcsY: 1 });
-      expect([d.rcsGas, d.helmVent]).toEqual([0, { x: 0, y: 1, boosted: false, turn: 0 }]);
-      d.rcsGas = 5; d.rcsAcc = 0;
-      step(d, { ...NONE, rcsX: 1, rcsY: 1 });
-      expect([d.rcsGas, d.helmVent]).toEqual([5, { x: 0, y: 0, boosted: false, turn: 0 }]);
-    } finally { disposeDuel(d); }
+      expect(Object.keys(d)).not.toEqual(expect.arrayContaining(['rcsGas']));
+      expect(Object.keys(d)).not.toEqual(expect.arrayContaining(['rcsAcc']));
+      for (let k = 0; k < 3000; k++) {
+        step(d, { ...NONE, rcsX: k % 2 === 0 ? 1 : -1, rcsY: 1 }); step(twin);
+        expect(d.helmVent, `tick ${k}`).toEqual({ x: k % 2 === 0 ? 1 : -1, y: 1, boosted: false, turn: 0 });
+      }
+      const ds = d.tactical.ships[0], ts = twin.tactical.ships[0];
+      expect(Math.hypot(ds.vx - ts.vx, ds.vy - ts.vy)).toBeGreaterThan(0);
+    } finally { disposeDuel(d); disposeDuel(twin); }
   });
-  it('only the Helm attendant vents: Weapons holding a thruster spends nothing', () => {
-    const d = createSeatedDuel(CUTTER, 5);
-    try { step(d, NONE, { ...NONE, rcsX: 1, rcsY: 1 }); expect([d.rcsGas, d.helmVent.x, d.helmVent.y]).toEqual([RCS_TANK, 0, 0]); } finally { disposeDuel(d); }
+  it('pushes at 0 Engines bars too: the thrusters are not the Engines', () => {
+    const [d, twin] = pair(0);
+    try {
+      for (const x of [d, twin]) x.tactical.systems[0].bars[2] = 0;
+      step(d, { ...NONE, rcsY: 1 }); step(twin);
+      expect(d.tactical.ships[0].vy - twin.tactical.ships[0].vy).toBeCloseTo(-RCS_THRUST * DT, 9);
+      expect(d.helmVent.y).toBe(1);
+    } finally { disposeDuel(d); disposeDuel(twin); }
   });
-  it('the compressor refills an empty tank in exactly 1200 ticks, attended or not; rcsAcc resets full (owner 2026-11-19: one rate)', () => {
+  it('only the Helm attendant vents: Weapons holding a thruster vents nothing', () => {
+    const d = createSeatedDuel(CUTTER, 5);
+    try { step(d, NONE, { ...NONE, rcsX: 1, rcsY: 1 }); expect([d.helmVent.x, d.helmVent.y]).toEqual([0, 0]); } finally { disposeDuel(d); }
+  });
+  it('an unattended Helm vents nothing', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
-      Object.assign(d, { rcsGas: 0, rcsAcc: 0 });
-      for (let k = 0; k < 1199; k++) step(d);
-      expect(d.rcsGas).toBeLessThan(RCS_TANK);
-      step(d);
-      expect([d.rcsGas, d.rcsAcc]).toEqual([RCS_TANK, 0]);
+      stepDuelTick(d, { held: [NONE, NONE], commands: [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: d.interior.tick, command: { kind: 'stand' } }] });
+      step(d, { ...NONE, rcsX: 1, rcsY: 1 });
+      expect([d.helmVent.x, d.helmVent.y]).toEqual([0, 0]);
     } finally { disposeDuel(d); }
-    const u = createSeatedDuel(CUTTER, 5);
-    try {
-      Object.assign(u, { rcsGas: 0, rcsAcc: 0 });
-      stepDuelTick(u, { held: [NONE, NONE], commands: [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: u.interior.tick, command: { kind: 'stand' } }] });
-      for (let k = 1; k < 1200; k++) step(u);
-      expect(u.rcsGas).toBe(RCS_TANK);   // the compressor runs with the Helm empty
-    } finally { disposeDuel(u); }
   });
   it('helmVent is recomputed every tick and never moves the hash', () => {
     const d = createSeatedDuel(CUTTER, 5);

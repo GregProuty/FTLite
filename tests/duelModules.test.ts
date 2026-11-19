@@ -140,7 +140,7 @@ describe('the duel modules (spec §6 module contract)', () => {
       const space: number[] = [], ship: number[] = [], science: number[] = [];
       flattenModule(spaceModule, d.tactical, space); flattenModule(shipModule, d.tactical, ship); flattenModule(scienceModule, d.tactical, science);
       expect(Array.from(flattenTactical(d.tactical))).toEqual([...space, ...ship, ...science].map((v) => (v === 0 ? 0 : v)));
-      expect(Array.from(flattenDuel(d))).toEqual([SIM_VERSION, ...flattenTactical(d.tactical), d.present[0] ? 1 : 0, d.present[1] ? 1 : 0, ...d.repair, d.round, d.helmPlayer, d.baseTick, d.decidedTick, d.throttle, d.holdHeading, d.thrMille, d.rcsGas, d.rcsAcc, ...d.power.heat, ...d.power.coolant, ...d.power.failed, ...flatten(d.interior)]);   // playtest2feedback §7; Engineering spike spec §7
+      expect(Array.from(flattenDuel(d))).toEqual([SIM_VERSION, ...flattenTactical(d.tactical), d.present[0] ? 1 : 0, d.present[1] ? 1 : 0, ...d.repair, d.round, d.helmPlayer, d.baseTick, d.decidedTick, d.throttle, d.holdHeading, d.thrMille, ...d.power.heat, ...d.power.coolant, ...d.power.failed, ...flatten(d.interior)]);   // playtest2feedback §7; Engineering spike spec §7
       const copy = cloneTactical(d.tactical), fresh = createTacticalState(1);
       expect(unflattenTactical(fresh, flattenTactical(copy))).toBe(flattenTactical(copy).length);
       expect(flattenTactical(fresh)).toEqual(flattenTactical(copy));
