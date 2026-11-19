@@ -103,7 +103,7 @@ export function heldAim(h: HeldInput): number {
  *  one tick's integer step (defs.ts asserts every class turns fewer than 3 steps a tick), so the nose never steps across
  *  it. Pure; only + − and the integer modulo. */
 export function aimTurn(heading: number, aim: number): number {
-  const d = ((aim - heading + HEADING_COUNT + HEADING_COUNT / 2) % HEADING_COUNT) - HEADING_COUNT / 2;
+  const d = headingDelta(heading, aim);
   return d >= -1 && d <= 1 ? 0 : Math.sign(d);
 }
 
@@ -147,19 +147,22 @@ export function helmBoost(d: DuelState, h: HeldInput): number {
   return Math.abs(headingDelta(heading, target)) > BOOST_FAR ? RCS_TURN_BOOST : 1;
 }
 
-/** Playtest2feedback §3, §6: the axes the app predicts the crew ship flies, from the state as it stands and a held input:
+/** Playtest2feedback §3, §6: the axes the app predicts the crew ship flies on the next tick, from the state as it stands
+ *  and a held input (so flyShip with them flies exactly what crewHelm's tick flies, final review M3):
  *  - the turn and its boost (helmTurn, helmBoost);
- *  - the thrust of `thrMille` (the duel's by default, or the app's local prediction of it);
+ *  - the thrust of one ramp step on the held throttle from `thrMille` (the duel's by default, or the app's local
+ *    prediction of it), clamped to the ENGINE share's floor and cap as the step clamps it;
  *  - the held thrusters that the tank would let vent, the boost's gas first and then fore/aft before side, as the step
  *    spends it.
  *  Pure. */
 export function crewAxes(d: DuelState, h: HeldInput, thrMille: number = d.thrMille): Axes {
-  const boost = helmBoost(d, h), y = heldAxis(h.rcsY), x = heldAxis(h.rcsX);
+  const boost = helmBoost(d, h), y = heldAxis(h.rcsY), x = heldAxis(h.rcsX), engine = engineBars(d);
+  const thrust = crewThrust(rampThrottle(thrMille, heldAxis(h.throttleHeld), throttleFloor(engine), throttleCap(engine)));
   let gas = d.rcsGas - (boost === RCS_TURN_BOOST ? RCS_TURN_GAS : 0);
   const rcsY = vents(y, gas) ? y : 0;
   if (rcsY !== 0) gas -= RCS_GAS_PER_TICK;
   const rcsX = vents(x, gas) ? x : 0;
-  return { turn: helmTurn(d, h), turnBoost: boost, thrust: crewThrust(thrMille), rcsX, rcsY };
+  return { turn: helmTurn(d, h), turnBoost: boost, thrust, rcsX, rcsY };
 }
 
 /** Playtest2feedback (spec §3, §4, §4a, §5, §7's step order 2 to 7): the crew Helm's tick on a newtonianHelm class,
@@ -184,7 +187,7 @@ function crewHelm(d: DuelState, h: HeldInput | null, crew: ShipInput): void {
   if (boost === RCS_TURN_BOOST) d.rcsGas -= RCS_TURN_GAS;
   const rcsY = ventAxis(d, h ? heldAxis(h.rcsY) : 0), rcsX = ventAxis(d, h ? heldAxis(h.rcsX) : 0);
   const c = compress(d.rcsGas, d.rcsAcc, d.compressor); d.rcsGas = c.gas; d.rcsAcc = c.acc;
-  d.helmVent = { x: rcsX, y: rcsY, boosted: boost === RCS_TURN_BOOST };
+  d.helmVent = { x: rcsX, y: rcsY, boosted: boost === RCS_TURN_BOOST, turn: boost === RCS_TURN_BOOST ? Math.sign(turn) || 0 : 0 };
   crew.helm = true;
   crew.axes = { turn, turnBoost: boost, thrust: crewThrust(d.thrMille), rcsX, rcsY };
 }

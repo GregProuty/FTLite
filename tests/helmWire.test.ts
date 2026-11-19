@@ -44,6 +44,11 @@ describe('the held fields in the checkpoints and the replay (spec §7)', () => {
     const replay = JSON.parse(JSON.stringify(live.core.replay())) as unknown;
     expect(() => parseEncounterReplay(duelRules, replay, DIGEST, resolveCutter)).not.toThrow();
     expect(JSON.stringify(replay)).toContain('"rcsX":1');
+    // Final review: the replay's parse refuses a bad held value (out of range or not whole), naming the field.
+    for (const bad of ['2', '0.5', '-3']) {
+      const broken = JSON.parse(JSON.stringify(replay).replaceAll('"rcsX":1', `"rcsX":${bad}`)) as unknown;
+      expect(() => parseEncounterReplay(duelRules, broken, DIGEST, resolveCutter), bad).toThrow(/rcsX/);
+    }
   });
   it('are optional in the sector checkpoint, and refused there out of range', () => {
     const h = checkpointRig(), cp = JSON.parse(JSON.stringify(h.authority.checkpoint([])));

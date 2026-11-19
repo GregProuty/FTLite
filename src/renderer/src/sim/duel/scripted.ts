@@ -115,7 +115,8 @@ export function predictAxes(pair: ScriptedPair, d: DuelState): Axes {
  *  spec §3; Feel-i: by holding auto-face, as a player would, so `face` is set and `turn` is the turn it will make), then orbit. The hazard check predicts with the thrust the ship flies
  *  at this tick before any new command (the throttle's, Artemis spec §5.5; the held throttle's, playtest2feedback §7).
  *  Playtest2feedback §4a (Decision 9): every branch but auto-face names its heading as `aim` (the hazard's, the dodge's
- *  and the orbit's, nearest index), and `turn` is the turn that aim flies. */
+ *  and the orbit's, nearest index). On a newtonianHelm class (the Cutter) `turn` is the turn that aim flies (aimTurn); a
+ *  class that is not (the Valkyrn) keeps its turnToward and orbit turn law, so its scripted pair is unchanged. */
 function helmAxes(pair: ScriptedPair, d: DuelState): Axes & { face?: boolean; aim: number } {
   const t = d.tactical, s = t.ships[0], e = t.ships[targetOf(t, 0)]!;
   const crewClass = classOf(t, 0).newtonianHelm;   // the Valkyrn class keeps its A/D turn law (turnToward), so its scripted pair is unchanged

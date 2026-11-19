@@ -396,7 +396,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     const puff = (ox: number, oy: number, dx: number, dy: number): void => { puffs.push({ x: ownS.x + ox * rr, y: ownS.y + oy * rr, dx, dy }); };
     if (vt.y !== 0) puff(-fx * vt.y, -fy * vt.y, -fx * vt.y, -fy * vt.y);
     if (vt.x !== 0) puff(-rx * vt.x, -ry * vt.x, -rx * vt.x, -ry * vt.x);
-    if (vt.boosted) { const s = Math.sign(input.axes.turn) || 1; puff(fx - rx * s, fy - ry * s, -rx * s, -ry * s); puff(-fx + rx * s, -fy + ry * s, rx * s, ry * s); }
+    if (vt.boosted) { const s = vt.turn < 0 ? -1 : 1; puff(fx - rx * s, fy - ry * s, -rx * s, -ry * s); puff(-fx + rx * s, -fy + ry * s, rx * s, ry * s); }   // the vent's own turn (final review M2)
   }
   let helm: HelmDraw | null = null;
   if (input.console === 'helm' && input.ships.includes(0)) {

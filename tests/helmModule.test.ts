@@ -37,7 +37,7 @@ describe('a fresh duel (spec §4, §5)', () => {
     const d = createDuel(CUTTER, 5);
     try {
       expect([d.thrMille, d.rcsGas, d.rcsAcc, d.compressor, d.helmBars, engineBars(d)]).toEqual([0, RCS_TANK, 0, 1, 4, 3]);
-      expect(d.helmVent).toEqual({ x: 0, y: 0, boosted: false });
+      expect(d.helmVent).toEqual({ x: 0, y: 0, boosted: false, turn: 0 });
     } finally { disposeDuel(d); }
   });
   it('takes helmBars 0..5 as a duel option; the start split is min(1, helmBars); anything else throws', () => {
@@ -109,7 +109,7 @@ describe('the pure rules (spec §3, §4, §5)', () => {
   });
   it('noVent is a fresh unvented record each call', () => {
     const a = noVent(), b = noVent();
-    expect(a).toEqual({ x: 0, y: 0, boosted: false }); expect(a).not.toBe(b);
+    expect(a).toEqual({ x: 0, y: 0, boosted: false, turn: 0 }); expect(a).not.toBe(b);
   });
 });
 
@@ -124,7 +124,7 @@ describe('the fields in the hash, the flatten and the snapshot (spec §7)', () =
         d[key] = was;
       }
       expect(hashDuel(d)).toBe(base);
-      d.helmBars = 3; d.helmVent = { x: 1, y: -1, boosted: true };
+      d.helmBars = 3; d.helmVent = { x: 1, y: -1, boosted: true, turn: 1 };
       expect(hashDuel(d)).toBe(base);
       expect(Object.keys(DUEL_NOT_SNAPSHOTTED)).toEqual(expect.arrayContaining(['helmBars', 'helmVent']));
     } finally { disposeDuel(d); }
@@ -140,11 +140,11 @@ describe('the fields in the hash, the flatten and the snapshot (spec §7)', () =
   it('round-trips through the snapshot; a restore takes the default helmBars and no vent', () => {
     const d = createSeatedDuel(CUTTER, 5, 0, 2, undefined, { helmBars: 3 });
     try {
-      Object.assign(d, { thrMille: -100, rcsGas: 437, rcsAcc: 17, compressor: 2, helmVent: { x: 1, y: 0, boosted: true } });
+      Object.assign(d, { thrMille: -100, rcsGas: 437, rcsAcc: 17, compressor: 2, helmVent: { x: 1, y: 0, boosted: true, turn: 1 } });
       const r = loadDuelSnapshot(CUTTER, JSON.parse(JSON.stringify(saveDuelSnapshot(d, DIGEST))), DIGEST);
       try {
         expect([r.thrMille, r.rcsGas, r.rcsAcc, r.compressor, r.helmBars, hashDuel(r)]).toEqual([-100, 437, 17, 2, HELM_BARS, hashDuel(d)]);
-        expect(r.helmVent).toEqual({ x: 0, y: 0, boosted: false });
+        expect(r.helmVent).toEqual({ x: 0, y: 0, boosted: false, turn: 0 });
       } finally { disposeDuel(r); }
     } finally { disposeDuel(d); }
   });

@@ -481,9 +481,9 @@ describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () =>
     const r = rig(0), c = r.attach();
     r.d.rcsGas = 100; c.publish(r.d); r.pump(); r.session.frame();
     r.key('keydown', 'ArrowUp'); r.pump(); r.pump();
-    expect(h.source!.helmVent()).not.toEqual({ x: 0, y: 0, boosted: false });
+    expect(h.source!.helmVent()).not.toEqual({ x: 0, y: 0, boosted: false, turn: 0 });
     r.session.setFocused(false); r.pump();
-    expect(h.source!.helmVent()).toEqual({ x: 0, y: 0, boosted: false });
+    expect(h.source!.helmVent()).toEqual({ x: 0, y: 0, boosted: false, turn: 0 });
     expect(h.source!.thrMille()).toBe(c.state()!.thrMille);
     r.dispose();
   });

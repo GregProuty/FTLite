@@ -7,11 +7,12 @@ import { RCS_TURN_BOOST } from '../tactical/tuning';
 import type { DuelState } from './state';
 import { COMPRESSOR_MAX, COMPRESSOR_RATE, RCS_GAS_PER_TICK, RCS_TANK, THR_MIN, THR_RAMP, THR_RETURN } from './tuning';
 
-/** §4: this tick's vented thruster axes (−1, 0 or 1 each: x port/starboard, y aft/forward) and whether the turn was
- *  gas-boosted. Per-tick scratch on DuelState (helmVent), never hashed or snapshotted. */
-export interface HelmVent { x: number; y: number; boosted: boolean }
+/** §4: this tick's vented thruster axes (−1, 0 or 1 each: x port/starboard, y aft/forward), whether the turn was
+ *  gas-boosted, and the boosted turn's direction (`turn`: 1 clockwise, −1 anticlockwise, 0 when not boosted; the puffs'
+ *  sides, final review M2). Per-tick scratch on DuelState (helmVent), never hashed or snapshotted. */
+export interface HelmVent { x: number; y: number; boosted: boolean; turn: number }
 /** A fresh unvented record (a new object each call). */
-export function noVent(): HelmVent { return { x: 0, y: 0, boosted: false }; }
+export function noVent(): HelmVent { return { x: 0, y: 0, boosted: false, turn: 0 }; }
 
 /** §3: the thrust axis a held throttle flies, in −1..1: a quarter of the reverse scale per 250 below 0, a thousandth per
  *  mille above. */
@@ -60,5 +61,6 @@ export function compressorAfterLoss(compressor: number, lost: number, helmBars: 
 
 /** §4, §6: the vent a set of crew axes shows (the puffs and the hiss): its vented axes, and whether its turn is boosted. */
 export function ventOf(axes: Axes): HelmVent {
-  return { x: axes.rcsX ?? 0, y: axes.rcsY ?? 0, boosted: axes.turnBoost === RCS_TURN_BOOST };
+  const boosted = axes.turnBoost === RCS_TURN_BOOST;
+  return { x: axes.rcsX ?? 0, y: axes.rcsY ?? 0, boosted, turn: boosted ? Math.sign(axes.turn) || 0 : 0 };
 }

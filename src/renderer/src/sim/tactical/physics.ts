@@ -4,7 +4,7 @@ import { CUTTER_CLASS, type ShipClassDef } from './defs';
 import { hx, hy, wrapHeading } from './direction';
 import { hitStatics, resolveContacts } from './contacts';
 import { classOf, CREW_SLOT, Room, type Axes, type Ship, type TacticalState } from './state';
-import { CREW_FLIGHT, DEFAULT_FLIGHT, DT, GM, GRAVITY_EPS, K_EDGE, MAX_SPEED, R_MAP, RCS_THRUST, type FlightTuning } from './tuning';
+import { CREW_FLIGHT, DEFAULT_FLIGHT, DT, GM, GRAVITY_EPS, K_EDGE, MAX_SPEED, R_MAP, RCS_THRUST, RCS_TURN_BOOST, type FlightTuning } from './tuning';
 
 /** Acceleration toward the planet at the origin: a = −GM · d / (|d|² + ε²)^{3/2}. */
 export function gravityAccel(x: number, y: number): [number, number] {
@@ -33,7 +33,7 @@ export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning, engines = 0, 
   // crew's held throttle flies smoothly. `|| 0` maps NaN and −0 to 0. Whole axes (the hunter's −1, 0, 1, the Valkyrn's
   // levels −1, ¼, ½, ¾, 1, the flight view) give exactly the quarter-quantised q they always did.
   const turn = Math.sign(axes.turn) || 0, q = Math.max(-1, Math.min(1, Math.round(axes.thrust * 1000) / 1000)) || 0;
-  const boost = axes.turnBoost ?? 1, rcsX = Math.sign(axes.rcsX ?? 0) || 0, rcsY = Math.sign(axes.rcsY ?? 0) || 0;   // §4, §4a
+  const boost = axes.turnBoost === RCS_TURN_BOOST ? RCS_TURN_BOOST : 1, rcsX = Math.sign(axes.rcsX ?? 0) || 0, rcsY = Math.sign(axes.rcsY ?? 0) || 0;   // §4, §4a
   const f = engineFactor(cls, engines);
   s.headingAcc += turn * boost * cls.turnStepsPerTick * f;
   while (s.headingAcc >= 1) { s.heading = wrapHeading(s.heading + 1); s.headingAcc -= 1; }

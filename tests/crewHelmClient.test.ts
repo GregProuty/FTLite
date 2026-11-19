@@ -12,6 +12,7 @@ import { OWN_SHIP } from '../src/renderer/src/render/duel/consoleLayout';
 import { refusal, stateAxes } from '../src/renderer/src/render/duel/situationModel';
 import { crewAxes } from '../src/renderer/src/sim/duel/step';
 import { crewThrust } from '../src/renderer/src/sim/duel/helmFlight';
+import { THR_RETURN } from '../src/renderer/src/sim/duel/tuning';
 import { disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { Room } from '../src/renderer/src/sim/tactical/state';
 import { seatDuelCrew, createSeatedDuel, standAtStation } from './helpers/duelSeat';
@@ -209,7 +210,7 @@ describe('the duel state alone (spec §3)', () => {
     try {
       Object.assign(d, { thrMille: 400, holdHeading: 100 });
       expect(stateAxes(d)).toEqual(crewAxes(d, NONE));
-      expect(stateAxes(d).thrust).toBe(crewThrust(400));
+      expect(stateAxes(d).thrust).toBe(crewThrust(400 - THR_RETURN));   // the next tick's return (final review M3)
       expect(refusal(d, 'thrusters')).toBeNull();
       d.rcsGas = 7; expect(refusal(d, 'thrusters')).toBe('NO PRESSURE');
     } finally { disposeDuel(d); }

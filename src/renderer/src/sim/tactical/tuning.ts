@@ -62,7 +62,8 @@ export const STABILISE = 80;                   // u/s² of sideways velocity rem
 // Broad phase (§4)
 export const BROAD_CELL = 200;
 
-/** Switches for the §4 test configurations; the game always uses DEFAULT_FLIGHT. */
+/** Switches for the §4 test configurations. The game flies each slot's flightFor (physics.ts): CREW_FLIGHT for a
+ *  newtonianHelm crew class (playtest2feedback §2), else DEFAULT_FLIGHT. */
 export interface FlightTuning { gravity: boolean; edge: boolean; drag: number; stabilise: number }
 export const DEFAULT_FLIGHT: FlightTuning = { gravity: true, edge: true, drag: DRAG, stabilise: STABILISE };
 

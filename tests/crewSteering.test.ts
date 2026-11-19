@@ -10,7 +10,8 @@ import { disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state'
 import { crewAxes, headingDelta, helmBoost, helmTurn, stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { RCS_TANK } from '../src/renderer/src/sim/duel/tuning';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
-import { Room } from '../src/renderer/src/sim/tactical/state';
+import { classOf, Room } from '../src/renderer/src/sim/tactical/state';
+import { flightFor, flyShip } from '../src/renderer/src/sim/tactical/physics';
 import { RCS_TURN_BOOST, TURN_STEPS_PER_TICK } from '../src/renderer/src/sim/tactical/tuning';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -81,7 +82,9 @@ describe('the gas boost (spec §4a)', () => {
       expect(helmBoost(d, { ...NONE, aim: 100 })).toBe(RCS_TURN_BOOST);
       step(d, { ...NONE, aim: 100 });
       expect(nose(d)).toBeCloseTo(RCS_TURN_BOOST * TURN_STEPS_PER_TICK, 9);
-      expect([d.rcsGas, d.helmVent.boosted]).toEqual([RCS_TANK - 4, true]);
+      expect([d.rcsGas, d.helmVent.boosted, d.helmVent.turn]).toEqual([RCS_TANK - 4, true, 1]);   // clockwise (final review M2)
+      const e = still();
+      try { step(e, { ...NONE, aim: 156 }); expect([e.helmVent.boosted, e.helmVent.turn]).toEqual([true, -1]); } finally { disposeDuel(e); }   // anticlockwise
     } finally { disposeDuel(d); }
   });
   it('under 4 gas, inside the band, with no turn, or with the Engines failed it runs at 1× and spends nothing', () => {
@@ -90,7 +93,7 @@ describe('the gas boost (spec §4a)', () => {
       d.compressor = 0; d.rcsGas = 3;
       step(d, { ...NONE, aim: 100 });
       expect(nose(d)).toBeCloseTo(TURN_STEPS_PER_TICK, 9);
-      expect([d.rcsGas, d.helmVent.boosted]).toEqual([3, false]);
+      expect([d.rcsGas, d.helmVent.boosted, d.helmVent.turn]).toEqual([3, false, 0]);
       d.rcsGas = RCS_TANK; d.holdHeading = -1;   // the aim above became the held heading: clear it
       const h = d.tactical.ships[0].heading;
       expect(helmBoost(d, { ...NONE, aim: (h + 4) % 256 })).toBe(1);   // |d| = 4 is inside the band
@@ -119,11 +122,26 @@ describe('the app\'s prediction of the axes (spec §6)', () => {
   it('crewAxes flies the held thrust, the held thrusters while the tank holds them, and the boost', () => {
     const d = still();
     try {
-      d.thrMille = 500;
-      expect(crewAxes(d, { ...NONE, rcsX: 1, rcsY: -1, aim: 100 })).toEqual({ turn: 1, turnBoost: RCS_TURN_BOOST, thrust: 0.5, rcsX: 1, rcsY: -1 });
+      d.thrMille = 500;   // W not held: the next tick's ramp returns it by THR_RETURN (34), so it flies 466
+      expect(crewAxes(d, { ...NONE, rcsX: 1, rcsY: -1, aim: 100 })).toEqual({ turn: 1, turnBoost: RCS_TURN_BOOST, thrust: 0.466, rcsX: 1, rcsY: -1 });
       d.rcsGas = 12;   // the boost takes 4, the fore/aft 8, nothing left for the side
-      expect(crewAxes(d, { ...NONE, rcsX: 1, rcsY: -1, aim: 100 })).toEqual({ turn: 1, turnBoost: RCS_TURN_BOOST, thrust: 0.5, rcsX: 0, rcsY: -1 });
-      expect(ventOf(crewAxes(d, { ...NONE, rcsY: 1 }))).toEqual({ x: 0, y: 1, boosted: false });
+      expect(crewAxes(d, { ...NONE, rcsX: 1, rcsY: -1, aim: 100 })).toEqual({ turn: 1, turnBoost: RCS_TURN_BOOST, thrust: 0.466, rcsX: 0, rcsY: -1 });
+      expect(ventOf(crewAxes(d, { ...NONE, rcsY: 1 }))).toEqual({ x: 0, y: 1, boosted: false, turn: 0 });
+    } finally { disposeDuel(d); }
+  });  it('crewAxes from the state before a tick flies exactly the tick the step flies (mid-ramp throttle, thrusters, boost)', () => {
+    const d = still();
+    try {
+      Object.assign(d.tactical.ships[0], { vx: 40, vy: -25 });
+      d.thrMille = 500;   // mid-ramp: W held moves it this tick
+      const h: HeldInput = { ...NONE, throttleHeld: 1, rcsX: 1, rcsY: -1, aim: 100 };
+      const axes = crewAxes(d, h);
+      expect(axes.turnBoost).toBe(RCS_TURN_BOOST);
+      const copy = { ...d.tactical.ships[0] };
+      flyShip(copy, axes, flightFor(d.tactical, 0), d.tactical.systems[0].rooms[Room.Engines], classOf(d.tactical, 0));
+      step(d, h);
+      const s = d.tactical.ships[0];
+      expect({ x: s.x, y: s.y, vx: s.vx, vy: s.vy, heading: s.heading, headingAcc: s.headingAcc })
+        .toEqual({ x: copy.x, y: copy.y, vx: copy.vx, vy: copy.vy, heading: copy.heading, headingAcc: copy.headingAcc });
     } finally { disposeDuel(d); }
   });
 });

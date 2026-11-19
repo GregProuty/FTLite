@@ -32,7 +32,7 @@ describe('the push (spec §4)', () => {
         const ex = (fx * f[0]! + fy * r[0]!) * RCS_THRUST * DT, ey = (fx * f[1]! + fy * r[1]!) * RCS_THRUST * DT;
         expect(d.tactical.ships[0].vx - twin.tactical.ships[0].vx, `${heading} ${JSON.stringify(held)}`).toBeCloseTo(ex, 9);
         expect(d.tactical.ships[0].vy - twin.tactical.ships[0].vy, `${heading} ${JSON.stringify(held)}`).toBeCloseTo(ey, 9);
-        expect(d.helmVent).toEqual({ x: held.rcsX ?? 0, y: held.rcsY ?? 0, boosted: false });
+        expect(d.helmVent).toEqual({ x: held.rcsX ?? 0, y: held.rcsY ?? 0, boosted: false, turn: 0 });
       } finally { disposeDuel(d); disposeDuel(twin); }
     }
   });
@@ -55,10 +55,10 @@ describe('the gas (spec §4)', () => {
       step(d, { ...NONE, rcsX: -1, rcsY: -1 }); expect(d.rcsGas).toBe(RCS_TANK - 24);
       d.rcsGas = 8;
       step(d, { ...NONE, rcsX: 1, rcsY: 1 });
-      expect([d.rcsGas, d.helmVent]).toEqual([0, { x: 0, y: 1, boosted: false }]);
+      expect([d.rcsGas, d.helmVent]).toEqual([0, { x: 0, y: 1, boosted: false, turn: 0 }]);
       d.rcsGas = 5;
       for (let k = 0; k < 10; k++) step(d, { ...NONE, rcsX: 1, rcsY: 1 });
-      expect([d.rcsGas, d.helmVent]).toEqual([5, { x: 0, y: 0, boosted: false }]);
+      expect([d.rcsGas, d.helmVent]).toEqual([5, { x: 0, y: 0, boosted: false, turn: 0 }]);
     } finally { disposeDuel(d); }
   });
   it('only the Helm attendant vents: Weapons holding a thruster spends nothing', () => {
@@ -90,8 +90,8 @@ describe('the gas (spec §4)', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
       step(d, { ...NONE, rcsX: 1 }); expect(d.helmVent.x).toBe(1);
-      step(d); expect(d.helmVent).toEqual({ x: 0, y: 0, boosted: false });
-      const base = hashDuel(d); d.helmVent = { x: -1, y: 1, boosted: true }; expect(hashDuel(d)).toBe(base);
+      step(d); expect(d.helmVent).toEqual({ x: 0, y: 0, boosted: false, turn: 0 });
+      const base = hashDuel(d); d.helmVent = { x: -1, y: 1, boosted: true, turn: 1 }; expect(hashDuel(d)).toBe(base);
     } finally { disposeDuel(d); }
   });
 });

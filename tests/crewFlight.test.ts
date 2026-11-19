@@ -100,9 +100,9 @@ describe('Newtonian flight (spec §2)', () => {
   });
   it('gravity can still push the speed past 400, and thrust then cannot add to it', () => {
     const s = ship({ x: 150, y: 0, vx: 0, vy: -420 });
-    const before = speed(s);
+    expect(speed(s)).toBe(420);
     flyShip(s, { turn: 0, thrust: 0 }, CREW_FLIGHT);
-    expect(speed(s)).not.toBe(before);   // gravity changed it, uncapped
+    expect(speed(s)).toBeGreaterThan(420);   // gravity pushed it past the cap and past where it was, uncapped
     const t = ship({ vx: 0, vy: -420 });
     flyShip(t, { turn: 0, thrust: 1 }, NO_GRAVITY);
     expect(speed(t)).toBeCloseTo(420, 9);
