@@ -109,3 +109,40 @@ The second reason is `service-fenced`, not the `resumed` the finding predicted. 
 
 ---
 
+# Round 2 (delta, reviewing 6afb9af5, effort medium, 48 s, 190939 in / 155556 cached / 3272 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — docs/gates.md L908-L922 adds a Web-i section. It names commit 31c498d8, says to redeploy before building any Electron candidate from master, explains why the change is backward compatible and why null/file:// need no ALLOWED_ORIGINS change, gives `npx wrangler deploy` from services/signalling, and adds an unchecked owner gate. Plan D-2 (L36) no longer says 'ships only at Web-iii's deploy'; it now says the deploy must happen before any Electron candidate and may happen ahead of Web-iii. The deploy itself is correctly left to the owner, which the finding allowed ('whether or not you deploy early').
+- R1-F2: resolved — scripts/network/worker-boot-packaged.cjs copies dist/win-unpacked and renames resources/app.asar to page.asar so the bundled resources/app/main.cjs (worker-boot.cjs) runs. It then loads page.asar/out/renderer/index.html with the packaged FTLite.exe. worker-boot.cjs honours FTLITE_BOOT_PAGE (L10). The result (WORKER BOOT PASS, Electron 37.10.3, no asarUnpack) is recorded in plan L57 and gates.md. Small caveat: package:candidate (package.json L23) does not rebuild out/ first, so the check depends on a fresh electron-vite build. The gate procedure builds first anyway.
+- R1-F3: resolved — Plan D-10 (L43) records the gap next to D-9: the host's renderer-side duel leave reaching idle is no longer asserted. It names the partial cover (online-app-smoke sector host leave, online-recovery-smoke leave-old-host) and how to restore the check. gates.md L921 lists it as an open item. This is the 'record as a stated deviation' option the finding offered.
+- R1-F4: resolved — tests/onlineRecovery.test.ts L254-263 builds an active hosted run (reconnect then rehost), clears the mocks, then calls `void suspend(); void resume();` without awaiting. It asserts invalidateLease ['suspended','service-fenced'], dispose called once and join called once. The trace matches the code. suspend (onlineSession.ts L573) queues 'suspended' and then savedState→retireGame, which synchronously queues 'service-fenced' (L175) and clears c.host. resume (L578) sees no c.host, so no 'resumed' is queued, and it reconnects exactly once (L580). The finding predicted 'resumed', but the test pins the actual, safe ordering, so the risk is covered. The response explains 'service-fenced' as coming from the rejoin. In fact the synchronous retire on suspend queues it, as the test's own comment says. The difference does not change what the test covers.
+
+## Verified
+- onlineSession.ts L165-L183, L573-L581: suspend retires the host synchronously through savedState→retireGame, which queues invalidateLease('service-fenced') at L175. resume then finds c.host undefined and dispatches a single reconnect. This matches the new test's assertions.
+- tests/onlineRecovery.test.ts L15-L66: the harness's host.invalidateLease, dispose and service.join are vi.fn mocks. The new case uses the same active-host setup as the existing L250 case.
+- scripts/network/worker-boot.cjs L10: FTLITE_BOOT_PAGE falls back to out/renderer/index.html, so the unpackaged test:worker-boot behaves as before.
+- scripts/network/worker-boot-packaged.cjs: renaming app.asar lets Electron fall back to resources/app/, the page loads from inside the asar archive, and the temp dir is removed in finally.
+- docs/gates.md L908-L922 and plan L36, L43, L57 agree with each other: the redeploy is an owner step, D-9 and D-10 are open items, and the packaged check is recorded.
+
+## Not verified
+- I did not run the packaged worker-boot check or the new unit test (read-only review; running the suite and the Electron gates was ruled out), so the recorded PASS results are taken from the plan and gates.md.
+- The signalling service has not been redeployed. That is the owner's step and stays unchecked in gates.md L916. Electron candidates built from master will fail online play until it is done.
+
+---
+
+# Round 2 response (no subject change)
+
+I checked `round-2.json` against `6afb9af5`. The verdict is ready, with no new findings, and all 4 round 1 fixes are confirmed resolved.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
