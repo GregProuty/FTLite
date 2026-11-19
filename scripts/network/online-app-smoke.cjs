@@ -2,7 +2,8 @@
 // stack happens in the page (page-probe.js, injected before any page script) and is read back here.
 const electron = require('electron');
 const { app, BrowserWindow, ipcMain, powerMonitor, session } = electron;
-// Local debugging only (FTL_DEBUG=1, never set by the gates): raw diagnostics on stderr. Without it every diagnostic is a
+// FTL_DEBUG=1 prints raw diagnostics on stderr. The web-net gate (scripts/web/net/players.ts) sets it and parses the 'DBG console' and
+// 'DBG loaded' lines as a contract (page errors, and proof the console is watched): do not change those formats casually. Without it every diagnostic is a
 // fixed category with validated context (tests/onlineAppDiagnostics.test.ts).
 const debug = !!process.env?.FTL_DEBUG;
 process.on('uncaughtException', e => { if (debug) console.error('APP_DRIVER_UNCAUGHT', e); else console.error('APP_DRIVER_UNCAUGHT'); app.exit(1); });

@@ -1,0 +1,3 @@
+{
+  "buildCommand": "node -e \"console.error('Use npm run deploy:web (prebuilt, passcode). A source build would serve the site without its passcode.'); process.exit(1)\""
+}

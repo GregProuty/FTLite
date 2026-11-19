@@ -142,6 +142,7 @@ export function electronKey(code: GateKey): string { return code.startsWith('Key
 
 export async function createElectronPlayer(o: { name: string; directory: string; serviceUrl: string; duelTestSeed: number }): Promise<GatePlayer> {
   const errors: string[] = [], consoleErrors: string[] = [];
+  let loaded = false;
   let child!: ChildProcess, exited = true, exit: Promise<void> = Promise.resolve();
   const pending = new Map<number, { resolve(value: any): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>(); let id = 0;
   const request = (command: string, data: object = {}): Promise<any> => {
@@ -166,10 +167,11 @@ export async function createElectronPlayer(o: { name: string; directory: string;
     // FTL_DEBUG (always set for this child) makes the driver print each console error's text. An uncaught page exception
     // ('Uncaught ...', what Playwright's pageerror reports for a browser player) or a driver exception is an error; any other
     // console error (a refused fetch, Chromium's ResizeObserver loop notice) is only kept for the report.
-    let buffered = '';
+    let buffered = ''; loaded = false;
     child.stderr!.on('data', (chunk: Buffer) => {
       const lines = (buffered + String(chunk)).split(/\r?\n/); buffered = lines.pop()!.slice(-4000);
       for (const line of lines) {
+        if (/^DBG loaded /.test(line)) loaded = true;
         const consoleError = /^DBG console (?:error|3) (.*)$/.exec(line);
         if (consoleError && /^Uncaught\b/.test(consoleError[1]!)) { if (errors.length < 20) errors.push(consoleError[1]!.slice(0, 200)); }
         else if (consoleError) { if (consoleErrors.length < 20) consoleErrors.push(consoleError[1]!.slice(0, 200)); }
@@ -178,6 +180,9 @@ export async function createElectronPlayer(o: { name: string; directory: string;
     });
     exit = new Promise(done => child.once('exit', () => { exited = true; for (const item of pending.values()) { clearTimeout(item.timer); item.reject(Error(`${o.name} exited`)); } pending.clear(); done(); }));
     await ready(async () => (await request('status')).text, o.name);
+    // The page-error count depends on parsing the driver's 'DBG' lines; if none was ever seen the console is not watched.
+    for (let i = 0; i < 20 && !loaded; i++) await delay(100);
+    if (!loaded) throw Error('electron console not watched');
   };
   const kill = async (): Promise<void> => {
     if (!exited) {

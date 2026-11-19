@@ -60,10 +60,15 @@ export async function checkWebOutput(outDir: string): Promise<{ problems: string
     const right = await ask(PASS_PATH, form(process.env.FTLITE_PASSCODE));
     const cookie = /^(ftlite_pass=[^;]+);/.exec(right.headers.get('set-cookie') ?? '')?.[1];
     if (right.status !== 303 || !cookie) problems.push('the right passcode sets no cookie');
-    for (const path of paths) {
-      const bare = await ask(path);
-      if (isNext(bare) || bare.status !== 401 || !(await bare.text()).includes(`action="${PASS_PATH}"`)) problems.push(`served without the cookie: ${path}`);
-      if (cookie && !isNext(await ask(path, { headers: { cookie } }))) problems.push(`refused with a valid cookie: ${path}`);
+    // Every static path as GET, plus the request shapes Vercel also forwards: the root, an unknown path, a query string and a HEAD.
+    const shapes: { label: string; path: string; method?: string }[] = [...paths.map(path => ({ label: path, path })),
+      { label: '/', path: '/' }, { label: '/no-such-file', path: '/no-such-file' }, { label: '/index.html?x=1', path: '/index.html?x=1' },
+      { label: 'HEAD /assets/authorityWorker.js', path: '/assets/authorityWorker.js', method: 'HEAD' }];
+    for (const { label, path, method } of shapes) {
+      const bare = await ask(path, method ? { method } : {});
+      // A HEAD response has no body, so for it only the 401 is checked.
+      if (isNext(bare) || bare.status !== 401 || (method !== 'HEAD' && !(await bare.text()).includes(`action="${PASS_PATH}"`))) problems.push(`served without the cookie: ${label}`);
+      if (cookie && !isNext(await ask(path, { headers: { cookie }, ...(method ? { method } : {}) }))) problems.push(`refused with a valid cookie: ${label}`);
     }
   } finally {
     if (saved.passcode === undefined) delete process.env.FTLITE_PASSCODE; else process.env.FTLITE_PASSCODE = saved.passcode;
