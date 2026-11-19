@@ -11,6 +11,7 @@ import { disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state'
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { shipModule } from '../src/renderer/src/sim/tactical/hash';
 import { beginRockTick, rockSlots } from '../src/renderer/src/sim/tactical/rocks';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { seeded } from './helpers/rockArena';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { enemySeen, holdInSight } from './helpers/sensorSight';
@@ -23,7 +24,7 @@ const why = (rs: ReturnType<typeof step>) => rs.map((r) => r.reason ?? r.status)
 
 describe('rockLock validation (spec §6.1)', () => {
   it('stale first, then the seat, then malformed, then noop for an empty slot; the gunner\'s applies', () => {
-    const d = createSeatedDuel(layout, 5), t = d.tactical, s = t.systems[0], empty = rockSlots(t) - 1;
+    const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser), t = d.tactical, s = t.systems[0], empty = rockSlots(t) - 1;   // W-4 spec §14.1: the beam's rule, on the laser fit
     try {
       const stale = { ...cmd(d, 1, { kind: 'rockLock', weapon: 'laser', rock: 0 }), requestedTick: d.interior.tick + 1 };
       const r = step(d, [stale,
@@ -42,7 +43,7 @@ describe('rockLock validation (spec §6.1)', () => {
 
 describe('rockLock effects and order (spec §6.1)', () => {
   it('the laser: −1 clears it and laserTargeted; a laserLock clears the rock first; a same-tick rockLock beats a laserLock', () => {
-    const d = createSeatedDuel(layout, 5), s = d.tactical.systems[0];
+    const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser), s = d.tactical.systems[0];   // W-4 spec §14.1: the beam's rule, on the laser fit
     try {
       holdInSight(d.tactical);   // Engineering spike spec §10.4: a laserLock needs the target seen
       step(d, [cmd(d, 1, { kind: 'rockLock', weapon: 'laser', rock: 0 })]);

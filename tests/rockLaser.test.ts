@@ -8,12 +8,13 @@ import { firstBlocker, rockAt, RockKind } from '../src/renderer/src/sim/tactical
 import { AUTO_DIG } from '../src/renderer/src/sim/tactical/rockTuning';
 import { rockOnTarget } from '../src/renderer/src/sim/tactical/rockWeapons';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { laserCardReason, laserSituation, statusSentence } from '../src/renderer/src/render/duel/situationModel';
 import { arena, mover, rockEvents, seeded } from './helpers/rockArena';
 import { lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
 
 /** The arena with the crew facing east (heading 64) at (0, −2500), its laser full and targeted (the round's opener). */
-function east() { const st = arena(); st.ships[0].heading = 64; return st; }
+function east() { const st = arena(5, ShipClass.ValkyrnLaser); st.ships[0].heading = 64; return st; }   // W-4 spec §14.1: the beam's rule, on the laser fit
 const laserEvent = (st: ReturnType<typeof arena>) => st.events.find((e) => e.kind === 'laser') as Extract<(typeof st.events)[number], { kind: 'laser' }> | undefined;
 
 describe('a laser shot on a rock (spec §4.1)', () => {
