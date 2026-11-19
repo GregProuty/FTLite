@@ -194,7 +194,7 @@ describe('the online manual laser (W-2)', () => {
   const sent = (c: Stub, kind: string) => c.commands().filter((x) => x.kind === kind);
   const fireRefusals = () => h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'fire');
   it('Z sends laserMode from the mode in flight, else the replica\'s', () => {
-    const r = rig(1), c = r.attach();
+    const r = rig(1, undefined, undefined, undefined, ShipClass.ValkyrnLaser), c = r.attach();   // W-4 spec §14.1: the beam's rule, on the laser fit
     r.session.frame();
     r.key('keydown', 'KeyZ'); r.key('keyup', 'KeyZ'); r.pump();
     r.key('keydown', 'KeyZ'); r.key('keyup', 'KeyZ'); r.pump();
@@ -202,7 +202,7 @@ describe('the online manual laser (W-2)', () => {
     r.dispose();
   });
   it('in MANUAL Space sends laserFire along the map aim even on an uncharged replica; an unavailable answer shows NO CHARGE', () => {
-    const r = rig(1);
+    const r = rig(1, undefined, undefined, undefined, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     todaysCrewWeapons(r.d.tactical);   // merge with the Engineering spike (kind a): the beam needs a bar (spec §10.3)
     r.d.tactical.systems[0]!.laserManual = true;
     r.d.tactical.systems[0]!.laserCharge = 0;   // the lagging replica: empty
@@ -317,13 +317,13 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
     r.key('keyup', 'Space'); r.pump();
     expect(c.helds().at(-1)).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
     r.dispose();
-    const w = rig(1), cw = w.attach();
+    const w = rig(1, undefined, undefined, undefined, ShipClass.ValkyrnLaser), cw = w.attach();   // W-4 spec §14.1: the beam's rule, on the laser fit
     w.key('keydown', 'Space'); w.pump();
     expect(cw.helds().at(-1)).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
     w.dispose();
   });
   it('focus loss neutralises without pausing and sends no release (Space is a single press, FTL targeting spec §2); nothing is sent until focus returns', () => {
-    const r = rig(1), c = r.attach();   // seat 1 sits at Weapons
+    const r = rig(1, undefined, undefined, undefined, ShipClass.ValkyrnLaser), c = r.attach();   // seat 1 sits at Weapons   // W-4 spec §14.1: the beam's rule, on the laser fit
     r.key('keydown', 'Space'); r.pump();
     expect(c.commands().at(-1)).toEqual({ kind: 'laserCharge', held: true });
     const commands = c.commands().length;
@@ -353,7 +353,7 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
     r.dispose();
   });
   it('Space is a single press: one laserCharge press and never a release, paused or not (FTL targeting spec §2)', () => {
-    const r = rig(1), c = r.attach();
+    const r = rig(1, undefined, undefined, undefined, ShipClass.ValkyrnLaser), c = r.attach();   // W-4 spec §14.1: the beam's rule, on the laser fit
     r.key('keydown', 'Space'); r.pump();
     expect(c.commands().at(-1)).toEqual({ kind: 'laserCharge', held: true });
     c.publish(r.d, 'paused', { reason: 'player', owner: 0 }); r.pump();
@@ -447,7 +447,7 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
 describe('the Artemis console clicks online (Artemis spec §4.1, §6.2)', () => {
   it('a lock click at Weapons sends laserLock to that room', () => {
     let input: ConsoleInput | null = null;
-    const r = rig(1, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }), c = r.attach();   // seat 1 sits at Weapons
+    const r = rig(1, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }, ShipClass.ValkyrnLaser), c = r.attach();   // seat 1 sits at Weapons   // W-4 spec §14.1: the beam's rule, on the laser fit
     const locks = () => c.commands().filter((x) => x.kind === 'laserLock');
     input!.lock(2); r.pump();
     expect(locks()).toEqual([{ kind: 'laserLock', room: 2 }]);
@@ -457,7 +457,7 @@ describe('the Artemis console clicks online (Artemis spec §4.1, §6.2)', () => 
   });
   it('FTL targeting spec §1: a torpedo target click sends torpLock, a card clear sends −1 for either weapon, and E / Q with the torpedo picked up step its own target, keeping it picked up', () => {
     let input: ConsoleInput | null = null;
-    const r = rig(1, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }), c = r.attach();
+    const r = rig(1, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }, ShipClass.ValkyrnLaser), c = r.attach();   // W-4 spec §14.1: the beam's rule, on the laser fit
     const targets = () => c.commands().filter((x) => x.kind === 'laserLock' || x.kind === 'torpLock');
     input!.torpLock(0); r.pump();
     input!.torpLock(-1); input!.lock(-1); r.pump();
@@ -478,7 +478,7 @@ describe('the Artemis console clicks online (Artemis spec §4.1, §6.2)', () => 
   });
   it('two lock clicks in successive pumps before any new publication both send, in order (no comparison with the confirmed lock)', () => {
     let input: ConsoleInput | null = null;
-    const r = rig(1, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }), c = r.attach();
+    const r = rig(1, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }, ShipClass.ValkyrnLaser), c = r.attach();   // W-4 spec §14.1: the beam's rule, on the laser fit
     const confirmed = r.d.tactical.systems[0].lock, other = confirmed === 2 ? 1 : 2;
     input!.lock(other); r.pump();
     input!.lock(confirmed); r.pump();
@@ -711,7 +711,7 @@ describe('the online seat notice (start-aboard spec §1)', () => {
 describe('Science and the frequency online (Sci-1 spec §5, §7.3, §7.4)', () => {
   const contactOf = (): ContactController => (h.sceneOpts.at(-1) as unknown as { contact: ContactController }).contact;
   it('at Science a selection sends designate, S sends contactScan; at Weapons Digit4 sends laserFrequency 1', () => {
-    const r = rig(1);
+    const r = rig(1, undefined, undefined, undefined, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     standUp(r.d.interior, 1); sitDown(r.d.interior, 1, r.d.science);
     const c = r.attach(), contact = contactOf();
     contact.sync({ shown: true, station: 'science', target: 1, active: () => true, epoch: 0 });
@@ -720,7 +720,7 @@ describe('Science and the frequency online (Sci-1 spec §5, §7.3, §7.4)', () =
     r.key('keydown', 'KeyS'); r.key('keyup', 'KeyS'); r.pump();
     expect(c.commands().filter((x) => x.kind === 'contactScan')).toEqual([{ kind: 'contactScan', contact: 1 }]);
     r.dispose();
-    const w = rig(1), cw = w.attach();   // the seated start: player 1 at Weapons
+    const w = rig(1, undefined, undefined, undefined, ShipClass.ValkyrnLaser), cw = w.attach();   // the seated start: player 1 at Weapons   // W-4 spec §14.1: the beam's rule, on the laser fit
     w.key('keydown', 'Digit4'); w.key('keyup', 'Digit4'); w.pump();
     expect(cw.commands().filter((x) => x.kind === 'laserFrequency')).toEqual([{ kind: 'laserFrequency', freq: 1 }]);
     w.dispose();
