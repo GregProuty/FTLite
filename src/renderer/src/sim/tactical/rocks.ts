@@ -12,12 +12,14 @@
 // at tick + 1, because every contact that tick happens after the free rocks move to T + 1; between ticks at tick.
 // Freeing (§3.4): a Rail becomes Free at its rail position and velocity in the free frame (T before this step's free
 // motion, T + 1 after it; plan deviation 2), with t = the phase tick.
+// Broad phase (§6.1): the rock grid (grid.ts), rebuilt at beginRockStep and kept current by regridRock; a scan outside a step.
 // Per-tick transient masks (§3.1, §3.3, §3.4; not hashed, cleared at the start and the end of every stepDuel tick):
 // rockBorn (a new piece this tick), rockDone (had its contact turn), rockTouched (freed, pushed, hit or in a contact).
 // Breaking is rockBreak.ts, motion and rock-rock contacts rockContacts.ts, every number rockTuning.ts.
 import { clusterOf, type MapDef } from './map';
 import { railPos, type RailOut } from './rails';
-import { ROCK_HP_PER, ROCK_SWITCHES } from './rockTuning';
+import { emptyRockGrid, linkRock, peekRockGrid, queryRockGrid } from './grid';
+import { ROCK_GRID_PAD, ROCK_HP_PER, ROCK_R_MAX, ROCK_SWITCHES } from './rockTuning';
 import type { TacticalState } from './state';
 export type { RockCause } from './state';
 
@@ -60,7 +62,7 @@ export function rockSlots(s: TacticalState): number { return s.rocks.length / RO
 interface RockStep { moved: boolean }
 const steps = new WeakMap<TacticalState, RockStep>();
 /** The start of a stepDuel tick: rails are read at tick + 1 until endRockStep. */
-export function beginRockStep(s: TacticalState): void { steps.set(s, { moved: false }); }
+export function beginRockStep(s: TacticalState): void { steps.set(s, { moved: false }); rebuildRockGrid(s); }
 /** stepRocks' motion pass is over: Free slots now stand at tick + 1 (plan deviation 2). */
 export function rocksMoved(s: TacticalState): void { const c = steps.get(s); if (c) c.moved = true; }
 /** The end of a stepDuel tick (before tick++). */
@@ -124,6 +126,7 @@ export function freeRock(s: TacticalState, k: number): void {
   railPos(v[b + 1]!, v[b + 2]!, v[b + 3]!, v[b + 4]!, v[b + 7]!, freeFrame(s), v[b] === RockKind.Tumble, scratch);
   v[b] = RockKind.Free; v[b + 1] = scratch.x; v[b + 2] = scratch.y; v[b + 3] = scratch.vx; v[b + 4] = scratch.vy; v[b + 7] = rockPhase(s);
   markTouched(s, k);
+  regridRock(s, k);
 }
 
 /** §3.1, §3.3, §3.4: the start (and the end) of a tick: the three transient masks cleared (made again at the pool's size
@@ -148,8 +151,34 @@ export function rocksNearScan(s: TacticalState, x: number, y: number, h: number)
   }
   return out;
 }
-/** The broad phase every caller uses: ascending, no repeats (Task 7 gives the step its grid). */
-export function rocksNear(s: TacticalState, x: number, y: number, h: number): number[] { return rocksNearScan(s, x, y, h); }
+/** §6.1: the grid rebuilt from every live rock's accessor position (allocation-free after the first build). */
+export function rebuildRockGrid(s: TacticalState): void {
+  const n = rockSlots(s), g = emptyRockGrid(s, n);
+  for (let k = 0; k < n; k++) if (s.rocks[k * ROCK_STRIDE] !== RockKind.Gone) linkRock(g, k, rockX(s, k), rockY(s, k));
+}
+/** §6.1, plan deviation 6: slot k relinked at its accessor position (a birth, a freeing, a move); inside a step only. */
+export function regridRock(s: TacticalState, k: number): void {
+  const g = peekRockGrid(s);
+  if (g && inRockStep(s) && g.next.length === rockSlots(s)) linkRock(g, k, rockX(s, k), rockY(s, k));
+}
+/** rocksNearScan's answer from the grid (its box widened by ROCK_R_MAX and the pad, then the exact bounding-box rule at the
+ *  accessor positions); a scan when there is no grid of this pool's size. */
+export function rocksNearGrid(s: TacticalState, x: number, y: number, h: number): number[] {
+  const g = peekRockGrid(s);
+  if (!g || g.next.length !== rockSlots(s)) return rocksNearScan(s, x, y, h);
+  const v = s.rocks, out: number[] = [], count = queryRockGrid(g, x, y, h + ROCK_R_MAX + ROCK_GRID_PAD);
+  for (let i = 0; i < count; i++) {
+    const k = g.scratch[i]!, b = k * ROCK_STRIDE;
+    if (v[b] === RockKind.Gone) continue;
+    const r = v[b + 5]!;
+    if (Math.abs(rockX(s, k) - x) <= h + r && Math.abs(rockY(s, k) - y) <= h + r) out.push(k);
+  }
+  return out;
+}
+/** The broad phase every caller uses: ascending, no repeats; the grid inside a step, a scan of every slot outside (§6.1). */
+export function rocksNear(s: TacticalState, x: number, y: number, h: number): number[] {
+  return inRockStep(s) ? rocksNearGrid(s, x, y, h) : rocksNearScan(s, x, y, h);
+}
 
 /** Write slot k's eight values (a rail: its centre in x, y and its offset in vx, vy); t defaults to the phase tick. */
 export function writeRock(s: TacticalState, k: number, kind: number, x: number, y: number, vx: number, vy: number, r: number, hp: number, t: number = rockPhase(s)): void {

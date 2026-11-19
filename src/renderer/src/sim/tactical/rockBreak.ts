@@ -6,7 +6,7 @@
 // piece that is not born this tick and not a body of the contact being resolved, else the piece is dust. Every slot
 // cleared or rewritten clears the rock targets that named it. A slot born this tick takes no damage, push or break.
 import { FAN_SPLIT_MIN_R, FAN_TRIPLE_MIN_R, ROCK_BLAST_FLING, ROCK_CRUSH_SPEED, ROCK_CRUSH_STEP, ROCK_FLING, ROCK_MIN_R } from './rockTuning';
-import { freeRock, markTouched, restartClock, rockAlive, rockAt, rockHp, RockKind, rockSlots, ROCK_STRIDE, writeRock } from './rocks';
+import { freeRock, markTouched, regridRock, restartClock, rockAlive, rockAt, rockHp, RockKind, rockSlots, ROCK_STRIDE, writeRock } from './rocks';
 import type { RockCause, TacticalState } from './state';
 
 export type BreakPattern = 'fan' | 'burst';
@@ -118,6 +118,7 @@ export function breakRock(s: TacticalState, k: number, ux: number, uy: number, b
     }
     writeRock(s, slot, RockKind.Free, px, py, vx, vy, rp, rockHp(rp));
     s.rockBorn[slot] = 1;
+    regridRock(s, slot);   // §6.1: a new piece is linked into the grid at birth
     for (const body of s.ships) body.graceUntil[slot + 1] = 0;   // a new rock: no contact grace on any ship
     pieces.push(slot);
   });

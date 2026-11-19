@@ -9,7 +9,7 @@
 import { gravityAccel } from './physics';
 import { circularVelocity, lanePull, targetVelocity } from './rails';
 import { breakRock, crushDamage, dustRock, wearRock } from './rockBreak';
-import { freeRock, markTouched, rockAlive, rockMass, RockKind, rockPhase, rocksMoved, rocksNear, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
+import { freeRock, markTouched, regridRock, rockAlive, rockMass, RockKind, rockPhase, rocksMoved, rocksNear, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
 import { EDGE_SETTLE_K, K_EDGE_ROCK, ROCK_CRUSH_SPEED, ROCK_EDGE_SLACK, ROCK_EDGE_SLACK_SOFT, ROCK_GRAVITY, ROCK_MAX_SPEED, ROCK_RESTITUTION, ROCK_SWITCHES, SETTLE_A0, SETTLE_A1, SETTLE_K_MAX } from './rockTuning';
 import type { TacticalState } from './state';
 import { DT, K_EDGE, R_MAP } from './tuning';
@@ -38,6 +38,7 @@ export function resolveRockPair(s: TacticalState, a: number, b: number): void {
   if (overlap > 0) {
     const sa = (overlap * ia) / (ia + ib), sb = (overlap * ib) / (ia + ib);
     v[A + 1]! += nx * sa; v[A + 2]! += ny * sa; v[B + 1]! -= nx * sb; v[B + 2]! -= ny * sb;
+    regridRock(s, a); regridRock(s, b);
   }
   if (vc > 0) {
     const j = ((1 + ROCK_RESTITUTION) * vc) / (ia + ib);
@@ -93,6 +94,7 @@ export function stepRocks(s: TacticalState): void {
     const b = k * ROCK_STRIDE;
     if (v[b] !== RockKind.Free || s.rockBorn[k] === 1) continue;
     if (moveFreeSlot(v, b, T1)) s.rockCapHits++;
+    regridRock(s, k);
   }
   rocksMoved(s);
   const p = s.map.planet, far = R_MAP + rockEdgeSlack();
