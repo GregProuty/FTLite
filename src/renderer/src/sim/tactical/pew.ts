@@ -9,6 +9,7 @@ import type { PewDef } from './defs';
 import { dirBetween, hx, hy } from './direction';
 import { queryGrid } from './grid';
 import { placeRound, segmentEntry } from './gun';
+import { interceptTime, nearestHeading } from './lead';
 import { shootDown } from './missiles';
 import { classOf, emptyRound, type TacticalState } from './state';
 import { AIM_STEPS, DT, HEADING_COUNT } from './tuning';
@@ -116,4 +117,16 @@ export function stepPew(state: TacticalState): void {
     else if (hit === 'ship') pewHit(state, r.owner, k, ox + (r.x - ox) * best, oy + (r.y - oy) * best);
     if (hit !== 'none' || r.age >= life) Object.assign(r, emptyRound());
   }
+}
+
+/** W-1 (pew pew spec §1): ship i's lead on a target at (tx, ty) moving at (tvx, tvy): the fine aim (a whole heading index ×
+ *  HEADING_COUNT) from its muzzle to where a round fired now meets the target holding its velocity. A pew round does not
+ *  inherit the ship's velocity, so the target's own velocity is used. −1 without the pew or an intercept. */
+export function pewLead(state: TacticalState, i: number, tx: number, ty: number, tvx: number, tvy: number): number {
+  const def = classOf(state, i).slots.pew;
+  if (!def) return -1;
+  const m = pewMuzzle(state, i), rx = tx - m.x, ry = ty - m.y, t = interceptTime(rx, ry, tvx, tvy, def.speed);
+  if (t < 0) return -1;
+  const h = nearestHeading(rx + tvx * t, ry + tvy * t);
+  return h < 0 ? -1 : h * HEADING_COUNT;
 }

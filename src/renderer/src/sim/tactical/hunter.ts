@@ -1,15 +1,16 @@
 // The hunter (spec §9): a blunt, deterministic state machine that flies a ship slot whose class has the hunter AI
 // profile (the duel's slot 1) against that slot's locked target, through the same ShipInput the crew uses. It reads the
-// state as it stands at the start of the tick. Its only randomness is the release jitter, drawn from rng.tactical. One
+// state as it stands at the start of the tick. Its randomness is the release jitter and (W-1) the pew's defence roll and aim error, all drawn from rng.tactical. One
 // hunter brain per encounter (state.hunter) until R-5 gives every ship its own.
 import { nextInt } from '../../../../shared/rng';
 import { hx, hy } from './direction';
-import { segmentNear, sideOf } from './geometry';
+import { inArc, segmentNear, sideOf } from './geometry';
 import { queryGrid } from './grid';
+import { pewFull, pewLead, pewReady } from './pew';
 import { classOf, HunterMode, missileOf, Room, type TacticalState } from './state';
 import {
-  AUTO_FACE_SIN, HUNTER_AVOID_MARGIN, HUNTER_BRAKE_SPEED, HUNTER_JITTER_TICKS, HUNTER_LEAD_S, HUNTER_LOOKAHEAD_S, HUNTER_MISSILE_COOLDOWN_TICKS,
-  HUNTER_STANDOFF, HUNTER_THRUST_COS, HUNTER_TRAIL_TICKS, HUNTER_WALK_TICKS, REPAIR_WORK_TICKS
+  AIM_STEPS, AUTO_FACE_SIN, HUNTER_AVOID_MARGIN, HUNTER_BRAKE_SPEED, HUNTER_JITTER_TICKS, HUNTER_LEAD_S, HUNTER_LOOKAHEAD_S, HUNTER_MISSILE_COOLDOWN_TICKS,
+  HUNTER_PD_ODDS, HUNTER_PD_RANGE, HUNTER_PEW_ERROR_STEPS, HUNTER_PEW_GAP, HUNTER_STANDOFF, HUNTER_THRUST_COS, HUNTER_TRAIL_TICKS, HUNTER_WALK_TICKS, PEW_ARC_COS, PEW_RANGE, REPAIR_WORK_TICKS
 } from './tuning';
 import { enemyHostile } from './science';
 import { canLaunch, laserEligible, laserFull, type ShipInput } from './weapons';
@@ -77,10 +78,48 @@ function updateRepair(state: TacticalState, i: number): void {
   if (best >= 0) { h.mode = HunterMode.Repair; h.room = best; h.working = false; h.timer = HUNTER_WALK_TICKS; }
 }
 
+/** The Hunter's seeded aim error on a fine aim (spec §1): one draw, uniform in ±HUNTER_PEW_ERROR_STEPS, wrapped. */
+function aimError(state: TacticalState, aim: number): number {
+  return (aim + nextInt(state.rng, 2 * HUNTER_PEW_ERROR_STEPS + 1) - HUNTER_PEW_ERROR_STEPS + AIM_STEPS) % AIM_STEPS;
+}
+
+/**
+ * W-1 (pew pew spec §1): the Hunter's pew this tick, a fine aim or −1. The burst clock counts down every call. With less
+ * than a third stored there is no shot and the burst ends. Defence first: its target's torpedo in flight within
+ * HUNTER_PD_RANGE and inside the cone is tried for once a tick (one roll, 1 in HUNTER_PD_ODDS), led with the round speed
+ * and the aim error. Then attack: its target ship within PEW_RANGE and inside the cone, in bursts of the class's shots
+ * HUNTER_PEW_GAP ticks apart; a burst starts only on a full charge and ends when the ship leaves the cone or the range.
+ * Draws from rng.tactical, in order: the defence roll, then one error for the shot.
+ */
+function hunterPew(state: TacticalState, i: number): number {
+  const def = classOf(state, i).slots.pew, h = state.hunter;
+  if (h.pewClock > 0) h.pewClock--;
+  if (!def || !pewReady(state, i)) { h.pewBurst = 0; return -1; }
+  const me = state.ships[i]!, target = state.systems[i]!.target, crew = state.ships[target]!, torp = missileOf(state, target);
+  if (torp) {
+    const dx = torp.x - me.x, dy = torp.y - me.y;
+    if (dx * dx + dy * dy <= HUNTER_PD_RANGE * HUNTER_PD_RANGE && inArc(me.heading, dx, dy, PEW_ARC_COS) && nextInt(state.rng, HUNTER_PD_ODDS) === 0) {
+      const aim = pewLead(state, i, torp.x, torp.y, torp.vx, torp.vy);
+      if (aim >= 0) return aimError(state, aim);
+    }
+  }
+  const cx = crew.x - me.x, cy = crew.y - me.y;
+  if (!crew.active || cx * cx + cy * cy > PEW_RANGE * PEW_RANGE || !inArc(me.heading, cx, cy, PEW_ARC_COS)) { h.pewBurst = 0; return -1; }
+  if (h.pewBurst === 0) {
+    if (state.systems[i]!.pewCharge < pewFull(def)) return -1;   // after a burst it waits for every third
+    h.pewBurst = def.shots; h.pewClock = 0;
+  }
+  if (h.pewClock > 0) return -1;
+  const aim = pewLead(state, i, crew.x, crew.y, crew.vx, crew.vy);
+  if (aim < 0) return -1;
+  h.pewBurst--; h.pewClock = HUNTER_PEW_GAP;
+  return aimError(state, aim);
+}
+
 /** Ship i's input for this tick (the duel's hunter is slot 1), against its locked target. Updates the hunter's own state
  *  (trail, repair timers, scheduled release). The trail is still recorded, but since its missile homes by itself (homing
  *  torpedo spec) nothing reads it. Before it turns hostile (`hostileAt` −1, Sci-1 spec §4.2, owner decision 2026-11-17)
- *  it holds: no thrust, no turn, no charge, no launch. */
+ *  it holds: no thrust, no turn, no charge, no launch. W-1: it fires the pew by hunterPew (defence before attack). */
 export function hunterThink(state: TacticalState, i = 1): ShipInput {
   const h = state.hunter, me = state.ships[i]!, mine = state.systems[i]!, target = mine.target, crew = state.ships[target]!, crewSys = state.systems[target]!;
   h.trail[2 * h.trailHead] = crew.x; h.trail[2 * h.trailHead + 1] = crew.y; h.trailHead = (h.trailHead + 1) % HUNTER_TRAIL_TICKS;
@@ -106,7 +145,7 @@ export function hunterThink(state: TacticalState, i = 1): ShipInput {
       }
     }
   }
-  if (!weapons) { h.fireAt = -1; return input; }
+  if (!weapons) { h.fireAt = -1; h.pewBurst = 0; return input; }   // W-1: an unattended Weapons ends a burst
 
   input.laserLock = crewSys.rooms[Room.Shields] < 2 ? Room.Shields : Room.Weapons;
   if (!missileOf(state, i)) {   // its missile homes by itself (homing torpedo spec); none in flight, it charges and launches
@@ -117,5 +156,6 @@ export function hunterThink(state: TacticalState, i = 1): ShipInput {
     } else h.fireAt = -1;
     if (canLaunch(state, i) && state.tick - h.lastLaunch >= HUNTER_MISSILE_COOLDOWN_TICKS) input.missileLaunch = true;   // stepDuel starts the cooldown only if it launches
   }
+  input.pewAim = hunterPew(state, i);   // W-1: attended and hostile; its own torpedo in flight does not stop the pew
   return input;
 }

@@ -204,3 +204,11 @@ export const PEW_ARC_COS = 0.5;
 export const PEW_RANGE = PEW_SPEED * PEW_LIFE * DT;
 /** W-1 (pew pew spec §1): the Hunter's ticks between two rounds of one attack burst. */
 export const HUNTER_PEW_GAP = 12;
+/** W-1 (pew pew spec §1): the Hunter's seeded aim error, ±HUNTER_PEW_ERROR degrees, in fine heading units (rounded down). */
+export const HUNTER_PEW_ERROR = 4;
+export const HUNTER_PEW_ERROR_STEPS = Math.floor((HUNTER_PEW_ERROR / 360) * AIM_STEPS);   // 728
+/** Point defence: a crew torpedo within HUNTER_PD_RANGE inside the cone is tried for with HUNTER_PD_CHANCE a second, one
+ *  roll a tick that succeeds 1 in HUNTER_PD_ODDS (120 at 60 Hz). */
+export const HUNTER_PD_RANGE = 300;
+export const HUNTER_PD_CHANCE = 0.5;
+export const HUNTER_PD_ODDS = Math.round(1 / (HUNTER_PD_CHANCE * DT));
