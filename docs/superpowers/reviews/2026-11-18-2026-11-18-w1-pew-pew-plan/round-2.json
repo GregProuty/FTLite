@@ -1,0 +1,68 @@
+{
+  "verdict": "ready with P2s",
+  "findings": [
+    {
+      "severity": "P2",
+      "title": "Task 8 Step 5's flightPointer import instruction says to replace three lines while also saying two of them stay",
+      "claim": "The step says 'Its first import line and the two after it become' and then gives three lines (consoleLayout, readoutModel, theme). The parenthetical says the tacticalModel and resolution imports stay. But in flightPointer.ts the two lines after the first import are exactly the tacticalModel and resolution imports (L4-5). A subagent that follows the sentence literally replaces L3-5 and drops `headingOf`, `pickRadius`, `INTERNAL_W` and `INTERNAL_H`, which flightPointer and the new onWeaponsMap both use, so tsc fails.",
+      "evidence": "plan L2230-2236 (the 'first import line and the two after it become' sentence with the 'stay' parenthetical); src/renderer/src/app/duel/flightPointer.ts:L3-5 (consoleLayout, then tacticalModel, then resolution); flightPointer.ts:L21, L43-44 (INTERNAL_W/H, pickRadius and headingOf in use)",
+      "why": "The plan is executed verbatim. The sentence and its parenthetical contradict each other, and one reading does not compile.",
+      "fix": "Reword to: 'Line 3 (the consoleLayout import) becomes the first line below, and the readoutModel and theme imports are inserted right after it. Lines 4-5 (tacticalModel, resolution) stay unchanged.'"
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "Task 4 Step 5(c) appends 'pewFire' to tests/ftlTargeting.test.ts:169, which currently reads the old four-command list. The file is in both Step 6's run and Step 7's git add."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "onWeaponsMap mirrors onFlightMap. It covers TABS, SIDE/SIDE_H, the Weapons STATION rect, CONTACT while shown, and the status table at PAD+LINE*min(rows,READOUT_ROWS)+PAD, which matches ReadoutPanel.tsx:L46-47 with help empty on console. pewClick gates on it, passing readoutRows with the same args as scene.ts:L286, and the new contactScene test covers the PEW row and tab strip. One new nit in the import instruction is raised separately."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "The assertions now derive from HUNTER_PEW_ERROR and HUNTER_PD_CHANCE, with DT exported from sim/tuning.ts:L3. HUNTER_PEW_GAP is still imported and used at plan L1387, so the import is not unused. Task 6 Step 6 re-pins PD_SEED and adds the file to git add."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "The ./science and ./weapons imports are kept in the block, with an explicit 'replace lines 5-15 whole'."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "The full replacement of duelSounds.ts L34-37 (gunHit, pewFire, pewHit, closing brace) is given and matches the current file. The hitsCrew line on L38 stays."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "A Hound stop rule is added (item 6). Item 7 names HUNTER_PEW_ERROR, HUNTER_PEW_GAP and HUNTER_PD_CHANCE as the Valkyrn knobs. Every kind (a) test is re-pinned, the duelScripted fallback is added, and each re-pinned file is added to git add."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "Task 10 Step 3 and the self-review now say test:determinism covers the sector only. The duel/pew cross-runtime check is reported as not verified."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "The help line and sit card gain L-CLICK MAP PEW, and the tests are updated. The new line is the same character count as the longest old line. The existing width loop (duelReadout.test.ts:L109) still guards it, and no test pins the old weapons help list exactly."
+    }
+  ],
+  "verified": [
+    "flightPointer.ts exports onFlightMap with local Point/Rect/inside (L7-9), so onWeaponsMap can reuse them.",
+    "consoleLayout exports CONTACT, SIDE, SIDE_H, STATION, STATUS, stationTop, TABS and TABS_RIGHT (consoleLayout.ts L7-33). READOUT_ROWS (readoutModel.ts:L175) and theme LINE/PAD (theme.ts L26, L28) exist.",
+    "readoutModel.ts imports nothing from flightPointer, so the new import adds no cycle (readoutModel.ts L5-17).",
+    "scene.ts already has readoutRows imported (L19). onConsole, view, source.active(), contact.state() and cam! are all in scope at the click block (L176-182, L281).",
+    "duelSounds.ts L34-37 is exactly the gunHit branch that the plan's replacement reproduces.",
+    "tests/duelReadout.test.ts:L93-97 checks only 'F TORPEDO' and no STEER/MISSILE, so the reworded help stays compatible. The sit card tests (crewSeats.test.ts:31, feelPresentation.test.ts:202, feelUi.test.tsx:64-71) do not pin the weapons keys list."
+  ],
+  "not_verified": [
+    "The exact pixel width (textPx) of 'L-CLICK MAP PEW   F TORPEDO' against READOUT_W - 2*PAD; the existing loop test will catch it at execution.",
+    "Whether contact.state() is non-null exactly when the window is shown at the Weapons seat. The plan uses state() rather than the later-computed `shown` (scene.ts:L209); the difference would only matter for one frame around opening or closing.",
+    "The probe and re-pin outcomes in Task 6, which can only be known by running it."
+  ]
+}

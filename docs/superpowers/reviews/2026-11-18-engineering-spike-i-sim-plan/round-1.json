@@ -1,0 +1,97 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Closed doors stop the scripted pair's BFS, so scripted golden, oracle and gate runs degenerate and duelScripted crashes",
+      "claim": "Task 6 makes every door start Closed and stops filling HeldOpen. The scripted pair plans its walks with bfsPath, which treats a Closed door tile as solid. No task changes that. On the Cutter, which runDuel, the duel golden, the rematch golden and the oracle all use, every spawn is in room U. Navigation is in B, behind several doors. Player 0's path to B comes back null, so walkTo returns NO_HELD and the Helm is never manned. Only the U\u2013W door, which player 0 happens to stand within DOOR_ZONE of, ever opens. Repair and Medbay walks across other doors fail the same way. The Valkyrn pilot walks with the same walkTo.",
+      "evidence": "plan L112 (Decision 14), plan L1369-1384 (Task 6 Step 3); src/renderer/src/sim/duel/scripted.ts:L158-L182 (bfsPath uses solidAt; the comment at L160 says 'doors are held open in the duel'); src/renderer/src/sim/grid.ts:L14-L21 (solidAt: a door edge is solid unless doorIsOpen); cutter.json:L533-L550 (all spawns in U) and L470 (navigation in B); tests/duelScripted.test.ts:L35 (`bfsPath(...)!` then `for (const next of path)`, which throws a TypeError on null); scriptedPilot.ts:L18, L129-L133 (the pilot uses walkTo).",
+      "why": "Task 12 would bless goldens where the bot crew never flies, and the report's gate table would measure a crew that can't reach its consoles. The fallout rule (plan L48-L52) gives executors no class for this. duelScripted crashes, which counts as a 'bug: fix the sim code' with no guidance on the fix. Two executors would fix it differently, or file it as kind (b)/(c).",
+      "fix": "Add a step to Task 6. Make the bots' path planning treat door tiles as walkable whatever their state, because auto doors open within DOOR_ZONE once movement brings the crew next to them. For example, use `derived.wallTile[i]` (plus bounds) in bfsPath and goalTiles instead of solidAt, and update the L160 comment. Then add a test: on the Cutter with closed doors, an unseated scripted pair reaches Navigation and Weapons within N ticks."
+    },
+    {
+      "severity": "P1",
+      "title": "The scripted Valkyrn pilot still asks for throttle 4, and Decision 16 only clamps scripted.ts",
+      "claim": "After Task 8 the start cap is 3 (Engines 3 bars), and the step refuses a throttle above the cap with `unavailable`. scriptedPilot.ts sends THROTTLE_MAX from four places and pushes the command whenever the level differs from d.throttle. runValkyrnDuel calls requireApplied, which throws on any non-applied result, and scriptedPilot.test.ts asserts every result is applied. Task 8 Step 7 clamps only the scripted pair's level.",
+      "evidence": "plan L114 (Decision 16), plan L2079-2094 (Task 8 Step 7, scripted.ts only), plan L2070 (throttle above cap is unavailable); src/renderer/src/sim/duel/scriptedPilot.ts:L79, L86, L92, L104, L139; tests/helpers/valkyrnGate.ts:L34 (requireApplied); tests/helpers/scriptedDuel.ts:L39-L46 (throws on any non-applied status); tests/scriptedPilot.test.ts:L25.",
+      "why": "The Valkyrn gate in tests/duelGates.test.ts:L50 and scripts/valkyrn-telemetry.ts throw instead of failing a band, so the fallout rule's kind (c) skip doesn't fit. scriptedPilot.test.ts fails. The executor has to invent the fix.",
+      "fix": "In Task 8 Step 7, also clamp the pilot. Have `levelOf`, or the `flight()` result, apply the same `throttleAllowed(sys, wanted) ? wanted : wanted > 0 ? throttleCap(sys) : 0` rule before the `f.level !== d.throttle` check at scriptedPilot.ts:L139. Add tests/scriptedPilot.test.ts and tests/duelGates.test.ts to Task 8 Step 8's run list."
+    },
+    {
+      "severity": "P1",
+      "title": "tests/duelModules.test.ts's hash-coverage helper doesn't flip pewTargeted, so the test fails after Task 9b",
+      "claim": "The test 'every space, ship, science, presence and repair field changes the duel hash' changes each field's first value with changedFirst. That helper flips only the flags its regex names. Everything else gets v+1. pewTargeted becomes a flag field in Task 9b (FLAGS), and on the crew slot it is true at the start and stays true. Writing 2 into a flag() field stores `2 !== 0`, which is true again, so the hash doesn't change and the assertion fails on 'ship.systems.0.pewTargeted'. Task 9b neither updates the regex nor runs duelModules.test.ts.",
+      "evidence": "plan L2561 (pewTargeted added to FLAGS), plan L2530 (crew pewTargeted starts true), plan L2895 (Task 9b Step 8's run list omits duelModules.test.ts); tests/duelModules.test.ts:L58 (changedFirst regex `active|released|fireHeld|laserTargeted|gunLocked`), L101-L117 (the loop over DUEL_MODULES.slice(0, 5), which includes the ship module); src/renderer/src/sim/module.ts:L32-L33 (a flag write is `values[offset] !== 0`).",
+      "why": "Brief item 8: a task leaves a listed coverage test red, and the failure is in the coverage rule itself, not kind (a)/(b)/(c) fallout.",
+      "fix": "In Task 9b Step 4, add `pewTargeted` to the changedFirst regex at tests/duelModules.test.ts:L58, with a spec \u00a710.3 comment, and add tests/duelModules.test.ts to Step 8's run list. Optionally widen L107's `slice(0, 5)` to cover the new power module as well (see the P3)."
+    },
+    {
+      "severity": "P1",
+      "title": "Task 11's determinism script never applies an engineering command, because both players are away",
+      "claim": "play() merges passiveInput(d), which sends presence false for both players on tick 0, with the SCRIPT commands. Task 5's admission sends every shipPower, shipCoolant, shipDoor and shipAirlock from an absent player to `unavailable`. So none of the scripted power moves, coolant, held door or airlock ever applies. The test ignores the results and passes, yet it claims that 'heat, venting and spread all run'.",
+      "evidence": "plan L3273-3292 (SCRIPT and play), plan L3256-3260 (the claim); plan L1212 and L1222 (`engineer` requires `d.present[pid] === true`, otherwise `unavailable`); tests/helpers/scriptedDuel.ts:L33-L36 (passiveInput sets both players away on tick 0).",
+      "why": "The spec \u00a78 determinism deliverable ('with the new systems running') ends up unproved for overdrive heat, coolant, held doors and airlock venting. These are the paths most likely to break lockstep, and Task 12's report would state a PASS that doesn't cover them.",
+      "fix": "Keep both players present: use an input with empty held arrays and no presence commands, or the scripted pair. Assert that every SCRIPT command's result is 'applied'. Lengthen the overdrive window, or set coolant 0, so that at least one overheat draw happens inside the 1800 ticks. Also assert that `d.power.failed` or heat reached HEAT_MAX in one seed."
+    },
+    {
+      "severity": "P2",
+      "title": "Consumers of the beam-only helpers aren't adapted to the dark beam at the start",
+      "claim": "After Task 9b the beam starts at 0 bars, so laserFull(t, 0) and laserOffline(t, 0), which default to the beam, describe a laser that never charges at the start. The scripted Helm lines up only when `laserFull(t,0) && laserTargeted`, so it never lines up. The gunner only ever re-locks the beam, so pew pew stays on Shields. Telemetry's weaponsIdleTicks reads the beam. The render situation model shows 'WEAPONS OFFLINE' whenever the beam is dark. None of this is listed as a deliberate change.",
+      "evidence": "plan L2655-2658 and L2685-2688 (the defaults are 'beam'), plan L399 (spec \u00a710.3: the beam starts dark); src/renderer/src/sim/duel/scripted.ts:L118, L271, L276; src/renderer/src/sim/duel/telemetry.ts:L161; src/renderer/src/render/duel/situationModel.ts:L46, L187.",
+      "why": "The goldens and the report's gate table would measure a bot crew that never aims pew pew, the weapon it actually fires. Between Part i and Part ii, the app would also say WEAPONS OFFLINE at every round start.",
+      "fix": "Add a Decision. Either have the scripted Helm and gunner treat pew pew as the primary weapon (line up on `laserFull(t,0,'pew') && pewTargeted`; send `laserLock {weapon:'pew'}` when `pewLock !== want`), and have telemetry count either barrel, or explicitly record these as known spike gaps in the report and hand situationModel to Part ii."
+    },
+    {
+      "severity": "P2",
+      "title": "The derelict's Shield loot is silently cancelled by the bar cap",
+      "claim": "applyLoot (Loot.Shield) raises crew shields to at most class layers + 1, 'one layer over the class layers'. Task 3's crew shield block then drops any layers above min(class layers, SHIELD_LAYERS_BY_BARS[bars]) on the next tick, so the loot's extra layer disappears at once. Decision 6 mentions the +1 validator bound but not that the loot is lost.",
+      "evidence": "plan L588-593 (Task 3: `if (s.shields > cap) { s.shields = cap; ... }`), plan L104 (Decision 6); src/renderer/src/sim/tactical/science.ts:L74 (`sys.shields = Math.min(c.shields.layers + 1, sys.shields + 1)`).",
+      "why": "This is an undocumented gameplay deviation in a spike whose report is meant to say what changed. A Shield-loot derelict becomes worthless.",
+      "fix": "Either cap at `cap + (shields above class layers granted by loot)`, for example by letting the crew keep a layer above the cap only while `shields > c.shields.layers`, or add a Decision saying the Shield loot is nullified in the spike and note it in the report."
+    },
+    {
+      "severity": "P3",
+      "title": "Some quoted edits and line numbers don't match the source text",
+      "claim": "Task 6 Step 5's comment replacements quote text that runs across line breaks and `//` / ` *  ` prefixes in the real files, so a literal search won't find them. Task 2 Step 6 cites lines 121-122 of tacticalDeterminism.test.ts, but the comment is at L122 and the `2 * 37` is at L123. Task 4 cites duelModules 'Line 40' for duelNames, which is at L42.",
+      "evidence": "plan L1446 vs src/renderer/src/sim/duel/fire.ts:L2-L4; plan L1450 vs src/renderer/src/sim/duel/tuning.ts:L34-L35; plan L512 vs tests/tacticalDeterminism.test.ts:L122-L123; plan L962 vs tests/duelModules.test.ts:L42.",
+      "why": "These are comment and line-number nits. The plan does say to match edits by quoted text, but these quotes aren't literal.",
+      "fix": "Quote the comment text with its real line breaks and prefixes, or describe the edit ('reword the header comment to \u2026'), and correct the cited line numbers."
+    },
+    {
+      "severity": "P3",
+      "title": "Task 4 knowingly leaves a touched test red, and the hash test doesn't cover the power module",
+      "claim": "Task 4 Step 8 expects duelCheckpoint to fail until Task 5, which contradicts the Global Constraint that every task's listed touched tests are green. The duelModules hash-movement loop covers only DUEL_MODULES.slice(0, 5), so the new power fields are never checked field by field.",
+      "evidence": "plan L88, plan L974; tests/duelModules.test.ts:L107.",
+      "why": "The constraint is inconsistent, and the new module has a coverage gap.",
+      "fix": "Either move the duelCheckpoint example additions into Task 4, or exempt it explicitly in L88. Extend the loop to every non-interior module (`DUEL_MODULES.filter(m => m.module.id !== 'interior')`)."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "Bless rules: blessGuard.ts:L26-L27 allows a same-version bless with no proofs. Task 1's 53\u219254 bump goes through verify and the duel oracle. MIGRATIONS has no entry for 53 (duelOracle.ts:L90-L116), so the alias plan is identity, and Task 1 adds no fields, so the version-only bump holds. Task 12's same-version bless is allowed. bless-golden.ts:L51-L63 runs runDuel and runRematch, both of which call requireApplied.",
+    "Task 2's quoted edits match the source: state.ts:L67-L68 (gunShots/gunHits plus the closing brace), L175 (systemsFor's first line), L178-L180, L184-L185; hash.ts:L121 (gunRoomWear vector), L230-L231 (systemsRules tail), L194 (the clone's systems map). The ship field count of 37 per slot, giving 42/45/51, checks out (SYSTEMS_HEAD 3 + rooms 3 + TAIL 28 + gunRoomWear 3).",
+    "No import cycles: bars.ts imports only `type ShipSystems`; state.ts already imports hash.ts (L10); power.ts, engines.ts, weaponSlots.ts, sensors.ts and hazards.ts import only `type DuelState`; science.ts imports nothing from weapons.ts (science.ts:L4-L7).",
+    "The validator error for an out-of-range bar names the field ('duel snapshot tactical systems.0.bars: out of range'), so engBars' /systems\\.0\\.bars/ matches (hash.ts:L256, L265).",
+    "Task 3's quoted shield lines match weapons.ts:L169-L170. The shield tables give a 1-layer start (SHIELD_LAYERS 2, SHIELD_LAYERS_BY_BARS[2] = 1).",
+    "Task 4: the createDuel return line matches state.ts:L110; StationKind.LifeSupport exists (stationKinds.ts:L2); the Hound's points give systemRooms R, O, E, O (Science in O), L (hound.json:L165-L207, duel/tuning.ts:L18-L22). The snapshot's quoted offset line matches snapshot.ts:L149 and the held-heading check matches L178. The heat numbers match tuning.ts:L77-L83, so +2/+1/0, \u22124 and the failed cooling of 237 are right. chance is `nextFloat < p` (shared/rng.ts:L24-L26), so the probe test holds.",
+    "A rematch rebuilds the duel through createDuel (step.ts:L125), so power, systemRooms and the bars reset every round.",
+    "Task 5: the codec quote (rematch then setPaused) is unique at codec.ts:L126-L127; contracts.ts:L96-L97 matches; the duelCheckpoint examples are at L143; COMMAND_REASONS contains every reason the power module names (contracts.ts:L104-L108); stepDecided answers duel-decided for anything in DUEL_KINDS (step.ts:L159).",
+    "Doors fail-safe: every duel layout has an online Doors station at allocation 1 (hound.json:L190-L195; cutter, valkyrn and skiff have one too), and stationOnline is failed == 0 and level > 0 (stations.ts:L8-L10). So doorSystem's fail-safe never fires, as spec \u00a75 requires.",
+    "Task 6: the quoted lines match step.ts:L294-L295 and L297, duel/state.ts:L93-L95 and fire.ts:L10-L12; createSimState takes `options.quirk` (state.ts:L104, L138-L139); the quirk 3 hooks are neutral (quirks.ts:L15, L17). The E room's only edge is edge 0 (hound.json:L65-L72), so the fire-spread draw test makes one draw per fireStep.",
+    "Task 7: activateBreach and repairBreach exist (breach.ts:L4-L14); derived.siteTile and siteRoom exist (derived.ts:L15, L56); inReachOfTile uses REACH 1.5 to the tile square, so the O, Q and R site tiles are within reach of the placed positions; the healthPhase quote matches health.ts:L101-L103.",
+    "Task 8: the physics.ts quotes (L29, L33, L61-L64) and predict.ts quotes (L5, L31, L34) match; every class's engineFactor[0] is 1 (tactical/tuning.ts:L45, defs.ts:L90); the scripted.ts:L319 quote matches.",
+    "Task 9b keeps the Hunter byte-identical. The non-crew paths of tickBarrel, stepBurst, fireLaser, shoot, canLaunch and the magazine reduce to today's code (weapons.ts:L118-L125, L160-L172). barrelShots gives the Hunter HUNTER_LASER_SHOTS = 1 (tactical/tuning.ts:L82). The torpedo levels rule for a non-crew owner (min(2, room + 1)) equals today's `if (< 2) ++` (missiles.ts:L93).",
+    "Task 9b fields: SYSTEMS_TAIL and FLAGS quotes match hash.ts:L21-L24. Clone coverage holds: the scalar pew fields are spread and then rewritten, and the bars and weaponPower vectors get fresh arrays. Validator rules exist for every new field, and the Hunter's slot holds zeros.",
+    "Task 9b step.ts quote matches L216-L218; the contracts laserLock and laserCharge lines match L79 and L82; the codec lines match L117 and L119.",
+    "Task 10: the gates read start-of-tick state, and scriptedInput is built from the same state before stepDuelTick. The gunner returns before any lock when the target is unseen, so it never sends a refused laserLock or torpLock. The scripted pair sends no contactScan or designate. The quoted designate and contactScan lines match step.ts:L258-L259 and L267, and the scanStep lines match science.ts:L49-L50.",
+    "Step order and rng.hazards order (spec \u00a77 L246-L261) are implemented in this order: ship commands after the Sci-1 loops; clampThrottle; repairPhase; movement; doorSystem; stepDuel; applyHitDamage; firePhase (cadence, then the fire and breach rolls); clamp; the hazard tick (injection, oxygenStep, fireStep with its spread draws, duelHeatStep with its overheat draws, then Task 10's clamp); healthPhase (fire, then low air)."
+  ],
+  "not_verified": [
+    "Whether the Hound's kEff makes an open airlock vent room L below 10 % within 300 ticks (engHazards). I didn't read derived.ts's kEff computation.",
+    "Whether the 'fire starves below 10 % air within 240 ticks' test holds against the closed-door leak into Q. It depends on kEff, which I didn't compute.",
+    "Whether facing()'s `st.map = {...st.map, asteroids: []}` with the original broad-phase grid is safe for lineOfSight. The plan says it is the weaponsUpdate.test.ts idiom; I didn't open that file.",
+    "I didn't run `npx tsc --noEmit` (I had no shell), so the compile claims come from reading the code: union-key writes in the KEYS table, the narrowing in the `weapon` check.",
+    "Whether render or app code switches exhaustively on crewHurt.cause or on DuelCommand kinds outside src/renderer/src/sim. I didn't grep the app/ and ui/ trees.",
+    "I read cutter.json beyond the manifest, and scriptedPilot.ts, valkyrnGate.ts, scriptedDuel.ts, duelScripted.test.ts, scripts/bless-golden.ts, grid.ts, quirks.ts, interact.ts, breach.ts and defs.ts, to verify findings 1 and 2 and the bless rules."
+  ]
+}
