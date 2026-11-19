@@ -25,6 +25,7 @@ import { acquireOnlineLock, type OnlineLock } from './app/web/onlineLock';
 import { installAudioUnlock } from './app/audioUnlock';
 import { createIndexedDbDuelRecordStore } from './app/web/duelRecordStore';
 import { downloadText } from './app/web/download';
+import { installLeavePrompt, leaveWanted } from './app/web/leavePrompt';
 import type { DuelPlaytestRecord } from './net/duelRecord';
 import { validatePageOnlineConfig } from '../../shared/onlineConfig';
 import { createOnlineRendererSession } from './app/onlineSession';
@@ -194,6 +195,7 @@ async function startApp(): Promise<void> {
   const uiRoot = document.createElement('div'); uiRoot.id = 'ui'; document.body.append(uiRoot);
   const unmountUi = await mountUi({ el: uiRoot, store, actions, images });
   const offAudio = installAudioUnlock(window, audio);   // web build spec §7.3: the first gesture (and every focus) resumes a suspended AudioContext
+  const offLeave = web ? installLeavePrompt(window, () => leaveWanted(store.getState())) : undefined;   // web build spec §7.6
   window.addEventListener('blur', () => session.pause());
   document.addEventListener('visibilitychange', () => {   // Audio-i spec section 5: a hidden window is paused and silent
     if (document.hidden) { session.pause(); audio.suspend(); }
@@ -202,10 +204,17 @@ async function startApp(): Promise<void> {
   window.addEventListener('focus', () => session.resume());
   renderer.app.ticker.add(() => session.frame());
   renderer.app.ticker.add(() => audio.tick(performance.now() / 1000));   // Audio-i spec section 5: the music, the hum and the fire loop
-  window.addEventListener('beforeunload', () => {
-    offPrepareExit?.(); offVisibility?.(); offGuards(); offPort?.(); offStatus?.(); offStrip(); setBlocked(true); offBlocked(); actions.dispose(); unmountUi();
+  // Teardown when the page is really going (web build spec §7.6): not on beforeunload, where a "Stay" answer to the leave
+  // prompt would keep a dead game; a back-forward-cache pagehide only suspends (the page session handles it).
+  let tornDown = false;
+  window.addEventListener('pagehide', (event) => {
+    if (event.persisted || tornDown) return;
+    tornDown = true;
+    offLeave?.(); offVersion?.(); offGuards(); pageFullscreen?.dispose(); offAudio();
+    offPrepareExit?.(); offVisibility?.(); offPort?.(); offStatus?.(); offStrip(); setBlocked(true); offBlocked(); actions.dispose(); unmountUi();
     session.dispose(); bridge?.dispose(); keyboard.destroy();
-  }, { once: true });
+    if (lock.state === 'held') lock.release();   // review R1-F2: hand ftlite-online on at once, so a reload gets it
+  });
 }
 
 /** The dev flight view (H-1 spec §9): the renderer and its letterbox, but no sector session. */

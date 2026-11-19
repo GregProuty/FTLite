@@ -28,7 +28,7 @@ export async function acquireOnlineLock(locks: Pick<LockManager, 'request'> | un
       locks.request(ONLINE_LOCK_NAME, options, lock => {
         if (!lock) { resolve('busy'); return undefined; }
         if (gaveUp) { resolve('unavailable'); return undefined; }   // granted after start-up gave up: let it go at once
-        resolve({ release }); return held;   // kept until release() (wired in Task 10's pagehide teardown, not yet) or the page goes away
+        resolve({ release }); return held;   // kept until release() (wired in main.ts's pagehide teardown) or the page goes away
       }).catch((error: unknown) => { const name = (error as { name?: string } | null)?.name; resolve(name === 'AbortError' || name === 'TimeoutError' ? 'busy' : 'unavailable'); });
     } catch { resolve('unavailable'); }
   });
