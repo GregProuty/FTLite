@@ -19,14 +19,16 @@ export function burningRoomCount(state: SimState): number {
   let n = 0; for (const f of state.rooms.fire) if (f > 0) n++; return n;
 }
 
-/** Growth/shrink by room oxygen, then one spread roll per burning edge side, in edge order (spec §5 Fire). */
-export function fireStep(state: SimState): void {
+/** Growth/shrink by room oxygen, then one spread roll per burning edge side, in edge order (spec §5 Fire). `vented`
+ *  (the duel's ventedRegion, owner 2026-11-19): a room open to space shrinks below FIRE_GROW_FRAC, with no dead band,
+ *  since its air keeps draining; the sector game passes none. */
+export function fireStep(state: SimState, vented?: Uint8Array): void {
   const d = state.derived, fire = state.rooms.fire, dt = HAZARD_DT;
   for (let r = 0; r < fire.length; r++) {
     if (fire[r]! <= 0) continue;
     const frac = state.rooms.o2[r]! / d.volume[r]!;
     if (frac > FIRE_GROW_FRAC) fire[r] = Math.min(FIRE_CAP, fire[r]! + FIRE_GROW_RATE * dt);
-    else if (frac < FIRE_SHRINK_FRAC) fire[r] = Math.max(0, fire[r]! - FIRE_SHRINK_RATE * dt);
+    else if (frac < (vented?.[r] ? FIRE_GROW_FRAC : FIRE_SHRINK_FRAC)) fire[r] = Math.max(0, fire[r]! - FIRE_SHRINK_RATE * dt);
     if (fire[r] === 0) state.rooms.fireRepair[r] = 0;
   }
   for (let e = 0; e < d.edgeA.length; e++) {
