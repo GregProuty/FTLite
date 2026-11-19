@@ -2022,10 +2022,11 @@ The beam starts dark (spec §10.3), and today's `laserSituation` (`situationMode
 
 `laserOffline` and `laserFull` are already imported (Part i gave them a `barrel` argument). Add `import { trimmedWeaponPower, WeaponSlot } from '../../sim/tactical/bars';`, then add above `laserSituation`:
 ```ts
-/** Engineering spike §10.3: every crew weapon is dark (the beam, pew pew and the torpedo) or the Weapons Room is at 2. */
+/** Engineering spike §10.3: every crew weapon is dark (the beam, pew pew and the torpedo). Bars only, one source of truth:
+ *  a level-2 Weapons Room zeroes every weapon's trimmed bars (Part i's trimmedWeaponPower reads effectiveBars). */
 export function weaponsOffline(t: TacticalState): boolean {
   const sys = t.systems[CREW_SLOT];
-  return sys.rooms[Room.Weapons] >= 2 || (laserOffline(t, CREW_SLOT, 'beam') && laserOffline(t, CREW_SLOT, 'pew') && trimmedWeaponPower(sys)[WeaponSlot.Torpedo] === 0);
+  return laserOffline(t, CREW_SLOT, 'beam') && laserOffline(t, CREW_SLOT, 'pew') && trimmedWeaponPower(sys)[WeaponSlot.Torpedo] === 0;
 }
 ```
 In `laserSituation`, replace
@@ -2061,22 +2062,46 @@ with
 ```ts
     if (control === 'fire') return !laserOffline(t, CREW_SLOT, 'beam') ? null : weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'BEAM UNPOWERED';   // Space fires the beam (spec §10.3)
     if (sys.magazine <= 0) return 'NO TORPEDOES';
-    if (sys.rooms[Room.Weapons] >= 2) return 'WEAPONS OFFLINE';
-    if (trimmedWeaponPower(sys)[WeaponSlot.Torpedo] === 0) return weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'TORPEDO UNPOWERED';
+    if (trimmedWeaponPower(sys)[WeaponSlot.Torpedo] === 0) return weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'TORPEDO UNPOWERED';   // a level-2 Weapons Room lands here too
 ```
+The LAUNCH checks are now flying, the magazine, the torpedo's trimmed bars, then range. Check that Part i's `canLaunch` reads exactly these (`git grep -n "export function canLaunch" -A4 -- src/renderer/src/sim/tactical/weapons.ts`), so `refusal(d, 'launch') === null` exactly when `canLaunch` is true. If it reads anything else, stop and report.
+
+Update `tests/feelIiModels.test.ts` (it pins the old reasons on the Cutter, whose crew starts pew pew 1, beam 0, torpedo 1):
+- Line 213: the round-start FIRE refusal is now BEAM UNPOWERED. Replace
+```ts
+      expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual([null, 'OUT OF RANGE']);
+```
+with
+```ts
+      expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual(['BEAM UNPOWERED', 'OUT OF RANGE']);   // Engineering spike §10.3: the beam starts dark
+```
+- Line 218: the offline case by bars. FIRE is `weaponsOffline` (every weapon dark) → WEAPONS OFFLINE, and LAUNCH passes the magazine (2) and reaches the torpedo's 0 bars → WEAPONS OFFLINE. Replace
+```ts
+      sys.rooms[Room.Weapons] = 2; expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual(['WEAPONS OFFLINE', 'WEAPONS OFFLINE']); sys.rooms[Room.Weapons] = 0;
+```
+with
+```ts
+      sys.weaponPower.fill(0); expect([refusal(d, 'fire'), refusal(d, 'launch')]).toEqual(['WEAPONS OFFLINE', 'WEAPONS OFFLINE']); sys.weaponPower.splice(0, 3, 1, 0, 1);   // Engineering spike §10.3: every weapon dark
+```
+- Lines 233-237 (LAUNCH refused exactly when canLaunch says no) stay as they are. The loop's `sys.rooms[Room.Weapons] = (k >> 2) % 3` still covers level 2: it zeroes the torpedo's trimmed bars, which both `canLaunch` and `refusal` read. The FIRE line holds because the round-start FIRE reason is BEAM UNPOWERED, never TORPEDO FLYING, when no torpedo flies.
+
 In `consoleModel.ts`'s `weaponsPanel`, replace `laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), laserOffline(t, 0))` with `laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), weaponsOffline(t))`, and add `weaponsOffline` to its `./situationModel` import.
 
 Append to `tests/engineeringWeapons.test.ts`:
 ```ts
 import { laserSituation, refusal, weaponsOffline } from '../src/renderer/src/render/duel/situationModel';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
+import { lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
+import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
 
 describe('WEAPONS OFFLINE only when no weapon can fire (spec §10.3)', () => {
   it('round start (pew pew 1, beam 0, torpedo 1): not offline; FIRE says BEAM UNPOWERED; every weapon dark: WEAPONS OFFLINE', () => {
     const d = createDuel(HOUND, 5), t = d.tactical, sys = t.systems[0], me = t.ships[0]!, e = t.ships[1]!;
     try {
       seatDuelCrew(d);
+      t.map = { ...t.map, asteroids: [] }; t.grid = buildGrid([], t.map.rMap);   // no rocks: the line is clear by construction (nothing steps)
       e.x = me.x + hx(me.heading) * 200; e.y = me.y + hy(me.heading) * 200; e.active = true;   // dead ahead, in range and arc
+      expect(lineOfSight(t, me.x, me.y, e.x, e.y)).toBe(true);   // the precondition
       expect(weaponsOffline(t)).toBe(false);
       expect(laserSituation(t).kind).not.toBe('offline');
       expect(refusal(d, 'fire')).toBe('BEAM UNPOWERED');
@@ -2092,11 +2117,9 @@ describe('WEAPONS OFFLINE only when no weapon can fire (spec §10.3)', () => {
   });
 });
 ```
-Check `hx` and `hy` against `sim/tactical/direction.ts` (`tests/duelRuntime.test.ts` imports them). If an asteroid blocks the line at seed 5, the situation reads `blocked`: try seeds 6 to 9 and keep the first that passes.
-
 - [ ] **Step 6: Run the model test**
 
-Run: `npx vitest run tests/engineeringWeapons.test.ts tests/engineeringInput.test.ts tests/duelConsoleModel.test.ts tests/contactController.test.ts tests/duelRuntime.test.ts tests/feelPresentation.test.ts`
+Run: `npx vitest run tests/engineeringWeapons.test.ts tests/engineeringInput.test.ts tests/duelConsoleModel.test.ts tests/contactController.test.ts tests/duelRuntime.test.ts tests/feelPresentation.test.ts tests/feelIiModels.test.ts`
 Expected: PASS. A pre-existing test that pins the old two cards' x positions or the 138 px width (`git grep -n "weaponCard(" -- tests`) is updated to the three-card layout from `weaponCard`, not to literals. Say which tests in the report.
 
 - [ ] **Step 7: Write the failing UI test** `tests/engineeringWeaponsUi.test.tsx`
@@ -2322,7 +2345,7 @@ Expected: no errors (`app/uiProbe.ts`'s fixture compiles, since the new `Weapons
 - [ ] **Step 11: Commit**
 
 ```bash
-git add src/renderer/src/render/duel/consoleModel.ts src/renderer/src/render/duel/situationModel.ts src/renderer/src/ui/duel/DuelUi.tsx src/renderer/src/render/duel/consoleLayout.ts src/renderer/src/render/duel/contactModel.ts src/renderer/src/render/duel/shipControls.ts src/renderer/src/app/duel/input.ts src/renderer/src/app/duel/contactController.ts src/renderer/src/ui/actions.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/ui/duel/WeaponsStation.tsx tests/engineeringWeapons.test.ts tests/engineeringWeaponsUi.test.tsx
+git add src/renderer/src/render/duel/consoleModel.ts src/renderer/src/render/duel/situationModel.ts src/renderer/src/ui/duel/DuelUi.tsx src/renderer/src/render/duel/consoleLayout.ts src/renderer/src/render/duel/contactModel.ts src/renderer/src/render/duel/shipControls.ts src/renderer/src/app/duel/input.ts src/renderer/src/app/duel/contactController.ts src/renderer/src/ui/actions.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/ui/duel/WeaponsStation.tsx tests/engineeringWeapons.test.ts tests/engineeringWeaponsUi.test.tsx tests/feelIiModels.test.ts
 git commit -m "feat(engineering-spike): the Weapons console's pew pew, beam and torpedo with bar pips, and pew pew in the targeting flow" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 (Stage by name any pre-existing test you updated in Steps 6 and 10.)

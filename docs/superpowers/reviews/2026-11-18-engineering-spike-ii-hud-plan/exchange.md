@@ -105,3 +105,66 @@ Confirmed. The heat bar turns hot above 75 %. The breach marker is offset half a
 
 ---
 
+# Round 2 (delta, reviewing f52b8386, effort medium, 152 s, 938040 in / 866564 cached / 13546 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 Step 5b's weaponsOffline and LAUNCH refusal bring back `rooms[Weapons] ≥ 2` as a crew gate, which Part i removed; feelIiModels breaks and is not in any run list
+Step 5b's new `weaponsOffline` starts with `sys.rooms[Room.Weapons] >= 2 ||`. Its `refusal` rewrite also keeps `if (sys.rooms[Room.Weapons] >= 2) return 'WEAPONS OFFLINE';` for LAUNCH. Part i makes the crew's gates bars-only: crew `laserOffline` is `barrelShots === 0`, and crew `canLaunch` is `weaponBars(Torpedo) >= 1`. Part i's fallout rule also names `rooms[Weapons] ≥ 2` as a replaced rule. So with the Weapons room at level 2 and bars still on a weapon, the console reads WEAPONS OFFLINE and refuses LAUNCH while the sim fires and launches. The changed FIRE wording also breaks the existing `tests/feelIiModels.test.ts`, which Step 6 does not run. That file's L213 expects FIRE `null` at round start, but Part ii now gives 'BEAM UNPOWERED' because the beam starts dark. L218 expects WEAPONS OFFLINE for FIRE with `rooms=2`, but FIRE now turns only on the beam's bars. L233-236 asserts `refusal(launch) === null` exactly when `canLaunch` is true, over `rooms` 0..2, and the kept rooms check breaks that. · plan L2026-2029 (`weaponsOffline` with `sys.rooms[Room.Weapons] >= 2 ||`), L2062-2065 (the rooms≥2 LAUNCH line kept), L2101-2102 (Step 6 run list, no feelIiModels); Part i plan L49 (kind (a) lists '`rooms[Weapons] ≥ 2` as the crew's laser gate'), L2771-2774 (crew canLaunch: `weaponBars(s, WeaponSlot.Torpedo) >= 1`), L2784-2786 (crew laserOffline: bars only), L3037 (situationModel belongs to Part ii); tests/feelIiModels.test.ts:213, :218, :233-237; src/renderer/src/render/duel/situationModel.ts:189. · The console gives reasons the sim doesn't act on (the 'never a dead click' rule that feelIiModels guards). The failures first show up in Task 10's full suite, and no recipe there covers them. · Drop `sys.rooms[Room.Weapons] >= 2 ||` from `weaponsOffline`. In `refusal`, delete the kept rooms≥2 LAUNCH line so the torpedo-bars line matches `canLaunch`. Add `tests/feelIiModels.test.ts` to Step 6's run, with the updates spelled out: at L213 set `sys.weaponPower[1] = 1` (beam powered) before asserting `null`, or expect 'BEAM UNPOWERED'; at L218 zero `weaponPower` in place of `rooms[Weapons] = 2` to get WEAPONS OFFLINE; L236 then holds. Name the file in the Step 11 git add.
+
+### [P3] R2-F2 Step 5b's new test leaves the seed and the hx/hy check to execution
+The test hand-places the Hunter 200 ahead. The plan then says 'Check `hx` and `hy` against direction.ts', and if an asteroid blocks the line at seed 5, to 'try seeds 6 to 9'. Both are checks deferred to execution. The first isn't needed: `hx` and `hy` exist at direction.ts:6-7. · plan L2072-2079, L2095; src/renderer/src/sim/tactical/direction.ts:6-7. · Under this review's rules, a check left to execution is a defect. It is small here. · Delete the hx/hy check. Make the line of sight certain in the test instead of searching seeds: deactivate the asteroids before the assertions, or assert `lineOfSight(t, …)` true as a precondition at a fixed seed the author has checked.
+
+## Prior findings
+- R1-F1: resolved — L1827 imports Room. L1847 expects `{ shots: 2, target: Room.Shields, ready: true }`. This matches L1911's mapping and Part i L2627 (pewLock Shields, pewTargeted true, pewCharge = chargeUnits).
+- R1-F2: resolved — L2303-2310 narrows `aim` at DuelUi's FlightStation call site. DuelUi.tsx is in the Files list (L1784) and in the git add (L2325).
+- R1-F3: resolved — L2389-2391 uses the entry `placeMissile` returns. The deferred-assumption bullets are gone.
+- R1-F4: resolved — File table L107 now reads 'modify (T11)'. Task 11 Files (L2678) and Step 4 (L2778-2780) append to Part i's report and keep its sections, which match Part i L235-246. A 'Tests Part ii updated' section was added (L2808-2812).
+- R1-F5: resolved — The script and its steps are gone (L2656-2671). The summary quotes Part i's measurement lines (L2795). A grep finds no stray references to engineering-measure or msPerTick.
+- R1-F6: resolved — L2209 and L2229 call `pewLock?.(-1)` and `weaponPower?.(slot, ±1)`. The conditional note is now a plain statement (L2299).
+- R1-F7: resolved — Task 9 Step 9 (L2633-2641) gives the grep and one recipe (Hunter to +600) and drops the Sensors option. Task 10 Step 1 (L2671) repeats it. The recipe fits contactScene's rig (tests/contactScene.test.ts:51-53, rt.duel.tactical.ships).
+- R1-F8: resolved — Decision 16 (L90) states the coolant-in-header choice. The heat bar turns hot above 0.75·heatMax (L882); PowerColumn has heat and heatMax (L273). The breach marker sits half a tile lower when it shares a fire's tile (L1124-1125), fires are pushed before breaches, and the test expects y + TILE_PX/2 (L1058).
+
+## Verified
+- Step 5b's quoted 'replace' texts match situationModel.ts:46-48, :51 and :187-189 exactly, and consoleModel.ts:110's laserCardReason call matches the quoted text
+- Part i leaves the laserOffline/laserFull defaults at barrel = 'beam' (Part i L2754, L2784), so situationModel's existing calls still match after Part i
+- trimmedWeaponPower and WeaponSlot are exported from sim/tactical/bars (Part i L2329, L2340); pewTargeted and pewBurst are ShipSystems fields (Part i L2619)
+- Traced the new 5b test through the planned code: round start gives 'solution' via pew pew (charge full, targeted); weaponPower[0]=0 gives 'none'; weaponPower[2]=0 gives 'offline' and WEAPONS OFFLINE for both FIRE and LAUNCH; seatDuelCrew is imported (L1832)
+- hx and hy exist (direction.ts:6-7)
+- There is no noUnusedLocals in the tsconfigs, so the leftover laserOffline import in consoleModel is harmless
+- valkyrnViews.test.ts:95-99 is unaffected: there is no laser slot, so laserSituation returns early at line 42 and refusal('fire') goes to gunReason at line 185
+- Task 10 now has no Files and no stale Step 2 or 3 references; Task 11's summary placeholders point at Task 10 Step 1 and Part i's sections
+
+## Not verified
+- Whether the Task 9 Step 9 grep (BRE with `\|` and `\b`) behaves the same in Git for Windows' regex engine; I did not run it
+- How Part i's executor will have left tests/feelIiModels.test.ts:213/:218 (the fallout rule decides that), so the exact pre-Part-ii text of those lines is unknown
+- Whether seed 5 has a clear line of sight 200 units ahead of the Hound's spawn; not run, because the suite must not be run
+
+---
+
+# Round 2 response (plan revised)
+
+Reviewed `round-2.json` against the subject at `1ce915b4`. 2 accepted, 0 rejected, 0 deferred. Every R1 ID is confirmed resolved.
+
+## R2-F1 [P1]: weaponsOffline reintroduces the rooms gate; feelIiModels breaks
+
+Confirmed in part. Part i's trimmedWeaponPower (Part i plan L2340-L2348) reads effectiveBars, so a level-2 Weapons room already zeroes every weapon, and the sim and console would agree. The rooms check is therefore redundant rather than contradictory. It is dropped anyway, so the bars are the one gate. The feelIiModels breakage is real (L213, L218): the exact edits are now spelled out, and the file is in the Step 6 run and the Step 11 add.
+
+## R2-F2 [P3]: Seed and hx/hy deferred
+
+Confirmed (direction.ts:6-7). The note is removed. The test clears the asteroids and asserts lineOfSight as a precondition at seed 5.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-18-engineering-spike-ii-hud.md
+
+<!-- end -->
+
+---
+
