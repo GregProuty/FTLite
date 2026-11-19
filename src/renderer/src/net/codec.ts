@@ -106,7 +106,7 @@ function duelSummaryShape({ uint }: Primitives) {
     repairsStarted: crew, walkingTicks: crew, repairingTicks: crew };
 }
 /** The duel's wire (engine refactor spec §6): its own command kinds plus the core's setPaused, and the duel snapshot
- *  header (sim/duel/snapshot.ts). H-2 adds `rematch` and the `round` event; Artemis-ii adds `throttle`; Feel-ii adds `heading`. */
+ *  header (sim/duel/snapshot.ts). H-2 adds `rematch` and the `round` event; Artemis-ii adds `throttle`; Feel-ii adds `heading`; the Engineering spike adds shipPower, shipCoolant, shipDoor and shipAirlock. */
 export const duelWire: ModeWire<DuelSnapshot> = {
   commands({ index }) {
     return [
@@ -125,6 +125,11 @@ export const duelWire: ModeWire<DuelSnapshot> = {
       z.object({ kind: z.literal('designate'), contact: z.number().int() }).strict(),
       z.object({ kind: z.literal('laserFrequency'), freq: z.number().int() }).strict(),
       z.object({ kind: z.literal('rematch') }).strict(),
+      // Engineering spike spec §7: integers; the sim answers an out-of-range one malformed.
+      z.object({ kind: z.literal('shipPower'), system: z.number().int(), delta: z.number().int() }).strict(),
+      z.object({ kind: z.literal('shipCoolant'), system: z.number().int() }).strict(),
+      z.object({ kind: z.literal('shipDoor'), edge: z.number().int() }).strict(),
+      z.object({ kind: z.literal('shipAirlock'), index: z.number().int() }).strict(),
       z.object({ kind: z.literal('setPaused'), paused: z.boolean() }).strict()
     ];
   },

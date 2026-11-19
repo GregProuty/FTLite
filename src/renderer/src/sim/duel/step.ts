@@ -20,6 +20,8 @@ import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
 import { extinguishWork, firePhase, pointBurning } from './fire';
 import { applyHitDamage, healthPhase } from './health';
 import { followingSeed } from './seeds';
+import { applyPower, clampToCapacity, cycleDuelCoolant, OVERDRIVE_SYSTEMS, validSystem } from './power';
+import { toggleAirlock, toggleDoor, validAirlock, validDoor } from './hazards';
 import { throttleThrust, validHoldHeading, validThrottle } from './throttle';
 import { createDuel, disposeDuel, type DuelState } from './state';
 import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
@@ -30,7 +32,10 @@ const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 /** The fixed order weapon commands take effect in within one tick. */
 const WEAPON_ORDER = ['laserLock', 'torpLock', 'rockLock', 'laserCharge', 'missileLaunch'] as const;
 /** Every duel command kind the step handles; any other kind is rejected not-in-duel. */
-const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency'];
+const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'missileLaunch', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency',
+  'shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock'];   // Engineering spike spec §7
+/** Engineering spike spec §7: the ship-view commands. */
+const SHIP_KINDS = new Set(['shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock']);
 
 function resetScratch(d: DuelState): void {
   const sc = d.interior.scratch;
@@ -281,6 +286,25 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     result(e, undefined, scanCommand(t, c, station === d.science ? SCAN_RATE_SCIENCE : SCAN_RATE_OTHER, station));
   }
   crew.scanner = t.scan.contact < 0 || attendant(d, t.scan.by) >= 0;   // spec §4.6: after admission, so a same-tick takeover keeps it
+  // Engineering spike spec §7 (Decision 12): shipPower, shipCoolant, shipDoor and shipAirlock from any valid, present,
+  // conscious player, seated or standing, with no range or view check, applied in (player, sequence) order so the last
+  // in player order wins. The tactical admissions above read the bars as they stood at the start of the tick.
+  const engineer = (pid: number): boolean => validPlayer(d, pid) && d.present[pid] === true && conscious(d, pid);
+  const shipCommands = input.commands.filter((e) => SHIP_KINDS.has(e.command.kind)).sort((a, b) => a.id.player - b.id.player || a.id.sequence - b.id.sequence);
+  for (const e of shipCommands) {
+    const c = e.command;
+    if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
+    const wellFormed = c.kind === 'shipPower' ? validSystem(c.system) && (c.delta === 1 || c.delta === -1)
+      : c.kind === 'shipCoolant' ? Number.isInteger(c.system) && c.system >= 0 && c.system < OVERDRIVE_SYSTEMS
+      : c.kind === 'shipDoor' ? validDoor(d, c.edge)
+      : c.kind === 'shipAirlock' ? validAirlock(d, c.index) : false;
+    if (!wellFormed) { result(e, 'malformed'); continue; }
+    if (!engineer(e.id.player)) { result(e, 'unavailable'); continue; }
+    if (c.kind === 'shipPower') { if (applyPower(d, c.system, c.delta) === 'applied') result(e); else result(e, 'unavailable'); }
+    else if (c.kind === 'shipCoolant') result(e, undefined, cycleDuelCoolant(d, c.system));
+    else if (c.kind === 'shipDoor') { toggleDoor(d, c.edge); result(e); }
+    else if (c.kind === 'shipAirlock') { toggleAirlock(d, c.index); result(e); }
+  }
   for (const e of input.commands) if (e.command.kind === 'rematch') result(e, 'duel-running');
   for (const e of input.commands) if (!DUEL_KINDS.includes(e.command.kind)) result(e, 'not-in-duel');
   // Artemis spec §5.3: held moveX turns, the throttle thrusts; held moveY no longer does. Feel-i (console feel spec §2):
@@ -307,7 +331,8 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   movementSystem(st, intents);   // skips seated and downed crew, and anyone who stood this tick
   stepDuel(d.tactical, crew);
   const hits = applyHitDamage(d, d.tactical.events);   // duel-health spec §1.2: hit damage in tactical event order, before the fire rolls
-  firePhase(d, tick);   // duel-fire spec §1: growth and damage, then this tick's hits roll (rng.hazards)
+  firePhase(d, tick);   // duel-fire spec §1: the damage cadence, then this tick's hits roll (rng.hazards)
+  clampToCapacity(d);   // Engineering spike spec §7: excess bars back to the pool after every damage rise this tick
   healthPhase(d, hits);   // duel-health spec §1: fire damage, downed, pick-up, the Medbay; every character down loses the round
   st.tick++;
   if (d.tactical.outcome !== Outcome.Running) d.decidedTick = st.tick;   // the snapshot tick of the first decided publication
