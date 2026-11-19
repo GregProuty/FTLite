@@ -39,7 +39,7 @@ Every task's requirements implicitly include this section.
 
 - Build Output API v3: `.vercel/output/config.json` needs `"version": 3`; `routes` use the `vercel.json` route syntax (`src`, `headers`, `continue`, `middlewarePath`, …). https://vercel.com/docs/build-output-api/configuration
 - Static files go in `.vercel/output/static` and are served at `/` unchanged. https://vercel.com/docs/build-output-api/primitives#static-files
-- An Edge function is `.vercel/output/functions/<name>.func/` with `.vc-config.json` `{ "runtime": "edge", "entrypoint": "index.js" }`. https://vercel.com/docs/build-output-api/primitives#functions-with-edge-runtime
+- An Edge function is `.vercel/output/functions/<name>.func/` with `.vc-config.json` `{ "runtime": "edge", "entrypoint": "index.js", "envVarsInUse": [...] }`; `envVarsInUse` names the project env vars the function reads (the docs page marks it ignored, but Next.js's adapter still fills it for its own middleware, so this plan lists `FTLITE_PASSCODE` and `FTLITE_COOKIE_SECRET` there as cheap insurance, review R1-F1). https://vercel.com/docs/build-output-api/primitives#functions-with-edge-runtime
 - Routing Middleware: a route `{ "src": "/(.*)", "middlewarePath": "_middleware", "continue": true }` runs `functions/_middleware.func` on every request; the middleware passes the request through by returning a response with header `x-middleware-next: 1`. https://vercel.com/docs/build-output-api/features#routing-middleware and the official example https://github.com/vercel/examples/tree/main/build-output-api/edge-middleware (`.vercel/output/functions/_middleware.func/index.js`).
 - `vercel deploy --prebuilt` needs only `.vercel/output`; `builds.json` is optional, and its `target` check is skipped when absent (`packages/cli/src/commands/deploy/index.ts`, `getPrebuiltJson`).
 - Routing Middleware runs on Hobby, and Edge code reads project env vars through `process.env`. https://vercel.com/docs/routing-middleware — **check this at Web-iii's first deploy** (the live smoke enters the passcode; a 503 "not configured" page means the env did not reach the middleware).
@@ -50,7 +50,7 @@ Every task's requirements implicitly include this section.
 - **W-2 `Cache-Control: private, no-cache`** on the game's files (spec: `private`). `no-cache` keeps `private` (no shared cache) and makes the browser revalidate, so a new deploy's `index.html` is fetched; `version.json` is `no-store` as specified. Both come from `config.json` route headers.
 - **W-3 The passcode page is the answer to every request without a valid cookie**, at any path (status 401), plus `GET /__pass`; `POST /__pass` checks the code. If `FTLITE_PASSCODE` or `FTLITE_COOKIE_SECRET` is missing or the secret is under 32 bytes, every request gets a 503 "FTLite is not configured." page (fail closed).
 - **W-4 Single player counts as "a match"** for the key guard (§7.1), the fullscreen Escape rule (§7.2) and the leave prompt (§7.6). A solo duel loses its round to an accidental Ctrl+W just like an online one.
-- **W-5 The Web Lock is browser-only.** Electron opens one window per profile, and its gates run two apps with separate profiles; the lock is §7's browser rule.
+- **W-5 The Web Lock is browser-only.** Electron opens one window per profile, and its gates run two apps with separate profiles; the lock is §7's browser rule. Start-up waits at most 2 s for it (then online is off and the menu starts anyway); a busy lock is asked once more with a 1.5 s waiting request, so a reload is not locked out by its own old document; the pagehide teardown releases it (review R1-F2). A lock manager that fails in a supported browser shows the unsupported text on Multiplayer (R1-F6).
 - **W-6 "Download playtest log" is browser-only.** Electron still writes its records to disk through `duel:record` (§3.3 job 4); its IndexedDB store stays empty, so the button would only ever say there is nothing.
 - **W-7 Audio unlock (§7.3) already holds on master** (`main.ts` resumes on the first `keydown`/`pointerdown` and on focus). The passcode page is a different document, so its submit gesture cannot carry over; the first menu gesture resumes audio. Task 8 only moves the three listeners into a tested module.
 - **W-8 The middleware is bundled with esbuild** (pinned, Task 3), not Vite library mode, so `process.env.FTLITE_*` is left untouched for the Edge runtime.
@@ -658,7 +658,8 @@ export const VERCEL_CONFIG = { version: 3, routes: [
   { src: '/(.*)', headers: { 'Cache-Control': 'private, no-cache' }, continue: true },
   { src: '/version\\.json', headers: { 'Cache-Control': 'no-store' }, continue: true }
 ] };
-export const VC_CONFIG = { runtime: 'edge', entrypoint: 'index.js' };
+/** envVarsInUse (review R1-F1): the env vars the Edge function reads, so a prebuilt function is handed them. */
+export const VC_CONFIG = { runtime: 'edge', entrypoint: 'index.js', envVarsInUse: ['FTLITE_PASSCODE', 'FTLITE_COOKIE_SECRET'] };
 
 /** Bundle src/web/middleware.ts into <out>/functions/_middleware.func (deviation W-8: process.env stays as written). */
 export async function bundleMiddleware(root: string, outDir: string): Promise<void> {
@@ -847,10 +848,16 @@ describe('deploy:web', () => {
    - `npx vercel env add FTLITE_COOKIE_SECRET production` with 32 random bytes in base64, made by `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`.
    Changing `FTLITE_PASSCODE` changes the code; changing `FTLITE_COOKIE_SECRET` signs everyone out. A missing or short secret makes every page answer "FTLite is not configured." (fail closed).
 4. Each deploy: `FTLITE_WEB_SERVICE_ORIGIN=https://<signalling worker origin> npm run deploy:web` (exactly one https origin; no trailing slash).
-5. After the first deploy, put `https://<project>.vercel.app` into Cloudflare's `ALLOWED_ORIGINS` (spec §6) and check, with `curl -I`, that the passcode page answers `401` without the cookie and that `/version.json` carries `Cache-Control: no-store` once signed in.
+5. After the first deploy, put `https://<project>.vercel.app` into Cloudflare's `ALLOWED_ORIGINS` (spec §6), then run these live checks with `curl -I`. Use `-b ftlite_pass=<value>` for the cookie; copy the value from a browser sign-in (DevTools → Application → Cookies).
+   - Without the cookie: `/`, `/assets/authorityWorker.js` and `/assets/paid/<a real file from public/assets/paid>` each answer `401` (the passcode page).
+   - With the cookie: `/`, `/assets/authorityWorker.js` and the same paid file each answer `200` with `cache-control: private, no-cache`, and `/version.json` answers `200` with `cache-control: no-store`.
+   - If any check fails, roll the first deploy back at once: `npx vercel rollback`, or delete the deployment in the dashboard. Fix it before redeploying; never leave the paid art reachable without the cookie.
+   - If every page answers `503` "FTLite is not configured." although both vars are set, the vars are not reaching the middleware. Check that both are set for **Production**, then redeploy (env changes need a new deploy).
+   Web-iii's `scripts/web/live-smoke.ts` runs the same cookie and header checks, without and with the cookie, before its two-browser duel, and fails the run if any of them fails.
 
 - [ ] Owner: Vercel login, link (Hobby, git disconnected) and the two env vars (Web-iii).
-- [ ] Owner: first `deploy:web`, then the `curl -I` header check (Web-iii).
+- [ ] Owner: first `deploy:web`, then the step-5 live checks without and with the cookie (paid art, Worker, `/`, `version.json`); roll back on any failure (Web-iii).
+- [ ] Web-iii plan: `scripts/web/live-smoke.ts` repeats the step-5 checks (401 without the cookie for `/assets/paid/<file>` and `/assets/authorityWorker.js`; 200 with `private, no-cache` with it; `version.json` `no-store`) before its duel.
 ```
 
 - [ ] **Step 6: Run the test and commit.**
@@ -880,8 +887,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: `isPlaying` (`ui/menuState.ts`), `__FTLITE_BUILD__`, `__GAMEPLAY_CONTENT_DIGEST__`.
 - Produces (later tasks rely on all of these):
-  - `export interface BrowserSlice { update: boolean; unsupported: string | null; note: string | null; onlineBlocked: string | null; playtestLog: boolean; playtestLogText: string }`, `INITIAL_BROWSER`, `UiState.browser`
-  - `NO_PLAYTEST_RECORDS_TEXT = 'No playtest records yet.'`, `PLAYTEST_LOG_FAILED_TEXT = 'The playtest log could not be read.'` (in `menuState.ts`)
+  - `export interface BrowserSlice { web: boolean; update: boolean; unsupported: string | null; note: string | null; onlineBlocked: string | null; playtestLog: boolean; playtestLogText: string }`, `INITIAL_BROWSER`, `UiState.browser`
+  - `NO_PLAYTEST_RECORDS_TEXT = 'No playtest records yet.'`, `PLAYTEST_LOG_FAILED_TEXT = 'The playtest log could not be read.'`, `BROWSER_F11_TEXT` (in `menuState.ts`)
   - `UiStoreInit.browser?: Partial<BrowserSlice>`
   - actions `updateAvailable(): void`, `reload(): void`; dep `reload?(): void`
   - `watchVersion(deps: VersionWatchDeps): () => void`, `parseVersion`, `versionDiffers`, `versionPollActive(s: Pick<UiState, 'menu' | 'online'>): boolean`, `VERSION_POLL_MS = 300000`
@@ -891,10 +898,13 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```ts
 /** Browser-only menu facts (web build spec §5.4, §7.4, §7.5, §7.7); all off in Electron. `unsupported` replaces Home's
  *  Multiplayer button, `note` is the Safari line, `onlineBlocked` the Multiplayer screen's one-tab text, `playtestLog`
- *  shows Settings' Download playtest log and `playtestLogText` its last result. */
-export interface BrowserSlice { update: boolean; unsupported: string | null; note: string | null; onlineBlocked: string | null; playtestLog: boolean; playtestLogText: string }
-export const INITIAL_BROWSER: BrowserSlice = { update: false, unsupported: null, note: null, onlineBlocked: null, playtestLog: false, playtestLogText: '' };
+ *  shows Settings' Download playtest log and `playtestLogText` its last result. `web`: the page runs in a browser (no
+ *  preload), where F11 is the browser's own fullscreen (review R1-F7). */
+export interface BrowserSlice { web: boolean; update: boolean; unsupported: string | null; note: string | null; onlineBlocked: string | null; playtestLog: boolean; playtestLogText: string }
+export const INITIAL_BROWSER: BrowserSlice = { web: false, update: false, unsupported: null, note: null, onlineBlocked: null, playtestLog: false, playtestLogText: '' };
 export const NO_PLAYTEST_RECORDS_TEXT = 'No playtest records yet.', PLAYTEST_LOG_FAILED_TEXT = 'The playtest log could not be read.';
+/** Settings' fullscreen note in a browser (R1-F7): F11 there is the browser's fullscreen, which the toggle cannot see. */
+export const BROWSER_F11_TEXT = "F11 is the browser's own fullscreen; this switch does not follow it.";
 ```
 
 and in `UiState` change `menu: MenuState; online: OnlineSlice; settings: SettingsSlice; layout: LayoutSlice;` to `menu: MenuState; online: OnlineSlice; settings: SettingsSlice; layout: LayoutSlice; browser: BrowserSlice;`.
@@ -1390,7 +1400,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: `BrowserSlice`/`UiStoreInit.browser` (Task 5); `createPageOnline`, `PageOnlineDeps` (Web-i).
 - Produces:
   - `UNSUPPORTED_TEXT`, `SAFARI_NOTE`, `ONE_TAB_TEXT`; `checkBrowserSupport(g: SupportGlobals): { ok: boolean; missing: string[]; safari: boolean }`; `isSafari(ua: string, vendor: string): boolean`
-  - `ONLINE_LOCK_NAME = 'ftlite-online'`; `type OnlineLock = { state: 'held'; release(): void } | { state: 'busy' } | { state: 'unavailable' }`; `acquireOnlineLock(locks: Pick<LockManager, 'request'> | undefined): Promise<OnlineLock>`
+  - `ONLINE_LOCK_NAME = 'ftlite-online'`; `type OnlineLock = { state: 'held'; release(): void } | { state: 'busy' } | { state: 'unavailable' }`; `acquireOnlineLock(locks: Pick<LockManager, 'request'> | undefined, o?: { timeoutMs?: number; retryMs?: number }): Promise<OnlineLock>` (2 s start-up limit, one 1.5 s waiting retry when busy; review R1-F2); `LOCK_START_TIMEOUT_MS = 2000`, `LOCK_RETRY_MS = 1500`; `lock` (the page's `OnlineLock`, released by Task 10's teardown)
   - `installAudioUnlock(target, audio: { unlock(): void }): () => void`
   - `PageOnlineDeps.persistStorage?(): Promise<unknown> | void` (asked once, on the first host/join/reconnect/rehost)
   - in `main.ts`: `const web = !window.ftlite;` (used by Tasks 9 and 10)
@@ -1432,17 +1442,34 @@ describe('checkBrowserSupport', () => {
 });
 
 describe('acquireOnlineLock', () => {
-  it('holds ftlite-online while available, and reports a busy lock', async () => {
+  it('holds ftlite-online while available, and is unavailable without a working lock manager', async () => {
     let held: Promise<unknown> | undefined;
     const free = { request: vi.fn((name: string, opts: { ifAvailable: boolean }, cb: (lock: object | null) => Promise<unknown> | undefined) => { held = cb({}); return Promise.resolve(); }) };
     const lock = await acquireOnlineLock(free as never);
     expect(free.request.mock.calls[0]!.slice(0, 2)).toEqual([ONLINE_LOCK_NAME, { ifAvailable: true }]); expect(lock.state).toBe('held');
     let released = false; void held!.then(() => { released = true; }); (lock as { release(): void }).release(); await Promise.resolve(); await Promise.resolve();
     expect(released).toBe(true);
-    const busy = { request: vi.fn((_n: string, _o: object, cb: (lock: null) => unknown) => { cb(null); return Promise.resolve(); }) };
-    expect(await acquireOnlineLock(busy as never)).toEqual({ state: 'busy' });
     expect(await acquireOnlineLock(undefined)).toEqual({ state: 'unavailable' });
-    expect(await acquireOnlineLock({ request: () => Promise.reject(Error('SecurityError')) } as never)).toEqual({ state: 'unavailable' });
+    expect(await acquireOnlineLock({ request: () => Promise.reject(Object.assign(Error('x'), { name: 'SecurityError' })) } as never)).toEqual({ state: 'unavailable' });
+    expect(await acquireOnlineLock({ request: () => { throw Error('sync'); } } as never)).toEqual({ state: 'unavailable' });
+  });
+  it('retries a busy lock once with a waiting, time-limited request (a reload racing its old document)', async () => {
+    const calls: object[] = [];
+    const later = { request: vi.fn((_n: string, opts: object, cb: (lock: object | null) => unknown) => { calls.push(opts);
+      if (calls.length === 1) { cb(null); return Promise.resolve(); } cb({}); return Promise.resolve(); }) };
+    expect((await acquireOnlineLock(later as never, { retryMs: 30 })).state).toBe('held');
+    expect(calls[0]).toEqual({ ifAvailable: true }); expect((calls[1] as { signal: unknown }).signal).toBeInstanceOf(AbortSignal);
+    const still = { request: vi.fn((_n: string, opts: { ifAvailable?: boolean }, cb: (lock: null) => unknown) => {
+      if (opts.ifAvailable) { cb(null); return Promise.resolve(); } return Promise.reject(Object.assign(Error('t'), { name: 'TimeoutError' })); }) };
+    expect(await acquireOnlineLock(still as never, { retryMs: 30 })).toEqual({ state: 'busy' });
+  });
+  it('gives up after its start-up limit, and releases a grant that arrives later', async () => {
+    let grant: ((lock: object) => Promise<unknown> | undefined) | undefined;
+    const stuck = { request: vi.fn((_n: string, _o: object, cb: (lock: object) => Promise<unknown> | undefined) => { grant = cb; return new Promise(() => {}); }) };
+    const began = performance.now();
+    expect(await acquireOnlineLock(stuck as never, { timeoutMs: 50 })).toEqual({ state: 'unavailable' });
+    expect(performance.now() - began).toBeLessThan(1000);
+    expect(grant!({})).toBeUndefined();   // returning no promise lets the late lock go at once
   });
 });
 
@@ -1544,16 +1571,38 @@ export function checkBrowserSupport(g: SupportGlobals): { ok: boolean; missing: 
 // Multiplayer screen; Single player stays available there.
 export const ONLINE_LOCK_NAME = 'ftlite-online';
 export type OnlineLock = { state: 'held'; release(): void } | { state: 'busy' } | { state: 'unavailable' };
-export function acquireOnlineLock(locks: Pick<LockManager, 'request'> | undefined): Promise<OnlineLock> {
-  if (!locks) return Promise.resolve({ state: 'unavailable' });
-  return new Promise(resolve => {
+/** Review R1-F2: start-up never waits on the lock longer than this; on timeout online is off and the menu still starts. */
+export const LOCK_START_TIMEOUT_MS = 2000;
+/** A busy lock is asked once more, waiting this long, so a reloaded tab's old document has time to release it. */
+export const LOCK_RETRY_MS = 1500;
+type Attempt = 'busy' | 'unavailable' | { release(): void };
+
+export async function acquireOnlineLock(locks: Pick<LockManager, 'request'> | undefined,
+  o: { timeoutMs?: number; retryMs?: number } = {}): Promise<OnlineLock> {
+  if (!locks) return { state: 'unavailable' };
+  let gaveUp = false;
+  const attempt = (options: LockOptions): Promise<Attempt> => new Promise(resolve => {
     let release!: () => void;
     const held = new Promise<void>(done => { release = done; });
-    locks.request(ONLINE_LOCK_NAME, { ifAvailable: true }, lock => {
-      if (!lock) { resolve({ state: 'busy' }); return undefined; }
-      resolve({ state: 'held', release }); return held;   // the lock is kept until release() or the page goes away
-    }).catch(() => resolve({ state: 'unavailable' }));
+    try {
+      locks.request(ONLINE_LOCK_NAME, options, lock => {
+        if (!lock) { resolve('busy'); return undefined; }
+        if (gaveUp) { resolve('unavailable'); return undefined; }   // granted after start-up gave up: let it go at once
+        resolve({ release }); return held;   // kept until release() (the pagehide teardown) or the page goes away
+      }).catch((error: unknown) => { const name = (error as { name?: string } | null)?.name; resolve(name === 'AbortError' || name === 'TimeoutError' ? 'busy' : 'unavailable'); });
+    } catch { resolve('unavailable'); }
   });
+  const work = (async (): Promise<OnlineLock> => {
+    let result = await attempt({ ifAvailable: true });
+    if (result === 'busy') result = await attempt({ signal: AbortSignal.timeout(o.retryMs ?? LOCK_RETRY_MS) });
+    return result === 'busy' ? { state: 'busy' } : result === 'unavailable' ? { state: 'unavailable' } : { state: 'held', release: result.release };
+  })();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<OnlineLock>(resolve => { timer = setTimeout(() => resolve({ state: 'unavailable' }), o.timeoutMs ?? LOCK_START_TIMEOUT_MS); });
+  const outcome = await Promise.race([work, timeout]);
+  clearTimeout(timer); gaveUp = true;
+  if (outcome.state !== 'held') void work.then(late => { if (late.state === 'held') late.release(); });   // a grant that lost the race is released
+  return outcome;
 }
 ```
 
@@ -1657,8 +1706,10 @@ with:
   const onlineConfig = configured && (!web || lock.state === 'held') ? configured : null;
   const pageOnline = onlineConfig && validatePageOnlineConfig(onlineConfig)
     ? createPageOnline(onlineConfig, { window, persistStorage: web ? () => navigator.storage?.persist?.() : undefined }) : null;
-  const browserInit = web ? { unsupported: support?.ok ? null : UNSUPPORTED_TEXT, note: support?.safari ? SAFARI_NOTE : null,
-    onlineBlocked: lock.state === 'busy' ? ONE_TAB_TEXT : null } : undefined;
+  // A lock manager that fails or never answers (review R1-F2, R1-F6) leaves online off with the unsupported text, not
+  // the "configured local service" one.
+  const browserInit = web ? { web: true, unsupported: support?.ok ? null : UNSUPPORTED_TEXT, note: support?.safari ? SAFARI_NOTE : null,
+    onlineBlocked: lock.state === 'busy' ? ONE_TAB_TEXT : lock.state === 'unavailable' && configured ? UNSUPPORTED_TEXT : null } : undefined;
 ```
 
 Change `  const store = createUiStore({ onlineAvailable: !!bridge, settings: {` to `  const store = createUiStore({ onlineAvailable: !!bridge, browser: browserInit, settings: {`. Replace:
@@ -1841,11 +1892,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, screen } from '@testing-library/react';
 import { flush } from './helpers/uiStore';
 import { renderUi } from './helpers/uiRender';
+import { BROWSER_F11_TEXT } from '../src/renderer/src/ui/menuState';
 
 afterEach(() => { cleanup(); });
 describe('Download playtest log', () => {
   it('is absent unless the browser offers it', () => {
     renderUi(); fireEvent.click(screen.getByTestId('settings')); expect(screen.queryByTestId('download-playtest-log')).toBeNull();
+    expect(screen.getByTestId('fullscreen-note').textContent).toBe('F11 also toggles fullscreen.');
+  });
+  it('in a browser, says F11 is the browser’s own fullscreen (review R1-F7)', () => {
+    const { store } = renderUi(); act(() => store.setState((s) => ({ browser: { ...s.browser, web: true } }))); fireEvent.click(screen.getByTestId('settings'));
+    expect(screen.getByTestId('fullscreen-note').textContent).toBe(BROWSER_F11_TEXT);
   });
   it('saves the log and reports the file, or says there are no records', async () => {
     const run = vi.fn<() => Promise<string | null>>().mockResolvedValueOnce('ftlite-playtest-2026-11-16-to-2026-11-17.jsonl').mockResolvedValueOnce(null).mockRejectedValueOnce(Error('x'));
@@ -1956,9 +2013,10 @@ and after `reload(): void { deps.reload?.(); },` add:
     },
 ```
 
-In `src/renderer/src/ui/menu/Settings.tsx`, change the first line of `Settings()` to `const settings = useUi((s) => s.settings), fullscreen = useUi((s) => s.menu.fullscreen), browser = useUi((s) => s.browser), actions = useActions();` and after the line `      <p data-testid="fullscreen-note">{\`${FULLSCREEN_KEY} also toggles fullscreen.\`}</p>` add:
+In `src/renderer/src/ui/menu/Settings.tsx`, change the first line of `Settings()` to `const settings = useUi((s) => s.settings), fullscreen = useUi((s) => s.menu.fullscreen), browser = useUi((s) => s.browser), actions = useActions();`, add `import { BROWSER_F11_TEXT } from '../menuState';`, and replace the line `      <p data-testid="fullscreen-note">{\`${FULLSCREEN_KEY} also toggles fullscreen.\`}</p>` with (review R1-F7: in a browser F11 is the browser's own fullscreen, which the toggle cannot see):
 
 ```tsx
+      <p data-testid="fullscreen-note">{browser.web ? BROWSER_F11_TEXT : `${FULLSCREEN_KEY} also toggles fullscreen.`}</p>
       {browser.playtestLog && <>
         <MenuButton id="download-playtest-log" text="Download playtest log" onClick={actions.downloadPlaytestLog} />
         {browser.playtestLogText && <p data-testid="playtest-log-status">{browser.playtestLogText}</p>}
@@ -1981,7 +2039,7 @@ After the `const browserInit = …;` statement (Task 8) add:
   const recordDuel = (record: DuelPlaytestRecord): Promise<boolean> | undefined => window.ftlite?.recordDuel ? window.ftlite.recordDuel(record) : duelRecords?.append(record);
 ```
 
-Change `    onlineBlocked: lock.state === 'busy' ? ONE_TAB_TEXT : null } : undefined;` to `    onlineBlocked: lock.state === 'busy' ? ONE_TAB_TEXT : null, playtestLog: true } : undefined;`. Replace both occurrences of `recordDuel: record => window.ftlite?.recordDuel?.(record)` with `recordDuel` (one in `single`, one in the online duel). In `createUiActions({ … })`, after `    reload() { location.reload(); },` add:
+Change `    onlineBlocked: lock.state === 'busy' ? ONE_TAB_TEXT : lock.state === 'unavailable' && configured ? UNSUPPORTED_TEXT : null } : undefined;` to `    onlineBlocked: lock.state === 'busy' ? ONE_TAB_TEXT : lock.state === 'unavailable' && configured ? UNSUPPORTED_TEXT : null, playtestLog: true } : undefined;`. Replace both occurrences of `recordDuel: record => window.ftlite?.recordDuel?.(record)` with `recordDuel` (one in `single`, one in the online duel). In `createUiActions({ … })`, after `    reload() { location.reload(); },` add:
 
 ```ts
     downloadPlaytestLog: duelRecords ? async () => { const log = await duelRecords.exportLog(); if (!log) return null; downloadText(document, URL, log.name, log.text); return log.name; } : undefined,
@@ -2007,7 +2065,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Test: `tests/webLeavePrompt.test.ts`
 
 **Interfaces:**
-- Consumes: `web`, `offVersion`, `offGuards`, `pageFullscreen`, `offAudio` (Tasks 5-8).
+- Consumes: `web`, `lock`, `offVersion`, `offGuards`, `pageFullscreen`, `offAudio` (Tasks 5-8).
 - Produces: `leaveWanted(s: Pick<UiState, 'menu' | 'online'>): boolean`, `installLeavePrompt(target, wanted: () => boolean): () => void`.
 
 Why the teardown moves: `main.ts` disposes the session, UI and bridge in a `beforeunload` listener. With a leave prompt, a player who answers "Stay" would keep a dead game. Teardown now runs on a `pagehide` that is not persisted (the page is really going); a back-forward-cache `pagehide` only suspends (the page session already handles it).
@@ -2049,6 +2107,7 @@ describe('installLeavePrompt', () => {
     expect(main).not.toMatch(/addEventListener\('beforeunload'/);
     expect(main).toMatch(/const offLeave = web \? installLeavePrompt\(window, \(\) => leaveWanted\(store\.getState\(\)\)\) : undefined;/);
     expect(main).toMatch(/window\.addEventListener\('pagehide', \(event\) => \{\s*if \(event\.persisted \|\| tornDown\) return;/);
+    expect(main).toMatch(/if \(lock\.state === 'held'\) lock\.release\(\);/);   // review R1-F2
   });
 });
 ```
@@ -2108,6 +2167,7 @@ with:
     offLeave?.(); offVersion?.(); offGuards(); pageFullscreen?.dispose(); offAudio();
     offPrepareExit?.(); offVisibility?.(); offPort?.(); offStatus?.(); offStrip(); setBlocked(true); offBlocked(); actions.dispose(); unmountUi();
     session.dispose(); bridge?.dispose(); keyboard.destroy();
+    if (lock.state === 'held') lock.release();   // review R1-F2: hand ftlite-online on at once, so a reload gets it
   });
 ```
 
@@ -2143,7 +2203,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: `resolveWebBuildPlan` (Task 2), `buildWeb` (Task 3), `buildDuelObservers` (`scripts/network/online-observer-build.ts`: writes `<dir>/observer/observer.js` (the duel observer, `window.onlineAppObservation()`), `page-probe.js` (`window.onlineProbe` with `set`, `counts`, `openPorts`) and `utility.cjs`), `startLocalRuntime(directory, { allowedOrigins })` (`services/signalling/scripts/local-runtime.ts`), `scripts/network/online-app-smoke.cjs` (the Electron driver: `status`, `click`, `type`, `key`, `resource-counts`, `shutdown`), the page test probe `window.__ftliteOnlineTest` (`testProbe`, Web-i D-1).
 - Produces: `npm run test:web-net`, report `out/web-ii-net/web-net.json`; `GatePlayer`, `GateView`, `runPairing`, `latestPublication`, `commonPublication`, `parseWebNetArgs`, `electronKey`.
 
-How it runs: one local workerd whose `ALLOWED_ORIGINS` lists the preview origin; one `--test --test-probe --duel-test-seed=351` web build baked with that workerd's loopback origin; `vite preview` of its `static/` on a fixed free port; Playwright Chromium and Firefox **headless** (no hidden tabs are needed here; Web-i D-8 concerned hiding only) with host-candidate obfuscation off (Chromium `--disable-features=WebRtcHideLocalIpsWithMdns`, Firefox `media.peerconnection.ice.obfuscate_host_addresses: false`) so loopback ICE pairs across two browsers; each player is its own browser context (its own IndexedDB and Web Lock). The Electron guest is the built app through `online-app-smoke.cjs`. Each pairing runs the four checks of §8: host and join; a short scripted duel (both walk to their consoles, the guest's Helm holds W, the speed rises on both) whose authority publication matches the guest (same run, sequence, tick and hash); guest reconnect with the saved seat (tab closed, reopened in the same context, Reconnect saved seat, host Esc resumes); rehost from the IndexedDB mirror after the host tab closes through its leave prompt. Finally the rehosted guest leaves, and every page port it opened is closed or transferred and its Worker terminated.
+How it runs: one local workerd whose `ALLOWED_ORIGINS` lists the preview origin; one `--test --test-probe --duel-test-seed=351` web build baked with that workerd's loopback origin; `vite preview` of its `static/` on a fixed free port; Playwright Chromium and Firefox **headless** (no hidden tabs are needed here; Web-i D-8 concerned hiding only) with host-candidate obfuscation off (Chromium `--disable-features=WebRtcHideLocalIpsWithMdns`, Firefox `media.peerconnection.ice.obfuscate_host_addresses: false`) so loopback ICE pairs across two browsers; each player is its own browser context (its own IndexedDB and Web Lock). The Electron guest is the built app through `online-app-smoke.cjs`. Each pairing runs the four checks of §8: host and join; a short scripted duel (both walk to their consoles, the guest's Helm holds W, the speed rises on both) whose authority publication matches the guest (same run, sequence, tick and hash); guest reconnect with the saved seat (tab closed, reopened in the same context, reloaded in place to prove the Web Lock is re-taken (review R1-F2), Reconnect saved seat, host Esc resumes); rehost from the IndexedDB mirror after the host tab closes through its leave prompt: the guest's own tab (or app) is then closed and reopened too, Reconnect saved seat reaches 'saved' with Re-host offered and the same committed tick, so the mirror can only have come back from IndexedDB (review R1-F4). If that Reconnect never offers Re-host, do not weaken the gate: fall back to reading `mirror-v1` from database `ftlite` with `page.evaluate` before the guest's tab closes and asserting its bytes start with `FTLNMIR1`, then rehost in that tab, and record the fallback in the report. The origin-refused injection also requires network evidence of the 403 (review R1-F3). Finally the rehosted guest leaves, and every page port it opened is closed or transferred and its Worker terminated.
 
 - [ ] **Step 1: Write the failing test** `tests/webNetScenario.test.ts`:
 
@@ -2205,9 +2265,14 @@ export interface GatePlayer {
   close(options: { prompt: boolean }): Promise<{ prompted: boolean }>;
   /** Open the game again on the same saved data (the same browser context, the same Electron profile). */
   reopen(): Promise<void>;
+  /** Browser only (review R1-F2): reload the tab in place; throws unless the online session exists again (the Web Lock was re-taken). */
+  reload?(): Promise<void>;
   dispose(): Promise<void>;
   readonly errors: string[];
+  /** Browser only (review R1-F3): every response or failed request to the service origin, as Playwright saw it (CORS hides them from page script). */
+  readonly network: NetworkEntry[];
 }
+export interface NetworkEntry { method: string; path: string; status: number | null; origin: string | null; failure: string | null }
 const delay = (ms: number) => new Promise<void>(done => setTimeout(done, ms));
 export async function bounded<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -2220,20 +2285,32 @@ async function ready(read: () => Promise<string>, label: string): Promise<void> 
   throw Error(`${label} ready timeout`);
 }
 
-export async function createBrowserPlayer(o: { browser: Browser; name: string; url: string; initScripts: string[] }): Promise<GatePlayer> {
+export async function createBrowserPlayer(o: { browser: Browser; name: string; url: string; initScripts: string[]; serviceOrigin: string }): Promise<GatePlayer> {
   const context: BrowserContext = await o.browser.newContext({ viewport: { width: 1280, height: 800 } });
   for (const path of o.initScripts) await context.addInitScript({ path });
-  const errors: string[] = [];
+  const errors: string[] = [], network: NetworkEntry[] = [];
+  const note = (entry: NetworkEntry): void => { if (network.length < 400) network.push(entry); };
+  const service = (url: string): string | null => { try { const u = new URL(url); return u.origin === o.serviceOrigin ? u.pathname : null; } catch { return null; } };
   let page!: Page;
+  const online = async (): Promise<void> => {
+    await ready(() => bounded(page.evaluate(() => document.body.innerText), 4000, `${o.name} text`), o.name);
+    // Only the tab holding ftlite-online builds the session the test probe exposes (Task 8).
+    if (!(await bounded(page.evaluate(() => typeof (window as any).__ftliteOnlineTest === 'object'), 4000, `${o.name} probe`))) throw Error(`${o.name} has no online session (Web Lock not taken)`);
+  };
   const open = async (): Promise<void> => {
     page = await context.newPage();
     page.on('pageerror', error => { if (errors.length < 20) errors.push(String(error.message).slice(0, 200)); });
+    page.on('response', response => { const r = response.request(), path = service(r.url()); if (path === null) return;
+      void r.allHeaders().then(h => note({ method: r.method(), path, status: response.status(), origin: h.origin ?? null, failure: null }), () => {}); });
+    page.on('requestfailed', r => { const path = service(r.url()); if (path === null) return;
+      void r.allHeaders().then(h => h.origin ?? null, () => null).then(origin => note({ method: r.method(), path, status: null, origin, failure: r.failure()?.errorText ?? 'failed' })); });
     await bounded(page.goto(o.url), 30000, `${o.name} load`);
-    await ready(() => bounded(page.evaluate(() => document.body.innerText), 4000, `${o.name} text`), o.name);
+    await online();
   };
   await open();
   return {
-    name: o.name, errors,
+    name: o.name, errors, network,
+    async reload() { await bounded(page.reload(), 30000, `${o.name} reload`); await online(); },
     read: () => bounded(page.evaluate(async () => { const w = window as any;
       return { status: (await w.__ftliteOnlineTest.readStatus()).status, observations: w.onlineAppObservation(), text: document.body.innerText }; }), 4000, `${o.name} read`),
     async click(id) {
@@ -2298,7 +2375,7 @@ export async function createElectronPlayer(o: { name: string; directory: string;
   };
   await launch();
   return {
-    name: o.name, errors,
+    name: o.name, errors, network: [],   // Electron's file:// page is not watched; only the browser host matters to the injection
     async read() { const r = await request('status'); return { status: r.status, observations: r.observations, text: r.text }; },
     async click(target) { await request('click', { id: target }); },
     async type(target, text) { await request('type', { id: target, text }); },
@@ -2395,7 +2472,10 @@ export async function runPairing(h: GatePlayer, g: GatePlayer, deps: { step(labe
   deps.step('guest reconnect');
   await g.close({ prompt: false });
   await until(() => h.read(), v => { const p = latestPublication(v); return p?.present[1] === 0 && p?.phase === 'paused' && p?.pauseReason === 'peer-lost'; }, `${h.name} pauses for the lost guest`, 30000);
-  await g.reopen(); await g.click('multiplayer');
+  await g.reopen();
+  // Review R1-F2: a reload in place must get ftlite-online back (reload() throws if the online session is missing).
+  if (g.reload) { await g.reload(); proof.reloadKeptOnline = true; }
+  await g.click('multiplayer');
   await until(() => g.read(), v => v.status.actions.includes('reconnect'), `${g.name} offers its saved seat`);
   await g.click('reconnect');
   await phase(g, 'paused', 30000);
@@ -2405,16 +2485,27 @@ export async function runPairing(h: GatePlayer, g: GatePlayer, deps: { step(labe
   proof.reconnect = { savedSeat: true, resumedByEscape: true };
 
   deps.step('rehost');
-  const mirrored = await until(() => g.read(), v => !!v.status.mirror.committed && v.status.mirror.persistent, `${g.name} holds a persistent mirrored checkpoint`, 60000);
+  // A committed mirror whose local save finished (persistent and nothing pending).
+  await until(() => g.read(), v => !!v.status.mirror.committed && !v.status.mirror.localPending && v.status.mirror.persistent, `${g.name} holds a committed, saved mirror`, 60000);
   const closed = await h.close({ prompt: true });
   assert(closed.prompted, `${h.name} closed a running match without the leave prompt`);
-  await until(() => g.read(), v => v.status.phase === 'saved' && v.status.actions.includes('rehost'), `${g.name} may rehost`, 45000);
+  const lost = await until(() => g.read(), v => v.status.phase !== 'running' && v.status.phase !== 'paused', `${g.name} sees the host go`, 30000);
+  const last = lost.status.mirror.committed;
+  assert(!!last && !lost.status.mirror.localPending, `${g.name} lost its committed mirror`);
+  // Review R1-F4: the guest's tab (or app) goes too, so the mirror the rehost uses can only come back from IndexedDB.
+  await g.close({ prompt: false });
+  await g.reopen(); await g.click('multiplayer');
+  await until(() => g.read(), v => v.status.actions.includes('reconnect'), `${g.name} offers its saved seat after the host went`);
+  await g.click('reconnect');
+  const restored = await until(() => g.read(), v => v.status.phase === 'saved' && v.status.actions.includes('rehost') && v.status.mirror.committed?.capturedTick === last!.capturedTick,
+    `${g.name} may rehost from its IndexedDB mirror (tick ${last!.capturedTick})`, 45000);
+  const mirrored = restored;
   await g.click('rehost');
   const rehosted = await until(() => g.read(), v => {
     if (v.status.phase === 'error') throw Error(`${g.name} rehost: online error ${v.status.error}`);
     return v.status.role === 'host' && (v.status.phase === 'paused' || v.status.phase === 'running');
   }, `${g.name} rehosted`, 45000);
-  proof.rehost = { mirroredTick: mirrored.status.mirror.committed!.capturedTick, phase: rehosted.status.phase, leavePrompt: true };
+  proof.rehost = { mirroredTick: mirrored.status.mirror.committed!.capturedTick, restoredFromIndexedDb: true, phase: rehosted.status.phase, leavePrompt: true };
 
   deps.step('cleanup');
   await until(() => g.read(), v => v.status.actions.includes('leave'), `${g.name} can leave`);
@@ -2447,7 +2538,7 @@ import { resolveWebBuildPlan } from '../../../build/webBuild';
 import { startLocalRuntime } from '../../../services/signalling/scripts/local-runtime';
 import { buildDuelObservers } from '../../network/online-observer-build';
 import { buildWeb } from '../build-web';
-import { createBrowserPlayer, createElectronPlayer, type GatePlayer } from './players';
+import { createBrowserPlayer, createElectronPlayer, type GatePlayer, type NetworkEntry } from './players';
 import { DUEL_TEST_SEED, parseWebNetArgs, runPairing, type Pairing } from './scenario';
 
 function freePort(): Promise<number> {
@@ -2462,8 +2553,10 @@ async function main(): Promise<void> {
   let step = 'startup', failure: string | undefined;
   let runtime: Awaited<ReturnType<typeof startLocalRuntime>> | undefined, server: PreviewServer | undefined;
   const browsers: Browser[] = [];
+  let hostNetwork: NetworkEntry[] = [], pageOrigin = '', probeStatus: number | null = null;
   try {
     const port = await freePort(), origin = `http://127.0.0.1:${port}`;
+    pageOrigin = origin;
     mkdirSync(join(directory, 'service'));
     step = 'workerd';
     runtime = await startLocalRuntime(join(directory, 'service'), { allowedOrigins: args.inject === 'origin-refused' ? 'null' : `null,http://localhost:${port},${origin}` });
@@ -2483,13 +2576,16 @@ async function main(): Promise<void> {
       const [hostKind, guestKind] = pairing.split('-') as ['chromium' | 'firefox', 'chromium' | 'firefox' | 'electron'];
       const players: GatePlayer[] = [];
       try {
-        const host = await createBrowserPlayer({ browser: browserOf[hostKind], name: `${hostKind}-host`, url: `${origin}/`, initScripts }); players.push(host);
+        const host = await createBrowserPlayer({ browser: browserOf[hostKind], name: `${hostKind}-host`, url: `${origin}/`, initScripts, serviceOrigin: runtime.baseUrl }); players.push(host);
         const guest = guestKind === 'electron'
           ? await createElectronPlayer({ name: 'electron-guest', directory, serviceUrl: runtime.baseUrl, duelTestSeed: DUEL_TEST_SEED })
-          : await createBrowserPlayer({ browser: browserOf[guestKind], name: `${guestKind}-guest`, url: `${origin}/`, initScripts });
+          : await createBrowserPlayer({ browser: browserOf[guestKind], name: `${guestKind}-guest`, url: `${origin}/`, initScripts, serviceOrigin: runtime.baseUrl });
         players.push(guest);
         proof[pairing] = await runPairing(host, guest, { step: label => { step = `${pairing}: ${label}`; console.log(`[web-net] ${step}`); }, aborted: () => aborted });
-      } finally { for (const p of players) await p.dispose(); }
+      } finally {
+        if (pairing === args.pairings[0] && players[0]) hostNetwork = players[0].network.slice();   // the injection's evidence (review R1-F3)
+        for (const p of players) await p.dispose();
+      }
     }
     console.log(`ACTUAL BROWSER NETWORK GATES: ${args.pairings.join(', ')}: host/join, scripted duel with authority agreement, guest reconnect, rehost from the IndexedDB mirror, clean leave`);
   } catch (error) { failure = `${step}: ${String((error as Error)?.message ?? error).slice(0, 200)}`; }
@@ -2497,18 +2593,31 @@ async function main(): Promise<void> {
     clearTimeout(watchdog);
     for (const b of browsers) await b.close().catch(() => { failure ??= 'browser close failed'; });
     try { await server?.close(); } catch { failure ??= 'preview close failed'; }
+    // The injection's service-side evidence: the same create preflight from Node, with the page's Origin, must be refused.
+    if (args.inject === 'origin-refused' && runtime) probeStatus = await fetch(`${runtime.baseUrl}/v2/rooms`, { method: 'OPTIONS',
+      headers: { Origin: pageOrigin, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' } }).then(r => r.status, () => null);
     try { await runtime?.dispose(); } catch { failure ??= 'workerd cleanup failed'; }
     const target = resolve(directory), prefix = resolve(tmpdir()) + sep;
     if (!target.startsWith(prefix) || !target.slice(prefix.length).startsWith('ftlite-web-net-')) throw Error('invalid exact cleanup target');
     try { rmSync(target, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { failure ??= 'exact temporary cleanup failed'; }
   }
-  const report = { version: 1, digest, inject: args.inject, pairings: args.pairings, elapsedMs: Math.ceil(performance.now() - began), proof, failure: failure ?? null, temporaryRemoved: !existsSync(directory) };
+  // Review R1-F3: the named reason needs network evidence, not only a lobby that never came. The create is a CORS
+  // request (JSON body), so the browser may send only its preflight: either Playwright saw a 403 on /v2/rooms carrying the
+  // page's Origin, or it saw the create POST fail with that Origin and Node's identical preflight got 403. No create may
+  // have succeeded.
+  const creates = hostNetwork.filter(e => e.path === '/v2/rooms');
+  const refused = creates.some(e => e.status === 403 && e.origin === pageOrigin)
+    || (creates.some(e => e.method === 'POST' && e.status === null && e.origin === pageOrigin) && probeStatus === 403);
+  const created = creates.some(e => e.method === 'POST' && e.status !== null && e.status >= 200 && e.status < 300);
+  const report = { version: 1, digest, inject: args.inject, pairings: args.pairings, elapsedMs: Math.ceil(performance.now() - began), proof, failure: failure ?? null,
+    injection: args.inject ? { creates, probeStatus, refused, created } : null, temporaryRemoved: !existsSync(directory) };
   writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n');
   if (args.inject === 'origin-refused') {
-    // The named reason: the first pairing's host cannot create its room because the page origin is not allowed.
-    // A refused CORS request surfaces either as an online error status or as a create that never reaches the lobby.
-    if (failure && /^chromium-firefox: host and join: chromium-host lobby(: online error | timeout)/.test(failure)) { console.error(`WEB NET INJECTED FAIL (origin-refused): ${failure}`); process.exitCode = 1; }
-    else { console.error(`WEB NET FAIL: injection origin-refused did not fail for its named reason: ${failure ?? 'the run passed'}`); process.exitCode = 2; }
+    // The named reason: the first pairing's host cannot create its room because the service refuses the page's Origin.
+    // The page sees a refused CORS request either as an online error status or as a create that never reaches the lobby.
+    const lobbyFailed = !!failure && /^chromium-firefox: host and join: chromium-host lobby(: online error | timeout)/.test(failure);
+    if (lobbyFailed && refused && !created) { console.error(`WEB NET INJECTED FAIL (origin-refused): ${failure} (403 seen for ${pageOrigin})`); process.exitCode = 1; }
+    else { console.error(`WEB NET FAIL: injection origin-refused did not fail for its named reason: ${failure ?? 'the run passed'}; refused ${refused}, created ${created}, probe ${probeStatus}`); process.exitCode = 2; }
     return;
   }
   if (failure) { console.error(`WEB NET FAIL: ${failure}`); process.exitCode = 1; return; }
@@ -2527,7 +2636,7 @@ void main();
 
 - [ ] **Step 8: Run the gate.** Run: `npm run test:web-net` (up to 15 minutes) — Expected: three `[web-net] <pairing>: cleanup` lines, then `ACTUAL BROWSER NETWORK GATE PASS (<ms> ms)`, exit 0, and `out/web-ii-net/web-net.json` with `"failure": null` and `"temporaryRemoved": true`. If a pairing fails at `host and join` with an ICE or connect timeout, run that pairing alone (`npx tsx scripts/web/net/web-net-smoke.ts --pairing=<name>`) and check the machine has a non-loopback network interface (loopback ICE pairs over the host's own addresses); do not loosen an assertion.
 
-- [ ] **Step 9: Run the injection.** Run: `npx tsx scripts/web/net/web-net-smoke.ts --inject=origin-refused --pairing=chromium-firefox --report-path=out/web-ii-net/inject-origin.json; echo "exit $?"` — Expected: `WEB NET INJECTED FAIL (origin-refused): chromium-firefox: host and join: chromium-host lobby…` (an `online error <code>` or a `timeout`) and `exit 1`. If the reason differs (exit 2), the gate is not observing what it claims: fix the gate, not the regex.
+- [ ] **Step 9: Run the injection.** Run: `npx tsx scripts/web/net/web-net-smoke.ts --inject=origin-refused --pairing=chromium-firefox --report-path=out/web-ii-net/inject-origin.json; echo "exit $?"` — Expected: `WEB NET INJECTED FAIL (origin-refused): chromium-firefox: host and join: chromium-host lobby…` (an `online error <code>` or a `timeout`) `(403 seen for http://127.0.0.1:<port>)` and `exit 1`; `out/web-ii-net/inject-origin.json` has `injection.refused: true`, `injection.created: false`. If the reason differs (exit 2), the gate is not observing what it claims: fix the gate, not the regex.
 
 - [ ] **Step 10: Commit.**
 
@@ -2616,4 +2725,4 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Placeholder scan:** the only fill-ins are Task 12's results ledger and the `<sha>`/counts in its gates.md line, which are measurements.
 
-**Type consistency:** `BrowserSlice` fields (`update`, `unsupported`, `note`, `onlineBlocked`, `playtestLog`, `playtestLogText`) are defined in Task 5 and used with the same names in Tasks 8-9; `inMatch` (Task 6) is used in Task 7; `web`, `offVersion`, `offGuards`, `pageFullscreen`, `offAudio`, `offLeave` are declared in Tasks 5-10 before the Task 10 teardown that uses them; `WebBuildPlan`/`resolveWebBuildPlan`/`buildWeb` signatures match across Tasks 2, 3 and 11; `isNext`/`PASS_PATH`/`WRONG_PASSCODE_TEXT` (Task 1) are what `checkWebOutput` (Task 3) imports.
+**Type consistency:** `BrowserSlice` fields (`web`, `update`, `unsupported`, `note`, `onlineBlocked`, `playtestLog`, `playtestLogText`) are defined in Task 5 and used with the same names in Tasks 8-9; `inMatch` (Task 6) is used in Task 7; `web`, `offVersion`, `offGuards`, `pageFullscreen`, `offAudio`, `offLeave` are declared in Tasks 5-10 before the Task 10 teardown that uses them; `WebBuildPlan`/`resolveWebBuildPlan`/`buildWeb` signatures match across Tasks 2, 3 and 11; `isNext`/`PASS_PATH`/`WRONG_PASSCODE_TEXT` (Task 1) are what `checkWebOutput` (Task 3) imports.
