@@ -649,3 +649,19 @@ Each rock's normal speed is never zeroed on its own.
 - **Motion:** the drag ramp is zero before 20 s; a circular free orbit is a fixed point of the symmetric step to second order
   (the ρ drift over 10 minutes stays under 0.1 u with the drag on).
 - **Billiards:** the restitution curve; momentum is conserved across soft contacts.
+
+## 14. Revision 4: owner decisions after the Task 13 measurements (2026-11-19)
+
+The measure run (1abad762) found three failures:
+- Feel passed 0/10. Pieces rarely billiarded within 20 s with the soft kick.
+- After three bursts, 17-19 rocks were still free at 270 s. Most were refused rejoin by `sweepCluster`.
+- Cost p99 was 3.9 ms in the settled-refused variant.
+
+The owner decided:
+- **D13 (replaces D11 and §13.6's burst band).** The burst kick goes back to medium: `k_j = v_esc(ρ_parent) · (0.30 + 0.30 · f_j)`. The fan stays at 0.10-0.25.
+- **D14 (amends §13.2).** A settled rock refused only because it lies inside a tumbling cluster's sweep joins that cluster's group:
+  - **When it joins:** it must pass every other rejoin check, and `|v − V_group(p)| < CLUSTER_JOIN_SNAP` (6 u/s). V_group(p) is the cluster's rigid tumble velocity at p.
+  - **How it joins:** it becomes a Tumble with the cluster's current centre and offset p − centre. Its position is unchanged.
+  - **Why this is safe:** rocks in one group co-rotate rigidly and never meet, and the overlap check still applies.
+
+The cost failure is an engineering fix, not an owner decision. The rail positions are worked out once per step phase, and refused rocks re-check rejoin on a staggered cadence. Both are deterministic.
