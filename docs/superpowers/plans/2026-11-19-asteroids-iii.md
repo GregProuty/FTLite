@@ -14,7 +14,7 @@
 - Commands run from the worktree root in Git Bash: `cd /c/Users/djuar/FTLite/.worktrees/asteroids-iii`. Tests: `npx vitest run <files>`; types: `npm run typecheck`; whole suite: `npx vitest run`.
 - SIM_VERSION goes 59 → **60** in Task 14 only, by the two-step bless: a same-version `npm run bless` of the gameplay at 59, then `npx tsx scripts/golden/canonical-trace.ts baseline` and `npx tsx scripts/golden/duel-oracle.ts baseline` at 59, then the bump to 60 and a version-only `npm run bless` after both `check`s pass. No `--fresh`.
 - Determinism guard (`tests/helpers/determinismGuard.ts`, run by `tests/boundary.test.ts` over every file under `src/renderer/src/sim` and what it imports): sim code uses only `+ − × ÷`, `Math.abs`, `ceil`, `floor`, `round`, `min`, `max`, `sign`, `imul`, `sqrt`. No `**`, `Math.pow`, `Math.hypot`, trigonometry, `Date`, `performance`. Fixed constants are literals (`S45 = 0.7071067811865476`). Renderer files (`src/renderer/src/render/**`) may use any Math.
-- Spec values, exact (revision 3 where it amends): `ROCK_STRIDE 8`; kinds `Gone 0, Rail 1, Free 2, Tumble 3`; a rail slot is centre (x, y) and offset (vx, vy) at tick t, ρω = |centre|; `CLUSTER_SPIN_PERIOD 200` s; `ROCK_RESERVE 160`; `GM 2.5e6` (unchanged); `ROCK_GRAVITY 1.0`; `ROCK_MAX_SPEED 300` (a safety net, counted in `rockCapHits`); drag `k = 0.06 · clamp((age − 20) / 40, 0, 1)` toward V* by symmetric half steps around the kick; V* = ω(ρ_lane)·perp(p) in a lane zone ([1092, 1161) inner, [1161, 1239) main, [1239, 1308] outer), else V_c(p); soft edge `K_EDGE_ROCK 0.25`, `EDGE_SETTLE_K 0.3`, slack 700 (400 and `K_EDGE` off); Roche `ROCHE_R 175`, r ≥ 13, age ≥ 30 ticks, tidal fan kick 0.03–0.08 v_esc; `REJOIN_MIN_TICKS 120`; `REJOIN_SPEED 0.5`; rejoin bounds `ρ + r ≤ R_MAP − 50`, `ρ − r ≥ PLANET_RADIUS + 80`; group snap `1.5 · ω · |Δρ| < 2`; restore: `|centre| ≥ 150`, `|offset| ≤ 200`, `r` in `[8, 60]`; mass `r³ / 30` (r² off); `BOUNCE_MIN 4`; `e = 0.3 + 0.5 · clamp((vc − 4) / 26, 0, 1)` above it, an e = 0 impulse at or below; separation `0.5 · max(0, overlap − 0.5)` a tick, each rock at most `ROCK_SEPARATE_MAX 8`; `TOUCH_MIN 8`; `ROCK_CRUSH_SPEED 30`; `ROCK_CRUSH_STEP 40`; grid cell 96 u, `ROCK_GRID_PAD 14`; `SHIP_MASS 900`; ship restitution 0.5; `RAM_SOFT 15`; burst 8/6/4 at parent r ≥ 40/30/20 (else dust), offsets 0.85/0.80/0.70 r, kick `v_esc · (0.15 + 0.25 f_j)`; fan 3 at r ≥ 40, 2 at r ≥ 13, offset 0.6 r, kick `v_esc · (0.10 + 0.15 f_j)`; `f_j = frac(j · 0.6180339887498949)`; piece r `0.9 r / √n`; push caps blast `0.5 v_esc(ρ)`, laser `0.25 v_esc(ρ)`; lanes (ρ, r band, count) inner (1122, 15–20, 17), main (1200, 25–45, 36), outer (1278, 15–20, 17); cluster centre ρ separation 420; trails 25 s at 4 Hz while younger than 60 s, else 6 s; outline spin ±0.1–0.5 rad/s; `LASER_ROCK_PUSH 4000`, `BLAST_PUSH 60000`, `BLAST_RADIUS 120` (unchanged).
+- Spec values, exact (revision 3 where it amends): `ROCK_STRIDE 8`; kinds `Gone 0, Rail 1, Free 2, Tumble 3`; a rail slot is centre (x, y) and offset (vx, vy) at tick t, ρω = |centre|; `CLUSTER_SPIN_PERIOD 200` s; `ROCK_RESERVE 160`; `GM 2.5e6` (unchanged); `ROCK_GRAVITY 1.0`; `ROCK_MAX_SPEED 300` (a safety net, counted in `rockCapHits`); drag `k = 0.06 · clamp((age − 20) / 40, 0, 1)` toward V* = V_c(p) (everywhere) by symmetric half steps around the kick; in a lane zone ([1092, 1161) inner, [1161, 1239) main, [1239, 1308] outer) the kick adds the lane pull `−LANE_PULL · (ρ − ρ_lane) · p/ρ · (k / SETTLE_K_MAX)`, `LANE_PULL 0.004`/s²; lane capture only within `LANE_CAPTURE_DR 5` u of the lane radius; soft edge `K_EDGE_ROCK 0.25`, `EDGE_SETTLE_K 0.3`, slack 700 (400 and `K_EDGE` off); Roche `ROCHE_R 175`, r ≥ 13, age ≥ 30 ticks, tidal fan kick 0.03–0.08 v_esc; `REJOIN_MIN_TICKS 120`; `REJOIN_SPEED 0.5`; rejoin bounds `ρ + r ≤ R_MAP − 50`, `ρ − r ≥ PLANET_RADIUS + 80`; group snap `1.5 · ω · |Δρ| < 2`; restore: `|centre| ≥ 150`, `|offset| ≤ 200`, `r` in `[8, 60]`; mass `r³ / 30` (r² off); `BOUNCE_MIN 4`; `e = 0.3 + 0.5 · clamp((vc − 4) / 26, 0, 1)` above it, an e = 0 impulse at or below; separation `0.5 · max(0, overlap − 0.5)` a tick, each rock at most `ROCK_SEPARATE_MAX 8`; `TOUCH_MIN 8`; `ROCK_CRUSH_SPEED 30`; `ROCK_CRUSH_STEP 40`; grid cell 96 u, `ROCK_GRID_PAD 14`; `SHIP_MASS 900`; ship restitution 0.5; `RAM_SOFT 15`; burst 8/6/4 at parent r ≥ 40/30/20 (else dust), offsets 0.85/0.80/0.70 r, kick `v_esc · (0.15 + 0.25 f_j)`; fan 3 at r ≥ 40, 2 at r ≥ 13, offset 0.6 r, kick `v_esc · (0.10 + 0.15 f_j)`; `f_j = frac(j · 0.6180339887498949)`; piece r `0.9 r / √n`; push caps blast `0.5 v_esc(ρ)`, laser `0.25 v_esc(ρ)`; lanes (ρ, r band, count) inner (1122, 15–20, 17), main (1200, 25–45, 36), outer (1278, 15–20, 17); cluster centre ρ separation 420; trails 25 s at 4 Hz while younger than 60 s, else 6 s; outline spin ±0.1–0.5 rad/s; `LASER_ROCK_PUSH 4000`, `BLAST_PUSH 60000`, `BLAST_RADIUS 120` (unchanged).
 - The four switches `ROCK_SWITCHES.{massCube, softEdge, clusterTumble, rocheBreak}` (rockTuning.ts) are all `true`; tests that flip one use `withSwitches` (tests/helpers/rockArena.ts), which always restores them; nothing in the app sets them (plan deviation 19).
 - Softened forms (§2): `q = ρ² + ε²` (ε = `GRAVITY_EPS` 20); `ω = sqrt(GM / (q·sqrt(q)))`; `V_c(p) = ω · (−y, x)`; `v_esc = sqrt(2·GM / sqrt(q))`; rail step `θ = ω(ρω)·DT` (a Tumble's offset also by `θ_spin = 2π·DT/200`) with the series `c = 1 − θ²/2 + θ⁴/24 − θ⁶/720 + θ⁸/40320`, `s = θ − θ³/6 + θ⁵/120 − θ⁷/5040 + θ⁹/362880`; one step `p′ = (c·x − s·y, s·x + c·y)`.
 - Tick order after this plan (fixed): `events = []`, `beginRockTick` (masks cleared), `beginRockStep` (phase T + 1, grid rebuilt), hunter think, weapon commands per active ship in slot order, ships fly, missiles fly, `stepRocks` (part 1 the Roche break or free motion; part 2 contacts), ship contacts, missile contacts, gun rounds, pew rounds, weapon clocks, hostility, scan, salvage, `settleRocks`, outcome, `beginRockTick`, `endRockStep`, `tick++`.
@@ -45,7 +45,7 @@
 17. **Measurement scenes** (§8.2, §8.3 name the gates but not every scene): the idle and after-burst scenes put the crew on a circular orbit at ρ 2750 (clear of every seeded rock) and pin the Hunter antipodal with its weapons emptied (the duel snapshot needs both slots active); the after-burst scene breaks the largest live belt rail with a script-side burst at 10, 20 and 30 s; the cost gate fills every empty slot with a free rock (about 240 live) and runs the stress driver; the safety counters come from the 20-seed stress run. Master's idle and after-burst baselines are measured in Task 1, before any sim change, with the same script.
 18. **The grid test's run length.** "Every tick of 20 seeded stress runs" is 20 seeds × 200 ticks each in the unit test (time budget); the measure script's stress run covers 4,000 ticks per seed.
 19. **The switches are one object, not four `const`s.** §13.7 makes them compile-time constants with tests in both states and a measure run with all four off. `ROCK_SWITCHES` is a plain object in rockTuning.ts whose defaults are the constants; only tests (`withSwitches`) and the measure script change it, always restoring it, and the functions that read a switch also take it as a parameter (`rockMass(r, cube)`, `rockEdgeAccel(x, y, soft)`, `seededRail(map, k, tumble)`, `moveFreeSlot(…, soft)`). Peers never differ: nothing in the app writes it.
-20. **Spec problem (physics): the lane-zone drag target is radially unstable.** V* = ω(ρ_lane)·perp(p) is a rigid rotation, not an orbit: off the lane radius the drag gives a rock more (outside) or less (inside) speed than its circular speed, so it drifts away from the lane toward the zone edges. A planning simulation of §13.3's step at full drag drifted a circular rock at ρ 1200 by about 55 u in 10 minutes (outside the zones, at 1700, by 0.001 u). In practice most debris is captured within about 100 s of settling, before it drifts far, so the plan builds §13.3 as written, tests the second-order fixed point outside the zones, and reports lane-capture counts (Task 13) so the owner can judge; a capture near a zone edge that would overlap the next lane is refused by deviation 3. A fix the owner could choose: in a zone, target V_c(p) plus a small radial pull toward ρ_lane.
+20. **Spec problem fixed in the spec (physics): the lane-zone drag target was radially unstable.** Revision 3's V* = ω(ρ_lane)·perp(p) is a rigid rotation, not an orbit: a planning simulation of §13.3's step at full drag pushed a circular rock at ρ 1200 about 55 u off its lane in 10 minutes. The owner's coordinator adopted the fix in the spec (73497bc4, §13.2 and §13.3): V* = V_c(p) everywhere; inside a lane zone the kick adds a radial lane pull `−LANE_PULL · (ρ − ρ_lane) · p/ρ · (k / SETTLE_K_MAX)` (0.004/s², ramping in with the drag); a rock rejoins its lane only within `LANE_CAPTURE_DR` (5 u) of the lane radius, else it stays Free and the pull keeps working. Planning probe of the adopted step (main zone, full drag): a rock started circular at ρ 1225 is within 5 u of 1200 after 31 s, its lowest ρ is 1198.76 (an overshoot of 1.24 u, far from the 1161 edge), and it ends at 1200.00004; a circular rock at exactly 1200 stays within 4e-5 u for 10 minutes; rocks started at 1238 and 1162 reach the lane within 35 s without leaving the zone.
 21. **Rejoin events and causes.** The stress run must report lane captures, group rejoins and own-orbit rejoins (§13.7), so a rejoin pushes a view event `{ what: 'rejoin', by: 'settle', how }`; `RockCause` gains `'settle'` and `'tidal'` (the Roche break, §13.3). Events are not hashed.
 22. **Spec gap: the soft edge's extra drag is applied as two half steps** with the age-ramped drag (symmetric around the kick), and only with the soft edge on and ρ > R_MAP at the half-drift point.
 
@@ -57,7 +57,7 @@ Created:
 
 | File | Responsibility |
 |---|---|
-| `src/renderer/src/sim/tactical/rails.ts` | Orbit maths: `orbitRate`, `circularVelocity`, `escapeSpeed`, `seriesStep`, `railStep`, `turnPower`, `railPos` with centre, offset and tumble, lane zones and V* (§2, §3.2, §13.1, §13.2). |
+| `src/renderer/src/sim/tactical/rails.ts` | Orbit maths: `orbitRate`, `circularVelocity`, `escapeSpeed`, `seriesStep`, `railStep`, `turnPower`, `railPos` with centre, offset and tumble, lane zones, V* (= V_c) and the lane pull (§2, §3.2, §13.1, §13.2). |
 | `src/renderer/src/sim/tactical/rockSettle.ts` | `rejoinChoice`, `settleRocks`: the end-of-tick rejoin pass with lane capture, rigid groups and own orbit (§3.4, §13.2). |
 | `src/renderer/src/render/tactical/rockTrack.ts` | Renderer per-slot history: interpolated draw positions, trails and their resets (§7.1). |
 | `scripts/spike-asteroids-iii-idle.ts` | The quiet scene (idle and after-burst): deltas, frees, free counts; runs on master and the branch. |
@@ -478,8 +478,8 @@ git commit -m "feat(asteroids-iii): cracks redrawn inside the outline: fixed per
 
 **Interfaces:**
 - Consumes: `DT`, `GM`, `GRAVITY_EPS`, `ASTEROID_GAP`, `CLUSTER_RADIUS`, `CLUSTER_R_MAX`, `CLUSTER_CENTRE_MIN`, `CLUSTER_CENTRE_MAX`, `CLUSTER_COUNT`, `BELT_COUNT` (tactical `tuning.ts`); `ROCK_MAX_SPEED` (rockTuning.ts).
-- Produces (rails.ts): `export interface RailOut { x: number; y: number; vx: number; vy: number }`; `orbitRate(rho: number): number`; `circularVelocity(x: number, y: number): [number, number]`; `escapeSpeed(rho: number): number`; `seriesStep(theta: number): [number, number]`; `railStep(rhoW: number): [number, number]`; `turnPower(c: number, s: number, n: number): [number, number]`; `SPIN_RATE` (rad/s, 2π / CLUSTER_SPIN_PERIOD); `laneZone(rho: number): number` (lane index or −1); `targetVelocity(x: number, y: number): [number, number]` (§13.2's V*); `railPos(cx: number, cy: number, ox: number, oy: number, t: number, T: number, tumble: boolean, out: RailOut): void`.
-- Produces (rockTuning.ts): `ROCK_SWITCHES: { massCube: boolean; softEdge: boolean; clusterTumble: boolean; rocheBreak: boolean }` (all `true`); `ROCK_RAIL_MIN = 150`, `RAIL_OFFSET_MAX = 200`, `ROCK_R_MAX = 60`, `CLUSTER_SPIN_PERIOD = 200`; `REJOIN_MIN_TICKS = 120`, `REJOIN_SPEED = 0.5`, `REJOIN_EDGE_CLEAR = 50`, `REJOIN_PLANET_CLEAR = 80`, `REJOIN_SNAP_FACTOR = 1.5`, `REJOIN_SNAP_MAX = 2`; `SETTLE_K_MAX = 0.06`, `SETTLE_A0 = 20`, `SETTLE_A1 = 60`; `K_EDGE_ROCK = 0.25`, `EDGE_SETTLE_K = 0.3`, `ROCK_EDGE_SLACK = 400`, `ROCK_EDGE_SLACK_SOFT = 700`; `ROCHE_R = 175`, `ROCHE_MIN_AGE = 30`, `TIDAL_KICK_MIN = 0.03`, `TIDAL_KICK_SPAN = 0.05`; `ROCK_MASS_DIVISOR = 30`; `BOUNCE_MIN = 4`, `TOUCH_MIN = 8`, `ROCK_SEPARATE_MAX = 8`, `SEPARATE_SHARE = 0.5`, `SEPARATE_SLOP = 0.5`, `E_LOW = 0.3`, `E_SPAN = 0.5`, `E_RAMP = 26`; `ROCK_GRID_CELL = 96`, `ROCK_GRID_PAD` (14); `RAM_SOFT = 15`; `BURST_8_MIN_R = 40`, `BURST_6_MIN_R = 30`, `BURST_4_MIN_R = 20`, `BURST_OFFSET`, `FAN_OFFSET = 0.6`; `BURST_KICK_MIN = 0.15`, `BURST_KICK_SPAN = 0.25`, `FAN_KICK_MIN = 0.1`, `FAN_KICK_SPAN = 0.15`; `GOLDEN_FRAC = 0.6180339887498949`; `BLAST_PUSH_CAP = 0.5`, `LASER_PUSH_CAP = 0.25`.
+- Produces (rails.ts): `export interface RailOut { x: number; y: number; vx: number; vy: number }`; `orbitRate(rho: number): number`; `circularVelocity(x: number, y: number): [number, number]`; `escapeSpeed(rho: number): number`; `seriesStep(theta: number): [number, number]`; `railStep(rhoW: number): [number, number]`; `turnPower(c: number, s: number, n: number): [number, number]`; `SPIN_RATE` (rad/s, 2π / CLUSTER_SPIN_PERIOD); `laneZone(rho: number): number` (lane index or −1); `targetVelocity(x: number, y: number): [number, number]` (§13.2's V*, which is V_c(p) everywhere); `lanePull(x: number, y: number, k: number): [number, number]` (§13.2's radial pull inside a lane zone, scaled by the drag rate k; zero outside); `railPos(cx: number, cy: number, ox: number, oy: number, t: number, T: number, tumble: boolean, out: RailOut): void`.
+- Produces (rockTuning.ts): `ROCK_SWITCHES: { massCube: boolean; softEdge: boolean; clusterTumble: boolean; rocheBreak: boolean }` (all `true`); `ROCK_RAIL_MIN = 150`, `RAIL_OFFSET_MAX = 200`, `ROCK_R_MAX = 60`, `CLUSTER_SPIN_PERIOD = 200`; `REJOIN_MIN_TICKS = 120`, `REJOIN_SPEED = 0.5`, `REJOIN_EDGE_CLEAR = 50`, `REJOIN_PLANET_CLEAR = 80`, `REJOIN_SNAP_FACTOR = 1.5`, `REJOIN_SNAP_MAX = 2`; `SETTLE_K_MAX = 0.06`, `SETTLE_A0 = 20`, `SETTLE_A1 = 60`; `K_EDGE_ROCK = 0.25`, `EDGE_SETTLE_K = 0.3`, `ROCK_EDGE_SLACK = 400`, `ROCK_EDGE_SLACK_SOFT = 700`; `LANE_PULL = 0.004`, `LANE_CAPTURE_DR = 5`; `ROCHE_R = 175`, `ROCHE_MIN_AGE = 30`, `TIDAL_KICK_MIN = 0.03`, `TIDAL_KICK_SPAN = 0.05`; `ROCK_MASS_DIVISOR = 30`; `BOUNCE_MIN = 4`, `TOUCH_MIN = 8`, `ROCK_SEPARATE_MAX = 8`, `SEPARATE_SHARE = 0.5`, `SEPARATE_SLOP = 0.5`, `E_LOW = 0.3`, `E_SPAN = 0.5`, `E_RAMP = 26`; `ROCK_GRID_CELL = 96`, `ROCK_GRID_PAD` (14); `RAM_SOFT = 15`; `BURST_8_MIN_R = 40`, `BURST_6_MIN_R = 30`, `BURST_4_MIN_R = 20`, `BURST_OFFSET`, `FAN_OFFSET = 0.6`; `BURST_KICK_MIN = 0.15`, `BURST_KICK_SPAN = 0.25`, `FAN_KICK_MIN = 0.1`, `FAN_KICK_SPAN = 0.15`; `GOLDEN_FRAC = 0.6180339887498949`; `BLAST_PUSH_CAP = 0.5`, `LASER_PUSH_CAP = 0.25`.
 - Produces (tuning.ts): `export interface Lane { rho: number; rMin: number; rMax: number; count: number }`, `LANES`, `LANE_ZONE_EDGES = [1092, 1161, 1239, 1308]`, `CLUSTER_RHO_SEPARATION` (420), `CLUSTER_RHO_SLACK` (160).
 
 - [ ] **Step 1: Write the failing test** `tests/rockRails.test.ts`:
@@ -490,7 +490,7 @@ git commit -m "feat(asteroids-iii): cracks redrawn inside the outline: fixed per
 import { describe, expect, it } from 'vitest';
 import { createRng } from '../src/shared/rng';
 import { generateMap } from '../src/renderer/src/sim/tactical/map';
-import { circularVelocity, escapeSpeed, laneZone, orbitRate, railPos, railStep, SPIN_RATE, targetVelocity, turnPower, type RailOut } from '../src/renderer/src/sim/tactical/rails';
+import { circularVelocity, escapeSpeed, lanePull, laneZone, orbitRate, railPos, railStep, SPIN_RATE, targetVelocity, turnPower, type RailOut } from '../src/renderer/src/sim/tactical/rails';
 import { ROCK_GRID_PAD, ROCK_SWITCHES } from '../src/renderer/src/sim/tactical/rockTuning';
 import { ASTEROID_GAP, BELT_COUNT, CLUSTER_CENTRE_MAX, CLUSTER_CENTRE_MIN, CLUSTER_COUNT, CLUSTER_RHO_SEPARATION, CLUSTER_RHO_SLACK, DT, LANES } from '../src/renderer/src/sim/tactical/tuning';
 
@@ -551,12 +551,19 @@ describe('the rail maths (spec §2, §3.2, §13.1)', () => {
   });
 });
 
-describe('lane zones and V* (spec §13.2)', () => {
-  it('splits [1092, 1308] at 1161 and 1239; V* is the lane\'s rigid rotation inside a zone and V_c outside', () => {
+describe('lane zones, V* and the lane pull (spec §13.2)', () => {
+  it('splits [1092, 1308] at 1161 and 1239; V* is V_c everywhere, inside a zone too', () => {
     expect([1091, 1092, 1160.9, 1161, 1238.9, 1239, 1308, 1308.1].map(laneZone)).toEqual([-1, 0, 0, 1, 1, 2, 2, -1]);
-    const [vx, vy] = targetVelocity(0, 1230), w = orbitRate(1200);
-    expect(vx).toBeCloseTo(-w * 1230, 12); expect(vy).toBeCloseTo(0, 12);
+    expect(targetVelocity(0, 1230)).toEqual(circularVelocity(0, 1230));
     expect(targetVelocity(0, 1700)).toEqual(circularVelocity(0, 1700));
+  });
+  it('the lane pull is −LANE_PULL · (ρ − ρ_lane) · p/ρ · (k / 0.06) inside a zone, zero outside or with no drag', () => {
+    const [ax, ay] = lanePull(0, 1230, 0.06);
+    expect(ax).toBeCloseTo(0, 15); expect(ay).toBeCloseTo(-0.004 * 30, 12);   // pulled inward toward 1200
+    const [bx] = lanePull(1150, 0, 0.03);
+    expect(bx).toBeCloseTo(-0.004 * (1150 - 1122) * 0.5, 12);                 // inner zone, half the drag: half the pull
+    expect(lanePull(0, 1700, 0.06)).toEqual([0, 0]);
+    expect(lanePull(0, 1230, 0)).toEqual([0, 0]);
   });
 });
 
@@ -622,6 +629,9 @@ export const SETTLE_K_MAX = 0.06, SETTLE_A0 = 20, SETTLE_A1 = 60;
 /** §13.3 (softEdge): the rocks' edge spring (/s²) and the extra drag toward V_c past R_MAP (/s); the far-edge safety slack
  *  past R_MAP: ROCK_EDGE_SLACK_SOFT with the soft edge, ROCK_EDGE_SLACK without (K_EDGE then, as ships). */
 export const K_EDGE_ROCK = 0.25, EDGE_SETTLE_K = 0.3, ROCK_EDGE_SLACK = 400, ROCK_EDGE_SLACK_SOFT = 700;
+/** §13.2: the lane pull's strength (/s², inside a lane zone, scaled by k / SETTLE_K_MAX) and how close to its lane's radius
+ *  (u) a rock must be for a lane capture. */
+export const LANE_PULL = 0.004, LANE_CAPTURE_DR = 5;
 /** §13.3 (rocheBreak): a free rock inside ROCHE_R with r ≥ FAN_SPLIT_MIN_R and at least ROCHE_MIN_AGE ticks old fan-breaks
  *  ('tidal'), its pieces kicked v_esc · (TIDAL_KICK_MIN + TIDAL_KICK_SPAN · f_j). */
 export const ROCHE_R = 175, ROCHE_MIN_AGE = 30, TIDAL_KICK_MIN = 0.03, TIDAL_KICK_SPAN = 0.05;
@@ -658,10 +668,10 @@ export const BLAST_PUSH_CAP = 0.5, LASER_PUSH_CAP = 0.25;
 //   orbitRate(ρ)        ω = sqrt(GM / (q·sqrt(q)));      circularVelocity  V_c(p) = ω(|p|)·(−y, x), prograde;
 //   escapeSpeed(ρ)      sqrt(2·GM / sqrt(q));            seriesStep(θ)     (cos θ, sin θ) by the §2 series (θ < 0.05);
 //   railStep(ρω)        seriesStep(ω(ρω)·DT);            turnPower(c,s,n)  (c + i s)^n by repeated squaring;
-//   laneZone, targetVelocity: §13.2's lane zones and the drag and rejoin target V*;
+//   laneZone, targetVelocity, lanePull: §13.2's lane zones, the drag and rejoin target V* (V_c everywhere) and the lane pull;
 //   railPos: a rail slot (centre and offset at tick t) at tick T: the centre and the offset each turned by P = step^n
 //   (a Tumble's offset also by S = spinStep^n) and rescaled to its own length, then added (§13.1).
-import { CLUSTER_SPIN_PERIOD } from './rockTuning';
+import { CLUSTER_SPIN_PERIOD, LANE_PULL, SETTLE_K_MAX } from './rockTuning';
 import { DT, GM, GRAVITY_EPS, LANES, LANE_ZONE_EDGES } from './tuning';
 
 const EPS2 = GRAVITY_EPS * GRAVITY_EPS;
@@ -703,11 +713,15 @@ export function laneZone(rho: number): number {
   if (rho < e[0]! || rho > e[3]!) return -1;
   return rho < e[1]! ? 0 : rho < e[2]! ? 1 : 2;
 }
-/** §13.2: V* at (x, y): in a lane zone the lane's rigid rotation ω(ρ_lane)·(−y, x), elsewhere V_c(p). */
-export function targetVelocity(x: number, y: number): [number, number] {
-  const q = x * x + y * y + EPS2, zone = laneZone(Math.sqrt(x * x + y * y));
-  const w = zone >= 0 ? orbitRate(LANES[zone]!.rho) : Math.sqrt(GM / (q * Math.sqrt(q)));
-  return [-w * y, w * x];
+/** §13.2 (revised, spec 73497bc4): V* at (x, y), the drag and rejoin target: V_c(p) everywhere. */
+export function targetVelocity(x: number, y: number): [number, number] { return circularVelocity(x, y); }
+/** §13.2: the lane pull at (x, y) for drag rate k: inside a lane zone −LANE_PULL · (ρ − ρ_lane) · p/ρ · (k / SETTLE_K_MAX),
+ *  so debris settles onto the lane (radial period about 100 s, damping about 0.5 at full drag); zero outside the zones. */
+export function lanePull(x: number, y: number, k: number): [number, number] {
+  const rho = Math.sqrt(x * x + y * y), zone = laneZone(rho);
+  if (zone < 0 || k <= 0) return [0, 0];
+  const f = (-LANE_PULL * (rho - LANES[zone]!.rho) * (k / SETTLE_K_MAX)) / rho;
+  return [f * x, f * y];
 }
 /**
  * §13.1: a rail slot at tick T ≥ t. Its centre (cx, cy) and offset (ox, oy) are those at tick t; ρω = |centre|. Both are
@@ -748,7 +762,7 @@ Expected: PASS; `boundary.test.ts` now lists `rails.ts`. (A planning check measu
 
 ```bash
 git add src/renderer/src/sim/tactical/rails.ts src/renderer/src/sim/tactical/rockTuning.ts src/renderer/src/sim/tactical/tuning.ts tests/rockRails.test.ts
-git commit -m "feat(asteroids-iii): rail maths (centre plus offset, the tumble, series and squaring), lane zones and V*, the revision 3 numbers and switches (spec §2, §3.2, §13)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(asteroids-iii): rail maths (centre plus offset, the tumble, series and squaring), lane zones, V* and the lane pull, the revision 3 numbers and switches (spec §2, §3.2, §13)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1711,7 +1725,7 @@ git commit -m "feat(asteroids-iii): the belt as three lanes and clusters 420 apa
 
 ---
 
-### Task 6: Free-rock motion: the age-ramped symmetric drag toward V*, the cap counter, the soft edge
+### Task 6: Free-rock motion: the age-ramped symmetric drag toward V_c, the lane pull, the cap counter, the soft edge
 
 **Files:**
 - Modify: `src/renderer/src/sim/tactical/rockContacts.ts` (imports; new exported `settleRate`, `rockEdgeAccel`, `rockEdgeSlack`, `moveFreeSlot`; part 1 of `stepRocks`; the edge test)
@@ -1720,19 +1734,19 @@ git commit -m "feat(asteroids-iii): the belt as three lanes and clusters 420 apa
 - Test: `tests/rockMotion.test.ts`
 
 **Interfaces:**
-- Consumes: `gravityAccel(x, y): [number, number]` (physics.ts); `circularVelocity`, `targetVelocity` (rails.ts, Task 3); `SETTLE_K_MAX`, `SETTLE_A0`, `SETTLE_A1`, `K_EDGE_ROCK`, `EDGE_SETTLE_K`, `ROCK_EDGE_SLACK`, `ROCK_EDGE_SLACK_SOFT`, `ROCK_GRAVITY`, `ROCK_MAX_SPEED`, `ROCK_SWITCHES` (rockTuning.ts); `K_EDGE`, `R_MAP`, `DT` (tactical tuning.ts); `TICK_HZ` (`sim/tuning.ts`); `rockPhase` (rocks.ts); `withSwitches` (tests/helpers/rockArena.ts, Task 5).
+- Consumes: `gravityAccel(x, y): [number, number]` (physics.ts); `circularVelocity`, `targetVelocity`, `lanePull` (rails.ts, Task 3); `SETTLE_K_MAX`, `SETTLE_A0`, `SETTLE_A1`, `K_EDGE_ROCK`, `EDGE_SETTLE_K`, `ROCK_EDGE_SLACK`, `ROCK_EDGE_SLACK_SOFT`, `ROCK_GRAVITY`, `ROCK_MAX_SPEED`, `ROCK_SWITCHES` (rockTuning.ts); `K_EDGE`, `R_MAP`, `DT` (tactical tuning.ts); `TICK_HZ` (`sim/tuning.ts`); `rockPhase` (rocks.ts); `withSwitches` (tests/helpers/rockArena.ts, Task 5).
 - Produces (rockContacts.ts): `settleRate(ageTicks: number): number` (§13.3's k); `rockEdgeAccel(x: number, y: number, soft?: boolean): [number, number]`; `rockEdgeSlack(soft?: boolean): number` (700 soft, 400 not); `moveFreeSlot(v: Float64Array, b: number, T1: number, soft?: boolean): boolean` — one tick of §13.3 for the slot at base `b` of `v`, its age `T1 − t`; returns whether the speed cap fired. `stepRocks` counts `s.rockCapHits`. Task 12's path predictor calls `moveFreeSlot` on a copy.
 
 - [ ] **Step 1: Write the failing test** `tests/rockMotion.test.ts`:
 
 ```ts
-// Asteroids-iii §4, §13.3, §8.1 (motion): a symmetric (Strang) tick: drift, half drag toward V*, kick, half drag, cap,
+// Asteroids-iii §4, §13.3, §8.1 (motion): a symmetric (Strang) tick: drift, half drag toward V*, kick (with the lane pull), half drag, cap,
 // drift; the drag ramps with age (0 before 20 s, 0.06/s from 60 s); the soft edge (on and off); the cap counter; the
 // planet and the far slack turn rocks to dust.
 import { describe, expect, it } from 'vitest';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { gravityAccel } from '../src/renderer/src/sim/tactical/physics';
-import { circularVelocity, targetVelocity } from '../src/renderer/src/sim/tactical/rails';
+import { circularVelocity, lanePull, targetVelocity } from '../src/renderer/src/sim/tactical/rails';
 import { moveFreeSlot, rockEdgeAccel, rockEdgeSlack, settleRate, stepRocks } from '../src/renderer/src/sim/tactical/rockContacts';
 import { rockAlive, rockAt, RockKind, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { ROCK_EDGE_SLACK, ROCK_EDGE_SLACK_SOFT } from '../src/renderer/src/sim/tactical/rockTuning';
@@ -1756,13 +1770,13 @@ describe('free-rock motion (spec §13.3)', () => {
   it('the drag ramps with age: 0 to 20 s, linear to 0.06/s at 60 s, then flat', () => {
     expect([settleRate(0), settleRate(20 * 60), settleRate(40 * 60), settleRate(60 * 60), settleRate(600 * 60)]).toEqual([0, 0, 0.03, 0.06, 0.06]);
   });
-  it('is drift, half drag toward V*, kick, half drag, cap, drift', () => {
-    const v = slot(0, 1500, 7, -3, 0), T1 = 50 * 60, k = settleRate(T1), x0 = v[1]!, y0 = v[2]!;
+  it('is drift, half drag toward V*, kick (gravity and, in a lane zone, the lane pull), half drag, cap, drift', () => {
+    const v = slot(0, 1230, 7, -3, 0), T1 = 50 * 60, k = settleRate(T1), x0 = v[1]!, y0 = v[2]!;
     let vx = v[3]!, vy = v[4]!;
     moveFreeSlot(v, 0, T1);
-    const hx = x0 + vx * DT / 2, hy = y0 + vy * DT / 2, [gx, gy] = gravityAccel(hx, hy), [tx, ty] = targetVelocity(hx, hy);
+    const hx = x0 + vx * DT / 2, hy = y0 + vy * DT / 2, [gx, gy] = gravityAccel(hx, hy), [tx, ty] = targetVelocity(hx, hy), [lx, ly] = lanePull(hx, hy, k);
     vx += (tx - vx) * k * DT / 2; vy += (ty - vy) * k * DT / 2;
-    vx += gx * DT; vy += gy * DT;
+    vx += (gx + lx) * DT; vy += (gy + ly) * DT;
     vx += (tx - vx) * k * DT / 2; vy += (ty - vy) * k * DT / 2;
     expect(v[3]).toBeCloseTo(vx, 12); expect(v[4]).toBeCloseTo(vy, 12);
     expect(v[1]).toBeCloseTo(hx + vx * DT / 2, 12); expect(v[2]).toBeCloseTo(hy + vy * DT / 2, 12);
@@ -1789,6 +1803,20 @@ describe('free-rock motion (spec §13.3)', () => {
     let worst = 0;
     for (let n = 0; n < 600 * 60; n++) { moveFreeSlot(v, 0, 0); worst = Math.max(worst, Math.abs(Math.hypot(v[1]!, v[2]!) - 1700)); }
     expect(worst).toBeLessThan(0.1);
+  });
+  it('in a lane zone a circular rock off its lane settles onto it without leaving the zone; one on the lane stays put (§13.2 lane pull)', () => {
+    const off = slot(0, -1225, 0, 0, -3600), on = slot(0, -1200, 0, 0, -3600);   // 60 s old: full drag
+    let low = Infinity, near = -1, still = 0;
+    for (let n = 1; n <= 600 * 60; n++) {
+      moveFreeSlot(off, 0, 0); moveFreeSlot(on, 0, 0);
+      const r = Math.hypot(off[1]!, off[2]!);
+      low = Math.min(low, r); if (near < 0 && Math.abs(r - 1200) <= 5) near = n / 60;
+      still = Math.max(still, Math.abs(Math.hypot(on[1]!, on[2]!) - 1200));
+    }
+    expect(near).toBeGreaterThan(0); expect(near).toBeLessThan(60);     // within the 5 u capture band inside a minute
+    expect(low).toBeGreaterThan(1195);                                   // no real overshoot, far from the 1161 zone edge
+    expect(Math.abs(Math.hypot(off[1]!, off[2]!) - 1200)).toBeLessThan(0.01);
+    expect(still).toBeLessThan(1e-3);
   });
   it('the soft edge (§13.3): K_EDGE_ROCK and the slack 700 when on; K_EDGE and 400 when off', () => {
     const [ex] = rockEdgeAccel(R_MAP + 100, 0, true), [hx] = rockEdgeAccel(R_MAP + 100, 0, false);
@@ -1827,7 +1855,7 @@ describe('free-rock motion (spec §13.3)', () => {
 });
 ```
 
-(Planning simulations of this integrator: a rock thrown 60 u/s outward from ρ 2700 peaks at ρ 2881 with the soft edge and 2842 without, and is back inside R_MAP within 2 minutes either way; the 10-minute ρ drift at 1700 with full drag is 0.001 u. Inside a lane zone the same check drifts tens of units: see plan deviation 20.)
+(Planning simulations of this integrator: a rock thrown 60 u/s outward from ρ 2700 peaks at ρ 2881 with the soft edge and 2842 without, and is back inside R_MAP within 2 minutes either way; the 10-minute ρ drift at 1700 with full drag is 0.001 u; with the lane pull a circular rock at 1225 is within 5 u of 1200 after 31 s, bottoms at 1198.76 and ends at 1200.00004, and one at 1200 moves under 4e-5 u: plan deviation 20.)
 
 - [ ] **Step 2: Run it to make sure it fails**
 
@@ -1839,7 +1867,7 @@ Expected: FAIL (`moveFreeSlot` is not exported).
 
 ```ts
 import { gravityAccel } from './physics';
-import { circularVelocity, targetVelocity } from './rails';
+import { circularVelocity, lanePull, targetVelocity } from './rails';
 import { EDGE_SETTLE_K, K_EDGE_ROCK, ROCK_CRUSH_SPEED, ROCK_EDGE_SLACK, ROCK_EDGE_SLACK_SOFT, ROCK_GRAVITY, ROCK_MAX_SPEED, ROCK_RESTITUTION, ROCK_SWITCHES, SETTLE_A0, SETTLE_A1, SETTLE_K_MAX } from './rockTuning';
 import { DT, K_EDGE, R_MAP } from './tuning';
 import { TICK_HZ } from '../tuning';
@@ -1866,17 +1894,17 @@ export function rockEdgeAccel(x: number, y: number, soft = ROCK_SWITCHES.softEdg
 export function rockEdgeSlack(soft = ROCK_SWITCHES.softEdge): number { return soft ? ROCK_EDGE_SLACK_SOFT : ROCK_EDGE_SLACK; }
 /**
  * §13.3: one tick of a free rock's motion, the slot at base b of v, its age T1 − t: (1) drift p += v·DT/2; (2) half drag
- * v += (V* − v)·k·DT/2 (and, with the soft edge past R_MAP, + (V_c − v)·EDGE_SETTLE_K·DT/2); (3) kick v += (g·ROCK_GRAVITY +
- * e_rock)·DT; (4) the same half drag again; (5) the ROCK_MAX_SPEED cap; (6) drift p += v·DT/2. V*, V_c, g and e_rock are
+ * v += (V* − v)·k·DT/2, V* = V_c (and, with the soft edge past R_MAP, + (V_c − v)·EDGE_SETTLE_K·DT/2); (3) kick v += (g·ROCK_GRAVITY +
+ * e_rock + lanePull(p, k))·DT; (4) the same half drag again; (5) the ROCK_MAX_SPEED cap; (6) drift p += v·DT/2. V*, V_c, g, e_rock and the pull are
  * taken once, at the half-drift point. Returns whether the cap fired (rockCapHits; the stress gate is 0).
  */
 export function moveFreeSlot(v: Float64Array, b: number, T1: number, soft = ROCK_SWITCHES.softEdge): boolean {
   const h = DT / 2, k = settleRate(T1 - v[b + 7]!), x = v[b + 1]! + v[b + 3]! * h, y = v[b + 2]! + v[b + 4]! * h;
-  const [gx, gy] = gravityAccel(x, y), [ex, ey] = rockEdgeAccel(x, y, soft), [tx, ty] = targetVelocity(x, y);
+  const [gx, gy] = gravityAccel(x, y), [ex, ey] = rockEdgeAccel(x, y, soft), [tx, ty] = targetVelocity(x, y), [lx, ly] = lanePull(x, y, k);
   const out = soft && x * x + y * y > R_MAP * R_MAP, [cx, cy] = out ? circularVelocity(x, y) : [0, 0], ke = out ? EDGE_SETTLE_K : 0;
   let vx = v[b + 3]!, vy = v[b + 4]!;
   vx += (tx - vx) * k * h; vy += (ty - vy) * k * h; vx += (cx - vx) * ke * h; vy += (cy - vy) * ke * h;
-  vx += (gx * ROCK_GRAVITY + ex) * DT; vy += (gy * ROCK_GRAVITY + ey) * DT;
+  vx += (gx * ROCK_GRAVITY + ex + lx) * DT; vy += (gy * ROCK_GRAVITY + ey + ly) * DT;
   vx += (tx - vx) * k * h; vy += (ty - vy) * k * h; vx += (cx - vx) * ke * h; vy += (cy - vy) * ke * h;
   const sp = Math.sqrt(vx * vx + vy * vy), capped = sp > ROCK_MAX_SPEED;
   if (capped) { const f = ROCK_MAX_SPEED / sp; vx *= f; vy *= f; }
@@ -1888,7 +1916,7 @@ export function moveFreeSlot(v: Float64Array, b: number, T1: number, soft = ROCK
   (With `out` false, `ke` is 0 and the edge-drag terms add exactly 0.)
   - In `stepRocks`, the first line becomes `const v = s.rocks, n = rockSlots(s), T1 = rockPhase(s);` and part 1's body (from `const [gx, gy] = gravityAccel(...)` through `v[b + 1]! += vx * DT; v[b + 2]! += vy * DT;`) becomes `if (moveFreeSlot(v, b, T1)) s.rockCapHits++;`. Plan deviation 8: running the sub-steps rock by rock gives the same values as step by step, because free motion never reads another rock.
   - In part 2, `const p = s.map.planet;` becomes `const p = s.map.planet, far = R_MAP + rockEdgeSlack();` and `x * x + y * y > R_MAP * R_MAP` becomes `x * x + y * y > far * far` (§4, §13.3: the far-edge safety rule, `'edge'` dust; the stress run counts it).
-  - Update the header comment's part 1 line to: `Part 1, motion: every Free rock not born this tick, ascending, by moveFreeSlot (§13.3: the symmetric age-ramped drag toward V*, the soft edge, the cap, counted in rockCapHits). Then rocksMoved: free rocks now stand at tick + 1. A rock touching the planet, or past R_MAP + rockEdgeSlack(), turns to dust at the start of its contact turn.`
+  - Update the header comment's part 1 line to: `Part 1, motion: every Free rock not born this tick, ascending, by moveFreeSlot (§13.3: the symmetric age-ramped drag toward V_c, the lane pull, the soft edge, the cap, counted in rockCapHits). Then rocksMoved: free rocks now stand at tick + 1. A rock touching the planet, or past R_MAP + rockEdgeSlack(), turns to dust at the start of its contact turn.`
 - In `rockTuning.ts` delete `ROCK_DRAG` and change that block's comment to `/** Spike ii §3.2, asteroids-iii §13.3: rock gravity as a share of the ships', and the speed cap (u/s), a safety net counted in rockCapHits. */`.
 
 - [ ] **Step 4: Replace the two spike ii motion tests** in `tests/rockContacts.test.ts`: delete `'gravity, then drag, then the 300 u/s cap, then semi-implicit Euler; a rock born this tick does not move'` and `'a rock touching the planet, or whose centre leaves the map, turns to dust'` (rewritten in `tests/rockMotion.test.ts`; spec §11: edge dust at R_MAP is gone). Remove `gravityAccel` and `DT` from its imports if nothing else there uses them.
@@ -1902,7 +1930,7 @@ Expected: PASS. `rockBlast`'s homing test flies its young rock with no drag and 
 
 ```bash
 git add src/renderer/src/sim/tactical/rockContacts.ts src/renderer/src/sim/tactical/rockTuning.ts tests/rockMotion.test.ts tests/rockContacts.test.ts
-git commit -m "feat(asteroids-iii): free rocks: a symmetric step with an age-ramped drag toward V*, the soft edge and its slack, the cap counted in rockCapHits (spec §4, §13.3)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(asteroids-iii): free rocks: a symmetric step with an age-ramped drag toward V_c, the lane pull, the soft edge and its slack, the cap counted in rockCapHits (spec §4, §13.3)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2364,8 +2392,8 @@ git commit -m "feat(asteroids-iii): billiards: mass r³/30 (switch), the restitu
 
 ```ts
 // Asteroids-iii §3.4, §13.2, §8.1 (rejoining): a free rock rejoins a rail at the end of the tick once its clock has run 120
-// ticks, it was not touched or born this tick, it is within 0.5 u/s of V*, it is clear of the edge and the planet and it
-// overlaps no live rock; its ρω is its lane's in a lane zone, else a matching rejoined rail's (a snap under 2 u/s), else
+// ticks, it was not touched or born this tick, it is within 0.5 u/s of V* (= V_c), it is clear of the edge and the planet and it
+// overlaps no live rock; its ρω is its lane's within 5 u of a lane radius (farther off in a zone it stays Free), else a matching rejoined rail's (a snap under 2 u/s), else
 // its own ρ; and (plan deviation 3) no rail of another ω sweeps across its annulus.
 import { describe, expect, it } from 'vitest';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
@@ -2418,16 +2446,18 @@ describe('rejoining a rail (spec §3.4, §13.2)', () => {
     settled(st, 105, 0, -1935, 0);
     expect([100, 101, 102, 103, 104, 105].map((k) => rejoinChoice(st, k) !== null)).toEqual([false, true, false, true, false, false]);
   });
-  it('in a lane zone it is captured: ρω the lane\'s, centre p · (ρ_lane / ρ), offset p − centre, and it co-rotates with the lane', () => {
+  it('within 5 u of its lane it is captured: ρω the lane\'s, centre p · (ρ_lane / ρ), offset p − centre, and it co-rotates with the lane; farther off in the zone it stays Free', () => {
     const st = arena(); st.tick = 500;
-    const w = orbitRate(1200), x = 0, y = 1230;
-    mover(st, 100, x, y, -w * y, w * x, 10, 5, 0);   // V* in the main zone: the lane's rigid rotation
+    settled(st, 100, 0, 1203, 0);                    // circular (V* = V_c), 3 u outside the main lane
+    settled(st, 101, 0, -1215, 0);                   // in the main zone but 15 u off: the lane pull is still working on it
+    expect(rejoinChoice(st, 101)).toBeNull();
     expect(rejoinChoice(st, 100)).toEqual({ rhoW: 1200, how: 'lane' });
     settleRocks(st);
     const v = slot(st, 100);
     expect([v[0], v[1], v[3], v[7]]).toEqual([RockKind.Rail, 0, 0, 500]);
-    expect(v[2]).toBeCloseTo(1200, 9); expect(v[4]).toBeCloseTo(30, 9);
-    rail(st, 7, 0, 1200, 20);                        // a lane rock on the same bearing, 30 inward
+    expect(v[2]).toBeCloseTo(1200, 9); expect(v[4]).toBeCloseTo(3, 9);
+    expect(st.rocks[101 * ROCK_STRIDE]).toBe(RockKind.Free);
+    rail(st, 7, 0, 1200, 20);                        // a lane rock 3 u inward on the same bearing (added after the capture)
     for (let n = 0; n < 30; n++) {
       st.tick += 3600;
       const ax = rockX(st, 100), ay = rockY(st, 100), bx = rockX(st, 7), by = rockY(st, 7);
@@ -2502,14 +2532,15 @@ Expected: FAIL (cannot resolve `rockSettle`).
 // pass at the end of the tick, after the ship contacts, lasers, gun, pew and missiles (stepDuel runs settleRocks last,
 // before the outcome). A Free rock may rejoin when its clock has run REJOIN_MIN_TICKS ((T + 1) − t), it was not touched or
 // born this tick, |v − V*| < REJOIN_SPEED, ρ + r ≤ R_MAP − REJOIN_EDGE_CLEAR and ρ − r ≥ PLANET_RADIUS + REJOIN_PLANET_CLEAR,
-// and it overlaps no live rock. Its ρω, in order: (1) in a lane zone, the lane's ρ (lane capture); (2) otherwise the first
+// and it overlaps no live rock. Its ρω, in order: (1) in a lane zone, the lane's ρ when |ρ − ρ_lane| ≤ LANE_CAPTURE_DR (lane
+// capture; farther off in a zone it stays Free while the lane pull works on it); (2) otherwise the first
 // (lowest-slot) rejoined Rail whose annulus its padded annulus [ρ − r − ASTEROID_GAP, ρ + r + ASTEROID_GAP] overlaps,
 // when the snap REJOIN_SNAP_FACTOR · ω · |ρ − ρω_j| is under REJOIN_SNAP_MAX (a rigid group; at or over it the rock stays
 // Free); (3) otherwise its own ρ. Plan deviation 3: it also stays Free when a live rail of another ω sweeps across its
 // padded annulus, so rail-rail pairs stay impossible. It becomes a Rail with centre p · (ρω / ρ) and offset p − centre,
 // t = T + 1, and a `rejoin` event (by 'settle', `how`) tells the views and the measure script.
 import { laneZone, orbitRate, targetVelocity } from './rails';
-import { REJOIN_EDGE_CLEAR, REJOIN_MIN_TICKS, REJOIN_PLANET_CLEAR, REJOIN_SNAP_FACTOR, REJOIN_SNAP_MAX, REJOIN_SPEED } from './rockTuning';
+import { LANE_CAPTURE_DR, REJOIN_EDGE_CLEAR, REJOIN_MIN_TICKS, REJOIN_PLANET_CLEAR, REJOIN_SNAP_FACTOR, REJOIN_SNAP_MAX, REJOIN_SPEED } from './rockTuning';
 import { isRail, railCentreRadius, rockPhase, RockKind, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
 import type { TacticalState } from './state';
 import { ASTEROID_GAP, LANES, PLANET_RADIUS, R_MAP } from './tuning';
@@ -2543,7 +2574,10 @@ export function rejoinChoice(s: TacticalState, k: number): RejoinChoice | null {
   }
   const lo = rho - r - ASTEROID_GAP, hi = rho + r + ASTEROID_GAP, zone = laneZone(rho);
   let choice: RejoinChoice = { rhoW: rho, how: 'own' };
-  if (zone >= 0) choice = { rhoW: LANES[zone]!.rho, how: 'lane' };
+  if (zone >= 0) {   // §13.2: a lane capture only close to the lane radius
+    if (Math.abs(rho - LANES[zone]!.rho) > LANE_CAPTURE_DR) return null;
+    choice = { rhoW: LANES[zone]!.rho, how: 'lane' };
+  }
   else for (let j = 0; j < n; j++) {
     if (j === k || v[j * ROCK_STRIDE] !== RockKind.Rail) continue;
     const rc = railCentreRadius(s, j);
@@ -2589,7 +2623,7 @@ Expected: PASS. The laser push in the 5-shot test is under Task 10's 0.25 · v_e
 
 ```bash
 git add src/renderer/src/sim/tactical/rockSettle.ts src/renderer/src/sim/tactical/duel.ts tests/rockSettle.test.ts
-git commit -m "feat(asteroids-iii): free rocks rejoin at the end of the tick: lane capture, rigid groups, own orbit; never across a rail of another ω (spec §3.4, §13.2)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(asteroids-iii): free rocks rejoin at the end of the tick: lane capture within 5 u, rigid groups, own orbit; never across a rail of another ω (spec §3.4, §13.2)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -3797,7 +3831,7 @@ git commit -m "chore(asteroids-iii): the measure script and its results: feel (s
 
 - [ ] **Step 4: The tuning rule (only when a gate fails).** Change one named knob in `rockTuning.ts` at a time, in the order below for the failing gate, re-run the whole script after each, and stop at the first change that passes every gate. Commit each kept change by itself (`git commit -m "tune(asteroids-iii): <KNOB> <old> -> <new> for the <gate> gate (spec §13: Fable's estimates, confirmed by §8)"` with the attribution line) and record the before and after numbers for the report. If the list runs out, revert the knobs to the spec's values, commit the script and the failing JSON, and report BLOCKED with the numbers (the owner decides; spec §1 decisions D1–D10 and the revision 3 owner choices are not tuned).
   - `feel` under 7 of 10: (1) `SETTLE_A0` 20 → 30 (longer free flight before the drag); (2) `TOUCH_MIN` stays (it defines the counter); stop.
-  - `burst` free count not back to ≤ 10: (1) `SETTLE_K_MAX` 0.06 → 0.08; (2) `SETTLE_A1` 60 → 45. Also read `stress.rejoins`: if lane captures are near 0 while free rocks sit in the belt, the lane-zone drift (plan deviation 20) is the cause: report it rather than tuning further.
+  - `burst` free count not back to ≤ 10: (1) `SETTLE_K_MAX` 0.06 → 0.08; (2) `SETTLE_A1` 60 → 45. Also read `stress.rejoins`: if lane captures are near 0 while free rocks sit in the belt, report it (the lane pull or the 5 u capture band, plan deviation 20, are the owner's to retune: `LANE_PULL` and `LANE_CAPTURE_DR` are not on this list).
   - `burst` delta median over 5,500: the same two knobs.
   - `cost` p99 at or over 0.5 ms: no knob; profile `stepDuel` (`node --cpu-prof`), report the top three functions, BLOCKED.
   - `idle` freed > 0 or a delta over master's: a bug (lanes or clusters meet); find it with superpowers:systematic-debugging, fix it with a failing test first, and re-run; not a tuning case.
@@ -4002,7 +4036,7 @@ mkdir -p "$SCRATCH/shots3" && cd "$SCRATCH/shots3" && npm init -y >/dev/null && 
   2. **Gates** (a table: gate, target, measured, pass): the feel check with the four switches on and off (per-shot rows: pieces, touches, mass share, turned), stress twins and restore, the safety counters (edge dust, `rockSlotDust`, `rockCapHits`), cost p99, idle frees and the three delta windows against master's, after-burst free count and delta median, duelGates (per-seed lines), the whole suite, `test:determinism`, the app smoke.
   3. **Stress counts**: tidal breaks and their pieces, rejoins by `how` (lane, group, own), the free count every 10 s.
   4. **Tuning** (every knob changed in Tasks 13 and 14, with the before and after numbers; "none" if none).
-  5. **Spec problems found while planning and building** (copy the list in this plan's "Deviations and clarifications", items 14 and 20 to 22, and add any found while building).
+  5. **Spec problems found while planning and building** (copy the list in this plan's "Deviations and clarifications", items 3, 14 and 20 to 22, with item 20's adopted fix and probe numbers, and add any found while building).
   6. **Screenshots** (the nine file names with one line each) and **the owner's look check** (open: lanes too regular? trails, spin, hit-stop feel, cracks).
 
 - [ ] **Step 4: Commit**
