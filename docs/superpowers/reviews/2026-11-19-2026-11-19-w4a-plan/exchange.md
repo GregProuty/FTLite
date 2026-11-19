@@ -207,3 +207,77 @@ Confirmed: rockArena.ts L11-L18 has 10 callers. `arena`'s default stays `ShipCla
 
 ---
 
+# Round 2 (delta, reviewing 6f1b9108, effort medium, 148 s, 1451461 in / 1364554 cached / 12902 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 Task 12's frequency-row UI test can't pass: the key hint is one text '4/5/6', not three texts
+The new w4Ui test asserts `for (const k of ['4','5','6']) expect(texts()).toContain(k)`. texts() is an array of whole canvas texts, and the station draws the key hint as a single PixelText ('3/4/5' today; Task 12 Step 4 says 'the frequency row as today, with the key hint `4/5/6`'). No canvas text equals '4', '5' or '6', so the test is red after a correct implementation. Its title also promises the weak mark, but nothing asserts it. · plan L2292-L2296 (the test), plan L2362 (the hint `4/5/6`); src/renderer/src/ui/duel/WeaponsStation.tsx:L156 (`<PixelText text="3/4/5" .../>`, one text), L152 (FREQ_NAMES labels on the buttons), L154 (the weak mark carries data-ui-weak-freq); manualTorpedoUi.test.tsx:L28 (texts() = each canvas's data-text). · A test that is red after a correct implementation, with no rule to fix it. That fails Task 12's gate. · Assert `expect(texts()).toContain('4/5/6')` and `expect(texts()).not.toContain('3/4/5')`. For the weak mark, assert `q('[data-ui-weak-freq]')!.dataset.uiWeakFreq` equals `FREQ_NAMES[2]` (import FREQ_NAMES, or hard-code its third label).
+
+### [P2] R2-F2 Task 11's online session cases don't fit the rig they name: the scene stub has no trigger(), and there are no key samples
+Case (1) calls `h.sceneOpts[0]!.requests!.trigger(true)`, but the hoisted `h.sceneOpts` type and the scene mock's `requests` type list only pew/aimLaser/torpHeading, so this fails tsc -b. Cases (1) and (3) speak of 'a sample with selectTo: 1' or 'gunFreqKeyTo: 0'. onlineDuelSession's rig has no key-sample stub: keys reach the real keyboard through `r.key('keydown', code)` on a fake window. So the cases can't be written as described, and executors will write them differently. · plan L2106-L2111; tests/onlineDuelSession.test.ts:L56 and L70 (the requests type literals), L137 (`key(type, code)` dispatches window events), L37 (`helds()` reads the sent held frames). · Task 11's tsc gate fails unless the executor widens the stub. The 'sample' wording invites a second harness or a guess. · State: add `trigger(held: boolean): void` to both requests type literals (L56 and L70). Write the cases as key events: `r.key('keydown','Digit2')` (and keyup) to select the autocannon, then Digit1 for the selection-only held change, Digit4 for laserFrequency 0, Digit3 for no laserFrequency. Read held frames from `c.helds().at(-1)`.
+
+### [P3] R2-F3 Task 8 Step 2's expected failure text is stale after Task 3 Step 8b
+Step 2 still expects 'FAIL (the Hound's gunner sends the pew → beam move)'. After Task 3 Step 8b parks the gunner on a turret class, it sends nothing on the Hound, so the failure is the missing shipPower/weaponPower and pewFire. · plan L1416; plan Task 3 Step 8b (L503-L511). · Misleads the executor about why the red step fails. The test still fails, so the gate holds. · Change to 'Expected: FAIL (the Hound's gunner is parked by Task 3 Step 8b and sends nothing)'.
+
+## Prior findings
+- R1-F1: resolved — Step 8b's guard uses `t` from gunner's first const line (scripted.ts L330) and classOf (already imported, L20). Task 8 replaces it. The window adds Task 3-8 for the gates and the scripted crew, and kind (b) finds join until Task 14.
+- R1-F2: resolved — Task 7 greps 'pewFire' and deletes the W-1 block with pewAimOf; Task 8 adds the replacement.
+- R1-F3: resolved — Task 9 Step 5b adds DUEL_ACTION entries and the loop continue; controlsList.ts is in Files and the commit.
+- R1-F4: resolved — triggerNow closure beside takeSteer0; play and pump call triggerNow().
+- R1-F5: resolved — seeded(st, 0), fired at map asteroid 0 from its near edge; asserts Moving and vx > 0.
+- R1-F6: resolved — wp = n.at.get('systems.0.weaponPower'), v[wp + k]; hedge dropped.
+- R1-F7: resolved — Validator call (st, flattenTactical(st)), createFx(), noop shape, render imports app, and F's two branches plus launchWhy are all stated.
+- R1-F8: resolved — valkyrnRuntime edit moved to Task 10 Step 1b; scienceInput L124-L133 in the window for Tasks 3-6; the runtime case stays on freqTo.
+- R1-F9: resolved — w4PewFire case sends the five laser commands with holdInSight and expects rejected/unavailable, then laserFrequency applied.
+- R1-F10: resolved — w4Runtime and w4Ui are written in full and their rigs match the code. The online cases are now concrete, but their remaining defects are raised as new findings (the stub type and the key path).
+- R1-F11: resolved — arena keeps the Cutter default; rockLaser, rockLock and rockTargetModel laser cases pass ValkyrnLaser explicitly.
+
+## Verified
+- w4Runtime rig mirrors tests/scienceInput.test.ts:L64-L83; runtime.ts L174 (cls), L195 (takePew), L226 held(), L236 lastResults(), L252 takeRefusals() exist
+- weaponPower refused as 'unavailable' (step.ts L439), consistent with the W/S test's 'rejected:unavailable'
+- pew starts the round full (state.ts L230), consistent with one click giving pewShots 1
+- Step 8b compiles: gunner's first line defines t (scripted.ts L330); classOf imported L20; hasTurret not yet imported (the plan adds it)
+- w4Ui rig copies manualTorpedoUi.test.tsx L28-L41; ui/actions.ts L85 contact.pickUp and L92 setConsole exist; card clicks are onPointerDown (WeaponsStation.tsx L56, L65); freq buttons are console-freq-<f> (L152)
+- onlineDuelSession rig(seat, ui, api, extra, cls) at L110; stub client has helds() and commands() (L36-L37)
+
+## Not verified
+- Whether w4Runtime's E/Q, MANUAL torpedo launch and trigger edge cases pass as written; they depend on Task 9/10 code not yet written (gunHeld undefined matches plan L1785's weaponsSeatHeld design)
+- The new data-ui-card-selected and data-ui-overheat attributes; they are added by Task 12 itself
+- Whether a seed 7 seated replica in onlineDuelSession's rig lets a Digit4 laserFrequency be sent at seat 1 without extra sight setup
+
+---
+
+# Round 2 response (plan revised to rev after 6f1b9108)
+
+Reviewed `round-2.json` against the subject at `6f1b9108`. 3 accepted, 0 rejected, 0 deferred. The reviewer confirmed R1-F1 to R1-F11 resolved.
+
+## R2-F1 [P1]: Task 12's frequency-row UI test can't pass
+
+Confirmed: WeaponsStation.tsx L156 draws the key hint as one PixelText. The test now asserts `'4/5/6'` and not `'3/4/5'`, and the weak mark through `[data-ui-weak-freq]` = `'C'` (`FREQ_NAMES` in scienceModel.ts L12; the station sets it at L154).
+
+## R2-F2 [P2]: Task 11's online cases don't fit the rig
+
+Confirmed: onlineDuelSession.test.ts L56 and L70 type `requests` without `trigger`, and keys reach the real keyboard through `r.key` (L137). Task 11 now:
+- adds `trigger(held: boolean): void` to both type literals;
+- writes each case as `r.key('keydown'/'keyup', code)` events;
+- reads `c.helds().at(-1)` (L37) and `c.commands()`.
+
+## R2-F3 [P3]: Task 8 Step 2's expected failure is stale
+
+Confirmed. The step now expects the parked gunner (Task 3 Step 8b) to send nothing.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-19-w4a-loadout.md
+
+<!-- end -->
+
+---
+
