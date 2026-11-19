@@ -110,7 +110,8 @@ describe('the empty Helm (spec §4.4)', () => {
       expect(apart(d.tactical.ships[0].heading, aim)).toBeLessThanOrEqual(2);
     } finally { disposeDuel(d); }
   });
-  it('the Hound flies zero axes with the Helm empty, whatever its throttle and held heading', () => {
+  // playtest2feedback §3: the Cutter crew Helm now flies unattended (pinned in crewThrottle.test.ts)
+  it('a notched-throttle class on a layout whose Helm does not hold unattended (the Hound layout) flies zero axes with the Helm empty, whatever its throttle and held heading', () => {
     const d = createSeatedDuel(DUEL_LAYOUT, 5, 0, 2, ShipClass.Valkyrn);
     try {
       const h = (d.tactical.ships[0].heading + 64) % 256;

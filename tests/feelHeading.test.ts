@@ -109,7 +109,7 @@ describe('the heading command (Feel-ii §1.1)', () => {
       expect(d.tactical.ships[0].heading + d.tactical.ships[0].headingAcc - h0).toBeLessThan(0);
     } finally { disposeDuel(d); }
   });
-  it('is kept across stand and sit (no Helm: no turn), duel-decided on the end card, and −1 in a new round', () => {
+  it('is kept across stand and sit, duel-decided on the end card, and −1 in a new round', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
       step(d, [cmd(d, 0, heading(90))]);
@@ -117,7 +117,7 @@ describe('the heading command (Feel-ii §1.1)', () => {
       expect([d.holdHeading, helmTurn(d, NONE) !== 0]).toEqual([90, true]);   // the rule; playtest2feedback §3: the unattended crew Helm now turns onto it too
       const h0 = d.tactical.ships[0].heading;
       step(d);
-      expect(d.tactical.ships[0].heading).not.toBe(h0);   // playtest2feedback §3: an unattended crew Helm turns onto its held heading
+      expect(apart(d.tactical.ships[0].heading, 90)).toBeLessThan(apart(h0, 90));   // playtest2feedback §3: an unattended crew Helm turns onto its held heading
       expect(step(d, [cmd(d, 0, heading(10))])[0]).toMatchObject({ status: 'rejected', reason: 'invalid-seat' });
       expect(step(d, [cmd(d, 0, { kind: 'sit', station: d.nav })])[0]!.status).toBe('applied');
       expect(d.holdHeading).toBe(90);

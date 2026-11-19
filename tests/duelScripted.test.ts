@@ -54,6 +54,14 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
     expect(input.commands.filter((e) => e.id.player === 0).map((e) => e.command)).toEqual([{ kind: 'throttle', level: 4 }]);   // and full throttle
     disposeDuel(d);
   });
+  it('the Cutter twin: the Helm answers the same hazard by holding W (throttleHeld), never a throttle command', () => {
+    const d = createSeatedDuel(layout, 1), s = d.tactical.ships[0], pair = createScriptedPair(1);
+    s.x = 0; s.y = -300; s.vx = 0; s.vy = 150; s.heading = 128;
+    const input = scriptedInput(pair, d);
+    expect(input.held[0]).toEqual({ moveX: 1, moveY: 0, interactHeld: false, throttleHeld: 1 });
+    expect(input.commands.filter((e) => e.id.player === 0 && e.command.kind === 'throttle')).toEqual([]);
+    disposeDuel(d);
+  });
   it('the nearest free character (the gunner, 5 tiles away) walks to an Engines repair, fixes it and sits again', () => {
     const d = createSeatedDuel(layout, 1), pair = createScriptedPair(1), ship = d.tactical.systems[0];
     ship.rooms[Room.Engines] = 1;
