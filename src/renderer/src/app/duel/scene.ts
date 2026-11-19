@@ -16,6 +16,8 @@ import { hoverReadout } from '../../render/duel/scienceModel';
 import { shipHud } from '../../render/duel/shipHudModel';
 import { READOUT_COLUMN } from '../../render/duel/interiorModel';
 import { createInteriorView, type InteriorView } from '../../render/duel/interiorView';
+import { shipCommandOf, shipControlAt, type ShipCommand } from '../../render/duel/shipControls';
+import type { Placement } from '../../render/duel/interiorCamera';
 import { readoutHelp, readoutRows } from '../../render/duel/readoutModel';
 import { createFx, fxDt, pushEvents, pushGunHits, pushKill, recordTrails, resetFx, shakeOffset, stepFx, trackSolution, type ViewEvent } from '../../render/tactical/fxModel';
 import { gunnerPresent, laserSituation, linedUp } from '../../render/duel/situationModel';
@@ -136,6 +138,9 @@ export interface DuelSceneOptions {
   sendPing?: (p: PingRequest) => void;
   /** Online: the pings that arrived since the last frame, every seat's own included. */
   takePings?: () => (PingRequest & { player: number })[];
+  /** Engineering spike §5: where a ship-view click on a door or an airlock goes (the duel keyboard's console slot, so
+   *  Single player queues it and the online duel sends it). Absent: interior clicks do nothing. */
+  shipCommand?: (command: ShipCommand) => void;
 }
 
 export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
@@ -179,6 +184,11 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const station = hidden ? null : consoleStation(d, source.active());
       const onMap = view !== 'interior' && (station === 'helm' || station === 'weapons' || station === 'science' || station === 'flight');   // Sci-1 spec §7.2: the window on all three
       const click = options.takeClick?.() ?? null;   // drained every frame, so a click never waits for a later frame
+      // Engineering spike §5: on the ship view a left click on a door or an airlock toggles it, for anyone, from anywhere.
+      if (click && view === 'interior' && options.shipCommand) {
+        const at = interior.placement(), c = at ? shipControlAt(d, at, click.x, click.y) : null;
+        if (c) options.shipCommand(shipCommandOf(c));
+      }
       if (contact && click && onMap && station !== 'flight') {   // Valkyrn spec §5.1: on the Flight seat the left button is the gun
         // Spike ii §6.5: a ship contact under the pointer wins; else, with a weapon picked up, a rock under it takes the drop.
         const at = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport }, ship = pickContact(at, click);
@@ -268,7 +278,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       recordTrails(fx, d.tactical, source.missilePrev, alpha);
       layer.container.visible = view !== 'interior'; interior.container.visible = view === 'interior';
       let overlayView: MapOverlayView | null = null;
-      if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt, events, frozen ? 0 : dt, { camera: source.interiorCamera, active: source.active() });   // Art-i spec section 7: the light and feel hold while paused
+      if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt, events, frozen ? 0 : dt, { camera: source.interiorCamera, active: source.active() }, options.pointer?.() ?? null);   // Art-i spec section 7: the light and feel hold while paused; Engineering spike §6: the hover outline
       else {
         // Spike ii §6.5: with a weapon picked up, the rock under the pointer (no ship contact there) wears a hover bracket.
         const point = aimed !== null ? options.pointer?.() ?? null : null, pickAt = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport };
@@ -312,6 +322,8 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       scene.position.set(shake.x, shake.y);
       return consoleView?.station ?? null;
     },
+    /** Engineering spike §5: the interior's last placement (null before its first draw), for the staging hook and tests. */
+    interiorPlacement(): Placement | null { return interior.placement(); },
     dispose(): void {
       options.ui.clear();
       interior.destroy();
