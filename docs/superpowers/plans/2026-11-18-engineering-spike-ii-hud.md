@@ -87,6 +87,7 @@ So both modes behave the same. HUD clicks come from React (`actions.ship.*`). In
     - the crew's own torpedo is always drawn: the crew knows where it sent it;
     - the contact window on an unseen contact reads CONTACT LOST with nothing to pick;
     - ghosts fade on the presentation clock, so a pause doesn't freeze them.
+16. **Free coolant and heat** (spec §6). The free coolant reads `COOLANT n/8` in the panel's header line, directly over the reactor column, because the column's own pip row is too short for text. A heat bar turns hot above 75 % of HEAT_MAX, as well as while overdriven. A breach marker that shares its tile with a fire marker (a room without a repair point, whose fire is fought at its breach tile) sits half a tile lower so the two labels don't overlap.
 
 ## File structure
 
@@ -103,8 +104,7 @@ So both modes behave the same. HUD clicks come from React (`actions.ship.*`). In
 | `src/renderer/src/render/duel/consoleModel.ts`, `consoleLayout.ts`, `ui/duel/HelmStation.tsx`, `ui/duel/PowerStrip.tsx` (create), `ui/duel/DuelUi.tsx` | modify (T7) | the console power strips, the throttle cap, the Science range |
 | `src/renderer/src/ui/duel/WeaponsStation.tsx` (rewrite), `app/duel/contactController.ts`, `render/duel/contactModel.ts` | modify (T8) | pew pew, beam and torpedo with bar pips; pew pew in the targeting flow |
 | `src/renderer/src/render/tactical/fogModel.ts` (create), `tacticalModel.ts`, `weaponsModel.ts`, `tacticalLayer.ts` | modify (T9) | the fog of war, the range ring, the ghosts |
-| `scripts/spike/engineering-measure.ts` | create (T10) | snapshot size and tick cost for a tree |
-| `docs/superpowers/research/2026-11-18-engineering-spike.md` | create (T8) | the spike report |
+| `docs/superpowers/research/2026-11-18-engineering-spike.md` | modify (T11) | Part ii's sections of Part i's report |
 | `tests/shipHudModel.test.ts`, `tests/uiShipHud.test.tsx` | rewrite (T1, T4) | the new HUD view |
 | `tests/engineeringInput.test.ts`, `tests/engineeringRuntime.test.ts`, `tests/engineeringInterior.test.ts`, `tests/engineeringScene.test.ts`, `tests/engineeringConsoleModel.test.ts`, `tests/engineeringConsoleUi.test.tsx`, `tests/engineeringWeapons.test.ts`, `tests/engineeringWeaponsUi.test.tsx`, `tests/engineeringFog.test.ts` | create | one or two files per task (Tasks 7 to 9 at the end) |
 
@@ -879,7 +879,7 @@ function Hit(p: { name: string; x: number; y: number; w: number; h: number; onLe
 
 function PowerCol({ c, n, now }: { c: PowerColumn; n: number; now: number }) {
   const actions = useActions(), x = powerColumnX(n), bx = x + (P.colW - P.barW) / 2;
-  const hot = c.failed ? (blink(now, ALERT_BLINK_HZ) ? CRT.hot : CRT.dim) : c.overdriven ? CRT.hot : CRT.main;
+  const hot = c.failed ? (blink(now, ALERT_BLINK_HZ) ? CRT.hot : CRT.dim) : c.overdriven || c.heat > 0.75 * c.heatMax ? CRT.hot : CRT.main;   // spec §6: hot near HEAT_MAX
   const top = powerBarY(c.slots - 1);
   return (
     <>
@@ -1055,7 +1055,7 @@ describe('hazardMarkers (spec §4, §6)', () => {
       const tile = fireTileOf(d, q), w = der.width, at = (t: number) => ({ x: ((t % w) + 0.5) * TILE_PX, y: (Math.floor(t / w) + 0.5) * TILE_PX });
       expect(hazardMarkers(d)).toEqual([
         { kind: 'fire', room: q, ...at(tile), progress: 0.5, label: 'FIRE - HOLD E' },
-        { kind: 'breach', room: q, ...at(der.siteTile[site]!), progress: 0.25, label: 'BREACH - HOLD E' }
+        { kind: 'breach', room: q, x: at(der.siteTile[site]!).x, y: at(der.siteTile[site]!).y + TILE_PX / 2, progress: 0.25, label: 'BREACH - HOLD E' }   // Q's fire is fought at its breach tile: the label sits half a tile lower
       ]);
     } finally { disposeDuel(d); }
   });
@@ -1121,7 +1121,8 @@ export function hazardMarkers(d: DuelState): HazardMarker[] {
   }
   for (let s = 0; s < der.siteRoom.length; s++) {
     if (!st.breaches.active[s]) continue;
-    out.push({ kind: 'breach', room: der.siteRoom[s]!, ...centre(der.siteTile[s]!), progress: st.breaches.repair[s]!, label: 'BREACH - HOLD E' });
+    const c = centre(der.siteTile[s]!), shared = out.some((m) => m.kind === 'fire' && m.x === c.x && m.y === c.y);   // a fire fought at the same tile
+    out.push({ kind: 'breach', room: der.siteRoom[s]!, x: c.x, y: shared ? c.y + TILE_PX / 2 : c.y, progress: st.breaches.repair[s]!, label: 'BREACH - HOLD E' });
   }
   return out;
 }
@@ -1780,7 +1781,7 @@ git commit -m "feat(engineering-spike): each console's power strip, the Helm's t
 ### Task 8: The Weapons console: pew pew, beam and torpedo, their bars, and pew pew in the targeting flow (spec §10.3)
 
 **Files:**
-- Modify: `src/renderer/src/render/duel/consoleModel.ts` (`WeaponsPanel`), `src/renderer/src/render/duel/consoleLayout.ts` (`weaponCard`), `src/renderer/src/render/duel/contactModel.ts` (the weapon type), `src/renderer/src/render/duel/shipControls.ts` (`ShipCommand` gains `weaponPower`), `src/renderer/src/app/duel/input.ts` (`pewLock`, `weaponPower`), `src/renderer/src/app/duel/contactController.ts` (`Weapon` gains `'pew'`), `src/renderer/src/ui/actions.ts`, `src/renderer/src/app/duel/runtime.ts`, `src/renderer/src/app/duel/onlineDuel.ts`, `src/renderer/src/ui/duel/TargetingLine.tsx`
+- Modify: `src/renderer/src/render/duel/consoleModel.ts` (`WeaponsPanel`, the card reason), `src/renderer/src/render/duel/situationModel.ts` (offline only when no weapon can fire), `src/renderer/src/ui/duel/DuelUi.tsx` (FlightStation's aim narrowed), `src/renderer/src/render/duel/consoleLayout.ts` (`weaponCard`), `src/renderer/src/render/duel/contactModel.ts` (the weapon type), `src/renderer/src/render/duel/shipControls.ts` (`ShipCommand` gains `weaponPower`), `src/renderer/src/app/duel/input.ts` (`pewLock`, `weaponPower`), `src/renderer/src/app/duel/contactController.ts` (`Weapon` gains `'pew'`), `src/renderer/src/ui/actions.ts`, `src/renderer/src/app/duel/runtime.ts`, `src/renderer/src/app/duel/onlineDuel.ts`, `src/renderer/src/ui/duel/TargetingLine.tsx`
 - Rewrite: `src/renderer/src/ui/duel/WeaponsStation.tsx`
 - Test: `tests/engineeringWeapons.test.ts`, `tests/engineeringWeaponsUi.test.tsx`
 
@@ -1823,6 +1824,7 @@ import { describe, expect, it, vi } from 'vitest';
 import hound from '../src/renderer/src/sim/ship/hound.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
+import { Room } from '../src/renderer/src/sim/tactical/state';
 import { consoleModel } from '../src/renderer/src/render/duel/consoleModel';
 import { CARD_ORDER, STATION, weaponCard } from '../src/renderer/src/render/duel/consoleLayout';
 import { createDuelKeyboard, NO_HELD_FLAGS, type EventSource } from '../src/renderer/src/app/duel/input';
@@ -1842,7 +1844,7 @@ describe('the Weapons panel (spec §10.3)', () => {
       expect(w.weaponBars).toEqual([1, 0, 1]);
       expect(w.weaponFree).toBe(0);
       expect(w.burst).toBe(0);
-      expect(w.pew).toMatchObject({ shots: 2, target: -1 });
+      expect(w.pew).toMatchObject({ shots: 2, target: Room.Shields, ready: true });   // Part i Decision 17: pew pew starts full, targeted on Shields
       const sys = d.tactical.systems[0];
       sys.bars[1] = 4; sys.weaponPower[1] = 2;   // two more Weapons bars, both on the beam
       const w2 = consoleModel({ duel: d, me: 1, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: OVERLAY })!.weapons!;
@@ -2014,9 +2016,87 @@ Widen the weapon types the targeting view reads:
 - In `src/renderer/src/render/duel/contactModel.ts`, replace `  aimWeapon: 'laser' | 'torpedo' | null;` with `  aimWeapon: 'pew' | 'laser' | 'torpedo' | null;`, and `  weapon?: 'laser' | 'torpedo';` with `  weapon?: 'pew' | 'laser' | 'torpedo';`.
 - In `src/renderer/src/ui/duel/TargetingLine.tsx`, nothing changes. It calls `weaponCard(weapon)`, which now takes all three.
 
+- [ ] **Step 5b: WEAPONS OFFLINE only when no weapon can fire** (`src/renderer/src/render/duel/situationModel.ts`, `consoleModel.ts`)
+
+The beam starts dark (spec §10.3), and today's `laserSituation` (`situationModel.ts:46`) and `refusal` (`:187`) read the beam alone, so the console would say WEAPONS OFFLINE all round.
+
+`laserOffline` and `laserFull` are already imported (Part i gave them a `barrel` argument). Add `import { trimmedWeaponPower, WeaponSlot } from '../../sim/tactical/bars';`, then add above `laserSituation`:
+```ts
+/** Engineering spike §10.3: every crew weapon is dark (the beam, pew pew and the torpedo) or the Weapons Room is at 2. */
+export function weaponsOffline(t: TacticalState): boolean {
+  const sys = t.systems[CREW_SLOT];
+  return sys.rooms[Room.Weapons] >= 2 || (laserOffline(t, CREW_SLOT, 'beam') && laserOffline(t, CREW_SLOT, 'pew') && trimmedWeaponPower(sys)[WeaponSlot.Torpedo] === 0);
+}
+```
+In `laserSituation`, replace
+```ts
+  if (laserOffline(t, CREW_SLOT)) return { kind: 'offline' };
+  const targeted = sys.laserTargeted;
+  if (sys.laserBurst > 0 || sinceShot < SOLUTION_HOLD_S) return { kind: 'solution', targeted };   // the burst fires attended or not
+```
+with
+```ts
+  // Engineering spike §10.3: the words follow the beam, or pew pew while the beam is dark; with both lasers dark, the
+  // torpedo alone says nothing here (its own card speaks), and only with every weapon dark is it OFFLINE.
+  if (laserOffline(t, CREW_SLOT, 'beam') && laserOffline(t, CREW_SLOT, 'pew')) return weaponsOffline(t) ? { kind: 'offline' } : { kind: 'none' };
+  const barrel = laserOffline(t, CREW_SLOT, 'beam') ? 'pew' as const : 'beam' as const;
+  const targeted = barrel === 'pew' ? sys.pewTargeted : sys.laserTargeted;
+  if ((barrel === 'pew' ? sys.pewBurst : sys.laserBurst) > 0 || sinceShot < SOLUTION_HOLD_S) return { kind: 'solution', targeted };   // the burst fires attended or not
+```
+and in the same function replace
+```ts
+  if (laserFull(t, CREW_SLOT) && laserEligible(t, CREW_SLOT, target)) return { kind: 'solution', targeted };
+```
+with
+```ts
+  if (laserFull(t, CREW_SLOT, barrel) && laserEligible(t, CREW_SLOT, target)) return { kind: 'solution', targeted };
+```
+In `refusal`, replace
+```ts
+    if (control === 'fire') return laserOffline(t, CREW_SLOT) ? 'WEAPONS OFFLINE' : null;
+    if (sys.magazine <= 0) return 'NO TORPEDOES';
+    if (sys.rooms[Room.Weapons] >= 2) return 'WEAPONS OFFLINE';
+```
+with
+```ts
+    if (control === 'fire') return !laserOffline(t, CREW_SLOT, 'beam') ? null : weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'BEAM UNPOWERED';   // Space fires the beam (spec §10.3)
+    if (sys.magazine <= 0) return 'NO TORPEDOES';
+    if (sys.rooms[Room.Weapons] >= 2) return 'WEAPONS OFFLINE';
+    if (trimmedWeaponPower(sys)[WeaponSlot.Torpedo] === 0) return weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'TORPEDO UNPOWERED';
+```
+In `consoleModel.ts`'s `weaponsPanel`, replace `laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), laserOffline(t, 0))` with `laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), weaponsOffline(t))`, and add `weaponsOffline` to its `./situationModel` import.
+
+Append to `tests/engineeringWeapons.test.ts`:
+```ts
+import { laserSituation, refusal, weaponsOffline } from '../src/renderer/src/render/duel/situationModel';
+import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
+
+describe('WEAPONS OFFLINE only when no weapon can fire (spec §10.3)', () => {
+  it('round start (pew pew 1, beam 0, torpedo 1): not offline; FIRE says BEAM UNPOWERED; every weapon dark: WEAPONS OFFLINE', () => {
+    const d = createDuel(HOUND, 5), t = d.tactical, sys = t.systems[0], me = t.ships[0]!, e = t.ships[1]!;
+    try {
+      seatDuelCrew(d);
+      e.x = me.x + hx(me.heading) * 200; e.y = me.y + hy(me.heading) * 200; e.active = true;   // dead ahead, in range and arc
+      expect(weaponsOffline(t)).toBe(false);
+      expect(laserSituation(t).kind).not.toBe('offline');
+      expect(refusal(d, 'fire')).toBe('BEAM UNPOWERED');
+      sys.weaponPower[0] = 0;
+      expect(laserSituation(t).kind).toBe('none');   // both lasers dark, the torpedo still powered
+      expect(refusal(d, 'fire')).toBe('BEAM UNPOWERED');
+      sys.weaponPower[2] = 0;
+      expect(weaponsOffline(t)).toBe(true);
+      expect(laserSituation(t).kind).toBe('offline');
+      expect(refusal(d, 'fire')).toBe('WEAPONS OFFLINE');
+      expect(refusal(d, 'launch')).toBe('WEAPONS OFFLINE');
+    } finally { disposeDuel(d); }
+  });
+});
+```
+Check `hx` and `hy` against `sim/tactical/direction.ts` (`tests/duelRuntime.test.ts` imports them). If an asteroid blocks the line at seed 5, the situation reads `blocked`: try seeds 6 to 9 and keep the first that passes.
+
 - [ ] **Step 6: Run the model test**
 
-Run: `npx vitest run tests/engineeringWeapons.test.ts tests/engineeringInput.test.ts tests/duelConsoleModel.test.ts tests/contactController.test.ts tests/duelRuntime.test.ts`
+Run: `npx vitest run tests/engineeringWeapons.test.ts tests/engineeringInput.test.ts tests/duelConsoleModel.test.ts tests/contactController.test.ts tests/duelRuntime.test.ts tests/feelPresentation.test.ts`
 Expected: PASS. A pre-existing test that pins the old two cards' x positions or the 138 px width (`git grep -n "weaponCard(" -- tests`) is updated to the three-card layout from `weaponCard`, not to literals. Say which tests in the report.
 
 - [ ] **Step 7: Write the failing UI test** `tests/engineeringWeaponsUi.test.tsx`
@@ -2126,7 +2206,7 @@ function Card({ weapon, lit, crt, flash = false, glow = false, now = 0 }: { weap
   const actions = useActions(), c = weaponCard(weapon);
   const down = (e: ReactPointerEvent<HTMLDivElement>): void => {
     e.preventDefault();
-    if (e.button === 2) { if (weapon === 'torpedo') actions.console.torpLock(-1); else if (weapon === 'pew') actions.console.pewLock(-1); else actions.console.lock(-1); return; }   // clear its target
+    if (e.button === 2) { if (weapon === 'torpedo') actions.console.torpLock(-1); else if (weapon === 'pew') actions.console.pewLock?.(-1); else actions.console.lock(-1); return; }   // clear its target
     if (e.button === 0) actions.contact.pickUp(weapon);
   };
   const on = (hz: number): boolean => Math.floor(now * 2 * hz) % 2 === 0;
@@ -2146,7 +2226,7 @@ function Card({ weapon, lit, crt, flash = false, glow = false, now = 0 }: { weap
 /** Engineering spike §10.3: a weapon's bar pips under its card; a left click adds a bar, a right click removes one. */
 function Pips({ weapon, bars, crt }: { weapon: CardWeapon; bars: number; crt: boolean }) {
   const actions = useActions(), c = weaponCard(weapon), slot = SLOT[weapon], x0 = c.x + 6;
-  const down = (e: ReactPointerEvent<HTMLDivElement>): void => { e.preventDefault(); if (e.button === 0) actions.console.weaponPower(slot, 1); else if (e.button === 2) actions.console.weaponPower(slot, -1); };
+  const down = (e: ReactPointerEvent<HTMLDivElement>): void => { e.preventDefault(); if (e.button === 0) actions.console.weaponPower?.(slot, 1); else if (e.button === 2) actions.console.weaponPower?.(slot, -1); };
   return (
     <>
       {Array.from({ length: WEAPON_PIPS }, (_, k) => {
@@ -2216,9 +2296,18 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
 ```
 The card heights add up: the pips start at `y + 62` and are 10 px tall, and the buttons sit at `pipsY + 14` (y + 76), 24 px tall, ending at y + 100, inside the 104 px card. The FREE count shares the y0 + 116 row with the reason text, right-aligned; a refused LAUNCH reason starts at `tx` (x 220), which stays clear of FREE at the right end.
 
-`actions.console.pewLock` and `actions.console.weaponPower` are typed through `ConsoleInput`'s optional members. If `tsc` reports them possibly undefined on `actions.console`, call them with `?.(…)`.
+`actions.console` is typed `ConsoleInput` (`ui/actions.ts:49`), whose `pewLock` and `weaponPower` are optional, so the block calls them with `?.(…)`.
 
 `DuelUi.tsx` passes `aim={duel.contact?.aimWeapon ?? null}` to `WeaponsStation`. The widened `aimWeapon` type flows through unchanged.
+
+`FlightStation` (`ui/duel/FlightStation.tsx:22`, `type Weapon = 'laser' | 'torpedo'`) can't take `'pew'`, and the Flight seat never picks pew pew up. In `src/renderer/src/ui/duel/DuelUi.tsx`, narrow it at the call site. Replace
+```tsx
+          {duel.console?.flight && <FlightStation flight={duel.console.flight} aim={duel.contact?.aimWeapon ?? null} />}
+```
+with
+```tsx
+          {duel.console?.flight && <FlightStation flight={duel.console.flight} aim={duel.contact?.aimWeapon === 'pew' ? null : duel.contact?.aimWeapon ?? null} />}   {/* Engineering spike §10.3: no pew pew on Flight */}
+```
 
 - [ ] **Step 10: Run the tests**
 
@@ -2233,7 +2322,7 @@ Expected: no errors (`app/uiProbe.ts`'s fixture compiles, since the new `Weapons
 - [ ] **Step 11: Commit**
 
 ```bash
-git add src/renderer/src/render/duel/consoleModel.ts src/renderer/src/render/duel/consoleLayout.ts src/renderer/src/render/duel/contactModel.ts src/renderer/src/render/duel/shipControls.ts src/renderer/src/app/duel/input.ts src/renderer/src/app/duel/contactController.ts src/renderer/src/ui/actions.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/ui/duel/WeaponsStation.tsx tests/engineeringWeapons.test.ts tests/engineeringWeaponsUi.test.tsx
+git add src/renderer/src/render/duel/consoleModel.ts src/renderer/src/render/duel/situationModel.ts src/renderer/src/ui/duel/DuelUi.tsx src/renderer/src/render/duel/consoleLayout.ts src/renderer/src/render/duel/contactModel.ts src/renderer/src/render/duel/shipControls.ts src/renderer/src/app/duel/input.ts src/renderer/src/app/duel/contactController.ts src/renderer/src/ui/actions.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/ui/duel/WeaponsStation.tsx tests/engineeringWeapons.test.ts tests/engineeringWeaponsUi.test.tsx
 git commit -m "feat(engineering-spike): the Weapons console's pew pew, beam and torpedo with bar pips, and pew pew in the targeting flow" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 (Stage by name any pre-existing test you updated in Steps 6 and 10.)
@@ -2297,9 +2386,9 @@ describe('stepFog (spec §10.4)', () => {
   });
   it('the enemy torpedo is seen by distance; gone while seen, it leaves no ghost', () => {
     const t = createTacticalState(5), f = createFog(), own = t.ships[0]!, r = sensorRange(t.systems[0]!);
-    placeMissile(t, 1, { x: own.x + r / 2, y: own.y, vx: 0, vy: 0, heading: 64, headingAcc: 0, age: 0 });
+    const m = placeMissile(t, 1, { x: own.x + r / 2, y: own.y, vx: 0, vy: 0, heading: 64, headingAcc: 0, age: 0 });
     expect(stepFog(f, t, 0, 0).seen.missile).toBe(true);
-    t.missiles[1]!.x = own.x + r * 2;
+    m.x = own.x + r * 2;   // the entry placeMissile filled (the first free one, state.ts placeMissile)
     const v = stepFog(f, t, 1, 0);
     expect(v.seen.missile).toBe(false);
     expect(v.ghosts.find((g) => g.kind === 'missile')).toMatchObject({ x: own.x + r / 2, h: 64 });
@@ -2335,10 +2424,6 @@ describe('the fog on the map and the window (spec §10.4)', () => {
 
 Run: `npx vitest run tests/engineeringFog.test.ts`
 Expected: FAIL (`fogModel.ts` doesn't exist; `fog`, `sensor`, `ghosts` and `seen` are ignored).
-
-Check the test's assumptions against Part i before going on:
-- `TacticalState.missiles` is indexed by owner slot (`placeMissile(t, 1, …)` fills `missiles[1]`); the third case relies on that.
-- The test assumes the Hunter is slot 1 (`DUEL_CLASSES`: the crew 0, the Hunter 1).
 
 - [ ] **Step 3: Write** `src/renderer/src/render/tactical/fogModel.ts`
 
@@ -2545,7 +2630,15 @@ The fog is per screen and per epoch, so a Tab keeps the same screen's ghosts and
 Run: `npx vitest run tests/engineeringFog.test.ts tests/duelWeaponsView.test.ts tests/duelHitFeedback.test.ts tests/crtBezel.test.ts tests/contactScene.test.ts tests/contactWindow.test.tsx tests/shipHudScene.test.ts tests/engineeringScene.test.ts`
 Expected: PASS.
 
-A pre-existing scene test that places the enemy far from the crew ship and expects it drawn now fails, because the fog hides it. Fix the test, not the fog: put the enemy inside the round-start range (900), or raise the crew's Sensors bars in the test. List each one in the report.
+At round start the Hunter spawns about 2000 or more units away, and the start range is 900, so it is unseen. Every scene or UI test that needs the enemy drawn, marked, arced or clickable at round start now fails. Find them:
+```bash
+git grep -ln "pickContact\|contactModel(\|marks\b\|enemyArc\|createDuelScene\|ships: \[0, 1\]" -- tests
+```
+`tests/contactScene.test.ts:53` and `:59-68` are among them. Fix each one the same way, before its first draw: move the Hunter within 900 of the crew ship. Leave the fog alone, and leave the Sensors bars alone too:
+```ts
+const sh = rt.duel.tactical.ships; sh[1]!.x = sh[0]!.x + 600; sh[1]!.y = sh[0]!.y;   // Engineering spike §10.4: inside the 900 start range
+```
+For a test that builds a `TacticalState` with no runtime, use `t.ships` in place of `rt.duel.tactical.ships`. List each test so changed in the report.
 
 Run: `npx tsc -b`
 Expected: no errors.
@@ -2560,56 +2653,11 @@ git commit -m "feat(engineering-spike): the fog of war on the crew maps: the sen
 
 ---
 
-### Task 10: The measurement script and the gates
+### Task 10: The gates
 
-**Files:**
-- Create: `scripts/spike/engineering-measure.ts`
+**Files:** none (the measurements are Part i's: `scripts/engineering-spike-measure.ts`, run in its Tasks 1 and 12).
 
-**Interfaces:**
-- Consumes: `createDuel`, `disposeDuel` (`sim/duel/state.ts`), `stepDuelTick` (`sim/duel/step.ts`), `saveDuelSnapshot` (`sim/duel/snapshot.ts`) and `parseShip` (`sim/ship/schema.ts`) of whichever tree `--root` names.
-- Produces: one JSON line `{ root, simVersion, values, bytes, ticks, msPerTick }`.
-
-- [ ] **Step 1: Write** `scripts/spike/engineering-measure.ts`
-
-```ts
-// Engineering spike §1 (the report's numbers): the duel snapshot's value count and JSON size, and the mean wall time
-// per tick over idle rounds on the Hound, for the tree at --root (default: this one). Run it once on this branch and
-// once with --root pointing at master's checkout; it imports that tree's own sim.
-//   npx tsx scripts/spike/engineering-measure.ts [--root=C:/Users/djuar/FTLite]
-import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
-
-const root = (process.argv.find((a) => a.startsWith('--root='))?.slice(7) ?? process.cwd()).replace(/\\/g, '/');
-const sim = (p: string) => import(pathToFileURL(`${root}/src/renderer/src/sim/${p}`).href);
-const [{ createDuel, disposeDuel }, { stepDuelTick }, { saveDuelSnapshot }, { parseShip }, { SIM_VERSION }] =
-  await Promise.all([sim('duel/state.ts'), sim('duel/step.ts'), sim('duel/snapshot.ts'), sim('ship/schema.ts'), sim('tuning.ts')]);
-const layout = parseShip(JSON.parse(readFileSync(`${root}/src/renderer/src/sim/ship/hound.json`, 'utf8')));
-const SEEDS = [1, 2, 3, 4, 5], MAX = 3600, idle = { moveX: 0, moveY: 0, interactHeld: false };
-let values = 0, bytes = 0, ticks = 0, ms = 0;
-for (const seed of SEEDS) {
-  const d = createDuel(layout, seed, 0, 2);
-  try {
-    const t0 = performance.now();
-    for (let k = 0; k < MAX && d.tactical.outcome === 0; k++) { stepDuelTick(d, { held: [idle, idle], commands: [] }); ticks++; }
-    ms += performance.now() - t0;
-    const snap = saveDuelSnapshot(d, 'measure');
-    values = snap.values.length; bytes = Math.max(bytes, JSON.stringify(snap).length);
-  } finally { disposeDuel(d); }
-}
-console.log(JSON.stringify({ root, simVersion: SIM_VERSION, values, bytes, ticks, msPerTick: Number((ms / ticks).toFixed(4)) }));
-```
-
-- [ ] **Step 2: Run it on both trees**
-
-Run: `npx tsx scripts/spike/engineering-measure.ts`
-Expected: one line, with `"simVersion":54`.
-
-Run: `npx tsx scripts/spike/engineering-measure.ts --root=C:/Users/djuar/FTLite`
-Expected: one line, with `"simVersion":53`, from master's checkout.
-
-Save both lines in the Task 11 report. If master's tree fails to import (its working tree has uncommitted docs only, which is fine; a sim import error is not), report it and leave the "before" figures as "not measured".
-
-- [ ] **Step 3: The gates**
+- [ ] **Step 1: The gates**
 
 Run: `npx tsx scripts/golden/duel-oracle.ts same` then `npx tsx scripts/golden/canonical-trace.ts same`
 Expected: both exit 0, with Task 1's `<R>`, `<T>` and `<F>`. Part ii changed no sim.
@@ -2620,19 +2668,14 @@ Expected: no type errors; the build succeeds; every test file PASS (rerun a time
 Run: `npm run test:duel-app-runtime`
 Expected: exit 0. The online duel still runs through the real app, and the ship-command path compiles into it.
 
-- [ ] **Step 4: Commit**
-
-```bash
-git add scripts/spike/engineering-measure.ts
-git commit -m "chore(engineering-spike): the snapshot size and tick cost measurement for the report" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
-```
+A full-suite failure from a test that needs the enemy drawn, marked or clickable at round start gets Task 9 Step 9's recipe: move the Hunter within 900 of the crew ship before the first draw. Commit any such fix by name with `git commit -m "test(engineering-spike): enemy inside the start sensor range where a test needs it drawn" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"`.
 
 ---
 
 ### Task 11 (controller, not a subagent): the app smoke, the screenshots and the report
 
 **Files:**
-- Create: `docs/superpowers/research/2026-11-18-engineering-spike.md`
+- Modify: `docs/superpowers/research/2026-11-18-engineering-spike.md` (Part i's report: Part i Task 1 creates it, its Task 12 fills the measurements, the gate table and determinism)
 - The smoke script lives outside the repo.
 
 - [ ] **Step 1: Install playwright-core outside the repo, once**
@@ -2732,16 +2775,11 @@ Open each PNG and check:
    - the WEAP power strip beside the block.
 5. `5-fog-ghost-fading`: the dotted sensor ring close about the crew ship, the Hunter's hollow chevron ghost fading where it was last seen, and the info line `NO CONTACT IN SENSOR RANGE`.
 
-- [ ] **Step 4: Write the report** `docs/superpowers/research/2026-11-18-engineering-spike.md`
+- [ ] **Step 4: Append Part ii's sections to the report** `docs/superpowers/research/2026-11-18-engineering-spike.md`
 
-Fill each `<…>` from the runs in Task 10 Step 2, Task 10 Step 3, Part i's report lines and this task's smoke. Everything else is literal:
+Read the file first. Part i's three sections (Sim measurements, Gates and bands, Determinism) stay as they are; the numbers in the summary below are quoted from them. Append these sections at the end, filling each `<…>`: the full-suite count and the oracle and trace lines from Task 10 Step 1, the smoke's lines from Step 3, and the tests changed under Tasks 7 to 9 from those tasks' reports. Everything else is literal:
 ```markdown
-# Engineering spike: report (2026-11-18)
-
-Spec: `docs/superpowers/specs/2026-11-18-engineering-spike-design.md`. Branch `spike/engineering` (not merged; spike rules).
-Plans: Part i (sim) and Part ii (`docs/superpowers/plans/2026-11-18-engineering-spike-ii-hud.md`).
-
-## What was built
+## What was built (Parts i and ii)
 
 - FTL reactor bars (10) over five systems (Shields 4, Weapons 9, Engines 4, Sensors 3, Oxygen 2), each with an overdrive
   slot except Oxygen, heat and 8 shared coolant; damage knocks out slots; an overheated system fails until it cools.
@@ -2752,18 +2790,13 @@ Plans: Part i (sim) and Part ii (`docs/superpowers/plans/2026-11-18-engineering-
 - The ship view is the Engineering station: an amber CRT panel (left click adds a bar, right click removes one, a pip
   click cycles coolant) and door and airlock clicks on the interior, for anyone, from anywhere.
 
-## Numbers
+## Summary numbers
 
-| | master (SIM 53) | spike (SIM 54) |
-|---|---|---|
-| Duel snapshot values | <master values> | <spike values> |
-| Duel snapshot JSON bytes | <master bytes> | <spike bytes> |
-| Mean ms per tick (Hound, idle, 5 seeds) | <master msPerTick> | <spike msPerTick> |
+From Part i's sections above: the Hound duel's flattened values <before> → <after>, ms per tick <before> → <after>.
+After Part ii: `duel-oracle same` and `canonical-trace same`: <R> runs, <T> ticks, <F> fields (Part ii changed no sim);
+`npm run test:duel-app-runtime` exit 0; full suite <count> tests passing.
 
-Determinism: <Part i's seed-sweep hash agreement line>; `duel-oracle same` and `canonical-trace same` after Part ii:
-<R> runs, <T> ticks, <F> fields; `npm run test:duel-app-runtime` exit 0; full suite <count> tests passing.
-
-## App smoke and screenshots
+## App smoke and screenshots (Part ii)
 
 `node smoke.mjs`: <the nine ok lines, or what failed and the fix>.
 - `C:\Users\djuar\FTLite-shots\engineering\1-hud-round-start.png`: the panel at round start.
@@ -2771,6 +2804,11 @@ Determinism: <Part i's seed-sweep hash agreement line>; `duel-oracle same` and `
 - `C:\Users\djuar\FTLite-shots\engineering\3-hold-venting.png`: the Hold venting through its airlock.
 - `C:\Users\djuar\FTLite-shots\engineering\4-weapons-three-weapons.png`: the Weapons console's pew pew, beam and torpedo.
 - `C:\Users\djuar\FTLite-shots\engineering\5-fog-ghost-fading.png`: the fog: the sensor ring and a ghost fading.
+
+## Tests Part ii updated (Tasks 7 to 9)
+
+<one line per pre-existing test changed in Task 7 Step 7, Task 8 Steps 6 and 10, Task 9 Step 9 and Task 10 Step 1:
+the file, the test, and why (a new ConsoleView key, the three-card layout, the enemy moved inside the start range)>
 
 ## Feel (owner to fill after playing)
 
@@ -2799,7 +2837,7 @@ the numbers and the screenshots, to be confirmed by the owner's play>
 
 ```bash
 git add docs/superpowers/research/2026-11-18-engineering-spike.md
-git commit -m "docs(engineering-spike): the spike report (numbers, smoke, screenshots, owner's feel questions)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "docs(engineering-spike): Part ii's report sections (what was built, smoke, screenshots, tests updated, owner's feel questions)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 The final report to the owner lists:
@@ -2815,7 +2853,7 @@ The final report to the owner lists:
 ## Self-review
 
 - **Spec coverage.**
-  - §1 deliverables (the prototype, the report, the screenshots of the HUD, a vented room, an overheating system, the Weapons console and a fading ghost): Tasks 10 and 11.
+  - §1 deliverables (the prototype, the report, the screenshots of the HUD, a vented room, an overheating system, the Weapons console and a fading ghost): Tasks 10 and 11. The measurements are Part i's (its Tasks 1 and 12); Task 11 appends to its report.
   - §5 (door clicks on the interior, auto ↔ held, airlock clicks, anyone, remote): Tasks 2, 3 and 6. The toggling itself is Part i's.
   - §6, item by item:
     - the UI rule: Decision 9, `scene.ts:291` kept;
