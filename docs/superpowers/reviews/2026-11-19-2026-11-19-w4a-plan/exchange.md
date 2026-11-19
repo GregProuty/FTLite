@@ -281,3 +281,38 @@ Confirmed. The step now expects the parked gunner (Task 3 Step 8b) to send nothi
 
 ---
 
+# Round 3 (delta, reviewing 10d1fbe7, effort medium, 24 s, 79145 in / 54901 cached / 2298 out)
+
+Verdict: ready
+
+## Prior findings
+- R2-F1: resolved — Plan L2295-L2298 now asserts the single text '4/5/6', asserts that '3/4/5' is absent, and checks the weak mark with q('[data-ui-weak-freq]').dataset.uiWeakFreq === 'C'. This matches WeaponsStation.tsx:L156, which draws the hint as one PixelText, and L154, which sets data-ui-weak-freq to FREQ_NAMES[weakFreq]. scienceModel.ts:L12 defines FREQ_NAMES = ['A','B','C'], so index 2 is 'C'.
+- R2-F2: resolved — Plan L2107 adds trigger(held: boolean): void to both requests type literals. Those are tests/onlineDuelSession.test.ts:L56 (the hoisted h.sceneOpts) and L70 (the scene mock's opts), and today both list only pew, aimLaser and torpHeading. Plan L2108-L2110 now drives keys with r.key('keydown'/'keyup', code), which exists at L137 and dispatches on the fake window. It reads held frames with c.helds() (L37) and commands with c.commands() (L36). Case (2) copies the W-1 block at L163-L178 with the same pew(1234), pump and results calls.
+- R2-F3: resolved — Plan L1416 now reads 'Expected: FAIL (the Hound's gunner is parked by Task 3 Step 8b and sends nothing)'. That agrees with Task 3 Step 8b. The step is numbered Step 3 in the current text, and the diff edits the right line.
+
+## Verified
+- tests/onlineDuelSession.test.ts: rig(seat, ui, api, extra, cls) at L110 builds createSeatedDuel(CUTTER, 7, 0, 2, cls) (L112). attach() pumps and publishes (L128-L134), and pump() runs the scheduled callback (L135). This supports the sequence of calls in plan L2108-L2110.
+- h.sceneOpts[0]!.requests! is the requests object the real session hands the mocked scene (L70-L71). Once the type literal is widened, trigger(true) type-checks and reaches the session's trigger closure.
+- WeaponsStation.tsx:L152-L156: the frequency buttons are named freq-${f}, which matches the console-freq-1 selector in the Task 12 test. The weak-mark Box carries attrs data-ui-weak-freq, and the key hint is one PixelText.
+- The diff touches only plan L1416, L2107-L2110 and L2295-L2298. I found no contradiction with Task 9's selection keys (Digit1-3 select, Digit4-6 set the frequency) or with Task 12 Step 4's hint `4/5/6`.
+
+## Not verified
+- Two expectations in Task 11 case (1) depend on Task 9/11 code that does not exist yet: that the Hound gunner's held frame carries weaponSel: 0 explicitly, and that a selection-only change is stamped as a new held frame. Plan L2099 implies weaponSel is present for the gunner, but I cannot check this against master.
+- I did not re-read Task 3 Step 8b (L503-L511). The R2-F3 wording was checked only against the ledger's description of that step.
+
+---
+
+# Round 3 response (no subject change)
+
+Reviewed `round-3.json` against the subject at `10d1fbe7`. 0 accepted, 0 rejected, 0 deferred. The reviewer confirmed that R2-F1 to R2-F3 are resolved and raised no new findings.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
