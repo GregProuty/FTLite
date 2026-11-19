@@ -97,7 +97,7 @@
    - LMB held steers through `torpHeading`.
    The sim gates (Task 3) are the authority's guarantee, and these app gates keep the client from sending what the sim would drop.
 7. **The fresh press is a latch on the trigger only.** A left click is a press event (`PointerSource.takeClick`), so a button held across the flight's end makes no new click: it can neither fire the pew nor launch a second torpedo. Only the held trigger (the autocannon) could carry over. So `flightFrame` sets `stale` when the flight ends with the trigger held, and clears it once the trigger is released. While `stale`, the trigger counts as released.
-8. **The selection returns on the flight's end frame, before this frame's keys.** If `weaponSel` is the torpedo (2) when the latch sees the flight end, it becomes `lastGunSel` (W-4a's: the last of 0 or 1 selected, 0 by default). A select key pressed on the same frame then wins, because `nextWeaponSel` runs after `flightFrame`. Online keeps its own `lastGunSel` (W-4a's online branch has none: Task 5 adds it, beside `weaponSel`).
+8. **The selection returns on the flight's end frame, before this frame's keys.** If `weaponSel` is the torpedo (2) when the latch sees the flight end, it becomes `lastGunSel` (W-4a's: the last of 0 or 1 selected, 0 by default). A select key pressed on the same frame then wins, because `nextWeaponSel` runs after `flightFrame`. Both runtimes already keep `lastGunSel` (W-4a: local Task 10, online Task 11). **A stated deviation from spec §7's wording:** the spec says "if the torpedo was selected at launch"; this plan tests the selection at the flight's end. Since A/D and 1-3 select during a flight (spec §7), the selection at the end is the gunner's latest intent: a gunner who launched with F on a gun and then pressed 3 mid-flight gets the gun back, and one who launched with the torpedo selected and then pressed A keeps the gun they chose. No launch-time state is needed.
 9. **`torpHold` is cleared only when no MANUAL torpedo flies** (or off the Weapons seat, a new round, a sit or stand, and an attach online, as today). A/D no longer clear it. A pointer over the torpedo's own marker gives no bearing (`torpedoSteer` returns null, as `helmSteer` does on the ship), so the last heading stands. W-3's "a right click on the torpedo clears the hold" goes with the right button.
 10. **The online prediction (W-4b's `turret(slot)`) counts 0 frames while a MANUAL torpedo flies**, read from the replica (spec §11's "from W-4c"). The replica's turret is drawn, and it holds while flying, since the authority holds a MAN turret.
 11. **The additive proof uses the oracle's `same` mode.** W-4c adds and removes no hashed field: `torpTurn` was never state, and `Missile.manual` and `torpManual` stay. No oracle run (the scripted and passive gate seeds and the rematch) sends `torpMode` or `gunMode`. So Task 1's baseline must match Task 7's code field for field, and Task 7's bless leaves `duel-1.json` and `duel-rematch.json` byte for byte (only `basic.json`'s content digest moves). If a duel golden moves, the AUTO path changed: stop, never re-bless around it.
@@ -137,6 +137,9 @@ Expected: tsc clean; the build succeeds; every file PASS (a load-sensitive timeo
 
 Run: `npx tsx scripts/golden/duel-oracle.ts baseline`
 Expected: `duel oracle baseline at sim version <V>: <R> runs, <T> ticks, <F> named fields per tick; written to <temp>\duel-oracle.json`, exit 0. Note `<R>`, `<T>` and `<F>`.
+
+Run: `npx tsx scripts/golden/canonical-trace.ts baseline`
+Expected: the canonical trace baseline line (the sector's per-tick trace and the copy of `tests/golden/basic.json` that Task 7's `golden` check reads; `scripts/golden/canonical-trace.ts` L16-L21), exit 0. Note its counts. Both baselines live in a temp folder keyed by this worktree (`scripts/golden/versionOnly.ts` L30), so they must be recorded here, on the branch.
 
 - [ ] **Step 4: The gate numbers**
 
@@ -206,6 +209,8 @@ with
 
 - Every other `manualTorpTurn(m, 0, h)` becomes `manualTorpTurn(m, h)`.
 - In "flies a MANUAL torpedo by its ship's Weapons input only": replace `stepDuel(st, { ...IDLE_INPUT, torpTurn: 1 })` with `stepDuel(st, { ...IDLE_INPUT, torpHeading: 64 })`. The expected heading stays `Math.floor(10 * classOf(st, 0).slots.missile.turnStepsPerTick)`: a hold toward 64 from 0 turns by +1 each tick, as `torpTurn: 1` did, so W-3's numbers stay. Replace `{ ...IDLE_INPUT, weapons: false, torpTurn: 1, torpHeading: 64 }` with `{ ...IDLE_INPUT, weapons: false, torpHeading: 64 }`.
+- In "keeps the mode it launched with", both `{ ...IDLE_INPUT, torpTurn: 1 }` (L105 and L113) become `{ ...IDLE_INPUT, torpHeading: 64 }`. The expectations stay: a hold toward 64 from 0 is +1 a tick, as `torpTurn: 1` was, and the AUTO twin ignores the steer either way.
+- The file's header (L3-L4, "A and D turn it at the torpedo's turn rate, and a held heading turns it …") becomes "A held heading turns it by the Helm's hold law until the nose is on it (W-4 spec §7: the LMB steer sets it; A/D steering is gone)". `tests/manualTorpedoInput.test.ts`'s header (L4-L5) gets the same change, citing W-4 spec §7.
 
 `tests/manualTorpedoMode.test.ts`: `expect([input.torpTurn, input.torpHeading]).toEqual([0, -1])` becomes `expect(['torpTurn' in input, input.torpHeading]).toEqual([false, -1])` (W-4 spec §7).
 
@@ -402,13 +407,15 @@ In the `activeHeld` literal, replace `...(torpTurn !== 0 ? { torpTurn } : {}), .
 
 Until Task 4, the right button's W-3 heading still reaches `torpHold` through `takeTorpHeading`, and its −1 "clear" is now ignored (`torpNow >= 0`, Decision 9). Task 4 replaces that source with the LMB steer.
 
+Also in `src/renderer/src/net/contracts.ts`, the `torpMode` doc (L112) "flown by the Weapons seat's held torpTurn and torpHeading" becomes "flown by the Weapons seat's held torpHeading (W-4 spec §7: the LMB steer)". The `HeldInput` doc (L32-L38) drops its `torpTurn` clause the same way.
+
 - [ ] **Step 6: Run**
 
 Run: `npx tsc -b`
 Expected: no errors. A leftover `torpTurn` or `heldTorpSteer` is a type error, so tsc finds every reader.
 
-Run: `git grep -n "torpTurn\|heldTorpSteer" -- src tests`
-Expected: no output.
+Run: `git grep -n "torpTurn\|heldTorpSteer" -- src`
+Expected: no output. (`tests/` keeps the negative asserts this task adds: `'torpTurn' in …` and the malformed `torpTurn` frames.)
 
 Run: `npx vitest run tests/manualTorpedoCommands.test.ts tests/manualTorpedoFlight.test.ts tests/manualTorpedoMode.test.ts tests/manualTorpedoInput.test.ts tests/onlineDuelSession.test.ts tests/manualTorpedoScene.test.ts tests/w4PewFire.test.ts tests/duelCheckpoint.test.ts tests/valkyrnIdentity.test.ts tests/w4HunterIdentity.test.ts tests/pewHunter.test.ts tests/torpedoGuidance.test.ts tests/tacticalHunter.test.ts`
 Expected: all PASS. `manualTorpedoScene.test.ts` still tests W-3's right button, which Task 4 replaces. It still passes here, because the scene is unchanged.
@@ -566,10 +573,10 @@ So the order is the spec's: stale, seat, no pew, AUTO, `missile-in-flight`, the 
 
 ```ts
   // W-4 spec §3.4, §7: while the crew's MANUAL torpedo flies, MAN guns hold (the reticle is ignored); AUTO is untouched.
-  if (manualTorpedoFlying(state, i)) continue;   // the first statement of W-4b's MAN branch (`if (s.gunsManual) { ... }`), inside its per-gun loop: hold this gun
+  if (missileOf(state, i)?.manual === true) continue;   // the first statement of W-4b's MAN branch (`if (s.gunsManual) { ... }`), inside its per-gun loop: hold this gun
 ```
 
-Place it as the MAN branch's first statement, using W-4b's own name for the systems record (`sys` or `s`). Import `manualTorpedoFlying` from `./manualTorpedo`. Check that this adds no import cycle: `manualTorpedo.ts` imports `hunter.ts` and `state.ts`; if `hunter.ts` imports `turret.ts`, put the check inline as `missileOf(state, i)?.manual === true` instead, with the same comment. If W-4b's MAN branch is a separate function (for example `slewMan`), put the guard at its top. The AUTO branch is not touched.
+Write the check inline: `if (missileOf(state, i)?.manual === true) continue;`. Do not import `manualTorpedo.ts` into `turret.ts`: that would close a cycle, turret.ts → manualTorpedo.ts → hunter.ts → weapons.ts → turret.ts (hunter.ts L16 imports weapons.ts, and W-4b's weapons.ts imports `slewTurrets`). Add `missileOf` to `turret.ts`'s import from `./state` if W-4b did not import it. Place it as the MAN branch's first statement (W-4b's "Seam for W-4c": `if (s.gunsManual) { ... }` inside `for (const gun of ['pew', 'gun'] as const)`). The AUTO branch is not touched.
 
 - [ ] **Step 5: Run**
 
@@ -691,20 +698,30 @@ If (640, 200) or (740, 300) falls on a Weapons block in `consoleLayout`, use poi
 
   The camera and map-request describes stay as they are.
 
-Add a pan case to the same file:
+Add a pan case to the same file. In `rig()`, replace `samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }),` with a settable sample:
+
+```ts
+    samplePointer: () => { const v = ptr; ptr = NO_PTR; return v; },
+```
+
+Declare it above `createDuelRuntime`: `const NO_PTR: PointerSample = { x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }; let ptr: PointerSample = NO_PTR;`. Import `type PointerSample` from `../src/renderer/src/app/duel/input`. Return `drag: (v: PointerSample): void => { ptr = v; }` with the rig's other members. Then:
 
 ```ts
 describe('the right button pans the Weapons map during a MANUAL flight (W-4 spec §7, §9)', () => {
   it('a right drag moves the Weapons camera with a MANUAL torpedo flying', () => {
-    // Build a runtime as rig() does but with samplePointer returning a right drag once:
-    // { x: 600, y: 300, wheel: 0, dragX: 40, dragY: 0, rightX: 40, rightY: 0 }, launch a MANUAL torpedo,
-    // stop the camera's follow first (cam.follow = 'none' as tests/duelCamera tests do, or compare against the same frame
-    // without the drag), run one rt.frame and expect cameras.weapons.x to differ from the no-drag frame's by the drag.
+    const r = rig();
+    try {
+      r.launch(true); r.tick();
+      const cam = r.rt.cameras.weapons;
+      expect(cam.follow).toBe('missile');
+      const cx = cam.centreX, z = cam.zoom;
+      r.drag({ x: 600, y: 300, wheel: 0, dragX: 40, dragY: 0, rightX: 40, rightY: 0 }); r.rt.frame(1 / 60);
+      expect(cam.follow).toBe('free');   // camera.ts pan: a drag stops the follow (torpedoCamera keeps a pan during a flight)
+      expect(cam.centreX).toBeCloseTo(cx - 40 / z, 6);
+    } finally { r.scene.dispose(); r.rt.dispose(); }
   });
 });
 ```
-
-Fill this case with real code in the idiom of the existing camera tests (`grep -rn "dragX: " tests/*.test.ts` finds the runtime tests that drive a pan). It must show that a right drag pans the Weapons camera while a MANUAL torpedo flies. The old W-3 behaviour (`aims` true) cancelled it.
 
 - [ ] **Step 2: Run them to see them fail**
 
@@ -798,7 +815,7 @@ git commit -m "feat(w4c): the held left button flies the MANUAL torpedo toward t
 **Files:**
 - Modify: `src/renderer/src/app/duel/weaponsSeat.ts` (`FlightLatch`, `NO_FLIGHT`, `flightFrame`; `nextWeaponSel` loses `steering`)
 - Modify: `src/renderer/src/app/duel/runtime.ts` (the Hound branch of `play`, `frame`'s held merge, the resets), `app/duel/onlineDuel.ts` (the same, plus `lastGunSel`), `app/duel/onlineSource.ts` (`turret(slot)`'s k = 0 gate)
-- Modify: `tests/w4Input.test.ts` (`nextWeaponSel`'s two flight lines, kind a)
+- Modify: `tests/w4Input.test.ts` (`nextWeaponSel`'s two flight lines, kind a), `tests/w4Runtime.test.ts` and `tests/onlineDuelSession.test.ts` (the flight cases)
 - Create: `tests/w4TorpedoSeat.test.ts`
 
 **Interfaces:**
@@ -853,21 +870,85 @@ describe('flightFrame (W-4 spec §7)', () => {
 });
 ```
 
-Add a `describe('Single player around a MANUAL flight (W-4 spec §7)', …)` to the same file. Build the runtime as `tests/w4Runtime.test.ts` (W-4a Task 10) does, with its fake `takePew`, `triggerHeld` and `takeTorpHeading` deps and the gunner seated and active. Its cases, each with real assertions:
-1. **A/D select during a flight.** Set `torpManual`, launch (F), tick past the launch, then press `selectNext`. `rt.held()[gunner].weaponSel` moves, and no `torpTurn` field is present.
-2. **No LMB fire during a flight.** With pew pew selected and a MANUAL torpedo flying, a click (`takePew` returns a bearing once) leaves `systems[0].pewShots` and `missilesLaunched` unchanged, and `takeRefusals()` has no `pew` or `launch` entry.
-3. **No trigger during a flight.** With the autocannon selected (W/S has given it a bar, or the test sets `weaponPower` to [1, 1, 1] on 3 Weapons bars) and `triggerHeld` true, the gunner's held frame has no `gunHeld` and `gunShots` stays put. Z still queues `gunMode`: `gunsManual` flips.
-4. **The flight's end.** With the torpedo selected (3) at launch, `removeMissile(t, 0)` and a tick bring `weaponSel` back to the last gun (the autocannon, if it was selected before 3, else pew pew). With `triggerHeld` still true, no `gunHeld` goes out. After `triggerHeld` goes false for one frame and then true again, `gunHeld` goes out and `gunShots` rises.
-5. **LMB launch is a press.** A click with the torpedo selected in MANUAL launches one torpedo. Holding the trigger across that flight's end launches no second one: `missilesLaunched` rises by exactly 1.
+Append to `tests/w4Runtime.test.ts` (W-4a's file-local `rig(cls?)` with W-4b's `aim` addition; import `removeMissile` from `../src/renderer/src/sim/tactical/state` and `DuelSystem` from `../src/renderer/src/sim/tactical/bars`):
 
-Add a `describe('online around a MANUAL flight (W-4 spec §7, §11)', …)` with the `tests/w4Online.test.ts` rig (W-4a Task 11 and W-4b's prediction cases):
-1. While the replica shows the crew's MANUAL torpedo flying (`placeMissile(r.d.tactical, 0, { … age: 30 }, true)`), a held trigger with the autocannon selected sends no `gunHeld`, and a click sends no `pewFire`.
-2. Removing it from the replica brings a torpedo selection back to the last gun in the next held frame's `weaponSel`.
-3. In MAN with the autocannon selected, a reticle set and `unacked(5)`, `source.turret(1)` equals the replica's `gunTurret` while the MANUAL torpedo flies, and differs from it (it is predicted) once it is gone.
+```ts
+describe('Single player around a MANUAL flight (W-4 spec §7)', () => {
+  it('during a flight: A/D select, the held trigger and clicks do nothing, Z still toggles', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      sys.bars[DuelSystem.Weapons] = 3; sys.weaponPower = [1, 1, 1];
+      r.press('weaponMode'); r.tick(); r.press('torpMode'); r.tick(); r.press('launch'); r.tick();
+      expect(sys.missilesLaunched).toBe(1);
+      r.press('selectNext'); r.tick();
+      expect(r.rt.held()[0]!.weaponSel).toBe(1);
+      expect('torpTurn' in r.rt.held()[0]!).toBe(false);
+      const shots = sys.gunShots;
+      r.hold(true); r.tick(); r.tick();
+      expect(r.rt.held()[0]!.gunHeld).toBeUndefined();
+      expect(sys.gunShots).toBe(shots);
+      r.hold(false); r.set({ selectTo: 0 }); r.tick(); r.rt.takeRefusals();
+      const pews = sys.pewShots;
+      r.click(); r.tick();
+      expect([sys.pewShots, sys.missilesLaunched, r.rt.takeRefusals()]).toEqual([pews, 1, []]);
+      r.press('weaponMode'); r.tick();
+      expect(sys.gunsManual).toBe(false);
+    } finally { r.rt.dispose(); }
+  });
+  it('the flight ends: a torpedo selection returns to the last gun; a trigger held across it is stale until a fresh press; no second launch', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      sys.bars[DuelSystem.Weapons] = 3; sys.weaponPower = [1, 1, 1];
+      r.press('weaponMode'); r.tick();
+      r.set({ selectTo: 1 }); r.tick(); r.set({ selectTo: 2 }); r.tick();
+      r.press('torpMode'); r.tick();
+      r.click(); r.tick();
+      expect(sys.missilesLaunched).toBe(1);
+      r.hold(true); r.tick();
+      removeMissile(r.d.tactical, 0); r.tick();
+      expect(r.rt.held()[0]!.weaponSel).toBe(1);   // back to the autocannon, the last gun selected
+      expect(r.rt.held()[0]!.gunHeld).toBeUndefined();   // the held trigger is stale
+      expect(sys.missilesLaunched).toBe(1);
+      r.hold(false); r.tick(); r.hold(true);
+      for (let n = 0; n < 20; n++) r.tick();
+      expect(r.rt.held()[0]!.gunHeld).toBe(true);
+      expect(sys.gunShots).toBeGreaterThan(0);
+    } finally { r.rt.dispose(); }
+  });
+});
+```
+
+Append to `tests/onlineDuelSession.test.ts`'s Hound block (its `rig(1)`, which W-4a and W-4b extend; import `placeMissile` and `removeMissile` from `../src/renderer/src/sim/tactical/state`). The rig's replica is a snapshot copy of `r.d`, republished with `r.client().publish(r.d)`:
+
+```ts
+  it('a MANUAL flight: no gunHeld, no pewFire, then the selection returns; the turret is not predicted while it flies (W-4 spec §7, §11)', () => {
+    const r = rig(1);
+    placeMissile(r.d.tactical, 0, { x: 0, y: 1300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 30 }, true);
+    const c = r.attach(); r.session.frame();
+    const src = () => h.sources.at(-1) as unknown as { turret(slot: 0 | 1): number };
+    const key = (code: string): void => { r.key('keydown', code); r.key('keyup', code); r.pump(); };
+    key('KeyZ');
+    const want = (c.state()!.tactical.ships[0].heading * 256 + 2000) % 65536;
+    h.sceneOpts[0]!.requests!.reticle(want); r.pump(); r.pump(); r.session.frame();
+    expect(src().turret(0)).toBe(0);   // k = 0 while it flies
+    key('Digit2'); h.sceneOpts[0]!.requests!.trigger(true); r.pump();
+    expect(c.helds().at(-1)).not.toHaveProperty('gunHeld');
+    h.sceneOpts[0]!.requests!.trigger(false); key('Digit1');
+    h.sceneOpts[0]!.requests!.pew(1234); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'pewFire')).toEqual([]);
+    key('Digit3');
+    removeMissile(r.d.tactical, 0); r.client().publish(r.d); r.pump(); r.session.frame();
+    expect(c.helds().at(-1)).toMatchObject({ weaponSel: 0 });   // back to the last gun
+    expect(src().turret(0)).toBeGreaterThan(0);   // predicted again
+    r.dispose();
+  });
+```
+
+Pew pew is used for the prediction because the autocannon starts with 0 bars, and `predictTurret` returns the replica's value for an unpowered gun.
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `npx vitest run tests/w4TorpedoSeat.test.ts tests/w4Input.test.ts`
+Run: `npx vitest run tests/w4TorpedoSeat.test.ts tests/w4Input.test.ts tests/w4Runtime.test.ts tests/onlineDuelSession.test.ts`
 Expected: FAIL. `flightFrame` is not exported, `nextWeaponSel` still takes `steering`, the runtimes still fire on LMB and send `gunHeld` during a flight, and `turret(1)` still predicts.
 
 - [ ] **Step 3: The helper**
@@ -922,17 +1003,17 @@ export function flightFrame(latch: FlightLatch, flyingNow: boolean, sel: number,
 
 4. In the rest of the Hound branch, read `click` where W-4a reads `pew`:
    - `const lmbLaunch = pew !== null && weaponSel === WeaponSlot.Torpedo;` becomes `const lmbLaunch = click !== null && weaponSel === WeaponSlot.Torpedo;`;
-   - `if (pew !== null && weaponSel === WeaponSlot.Pew) {` becomes `if (click !== null && weaponSel === WeaponSlot.Pew) {`.
+   - W-4b's `if (pew !== null && weaponSel === WeaponSlot.Pew && gunsManual) {` becomes `if (click !== null && weaponSel === WeaponSlot.Pew && gunsManual) {`.
 
-   Read the trigger through `triggerLive`: W-4a's `const trig = deps.triggerHeld?.() ?? false;` becomes `const trig = triggerLive;`. The dead-trigger refusal on its press edge then never fires during a flight or while stale. Keep W-4b's additions in the branch (Z → `gunMode`, the reticle) as they are.
-5. In `frame`, W-4a's merge `if (!ended() && houndWeaponsSeat(d, active)) activeHeld = { ...activeHeld, ...weaponsSeatHeld(weaponSel, deps.triggerHeld?.() ?? false) };   // W-4 spec §8` becomes `… weaponsSeatHeld(weaponSel, triggerLive) …` (comment "W-4 spec §7, §8: the gated trigger"). If W-4b extended this merge with `turretAim`, keep that part.
+   Read the trigger through `triggerLive`: W-4a's `const trig = deps.triggerHeld?.() ?? false;` becomes `const trig = triggerLive;`, and W-4b's dead-trigger line `if (trig && !triggerPrev && weaponSel === WeaponSlot.Autocannon && gunsManual) {` stays as it is (it reads `trig`). The dead-trigger refusal on its press edge then never fires during a flight or while stale. Keep W-4b's other additions in the branch (Z → `gunMode`, the reticle) as they are.
+5. In `frame`, W-4b's merge `weaponsSeatHeld(weaponSel, (deps.triggerHeld?.() ?? false) && gunModeBase(), deps.reticleAim?.() ?? -1)` becomes `weaponsSeatHeld(weaponSel, triggerLive && gunModeBase(), deps.reticleAim?.() ?? -1)` (comment "W-4 spec §7, §8: the gated trigger, MAN only"). Keep `&& gunModeBase()`: without it AUTO would send `gunHeld` again (W-4b Decision 7).
 
 - [ ] **Step 5: Online**
 
 `app/duel/onlineDuel.ts`:
 1. Add `flightFrame, NO_FLIGHT, type FlightLatch` to the `./weaponsSeat` import.
-2. Beside W-4a's `weaponSel = 0, triggerPrev = false`, add `lastGunSel = 0, flight: FlightLatch = NO_FLIGHT, triggerLive = false`. Wherever W-4a resets `weaponSel = 0; triggerPrev = false;` (the sit, the stand, the round change, the attach, and the off-seat line in `play`), also reset `lastGunSel = 0; flight = NO_FLIGHT; triggerLive = false;`.
-3. At the top of the online Hound branch, replace W-4a's `weaponSel = nextWeaponSel(weaponSel, k, manualTorpedoFlying(d.tactical));` with:
+2. W-4a's `let` line already declares `weaponSel = 0, lastGunSel = 0, triggerPrev = false` (W-4a Task 11 Step 3.4). Add `, flight: FlightLatch = NO_FLIGHT, triggerLive = false` to it. Wherever W-4a resets `weaponSel = 0; lastGunSel = 0; triggerPrev = false;` (the sit, the stand, the round change, the attach, and the off-seat line in `play`), also reset `flight = NO_FLIGHT; triggerLive = false;`.
+3. At the top of the online Hound branch, replace W-4a's two lines `weaponSel = nextWeaponSel(weaponSel, k, manualTorpedoFlying(d.tactical));` and `if (weaponSel !== WeaponSlot.Torpedo) lastGunSel = weaponSel;` with:
 
 ```ts
       const ff = flightFrame(flight, manualTorpedoFlying(d.tactical), weaponSel, lastGunSel, triggerNow());   // W-4 spec §7: the replica's flight
@@ -955,7 +1036,7 @@ Expected: tsc clean; all PASS. A W-4a or W-4b runtime case that expected A/D not
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/renderer/src/app/duel/weaponsSeat.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/app/duel/onlineSource.ts tests/w4TorpedoSeat.test.ts tests/w4Input.test.ts <any W-4a/W-4b runtime test rewritten in Step 6>
+git add src/renderer/src/app/duel/weaponsSeat.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/app/duel/onlineSource.ts tests/w4TorpedoSeat.test.ts tests/w4Input.test.ts tests/w4Runtime.test.ts tests/onlineDuelSession.test.ts <any W-4a/W-4b runtime test rewritten in Step 6>
 git commit -m "feat(w4c): the Weapons seat around a MANUAL flight: A/D select, LMB steers and fires nothing, a fresh press after it, the torpedo selection returns to the last gun; no turret prediction while it flies (W-4 spec §7, §11)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -979,12 +1060,12 @@ git commit -m "feat(w4c): the Weapons seat around a MANUAL flight: A/D select, L
 
 ```ts
   it('TORPEDO in MAN while it flies and can turn reads STEER LMB (W-4 spec §10)', () => {
-    // render the Hound's station (as this file's other cases) with weapons({ torpManual: true, missileFlying: true, torpSteer: true, torpCoast: false });
-    // expect the texts to contain 'STEER LMB' and not 'STEER A/D'
+    const { duel } = mount();
+    act(() => duel.frame(view(weapons({ autocannon: { heat: 0, locked: false, offline: false, rate: '6/S' }, selected: 2, torpManual: true, missileFlying: true, torpSteer: true, torpCoast: false }))));
+    expect(texts()).toContain('STEER LMB');
+    expect(texts()).not.toContain('STEER A/D');
   });
 ```
-
-Write it with this file's own render helper and `weapons(...)` builder, as its other cases do.
 
 `tests/manualTorpedoInput.test.ts`, the controls-list case:
 
@@ -993,7 +1074,7 @@ describe('the Settings controls list (W-4 spec §9)', () => {
   it('names V at Weapons; the left mouse flies a MANUAL torpedo; A/D and the right button no longer do', () => {
     const rows = controlSections()[0]!.rows;
     expect(rows.find((r) => r.keys === 'V')?.action).toMatch(/Weapons.*torpedo.*AUTO.*MANUAL/);
-    expect(rows.find((r) => r.keys === 'Hold left mouse')?.action).toMatch(/MANUAL torpedo.*steer/);
+    expect(rows.filter((r) => r.keys === 'Hold left mouse').map((r) => r.action)).toContainEqual(expect.stringMatching(/^At Weapons, with a MANUAL torpedo flying: steer it/));   // the Helm's row (controlsList.ts L59) comes first and stays
     expect(rows.find((r) => r.keys === 'W A S D')?.action).not.toMatch(/MANUAL torpedo/);
     expect(rows.find((r) => r.keys === 'Right click or drag')?.action).not.toMatch(/torpedo/);
     expect(rows.find((r) => r.keys === 'Right click or drag')?.action).toMatch(/elsewhere pan/);
@@ -1051,7 +1132,10 @@ git commit -m "feat(w4c): the TORPEDO card says STEER LMB; the controls list: ho
 Run: `npx tsx scripts/golden/duel-oracle.ts same`
 Expected: `duel oracle: <R> runs, <T> ticks, <F> named fields, results, events and telemetry identical at every tick field for field, sim version <V> → <V> (baseline HEAD <W4C_BASE>)`, exit 0, with Task 1's `<R>`, `<T>` and `<F>`.
 
-If it fails with a value, event or telemetry difference, stop: an AUTO or scripted path changed. The message names the run, the tick and the field. Fix it in the task that introduced it and re-run; never tune, never re-record the baseline. If it fails because the baseline is missing (a reboot cleared the temp folder) or is from another checkout, write "W-4c oracle proof: not run (baseline lost)" in the report, and rely on Steps 2 and 3.
+Then run: `npx tsx scripts/golden/canonical-trace.ts same`
+Expected: the sector's runs identical at every tick to Task 1's canonical baseline, exit 0. W-4c touches no sector code.
+
+If either fails with a value, event or telemetry difference, stop: an AUTO, scripted or sector path changed. The message names the run, the tick and the field. Fix it in the task that introduced it and re-run; never tune, never re-record the baseline. If either fails because its baseline is missing (a reboot cleared the temp folder) or is from another checkout, write "W-4c oracle / canonical proof: not run (baseline lost)" in the report and rely on Steps 2 and 3; then also skip Step 2's `canonical-trace.ts golden` check (it needs the same copy) and say so in the report.
 
 - [ ] **Step 2: The same-version bless**
 
@@ -1086,7 +1170,7 @@ Run, one at a time:
 - `npx vitest run --maxWorkers=4`: every file PASS. Re-run a load-sensitive timeout alone.
 - `npm run test:duel-app-runtime`: the `ACTUAL DUEL APP` line.
 - `npm run test:determinism`: PASS on Node, Electron and Firefox. Then `git checkout -- .superpowers/sdd/2026-11-14-net-1b-durability`, and `git status --short .superpowers/sdd` prints nothing.
-- `git grep -n "torpTurn\|heldTorpSteer\|STEER A/D" -- src tests`: no output.
+- `git grep -n "torpTurn\|heldTorpSteer\|STEER A/D" -- src`: no output (`tests/` keeps its negative asserts).
 
 - [ ] **Step 5: The report**
 
