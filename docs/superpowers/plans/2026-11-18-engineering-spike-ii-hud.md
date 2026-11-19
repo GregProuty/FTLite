@@ -23,7 +23,7 @@ So both modes behave the same. HUD clicks come from React (`actions.ship.*`). In
 
 ## Global Constraints
 
-- **No sim change.** Part ii edits nothing under `src/renderer/src/sim/**` or `src/renderer/src/net/**`. SIM_VERSION stays **55** (Part i's bump, on this branch only). Task 1 records both baselines at 54, and Task 10 proves them `same`. Never run `npm run bless` in Part ii, never pass `--fresh`, never hand-edit goldens.
+- **No sim change.** Part ii edits nothing under `src/renderer/src/sim/**` or `src/renderer/src/net/**`. SIM_VERSION stays **55** (Part i's bump, on this branch only). Task 1 records both baselines at 55, and Task 10 proves them `same`. Never run `npm run bless` in Part ii, never pass `--fresh`, never hand-edit goldens.
 - **Part i names consumed (contract, binding):**
   - from `sim/duel/power.ts`: `DuelSystem`, `DUEL_SYSTEM_COUNT` (5), `OVERDRIVE_SYSTEMS` (4), `SYSTEM_MAX` `[4,9,4,3,2]`, `SYSTEM_SLOTS` `[5,10,5,4,2]`, `START_BARS` `[2,2,3,1,1]`, `REACTOR_BARS` (10), `COOLANT_POOL_DUEL` (8), `capacityOf(d, k)`, `sparesOf(d)`, `coolantFree(d)`, `isOverdriven(d, k)`;
   - `DuelState.power: PowerState` (`{ heat: number[]; coolant: number[]; failed: number[] }`, `failed` 0 or 1) and `ShipSystems.bars: number[]` (length 5, in system order Shields, Weapons, Engines, Sensors, Oxygen);
@@ -71,9 +71,9 @@ So both modes behave the same. HUD clicks come from React (`actions.ship.*`). In
    - below 25 % (`LOW_AIR_FRAC`, where air starts to hurt) it is red, alpha 0.3 → 0.55 at 0 %.
    It is drawn under the damage tint. `airTint` is pure and unit-tested.
 8. **The amber CRT panel** wraps the whole ship HUD (hull, shields and power) in its own `<CrtProvider crt>` and `<CrtGlow>`, inside the duel's non-CRT provider. The interior itself stays un-CRT (`crtActive('interior')` is false, `render/crt.ts`), and the panel sits on a CRT-glass backing for legibility over the painting. No CRT scanline screen is added: `CrtScreen` covers the whole stage and would cover the interior.
-9. **The SHIP tab.** The spec says the HUD shows "on foot, or seated with the SHIP tab open". In today's code the SHIP tab stands the character up (`tabActions.ship: 'stand'`), and the view is the interior exactly when standing, or on the Valkyrn's Tab ship view (`runtime.ts:282`). The existing rule `hud: view === 'interior'` (`scene.ts:291`) therefore already matches, and is kept.
+9. **The SHIP tab.** The spec says the HUD shows "on foot, or seated with the SHIP tab open". In today's code the SHIP tab stands the character up (`tabActions.ship: 'stand'`), and the view is the interior exactly when standing, or on the Valkyrn's Tab ship view (`runtime.ts:282`). The existing rule `hud: view === 'interior'` (`scene.ts:305`) therefore already matches, and is kept.
 10. **The app smoke is a Single-player Electron script**, run by the controller (Task 11). It clicks a power column (right and left), a coolant counter and a door, asserts on the staged runtime's state, then takes the screenshots. The online `duel-app-smoke` driver clicks only DOM test ids and has no canvas click, so extending it is out of scope. The online path shares every line but `send`, and `npm run test:duel-app-runtime` stays green (Task 10).
-11. **The HUD panel may overlap the Hound's lower-left rooms** at the zoom-0 fit (the panel covers x 6–334, y 546–712; room R's lowest row sits near y 557). A click on the panel never reaches the canvas, because only `pointerEvents: 'auto'` elements take clicks. Zoom or pan the interior to reach a covered door. The report notes it for the owner's look check.
+11. **The HUD panel may overlap the Hound's lower-left rooms** at the zoom-0 fit (the header line sits at y 529, and the backing covers x 6–334, y 557–712; room R's lowest row sits near y 557). A click on the panel never reaches the canvas, because only `pointerEvents: 'auto'` elements take clicks. Zoom or pan the interior to reach a covered door. The report notes it for the owner's look check.
 12. **Shields pips** show three states:
     - `up`, a raised layer;
     - `down`, powered but not up;
@@ -506,55 +506,57 @@ After `import { clampThrottle, THROTTLE_MAX } from '../../sim/duel/throttle';` a
 ```ts
 import type { ShipCommand } from '../../render/duel/shipControls';
 ```
-Replace
+Replace (`input.ts:36-38`, the interface's last member is asteroids-ii's `rockLock?`)
 ```ts
-export interface ConsoleInput { press(action: KeyAction): void; hold(code: HoldCode, on: boolean): void; lock(room: number): void; torpLock(room: number): void; throttle(level: number): void; frequency(freq: number): void }
+  /** Spike ii §6.5: a weapon card's right-click clear of a rock target (rock −1); optional so older fakes still fit. */
+  rockLock?(weapon: 'laser' | 'torpedo', rock: number): void }
 ```
 with
 ```ts
-export interface ConsoleInput { press(action: KeyAction): void; hold(code: HoldCode, on: boolean): void; lock(room: number): void; torpLock(room: number): void; throttle(level: number): void; frequency(freq: number): void;
+  /** Spike ii §6.5: a weapon card's right-click clear of a rock target (rock −1); optional so older fakes still fit. */
+  rockLock?(weapon: 'laser' | 'torpedo', rock: number): void;
   /** Engineering spike §6, §7: a ship-view click (a power column, a coolant counter, a door or an airlock). Optional, so
    *  the tests' console literals stay valid; callers use `?.`. */
   ship?(command: ShipCommand): void }
 /** Engineering spike §7: the most ship commands held between two samples; a further one drops the oldest. */
 export const SHIP_QUEUE_MAX = 16;
 ```
-In `KeySample`, after the `freqTo` member add:
+In `KeySample`, after the `freqTo?: number | null;` member (`input.ts:59`) add:
 ```ts
   /** Engineering spike §7: the ship-view commands clicked since the previous sample, oldest first; absent or empty for none. */
   ship?: ShipCommand[];
 ```
-In `createDuelKeyboard`, replace
+In `createDuelKeyboard` (`input.ts:105`), replace
 ```ts
-  let presses = emptyPresses(), lockTo: number | null = null, torpTo: number | null = null, throttleTo: number | null = null, freqTo: number | null = null;
+  let presses = emptyPresses(), lockTo: number | null = null, torpTo: number | null = null, rockTo: { weapon: 'laser' | 'torpedo'; rock: number } | null = null, throttleTo: number | null = null, freqTo: number | null = null;
 ```
 with
 ```ts
-  let presses = emptyPresses(), lockTo: number | null = null, torpTo: number | null = null, throttleTo: number | null = null, freqTo: number | null = null;
+  let presses = emptyPresses(), lockTo: number | null = null, torpTo: number | null = null, rockTo: { weapon: 'laser' | 'torpedo'; rock: number } | null = null, throttleTo: number | null = null, freqTo: number | null = null;
   let ship: ShipCommand[] = [];   // Engineering spike §7: kept by clearUi, dropped by clear
 ```
-Replace
+Replace (`input.ts:125`; `clearUi` on the line above keeps the ship clicks and is not touched)
 ```ts
-  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; throttleTo = null; freqTo = null; };
+  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; };
 ```
 with
 ```ts
-  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; throttleTo = null; freqTo = null; ship = []; };
+  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; ship = []; };
 ```
 In `consoleInput`, replace `    frequency(freq) { freqTo = freq; }` with:
 ```ts
     frequency(freq) { freqTo = freq; },
     ship(command) { ship.push(command); if (ship.length > SHIP_QUEUE_MAX) ship.shift(); }
 ```
-In `sample()`, replace
+In `sample()` (`input.ts:148-149`), replace
 ```ts
-      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, torpTo, throttleTo, freqTo };
-      presses = emptyPresses(); lockTo = null; torpTo = null; throttleTo = null; freqTo = null;
+      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, torpTo, rockTo, throttleTo, freqTo };
+      presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null;
 ```
 with
 ```ts
-      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, torpTo, throttleTo, freqTo, ...(ship.length > 0 ? { ship } : {}) };
-      presses = emptyPresses(); lockTo = null; torpTo = null; throttleTo = null; freqTo = null; ship = [];
+      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, torpTo, rockTo, throttleTo, freqTo, ...(ship.length > 0 ? { ship } : {}) };
+      presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; ship = [];
 ```
 
 - [ ] **Step 5: The actions** in `src/renderer/src/ui/actions.ts`
@@ -1431,7 +1433,7 @@ git commit -m "feat(engineering-spike): interior door and airlock clicks and hov
 Run each one. If any prints nothing, stop and report:
 ```bash
 git grep -n "export function throttleCap" -- src/renderer/src/sim/tactical/bars.ts
-git grep -n "THROTTLE_CAP_BY_BARS = \[0, 1, 2, 3, 4, 4\]" -- src/renderer/src/sim/tactical/bars.ts
+git grep -nF "THROTTLE_CAP_BY_BARS: readonly number[] = [0, 1, 2, 3, 4, 4]" -- src/renderer/src/sim/tactical/bars.ts
 git grep -n "export function sensorRange(sys" -- src/renderer/src/sim/tactical/science.ts
 git grep -n "export function contactSeen" -- src/renderer/src/sim/tactical/science.ts
 git grep -n "export function pointSeen" -- src/renderer/src/sim/tactical/science.ts
@@ -1840,6 +1842,7 @@ import { createDuelKeyboard, NO_HELD_FLAGS, type EventSource } from '../src/rend
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import { lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
 import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
+import { initRocks } from '../src/renderer/src/sim/tactical/rocks';
 import { seatDuelCrew } from './helpers/duelSeat';
 
 const HOUND = parseShip(hound);
@@ -1878,7 +1881,7 @@ describe('WEAPONS OFFLINE only when the beam and the torpedo are both dark (spec
     const d = createDuel(HOUND, 5), t = d.tactical, sys = t.systems[0], me = t.ships[0]!, e = t.ships[1]!;
     try {
       seatDuelCrew(d);
-      t.map = { ...t.map, asteroids: [] }; t.grid = buildGrid([], t.map.rMap);   // no rocks: the line is clear by construction (nothing steps)
+      t.map = { ...t.map, asteroids: [] }; t.grid = buildGrid([], t.map.rMap); t.rocks = initRocks(t.map);   // no rocks (feelIiModels' clearRocks): the line is clear by construction (nothing steps)
       e.x = me.x + hx(me.heading) * 200; e.y = me.y + hy(me.heading) * 200; e.active = true;   // dead ahead, in range and arc
       expect(lineOfSight(t, me.x, me.y, e.x, e.y)).toBe(true);   // the precondition
       expect(weaponsOffline(t)).toBe(false);
@@ -1903,13 +1906,15 @@ Expected: FAIL (`CARD_ORDER` and `weaponsOffline` are not exported; `weaponBars`
 
 - [ ] **Step 4: The panel and the cards** (`consoleModel.ts`, `consoleLayout.ts`)
 
-In `src/renderer/src/render/duel/consoleModel.ts`, extend `WeaponsPanel`. Replace
+In `src/renderer/src/render/duel/consoleModel.ts`, extend `WeaponsPanel` (`consoleModel.ts:37-40`, which asteroids-ii ended with the rock fields). Replace
 ```ts
-  laserTarget: number; torpTarget: number; burst: number; laserReason?: string | null; goal?: boolean; refused?: RefusedView | null }
+  /** Spike ii §7 item 9: the rocks the crew broke this round. */
+  rocks?: number }
 ```
 with
 ```ts
-  laserTarget: number; torpTarget: number; burst: number; laserReason?: string | null; goal?: boolean; refused?: RefusedView | null;
+  /** Spike ii §7 item 9: the rocks the crew broke this round. */
+  rocks?: number;
   /** Engineering spike §10.3: the bars each weapon stands on now (pew pew, beam, torpedo; 0..4, trimmed) and the Weapons
    *  bars not yet spent. Optional, so a hand-built panel may leave them out (the probe's fixture). */
   weaponBars?: number[]; weaponFree?: number }
@@ -1986,13 +1991,25 @@ export function weaponsOffline(t: TacticalState): boolean {
   return laserOffline(t, CREW_SLOT) && trimmedWeaponPower(t.systems[CREW_SLOT])[WeaponSlot.Torpedo] === 0;
 }
 ```
-In `laserSituation`, replace
+`laserSituation` tests `laserOffline` twice: in asteroids-ii's rock branch (`situationModel.ts:46`) and in the enemy branch (`:59`). Both get `weaponsOffline`. In the rock branch, replace
 ```ts
-  if (laserOffline(t, CREW_SLOT)) return { kind: 'offline' };
+    if (laserOffline(t, CREW_SLOT)) return { kind: 'offline' };
+    if (sysRock.laserBurst > 0 || sinceShot < SOLUTION_HOLD_S) return { kind: 'solution', targeted: sysRock.laserTargeted };
 ```
 with
 ```ts
-  if (laserOffline(t, CREW_SLOT)) return weaponsOffline(t) ? { kind: 'offline' } : { kind: 'none' };   // Engineering spike §10.3: the beam dark, the torpedo powered: its card speaks
+    if (laserOffline(t, CREW_SLOT)) return weaponsOffline(t) ? { kind: 'offline' } : { kind: 'none' };   // Engineering spike §10.3: the beam dark, the torpedo powered: its card speaks
+    if (sysRock.laserBurst > 0 || sinceShot < SOLUTION_HOLD_S) return { kind: 'solution', targeted: sysRock.laserTargeted };
+```
+and in the enemy branch, replace
+```ts
+  if (laserOffline(t, CREW_SLOT)) return { kind: 'offline' };
+  const targeted = sys.laserTargeted;
+```
+with
+```ts
+  if (laserOffline(t, CREW_SLOT)) return weaponsOffline(t) ? { kind: 'offline' } : { kind: 'none' };   // Engineering spike §10.3
+  const targeted = sys.laserTargeted;
 ```
 In `refusal`, replace
 ```ts
@@ -2049,7 +2066,9 @@ import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
 import type { ConsoleView, WeaponsPanel } from '../src/renderer/src/render/duel/consoleModel';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
-import { TEXT } from '../src/renderer/src/render/theme';
+import { TEXT, textPx } from '../src/renderer/src/render/theme';
+import { STATION } from '../src/renderer/src/render/duel/consoleLayout';
+import { freeText } from '../src/renderer/src/ui/duel/WeaponsStation';
 import { makeUi } from './helpers/uiStore';
 
 afterEach(() => { cleanup(); });
@@ -2088,6 +2107,11 @@ describe('the three weapons (spec §10.3, §11)', () => {
     fireEvent.pointerDown(screen.getByTestId('console-weapon-pips-0'), { button: 2 });
     expect(weaponPower.mock.calls).toEqual([[1, 1], [2, -1], [0, -1]]);
   });
+  it('every refusal and reason starts at the block\'s left and stays clear of FREE (as rockTargetUi measures the hint)', () => {
+    const x0 = STATION.x + 8, right = STATION.x + STATION.w - 8;
+    for (const t of ['LAUNCH: TORPEDO UNPOWERED', 'LAUNCH: WEAPONS OFFLINE', 'LAUNCH: OUT OF RANGE', 'FIRE: BEAM UNPOWERED', 'FIRE: TORPEDO FLYING', 'BEAM: OUT OF ARC: HELM TURN RIGHT', 'BEAM: OUT OF RANGE 2000/450'])
+      expect(x0 + textPx(t, 1) + 8, t).toBeLessThanOrEqual(right - textPx(freeText(9), 1));
+  });
 });
 ```
 
@@ -2096,18 +2120,22 @@ describe('the three weapons (spec §10.3, §11)', () => {
 Run: `npx vitest run tests/engineeringWeaponsUi.test.tsx`
 Expected: FAIL (there is no PEW PEW card and no pips).
 
-- [ ] **Step 10: Write** `src/renderer/src/ui/duel/WeaponsStation.tsx` (replace the whole file)
+- [ ] **Step 10: Write** `src/renderer/src/ui/duel/WeaponsStation.tsx` (replace the whole file; built on master's, which asteroids-ii gave `targetText(room, rock)`, `WEAPONS_HINT`, the rock-aware right-click clear, TGT ROCK and the ROCKS tally, all kept)
 
 ```tsx
 // The Weapons station block (spec 2026-11-17-artemis-consoles §4.1; FTL targeting spec §1; Engineering spike §10.3, §11):
 // one card per weapon slot, FTL-style, in slot order. PEW PEW: its bars and ARRIVES WITH W-1 (the W-1 skill-shot weapon
-// arrives from its own branch; on this one its bars do nothing, and the card has no charge, lock or pick-up). BEAM
-// (today's laser): its charge, the burst mark by its bars, its target and FIRE (Space). TORPEDO: the magazine, IN RANGE
-// / OUT OF RANGE or FLYING, its target and LAUNCH (F). A click on BEAM or TORPEDO picks it up (the contact window opens
-// and a targeting line runs to the pointer); the same card again cancels; a right-click clears its target. Under each
-// card four pips show the bars on that weapon (the fourth is the overdrive's, dashed): a left click adds a bar, a right
-// click removes one. 1 and 2 pick the beam and the torpedo up. Sci-1 spec §7.4: the frequency row, A B C (keys 3/4/5).
-// Feel-i: the BEAM card flashes FIRING and glows as the goal; the row under the cards says why the beam can't fire.
+// arrives from its own branch; on this one its bars do nothing, and the card has no charge, target or pick-up). BEAM
+// (today's laser): its charge value and bar, the `x2` burst mark (by its bars), its target and FIRE (Space, a single press
+// that fires a full charge). TORPEDO: the magazine, its range state (IN RANGE / OUT OF RANGE, weapons update spec §2) or
+// FLYING, its target and LAUNCH (F). A click on BEAM or TORPEDO picks it up (the contact window opens and a targeting line
+// runs to the pointer, TargetingLine); a click on the same card again cancels; a right-click clears its target (spike ii
+// §6.5: the rock target when set, else the room). Under each card four pips show the bars on that weapon (the fourth is the
+// overdrive's, dashed): a left click adds a bar, a right click removes one. 1 and 2 pick the beam and the torpedo up.
+// Sci-1 spec §7.4: the frequency row, A B C with the tuned one lit and the weak one marked after a Level 2 scan (keys 3/4/5).
+// Feel-i (console feel spec §1, §3): the BEAM card flashes FIRING while the shot is lined up, says why not in words on the
+// row under the cards (`BEAM: OUT OF ARC: HELM TURN RIGHT`), and its frame pulses (the goal glow) while it has no target.
+// Spike ii: TGT ROCK on a card with a rock target, the hint names rocks, the ROCKS tally.
 import { memo, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from 'react';
 import type { WeaponsPanel } from '../../render/duel/consoleModel';
 import { STATION, stationTop, weaponCard, type CardWeapon } from '../../render/duel/consoleLayout';
@@ -2127,37 +2155,43 @@ import { crtRowLook } from './ReadoutPanel';
 type Weapon = 'laser' | 'torpedo';
 /** The room words, rooms[0] Weapons, rooms[1] Shields, rooms[2] Engines (as the contact window's labels). */
 const ROOM_LABELS = ['WEAP', 'SHLD', 'ENG'] as const;
-/** A target room's words on a card: `TGT SHLD`, or `TGT --` with none. */
-export const targetText = (room: number): string => `TGT ${room >= 0 ? ROOM_LABELS[room] ?? '--' : '--'}`;
+/** A target's words on a card: `TGT SHLD`, `TGT --` with none, or `TGT ROCK` with a rock target (spike ii §6.5). */
+export const targetText = (room: number, rock = false): string => (rock ? 'TGT ROCK' : `TGT ${room >= 0 ? ROOM_LABELS[room] ?? '--' : '--'}`);
 const stop = (e: SyntheticEvent): void => e.preventDefault();
+
 /** Feel-i: the FIRING flash's and the goal glow's rates (Hz) on the CRT clock. */
 export const FIRING_FLASH_HZ = 4, GOAL_GLOW_HZ = 1.2;
 /** Engineering spike §10.3: a weapon's pips (3 bars and the overdrive's 4th) and their size. */
 export const WEAPON_PIPS = 4, PIP_W = 16, PIP_H = 10, PIP_GAP = 4;
 const SLOT: Record<CardWeapon, number> = { pew: 0, laser: 1, torpedo: 2 };
 
-/** A card's frame (FTL targeting spec §1): lit while picked up. Feel-i: `flash` (FIRING) blinks it hot, `glow` (the goal)
- *  pulses it hot and mid. */
-function Frame({ weapon, lit, crt, flash = false, glow = false, now = 0 }: { weapon: CardWeapon; lit: boolean; crt: boolean; flash?: boolean; glow?: boolean; now?: number }) {
-  const c = weaponCard(weapon), on = (hz: number): boolean => Math.floor(now * 2 * hz) % 2 === 0;
-  const edge = lit || (flash && on(FIRING_FLASH_HZ)) || (glow && on(GOAL_GLOW_HZ)) ? (crt ? CRT.hot : AMBER) : crt ? CRT.mid : DIM;
-  return <Box x={c.x} y={c.y} w={c.w} h={c.h} attrs={{ 'data-ui-card-frame': weapon, ...(glow ? { 'data-ui-card-goal': '1' } : {}), ...(flash ? { 'data-ui-card-firing': '1' } : {}) }}
-    style={{ border: `${flash || glow ? 2 : 1}px solid ${hex(edge)}`, pointerEvents: 'none' }} />;
-}
-/** The beam's or the torpedo's clickable part: a left click picks it up, a right click clears its target. */
-function Pick({ weapon, lit, crt }: { weapon: Weapon; lit: boolean; crt: boolean }) {
+/** One weapon card's frame and its clickable part (FTL targeting spec §1): lit while picked up. Feel-i: `flash` (FIRING)
+ *  blinks the frame hot, `glow` (the goal) pulses it hot and mid. */
+function Card({ weapon, lit, crt, flash = false, glow = false, now = 0, rock = false }: { weapon: Weapon; lit: boolean; crt: boolean; flash?: boolean; glow?: boolean; now?: number; rock?: boolean }) {
   const actions = useActions(), c = weaponCard(weapon);
   const down = (e: ReactPointerEvent<HTMLDivElement>): void => {
     e.preventDefault();
-    if (e.button === 2) { if (weapon === 'torpedo') actions.console.torpLock(-1); else actions.console.lock(-1); return; }   // clear its target
+    if (e.button === 2) {   // clear its target: spike ii §6.5, the rock target when set, else the room
+      if (rock) actions.console.rockLock?.(weapon, -1);
+      else if (weapon === 'torpedo') actions.console.torpLock(-1); else actions.console.lock(-1);
+      return;
+    }
     if (e.button === 0) actions.contact.pickUp(weapon);
   };
+  const on = (hz: number): boolean => Math.floor(now * 2 * hz) % 2 === 0;
+  const edge = lit || (flash && on(FIRING_FLASH_HZ)) || (glow && on(GOAL_GLOW_HZ)) ? (crt ? CRT.hot : AMBER) : crt ? CRT.mid : DIM;
+  const thick = flash || glow ? 2 : 1;
   return (
-    <div data-testid={`console-card-${weapon}`} data-ui-card={lit ? 'lit' : 'idle'} role="button" onPointerDown={down} onContextMenu={stop} onMouseDown={stop} onAuxClick={stop}>
-      <Box x={c.x} y={c.y} w={c.w} h={c.hitH} style={{ pointerEvents: 'auto', cursor: 'pointer', background: lit ? hex(crt ? CRT.glass : BAR_OFF) : 'transparent' }} />
-    </div>
+    <>
+      <Box x={c.x} y={c.y} w={c.w} h={c.h} attrs={{ 'data-ui-card-frame': weapon, ...(glow ? { 'data-ui-card-goal': '1' } : {}), ...(flash ? { 'data-ui-card-firing': '1' } : {}) }}
+        style={{ border: `${thick}px solid ${hex(edge)}`, pointerEvents: 'none' }} />
+      <div data-testid={`console-card-${weapon}`} data-ui-card={lit ? 'lit' : 'idle'} role="button" onPointerDown={down} onContextMenu={stop} onMouseDown={stop} onAuxClick={stop}>
+        <Box x={c.x} y={c.y} w={c.w} h={c.hitH} style={{ pointerEvents: 'auto', cursor: 'pointer', background: lit ? hex(crt ? CRT.glass : BAR_OFF) : 'transparent' }} />
+      </div>
+    </>
   );
 }
+
 /** Engineering spike §10.3: a weapon's bar pips under its card; a left click adds a bar, a right click removes one. */
 function Pips({ weapon, bars, crt }: { weapon: CardWeapon; bars: number; crt: boolean }) {
   const actions = useActions(), c = weaponCard(weapon), slot = SLOT[weapon], x0 = c.x + 6;
@@ -2176,6 +2210,12 @@ function Pips({ weapon, bars, crt }: { weapon: CardWeapon; bars: number; crt: bo
   );
 }
 
+/** The Weapons station's how-to hint (spike ii: a rock is a target too). */
+export const WEAPONS_HINT = 'CLICK A WEAPON, THEN A ROOM OR ROCK';
+/** Engineering spike §10.3: the free Weapons bars' words, right-aligned on the reason row (every refusal and reason starts
+ *  at the block's left edge, so the two never meet: the test measures the widest). */
+export const freeText = (n: number): string => `FREE ${n}`;
+
 export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null }: { weapons: WeaponsPanel; aim?: Weapon | null }) {
   const actions = useActions(), { crt, now } = useCrt();
   const top = stationTop('weapons'), x0 = STATION.x + 8, y0 = top + 6, right = STATION.x + STATION.w - 8;
@@ -2183,40 +2223,41 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
   const barColour = crt ? crtRowLook(c, now).bar : c.bar?.colour ?? TEXT;
   const P = weaponCard('pew'), L = weaponCard('laser'), T = weaponCard('torpedo'), px = P.x + 6, lx = L.x + 6, tx = T.x + 6;
   const reason = weapons.laserReason ?? null, firing = reason === 'FIRING', bars = weapons.weaponBars ?? null;
+  const laserRock = weapons.laserRock === true, torpRock = weapons.torpRock === true || weapons.torpRockFlying === true;
   // Feel-ii §2.8: a refused FIRE or LAUNCH flashes, and the row under the cards names why for REFUSAL_SHOW_S.
   const refused = weapons.refused ?? null, flash = (k: string): boolean => refused?.control === k && refused.flash;
   return (
     <>
       <Panel x={STATION.x} y={top} w={STATION.w} h={STATION.h.weapons} />
-      <Frame weapon="pew" lit={false} crt={crt} />
+      <Box x={P.x} y={P.y} w={P.w} h={P.h} attrs={{ 'data-ui-card-frame': 'pew' }} style={{ border: `1px solid ${hex(dim)}`, pointerEvents: 'none' }} />
       <PixelText text="PEW PEW" x={px} y={P.y + 4} size={FONT_NATIVE} tint={dim} />
       <PixelText text="ARRIVES" x={px} y={P.y + 20} size={FONT_NATIVE} tint={dim} />
       <PixelText text="WITH W-1" x={px} y={P.y + 36} size={FONT_NATIVE} tint={dim} />
-      <Frame weapon="laser" lit={aim === 'laser'} crt={crt} flash={firing} glow={weapons.goal === true && aim !== 'laser'} now={now} />
-      <Pick weapon="laser" lit={aim === 'laser'} crt={crt} />
+      <Card weapon="laser" lit={aim === 'laser'} crt={crt} flash={firing} glow={weapons.goal === true && aim !== 'laser'} now={now} rock={laserRock} />
       <PixelText text="BEAM" x={lx} y={L.y + 4} size={FONT_NATIVE} tint={aim === 'laser' ? hot : dim} />
-      <PixelText text={`x${weapons.burst}`} x={L.x + L.w - 6} y={L.y + 4} size={FONT_NATIVE} tint={main} anchorX={1} />
+      <PixelText text={`x${weapons.burst}`} x={lx + 36} y={L.y + 4} size={FONT_NATIVE} tint={main} />
+      <PixelText text="1" x={L.x + L.w - 6} y={L.y + 4} size={FONT_NATIVE} tint={dim} anchorX={1} />
       <PixelText text={firing ? 'FIRING' : c.value} x={lx} y={L.y + 20} size={FONT_NATIVE} tint={firing ? hot : main} />
       <Bar x={lx} y={L.y + 36} w={L.w - 12} h={6} fill={c.bar?.fill ?? 0} colour={barColour} />
-      <PixelText text={targetText(weapons.laserTarget)} x={lx} y={L.y + 44} size={FONT_NATIVE} tint={weapons.laserTarget >= 0 ? hot : dim} />
+      <PixelText text={targetText(weapons.laserTarget, laserRock)} x={lx} y={L.y + 44} size={FONT_NATIVE} tint={weapons.laserTarget >= 0 || laserRock ? hot : dim} />
       <Button name="fire" label="FIRE" hint="SPC" x={lx} y={L.pipsY + 14} w={L.w - 12} h={24} flash={flash('fire')} onPress={() => actions.console.press('fireDown')} />
-      <Frame weapon="torpedo" lit={aim === 'torpedo'} crt={crt} />
-      <Pick weapon="torpedo" lit={aim === 'torpedo'} crt={crt} />
+      <Card weapon="torpedo" lit={aim === 'torpedo'} crt={crt} rock={weapons.torpRock === true} />
       <PixelText text="TORPEDO" x={tx} y={T.y + 4} size={FONT_NATIVE} tint={aim === 'torpedo' ? hot : dim} />
+      <PixelText text="2" x={T.x + T.w - 6} y={T.y + 4} size={FONT_NATIVE} tint={dim} anchorX={1} />
       <PixelText text={`MAG ${weapons.magazine}`} x={tx} y={T.y + 20} size={FONT_NATIVE} tint={main} />
       {weapons.missileFlying
         ? <PixelText text="FLYING" x={tx} y={T.y + 32} size={FONT_NATIVE} tint={hot} />
         : <PixelText text={weapons.torpedoInRange ? 'IN RANGE' : 'OUT OF RANGE'} x={tx} y={T.y + 32} size={FONT_NATIVE} tint={weapons.torpedoInRange ? main : dim} />}
-      <PixelText text={targetText(weapons.torpTarget)} x={tx} y={T.y + 44} size={FONT_NATIVE} tint={weapons.torpTarget >= 0 ? hot : dim} />
+      <PixelText text={targetText(weapons.torpTarget, torpRock)} x={tx} y={T.y + 44} size={FONT_NATIVE} tint={weapons.torpTarget >= 0 || torpRock ? hot : dim} />
       <Button name="launch" label="LAUNCH" hint="F" x={tx} y={T.pipsY + 14} w={T.w - 12} h={24} dim={!weapons.canLaunch} flash={flash('launch')} onPress={() => actions.console.press('launch')} />
       {bars && (['pew', 'laser', 'torpedo'] as const).map((w) => <Pips key={w} weapon={w} bars={bars[SLOT[w]] ?? 0} crt={crt} />)}
-      {bars && <PixelText text={`FREE ${weapons.weaponFree ?? 0}`} x={right} y={y0 + 116} size={FONT_NATIVE} tint={(weapons.weaponFree ?? 0) > 0 ? hot : dim} anchorX={1} />}
+      {bars && <PixelText text={freeText(weapons.weaponFree ?? 0)} x={right} y={y0 + 116} size={FONT_NATIVE} tint={(weapons.weaponFree ?? 0) > 0 ? hot : dim} anchorX={1} />}
       {refused !== null
-        ? <PixelText text={`${refused.control === 'launch' ? 'LAUNCH' : 'FIRE'}: ${refused.reason}`} x={refused.control === 'launch' ? tx : x0} y={y0 + 116} size={FONT_NATIVE} tint={hot} />
+        ? <PixelText text={`${refused.control === 'launch' ? 'LAUNCH' : 'FIRE'}: ${refused.reason}`} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={hot} />
         : reason !== null && !firing
         ? <PixelText text={`BEAM: ${reason}`} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={hot} />
-        : <PixelText text={firing ? 'BEAM: FIRING' : 'CLICK A WEAPON, THEN A ROOM'} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={firing ? hot : dim} />}
-      <PixelText text={reason !== null && !firing ? 'CLICK A WEAPON, THEN A ROOM' : 'PIPS: L ADD  R REMOVE'} x={x0} y={y0 + 134} size={FONT_NATIVE} tint={dim} />
+        : <PixelText text={firing ? 'BEAM: FIRING' : WEAPONS_HINT} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={firing ? hot : dim} />}
+      <PixelText text={reason !== null && !firing ? WEAPONS_HINT : 'RIGHT-CLICK A WEAPON: CLEAR'} x={x0} y={y0 + 134} size={FONT_NATIVE} tint={dim} />
       <Box x={x0} y={y0 + 156} w={right - x0} h={1} style={{ background: hex(crt ? CRT.dim : BAR_OFF) }} />
       <PixelText text="FREQ" x={x0} y={y0 + 174} size={FONT_NATIVE} tint={main} />
       {FREQ_NAMES.map((label, f) => <Button key={f} name={`freq-${f}`} label={label} x={x0 + 52 + f * 56} y={y0 + 170} w={52} h={24}
@@ -2224,20 +2265,27 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
       {weapons.weakFreq !== null && <Box x={x0 + 52 + weapons.weakFreq * 56 + 41} y={y0 + 164} w={7} h={7} attrs={{ 'data-ui-weak-freq': FREQ_NAMES[weapons.weakFreq] ?? '' }}
         style={{ background: hex(crt ? CRT.hot : AMBER), transform: 'rotate(45deg)' }} />}
       <PixelText text="3/4/5" x={right} y={y0 + 174} size={FONT_NATIVE} tint={dim} anchorX={1} />
+      <PixelText text={`ROCKS ${weapons.rocks ?? 0}`} x={right} y={y0 + 134} size={FONT_NATIVE} tint={(weapons.rocks ?? 0) > 0 ? main : dim} anchorX={1} />
     </>
   );
 });
 ```
-The card heights add up: the pips start at `y + 62` and are 10 px tall, and the buttons sit at `pipsY + 14` (y + 76), 24 px tall, ending at y + 100, inside the 104 px card. The FREE count shares the y0 + 116 row with the reason text, right-aligned; a refused LAUNCH reason starts at `tx` (x 220), which stays clear of FREE at the right end. `actions.console` is typed `ConsoleInput` (`ui/actions.ts:49`), whose `weaponPower` is optional, so the pips call it with `?.(…)`. The W-1 note takes two lines (ARRIVES / WITH W-1), because it doesn't fit the card's 78 px text width at FONT_NATIVE.
+The card heights add up: the pips start at `y + 62` and are 10 px tall, and the buttons sit at `pipsY + 14` (y + 76), 24 px tall, ending at y + 100, inside the 104 px card. Every refusal and reason on the y0 + 116 row now starts at `x0`, as asteroids-ii's hint does, and FREE sits at its right end. Today's LAUNCH refusal starts at the torpedo card (x 218 against `right` 304), which would overrun FREE and the panel; Step 8's width test holds every reason clear of it. ROCKS keeps the y0 + 134 row's right end. `actions.console` is typed `ConsoleInput` (`ui/actions.ts:49`), whose `weaponPower` and `rockLock` are optional, so both are called with `?.(…)`. The W-1 note takes two lines (ARRIVES / WITH W-1), because it doesn't fit the card's 78 px text width at FONT_NATIVE. The second hint row keeps master's `RIGHT-CLICK A WEAPON: CLEAR`. The pips need no words: a left click adds, a right click removes, as on the ship view.
 
 `DuelUi.tsx` keeps passing `aim={duel.contact?.aimWeapon ?? null}` (the contact controller's `'laser' | 'torpedo'`) to `WeaponsStation` and to `FlightStation`. Neither changes.
 
 - [ ] **Step 11: Run the tests**
 
-Run: `npx vitest run tests/engineeringWeaponsUi.test.tsx tests/engineeringWeapons.test.ts tests/targetingUi.test.tsx tests/uiConsole.test.tsx tests/contactWindow.test.tsx tests/flightConsole.test.tsx tests/feelUi.test.tsx tests/feelIiUi.test.tsx`
+Run: `npx vitest run tests/engineeringWeaponsUi.test.tsx tests/engineeringWeapons.test.ts tests/rockTargetUi.test.tsx tests/targetingUi.test.tsx tests/uiConsole.test.tsx tests/contactWindow.test.tsx tests/flightConsole.test.tsx tests/feelUi.test.tsx tests/feelIiUi.test.tsx`
 Expected: PASS.
 
-A pre-existing UI test that asserts the old block's words is updated to the new ones, and the report lists each test so changed: `LASER` becomes `BEAM`, the FONT_SIZE charge value becomes FONT_NATIVE, the second hint row reads `PIPS: L ADD  R REMOVE` where it read `RIGHT-CLICK A WEAPON: CLEAR`, and the card x positions follow `weaponCard`.
+The beam's card and words read BEAM where they read LASER. Update the pre-existing tests that pin those words, exactly:
+- `tests/feelIiUi.test.tsx:47` and `:52`: `'LASER: OUT OF ARC: HELM TURN RIGHT'` → `'BEAM: OUT OF ARC: HELM TURN RIGHT'`;
+- `tests/feelUi.test.tsx:40`: the same; `:45`: `'LASER: FIRING'` → `'BEAM: FIRING'`;
+- `tests/uiConsole.test.tsx:51`: `'LASER'` → `'BEAM'` in the list (the `x2`, `TGT --`, `MAG 4/4`, `1`, `2` and `3/4/5` entries stay);
+- any test that pins the card x positions or the 138 px width: read them from `weaponCard`, not literals.
+
+`rockTargetUi.test.tsx` passes unchanged: the hint, TGT ROCK, the rock clear and ROCKS are master's. List every test you changed in the report.
 
 Run: `npx tsc -b`
 Expected: no errors (`app/uiProbe.ts`'s fixture compiles, because the new `WeaponsPanel` fields are optional).
@@ -2245,7 +2293,7 @@ Expected: no errors (`app/uiProbe.ts`'s fixture compiles, because the new `Weapo
 - [ ] **Step 12: Commit**
 
 ```bash
-git add src/renderer/src/render/duel/consoleModel.ts src/renderer/src/render/duel/situationModel.ts src/renderer/src/render/duel/consoleLayout.ts src/renderer/src/render/duel/shipControls.ts src/renderer/src/app/duel/input.ts src/renderer/src/ui/actions.ts src/renderer/src/ui/duel/WeaponsStation.tsx tests/engineeringWeapons.test.ts tests/engineeringWeaponsUi.test.tsx tests/feelIiModels.test.ts
+git add src/renderer/src/render/duel/consoleModel.ts src/renderer/src/render/duel/situationModel.ts src/renderer/src/render/duel/consoleLayout.ts src/renderer/src/render/duel/shipControls.ts src/renderer/src/app/duel/input.ts src/renderer/src/ui/actions.ts src/renderer/src/ui/duel/WeaponsStation.tsx tests/engineeringWeapons.test.ts tests/engineeringWeaponsUi.test.tsx tests/feelIiModels.test.ts tests/feelIiUi.test.tsx tests/feelUi.test.tsx tests/uiConsole.test.tsx
 git commit -m "feat(engineering-spike): the Weapons console's pew pew (W-1 note), beam and torpedo with bar pips; WEAPONS OFFLINE only with the beam and torpedo dark" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 (Stage by name any pre-existing test you updated in Steps 7 and 11.)
@@ -2256,7 +2304,7 @@ git commit -m "feat(engineering-spike): the Weapons console's pew pew (W-1 note)
 
 **Files:**
 - Create: `src/renderer/src/render/tactical/fogModel.ts`
-- Modify: `src/renderer/src/render/tactical/tacticalModel.ts`, `src/renderer/src/render/tactical/weaponsModel.ts`, `src/renderer/src/render/tactical/tacticalLayer.ts`, `src/renderer/src/render/duel/contactModel.ts`, `src/renderer/src/app/duel/scene.ts`
+- Modify: `src/renderer/src/render/tactical/tacticalModel.ts` (with the picks), `src/renderer/src/render/tactical/weaponsModel.ts`, `src/renderer/src/render/tactical/tacticalLayer.ts`, `src/renderer/src/render/duel/contactModel.ts`, `src/renderer/src/render/duel/situationModel.ts`, `src/renderer/src/app/duel/scene.ts`
 - Test: `tests/engineeringFog.test.ts`
 
 **Interfaces:**
@@ -2281,8 +2329,32 @@ import { createFog, GHOST_SECONDS, stepFog } from '../src/renderer/src/render/ta
 import { tacticalModel, type TacticalModelInput } from '../src/renderer/src/render/tactical/tacticalModel';
 import { createCamera } from '../src/renderer/src/render/tactical/camera';
 import { contactModel } from '../src/renderer/src/render/duel/contactModel';
+import { pickContact } from '../src/renderer/src/render/tactical/tacticalModel';
+import { laserSituation } from '../src/renderer/src/render/duel/situationModel';
+import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
+import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
+import { initRocks } from '../src/renderer/src/sim/tactical/rocks';
+import { Container } from 'pixi.js';
+import hound from '../src/renderer/src/sim/ship/hound.json';
+import { parseShip } from '../src/renderer/src/sim/ship/schema';
+import type { GameAssets } from '../src/renderer/src/render/assets';
+import { FEATURE_NAMES } from '../src/renderer/src/render/fallback';
+import { DEFAULT_FEEL } from '../src/renderer/src/render/feel';
+import { emptyPresses, type KeySample } from '../src/renderer/src/app/duel/input';
+import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
+import { createDuelScene } from '../src/renderer/src/app/duel/scene';
+import { createDuelSink } from '../src/renderer/src/ui/sinks';
+import { createUiStore } from '../src/renderer/src/ui/store';
+import { seatDuelCrew } from './helpers/duelSeat';
 
 const vp = { w: 1280, h: 720 };
+const assets: GameAssets = {
+  has: () => false,
+  texture: (n) => { throw new Error(`no texture ${n} in tests`); },
+  animation: (n) => { throw new Error(`no animation ${n} in tests`); },
+  nineSlice: (n) => { throw new Error(`no nine-slice ${n} in tests`); },
+  missing: Object.values(FEATURE_NAMES).flat(), fontFamily: 'm5x7'
+};
 
 describe('stepFog (spec §10.4)', () => {
   it('the enemy inside the range is seen; moved out it is a ghost at its last place, fading over 10 s, then gone', () => {
@@ -2339,6 +2411,44 @@ describe('the fog on the map and the window (spec §10.4)', () => {
     const v = contactModel({ state: t, contact: 0, aim: true, station: 'weapons', t: 0, weapons: null, seen: false })!;
     expect(v).toMatchObject({ title: 'CONTACT LOST', outline: [], rooms: [], weapons: null, aim: false });
     expect(v.lines.map((l) => l.text)).toEqual(['OUT OF SENSOR RANGE']);
+  });
+});
+
+describe('no fog leaks (spec §10.4)', () => {
+  it('a click (or a ping) on an unseen enemy or derelict picks nothing', () => {
+    const t = createTacticalState(5), e = t.ships[1]!, cam = createCamera(e.x, e.y, 0.5), at = { state: t, prev: [], alpha: 1, camera: cam, viewport: vp };
+    const fog = (enemy: boolean, derelict: boolean) => ({ range: 900, seen: { enemy, derelict, missile: false }, ghosts: [] });
+    expect(pickContact(at, { x: vp.w / 2, y: vp.h / 2 })).toBe(Contact.Enemy);   // no fog given: as today
+    expect(pickContact({ ...at, fog: fog(true, true) }, { x: vp.w / 2, y: vp.h / 2 })).toBe(Contact.Enemy);
+    expect(pickContact({ ...at, fog: fog(false, true) }, { x: vp.w / 2, y: vp.h / 2 })).toBeNull();
+    const w = derelictPos(t), dc = { ...at, camera: createCamera(w.x, w.y, 0.5) };
+    expect(pickContact({ ...dc, fog: fog(false, true) }, { x: vp.w / 2, y: vp.h / 2 })).toBe(Contact.Derelict);
+    expect(pickContact({ ...dc, fog: fog(false, false) }, { x: vp.w / 2, y: vp.h / 2 })).toBeNull();
+  });
+  it('the laser\'s words say nothing of an unseen enemy (no OUT OF RANGE n/450)', () => {
+    const t = createTacticalState(5), sys = t.systems[0], me = t.ships[0]!, e = t.ships[1]!;
+    t.map = { ...t.map, asteroids: [] }; t.grid = buildGrid([], t.map.rMap); t.rocks = initRocks(t.map);   // a clear line
+    sys.bars[1] = 4; sys.weaponPower.splice(0, 3, 0, 2, 2);   // the beam powered
+    e.x = me.x + hx(me.heading) * 1200; e.y = me.y + hy(me.heading) * 1200; e.active = true;   // ahead, beyond the 900 start range
+    expect(laserSituation(t).kind).toBe('none');
+    e.x = me.x + hx(me.heading) * 600; e.y = me.y + hy(me.heading) * 600;   // seen, beyond the laser's 450
+    expect(laserSituation(t)).toMatchObject({ kind: 'range' });
+  });
+  it('sitting at the Helm frames the enemy only when it is seen', () => {
+    let now = 0;
+    const keys: KeySample = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() };
+    const rt = createDuelRuntime({ now: () => now, seed: 5, viewport: vp, layout: parseShip(hound), scheduler: { schedule() { return () => {}; } },
+      sampleKeys: () => keys, samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }), clearKeys: () => {} });
+    const stage = new Container(), store = createUiStore({ onlineAvailable: false } as never);
+    const renderer = { app: { stage }, assets, stageScale: () => 1, feel: () => DEFAULT_FEEL, crt: () => 'off' as const };
+    const scene = createDuelScene(renderer as never, { seed: 5, pauseText: 'PAUSED', ui: createDuelSink(store) });
+    try {
+      rt.frame(1 / 60); scene.draw(rt, 1 / 60, { banner: null, layerPaused: false, end: null });
+      const z0 = rt.cameras.helm.zoom;
+      seatDuelCrew(rt.duel); rt.frame(1 / 60); now += 1000 / 60;
+      scene.draw(rt, 1 / 60, { banner: null, layerPaused: false, end: null });   // the sit: the Hunter is far beyond 900
+      expect(rt.cameras.helm.zoom).toBe(z0);
+    } finally { scene.dispose(); rt.dispose(); }
   });
 });
 ```
@@ -2443,6 +2553,40 @@ with
 ```
 and in the returned object, after `...(gravity ? { gravity } : {}),` add `...(input.fog ? { sensor, ghosts } : {}),`.
 
+The picks must not find an unseen contact: a map click or a ping would open or ping what the crew cannot see. In `pickShip` (`tacticalModel.ts:471-475`), replace
+```ts
+export function pickShip(input: Pick<TacticalModelInput, 'state' | 'prev' | 'alpha' | 'camera' | 'viewport'>, p: Point): number | null {
+  const r = pickRadius(input.camera.zoom);
+  let best: number | null = null, bestD = Infinity;
+  for (let i = 0; i < input.state.ships.length; i++) {
+    if (i === CREW_SLOT || !input.state.ships[i]!.active) continue;
+```
+with
+```ts
+export function pickShip(input: Pick<TacticalModelInput, 'state' | 'prev' | 'alpha' | 'camera' | 'viewport' | 'fog'>, p: Point): number | null {
+  const r = pickRadius(input.camera.zoom);
+  let best: number | null = null, bestD = Infinity;
+  for (let i = 0; i < input.state.ships.length; i++) {
+    if (i === CREW_SLOT || !input.state.ships[i]!.active) continue;
+    if (input.fog && !input.fog.seen.enemy && i === targetOf(input.state, CREW_SLOT)) continue;   // Engineering spike §10.4: unseen
+```
+In `pickContact`, replace
+```ts
+export function pickContact(input: Pick<TacticalModelInput, 'state' | 'prev' | 'alpha' | 'camera' | 'viewport'>, p: Point): 0 | 1 | null {
+```
+with
+```ts
+export function pickContact(input: Pick<TacticalModelInput, 'state' | 'prev' | 'alpha' | 'camera' | 'viewport' | 'fog'>, p: Point): 0 | 1 | null {
+```
+and
+```ts
+  if (dd <= r && dd < bestD) best = Contact.Derelict;
+```
+with
+```ts
+  if (dd <= r && dd < bestD && (input.fog?.seen.derelict ?? true)) best = Contact.Derelict;   // Engineering spike §10.4: unseen, no pick
+```
+
 - [ ] **Step 5: The combat model** (`src/renderer/src/render/tactical/weaponsModel.ts`)
 
 `CombatModelInput` extends `TacticalModelInput`, so it has `fog` too.
@@ -2538,6 +2682,10 @@ with
       const fogView = stepFog(fog, d.tactical, performance.now() / 1000, source.epoch());   // Engineering spike §10.4
 ```
 In the map `input` object, replace `ships: fx.kill ? [0] : [0, 1],` with `ships: fx.kill || !fogView.seen.enemy ? [0] : [0, 1], fog: fogView,`.
+Pass the fog to both picks:
+- in the map click (`scene.ts:184`), replace `const at = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport }, ship = pickContact(at, click);` with `const at = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, fog: fogView }, ship = pickContact(at, click);`;
+- in the ping (`scene.ts:203`), replace `pickContact({ state: d.tactical, prev: source.prev, alpha, camera: pc, viewport }, pingAt)` with `pickContact({ state: d.tactical, prev: source.prev, alpha, camera: pc, viewport, fog: fogView }, pingAt)`.
+Don't frame what isn't seen: in the sit (`scene.ts:250`), replace `        if (e?.active) zoomTo(` with `        if (e?.active && fogView.seen.enemy) zoomTo(`.
 In the `contactModel({ … })` call, replace
 ```ts
 weapons: consoleView?.weapons ?? consoleView?.flight?.weapons ?? null,
@@ -2548,12 +2696,25 @@ weapons: consoleView?.weapons ?? consoleView?.flight?.weapons ?? null, seen: ope
 ```
 The fog is per screen and per epoch, so a Tab keeps the same screen's ghosts and a new round clears them in `stepFog`. The pick-up of an unseen enemy opens CONTACT LOST, which has no rooms, so nothing locks. The sim refuses a lock on an unseen contact anyway.
 
+- [ ] **Step 8b: The laser's words say nothing of an unseen enemy** (`src/renderer/src/render/duel/situationModel.ts`)
+
+`laserSituation` feeds the status sentence (`weaponsModel.ts:166-169`) and the BEAM card's reason (`consoleModel.ts:115`), so an unseen enemy's `OUT OF RANGE 1200/450` would leak its range. Add `import { shipSeen } from '../../sim/tactical/science';`, and in `laserSituation`'s enemy branch replace
+```ts
+  if (!e || !e.active || target === CREW_SLOT) return { kind: 'none' };
+```
+with
+```ts
+  if (!e || !e.active || target === CREW_SLOT) return { kind: 'none' };
+  if (!shipSeen(t, target)) return { kind: 'none' };   // Engineering spike §10.4: no words of an unseen enemy
+```
+(The rock branch above it is untouched: rocks are always shown.)
+
 - [ ] **Step 9: Run the tests**
 
-Run: `npx vitest run tests/engineeringFog.test.ts tests/duelWeaponsView.test.ts tests/duelHitFeedback.test.ts tests/crtBezel.test.ts tests/contactScene.test.ts tests/contactWindow.test.tsx tests/shipHudScene.test.ts tests/engineeringScene.test.ts`
+Run: `npx vitest run tests/engineeringFog.test.ts tests/feelIiModels.test.ts tests/feelUi.test.tsx tests/duelWeaponsView.test.ts tests/duelHitFeedback.test.ts tests/crtBezel.test.ts tests/contactScene.test.ts tests/contactWindow.test.tsx tests/shipHudScene.test.ts tests/engineeringScene.test.ts`
 Expected: PASS.
 
-At round start the Hunter spawns about 2000 or more units away, and the start range is 900, so it is unseen. Every scene or UI test that needs the enemy drawn, marked, arced or clickable at round start now fails. Find them:
+At round start the Hunter spawns about 2000 or more units away, and the start range is 900, so it is unseen. Every scene or UI test that needs the enemy drawn, marked, arced or clickable at round start, or a laser sentence or reason about it, now fails. Find them:
 ```bash
 git grep -ln "pickContact\|contactModel(\|marks\b\|enemyArc\|createDuelScene\|ships: \[0, 1\]" -- tests
 ```
@@ -2569,7 +2730,7 @@ Expected: no errors.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add src/renderer/src/render/tactical/fogModel.ts src/renderer/src/render/tactical/tacticalModel.ts src/renderer/src/render/tactical/weaponsModel.ts src/renderer/src/render/tactical/tacticalLayer.ts src/renderer/src/render/duel/contactModel.ts src/renderer/src/app/duel/scene.ts tests/engineeringFog.test.ts
+git add src/renderer/src/render/tactical/fogModel.ts src/renderer/src/render/tactical/tacticalModel.ts src/renderer/src/render/tactical/weaponsModel.ts src/renderer/src/render/tactical/tacticalLayer.ts src/renderer/src/render/duel/contactModel.ts src/renderer/src/render/duel/situationModel.ts src/renderer/src/app/duel/scene.ts tests/engineeringFog.test.ts
 git commit -m "feat(engineering-spike): the fog of war on the crew maps: the sensor range ring, ghosts fading over 10 s, CONTACT LOST" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 (Stage by name any pre-existing test you updated in Step 9.)
@@ -2779,7 +2940,7 @@ The final report to the owner lists:
   - §1 deliverables (the prototype, the report, the screenshots of the HUD, a vented room, an overheating system, the Weapons console and a fading ghost): Tasks 10 and 11. The measurements are Part i's (its Tasks 1 and 12); Task 11 appends to its report.
   - §5 (door clicks on the interior, auto ↔ held, airlock clicks, anyone, remote): Tasks 2, 3 and 6. The toggling itself is Part i's.
   - §6, item by item:
-    - the UI rule: Decision 9, `scene.ts:291` kept;
+    - the UI rule: Decision 9, `scene.ts:305` kept;
     - the CRT look: Task 4, Decision 8;
     - the power columns, clicks, slots, lost slots and overdrive slot: Tasks 1 and 4;
     - the reactor and free coolant: Tasks 1 and 4;
