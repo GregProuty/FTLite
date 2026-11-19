@@ -2,6 +2,8 @@
 // of the interior hazards: the door and airlock toggles the ship-view clicks send (any player, no range check). Tasks 6
 // and 7 add Life Support injection, breach sites, firefighting tiles, work jobs and patching.
 import { DoorState } from '../grid';
+import { DuelSystem, effectiveBars, OXY_FACTOR_BY_BARS } from '../tactical/bars';
+import { HAZARD_DT, INJECT_FRAC } from '../tuning';
 import type { DuelState } from './state';
 
 /** A door edge index of the layout. */
@@ -23,4 +25,13 @@ export function toggleDoor(d: DuelState, edge: number): void {
 export function toggleAirlock(d: DuelState, index: number): void {
   const open = d.interior.airlocks.open;
   open[index] = open[index] ? 0 : 1;
+}
+
+/** Spec §4 Life Support injection, before each oxygenStep: every room asks INJECT_FRAC × V × HAZARD_DT ×
+ *  OXY_FACTOR[Oxygen bars]; oxygenStep's clamp to free volume and its venting skip apply. Bypasses the sector
+ *  lifeSupportInjection (its station output and seated bonus). */
+export function duelInjection(d: DuelState): void {
+  const st = d.interior, V = st.derived.volume, inj = st.injectionScratch;
+  const f = OXY_FACTOR_BY_BARS[effectiveBars(d.tactical.systems[0], DuelSystem.Oxygen)]!;
+  for (let r = 0; r < V.length; r++) inj[r] = INJECT_FRAC * V[r]! * HAZARD_DT * f;
 }

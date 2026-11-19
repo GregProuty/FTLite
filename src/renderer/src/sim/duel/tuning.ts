@@ -32,13 +32,12 @@ export const DUEL_REPAIR_POINTS: Readonly<Record<string, typeof CUTTER_REPAIR_PO
 
 /** Duel fire (duel-fire spec §1). Only the crew ship burns. A laser hit by the enemy rolls DUEL_FIRE_CHANCE_LASER and a
  *  missile hit on the crew ship DUEL_FIRE_CHANCE_MISSILE (rng.hazards, one draw per hit, none for a burning room); a fire
- *  grows DUEL_FIRE_GROW per tick to FIRE_CAP and never goes out by itself; every DUEL_FIRE_DAMAGE_TICKS each burning room
+ *  grows, shrinks and spreads by the sector fireStep (Engineering spike spec §4); every DUEL_FIRE_DAMAGE_TICKS each burning room
  *  raises its tactical Room one level (to 2). Putting it out takes DUEL_EXTINGUISH_UNITS whole units, stored in
  *  rooms.fireRepair as a 0..1 fraction: one worker adds DUEL_EXTINGUISH_RATE_SOLO per tick (720 / 4 = 180 ticks), each of
  *  two or more DUEL_EXTINGUISH_RATE_TEAM (two finish in 72 ticks). */
 export const DUEL_FIRE_CHANCE_LASER = 0.3;
 export const DUEL_FIRE_CHANCE_MISSILE = 0.6;
-export const DUEL_FIRE_GROW = 1 / 60;
 export const DUEL_FIRE_DAMAGE_TICKS = 900;
 export const DUEL_EXTINGUISH_UNITS = 720;
 export const DUEL_EXTINGUISH_RATE_SOLO = 4;

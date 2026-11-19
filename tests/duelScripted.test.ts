@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { Seated } from '../src/renderer/src/sim/components';
-import { solidAt } from '../src/renderer/src/sim/grid';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
@@ -36,7 +35,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
       let at = st.derived.stationTile[station]!;
       for (const next of path) {
         expect(Math.abs((next % w) - (at % w)) + Math.abs(Math.floor(next / w) - Math.floor(at / w))).toBe(1);
-        expect(solidAt(st, next % w, Math.floor(next / w))).toBe(false);
+        expect(st.derived.wallTile[next]).toBe(0);   // Engineering spike spec §5: door tiles are walkable whatever their state
         at = next;
       }
       return path;

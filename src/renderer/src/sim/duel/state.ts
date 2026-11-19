@@ -1,7 +1,7 @@
 // The duel's state (spec §8, §13): today's SimState for the Cutter interior, the tactical state, who is present, and
 // the repair progress of each tactical room. Only the interior systems the duel lists ever run on `interior`.
 import { RECRUIT } from '../characters';
-import { DoorState, roomAt } from '../grid';
+import { roomAt } from '../grid';
 import type { ShipLayout } from '../ship/schema';
 import { createSimState, disposeSimState, type SimState } from '../state';
 import { StationKind } from '../stationKinds';
@@ -80,7 +80,7 @@ export interface DuelState {
 /**
  * A duel on `layout` (the Hound in the app; the Cutter in older tests): `crew` trait-free Recruits (1..4 locally,
  * Valkyrn spec §4.4; online callers keep 2..4; equal to the layout's `crew` when it sets one; no XP is ever awarded,
- * since xpSystem never runs), every door held open, every player standing at the layout's spawns in player order with
+ * since xpSystem never runs), every door in auto (closed), quirk 3 (Engineering spike spec §4, §5), every player standing at the layout's spawns in player order with
  * every console free (start-aboard spec §1; `helmPlayer` is kept for the round module and the wire but seats no one),
  * and a tactical state from the same seed, its crew slot of class `cls` (else the layout's `shipClass`, else the Cutter;
  * Valkyrn spec §6.1), whose map must validate. Round 0, beginning on tick 0, the throttle at STOP. Throws if the crew,
@@ -96,9 +96,10 @@ export function createDuel(layout: ShipLayout, seed: number, helmPlayer = 0, cre
   const tactical = createTacticalState(seed, DUEL_CLASSES.length, crewClass);   // throws for a class that is not a crew class
   const problems = validateMap(tactical.map);
   if (problems.length > 0) throw new Error(`invalid duel map for seed ${seed}: ${problems[0]}`);
-  const interior = createSimState(layout, crew, seed, Array<number>(crew).fill(RECRUIT));
+  // Engineering spike spec §4 (Decision 15): quirk 3 (Lucky Hull) touches only sector debris, so every quirk hook the
+  // duel's hazards reach is neutral. Spec §5 (Decision 14): the doors start in auto (Closed), no longer held open.
+  const interior = createSimState(layout, crew, seed, Array<number>(crew).fill(RECRUIT), { quirk: 3 });
   try {
-    interior.doors.state.fill(DoorState.HeldOpen);
     const nav = interior.derived.stationOfKind[StationKind.Navigation]!, weapons = interior.derived.stationOfKind[StationKind.Weapons]!;
     if (nav < 0 || weapons < 0) throw new Error('duel layout needs Navigation and Weapons consoles');
     const science = interior.derived.stationOfKind[StationKind.Science] ?? -1;   // Sci-1 spec §6.1: the third seat

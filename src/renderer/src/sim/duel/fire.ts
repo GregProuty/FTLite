@@ -1,14 +1,13 @@
 // Duel fire (duel-fire spec §1): the crew ship's fires, kept in the interior's own rooms.fire and rooms.fireRepair (so
-// the duel hash and snapshot carry them with no new field). Only the pieces the duel uses run: ignition from enemy hits,
-// growth to FIRE_CAP, the level damage cadence and the extinguish work. The sector's fireStep never runs here: no
-// oxygen, no shrink and no spread, so a duel fire burns until a player puts it out.
+// the duel hash and snapshot carry them with no new field). Here: ignition from enemy hits (with Task 7's breach roll),
+// the level damage cadence and the extinguish work. Growth by oxygen, shrink and spread are the sector fireStep's, run
+// on the duel's hazard tick (Engineering spike spec §4).
 import { chance } from '../../../../shared/rng';
 import { extinguishRoom, igniteRoom } from '../hazards/fire';
 import type { DuelEvent } from '../tactical/state';
-import { FIRE_CAP } from '../tuning';
 import type { DuelState, RepairPoint } from './state';
 import {
-  DUEL_EXTINGUISH_RATE_SOLO, DUEL_EXTINGUISH_RATE_TEAM, DUEL_EXTINGUISH_UNITS, DUEL_FIRE_CHANCE_LASER, DUEL_FIRE_CHANCE_MISSILE, DUEL_FIRE_DAMAGE_TICKS, DUEL_FIRE_GROW
+  DUEL_EXTINGUISH_RATE_SOLO, DUEL_EXTINGUISH_RATE_TEAM, DUEL_EXTINGUISH_UNITS, DUEL_FIRE_CHANCE_LASER, DUEL_FIRE_CHANCE_MISSILE, DUEL_FIRE_DAMAGE_TICKS
 } from './tuning';
 
 /** Whether a repair point's room is burning. */
@@ -39,17 +38,13 @@ export function igniteFromHits(d: DuelState, events: readonly DuelEvent[]): void
   }
 }
 
-/** The step's fire after stepDuel (`tick` is the tick being stepped): every burning point room grows DUEL_FIRE_GROW (to
- *  FIRE_CAP); on the round's every DUEL_FIRE_DAMAGE_TICKS-th tick each burning room raises its Room one level (to 2,
- *  the weapon-hit cap); then this tick's hits roll for new fires. */
+/** The step's fire after stepDuel (`tick` is the tick being stepped), Engineering spike spec §4: on the round's every
+ *  DUEL_FIRE_DAMAGE_TICKS-th tick each burning point room raises its Room one level (to 2, the weapon-hit cap); then this
+ *  tick's hits roll for new fires. Growth, shrink and spread are the sector fireStep's alone, on the hazard tick. */
 export function firePhase(d: DuelState, tick: number): void {
-  const fire = d.interior.rooms.fire, rooms = d.tactical.systems[0].rooms;
-  const damage = (tick - d.baseTick) % DUEL_FIRE_DAMAGE_TICKS === DUEL_FIRE_DAMAGE_TICKS - 1;
-  for (const p of d.points) {
-    if (!pointBurning(d, p)) continue;
-    fire[p.room] = Math.min(FIRE_CAP, fire[p.room]! + DUEL_FIRE_GROW);
-    if (damage && rooms[p.tacticalRoom]! < 2) rooms[p.tacticalRoom as 0 | 1 | 2]++;
-  }
+  const rooms = d.tactical.systems[0].rooms;
+  if ((tick - d.baseTick) % DUEL_FIRE_DAMAGE_TICKS === DUEL_FIRE_DAMAGE_TICKS - 1)
+    for (const p of d.points) if (pointBurning(d, p) && rooms[p.tacticalRoom]! < 2) rooms[p.tacticalRoom as 0 | 1 | 2]++;
   igniteFromHits(d, d.tactical.events);
 }
 

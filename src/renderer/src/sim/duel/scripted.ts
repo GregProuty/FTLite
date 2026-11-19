@@ -141,7 +141,14 @@ export function orbitSteer(d: DuelState, orbitR: number): Axes & { dx: number; d
   return { turn, thrust, dx, dy };
 }
 
-// --- Walking (spec §3): a BFS over the Cutter's walkable tiles, doors held open, four-way only. ---
+// --- Walking (spec §3): a BFS over the layout's walkable tiles (door tiles included, Engineering spike spec §5), four-way only. ---
+
+/** Engineering spike spec §5: a tile the bots may plan through: inside the grid and not a wall. Door tiles count
+ *  whatever their state, because an auto door opens for a crew member walking into it (doorSystem). */
+function walkable(d: DuelState, tx: number, ty: number): boolean {
+  const de = d.interior.derived;
+  return tx >= 0 && ty >= 0 && tx < de.width && ty < de.height && de.wallTile[ty * de.width + tx] === 0;
+}
 
 /** Tiles inside `room` whose centre is within REACH of tile `target`'s square: where a character can act on it. */
 export function goalTiles(d: DuelState, room: number, target: number): Set<number> {
@@ -150,14 +157,14 @@ export function goalTiles(d: DuelState, room: number, target: number): Set<numbe
     if (st.derived.roomOfTile[i] !== room) continue;
     const x = (i % w) + 0.5, y = Math.floor(i / w) + 0.5;
     const ddx = Math.max(tx - x, 0, x - (tx + 1)), ddy = Math.max(ty - y, 0, y - (ty + 1));
-    if (Math.sqrt(ddx * ddx + ddy * ddy) <= REACH && !solidAt(st, i % w, Math.floor(i / w))) out.add(i);
+    if (Math.sqrt(ddx * ddx + ddy * ddy) <= REACH && walkable(d, i % w, Math.floor(i / w))) out.add(i);
   }
   return out;
 }
 
 /** Shortest four-way path from tile `from` to the nearest goal tile: the tiles to step through, without `from` itself
  *  ([] when `from` is a goal), or null when none is reachable. Neighbours in a fixed order (up, left, right, down), so
- *  the path is deterministic. Walkable means not solid (doors are held open in the duel). */
+ *  the path is deterministic. Walkable means not a wall: door tiles count whatever their state (Engineering spike spec §5). */
 export function bfsPath(d: DuelState, from: number, goals: ReadonlySet<number>): number[] | null {
   const st = d.interior, w = st.derived.width, h = st.derived.height, prev = new Int32Array(w * h).fill(-2);
   if (goals.has(from)) return [];
@@ -166,7 +173,7 @@ export function bfsPath(d: DuelState, from: number, goals: ReadonlySet<number>):
   for (let head = 0; head < queue.length; head++) {
     const c = queue[head]!, cx = c % w, cy = (c - cx) / w;
     for (const [nx, ny] of [[cx, cy - 1], [cx - 1, cy], [cx + 1, cy], [cx, cy + 1]] as const) {
-      if (solidAt(st, nx, ny)) continue;
+      if (!walkable(d, nx, ny)) continue;   // Engineering spike spec §5: through auto doors too
       const n = ny * w + nx;
       if (prev[n] !== -2) continue;
       prev[n] = c;

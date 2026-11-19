@@ -11,9 +11,10 @@ import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
-import { DUEL_EXTINGUISH_UNITS, DUEL_FIRE_CHANCE_LASER, DUEL_FIRE_CHANCE_MISSILE, DUEL_FIRE_DAMAGE_TICKS, DUEL_FIRE_GROW } from '../src/renderer/src/sim/duel/tuning';
+import { DUEL_EXTINGUISH_UNITS, DUEL_FIRE_CHANCE_LASER, DUEL_FIRE_CHANCE_MISSILE, DUEL_FIRE_DAMAGE_TICKS } from '../src/renderer/src/sim/duel/tuning';
+import { applyPower, DuelSystem } from '../src/renderer/src/sim/duel/power';
 import { Outcome, Room, type DuelEvent } from '../src/renderer/src/sim/tactical/state';
-import { FIRE_CAP, FIRE_START } from '../src/renderer/src/sim/tuning';
+import { FIRE_GROW_RATE, FIRE_START, HAZARD_DT } from '../src/renderer/src/sim/tuning';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { nextFloat } from '../src/shared/rng';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -108,15 +109,22 @@ describe('duel fire: ignition (spec §1.1)', () => {
 });
 
 describe('duel fire: persistence and damage (spec §1.2, §1.3)', () => {
-  it('a burning room with no workers is still burning after 10 000 ticks, at FIRE_CAP', () => {
+  // Engineering spike spec §4: a fire grows only through fireStep on the hazard tick (no DUEL_FIRE_GROW), and goes out
+  // below 10 % air (it no longer burns forever by itself).
+  it('a fire grows only through fireStep on the hazard tick, and goes out below 10 % air', () => {
     const d = quietDuel();
     try {
-      igniteRoom(d.interior, roomOf(d, Room.Shields));
-      step(d);
-      expect(fireOf(d, Room.Shields)).toBeCloseTo(FIRE_START + DUEL_FIRE_GROW, 12);
-      for (let k = 1; k < 10000; k++) step(d);
+      const R = roomOf(d, Room.Shields);
+      igniteRoom(d.interior, R);
+      step(d);                                      // tick 0 is a hazard tick (Engineering spike spec §7)
+      expect(fireOf(d, Room.Shields)).toBeCloseTo(FIRE_START + FIRE_GROW_RATE * HAZARD_DT, 12);   // Engineering spike spec §4
+      for (let k = 1; k < 5; k++) step(d);
+      expect(fireOf(d, Room.Shields)).toBeCloseTo(FIRE_START + FIRE_GROW_RATE * HAZARD_DT, 12);   // Engineering spike spec §4: no per-tick growth
       expect(d.tactical.outcome).toBe(Outcome.Running);
-      expect(fireOf(d, Room.Shields)).toBe(FIRE_CAP);
+      applyPower(d, DuelSystem.Oxygen, -1);         // Engineering spike spec §4: no Life Support injection
+      d.interior.rooms.o2[R] = 0.02 * d.interior.derived.volume[R]!;
+      for (let k = 0; k < 240; k++) step(d);
+      expect(fireOf(d, Room.Shields)).toBe(0);      // Engineering spike spec §4: was "still burning after 10 000 ticks, at FIRE_CAP"
     } finally { disposeDuel(d); }
   });
   it('the level rises by one at each 900-tick boundary and stops at 2', () => {

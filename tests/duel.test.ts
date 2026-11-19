@@ -29,13 +29,13 @@ function standAt(d: DuelState, pid: number, tx: number, ty: number): void {
 }
 
 describe('createDuel (spec §8)', () => {
-  it('starts both players standing at the layout spawns with every console free, holds every door open, and resolves the repair points', () => {
+  it('starts both players standing at the layout spawns with every console free, every door in auto (closed), and resolves the repair points', () => {
     const d = createDuel(layout, 5), st = d.interior;
     expect([...st.stations.occupant].every((o) => o === -1)).toBe(true);
     expect([st.stations.occupant[d.nav], st.stations.occupant[d.weapons]]).toEqual([-1, -1]);
     expect([Seated.station[st.crew[0]!], Seated.station[st.crew[1]!]]).toEqual([-1, -1]);
     expect([0, 1].map((p) => [Math.floor(Position.x[st.crew[p]!]!), Math.floor(Position.y[st.crew[p]!]!)])).toEqual([[...layout.spawns[0]!], [...layout.spawns[1]!]]);
-    expect([...st.doors.state].every((s) => s === DoorState.HeldOpen)).toBe(true);
+    expect([...st.doors.state].every((s) => s === DoorState.Closed)).toBe(true);   // Engineering spike spec §5: doors start in auto, no longer held open
     expect(d.points.map((p) => [p.tacticalRoom, p.room])).toEqual([[Room.Weapons, st.derived.roomIndex.get('W')], [Room.Shields, st.derived.roomIndex.get('R')], [Room.Engines, st.derived.roomIndex.get('E')]]);
     expect(d.present).toEqual([true, true]);
   });
@@ -43,7 +43,7 @@ describe('createDuel (spec §8)', () => {
 
 describe('DuelState shape', () => {
   it('has exactly these fields; a new field must also go into flattenDuel in duel/hash.ts', () => {
-    expect(Object.keys(createSeatedDuel(layout, 5)).sort()).toEqual(['baseTick', 'decidedTick', 'events', 'helmPlayer', 'interior', 'nav', 'points', 'present', 'repair', 'round', 'science', 'tactical', 'throttle', 'weapons', 'holdHeading', 'crewClass'].sort());   // Valkyrn-i: crewClass is hashed as systems.0.cls (plan Decision 4)
+    expect(Object.keys(createSeatedDuel(layout, 5)).sort()).toEqual(['baseTick', 'decidedTick', 'events', 'helmPlayer', 'interior', 'nav', 'points', 'present', 'repair', 'round', 'science', 'tactical', 'throttle', 'weapons', 'holdHeading', 'crewClass', 'power', 'systemRooms'].sort());   // Engineering spike spec §7: power (hashed) and systemRooms (derived, not snapshotted); Valkyrn-i: crewClass is hashed as systems.0.cls (plan Decision 4)
   });
   it('disposeDuel is idempotent', () => {
     const d = createSeatedDuel(layout, 5);

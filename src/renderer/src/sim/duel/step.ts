@@ -6,7 +6,10 @@ import { NEUTRAL_INTENT, type Intent } from '../../../../shared/intent';
 import type { CommandEnvelope, HeldInput } from '../../net/contracts';
 import { applyConsoleCommand, applyInteractionCommands } from '../commands';
 import { Life, LifeState, Position, Seated } from '../components';
+import { doorSystem } from '../doors';
 import { roomAt } from '../grid';
+import { fireStep } from '../hazards/fire';
+import { oxygenStep } from '../hazards/oxygen';
 import { inReachOfTile } from '../interact';
 import { movementSystem } from '../movement';
 import { stepDuel } from '../tactical/duel';
@@ -14,14 +17,15 @@ import { autoFaceTurn, headingTurn } from '../tactical/hunter';
 import { scanCommand } from '../tactical/science';
 import { HEADING_COUNT, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
 import { classOf, CONTACT_MAX_LEVEL, Outcome } from '../tactical/state';
+import { HAZARD_EVERY } from '../tuning';
 import { rockAlive } from '../tactical/rocks';
 import { canCharge, canLaunch, validRockLock, validTarget, type ShipInput } from '../tactical/weapons';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
 import { extinguishWork, firePhase, pointBurning } from './fire';
 import { applyHitDamage, healthPhase } from './health';
 import { followingSeed } from './seeds';
-import { applyPower, clampToCapacity, cycleDuelCoolant, OVERDRIVE_SYSTEMS, validSystem } from './power';
-import { toggleAirlock, toggleDoor, validAirlock, validDoor } from './hazards';
+import { applyPower, clampToCapacity, cycleDuelCoolant, duelHeatStep, OVERDRIVE_SYSTEMS, validSystem } from './power';
+import { duelInjection, toggleAirlock, toggleDoor, validAirlock, validDoor } from './hazards';
 import { throttleThrust, validHoldHeading, validThrottle } from './throttle';
 import { createDuel, disposeDuel, type DuelState } from './state';
 import { REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
@@ -173,7 +177,7 @@ function stepDecided(d: DuelState, input: DuelInput): DuelResult[] {
  * Spec §13, in order: scratch reset (and d.events cleared); seat phase (sit through today's interaction validation,
  * only at the three role consoles (Navigation, Weapons, Science); stand through today's handler; then presence); tactical commands validated against the
  * seats after the seat phase and folded into the crew's ShipInput; the Helm's throttle (Artemis spec §5.2); laserFrequency, designate and contactScan (Sci-1 spec §5); repair, with its events; movement for standing
- * present players; the tactical stepDuel; hit damage to the crew; fire (growth, damage, ignition from this tick's hits);
+ * present players; the tactical stepDuel; hit damage to the crew; the doors; fire (the damage cadence, then the hits' fire and breach rolls); the bar clamp; on the hazard tick Life Support, oxygen, fire growth and spread, and heat (Engineering spike spec §7);
  * health (fire damage, downed, pick-up, the Medbay, the all-down loss); the interior tick. Commands apply in the order given (the authority's
  * envelope order). Returns one result per command, sorted by player then sequence. A rematch while the round runs is
  * rejected duel-running; the step that decides the round records `decidedTick`. A decided round steps by stepDecided.
@@ -329,10 +333,17 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     return d.present[pid] ? { ...NEUTRAL_INTENT, moveX: h.moveX, moveY: h.moveY } : { ...NEUTRAL_INTENT };
   });
   movementSystem(st, intents);   // skips seated and downed crew, and anyone who stood this tick
+  doorSystem(st);   // Engineering spike spec §5: auto doors open for crew and close behind (the Doors station stays online)
   stepDuel(d.tactical, crew);
   const hits = applyHitDamage(d, d.tactical.events);   // duel-health spec §1.2: hit damage in tactical event order, before the fire rolls
   firePhase(d, tick);   // duel-fire spec §1: the damage cadence, then this tick's hits roll (rng.hazards)
   clampToCapacity(d);   // Engineering spike spec §7: excess bars back to the pool after every damage rise this tick
+  if ((tick - d.baseTick) % HAZARD_EVERY === 0) {   // Engineering spike spec §7 (Decision 13): the hazard tick, 12 Hz
+    duelInjection(d);
+    oxygenStep(st, st.injectionScratch);
+    fireStep(st);
+    duelHeatStep(d);   // overheat draws last; each overheat clamps its bars inline
+  }
   healthPhase(d, hits);   // duel-health spec §1: fire damage, downed, pick-up, the Medbay; every character down loses the round
   st.tick++;
   if (d.tactical.outcome !== Outcome.Running) d.decidedTick = st.tick;   // the snapshot tick of the first decided publication
