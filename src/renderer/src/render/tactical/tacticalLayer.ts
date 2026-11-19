@@ -244,6 +244,14 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         words.push({ text: g.label.text, x: g.label.x, y: g.label.y, tint: CRT.mid });
       }
       if (d.edge) segments(contours, dashCircle(d.edge.x, d.edge.y, d.edge.r, DASH, GAP, seg), 2, CRT.main, 0.7);
+      // Engineering spike §10.4: the sensor range, dotted, and the ghosts: a hollow chevron (a small one for a torpedo),
+      // fading with its alpha.
+      if (d.sensor) segments(contours, dashCircle(d.sensor.x, d.sensor.y, Math.max(1, d.sensor.r), 2, 6, seg), 1, CRT.mid, 0.6);
+      for (const g of d.ghosts ?? []) {
+        const fx = Math.sin(g.angle), fy = -Math.cos(g.angle), rx = -fy, ry = fx, n = g.kind === 'missile' ? 4 : 10;
+        contours.poly([g.x + fx * n, g.y + fy * n, g.x - fx * n * 0.8 + rx * n * 0.7, g.y - fy * n * 0.8 + ry * n * 0.7, g.x - fx * n * 0.4, g.y - fy * n * 0.4,
+          g.x - fx * n * 0.8 - rx * n * 0.7, g.y - fy * n * 0.8 - ry * n * 0.7]).stroke({ width: 1, color: CRT.mid, alpha: g.alpha });
+      }
 
       if (d.planet) {
         const p = d.planet;

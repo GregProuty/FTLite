@@ -144,7 +144,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   const missiles: MissileDraw[] = [];
   for (let i = 0; i < 2; i++) {
     const m = interpolatedMissile(state, input.missilePrev, alpha, i);
-    if (!m) continue;
+    if (!m || (i !== 0 && input.fog && !input.fog.seen.missile)) continue;   // Engineering spike §10.4: the enemy torpedo is fogged
     const p = toS(m.x, m.y);
     missiles.push({ x: p.x, y: p.y, r: Math.max(TORPEDO_DOT_PX, MISSILE_RADIUS * z), crew: i === 0, trail: input.fx.trails[i as 0 | 1].map((q) => toS(q.x, q.y)) });
   }
@@ -152,7 +152,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   // The lock marker sits on the locked room of the enemy's hull (the scout), or on the chevron when the ship is drawn as one.
   let lock: LockDraw | null = null;
   const room = state.systems[0].lock;
-  if (!(input.contacts && state.known[Contact.Enemy] === 0) && onScreen(enemyS, SHIP_RADIUS * 2 * z + 40)) {   // Sci-1: no lock mark on an unknown contact
+  if (input.ships.includes(target) && !(input.contacts && state.known[Contact.Enemy] === 0) && onScreen(enemyS, SHIP_RADIUS * 2 * z + 40)) {   // Sci-1: no lock mark on an unknown contact; Engineering spike §10.4: nor an unseen one
     const chevron = 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, a = headingAngle(enemy.h), fx = Math.sin(a), fy = -Math.cos(a), rx = -fy, ry = fx;
     const c = chevron ? { f: 0, s: 0 } : roomCentre(hullFor(false), room), k = SHIP_RADIUS * drawnScale(z);
     const x = enemyS.x + (fx * c.f + rx * c.s) * k, y = enemyS.y + (fy * c.f + ry * c.s) * k, r = Math.max(7, k * 0.45);
@@ -175,7 +175,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
       ownArc,
       enemyArc: input.ships.includes(target) ? { x: enemyS.x, y: enemyS.y, r: LASER_RANGE * z, angle: headingAngle(enemy.h), half: ARC_HALF } : null,
       ring: z >= BEARING_RING_ZOOM ? ringDraw(ownS.x, ownS.y) : null,
-      info: bandLabel(weaponsInfoText(bearingDeg(dx, dy), range, inRange), centre, input.infoBand, input.infoBand ? INFO_Y : 12, input.infoBand ? 1 : FONT_SIZE / FONT_NATIVE),
+      info: bandLabel(input.ships.includes(target) ? weaponsInfoText(bearingDeg(dx, dy), range, inRange) : 'NO CONTACT IN SENSOR RANGE', centre, input.infoBand, input.infoBand ? INFO_Y : 12, input.infoBand ? 1 : FONT_SIZE / FONT_NATIVE),
       inArc, torpedoInRange: inRange
     };
   }
@@ -247,7 +247,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   }
   // Feel-ii §1.6: an enemy torpedo in flight draws its own 2 s path (the sim's flight on a copy), on every console; at the
   // Helm an EVADE arrow points the way to dodge, beside the own ship.
-  const torpedoPath = state.outcome === Outcome.Running ? predictMissile(state, target, TORPEDO_PATH_TICKS, TORPEDO_PATH_STRIDE).map((q) => toS(q.x, q.y)) : [];
+  const torpedoPath = state.outcome === Outcome.Running && !(input.fog && !input.fog.seen.missile) ? predictMissile(state, target, TORPEDO_PATH_TICKS, TORPEDO_PATH_STRIDE).map((q) => toS(q.x, q.y)) : [];
   let evade: EvadeDraw | null = null;
   const dodge = input.console === 'helm' && input.ships.includes(0) ? evadeDir(state) : null;
   if (dodge) {

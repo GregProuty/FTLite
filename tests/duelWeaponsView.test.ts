@@ -80,18 +80,19 @@ describe('the combat model (H-1 spec §7)', () => {
     expect(weaponsInfoText(7, 120, true)).toBe('BRG 007  RNG 120  TORP IN');
     const st = createTacticalState(11), band = { left: TABS_RIGHT, right: SIDE.x };
     expect([TABS_RIGHT, SIDE.x]).toEqual([408, 1136]);
-    for (const far of [300, 3987, 99999]) {
+    for (const far of [300, 600, 3987, 99999]) {   // Engineering spike §10.4: 600 is seen at the 900 start range, so its sentence is measured
       Object.assign(st.ships[1], { x: st.ships[0].x + far, y: st.ships[0].y });
       for (const reserveRight of [CONSOLE_RESERVE.right, CONTACT_RESERVE]) {
         const w = combatModel({ ...input(st, createCamera(st.ships[0].x, st.ships[0].y), 'weapons'), reserveLeft: CONSOLE_RESERVE.left, reserveRight, infoBand: band }).weapons!;
         const half = textPx(w.info.text, 1) / 2;   // Feel-i: FONT_NATIVE, stacked under the status sentence
         expect(w.info.x - half, `${far} ${reserveRight}`).toBeGreaterThanOrEqual(TABS_RIGHT);
         expect(w.info.x + half, `${far} ${reserveRight}`).toBeLessThanOrEqual(SIDE.x);
-        const status = combatModel({ ...input(st, createCamera(st.ships[0].x, st.ships[0].y), 'weapons'), reserveLeft: CONSOLE_RESERVE.left, reserveRight, infoBand: band }).status!;
-        const sh = textPx(status.label.text, FONT_SIZE / FONT_NATIVE) / 2;
-        expect(status.label.x - sh, `status ${far} ${reserveRight}`).toBeGreaterThanOrEqual(TABS_RIGHT);
-        expect(status.label.x + sh, `status ${far} ${reserveRight}`).toBeLessThanOrEqual(SIDE.x);
-        expect(status.label.y + 26, 'the sentence clears the info line').toBeLessThanOrEqual(w.info.y);
+        const status = combatModel({ ...input(st, createCamera(st.ships[0].x, st.ships[0].y), 'weapons'), reserveLeft: CONSOLE_RESERVE.left, reserveRight, infoBand: band }).status ?? null;
+        if (far > 900) { expect(status, `status ${far}`).toBeNull(); continue; }   // Engineering spike §10.4: no words of an unseen enemy
+        const sh = textPx(status!.label.text, FONT_SIZE / FONT_NATIVE) / 2;
+        expect(status!.label.x - sh, `status ${far} ${reserveRight}`).toBeGreaterThanOrEqual(TABS_RIGHT);
+        expect(status!.label.x + sh, `status ${far} ${reserveRight}`).toBeLessThanOrEqual(SIDE.x);
+        expect(status!.label.y + 26, 'the sentence clears the info line').toBeLessThanOrEqual(w.info.y);
       }
     }
     const centred = combatModel({ ...input(st, createCamera(0, 0), 'weapons'), reserveLeft: 228, reserveRight: 156, infoBand: band }).weapons!;

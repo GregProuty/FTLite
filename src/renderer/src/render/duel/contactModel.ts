@@ -91,6 +91,8 @@ export interface ContactModelInput {
   weapons: Pick<WeaponsPanel, 'charge'> | null;
   /** Duel polish i spec §B: the shown ship's struck rooms and their flash alphas now (hitModel flashesFor); default none. */
   flashes?: readonly { room: number; alpha: number }[];
+  /** Engineering spike §10.4: whether the shown contact is inside the sensor range (the scene's fog); default true. */
+  seen?: boolean;
 }
 
 /** Ship units (f, s) to the box: one uniform scale fitting the outline's bounds with CONTACT_PAD on every side, the
@@ -116,6 +118,7 @@ export function contactModel(i: ContactModelInput): ContactView | null {
     scan: contact === null ? null : scanButton(state, contact, i.station), lines
   });
   if (i.contact === null) return i.station === 'science' ? bare(null, 'NO CONTACT SELECTED') : null;
+  if (i.seen === false) return bare(i.contact, 'CONTACT LOST', [line('OUT OF SENSOR RANGE', CRT.mid)]);   // Engineering spike §10.4: no drawing, no picks
   if (i.contact === Contact.Derelict) {
     if (state.known[Contact.Derelict] < 1) return bare(Contact.Derelict, 'UNKNOWN CONTACT');
     const dr = state.derelict, p = derelictPos(state), crew = state.ships[CREW_SLOT];

@@ -48,6 +48,7 @@ import { flightAlert, type RefusedControl } from '../../render/duel/situationMod
 import { pingAllowed, pushPing, stepPings, type Ping, type PingRequest } from '../../render/duel/pingModel';
 import type { TorpedoTone } from './duelAudio';
 import { viewCamera, type DuelView } from './runtime';
+import { createFog, stepFog } from '../../render/tactical/fogModel';
 
 /** What the scene reads each frame (H-2 spec §3): the duel, its interpolation inputs, the cameras, the view and the readouts. */
 export interface DuelViewSource {
@@ -164,6 +165,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
   const pings: Ping[] = [];
   let lastPing: number | null = null, refused: (Refusal & { at: number }) | null = null;
   let lastAimed: string | null = null;   // the weapon picked up on the last drawn frame (Valkyrn spec §5.1: right button)
+  const fog = createFog();   // Engineering spike §10.4: this screen's ghosts
   return {
     /** One frame from `source`; `dt` in seconds. Returns the station of the console drawn, or null when none (Artemis
      *  spec §6.2: the mode clears the console's holds when it changes). */
@@ -176,6 +178,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel); scene.addChildAt(interior.container, 1);
       }
       const d = source.duel, view = source.view(), alpha = source.alpha(), contact = options.contact;
+      const fogView = stepFog(fog, d.tactical, performance.now() / 1000, source.epoch());   // Engineering spike §10.4
       const camKey = view === 'interior' ? null : viewCamera(view), cam = camKey ? source.cameras[camKey] : null;   // Valkyrn spec §5: Flight flies the Helm's camera
       // Everything the console changes follows whether it is drawn (Artemis spec §6.1): a paused or decided console view
       // falls back to the right-hand readout with its rows and help.
@@ -191,7 +194,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       }
       if (contact && click && onMap && station !== 'flight') {   // Valkyrn spec §5.1: on the Flight seat the left button is the gun
         // Spike ii §6.5: a ship contact under the pointer wins; else, with a weapon picked up, a rock under it takes the drop.
-        const at = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport }, ship = pickContact(at, click);
+        const at = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, fog: fogView }, ship = pickContact(at, click);
         const rock = ship === null && contact.aimWeapon() !== null ? pickRock(at, click) : null;
         if (rock !== null) contact.pickRock(rock); else contact.click(ship);
       }
@@ -210,7 +213,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const pingAt = options.takePingAt?.() ?? null, nowS = performance.now() / 1000;
       let pinged = 0;
       if (pingAt && onMap && running) {
-        const pc = cam!, picked = pickContact({ state: d.tactical, prev: source.prev, alpha, camera: pc, viewport }, pingAt) === Contact.Enemy;
+        const pc = cam!, picked = pickContact({ state: d.tactical, prev: source.prev, alpha, camera: pc, viewport, fog: fogView }, pingAt) === Contact.Enemy;
         const at = picked ? interpolatedShip(d.tactical, source.prev, alpha, targetOf(d.tactical, CREW_SLOT)) : screenToWorld(pc, viewport, pingAt.x, pingAt.y);
         const req: PingRequest = { x: at.x, y: at.y, target: picked };
         if (options.sendPing) options.sendPing(req);
@@ -257,7 +260,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       if (sat && sitSeat) {
         seat = sitSeat; sitAt = t; sitThrottle = source.throttle(); acted = false; goalUsed = false; carded = countSit(sitSeat);
         const own = d.tactical.ships[CREW_SLOT], e = d.tactical.ships[enemySlot];
-        if (e?.active) zoomTo(source.cameras[viewCamera(sitSeat)], frameZoom(e.x - own.x, e.y - own.y, viewport, CONSOLE_RESERVE.left, CONSOLE_RESERVE.right));
+        if (e?.active && fogView.seen.enemy) zoomTo(source.cameras[viewCamera(sitSeat)], frameZoom(e.x - own.x, e.y - own.y, viewport, CONSOLE_RESERVE.left, CONSOLE_RESERVE.right));
       } else if (sitSeat !== seat) { seat = sitSeat; carded = false; }   // a Tab, a stand or Science: no new sit
       const held = source.uiHeld(), aimed = contact?.aimWeapon() ?? null;
       lastAimed = aimed;
@@ -286,7 +289,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         // Step 4: the map keeps its arrows and info line clear of the window while it is shown.
         const input = {
           state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, console: camKey!, axes: source.axes(),
-          ships: fx.kill ? [0] : [0, 1], paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: { left: TABS_RIGHT, right: SIDE.x } } : { reserveRight: READOUT_COLUMN }), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
+          ships: fx.kill || !fogView.seen.enemy ? [0] : [0, 1], fog: fogView, paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: { left: TABS_RIGHT, right: SIDE.x } } : { reserveRight: READOUT_COLUMN }), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
           holdHeading: view === 'flight' ? -1 : preview ?? d.holdHeading, holdPreview: preview !== null, crewHull: hullFor(true, d.interior.layout.hull), gravity: camKey === 'helm', flight: view === 'flight', alert, pings,   // Feel-ii; Valkyrn spec §4.5: the crew hull
           rockHover: hoverRock !== null && aimed !== null ? { rock: hoverRock, weapon: aimed } : null
         } as const;
@@ -304,7 +307,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       // Step 5: the contact view, only while shown.
       const open = contact?.state() ?? null;
       const contactView = shown && station !== null && station !== 'ship'   // Science's window shows with nothing selected
-        ? contactModel({ state: d.tactical, contact: open?.contact ?? null, aim: open?.aim ?? false, weapon: contact?.aimWeapon() ?? 'laser', station, t, weapons: consoleView?.weapons ?? consoleView?.flight?.weapons ?? null, flashes: open?.contact === 0 ? flashesFor(fx.struck, targetOf(d.tactical, CREW_SLOT)) : [] })
+        ? contactModel({ state: d.tactical, contact: open?.contact ?? null, aim: open?.aim ?? false, weapon: contact?.aimWeapon() ?? 'laser', station, t, weapons: consoleView?.weapons ?? consoleView?.flight?.weapons ?? null, seen: open?.contact === 0 ? fogView.seen.enemy : open?.contact === 1 ? fogView.seen.derelict : true, flashes: open?.contact === 0 ? flashesFor(fx.struck, targetOf(d.tactical, CREW_SLOT)) : [] })
         : null;
       options.ui.frame({
         readout: { rows: readoutRows({ duel: d, mode: view === 'flight' ? 'helm' : view, active: source.active(), console: onConsole }), help: onConsole ? [] : readoutHelp(view === 'flight' ? 'helm' : view) },

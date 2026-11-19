@@ -12,6 +12,7 @@ import { helmTurn } from '../../sim/duel/step';
 import { laserEligible, laserFull, laserOffline, torpedoInRange } from '../../sim/tactical/weapons';
 import { TICK_HZ } from '../../sim/tuning';
 import { trimmedWeaponPower, WeaponSlot } from '../../sim/tactical/bars';
+import { shipSeen } from '../../sim/tactical/science';
 
 /** Seconds a released shot keeps the solution lit, so a volley that auto-fires the tick it is ready still reads FIRING. */
 export const SOLUTION_HOLD_S = 0.6;
@@ -59,6 +60,7 @@ export function laserSituation(t: TacticalState, sinceShot = Infinity, gunner = 
   }
   const me = t.ships[CREW_SLOT], target = targetOf(t, CREW_SLOT), e = t.ships[target], sys = t.systems[CREW_SLOT];
   if (!e || !e.active || target === CREW_SLOT) return { kind: 'none' };
+  if (!shipSeen(t, target)) return { kind: 'none' };   // Engineering spike §10.4: no words of an unseen enemy
   const laser = classOf(t, CREW_SLOT).slots.laser, dx = e.x - me.x, dy = e.y - me.y, range = Math.round(Math.sqrt(dx * dx + dy * dy));
   if (!laser) return { kind: 'none' };   // Valkyrn-i: Part ii adds the gun's reasons (spec §6.1)
   if (dx * dx + dy * dy > laser.range * laser.range) return { kind: 'range', range, reach: laser.range };

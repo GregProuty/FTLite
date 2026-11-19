@@ -81,6 +81,7 @@ describe('the collision warning (Feel-ii §1.2)', () => {
     expect(a?.kind).toBe('collision');
     expect(alertSentence(a, laserSituation(st)).text).toBe('COLLISION: TURN OR BRAKE');
     expect(alertSentence({ kind: 'torpedo' }, laserSituation(st))).toEqual({ text: 'TORPEDO INBOUND: EVADE', tone: 'hot' });
+    st.ships[1]!.x = me.x + 600; st.ships[1]!.y = me.y;   // Engineering spike §10.4: inside the 900 start range
     expect(alertSentence(null, laserSituation(st)).text).toBe('ENEMY OUT OF RANGE: CLOSE TO 450');
     // Both consoles draw the same sentence from the same alert.
     for (const c of ['helm', 'weapons'] as const) expect(combatModel({ ...input(st, c), alert: a }).status!.label.text).toBe('COLLISION: TURN OR BRAKE');
