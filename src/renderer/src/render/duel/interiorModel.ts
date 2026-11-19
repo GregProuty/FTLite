@@ -11,6 +11,9 @@ import { Room } from '../../sim/tactical/state';
 import { StationKind } from '../../sim/stationKinds';
 import { fitInBand, fitRectInBand, type Fit } from '../worldFit';
 import type { TileRect } from '../battlemapModel';
+import { fireTileOf } from '../../sim/duel/hazards';
+import { LOW_AIR_FRAC } from '../../sim/duel/tuning';
+import { AMBER, WARN } from '../theme';
 
 /** The readout column on the right that the interior leaves clear (spec §8). */
 export const READOUT_COLUMN = 220;
@@ -84,5 +87,42 @@ export function stationBadges(d: DuelState): StationBadge[] {
   if (d.science >= 0) out.push({ station: d.science, kind: 'science', label: 'SCIENCE', ...at(d.science), tint: 'normal' });
   const mb = st.derived.stationOfKind[StationKind.Medbay]!;
   if (mb >= 0) out.push({ station: mb, kind: 'medbay', label: 'MEDBAY', ...at(mb), tint: medbayOnline(d) ? 'normal' : 'faint' });
+  return out;
+}
+
+/** Engineering spike §6, Decision 7: the air fraction where the amber wash starts. */
+export const AIR_TINT_FROM = 0.5;
+/** A room's air tint: none at AIR_TINT_FROM or more; amber from there down to LOW_AIR_FRAC (alpha 0 → 0.3); red below
+ *  it, where the air hurts (alpha 0.3 → 0.55 at none). */
+export function airTint(air: number): { color: number; alpha: number } | null {
+  if (!(air < AIR_TINT_FROM)) return null;
+  if (air >= LOW_AIR_FRAC) return { color: AMBER, alpha: (0.3 * (AIR_TINT_FROM - air)) / (AIR_TINT_FROM - LOW_AIR_FRAC) };
+  return { color: WARN, alpha: 0.3 + (0.25 * (LOW_AIR_FRAC - Math.max(0, air))) / LOW_AIR_FRAC };
+}
+export interface AirTint { room: number; color: number; alpha: number; tiles: { x: number; y: number }[] }
+/** Every room below AIR_TINT_FROM air, in room order, with its tiles in ship-local pixels. */
+export function airTints(d: DuelState): AirTint[] {
+  const st = d.interior, der = st.derived, w = der.width, out: AirTint[] = [];
+  for (let r = 0; r < der.volume.length; r++) {
+    const t = airTint(st.rooms.o2[r]! / der.volume[r]!);
+    if (t) out.push({ room: r, ...t, tiles: der.roomTiles[r]!.map((k) => ({ x: (k % w) * TILE_PX, y: Math.floor(k / w) * TILE_PX })) });
+  }
+  return out;
+}
+/** A fire outside the repair rooms or a breach (Engineering spike §4): where to work (the tile centre), the progress
+ *  0..1 and the label. The repair rooms' fires keep interiorOverlay's markers. */
+export interface HazardMarker { kind: 'fire' | 'breach'; room: number; x: number; y: number; progress: number; label: string }
+export function hazardMarkers(d: DuelState): HazardMarker[] {
+  const st = d.interior, der = st.derived, w = der.width, out: HazardMarker[] = [];
+  const centre = (t: number): { x: number; y: number } => ({ x: ((t % w) + 0.5) * TILE_PX, y: (Math.floor(t / w) + 0.5) * TILE_PX });
+  for (let r = 0; r < der.volume.length; r++) {
+    if (!(st.rooms.fire[r]! > 0) || d.points.some((p) => p.room === r)) continue;
+    out.push({ kind: 'fire', room: r, ...centre(fireTileOf(d, r)), progress: st.rooms.fireRepair[r]!, label: 'FIRE - HOLD E' });
+  }
+  for (let s = 0; s < der.siteRoom.length; s++) {
+    if (!st.breaches.active[s]) continue;
+    const c = centre(der.siteTile[s]!), shared = out.some((m) => m.kind === 'fire' && m.x === c.x && m.y === c.y);   // a fire fought at the same tile
+    out.push({ kind: 'breach', room: der.siteRoom[s]!, x: c.x, y: shared ? c.y + TILE_PX / 2 : c.y, progress: st.breaches.repair[s]!, label: 'BREACH - HOLD E' });
+  }
   return out;
 }
