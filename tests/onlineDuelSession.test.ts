@@ -50,7 +50,7 @@ function stubClient() {
 type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
   clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null; notice?: string | null }[], overlay: [] as (readonly string[] | null)[],
-  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void } }[], disposes: { n: 0 }
+  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 }
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
 vi.mock('../src/network/portLink', () => ({
@@ -63,10 +63,11 @@ vi.mock('../src/network/portLink', () => ({
 vi.mock('../src/network/transport/bridge', () => ({ browserPortEndpoint: () => ({}) }));
 vi.mock('../src/renderer/src/app/duel/scene', () => ({
   // Mirrors the real scene: draw hands the UI a frame, dispose clears the sink (scene.ts dispose: options.ui.clear()).
-  createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void } }) => {
+  createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void } }) => {
     h.sceneOpts.push(opts);
     return {
-      draw: (_source: unknown, _dt: number, o: { banner: string | null; notice?: string | null }) => {
+      draw: (source: unknown, _dt: number, o: { banner: string | null; notice?: string | null }) => {
+        h.sources.push(source as never);
         h.draws.push({ banner: o.banner, notice: o.notice });
         opts.ui.frame({ readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null });
       },
@@ -98,7 +99,7 @@ const nextRound = (d: DuelState): void => {
 };
 
 let win: ReturnType<typeof target>;
-beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; h.sceneOpts.length = 0; h.disposes.n = 0; });
+beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; h.sceneOpts.length = 0; h.sources.length = 0; h.disposes.n = 0; });
 afterEach(() => { delete (globalThis as { window?: unknown }).window; });
 
 function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame() {}, clear() {} }, api: object = {}, extra: object = {}) {
@@ -148,6 +149,39 @@ describe('the online duel session clears its UI on leave (React UI spec §2)', (
     r.dispose();
     expect(h.disposes.n).toBe(1);
     expect(store.getState().duel).toBeNull();
+  });
+});
+
+describe('the online pew (W-1 review F2)', () => {
+  const pewCommands = (c: Stub) => c.commands().filter((x) => x.kind === 'pewFire');
+  const refusals = () => h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'pew');
+  it('sends the click even when the replica shows no charge; an unavailable answer from the authority shows NO CHARGE', () => {
+    const r = rig(1);
+    r.d.tactical.systems[0]!.pewCharge = 0;   // the lagging replica: empty
+    const c = r.attach();
+    r.session.frame();
+    h.sceneOpts[0]!.requests!.pew(1234); r.pump();
+    expect(pewCommands(c)).toHaveLength(1);
+    r.session.frame(); expect(refusals()).toEqual([]);   // nothing is shown before the authority answers
+    const id = c.ids[c.commands().map((x) => x.kind).lastIndexOf('pewFire')]!;
+    c.results.push({ id, tick: 3, status: 'rejected', reason: 'unavailable' }); r.pump();
+    r.session.frame();
+    expect(refusals()).toEqual([{ control: 'pew', reason: 'NO CHARGE' }]);
+    c.results.push({ id: { ...id, sequence: id.sequence + 99 }, tick: 4, status: 'rejected', reason: 'unavailable' }); r.pump(); r.session.frame();
+    expect(refusals()).toEqual([]);   // only a pewFire this seat sent
+    r.dispose();
+  });
+  it('an applied pew shows nothing; a seat that is not the gunner refuses locally and sends nothing', () => {
+    const r = rig(1), c = r.attach();
+    r.session.frame();
+    h.sceneOpts[0]!.requests!.pew(1234); r.pump();
+    c.results.push({ id: c.ids[c.commands().map((x) => x.kind).lastIndexOf('pewFire')]!, tick: 3, status: 'applied' }); r.pump(); r.session.frame();
+    expect(refusals()).toEqual([]);
+    r.dispose();
+    const h0 = rig(0), c0 = h0.attach();   // seat 0 flies: not the Weapons seat
+    h0.session.frame(); h.sceneOpts.at(-1)!.requests!.pew(1234); h0.pump();
+    expect(pewCommands(c0)).toHaveLength(0);
+    h0.dispose();
   });
 });
 

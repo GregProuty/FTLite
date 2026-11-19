@@ -139,6 +139,21 @@ describe('the scene and the contact window (spec §6.5)', () => {
       expect(r.requests.takePew()).not.toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
+  it('W-1 review F4: at Weapons a click over a console block opens nothing and does not close an open window; one inside the window still reaches it', () => {
+    const r = rig();
+    try {
+      const e = interpolatedShip(r.rt.duel.tactical, r.rt.prev, r.rt.alpha(), 1), cam = r.rt.cameras.weapons;
+      const blocks = [{ x: STATION.x + 20, y: stationTop('weapons') + 10 }, { x: TABS.x + 5, y: TABS.y + 5 }];
+      cam.follow = 'free'; cam.centreX = e.x; cam.centreY = e.y;
+      const w = screenToWorld(cam, vp, blocks[0]!.x, blocks[0]!.y); cam.centreX += e.x - w.x; cam.centreY += e.y - w.y;   // the enemy marker drawn under the first block
+      for (const p of blocks) { r.clicks.push(p); r.scene.draw(r.rt, 1 / 60, LIVE); expect(r.contact.state(), `closed, click at ${p.x},${p.y}`).toBeNull(); }
+      r.contact.toggle(); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.contact.state()).not.toBeNull();
+      for (const p of blocks) { r.clicks.push(p); r.scene.draw(r.rt, 1 / 60, LIVE); expect(r.contact.state(), `open, click at ${p.x},${p.y}`).not.toBeNull(); }
+      r.clicks.push({ x: CONTACT.x + 20, y: CONTACT.y + 20 }); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.requests.takePew()).toBeNull();
+    } finally { r.scene.dispose(); r.rt.dispose(); }
+  });
   it('W-1: at the Helm a map click over the enemy still opens its window and asks for no pew', () => {
     const r = rig();
     try {

@@ -106,7 +106,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   // Feel-ii §1.1: the heading this seat last asked for, until its result comes back (as throttleSent); the dedupe's base.
   // A null sequence: A/D or auto-face held at the Helm cleared the hold locally (the sim clears it), until the replica shows it.
   let headingSent: { heading: number; sequence: number | null; round: number } | null = null;
-  const heldStamps: { sequence: number; at: number }[] = [], commandStamps = new Map<number, number>(), heldSamples: number[] = [], commandSamples: number[] = [], roundGaps: number[] = [];
+  const heldStamps: { sequence: number; at: number }[] = [], commandStamps = new Map<number, number>(), pewSent = new Set<number>(), heldSamples: number[] = [], commandSamples: number[] = [], roundGaps: number[] = [];
   // The link (H-2b): the route label and RTT from main, the round's RTT samples; the overlay's recent delays.
   const liveHeld: number[] = [], liveCommand: number[] = [], roundRtt: number[] = [], debug = createKeyToggle(window as unknown as KeyTarget);
   let route: 'lan' | 'internet' | null = null, rttMs: number | null = null, lastPoll = -Infinity, polling = false;
@@ -180,6 +180,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     for (const result of client.takeResults()) {
       if (throttleSent && result.id.player === descriptor.seatId && result.id.sequence === throttleSent.sequence) throttleSent = null;   // applied, noop or rejected: the replica is the base again
       if (headingSent && result.id.player === descriptor.seatId && result.id.sequence === headingSent.sequence) headingSent = null;
+      // W-1 review F2: the authority decides NO CHARGE (the lagging replica cannot): its 'unavailable' for a pewFire this seat sent shows it.
+      if (result.id.player === descriptor.seatId && pewSent.delete(result.id.sequence) && result.status === 'rejected' && result.reason === 'unavailable') source.refuse('pew', 'NO CHARGE');
       const at = result.id.player === descriptor.seatId ? commandStamps.get(result.id.sequence) : undefined;
       if (at !== undefined) { commandStamps.delete(result.id.sequence); if (result.status === 'applied') sample(commandSamples, liveCommand, now - at); }
     }
@@ -244,11 +246,13 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     const fireWhy = p.fireDown > 0 ? refusal(d, 'fire') : null, launchWhy = p.launch > 0 ? refusal(d, 'launch') : null;
     if (fireWhy) source?.refuse('fire', fireWhy);
     if (launchWhy) source?.refuse('launch', launchWhy);
-    // W-1 (pew pew spec §1): the pew from the Weapons map's left click, or NO CHARGE from the replica's charge.
+    // W-1 (pew pew spec §1): the pew from the Weapons map's left click. The replica lags the authority, so its charge is no gate
+    // (review F2): NO GUNNER and NO PEW refuse locally, a click on a seemingly empty replica is sent anyway, and the authority's
+    // 'unavailable' answer (observe) shows NO CHARGE.
     if (pew !== null) {
       const why = refusal(d, 'pew');
-      if (why) source?.refuse('pew', why);
-      else send({ kind: 'pewFire', aim: Math.floor(pew / HEADING_COUNT), aimAcc: pew % HEADING_COUNT });
+      if (why && why !== 'NO CHARGE') source?.refuse('pew', why);
+      else { const id = send({ kind: 'pewFire', aim: Math.floor(pew / HEADING_COUNT), aimAcc: pew % HEADING_COUNT }); if (id) pewSent.add(id.sequence); }
     }
     if (p.camera > 0 && source) { const cam = source.cameras.weapons; snapBack(cam, missileOf(d.tactical, 0) && cam.follow !== 'missile' ? 'missile' : 'ship'); }
   }
@@ -304,7 +308,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       // This round's gaps before the re-attach stay in its record (the reconnect time itself is never one).
       if (source) { roundGaps.push(...source.takeArrivals()); if (roundGaps.length > 4096) roundGaps.splice(0, roundGaps.length - 4096); }
       descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; throttleSent = null; headingSent = null; attaches++;
-      heldStamps.length = 0; commandStamps.clear();   // the new client restarts its sequences: an old stamp would match a new frame
+      heldStamps.length = 0; commandStamps.clear(); pewSent.clear();   // the new client restarts its sequences: an old stamp would match a new frame
       // Spec §6.2: a map click counts only while this window has focus and input is not blocked; otherwise it is drained and dropped.
       scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED', ui: deps.ui, audio: deps.audio, contact,
         takeClick: () => { const click = pointer.takeClick(); return focused && !blocked ? click : null; },

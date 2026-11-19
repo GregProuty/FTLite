@@ -1,8 +1,7 @@
 // Valkyrn spec §5.1, §6.2: what the pointer does on the Flight map this frame. Pure: the scene feeds it the pointer, the
 // own ship's drawn marker and the right button's press; the tests drive it directly.
 import { CONTACT, FLIGHT, SIDE, SIDE_H, STATION, STATUS, stationTop, TABS, TABS_RIGHT } from '../../render/duel/consoleLayout';
-import { READOUT_ROWS } from '../../render/duel/readoutModel';
-import { LINE, PAD } from '../../render/theme';
+import { statusPanelHeight } from '../../render/duel/readoutModel';
 import { headingOf, pickRadius } from '../../render/tactical/tacticalModel';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 
@@ -34,12 +33,12 @@ const WEAPONS_BLOCKS: readonly Rect[] = [
 ];
 
 /** W-1 (pew pew spec §1): whether a screen point (internal pixels) is on the Weapons map's open part: on the screen and clear
- *  of the console blocks, of the status table (`statusRows` rows, sized as ReadoutPanel sizes it: PAD, LINE a row, PAD) and of
+ *  of the console blocks, of the status table (`statusRows` rows, sized by statusPanelHeight, the height ReadoutPanel draws) and of
  *  the contact window while it is shown. A click elsewhere is a console click, never a shot. */
 export function onWeaponsMap(p: Point, contactShown: boolean, statusRows: number): boolean {
   if (p.x < 0 || p.y < 0 || p.x >= INTERNAL_W || p.y >= INTERNAL_H) return false;
   if (contactShown && inside(p, CONTACT)) return false;
-  const status: Rect = { x: STATUS.x, y: STATUS.y, w: STATUS.w, h: PAD + LINE * Math.min(statusRows, READOUT_ROWS) + PAD };
+  const status: Rect = { x: STATUS.x, y: STATUS.y, w: STATUS.w, h: statusPanelHeight(statusRows) };
   return !WEAPONS_BLOCKS.some((r) => inside(p, r)) && !inside(p, status);
 }
 

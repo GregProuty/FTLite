@@ -271,7 +271,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   let pewCone: ArcDraw | null = null, pewAim: Segment | null = null;
   if (input.console === 'weapons' && pewDef && input.ships.includes(0)) {
     const heading = state.ships[0].heading, r = PEW_RANGE * z;
-    pewCone = { x: ownS.x, y: ownS.y, r, angle: headingAngle(heading), half: PEW_HALF };
+    pewCone = { x: ownS.x, y: ownS.y, r, angle: headingAngle(heading), half: (pewDef.arcSteps / AIM_STEPS) * 2 * Math.PI };
     const p = input.pewPointer ?? null;
     if (p && Math.hypot(p.x - ownS.x, p.y - ownS.y) > 1) {
       const a = (clampAim(heading, fineHeadingOf(p.x - ownS.x, p.y - ownS.y), pewDef.arcSteps) / AIM_STEPS) * 2 * Math.PI;

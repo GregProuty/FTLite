@@ -9,7 +9,7 @@ import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { Renderer } from '../../render/renderer';
 import { crtActive, crtScale } from '../../render/crt';
 import type { EndView } from '../../render/duel/endModel';
-import { CONSOLE_RESERVE, CONTACT_RESERVE, SIDE, STATUS_RESERVE, TABS_RIGHT } from '../../render/duel/consoleLayout';
+import { CONSOLE_RESERVE, CONTACT, CONTACT_RESERVE, SIDE, STATUS_RESERVE, TABS_RIGHT } from '../../render/duel/consoleLayout';
 import { consoleModel, consoleStation, type ConsoleStation } from '../../render/duel/consoleModel';
 import { contactModel } from '../../render/duel/contactModel';
 import { hoverReadout } from '../../render/duel/scienceModel';
@@ -190,7 +190,10 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       if (pewClick && click) {
         const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), w = screenToWorld(cam!, viewport, click.x, click.y);
         if (Math.hypot(w.x - b.x, w.y - b.y) > 0) options.requests?.pew(fineHeadingOf(w.x - b.x, w.y - b.y));
-      } else if (contact && click && onMap && station !== 'flight')   // Valkyrn spec §5.1: on the Flight seat the left button is the gun
+      } else if (contact && click && onMap && station !== 'flight'   // Valkyrn spec §5.1: on the Flight seat the left button is the gun
+        // W-1 review F4: at Weapons the window's own click is only a picked-up card's, or a click inside the shown window; any other
+        // click (over a console block, empty map the pew declined) is dropped, so a block never opens or closes the window.
+        && !(station === 'weapons' && view === 'weapons' && (contact.aimWeapon() ?? null) === null && !(contact.state() != null && click.x >= CONTACT.x && click.x < CONTACT.x + CONTACT.w && click.y >= CONTACT.y && click.y < CONTACT.y + CONTACT.h)))
         contact.click(pickContact({ state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport }, click));
       // Feel-ii §1.1: the Helm's right button aims the held heading. A press or a release on the map asks for the bearing from
       // the own ship's drawn marker to the pointer (on the ship itself: clear); while it is held, a preview marker follows.

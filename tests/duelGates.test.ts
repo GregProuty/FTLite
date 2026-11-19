@@ -62,5 +62,6 @@ describe('the Valkyrn gate: the scripted pilot against the hunter, seeds 1 to 10
     expect(g.medianS, g.summary).toBeGreaterThanOrEqual(180);
     expect(g.medianS, g.summary).toBeLessThanOrEqual(300);
     expect(g.hunterWins, g.summary).toBeGreaterThanOrEqual(1);
+    expect(all.filter((r) => r.telemetry.outcome === Outcome.CrewWins).length, `the crew wins at least one of ten (W-1 review F3). ${g.summary}`).toBeGreaterThanOrEqual(1);
   }, 120_000);
 });

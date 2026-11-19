@@ -12,6 +12,7 @@ import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import { CONTACT, SIDE, STATION, stationTop, STATUS, TABS } from '../src/renderer/src/render/duel/consoleLayout';
 import { refusal } from '../src/renderer/src/render/duel/situationModel';
 import { HEADING_COUNT } from '../src/renderer/src/sim/tactical/tuning';
+import { statusPanelHeight } from '../src/renderer/src/render/duel/readoutModel';
 import { seatDuelCrew } from './helpers/duelSeat';
 
 const layout = parseShip(cutter), vp = { w: 1280, h: 720 };
@@ -52,6 +53,13 @@ describe('the Weapons map pointer (spec §1)', () => {
     expect(onWeaponsMap({ x: STATION.x + 20, y: stationTop('weapons') + 10 }, false, 13)).toBe(false);   // the top of the Weapons block (the PEW row after Task 9)
     expect(onWeaponsMap({ x: CONTACT.x + 20, y: CONTACT.y + 20 }, true, 13)).toBe(false);
     expect(onWeaponsMap({ x: CONTACT.x + 20, y: CONTACT.y + 20 }, false, 13)).toBe(true);
+  });
+  it('treats the status panel as drawn, down to its last pixel row (the bottom padding strip is not the open map)', () => {
+    for (const rows of [5, 13]) {
+      const h = statusPanelHeight(rows);
+      expect(onWeaponsMap({ x: STATUS.x + 20, y: STATUS.y + h - 1 }, false, rows), `rows ${rows}`).toBe(false);
+      expect(onWeaponsMap({ x: STATUS.x + 20, y: STATUS.y + h }, false, rows), `rows ${rows} below`).toBe(true);
+    }
   });
 });
 

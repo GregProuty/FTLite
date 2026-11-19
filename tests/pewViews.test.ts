@@ -8,7 +8,7 @@ import { createFx, pushPewHits } from '../src/renderer/src/render/tactical/fxMod
 import { fineHeadingOf, type PrevBody } from '../src/renderer/src/render/tactical/tacticalModel';
 import { combatModel, PEW_HALF, PEW_STREAK_S, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
 import { firePew } from '../src/renderer/src/sim/tactical/pew';
-import { createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { classOf, createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { AIM_STEPS, HEADING_COUNT, PEW_RANGE } from '../src/renderer/src/sim/tactical/tuning';
 
 const vp = { w: 1280, h: 720 };
@@ -33,8 +33,9 @@ describe('the Weapons map (spec §1)', () => {
   it('draws the pew cone about the nose at the round reach, on Weapons only', () => {
     const st = northFacing(), cam = createCamera(st.ships[0].x, st.ships[0].y, 0.5), own = worldToScreen(cam, vp, st.ships[0].x, st.ships[0].y);
     const c = combatModel(input(st, cam, 'weapons'));
-    expect(c.pewCone).toEqual({ x: own.x, y: own.y, r: PEW_RANGE * 0.5, angle: 0, half: PEW_HALF });
+    expect(c.pewCone).toEqual({ x: own.x, y: own.y, r: PEW_RANGE * 0.5, angle: 0, half: (classOf(st, 0).slots.pew!.arcSteps / AIM_STEPS) * 2 * Math.PI });   // review F5: from the class's arcSteps, as the clamp
     expect(PEW_HALF).toBeCloseTo(Math.PI / 3, 12);
+    expect(c.pewCone!.half).toBeCloseTo(PEW_HALF, 3);
     expect(combatModel(input(st, cam, 'helm')).pewCone ?? null).toBeNull();
   });
   it('draws the aim line toward the pointer, clamped into the cone; none without a pointer', () => {
