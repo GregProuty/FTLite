@@ -22,13 +22,13 @@
 - The dev flight view's single-ship steps (`stepFlight`, `stepSoloFlight` → `hitStatics`) never write or free the pool (Deviation 1).
 - Single player is the gate; no online fx work (§9). All new colours are `CRT.*` ramp constants.
 - Goldens and trajectory-pinned tests (`tests/golden.test.ts`, `duelGolden`, `duelRematchGolden`, `determinismHarness`, `duelCheckpoint`, `duelModules`, `duelSnapshot`, `duelScripted`, `tacticalSlots` pinned ticks, telemetry counts) are expected to fail from Task 4 until Task 14. Tasks 1–13 run only their targeted tests plus `npm run typecheck`; Task 14 runs the whole suite.
-- Every commit message ends with a blank line and `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Every commit message ends with a blank line and the executing session's configured attribution line (the attribution its system reminder gives, if any). The commit commands below write it as `-m "<attribution line>"`: substitute that line, or drop the `-m` when the session gives none.
 
 ## Deviations and clarifications
 
-1. **The flight view's contacts read the pool through the accessors** (spec §6.2 says the single-ship modes "keep still map asteroids from `map.asteroids` and never read the pool", and calls that unchanged; on master `hitStatics` already reads the pool through `rocksNear`/`rockAt`). Keeping that code means the flight view's drawn belt (which turns) and its contacts agree. `hitStatics` never frees, pushes or writes a rock, so the spec's intent (flight modes do not change the pool) holds. Its relative-velocity bounce now sees the rail's velocity.
+1. **The flight view's contacts read the pool through the accessors, with rails as still bodies.** Spec §6.2 says the single-ship modes keep still map asteroids from `map.asteroids`, unchanged; on master `hitStatics` already reads the pool through `rocksNear` and `rockAt`. Keeping that code makes the flight view's drawn belt (which turns) and its contacts agree on positions, while `hitStatics` passes a rail's velocity as (0, 0), so the contact itself (push-out, restitution 0.5 of the ship's own normal speed, hull 1) is today's, and `tests/tacticalContacts.test.ts` holds. It never frees, pushes or writes a rock.
 2. **Freeing before the motion pass.** Weapon commands (lasers) run before `stepRocks`, while Free rocks still stand at tick T. A rail freed then is written at `railPos(T)` with its rail velocity at T (`freeFrame`), so the motion pass carries it to T + 1 with every other free rock; after the motion pass (contacts, ships, blasts) it is written at `railPos(T + 1)` as §3.4 says. Its clock `t` is T + 1 either way. The step context records whether the motion pass has run.
-3. **No rejoin across a rail of another ω.** §5.4 says rail-rail pairs are never checked and rejoin keeps it so, but §13.2's checks ("overlaps no live rock" now, a group scan over rejoined rails only) let a rock rejoin at a radius a lane or cluster rock sweeps at another rate, and the two would later pass through each other. `rejoinChoice` therefore also leaves a rock Free when its padded annulus `[ρ − r − ASTEROID_GAP, ρ + r + ASTEROID_GAP]` overlaps the swept annulus of any live rail whose ρω differs from the chosen one (a Rail's `|p| ± r`, a Tumble's `|centre| ± (|offset| + r)`). Group candidates are Rails only (rejoined rails are Rails), and lane and cluster rails are told apart by their |centre| matching a lane ρ or a cluster centre's ρ within 1e-6.
+3. **No rejoin across a rail of another ω.** §5.4 says rail-rail pairs are never checked and rejoin keeps it so, but §13.2's checks ("overlaps no live rock" now, a group scan over rejoined rails only) let a rock rejoin at a radius a lane or cluster rock sweeps at another rate, and the two would later pass through each other. `rejoinChoice` therefore also leaves a rock Free when its padded annulus `[ρ − r − ASTEROID_GAP, ρ + r + ASTEROID_GAP]` overlaps the swept annulus of any live rail whose ρω differs from the chosen one (a Rail's `|p| ± r`, a Tumble's `|centre| ± (|offset| + r)`). Group candidates are Rails only (rejoined rails are Rails), and lane and cluster rails are told apart by their |centre| matching a lane ρ or a cluster centre's ρ within 1e-6. Expected outcome (Fable's review probe settled 48 % of burst pieces at ρ 1345 to 2750, where cluster sweeps cover much of the range): many settled pieces there stay Free, so the after-burst free-count gate may fail for this structural reason; Task 13 tallies the refusals by reason (`sweepCluster`, `sweepLane`, `sweepRail`, `bounds`, `snap`, `laneFar`, `overlap`) and, when they explain the free count, reports BLOCKED for an owner decision (keep the safety rule, or accept rail-rail crossings) instead of tuning.
 4. **A lane rock's ρω is |its position|** (§13.1: centre its own position, offset 0), its lane radius to within an ulp; the rate difference this leaves inside one lane moves two of its rocks about 5e-11 u apart in a 3-hour game.
 5. **Constructive cluster radii.** Sequential random draws in 1550–2550 often leave no room for the third cluster at 420 separation. The generator draws three slacks in `[0, 160]` (160 = 1000 − 2·420), sorts them, and sets centre ρ_k = 1550 + 420 k + slack_k; the angle is drawn as before until the spawn clearance holds. `MapDef` gains `laneSizes` (inner, main, outer counts; belt order is inner, then main, then outer), `clusterRho` (each centre's ρ) and `clusterCentres` (each centre, the cluster rocks' rail centre); `mapHash` covers all three.
 6. **The grid is kept current.** Besides the rebuild at the start of every step and the insert at birth (§6.1), a rock is relinked into its cell whenever the sim moves it (free motion, pair and ship separation, freeing). The 14 u pad stays as margin; the brute-force test holds by construction. `rocksNear` keeps its contract (ascending, no repeats, the bounding-box rule) and still returns a fresh `number[]`, so nested callers stay safe; the gathering and the insertion sort use the grid's reused scratch `Int32Array`. Outside a step (renderer, `predict.ts`, scripted code, unit tests) `rocksNear` scans every slot through the accessors (§6.1). The seeded `state.grid` (`BroadPhase`) stays on the state, unused by rocks, because tests and the snapshot code read it.
@@ -42,12 +42,15 @@
 14. **Spec problem (arithmetic): burst pieces can exceed `FAN_SPLIT_MIN_R`.** §5.1 says every burst piece is under 13. In fact a 4-piece burst of r 29.9 gives pieces of 13.46, a 6-piece burst of r 39.9 gives 14.6 and an 8-piece burst of a cluster rock of r 55 gives 17.5, and those fan-split once more into 2 pieces of 8.3 to 11.1 (under 13, so their next break is dust). The cascade still ends one level later. The plan keeps the spec's thresholds and records this in the report.
 15. **No sibling overlap is a burst rule.** §8.1's "no sibling overlaps at birth" is tested for the burst patterns; the fan keeps today's 0.6 r offset, at which its siblings overlap at birth (as on master) and separate under the capped pair rule.
 16. **The 5-laser test uses hp 100** so the rock does not break before the fifth shot (an r 45 rock has hp 5 and the laser does 2).
-17. **Measurement scenes** (§8.2, §8.3 name the gates but not every scene): the idle and after-burst scenes put the crew on a circular orbit at ρ 2750 (clear of every seeded rock) and pin the Hunter antipodal with its weapons emptied (the duel snapshot needs both slots active); the after-burst scene breaks the largest live belt rail with a script-side burst at 10, 20 and 30 s; the cost gate fills every empty slot with a free rock (about 240 live) and runs the stress driver; the safety counters come from the 20-seed stress run. Master's idle and after-burst baselines are measured in Task 1, before any sim change, with the same script.
-18. **The grid test's run length.** "Every tick of 20 seeded stress runs" is 20 seeds × 200 ticks each in the unit test (time budget); the measure script's stress run covers 4,000 ticks per seed.
+17. **Measurement scenes** (§8.2, §8.3 name the gates but not every scene): the idle and after-burst scenes put the crew on a circular orbit at ρ 2780 (`IDLE_ORBIT_R`: clear of every seeded rock, whose tumble sweeps reach about 2755) and pin the Hunter antipodal with its weapons emptied (the duel snapshot needs both slots active); the after-burst scene breaks the largest live belt rail with a script-side burst at 10, 20 and 30 s; the cost gate fills every empty slot with a free rock (about 240 live) and runs the stress driver; the safety counters come from the 20-seed stress run. Master's idle and after-burst baselines are measured in Task 1, before any sim change, with the same script. The idle delta gate allows 64 bytes over master's window median (Fable's review: constant new fields, the larger reserve and the two extra counters, may cost a few bytes in the delta encoding even with no rock moving); the measure script also reports the raw medians. The cost gate runs twice: the fill flying, and the fill settled and over 60 s old so every rock is a rejoin candidate each tick.
+18. **Grid coverage.** "Every tick of 20 seeded stress runs" is split between two checks: the unit test compares the grid with a brute-force scan on every tick of 20 seeds × 200 ticks (time budget), and the measure script's 20-seed, 4,000-tick stress run compares them every 60 ticks (a mismatch fails the stress gate).
 19. **The switches are one object, not four `const`s.** §13.7 makes them compile-time constants with tests in both states and a measure run with all four off. `ROCK_SWITCHES` is a plain object in rockTuning.ts whose defaults are the constants; only tests (`withSwitches`) and the measure script change it, always restoring it, and the functions that read a switch also take it as a parameter (`rockMass(r, cube)`, `rockEdgeAccel(x, y, soft)`, `seededRail(map, k, tumble)`, `moveFreeSlot(…, soft)`). Peers never differ: nothing in the app writes it.
 20. **Spec problem fixed in the spec (physics): the lane-zone drag target was radially unstable.** Revision 3's V* = ω(ρ_lane)·perp(p) is a rigid rotation, not an orbit: a planning simulation of §13.3's step at full drag pushed a circular rock at ρ 1200 about 55 u off its lane in 10 minutes. The owner's coordinator adopted the fix in the spec (73497bc4, §13.2 and §13.3): V* = V_c(p) everywhere; inside a lane zone the kick adds a radial lane pull `−LANE_PULL · (ρ − ρ_lane) · p/ρ · (k / SETTLE_K_MAX)` (0.004/s², ramping in with the drag); a rock rejoins its lane only within `LANE_CAPTURE_DR` (5 u) of the lane radius, else it stays Free and the pull keeps working. Planning probe of the adopted step (main zone, full drag): a rock started circular at ρ 1225 is within 5 u of 1200 after 31 s, its lowest ρ is 1198.76 (an overshoot of 1.24 u, far from the 1161 edge), and it ends at 1200.00004; a circular rock at exactly 1200 stays within 4e-5 u for 10 minutes; rocks started at 1238 and 1162 reach the lane within 35 s without leaving the zone.
 21. **Rejoin events and causes.** The stress run must report lane captures, group rejoins and own-orbit rejoins (§13.7), so a rejoin pushes a view event `{ what: 'rejoin', by: 'settle', how }`; `RockCause` gains `'settle'` and `'tidal'` (the Roche break, §13.3). Events are not hashed.
 22. **Spec gap: the soft edge's extra drag is applied as two half steps** with the age-ramped drag (symmetric around the kick), and only with the soft edge on and ρ > R_MAP at the half-drift point.
+23. **Spec problem (feel criterion (c)): with r³ mass the parent's mass can never be half alive.** A burst's pieces carry n · (0.9 r / √n)³ / r³ = 0.729 / √n of the parent's r³ mass (0.26 for 8 pieces, 0.30 for 6, 0.36 for 4) even when every piece survives, so "≥ 50 % of the parent's mass alive at 30 s" cannot pass. Task 13 measures (c) as ≥ 50 % of the burst's born piece mass, by the active mass law (`rockMass`), still alive at 30 s (Fable's review fix), with the switches on and off alike.
+24. **The no-drag energy test runs at ρ 1700, not the spec's 1200**, because 1200 lies in a lane zone where the lane pull acts once the drag ramps in; at age 0 both are zero, so the test is the same leapfrog check away from any zone rule.
+25. **The outer parking ring did not show in planning.** §13.3 expects returning debris to park as an outer ring at ρ ≈ 2650 to 2750 with the soft edge. In a planning probe a rock thrown 60 u/s outward from ρ 2700 peaked at 2881 and then settled near ρ 1920, not in the ring. The plan tests only that it comes back inside R_MAP and is not dust; the report states what the stress and after-burst runs show.
 
 ---
 
@@ -106,8 +109,8 @@ The spec's idle gate compares the branch's 20 Hz deltas with master's (§8.3). T
 - Create (by running it): `docs/superpowers/research/2026-11-19-asteroids-iii-master-idle.json`
 
 **Interfaces:**
-- Consumes: APIs that exist on master and on the branch: `createDuel`, `disposeDuel`, `stepDuelTick`, `saveDuelSnapshot`, `duelPublicationToImage`, `encodeDelta`, `circularSpeed`, `breakRock(s, k, ux, uy, by, ship, pattern)`, `beginRockTick`, `ROCK_STRIDE`.
-- Produces: `export const IDLE_ORBIT_R = 2750`, `IDLE_SEEDS = [1, 2, 3]`, `IDLE_WINDOWS: readonly (readonly [number, number])[]` (`[[60, 61], [300, 301], [600, 601]]`), `BURST_TIMES = [10, 20, 30]`, `BURST_WINDOW = [10, 270]`; `export interface QuietRun { seed: number; seconds: number; bursts: number[]; outcome: number; ticks: number; leftKind1: number; freeEachSecond: number[]; deltas: number[][] }`; `export function quietRun(seed: number, seconds: number, windows: readonly (readonly [number, number])[], bursts?: readonly number[]): QuietRun`; `export function median(xs: readonly number[]): number`. Task 13 imports these.
+- Consumes: APIs that exist on master and on the branch: `createDuel`, `disposeDuel`, `stepDuelTick`, `saveDuelSnapshot`, `duelPublicationToImage`, `encodeDelta`, `circularSpeed`, `breakRock(s, k, ux, uy, by, ship, pattern)`, `beginRockTick`, `rockAt`, `ROCK_STRIDE`.
+- Produces: `export const IDLE_ORBIT_R = 2780`, `IDLE_SEEDS = [1, 2, 3]`, `IDLE_WINDOWS: readonly (readonly [number, number])[]` (`[[60, 61], [300, 301], [600, 601]]`), `BURST_TIMES = [10, 20, 30]`, `BURST_WINDOW = [10, 270]`; `export interface QuietRun { seed: number; seconds: number; bursts: number[]; outcome: number; ticks: number; leftKind1: number; freeEachSecond: number[]; deltas: number[][] }`; `export function quietRun(seed: number, seconds: number, windows: readonly (readonly [number, number])[], bursts?: readonly number[]): QuietRun`; `export function median(xs: readonly number[]): number`. Task 13 imports these.
 
 - [ ] **Step 1: Confirm the branch's code is master's**
 
@@ -118,8 +121,9 @@ Expected: one file, `docs/superpowers/specs/2026-11-19-asteroids-iii-design.md` 
 
 ```ts
 // Asteroids-iii (docs/superpowers/specs/2026-11-19-asteroids-iii-design.md §8.3): the quiet scene for the idle-belt and
-// after-burst gates. No player acts: the crew Hound flies a circular orbit at IDLE_ORBIT_R (every seeded rock's surface
-// lies inside R_MAP − EDGE_MARGIN = 2700, so the ship never touches one), and the Hunter is pinned antipodal to it after
+// after-burst gates. No player acts: the crew Hound flies a circular orbit at IDLE_ORBIT_R (2780: belt and cluster rocks
+// stay inside 2700 where the map placed them, and a tumbling cluster rock's sweep reaches at most about 2755, so the ship
+// (radius 20) never touches one), and the Hunter is pinned antipodal to it after
 // every tick with its weapons emptied (the duel snapshot needs both slots active and locked on each other). `bursts`
 // (seconds) break the largest live kind-1 belt rock with a torpedo-style burst at those times (script-side, between
 // ticks). Reported per run: the 20 Hz delta image sizes in each window, how many slots ever left kind 1, and the kind-2
@@ -136,13 +140,13 @@ import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim
 import { stepDuelTick, type DuelInput } from '../src/renderer/src/sim/duel/step';
 import { circularSpeed } from '../src/renderer/src/sim/tactical/map';
 import { breakRock } from '../src/renderer/src/sim/tactical/rockBreak';
-import { beginRockTick, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
+import { beginRockTick, rockAt, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { SIM_VERSION, TICK_HZ } from '../src/renderer/src/sim/tuning';
 import { duelPublicationToImage, type DuelPublication } from '../src/network/modes/duelStream';
 import { encodeDelta, type StateImage } from '../src/network/state/imageCodec';
 import { hashF64 } from '../src/shared/hash';
 
-export const IDLE_ORBIT_R = 2750;
+export const IDLE_ORBIT_R = 2780;
 export const IDLE_SEEDS = [1, 2, 3] as const;
 export const IDLE_WINDOWS: readonly (readonly [number, number])[] = [[60, 61], [300, 301], [600, 601]];
 export const BURST_TIMES = [10, 20, 30] as const;
@@ -191,8 +195,8 @@ export function quietRun(seed: number, seconds: number, windows: readonly (reado
     for (let k = 1; k <= ticks; k++) {
       stepDuelTick(d, IDLE); pinHunter(d);
       if (bursts.some((s) => Math.round(s * TICK_HZ) === k)) {
-        const rock = biggestBeltRail(d), b = rock * ROCK_STRIDE;
-        if (rock >= 0) { breakRock(t, rock, -t.rocks[b + 1]!, -t.rocks[b + 2]!, 'torpedo', 0, 'burst'); beginRockTick(t); }
+        const rock = biggestBeltRail(d);
+        if (rock >= 0) { const a = rockAt(t, rock); breakRock(t, rock, -a.x, -a.y, 'torpedo', 0, 'burst'); beginRockTick(t); }   // toward the planet from where it is now
       }
       for (let j = 0; j < kinds.length; j++) { const now = t.rocks[j * ROCK_STRIDE]!; if (kinds[j] === 1 && now !== 1) leftKind1++; kinds[j] = now; }
       if (k % TICK_HZ === 0) { let free = 0; for (let j = 0; j < kinds.length; j++) if (kinds[j] === 2) free++; freeEachSecond.push(free); }
@@ -225,24 +229,24 @@ if (main) {
 - [ ] **Step 3: Type-check and run it on master's code**
 
 Run: `npm run typecheck && npx tsx scripts/spike-asteroids-iii-idle.ts --json docs/superpowers/research/2026-11-19-asteroids-iii-master-idle.json`
-Expected: typecheck clean; for each idle seed 1–3 the summary shows `outcome: 0`, `leftKind1: 0` and three window medians in the 800–900 byte range (a planning probe of this scene measured 826–865 bytes per delta for seeds 1–3); the burst rows show master's after-burst delta median and free counts (informational). The JSON file holds `simVersion: 59`. Runtime: about a minute.
+Expected: typecheck clean; for each idle seed 1–3 the summary shows `outcome: 0`, `leftKind1: 0` and three window medians in the 800–900 byte range (a planning probe of this scene at ρ 2750 measured 826–865 bytes per delta for seeds 1–3); the burst rows show master's after-burst delta median and free counts (informational). The JSON file holds `simVersion: 59`. Runtime: about a minute.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add scripts/spike-asteroids-iii-idle.ts docs/superpowers/research/2026-11-19-asteroids-iii-master-idle.json
-git commit -m "chore(asteroids-iii): the quiet-scene script and master's idle and after-burst baseline (SIM 59)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "chore(asteroids-iii): the quiet-scene script and master's idle and after-burst baseline (SIM 59)" -m "<attribution line>"
 ```
 
 ---
 
 ### Task 2: Cracks redrawn inside the outline (§7.3, D10)
 
-Independent of the sim work. The outline is `asteroidShape(index)` (9 radius multipliers at angles 2πk/9, `tacticalModel.ts`); today's cracks (`tacticalLayer.ts` lines 271–279) end at an unrelated vertex's multiplier and can leave the outline.
+Independent of the sim work. The outline is `asteroidShape(index)` (9 radius multipliers at angles 2πk/9, `tacticalModel.ts`); today's cracks (`tacticalLayer.ts` lines 272–280) end at an unrelated vertex's multiplier and can leave the outline.
 
 **Files:**
 - Modify: `src/renderer/src/render/tactical/tacticalModel.ts` (append the crack model after `asteroidShape`, the end of the file)
-- Modify: `src/renderer/src/render/tactical/tacticalLayer.ts:14` (import) and `:271-279` (the crack loop)
+- Modify: `src/renderer/src/render/tactical/tacticalLayer.ts:14` (import) and `:272-280` (the crack loop)
 - Test: `tests/rockCracks.test.ts`
 
 **Interfaces:**
@@ -445,7 +449,7 @@ export function crackDraw(index: number, wear: number, cx: number, cy: number, r
 }
 ```
 
-- [ ] **Step 4: Draw them.** In `src/renderer/src/render/tactical/tacticalLayer.ts` add `crackDraw` to the import from `./tacticalModel` (line 14). Replace lines 271–279, from `const wear = a.wear ?? 0;   // SPIKE: cracks and a dimmer fill as the rock wears down` through the closing `}` of `for (let k = 0; k < cracks; k++) { ... }`, with:
+- [ ] **Step 4: Draw them.** In `src/renderer/src/render/tactical/tacticalLayer.ts` add `crackDraw` to the import from `./tacticalModel` (line 14). Replace lines 272–280, from `const wear = a.wear ?? 0;   // SPIKE: cracks and a dimmer fill as the rock wears down` through the closing `}` of `for (let k = 0; k < cracks; k++) { ... }`, with:
 
 ```ts
         const wear = a.wear ?? 0;   // §7.3: the fill dims at wear ≥ 0.5; the outline keeps CRT.main once worn
@@ -463,7 +467,7 @@ Expected: PASS. (A planning prototype of this algorithm put every sampled point 
 
 ```bash
 git add src/renderer/src/render/tactical/tacticalModel.ts src/renderer/src/render/tactical/tacticalLayer.ts tests/rockCracks.test.ts
-git commit -m "feat(asteroids-iii): cracks redrawn inside the outline: fixed per rock, revealed by wear, cut-in style (spec §7.3, D10)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(asteroids-iii): cracks redrawn inside the outline: fixed per rock, revealed by wear, cut-in style (spec §7.3, D10)" -m "<attribution line>"
 ```
 
 ---
@@ -762,7 +766,7 @@ Expected: PASS; `boundary.test.ts` now lists `rails.ts`. (A planning check measu
 
 ```bash
 git add src/renderer/src/sim/tactical/rails.ts src/renderer/src/sim/tactical/rockTuning.ts src/renderer/src/sim/tactical/tuning.ts tests/rockRails.test.ts
-git commit -m "feat(asteroids-iii): rail maths (centre plus offset, the tumble, series and squaring), lane zones, V* and the lane pull, the revision 3 numbers and switches (spec §2, §3.2, §13)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(asteroids-iii): rail maths (centre plus offset, the tumble, series and squaring), lane zones, V* and the lane pull, the revision 3 numbers and switches (spec §2, §3.2, §13)" -m "<attribution line>"
 ```
 
 ---
@@ -801,6 +805,8 @@ import { describe, expect, it } from 'vitest';
 import { cloneTactical, createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { flattenTactical, hashTactical, shipModule, spaceModule, unflattenTactical, validateTacticalValues } from '../src/renderer/src/sim/tactical/hash';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
+import { breakRock } from '../src/renderer/src/sim/tactical/rockBreak';
+import { beginRockTick } from '../src/renderer/src/sim/tactical/rocks';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { railPos, type RailOut } from '../src/renderer/src/sim/tactical/rails';
 import { beginRockStep, beginRockTick, endRockStep, freeFrame, freeRock, rockAlive, rockAt, rockBorn, rockCapacity, rockHp, rockHpMax, RockKind, rockMass, rockPhase, rockSlots, rocksMoved, ROCK_RESERVE, ROCK_STRIDE, rockVx, rockVy, rockX, rockY } from '../src/renderer/src/sim/tactical/rocks';
@@ -973,8 +979,8 @@ Expected: FAIL (`beginRockStep`, `freeRock`, `rockX` and friends are not exporte
 // the tick it was last born, freed or pushed. Slots 0 .. n − 1 start as the seeded map's asteroids, all Rail at t = 0;
 // the ROCK_RESERVE slots after them start empty. `isRail` is true for both rail kinds.
 // Readers of a rock's position or velocity use rockX / rockY / rockVx / rockVy / rockAt: a Free slot is read as it stands,
-// a rail through railPos at the phase tick, memoised per state object in a WeakMap keyed by every input (kind, centre,
-// offset, t and the phase tick), so a stale entry is never returned and the memo is never hashed, snapshotted or copied by a clone.
+// a rail through railPos at the phase tick, memoised per pool array (s.rocks) in a WeakMap and checked against every input
+// (kind, centre, offset, t and the phase tick), so a stale entry is never returned and the memo is never hashed, snapshotted or copied by a clone.
 // The phase (§3.3): during stepDuel (beginRockStep .. endRockStep, a step context in a WeakMap, not state) rails are read
 // at tick + 1, because every contact that tick happens after the free rocks move to T + 1; between ticks at tick.
 // Freeing (§3.4): a Rail becomes Free at its rail position and velocity in the free frame (T before this step's free
@@ -1038,15 +1044,17 @@ export function freeFrame(s: TacticalState): number { const c = steps.get(s); re
 
 // ---- §3.3: the accessors and the rail memo ----
 interface RailMemo { inputs: Float64Array; outputs: Float64Array }
-const memos = new WeakMap<TacticalState, RailMemo>();
+/** Keyed by the pool array (s.rocks), not the state object: a shallow copy such as predictMissile's `{ ...state }` shares the
+ *  pool and so the memo; a clone or a fresh state has its own array. Every input is still checked on every read. */
+const memos = new WeakMap<Float64Array, RailMemo>();
 const scratch: RailOut = { x: 0, y: 0, vx: 0, vy: 0 };
 const MEMO_IN = 7;
 /** The memo's outputs for rail slot k at the phase tick, recomputed unless every input (kind, centre, offset, t, the
  *  phase tick) matches exactly (Object.is, so −0 and 0 differ). Outputs per slot: x, y, vx, vy at k · 4. */
 function railOutputs(s: TacticalState, k: number): Float64Array {
   const n = rockSlots(s);
-  let m = memos.get(s);
-  if (!m || m.outputs.length !== n * 4) { m = { inputs: new Float64Array(n * MEMO_IN).fill(NaN), outputs: new Float64Array(n * 4) }; memos.set(s, m); }
+  let m = memos.get(s.rocks);
+  if (!m || m.outputs.length !== n * 4) { m = { inputs: new Float64Array(n * MEMO_IN).fill(NaN), outputs: new Float64Array(n * 4) }; memos.set(s.rocks, m); }
   const v = s.rocks, b = k * ROCK_STRIDE, i = k * MEMO_IN, inp = m.inputs, T = rockPhase(s);
   const kind = v[b]!, cx = v[b + 1]!, cy = v[b + 2]!, ox = v[b + 3]!, oy = v[b + 4]!, t = v[b + 7]!;
   if (!Object.is(inp[i], kind) || !Object.is(inp[i + 1], cx) || !Object.is(inp[i + 2], cy) || !Object.is(inp[i + 3], ox) || !Object.is(inp[i + 4], oy) || !Object.is(inp[i + 5], t) || !Object.is(inp[i + 6], T)) {
@@ -1289,7 +1297,24 @@ function shipRock(state: TacticalState, i: number, k: number): void {
 }
 ```
 
-Also update the `hitStatics` doc comment to: `/** Ship slot i's static contacts (spec §4 order): the planet, then the rocks at their accessor positions in ascending slot (asteroids-iii plan deviation 1: the flight view never frees or writes a rock). Exported for the single-ship flight step (H-1 spec §9). */`. `ASTEROID_CONTACT_HULL` stays imported (hitStatics uses it).
+Replace `hitStatics` with this version (it passes a rail's velocity as (0, 0), so the flight view's contact is today's still-rock contact, spec §6.2 "unchanged"; plan deviation 1), and add `isRail` to the `./rocks` import:
+
+```ts
+/** Ship slot i's static contacts (spec §4 order): the planet, then the rocks at their accessor positions in ascending slot.
+ *  Asteroids-iii §6.2, plan deviation 1: the flight view never frees or writes a rock, and a rail counts as still (its
+ *  velocity is not used), as before; a Free rock keeps spike ii's relative bounce. Exported for the single-ship flight step
+ *  (H-1 spec §9). */
+export function hitStatics(state: TacticalState, i: number): void {
+  const { map } = state, s = state.ships[i]!;
+  if (hitStatic(state, i, map.planet.x, map.planet.y, map.planet.r, 0, PLANET_CONTACT_HULL)) s.planetHits++;
+  for (const k of rocksNear(state, s.x, s.y, classOf(state, i).radius)) {
+    const a = rockAt(state, k), still = isRail(a.kind);
+    if (hitStatic(state, i, a.x, a.y, a.r, k + 1, ASTEROID_CONTACT_HULL, still ? 0 : a.vx, still ? 0 : a.vy)) s.asteroidHits++;
+  }
+}
+```
+
+`ASTEROID_CONTACT_HULL` stays imported. `tests/tacticalContacts.test.ts`'s ship–asteroid case (a bounce to −60 off seeded asteroid 0 at tick 0) then passes unchanged.
 
 - [ ] **Step 7: `state.ts`.** In `src/renderer/src/sim/tactical/state.ts`:
   - Replace the rock event's doc comment and line (lines 163–167) with:
@@ -1505,7 +1530,7 @@ Expected: typecheck clean; all PASS. If a test outside this list fails only beca
 
 ```bash
 git add src/renderer/src/sim/tactical/rocks.ts src/renderer/src/sim/tactical/rockContacts.ts src/renderer/src/sim/tactical/rockBreak.ts src/renderer/src/sim/tactical/contacts.ts src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/tactical/duel.ts src/renderer/src/sim/tactical/rockTuning.ts src/renderer/src/render/tactical/tacticalModel.ts scripts/profile-duel-publication.ts tests/helpers/rockArena.ts tests/rockPool.test.ts tests/rockContacts.test.ts tests/rockShips.test.ts tests/rockLaser.test.ts tests/rockBreak.test.ts tests/contactScene.test.ts tests/tacticalDeterminism.test.ts
-git commit -m "feat(asteroids-iii): the pool on rails: stride 8, Rail and Free kinds, accessors with an input-keyed memo, the step phase, freeing replaces waking, restore rules (spec §3.1-§3.4)" -m "The spike ii wake speed and the infinitely heavy still rock are gone (spec §11); spike-asteroids-ii-measure.ts and -shots.cjs are replaced by the iii scripts." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(asteroids-iii): the pool on rails: stride 8, Rail and Free kinds, accessors with an input-keyed memo, the step phase, freeing replaces waking, restore rules (spec §3.1-§3.4)" -m "The spike ii wake speed and the infinitely heavy still rock are gone (spec §11); spike-asteroids-ii-measure.ts and -shots.cjs are replaced by the iii scripts." -m "<attribution line>"
 ```
 
 ---
@@ -1720,7 +1745,7 @@ Expected: typecheck clean (no test or script builds a `MapDef` literal; the test
 
 ```bash
 git add src/renderer/src/sim/tactical/map.ts src/renderer/src/sim/tactical/rocks.ts src/renderer/src/sim/duel/hash.ts tests/tacticalMap.test.ts tests/helpers/rockArena.ts tests/rockPool.test.ts
-git commit -m "feat(asteroids-iii): the belt as three lanes and clusters 420 apart in ρ; lane rocks Rail on themselves, cluster rocks Tumble on their centre (spec §3.5, §13.1)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(asteroids-iii): the belt as three lanes and clusters 420 apart in ρ; lane rocks Rail on themselves, cluster rocks Tumble on their centre (spec §3.5, §13.1)" -m "<attribution line>"
 ```
 
 ---
@@ -1792,7 +1817,7 @@ describe('free-rock motion (spec §13.3)', () => {
     stepRocks(st);
     expect(st.rockCapHits).toBe(1);
   });
-  it('with no drag (age under 20 s) its relative energy error stays under 1e-6 over 100 orbits at ρ 1700', () => {
+  it('with no drag (age under 20 s) its relative energy error stays under 1e-6 over 100 orbits at ρ 1700 (plan deviation 24)', () => {
     const v = slot(1700, 0), e0 = energy(v), period = (2 * Math.PI) / Math.sqrt(GM / Math.pow(1700 * 1700 + 400, 1.5));
     let worst = 0;
     for (let n = 0, ticks = Math.round((100 * period) / DT); n < ticks; n++) { moveFreeSlot(v, 0, 0); if (n % 1000 === 0) worst = Math.max(worst, Math.abs((energy(v) - e0) / e0)); }
@@ -1930,7 +1955,7 @@ Expected: PASS. `rockBlast`'s homing test flies its young rock with no drag and 
 
 ```bash
 git add src/renderer/src/sim/tactical/rockContacts.ts src/renderer/src/sim/tactical/rockTuning.ts tests/rockMotion.test.ts tests/rockContacts.test.ts
-git commit -m "feat(asteroids-iii): free rocks: a symmetric step with an age-ramped drag toward V_c, the lane pull, the soft edge and its slack, the cap counted in rockCapHits (spec §4, §13.3)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(asteroids-iii): free rocks: a symmetric step with an age-ramped drag toward V_c, the lane pull, the soft edge and its slack, the cap counted in rockCapHits (spec §4, §13.3)" -m "<attribution line>"
 ```
 
 ---
@@ -2186,7 +2211,7 @@ Expected: PASS. If the brute-force test reports a mismatch, the message names th
 
 ```bash
 git add src/renderer/src/sim/tactical/grid.ts src/renderer/src/sim/tactical/rocks.ts src/renderer/src/sim/tactical/rockContacts.ts src/renderer/src/sim/tactical/rockBreak.ts src/renderer/src/sim/tactical/contacts.ts tests/helpers/rockStress.ts tests/rockGrid.test.ts
-git commit -m "feat(asteroids-iii): the rock grid: 96 u cells in a WeakMap, rebuilt every step into reused typed arrays, pieces linked at birth, moves relinked (spec §6.1)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(asteroids-iii): the rock grid: 96 u cells in a WeakMap, rebuilt every step into reused typed arrays, pieces linked at birth, moves relinked (spec §6.1)" -m "<attribution line>"
 ```
 
 ---
@@ -2372,7 +2397,7 @@ Expected: PASS. `rockLaser`'s push test uses r 30 (mass 900 either way). If a `r
 
 ```bash
 git add src/renderer/src/sim/tactical/rocks.ts src/renderer/src/sim/tactical/rockContacts.ts src/renderer/src/sim/tactical/rockTuning.ts tests/rockContacts.test.ts tests/rockShips.test.ts
-git commit -m "feat(asteroids-iii): billiards: mass r³/30 (switch), the restitution curve, e = 0 soft contacts, soft separation, the touch counter, pushes restart the clock (spec §5.4, §13.4)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(asteroids-iii): billiards: mass r³/30 (switch), the restitution curve, e = 0 soft contacts, soft separation, the touch counter, pushes restart the clock (spec §5.4, §13.4)" -m "<attribution line>"
 ```
 
 ---
@@ -2386,7 +2411,11 @@ git commit -m "feat(asteroids-iii): billiards: mass r³/30 (switch), the restitu
 
 **Interfaces:**
 - Consumes: `circularVelocity`, `laneZone`, `orbitRate`, `targetVelocity` (rails.ts); `LANES`, `ASTEROID_GAP`, `PLANET_RADIUS`, `R_MAP` (tuning.ts); `REJOIN_*` (rockTuning.ts); `isRail`, `railCentreRadius`, `rockPhase`, `RockKind`, `ROCK_STRIDE`, `rockSlots`, `rockX`, `rockY` (rocks.ts).
-- Produces: `export interface RejoinChoice { rhoW: number; how: 'lane' | 'group' | 'own' }`; `export function rejoinChoice(s: TacticalState, k: number): RejoinChoice | null`; `export function settleRocks(s: TacticalState): void` (pushes a `rejoin` event per rejoin, `by: 'settle'`, with `how`).
+- Produces: `export interface RejoinChoice { rhoW: number; how: 'lane' | 'group' | 'own' }
+/** Why a Free rock stays Free (the first rule that refused it): its kind or masks, the clock, the speed, the ρ bounds, a
+ *  live rock overlapping, a lane zone but too far off its lane, a group snap of 2 u/s or more, or (plan deviation 3) a
+ *  cluster rock's, a lane rock's or another rejoined rail's sweep across its annulus. */
+export type RejoinRefusal = 'state' | 'clock' | 'speed' | 'bounds' | 'overlap' | 'laneFar' | 'snap' | 'sweepCluster' | 'sweepLane' | 'sweepRail';`; `export type RejoinRefusal = 'state' | 'clock' | 'speed' | 'bounds' | 'overlap' | 'laneFar' | 'snap' | 'sweepCluster' | 'sweepLane' | 'sweepRail'`; `export function rejoinChoice(s: TacticalState, k: number, why?: { reason: RejoinRefusal | null }): RejoinChoice | null` (on null, `why.reason` names the first rule that refused; Task 13 tallies them); `export function settleRocks(s: TacticalState): void` (pushes a `rejoin` event per rejoin, `by: 'settle'`, with `how`).
 
 - [ ] **Step 1: Write the failing test** `tests/rockSettle.test.ts`:
 
@@ -2445,6 +2474,10 @@ describe('rejoining a rail (spec §3.4, §13.2)', () => {
     writeRock(st, 7, RockKind.Tumble, 1900, 0, 40, 0, 30, 5, 0);                 // a tumbling rail sweeps [1830, 1970]
     settled(st, 105, 0, -1935, 0);
     expect([100, 101, 102, 103, 104, 105].map((k) => rejoinChoice(st, k) !== null)).toEqual([false, true, false, true, false, false]);
+    const why: { reason: string | null } = { reason: null };
+    expect(rejoinChoice(st, 105, why as never)).toBeNull(); expect(why.reason).toBe('sweepCluster');
+    rejoinChoice(st, 100, why as never); expect(why.reason).toBe('bounds');
+    rejoinChoice(st, 104, why as never); expect(why.reason).toBe('overlap');
   });
   it('within 5 u of its lane it is captured: ρω the lane\'s, centre p · (ρ_lane / ρ), offset p − centre, and it co-rotates with the lane; farther off in the zone it stays Free', () => {
     const st = arena(); st.tick = 500;
@@ -2558,24 +2591,25 @@ function sweep(s: TacticalState, j: number): [number, number] {
   return [p - r, p + r];
 }
 
-/** Whether Free rock k rejoins now, and how (every §3.4 and §13.2 rule, plan deviation 3); null when it stays Free. */
-export function rejoinChoice(s: TacticalState, k: number): RejoinChoice | null {
-  const v = s.rocks, b = k * ROCK_STRIDE, n = rockSlots(s);
-  if (v[b] !== RockKind.Free || s.rockBorn[k] === 1 || s.rockTouched[k] === 1) return null;
-  if (rockPhase(s) - v[b + 7]! < REJOIN_MIN_TICKS) return null;
+/** Whether Free rock k rejoins now, and how (every §3.4 and §13.2 rule, plan deviation 3); null when it stays Free, with
+ *  `why.reason` set to the first rule that refused it. */
+export function rejoinChoice(s: TacticalState, k: number, why?: { reason: RejoinRefusal | null }): RejoinChoice | null {
+  const v = s.rocks, b = k * ROCK_STRIDE, n = rockSlots(s), no = (reason: RejoinRefusal): null => { if (why) why.reason = reason; return null; };
+  if (v[b] !== RockKind.Free || s.rockBorn[k] === 1 || s.rockTouched[k] === 1) return no('state');
+  if (rockPhase(s) - v[b + 7]! < REJOIN_MIN_TICKS) return no('clock');
   const x = v[b + 1]!, y = v[b + 2]!, r = v[b + 5]!, [tx, ty] = targetVelocity(x, y), dvx = v[b + 3]! - tx, dvy = v[b + 4]! - ty;
-  if (dvx * dvx + dvy * dvy >= REJOIN_SPEED * REJOIN_SPEED) return null;
+  if (dvx * dvx + dvy * dvy >= REJOIN_SPEED * REJOIN_SPEED) return no('speed');
   const rho = Math.sqrt(x * x + y * y);
-  if (rho + r > R_MAP - REJOIN_EDGE_CLEAR || rho - r < PLANET_RADIUS + REJOIN_PLANET_CLEAR) return null;
+  if (rho + r > R_MAP - REJOIN_EDGE_CLEAR || rho - r < PLANET_RADIUS + REJOIN_PLANET_CLEAR) return no('bounds');
   for (let j = 0; j < n; j++) {
     if (j === k || v[j * ROCK_STRIDE] === RockKind.Gone) continue;
     const dx = rockX(s, j) - x, dy = rockY(s, j) - y, rr = r + v[j * ROCK_STRIDE + 5]!;
-    if (dx * dx + dy * dy < rr * rr) return null;
+    if (dx * dx + dy * dy < rr * rr) return no('overlap');
   }
   const lo = rho - r - ASTEROID_GAP, hi = rho + r + ASTEROID_GAP, zone = laneZone(rho);
   let choice: RejoinChoice = { rhoW: rho, how: 'own' };
   if (zone >= 0) {   // §13.2: a lane capture only close to the lane radius
-    if (Math.abs(rho - LANES[zone]!.rho) > LANE_CAPTURE_DR) return null;
+    if (Math.abs(rho - LANES[zone]!.rho) > LANE_CAPTURE_DR) return no('laneFar');
     choice = { rhoW: LANES[zone]!.rho, how: 'lane' };
   }
   else for (let j = 0; j < n; j++) {
@@ -2584,15 +2618,15 @@ export function rejoinChoice(s: TacticalState, k: number): RejoinChoice | null {
     if (laneRail(rc) || clusterRail(s, rc)) continue;
     const [a, z] = sweep(s, j);
     if (!(lo < z && hi > a)) continue;
-    if (REJOIN_SNAP_FACTOR * orbitRate(rho) * Math.abs(rho - rc) >= REJOIN_SNAP_MAX) return null;
+    if (REJOIN_SNAP_FACTOR * orbitRate(rho) * Math.abs(rho - rc) >= REJOIN_SNAP_MAX) return no('snap');
     choice = { rhoW: rc, how: 'group' };
     break;
   }
   for (let j = 0; j < n; j++) {   // plan deviation 3
     if (j === k || !isRail(v[j * ROCK_STRIDE]!)) continue;
     if (Math.abs(railCentreRadius(s, j) - choice.rhoW) < SAME_RHO && v[j * ROCK_STRIDE] === RockKind.Rail) continue;   // same ω: rigid together
-    const [a, z] = sweep(s, j);
-    if (lo < z && hi > a) return null;
+    const [a, z] = sweep(s, j), rj = railCentreRadius(s, j);
+    if (lo < z && hi > a) return no(v[j * ROCK_STRIDE] === RockKind.Tumble || clusterRail(s, rj) ? 'sweepCluster' : laneRail(rj) ? 'sweepLane' : 'sweepRail');
   }
   return choice;
 }
@@ -2623,7 +2657,7 @@ Expected: PASS. The laser push in the 5-shot test is under Task 10's 0.25 · v_e
 
 ```bash
 git add src/renderer/src/sim/tactical/rockSettle.ts src/renderer/src/sim/tactical/duel.ts tests/rockSettle.test.ts
-git commit -m "feat(asteroids-iii): free rocks rejoin at the end of the tick: lane capture within 5 u, rigid groups, own orbit; never across a rail of another ω (spec §3.4, §13.2)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(asteroids-iii): free rocks rejoin at the end of the tick: lane capture within 5 u, rigid groups, own orbit; never across a rail of another ω (spec §3.4, §13.2)" -m "<attribution line>"
 ```
 
 ---
@@ -2632,7 +2666,7 @@ git commit -m "feat(asteroids-iii): free rocks rejoin at the end of the tick: la
 
 **Files:**
 - Modify: `src/renderer/src/sim/tactical/rockBreak.ts` (whole file, below)
-- Modify: `src/renderer/src/sim/tactical/rockBlast.ts:392-398` (the blast push cap), `rockWeapons.ts:434-439` (`laserStrikesRock`, the laser push cap)
+- Modify: `src/renderer/src/sim/tactical/rockBlast.ts:26-32` (the blast loop's push cap), `rockWeapons.ts:28-33` (`laserStrikesRock`, the laser push cap)
 - Modify: `src/renderer/src/sim/tactical/rockContacts.ts` (the Roche break in part 1)
 - Modify: `src/renderer/src/sim/tactical/rockTuning.ts` (delete `ROCK_FLING`, `ROCK_BLAST_FLING`)
 - Modify tests: `tests/rockBreak.test.ts` (the fan, burst and eviction cases), `tests/rockBlast.test.ts` (the direct hit, the fall-off, the list-before-hit cases)
@@ -3014,7 +3048,7 @@ Expected: PASS. `rockLaser`'s break-count case still gives 3/2/2/2/0 (the fan's 
 
 ```bash
 git add src/renderer/src/sim/tactical/rockBreak.ts src/renderer/src/sim/tactical/rockBlast.ts src/renderer/src/sim/tactical/rockWeapons.ts src/renderer/src/sim/tactical/rockContacts.ts src/renderer/src/sim/tactical/rockTuning.ts tests/rockBreak.test.ts tests/rockBlast.test.ts tests/rockMotion.test.ts
-git commit -m "feat(asteroids-iii): breaking: bursts of 8/6/4 born clear of each other, escape-scaled kicks, the Roche break, push caps, eviction of any kind, rockSlotDust (spec §5, §13.3, §13.6)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(asteroids-iii): breaking: bursts of 8/6/4 born clear of each other, escape-scaled kicks, the Roche break, push caps, eviction of any kind, rockSlotDust (spec §5, §13.3, §13.6)" -m "<attribution line>"
 ```
 
 ---
@@ -3271,16 +3305,21 @@ export function threatAhead(state: TacticalState, i: number): { x: number; y: nu
 Run: `npm run typecheck && npx vitest run tests/rockPredict.test.ts tests/rockShips.test.ts tests/tacticalDeterminism.test.ts tests/tacticalContacts.test.ts tests/feelIiModels.test.ts tests/engWeapons.test.ts tests/boundary.test.ts`
 Expected: PASS (`tacticalDeterminism`'s predictPath cases run with no rock near the path, and `engWeapons` clears every rock before its `touchesSolid` check). `duelGates` runs in Task 14.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: Full-suite triage**
+
+Run: `npx vitest run` (the whole suite: expect several minutes; give the command a 20-minute timeout, or run it in the background and wait).
+Expected: the only failures are the goldens and the trajectory-pinned tests that Task 14 re-blesses and re-pins (`golden`, `duelGolden`, `duelRematchGolden`, `determinismHarness`, `duelCheckpoint`, `duelModules`, `duelSnapshot`, `duelScripted`, `tacticalSlots`, pinned telemetry counts). Every other failure is a bug in Tasks 2–11: fix it in the task's file with a failing test first and include the fix in this task's commit. List the remaining expected failures in the commit message body.
+
+- [ ] **Step 8: Commit**
 
 ```bash
 git add src/renderer/src/sim/tactical/contacts.ts src/renderer/src/sim/tactical/predict.ts src/renderer/src/sim/duel/scripted.ts src/renderer/src/sim/tactical/hunter.ts tests/rockPredict.test.ts tests/rockShips.test.ts
-git commit -m "feat(asteroids-iii): soft ship contacts under 15 u/s, the rock-side separation cap; predictions meet rocks where they will be; hazard and threat sweeps relative to each rock (spec §6.2, §6.3)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(asteroids-iii): soft ship contacts under 15 u/s, the rock-side separation cap; predictions meet rocks where they will be; hazard and threat sweeps relative to each rock (spec §6.2, §6.3)" -m "<attribution line>"
 ```
 
 ---
 
-### Task 12: The renderer: smooth motion, trails, relative streaks, spin, the predicted path, shards, the touch cue, hit-stop
+### Task 12a: The renderer's motion: the rock track, interpolation, trails, relative streaks, spin, the predicted path
 
 Renderer only (render files may use any Math). Online guests get no rock events (§9), so trails and streaks are built from state.
 
@@ -3288,14 +3327,12 @@ Renderer only (render files may use any Math). Online guests get no rock events 
 - Create: `src/renderer/src/render/tactical/rockTrack.ts`
 - Modify: `src/renderer/src/render/tactical/tacticalModel.ts` (input `rockTrack`; `AsteroidDraw` gains `spin`, `trail`; relative streaks; `TacticalDraw.rockPath`; `asteroidSpin`; `crackDraw` gains `spin`)
 - Modify: `src/renderer/src/render/tactical/tacticalLayer.ts` (the asteroid loop: spin, trails; the rock path)
-- Modify: `src/renderer/src/render/tactical/fxModel.ts` (`FxState.hold`), `rockFx.ts` (shards, puffs, touch spark, `holdFrame`), `src/renderer/src/audio/rockSounds.ts` (the touch knock)
-- Modify: `src/renderer/src/app/duel/scene.ts` (the rock track, hit-stop)
-- Test: `tests/rockTrack.test.ts`; modify `tests/rockFx.test.ts`, `tests/rockSounds.test.ts`, `tests/rockCracks.test.ts`
+- Test: `tests/rockTrack.test.ts`; modify `tests/rockCracks.test.ts`, `tests/rockFx.test.ts` (delete the old streak test)
 
 **Interfaces:**
 - Consumes: `orbitRate`, `SPIN_RATE`, `circularVelocity` (rails.ts); `predictRock` (predict.ts, Task 11); `isRail`, `RockKind`, `rockT`, `rockX`, `rockY`, `rockSlots`, `ROCK_STRIDE` (rocks.ts); `fxRandom`, `FxState`, `FxItem`, `ViewEvent` (fxModel.ts); `crackDraw` (Task 2).
 - Produces (rockTrack.ts): `TRAIL_HZ = 4`, `TRAIL_LEN = 100`, `TRAIL_YOUNG_S = 25`, `TRAIL_OLD_S = 6`, `YOUNG_AGE_S = 60`, `JUMP_RESET_U = 50`; `interface RockTrack`; `createRockTrack(): RockTrack`; `resetRockTrack(t: RockTrack): void`; `updateRockTrack(t: RockTrack, s: TacticalState): void`; `rockDrawPos(t: RockTrack | null, s: TacticalState, k: number, alpha: number): Point`; `rockTrail(t: RockTrack, s: TacticalState, k: number): Point[]` (world, oldest first).
-- Produces (tacticalModel.ts): `STREAK_MIN_REL = 8, STREAK_S = 1, STREAK_MAX_U = 90`; `asteroidSpin(index: number): number` (rad/s, ±0.1 to 0.5); `crackDraw(index, wear, cx, cy, r, spin = 0)`; `ROCK_PATH_TICKS = 1200, ROCK_PATH_EVERY = 30`. (rockFx.ts) `SHARD_COUNT = 16`, `SHARD_SPEED = [150, 250]`, `SHARD_LIFE = [1, 2]`, `PUFF_COUNT = 6`, `TOUCH_SPARK_S = 0.18`, `HIT_STOP_S = 0.08`; `holdFrame(fx: FxState, dt: number): boolean`. (rockSounds.ts) `ROCK_TOUCH: SoundRequest`.
+- Produces (tacticalModel.ts): `STREAK_MIN_REL = 8, STREAK_S = 1, STREAK_MAX_U = 90`; `asteroidSpin(index: number): number` (rad/s, ±0.1 to 0.5); `crackDraw(index, wear, cx, cy, r, spin = 0)`; `ROCK_PATH_TICKS = 1200, ROCK_PATH_EVERY = 30`.
 
 - [ ] **Step 1: Write the failing tests.** Create `tests/rockTrack.test.ts`:
 
@@ -3367,55 +3404,7 @@ describe('the map model (spec §7.1, §7.2, §13.5)', () => {
 });
 ```
 
-  In `tests/rockFx.test.ts` replace the test `'a break: a burst sized by the rock and 10 to 16 specks; dust: a burst and a puff; a hit alone: nothing'` with the cases below, replace `describe('streaks and cracks in the map model ...')`'s streak test `'a rock faster than 20 u/s streaks behind it ...'` by deleting it (relative streaks are in `tests/rockTrack.test.ts`), and add `holdFrame, HIT_STOP_S, PUFF_COUNT, SHARD_COUNT, TOUCH_SPARK_S` to the rockFx import:
-
-```ts
-  it('a burst split: a burst sized by the rock and 16 shards at 150 to 250 u/s fading over 1 to 2 s, and the hit-stop', () => {
-    const fx = createFx();
-    pushRockFx(fx, [{ ...rock('split', 'torpedo'), burst: true } as ViewEvent]);
-    expect(of(fx.items, 'burst')).toMatchObject([{ size: 30 }]);
-    const shards = of(fx.items, 'speck');
-    expect(shards).toHaveLength(SHARD_COUNT);
-    for (const s of shards) {
-      const sp = Math.hypot(s.vx! - 20, s.vy!);
-      expect(sp).toBeGreaterThanOrEqual(150); expect(sp).toBeLessThanOrEqual(250);
-      expect(s.life).toBeGreaterThanOrEqual(1); expect(s.life).toBeLessThanOrEqual(2);
-    }
-    expect(fx.hold).toBe(HIT_STOP_S);
-  });
-  it('a fan split or a dust: a burst and a puff of 6 shards, no hit-stop; a hit alone: nothing', () => {
-    for (const what of ['split', 'dust'] as const) {
-      const fx = createFx(); pushRockFx(fx, [rock(what)]);
-      expect(of(fx.items, 'burst')).toHaveLength(1);
-      expect(of(fx.items, 'speck')).toHaveLength(PUFF_COUNT);
-      expect(fx.hold).toBe(0);
-    }
-    const hit = createFx(); pushRockFx(hit, [rock('hit')]);
-    expect(hit.items).toEqual([]);
-  });
-  it('a touch: a small spark (a slow billiard\'s cue)', () => {
-    const fx = createFx();
-    pushRockFx(fx, [{ kind: 'rock', what: 'touch', by: 'collision', rock: 1, other: 2, x: 5, y: 6, r: 10, vx: 0, vy: 0, speed: 9 } as ViewEvent]);
-    expect(fx.items).toMatchObject([{ kind: 'spark', life: TOUCH_SPARK_S, x1: 5, y1: 6 }]);
-  });
-  it('hit-stop: holdFrame holds while fx.hold lasts, then lets drawing go on', () => {
-    const fx = createFx();
-    expect(holdFrame(fx, 1 / 60)).toBe(false);
-    fx.hold = HIT_STOP_S;
-    let held = 0;
-    for (let k = 0; k < 10; k++) if (holdFrame(fx, 1 / 60)) held++;
-    expect(held).toBe(5);   // 80 ms at 60 frames a second
-    expect(fx.hold).toBe(0);
-  });
-```
-
-  In `tests/rockSounds.test.ts` add `ROCK_TOUCH` to the import and append inside the describe:
-
-```ts
-  it('a touch plays the soft knock (asteroids-iii §5.6)', () => {
-    expect(rockSounds(null, [{ kind: 'rock', what: 'touch', by: 'collision', rock: 1, other: 2, x: 0, y: 0, r: 10, vx: 0, vy: 0, speed: 9 } as ViewEvent], pan, 0).sounds).toEqual([{ ...ROCK_TOUCH, pan: 0.1 }]);
-  });
-```
+  In `tests/rockFx.test.ts` delete `describe('streaks and cracks in the map model ...')`'s streak test `'a rock faster than 20 u/s streaks behind it ...'` (relative streaks are in `tests/rockTrack.test.ts`).
 
   In `tests/rockCracks.test.ts` append inside its describe:
 
@@ -3428,8 +3417,8 @@ describe('the map model (spec §7.1, §7.2, §13.5)', () => {
 
 - [ ] **Step 2: Run them to make sure they fail**
 
-Run: `npx vitest run tests/rockTrack.test.ts tests/rockFx.test.ts tests/rockSounds.test.ts tests/rockCracks.test.ts`
-Expected: FAIL (`rockTrack` missing; no shards, touch spark, hold or `ROCK_TOUCH`).
+Run: `npx vitest run tests/rockTrack.test.ts tests/rockCracks.test.ts`
+Expected: FAIL (`rockTrack` missing; `crackDraw` has no spin).
 
 - [ ] **Step 3: Create `src/renderer/src/render/tactical/rockTrack.ts`**
 
@@ -3561,7 +3550,89 @@ export function asteroidSpin(index: number): number {
       for (const q of d.rockPath ?? []) bodies.rect(Math.round(q.x) - 1, Math.round(q.y) - 1, 2, 2).fill({ color: CRT.mid, alpha: 0.8 });   // §7.2: the target's next 20 s
 ```
 
-- [ ] **Step 6: Shards, the touch cue, hit-stop and the knock.**
+- [ ] **Step 6: Run the tests**
+
+Run: `npm run typecheck && npx vitest run tests/rockTrack.test.ts tests/rockCracks.test.ts tests/rockFx.test.ts tests/rockTargetModel.test.ts tests/tacticalModel.test.ts tests/tacticalLayer.test.ts tests/crtColours.test.ts tests/duelWeaponsView.test.ts`
+Expected: PASS. If `crtColours.test.ts` lists the layer's colours, the new strokes use `CRT.dim` and `CRT.mid` only. (The scene passes no rock track until Task 12b, so the app draws as before apart from the streak rule, the spin and the path.)
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/renderer/src/render/tactical/rockTrack.ts src/renderer/src/render/tactical/tacticalModel.ts src/renderer/src/render/tactical/tacticalLayer.ts tests/rockTrack.test.ts tests/rockCracks.test.ts tests/rockFx.test.ts
+git commit -m "feat(asteroids-iii): the renderer's motion: the rock track (rails drawn between ticks, free rocks lerped, 25 s trails while young), relative streaks, outline spin, the target's predicted path (spec §7.1, §7.2, §13.5)" -m "<attribution line>"
+```
+
+---
+
+### Task 12b: The renderer's feedback: shards, puffs, the touch cue and sound, hit-stop, and the scene's rock track
+
+**Files:**
+- Modify: `src/renderer/src/render/tactical/fxModel.ts` (`FxState.hold`), `rockFx.ts` (shards, puffs, touch spark, `holdFrame`), `src/renderer/src/audio/rockSounds.ts` (the touch knock)
+- Modify: `src/renderer/src/app/duel/scene.ts` (the rock track, hit-stop)
+- Test: modify `tests/rockFx.test.ts`, `tests/rockSounds.test.ts`
+
+**Interfaces:**
+- Consumes: `fxRandom`, `FxState`, `FxItem`, `ViewEvent` (fxModel.ts); `createRockTrack`, `resetRockTrack`, `updateRockTrack` (rockTrack.ts, Task 12a).
+- Produces (rockFx.ts) `SHARD_COUNT = 16`, `SHARD_SPEED = [150, 250]`, `SHARD_LIFE = [1, 2]`, `PUFF_COUNT = 6`, `TOUCH_SPARK_S = 0.18`, `HIT_STOP_S = 0.08`; `holdFrame(fx: FxState, dt: number): boolean`. (rockSounds.ts) `ROCK_TOUCH: SoundRequest`.
+
+
+- [ ] **Step 1: Write the failing tests.**
+  In `tests/rockFx.test.ts` replace the test `'a break: a burst sized by the rock and 10 to 16 specks; dust: a burst and a puff; a hit alone: nothing'` with the cases below and add `holdFrame, HIT_STOP_S, PUFF_COUNT, SHARD_COUNT, TOUCH_SPARK_S` to the rockFx import:
+
+```ts
+  it('a burst split: a burst sized by the rock and 16 shards at 150 to 250 u/s fading over 1 to 2 s, and the hit-stop', () => {
+    const fx = createFx();
+    pushRockFx(fx, [{ ...rock('split', 'torpedo'), burst: true } as ViewEvent]);
+    expect(of(fx.items, 'burst')).toMatchObject([{ size: 30 }]);
+    const shards = of(fx.items, 'speck');
+    expect(shards).toHaveLength(SHARD_COUNT);
+    for (const s of shards) {
+      const sp = Math.hypot(s.vx! - 20, s.vy!);
+      expect(sp).toBeGreaterThanOrEqual(150); expect(sp).toBeLessThanOrEqual(250);
+      expect(s.life).toBeGreaterThanOrEqual(1); expect(s.life).toBeLessThanOrEqual(2);
+    }
+    expect(fx.hold).toBe(HIT_STOP_S);
+  });
+  it('a fan split or a dust: a burst and a puff of 6 shards, no hit-stop; a hit alone: nothing', () => {
+    for (const what of ['split', 'dust'] as const) {
+      const fx = createFx(); pushRockFx(fx, [rock(what)]);
+      expect(of(fx.items, 'burst')).toHaveLength(1);
+      expect(of(fx.items, 'speck')).toHaveLength(PUFF_COUNT);
+      expect(fx.hold).toBe(0);
+    }
+    const hit = createFx(); pushRockFx(hit, [rock('hit')]);
+    expect(hit.items).toEqual([]);
+  });
+  it('a touch: a small spark (a slow billiard\'s cue)', () => {
+    const fx = createFx();
+    pushRockFx(fx, [{ kind: 'rock', what: 'touch', by: 'collision', rock: 1, other: 2, x: 5, y: 6, r: 10, vx: 0, vy: 0, speed: 9 } as ViewEvent]);
+    expect(fx.items).toMatchObject([{ kind: 'spark', life: TOUCH_SPARK_S, x1: 5, y1: 6 }]);
+  });
+  it('hit-stop: holdFrame holds while fx.hold lasts, then lets drawing go on', () => {
+    const fx = createFx();
+    expect(holdFrame(fx, 1 / 60)).toBe(false);
+    fx.hold = HIT_STOP_S;
+    let held = 0;
+    for (let k = 0; k < 10; k++) if (holdFrame(fx, 1 / 60)) held++;
+    expect(held).toBe(5);   // 80 ms at 60 frames a second
+    expect(fx.hold).toBe(0);
+  });
+```
+
+  In `tests/rockSounds.test.ts` add `ROCK_TOUCH` to the import and append inside the describe:
+
+```ts
+  it('a touch plays the soft knock (asteroids-iii §5.6)', () => {
+    expect(rockSounds(null, [{ kind: 'rock', what: 'touch', by: 'collision', rock: 1, other: 2, x: 0, y: 0, r: 10, vx: 0, vy: 0, speed: 9 } as ViewEvent], pan, 0).sounds).toEqual([{ ...ROCK_TOUCH, pan: 0.1 }]);
+  });
+```
+
+- [ ] **Step 2: Run them to make sure they fail**
+
+Run: `npx vitest run tests/rockFx.test.ts tests/rockSounds.test.ts`
+Expected: FAIL (no shards, touch spark, hold or `ROCK_TOUCH`).
+
+- [ ] **Step 3: Shards, the touch cue, hit-stop and the knock.**
   - `fxModel.ts`: `FxState` gains `/** Asteroids-iii §5.6: seconds of hit-stop left (the tactical layer holds its last drawing). */ hold: number;`; `createFx` returns `hold: 0`; `resetFx` sets `fx.hold = 0`.
   - `rockFx.ts`: add the constants and `holdFrame`, and replace the `split`/`dust` branch and the `bump` branch of `pushRockFx`:
 
@@ -3594,7 +3665,7 @@ export function holdFrame(fx: FxState, dt: number): boolean {
   and after the `bump` branch add `else if (e.what === 'touch') fx.items.push({ kind: 'spark', age: 0, life: TOUCH_SPARK_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.mid });   // §5.6: a slow billiard's cue`. (The shard speeds are on top of the parent's velocity, so the test subtracts the event's vx 20.) Update the header comment with `asteroids-iii §5.6: shards, puffs, the touch spark, the hit-stop`.
   - `rockSounds.ts`: add `export const ROCK_TOUCH: SoundRequest = { key: 'impactMetal', gain: 0.15, rate: 0.5, dur: 0.15, filter: { type: 'lowpass', from: 600 } };` and, after the `bump` line, `else if (e.what === 'touch') tiers[3]!.push({ sound: ROCK_TOUCH, x: e.x, y: e.y });   // asteroids-iii §5.6: a soft knock, the slow billiards' cue`.
 
-- [ ] **Step 7: The scene.** In `src/renderer/src/app/duel/scene.ts`:
+- [ ] **Step 4: The scene.** In `src/renderer/src/app/duel/scene.ts`:
   - Import `createRockTrack, resetRockTrack, updateRockTrack` from `../../render/tactical/rockTrack` and add `holdFrame` to the `rockFx` import.
   - After `const fx = createFx();` (line 208) add `const rockTrack = createRockTrack();   // asteroids-iii §7.1: smooth motion and trails`.
   - In the new-round block, after `resetFx(fx);` add `resetRockTrack(rockTrack);`.
@@ -3603,16 +3674,16 @@ export function holdFrame(fx: FxState, dt: number): boolean {
   - Before `const input = {` add `updateRockTrack(rockTrack, d.tactical);` and add `rockTrack,` to the input object.
   - Wrap the `layer.draw(model, combatModel(...), t);` call in `if (!held) { ... }` (the model and the overlay are still computed).
 
-- [ ] **Step 8: Run the tests**
+- [ ] **Step 5: Run the tests**
 
-Run: `npm run typecheck && npx vitest run tests/rockTrack.test.ts tests/rockFx.test.ts tests/rockSounds.test.ts tests/rockCracks.test.ts tests/rockTargetModel.test.ts tests/tacticalModel.test.ts tests/tacticalLayer.test.ts tests/crtColours.test.ts tests/contactScene.test.ts tests/audioDuel.test.ts tests/duelWeaponsView.test.ts`
-Expected: PASS. If `crtColours.test.ts` lists the layer's colours, the new strokes use `CRT.dim` and `CRT.mid` only.
+Run: `npm run typecheck && npx vitest run tests/rockFx.test.ts tests/rockSounds.test.ts tests/rockTrack.test.ts tests/contactScene.test.ts tests/audioDuel.test.ts tests/tacticalModel.test.ts`
+Expected: PASS.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/renderer/src/render/tactical/rockTrack.ts src/renderer/src/render/tactical/tacticalModel.ts src/renderer/src/render/tactical/tacticalLayer.ts src/renderer/src/render/tactical/fxModel.ts src/renderer/src/render/tactical/rockFx.ts src/renderer/src/audio/rockSounds.ts src/renderer/src/app/duel/scene.ts tests/rockTrack.test.ts tests/rockFx.test.ts tests/rockSounds.test.ts tests/rockCracks.test.ts
-git commit -m "feat(asteroids-iii): the renderer: rails drawn between ticks, free rocks lerped, 25 s trails while young, relative streaks, outline spin, the target's predicted path, shards, the touch cue and hit-stop (spec §5.6, §7, §13.5)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git add src/renderer/src/render/tactical/fxModel.ts src/renderer/src/render/tactical/rockFx.ts src/renderer/src/audio/rockSounds.ts src/renderer/src/app/duel/scene.ts tests/rockFx.test.ts tests/rockSounds.test.ts
+git commit -m "feat(asteroids-iii): the renderer's feedback: shards, puffs, the touch spark and knock, the 80 ms hit-stop, and the scene's rock track (spec §5.6, §7.1)" -m "<attribution line>"
 ```
 
 ---
@@ -3635,26 +3706,30 @@ git commit -m "feat(asteroids-iii): the renderer: rails drawn between ticks, fre
 //   npx tsx scripts/spike-asteroids-iii-measure.ts [--json <path>] [--only feel|stress|cost|idle|burst]
 // feel   §8.2: seed 2026, the Hunter off, the crew on a circular orbit 300 u outward of each of the 10 largest main-lane
 //        rocks, one rock-targeted torpedo each. A shot passes with (a) ≥ 6 real pieces, (b) ≥ 3 touch events within 20 s,
-//        (c) ≥ 50% of the parent's mass alive at 30 s, (d) ≥ 4 burst pieces whose velocity relative to V_c turned ≥ 25°
+//        (c) ≥ 50% of the burst's born piece mass (by the active mass law, rockMass) alive at 30 s (plan deviation 23), (d) ≥ 4 burst pieces whose velocity relative to V_c turned ≥ 25°
 //        by 20 s. Gate: ≥ 7 of 10. §13.7: run with all four switches on (the gate) and all four off (reported).
 // stress §8.3: seeds 1-20 × 4,000 ticks, the Hunter off, the stress driver; twins hashed every 500 ticks; a save and
 //        restore at 4,000 then 1,000 more ticks; the safety counters (edge dust, rockSlotDust, rockCapHits: gates 0), tidal
-//        breaks and their pieces, rejoins by how, the free count every 10 s, stepDuel's p99 (reported).
+//        breaks and their pieces, rejoins by how, refused rejoins by reason every 60 ticks (plan deviation 3), the grid
+//        against a brute-force scan every 60 ticks (plan deviation 18), the free count every 10 s, stepDuel's p99.
 // cost   §8.3: seeds 1-3, every empty slot filled with a free rock (about 240 live), 2,000 ticks of the stress driver:
-//        stepDuel's p99 under 0.5 ms.
-// idle   §8.3: seeds 1-20, 600 s with no player action (the quiet scene, crew at ρ 2750, Hunter off): 0 rocks ever freed;
-//        and seeds 1-3's 20 Hz deltas at 60, 300 and 600 s, each window's median at most master's (Task 1's JSON).
+//        stepDuel's p99 under 0.5 ms; once with the fill flying and once settled and over 60 s old (every rock a rejoin
+//        candidate each tick, so the refused-rejoin loops run).
+// idle   §8.3: seeds 1-20, 600 s with no player action (the quiet scene, crew at IDLE_ORBIT_R, Hunter off): 0 rocks ever
+//        freed; and seeds 1-3's 20 Hz deltas at 60, 300 and 600 s, each window's median at most master's (Task 1's JSON)
+//        plus 64 bytes.
 // burst  §8.3: seeds 1-3, the quiet scene with bursts at 10, 20 and 30 s: the free count back to ≤ 10 by 270 s, and the
 //        delta median from 10 to 270 s ≤ 5,500 bytes.
 import { performance } from 'node:perf_hooks';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { BURST_TIMES, BURST_WINDOW, IDLE_SEEDS, IDLE_WINDOWS, median, quietRun } from './spike-asteroids-iii-idle';
+import { BURST_TIMES, BURST_WINDOW, IDLE_ORBIT_R, IDLE_SEEDS, IDLE_WINDOWS, median, quietRun } from './spike-asteroids-iii-idle';
 import { parkCoOrbit, stressInput, switchOff } from '../tests/helpers/rockStress';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { flattenTactical, hashTactical, unflattenTactical, validateTacticalValues } from '../src/renderer/src/sim/tactical/hash';
 import { circularVelocity } from '../src/renderer/src/sim/tactical/rails';
-import { rockAlive, rockAt, rockHp, RockKind, rockSlots, ROCK_STRIDE, writeRock } from '../src/renderer/src/sim/tactical/rocks';
+import { rockAlive, rockAt, rockHp, RockKind, rockMass, rocksNearGrid, rockSlots, ROCK_STRIDE, rockX, rockY, writeRock } from '../src/renderer/src/sim/tactical/rocks';
+import { rejoinChoice, type RejoinRefusal } from '../src/renderer/src/sim/tactical/rockSettle';
 import { ROCK_SWITCHES } from '../src/renderer/src/sim/tactical/rockTuning';
 import { createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
@@ -3667,18 +3742,22 @@ const round = (v: number, d = 4): number => Number(v.toFixed(d));
 const count = (st: TacticalState, kind: number): number => { let n = 0; for (let k = 0; k < rockSlots(st); k++) if (st.rocks[k * ROCK_STRIDE] === kind) n++; return n; };
 const isRailKind = (kind: number): boolean => kind === RockKind.Rail || kind === RockKind.Tumble;
 const COS25 = Math.cos((25 * Math.PI) / 180);
+/** Plan deviation 17: the idle delta gate allows this many bytes over master's per window median (constant fields such as
+ *  the larger reserve and the new counters may cost a few bytes in the delta encoding). */
+const IDLE_DELTA_TOLERANCE = 64;
 
 function feelShot(rock: number) {
   const st = createTacticalState(2026);
   switchOff(st, 1); parkCoOrbit(st, rock, 300);
-  const parent = rockAt(st, rock), parentMass = parent.r * parent.r * parent.r, family = new Set<number>(), u0 = new Map<number, [number, number]>();
+  const parent = rockAt(st, rock), family = new Set<number>(), u0 = new Map<number, [number, number]>();
+  let bornMass = 0;
   let blastAt = -1, pieces = 0, touches = 0, massShare = -1, turned = -1;
   for (let k = 0; k < 4000 && (blastAt < 0 || st.tick - 1 < blastAt + 1800); k++) {
     stepDuel(st, { ...IDLE_INPUT, rockLock: { laser: null, torpedo: k === 0 ? rock : null } });
     const now = st.tick - 1;
     for (const e of st.events) {
       if (e.kind !== 'rock') continue;
-      if (e.what === 'split' && e.burst && blastAt < 0) { blastAt = now; pieces = e.pieces!.length; for (const p of e.pieces!) family.add(p); continue; }
+      if (e.what === 'split' && e.burst && blastAt < 0) { blastAt = now; pieces = e.pieces!.length; for (const p of e.pieces!) { family.add(p); bornMass += rockMass(rockAt(st, p).r); } continue; }
       if (blastAt < 0) continue;
       if (e.what === 'touch' && now <= blastAt + 1200) touches++;
       if (e.what === 'split' && family.has(e.rock)) { u0.delete(e.rock); for (const p of e.pieces ?? []) family.add(p); }
@@ -3695,18 +3774,19 @@ function feelShot(rock: number) {
     }
     if (blastAt >= 0 && now === blastAt + 1800) {
       let m = 0;
-      for (const p of family) if (rockAlive(st, p)) { const r = rockAt(st, p).r; m += r * r * r; }
-      massShare = m / parentMass;
+      for (const p of family) if (rockAlive(st, p)) m += rockMass(rockAt(st, p).r);
+      massShare = bornMass > 0 ? m / bornMass : 0;   // plan deviation 23: of the born pieces' mass, by the active mass law
     }
   }
-  const pass = pieces >= 6 && touches >= 3 && massShare >= 0.5 && turned >= 4;
-  return { rock, r: round(parent.r, 1), blasted: blastAt >= 0, pieces, touches, massShare: round(massShare, 3), turned, pass };
+  const crit = { a: pieces >= 6, b: touches >= 3, c: massShare >= 0.5, d: turned >= 4 }, pass = crit.a && crit.b && crit.c && crit.d;
+  return { rock, r: round(parent.r, 1), blasted: blastAt >= 0, pieces, touches, massShare: round(massShare, 3), turned, crit, pass };
 }
 function feelRun() {
   const shape = createTacticalState(2026), main0 = shape.map.laneSizes[0]!, main1 = main0 + shape.map.laneSizes[1]!;
   const big = Array.from({ length: main1 - main0 }, (_, j) => main0 + j).sort((x, y) => shape.map.asteroids[y]!.r - shape.map.asteroids[x]!.r || x - y).slice(0, 10);
   const rows = big.map(feelShot), passing = rows.filter((r) => r.pass).length;
-  return { rows, passing, gatePass: passing >= 7 };
+  const perCriterion = { a: rows.filter((r) => r.crit.a).length, b: rows.filter((r) => r.crit.b).length, c: rows.filter((r) => r.crit.c).length, d: rows.filter((r) => r.crit.d).length };
+  return { rows, passing, perCriterion, gatePass: passing >= 7 };
 }
 /** Run `run` with every switch set to `on`, always restoring them. */
 function switches<T>(on: boolean, run: () => T): T {
@@ -3718,8 +3798,8 @@ const feel = want('feel') ? { seed: 2026, allOn: switches(true, feelRun), allOff
 
 const stress = want('stress') ? (() => {
   const times: number[] = [], failures: string[] = [], freeEvery10s: number[][] = [];
-  let edgeDust = 0, tidalBreaks = 0, tidalPieces = 0, slotDust = 0, capHits = 0;
-  const rejoins = { lane: 0, group: 0, own: 0 };
+  let edgeDust = 0, tidalBreaks = 0, tidalPieces = 0, slotDust = 0, capHits = 0, gridChecks = 0;
+  const rejoins = { lane: 0, group: 0, own: 0 }, refused: Record<string, number> = {}, gridWrong: string[] = [];
   for (let seed = 1; seed <= 20; seed++) {
     const a = createTacticalState(seed), b = createTacticalState(seed), marks: number[] = [];
     switchOff(a, 1); switchOff(b, 1);
@@ -3734,6 +3814,7 @@ const stress = want('stress') ? (() => {
         if (e.what === 'rejoin' && e.how) rejoins[e.how]++;
       }
       if (a.tick % 600 === 0) marks.push(count(a, RockKind.Free));
+      if (a.tick % 60 === 0) { tallyRefusals(a, refused); gridChecks++; const w = gridAgainstBrute(a); if (w) gridWrong.push(`seed ${seed} tick ${a.tick}: ${w}`); }   // plan deviations 3, 18
       if ((k + 1) % 500 === 0 && hashTactical(a) !== hashTactical(b)) { failures.push(`seed ${seed} tick ${k + 1}: twin runs differ`); break; }
     }
     slotDust += a.rockSlotDust; capHits += a.rockCapHits;
@@ -3745,25 +3826,48 @@ const stress = want('stress') ? (() => {
     if (hashTactical(c) !== hashTactical(a)) failures.push(`seed ${seed}: save and restore diverged`);
   }
   const safety = { edgeDust, slotDust, capHits };
-  return { seeds: 20, ticks: 4000, restoreTicks: 1000, failures, safety, safetyPass: edgeDust === 0 && slotDust === 0 && capHits === 0, tidalBreaks, tidalPieces, rejoins,
+  if (gridWrong.length > 0) failures.push(...gridWrong.slice(0, 5).map((w) => `grid: ${w}`));
+  return { seeds: 20, ticks: 4000, restoreTicks: 1000, failures, safety, refused, gridChecks, safetyPass: edgeDust === 0 && slotDust === 0 && capHits === 0, tidalBreaks, tidalPieces, rejoins,
     stepDuelMs: { median: round(median(times)), p99: round(quantile(times, 0.99)) }, freeEvery10sMax: Array.from({ length: freeEvery10s[0]?.length ?? 0 }, (_, j) => Math.max(...freeEvery10s.map((m) => m[j] ?? 0))) };
 })() : null;
 
-/** Fill every empty slot with a free rock (r 9 to 12) on a spread of orbits from ρ 1350 to 2650, a little off circular. */
-function fillFree(st: TacticalState): void {
+/** Plan deviation 3: tally the free rocks that pass the clock and speed tests but are refused a rail, by reason. */
+function tallyRefusals(st: TacticalState, into: Record<string, number>): void {
+  for (let k = 0; k < rockSlots(st); k++) {
+    if (st.rocks[k * ROCK_STRIDE] !== RockKind.Free) continue;
+    const why: { reason: RejoinRefusal | null } = { reason: null };
+    if (rejoinChoice(st, k, why) === null && why.reason && why.reason !== 'state' && why.reason !== 'clock' && why.reason !== 'speed') into[why.reason] = (into[why.reason] ?? 0) + 1;
+  }
+}
+/** Plan deviation 18: the grid against a brute-force bounding-box scan for every live rock (between ticks, on the last
+ *  step's grid); the first mismatch, or null. */
+function gridAgainstBrute(st: TacticalState): string | null {
+  const n = rockSlots(st), live: number[] = [], xs = new Float64Array(n), ys = new Float64Array(n), rs = new Float64Array(n);
+  for (let k = 0; k < n; k++) if (rockAlive(st, k)) { live.push(k); xs[k] = rockX(st, k); ys[k] = rockY(st, k); rs[k] = st.rocks[k * ROCK_STRIDE + 5]!; }
+  for (const k of live) {
+    const brute = live.filter((j) => Math.abs(xs[j]! - xs[k]!) <= rs[k]! + rs[j]! && Math.abs(ys[j]! - ys[k]!) <= rs[k]! + rs[j]!).join(','), grid = rocksNearGrid(st, xs[k]!, ys[k]!, rs[k]!).join(',');
+    if (grid !== brute) return `rock ${k}: grid ${grid} brute ${brute}`;
+  }
+  return null;
+}
+/** Fill every empty slot with a free rock (r 9 to 12) on a spread of orbits from ρ 1350 to 2650, a little off circular, or
+ *  (settled) exactly circular and older than 60 s, so every one is a rejoin candidate each tick (plan deviation 12, cost). */
+function fillFree(st: TacticalState, settled = false): void {
   let j = 0;
   for (let k = 0; k < rockSlots(st); k++) {
     if (st.rocks[k * ROCK_STRIDE] !== RockKind.Gone) continue;
     const rho = 1350 + ((j * 37) % 1300), ang = j * 2.399963229728653, x = Math.cos(ang) * rho, y = Math.sin(ang) * rho, [vx, vy] = circularVelocity(x, y), r = 9 + (j % 4);
-    writeRock(st, k, RockKind.Free, x, y, vx + ((j * 13) % 7) - 3, vy + ((j * 7) % 5) - 2, r, rockHp(r));
+    writeRock(st, k, RockKind.Free, x, y, settled ? vx : vx + ((j * 13) % 7) - 3, settled ? vy : vy + ((j * 7) % 5) - 2, r, rockHp(r), 0);
     j++;
   }
 }
-const cost = want('cost') ? (() => {
+function costRun(settled: boolean) {
   const times: number[] = [], live: number[] = [];
   for (const seed of [1, 2, 3]) {
     const st = createTacticalState(seed);
-    switchOff(st, 1); fillFree(st);
+    switchOff(st, 1);
+    if (settled) st.tick = 3700;   // the fill's clocks (t = 0) are then over 60 s old: full drag, rejoin candidates every tick
+    fillFree(st, settled);
     for (let k = 0; k < 2000; k++) {
       const input = stressInput(st), t0 = performance.now();
       stepDuel(st, input); times.push(performance.now() - t0);
@@ -3772,15 +3876,16 @@ const cost = want('cost') ? (() => {
   }
   const p99 = quantile(times, 0.99);
   return { seeds: [1, 2, 3], ticks: 2000, liveMedian: median(live), liveMin: Math.min(...live), stepDuelMs: { median: round(median(times)), p99: round(p99) }, p99GateMs: 0.5, p99Pass: p99 < 0.5 };
-})() : null;
+}
+const cost = want('cost') ? (() => { const flying = costRun(false), settled = costRun(true); return { flying, settled, p99Pass: flying.p99Pass && settled.p99Pass }; })() : null;
 
 const idle = want('idle') ? (() => {
   let freed = 0;
   const perSeed: number[] = [];
   for (let seed = 1; seed <= 20; seed++) {
-    const st = createTacticalState(seed), [vx, vy] = circularVelocity(0, -2750);
+    const st = createTacticalState(seed), [vx, vy] = circularVelocity(0, -IDLE_ORBIT_R);
     switchOff(st, 1);
-    Object.assign(st.ships[0], { x: 0, y: -2750, vx, vy, heading: 64, headingAcc: 0 });
+    Object.assign(st.ships[0], { x: 0, y: -IDLE_ORBIT_R, vx, vy, heading: 64, headingAcc: 0 });
     let kinds = Array.from({ length: rockSlots(st) }, (_, k) => st.rocks[k * ROCK_STRIDE]!), seedFreed = 0;
     for (let k = 0; k < 600 * 60; k++) {
       stepDuel(st, IDLE_INPUT);
@@ -3792,7 +3897,7 @@ const idle = want('idle') ? (() => {
   const deltas = IDLE_SEEDS.map((seed) => {
     const run = quietRun(seed, 601, IDLE_WINDOWS), base = master.idle.find((m) => m.seed === seed)!;
     const mine = run.deltas.map(median), theirs = base.deltas.map(median);
-    return { seed, mine, master: theirs, pass: mine.every((m, w) => m <= theirs[w]!) };
+    return { seed, mine, master: theirs, pass: mine.every((m, w) => m <= theirs[w]! + IDLE_DELTA_TOLERANCE) };   // plan deviation 17
   });
   return { seeds: 20, seconds: 600, freed, perSeed, freedPass: freed === 0, deltas, deltaPass: deltas.every((d) => d.pass) };
 })() : null;
@@ -3806,7 +3911,25 @@ const burst = want('burst') ? (() => {
   return { rows, gatePass: rows.every((r) => r.pass) };
 })() : null;
 
-const result = { simVersion: SIM_VERSION, switches: { ...ROCK_SWITCHES }, feel, stress, cost, idle, burst };
+/** Plan deviation 3: the after-burst scene on the tactical state alone (crew at IDLE_ORBIT_R, Hunter off, the same three
+ *  bursts), with the free count and the refused rejoins by reason every 60 ticks from 30 s on. */
+const burstWhy = want('burst') ? IDLE_SEEDS.map((seed) => {
+  const st = createTacticalState(seed), [vx, vy] = circularVelocity(0, -IDLE_ORBIT_R), refusedBy: Record<string, number> = {};
+  switchOff(st, 1);
+  Object.assign(st.ships[0], { x: 0, y: -IDLE_ORBIT_R, vx, vy, heading: 64, headingAcc: 0 });
+  for (let k = 1; k <= BURST_WINDOW[1] * 60; k++) {
+    stepDuel(st, IDLE_INPUT);
+    if (BURST_TIMES.some((t) => t * 60 === k)) {
+      let big = -1;
+      for (let j = 0; j < st.map.beltCount; j++) if (st.rocks[j * ROCK_STRIDE] === RockKind.Rail && (big < 0 || st.rocks[j * ROCK_STRIDE + 5]! > st.rocks[big * ROCK_STRIDE + 5]!)) big = j;
+      if (big >= 0) { const a = rockAt(st, big); breakRock(st, big, -a.x, -a.y, 'torpedo', 0, 'burst'); beginRockTick(st); }
+    }
+    if (k >= 30 * 60 && k % 60 === 0) tallyRefusals(st, refusedBy);
+  }
+  return { seed, freeAtEnd: count(st, RockKind.Free), refusedBy };
+}) : null;
+
+const result = { simVersion: SIM_VERSION, switches: { ...ROCK_SWITCHES }, feel, stress, cost, idle, burst, burstWhy };
 console.log(JSON.stringify(result, null, 2));
 const out = argAt('--json');
 if (out) { mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, JSON.stringify(result, null, 2) + '\n'); }
@@ -3815,25 +3938,25 @@ const failed = (feel && !feel.allOn.gatePass) || (stress && (stress.failures.len
 if (failed) process.exitCode = 1;
 ```
 
-(The feel check's mass share uses r³, the cube mass's shape; the switch-off run compares r³ shares too, so the two runs stay comparable.)
+(The feel check's mass share is of the burst's born piece mass by the active mass law (`rockMass`), so it means the same with the switches on or off; plan deviation 23.)
 
 - [ ] **Step 2: Type-check and run it**
 
 Run: `npm run typecheck && npx tsx scripts/spike-asteroids-iii-measure.ts --json docs/superpowers/research/2026-11-19-asteroids-iii-measure.json`
-Expected: the JSON prints; runtime a few minutes (the idle part steps 20 × 36,000 ticks). Read each gate: `feel.allOn.gatePass`, `stress.failures` empty and `stress.safetyPass`, `cost.p99Pass`, `idle.freedPass` and `idle.deltaPass`, `burst.gatePass`. The exit code is 0 only when all pass.
+Expected: the JSON prints; runtime a few minutes (the idle part steps 20 × 36,000 ticks). Read each gate: `feel.allOn.gatePass`, `stress.failures` empty (it includes any grid mismatch) and `stress.safetyPass`, `cost.p99Pass` (both variants), `idle.freedPass` and `idle.deltaPass`, `burst.gatePass`. The exit code is 0 only when all pass.
 
 - [ ] **Step 3: If every gate passes, commit the results**
 
 ```bash
 git add scripts/spike-asteroids-iii-measure.ts docs/superpowers/research/2026-11-19-asteroids-iii-measure.json
-git commit -m "chore(asteroids-iii): the measure script and its results: feel (switches on and off), stress, cost, idle and after-burst gates (spec §8.2, §8.3, §13.7)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "chore(asteroids-iii): the measure script and its results: feel (switches on and off), stress, cost, idle and after-burst gates (spec §8.2, §8.3, §13.7)" -m "<attribution line>"
 ```
 
-- [ ] **Step 4: The tuning rule (only when a gate fails).** Change one named knob in `rockTuning.ts` at a time, in the order below for the failing gate, re-run the whole script after each, and stop at the first change that passes every gate. Commit each kept change by itself (`git commit -m "tune(asteroids-iii): <KNOB> <old> -> <new> for the <gate> gate (spec §13: Fable's estimates, confirmed by §8)"` with the attribution line) and record the before and after numbers for the report. If the list runs out, revert the knobs to the spec's values, commit the script and the failing JSON, and report BLOCKED with the numbers (the owner decides; spec §1 decisions D1–D10 and the revision 3 owner choices are not tuned).
-  - `feel` under 7 of 10: (1) `SETTLE_A0` 20 → 30 (longer free flight before the drag); (2) `TOUCH_MIN` stays (it defines the counter); stop.
-  - `burst` free count not back to ≤ 10: (1) `SETTLE_K_MAX` 0.06 → 0.08; (2) `SETTLE_A1` 60 → 45. Also read `stress.rejoins`: if lane captures are near 0 while free rocks sit in the belt, report it (the lane pull or the 5 u capture band, plan deviation 20, are the owner's to retune: `LANE_PULL` and `LANE_CAPTURE_DR` are not on this list).
-  - `burst` delta median over 5,500: the same two knobs.
-  - `cost` p99 at or over 0.5 ms: no knob; profile `stepDuel` (`node --cpu-prof`), report the top three functions, BLOCKED.
+- [ ] **Step 4: The tuning rule (only when a gate fails).** Change one named knob in `rockTuning.ts` at a time, in the order below for the failing gate, re-run the whole script after each, and stop at the first change that passes every gate. Commit each kept change by itself (`git commit -m "tune(asteroids-iii): <KNOB> <old> -> <new> for the <gate> gate (spec §13: Fable's estimates, confirmed by §8)"` with the session's attribution line) and record the before and after numbers for the report. If the list runs out, revert the knobs to the spec's values, commit the script and the failing JSON, and report BLOCKED with the numbers (the owner decides; spec §1 decisions D1–D10 and the revision 3 owner choices are not tuned).
+  - `feel` under 7 of 10: no knob (the owner chose the kick, and no named knob drives the four criteria): report BLOCKED with `feel.allOn.perCriterion` and `feel.allOff.perCriterion` (how many of the ten shots pass each of (a)–(d)) and the per-shot rows.
+  - `burst` free count not back to ≤ 10: first read `burstWhy` (and `stress.refused`). If the rocks refused a rail for structural reasons (`sweepCluster`, `sweepLane`, `sweepRail`, `bounds`, `snap`, `laneFar`, `overlap`) account for most of the free rocks left at 270 s, the gate is blocked by the rejoin rules, not by the drag: report BLOCKED with those counts for an owner decision (plan deviation 3 predicts this) and do not tune. Otherwise: (1) `SETTLE_K_MAX` 0.06 → 0.08; (2) `SETTLE_A1` 60 → 45. Also read `stress.rejoins`: if lane captures are near 0 while free rocks sit in the belt, report it (the lane pull or the 5 u capture band, plan deviation 20, are the owner's to retune: `LANE_PULL` and `LANE_CAPTURE_DR` are not on this list).
+  - `burst` delta median over 5,500: the same reading of `burstWhy` first, then the same two knobs.
+  - `cost` p99 at or over 0.5 ms (either variant): no knob; profile `stepDuel` (`node --cpu-prof`), report the top three functions, BLOCKED.
   - `idle` freed > 0 or a delta over master's: a bug (lanes or clusters meet); find it with superpowers:systematic-debugging, fix it with a failing test first, and re-run; not a tuning case.
   - `stress` safety counters non-zero, or twins or restore failing: a bug or a spec bound (report `edgeDust` against the spec's 290 u worst case, `capHits` and `slotDust` with the seeds); not a tuning case.
 
@@ -3849,12 +3972,17 @@ git commit -m "chore(asteroids-iii): the measure script and its results: feel (s
 **Interfaces:**
 - Consumes: everything above. Produces: no new interfaces; the goldens at SIM_VERSION 60.
 
-- [ ] **Step 1: Typecheck and the duel gates first (before any bless)**
+- [ ] **Step 1: Full-suite triage before any bless**
 
-Run: `npm run typecheck && npx vitest run tests/duelGates.test.ts`
+Run: `npm run typecheck && npx vitest run` (expect several minutes; a 20-minute timeout, or in the background).
+Expected: the only failures are the goldens and the trajectory-pinned tests listed in Step 9. Triage every other failure now (a bug in Tasks 2–13: fix it with a failing test first and commit the fix), because the bless below must record the final gameplay.
+
+- [ ] **Step 1b: The duel gates (before any bless)**
+
+Run: `npx vitest run tests/duelGates.test.ts`
 Expected: typecheck clean; every per-seed gate passes (an outcome before the cap, a laser release and a launch, no early planet end). Keep the printed telemetry lines for the report.
 
-- [ ] **Step 2: If a duel gate fails** (spec §10 risk 3: the Hunter hits moving rocks), change only `SHIP_HULL` in `src/renderer/src/sim/tactical/tuning.ts`, by +10 % a step (round to a whole number), re-running Step 1 after each, at most three steps. Commit a kept change by itself: `git commit -m "tune(asteroids-iii): SHIP_HULL <old> -> <new> for duelGates (spec §10)"` with the attribution line. If three steps do not pass, revert, record the lines and report BLOCKED.
+- [ ] **Step 2: If a duel gate fails** (spec §10 risk 3: the Hunter hits moving rocks), change only `SHIP_HULL` in `src/renderer/src/sim/tactical/tuning.ts`, by +10 % a step (round to a whole number), re-running Step 1b after each, at most three steps. Commit a kept change by itself: `git commit -m "tune(asteroids-iii): SHIP_HULL <old> -> <new> for duelGates (spec §10)"` with the session's attribution line. If three steps do not pass, revert, record the lines and report BLOCKED.
 
 - [ ] **Step 3: Same-version bless of the gameplay at SIM 59**
 
@@ -3870,7 +3998,7 @@ Expected: `baseline at sim version 59: ...` and `duel oracle baseline at sim ver
 
 ```bash
 git add tests/golden/basic.json tests/golden/duel-1.json tests/golden/duel-rematch.json tests/fixtures/determinism-v2.json
-git commit -m "test(asteroids-iii): same-version bless at SIM_VERSION 59 for the orbiting belt (duel goldens re-recorded)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "test(asteroids-iii): same-version bless at SIM_VERSION 59 for the orbiting belt (duel goldens re-recorded)" -m "<attribution line>"
 ```
 
 (Add `tests/fixtures/determinism-v2.json` only if the bless changed it; `git status` shows which.)
@@ -3889,33 +4017,33 @@ Expected: both checks report identical per-tick traces (59 → 60, no alias tabl
 
 ```bash
 git add src/renderer/src/sim/tuning.ts tests/golden/basic.json tests/golden/duel-1.json tests/golden/duel-rematch.json tests/fixtures/determinism-v2.json
-git commit -m "chore(asteroids-iii): SIM_VERSION 59 -> 60 alone, blessed (canonical trace and duel oracle prove every run unchanged per tick)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "chore(asteroids-iii): SIM_VERSION 59 -> 60 alone, blessed (canonical trace and duel oracle prove every run unchanged per tick)" -m "<attribution line>"
 ```
 
-- [ ] **Step 8: Run the whole suite and re-pin trajectory fixtures only**
+- [ ] **Step 9: Run the whole suite and re-pin trajectory fixtures only**
 
 Run: `npx vitest run`
 Expected: everything passes except tests that pin a scripted trajectory (a tick, a count or a summary from a scripted duel). For each:
 - `tests/duelCheckpoint.test.ts`: run `npx tsx scripts/spike-asteroids-find-split.ts`; keep the test's seed if it has a SPLIT, else take the lowest seed that has one; set `SEED`, `SPLIT` and the `toMatchObject` summary to the printed values, and prepend the history comment with `Seed N's scripted duel is a crew win/loss at tick T (SIM_VERSION 60, asteroids-iii orbiting belt; at SPLIT S).`
 - Any other test that names a pinned tick in its comment (`duelModules`' `played(6, …)` "has a missile in flight", `duelSnapshot`'s seed and tick, `duelScripted`'s every-kind seed, `tacticalSlots`' end tick, `contactScene`'s pinned frames): find the new value by the rule its comment states (step the same scripted duel and print the first qualifying tick), update the number and add `(SIM_VERSION 60, asteroids-iii)` to its history comment.
-- A failure that is not a pinned trajectory is a bug in Tasks 2–12: fix it there with a failing test first; do not edit the expectation. After such a sim fix: re-run Task 13's script, then `npm run bless` (a same-version bless at 60, which `scripts/golden/blessGuard.ts` allows) and Step 1, and commit the re-blessed goldens with the fix.
+- A failure that is not a pinned trajectory is a bug in Tasks 2–12b: fix it there with a failing test first; do not edit the expectation. After such a sim fix: re-run Task 13's script, then `npm run bless` (a same-version bless at 60, which `scripts/golden/blessGuard.ts` allows) and Step 1b, and commit the re-blessed goldens with the fix.
 
 Re-run `npx vitest run` until it is green, then commit only the re-pinned tests:
 
 ```bash
 git add tests/duelCheckpoint.test.ts tests/duelModules.test.ts tests/duelSnapshot.test.ts tests/duelScripted.test.ts tests/tacticalSlots.test.ts tests/contactScene.test.ts
-git commit -m "test(asteroids-iii): re-pin the trajectory fixtures at SIM 60" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "test(asteroids-iii): re-pin the trajectory fixtures at SIM 60" -m "<attribution line>"
 ```
 
 (List only the files that changed.)
 
-- [ ] **Step 9: The determinism script and the two-process app smoke**
+- [ ] **Step 10: The determinism script and the two-process app smoke**
 
 Run: `npm run test:determinism && npm run test:duel-app-runtime`
 Expected: both PASS. If the smoke fails at step 3 because round 1 is no longer decided inside the step's 90 s, re-pick the test seed: write and run this search in the scratchpad (not committed):
 
 ```ts
-// seed-search.ts: the earliest-decided duel with no flight or weapon input, seeds 1..8000 (the smoke's forced round end).
+// seed-search.ts: the first seed (1..300) whose duel, with no flight or weapon input, is decided before tick 4500.
 import { computeContentDigest } from '../build/contentDigest';
 import { DUEL_LAYOUT } from '../src/renderer/src/sim/duel/layout';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
@@ -3923,16 +4051,18 @@ import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
 (globalThis as Record<string, unknown>).__GAMEPLAY_CONTENT_DIGEST__ = computeContentDigest(process.cwd());
 const IDLE = { held: [{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }], commands: [] };
-let best: [number, number] = [0, Infinity];
-for (let seed = 1; seed <= 8000; seed++) {
+const LIMIT = 4500;   // decided before 75 s: inside the smoke's 90 s step with margin
+for (let seed = 1; seed <= 300; seed++) {
   const d = createDuel(DUEL_LAYOUT, seed);
-  try { for (let k = 0; k < 5400 && d.tactical.outcome === Outcome.Running; k++) stepDuelTick(d, IDLE); if (d.tactical.outcome !== Outcome.Running && d.tactical.tick < best[1]) best = [seed, d.tactical.tick]; }
-  finally { disposeDuel(d); }
+  try {
+    for (let k = 0; k < LIMIT && d.tactical.outcome === Outcome.Running; k++) stepDuelTick(d, IDLE);
+    if (d.tactical.outcome !== Outcome.Running) { console.log(`first: seed ${seed} decided on tick ${d.tactical.tick}`); process.exit(0); }
+  } finally { disposeDuel(d); }
 }
-console.log(`earliest: seed ${best[0]} decided on tick ${best[1]}`);
+console.log('no seed in 1..300 is decided before tick 4500: report BLOCKED with this line');
 ```
 
-  (copy it to `scripts/_seed-search.ts`, run `npx tsx scripts/_seed-search.ts`, delete it). Set `DUEL_TEST_SEED` in `scripts/network/duel-app-smoke.ts` to the printed seed (and the internet smoke's shared constant if it has one), rewrite the doc comment's first sentence with the new tick (`decided on tick T`, `SIM_VERSION 60, asteroids-iii`), keep the earlier history, re-run the smoke, and commit `git commit -m "test(asteroids-iii): the duel app smoke's forced-round-end seed <old> -> <new> (decided on tick <T> at SIM 60)"` with the attribution line.
+  (copy it to `scripts/_seed-search.ts`, run `npx tsx scripts/_seed-search.ts` in the background (the Bash tool's `run_in_background`; at most 300 × 4,500 ticks, a few minutes), wait for it to finish, then delete the file). Set `DUEL_TEST_SEED` in `scripts/network/duel-app-smoke.ts` to the printed seed (and the internet smoke's shared constant if it has one), rewrite the doc comment's first sentence with the new tick (`decided on tick T`, `SIM_VERSION 60, asteroids-iii`), keep the earlier history, re-run the smoke, and commit `git commit -m "test(asteroids-iii): the duel app smoke's forced-round-end seed <old> -> <new> (decided on tick <T> at SIM 60)"` with the session's attribution line.
 
 ---
 
@@ -4036,14 +4166,14 @@ mkdir -p "$SCRATCH/shots3" && cd "$SCRATCH/shots3" && npm init -y >/dev/null && 
   2. **Gates** (a table: gate, target, measured, pass): the feel check with the four switches on and off (per-shot rows: pieces, touches, mass share, turned), stress twins and restore, the safety counters (edge dust, `rockSlotDust`, `rockCapHits`), cost p99, idle frees and the three delta windows against master's, after-burst free count and delta median, duelGates (per-seed lines), the whole suite, `test:determinism`, the app smoke.
   3. **Stress counts**: tidal breaks and their pieces, rejoins by `how` (lane, group, own), the free count every 10 s.
   4. **Tuning** (every knob changed in Tasks 13 and 14, with the before and after numbers; "none" if none).
-  5. **Spec problems found while planning and building** (copy the list in this plan's "Deviations and clarifications", items 3, 14 and 20 to 22, with item 20's adopted fix and probe numbers, and add any found while building).
+  5. **Spec problems found while planning and building** (copy the list in this plan's "Deviations and clarifications", items 3, 14, 17 and 20 to 25, with item 20's adopted fix and probe numbers, item 23's redefinition of criterion (c), item 24's energy-test radius, item 25's missing parking ring, and the refusal counts by reason, and add any found while building).
   6. **Screenshots** (the nine file names with one line each) and **the owner's look check** (open: lanes too regular? trails, spin, hit-stop feel, cracks).
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add scripts/spike-asteroids-iii-shots.cjs docs/superpowers/research/2026-11-19-asteroids-iii.md
-git commit -m "docs(asteroids-iii): screenshots script and the report (gates, stress counts, tuning, spec problems, look check)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "docs(asteroids-iii): screenshots script and the report (gates, stress counts, tuning, spec problems, look check)" -m "<attribution line>"
 ```
 
 ---
@@ -4064,11 +4194,11 @@ git commit -m "docs(asteroids-iii): screenshots script and the report (gates, st
 | §3.5 (lanes, cluster separation) | 3, 5 |
 | §4, §13.3 (motion, drag ramp, soft edge, Roche, cap counter) | 6, 10 |
 | §5.1–§5.5, §13.4 (breaking, caps, contact pass, mass, restitution, separation, eviction) | 8, 10 |
-| §5.6 (shards, touch cue, hit-stop) | 12 |
+| §5.6 (shards, touch cue, hit-stop) | 12b |
 | §6.1 (grid) | 7 |
 | §6.2 (ship two-body, RAM_SOFT) | 4, 11 |
 | §6.3 (predict, hazard, threat) | 11 |
-| §7.1, §7.2, §13.5 (interpolation, streaks, trails, path, spin) | 12 |
+| §7.1, §7.2, §13.5 (interpolation, streaks, trails, path, spin) | 12a, 12b (scene) |
 | §8.1 unit tests | 2–12 |
 | §8.2 feel check, §13.7 switches on/off | 13 |
 | §8.3 gates | 13, 14 |
