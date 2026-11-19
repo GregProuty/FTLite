@@ -77,7 +77,7 @@ describe('bodies and ships (H-1 spec §7 items 4 to 6)', () => {
     const at = (z: number) => tacticalModel(input(st, createCamera(s.x, s.y, z))).ships[0]!;
     expect(at(0.25).chevron).toBe(false);   // 40 units × 0.25 = 10 px
     expect(at(0.24).chevron).toBe(true);
-    expect(at(0.5)).toMatchObject({ index: 0, x: 640, y: 360, crew: true, scale: 0.8, shields: 2 });   // the minimum, 16 px per unit
+    expect(at(0.5)).toMatchObject({ index: 0, x: 640, y: 360, crew: true, scale: 0.8, shields: 1 });   // the minimum, 16 px per unit; Engineering spike spec §2: the crew's shields start at 1 layer
     expect(at(1.2).scale).toBe(1.2);
     expect(at(0.2).scale).toBeCloseTo(0.2, 9);   // a chevron: the true zoom
     const helmAt = (z: number) => tacticalModel(input(st, createCamera(s.x, s.y, z))).helm!;

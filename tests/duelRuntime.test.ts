@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DuelSystem } from '../src/renderer/src/sim/tactical/bars';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { Position } from '../src/renderer/src/sim/components';
@@ -19,6 +20,8 @@ import { soloDuelRecord, validateDuelRecord } from '../src/renderer/src/net/duel
 import { soloRecorder } from '../src/renderer/src/app/duel/soloRecorder';
 import { seatDuelCrew } from './helpers/duelSeat';
 import { inTorpedoRange } from './helpers/torpedoRange';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
+import { holdInSight } from './helpers/sensorSight';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
@@ -58,6 +61,7 @@ function rig(seed = 5, onRound?: (record: DuelRoundRecord) => void, seated = tru
     clearKeys: () => { keys = idle(); cleared++; }, onRound, cls
   });
   if (seated) seatDuelCrew(rt.duel);   // the old seated start: createDuel now leaves both standing
+  todaysCrewWeapons(rt.duel.tactical);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   const hold = (h: Partial<Omit<KeySample, 'presses'>>): void => { keys = { ...keys, ...h }; };
   const press = (...actions: KeyAction[]): void => { const p = { ...keys.presses }; for (const a of actions) p[a]++; keys = { ...keys, presses: p }; };
   /** One frame, then one tick's worth of wall time with a frame after it (so the press is sent on exactly one tick). */
@@ -100,6 +104,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
   });
   it('Tab takes the other character on one tick, clears the keyboard and leaves the old one neutral; a seated one stays present', () => {
     const { rt, hold, press, tick, cleared } = rig(5, undefined, true, ShipClass.Valkyrn);
+    rt.duel.tactical.systems[0].bars[DuelSystem.Engines] = 4;   // Engineering spike spec §10.2 (fallout a): Engines starts at 3 bars (cap 3); a throttle of 4 needs the 4th bar
     hold({ moveY: -1 }); press('throttleUp', 'throttleUp', 'throttleUp', 'throttleUp'); tick();   // Artemis-ii: full throttle; held W no longer thrusts
     expect(rt.held()[0]).toEqual({ moveX: 0, moveY: -1, interactHeld: false });
     expect(rt.axes()).toEqual({ turn: 0, thrust: 1 });
@@ -212,6 +217,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
   });
   it('Space is one press that fires a full laser; E and Q step the laser target (FTL targeting spec §1, §2)', () => {
     const { rt, press, tick } = rig();
+    holdInSight(rt.duel.tactical);   // Engineering spike spec §10.4: a lock or scan needs the enemy seen
     press('switch'); tick();
     const ship = rt.duel.tactical.systems[0];
     expect(ship.laserCharge).toBe(LASER_CHARGE_UNITS);                  // the round starts full
@@ -255,7 +261,8 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     const ship = rt.duel.tactical.systems[0];
     hold({ lockTo: 0 }); tick(); expect([ship.lock, ship.laserTargeted]).toEqual([Room.Shields, true]);   // at the Helm: no weapons commands (the SHIELDS opener stands)
     rt.dispose();
-    const g = rig(); g.press('switch'); g.tick();
+    const g = rig(); holdInSight(g.rt.duel.tactical);   // Engineering spike spec §10.4: a lock or scan needs the enemy seen
+    g.press('switch'); g.tick();
     const s = g.rt.duel.tactical.systems[0];
     g.hold({ lockTo: 0 }); g.tick(); expect([s.lock, s.laserTargeted]).toEqual([0, true]);
     g.hold({ lockTo: -1 }); g.tick(); expect([s.lock, s.laserTargeted]).toEqual([0, false]);
@@ -270,7 +277,8 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     g.rt.dispose();
   });
   it('a pick-up on an unknown enemy (FTL targeting fix): the contact controller asks for the scan and the runtime starts the Level 1 scan from Weapons', () => {
-    const g = rig(); g.press('switch'); g.tick();
+    const g = rig(); holdInSight(g.rt.duel.tactical);   // Engineering spike spec §10.4: a lock or scan needs the enemy seen
+    g.press('switch'); g.tick();
     const t = g.rt.duel.tactical, c = createContactController();
     t.known[0] = 0;
     c.sync({ shown: true, station: 'weapons', target: 1, active: () => true, epoch: 0, enemyKnown: t.known[0] });
@@ -585,6 +593,7 @@ describe('the interior zoom camera input (interior zoom spec rules 1-4)', () => 
 describe('the Artemis console clicks (Artemis spec §4.1, §6.1)', () => {
   it('a lock click at Weapons queues laserLock to that room; the same click at the Helm changes nothing', () => {
     const { rt, hold, press, tick } = rig();
+    holdInSight(rt.duel.tactical);   // Engineering spike spec §10.4: a lock or scan needs the enemy seen
     const ship = rt.duel.tactical.systems[0], before = ship.lock;
     hold({ lockTo: 2 }); tick(); hold({ lockTo: null });   // player 0 sits at the Helm
     expect(ship.lock).toBe(before);
@@ -611,6 +620,7 @@ describe('the Artemis console clicks (Artemis spec §4.1, §6.1)', () => {
 describe('the Helm throttle (Artemis spec §5.4)', () => {
   it('W and S step it a notch a press, clamped to −1..4, and it holds with no key down', () => {
     const { rt, press, tick, ticks } = rig(5, undefined, true, ShipClass.Valkyrn);
+    rt.duel.tactical.systems[0].bars[DuelSystem.Engines] = 4;   // Engineering spike spec §10.2 (fallout a): Engines starts at 3 bars (cap 3); a throttle of 4 needs the 4th bar
     press('throttleUp'); tick();
     expect([rt.duel.throttle, rt.throttle(), rt.axes()]).toEqual([1, 1, { turn: 0, thrust: 0.25 }]);
     press('throttleUp', 'throttleUp', 'throttleUp', 'throttleUp'); tick();

@@ -244,6 +244,14 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         words.push({ text: g.label.text, x: g.label.x, y: g.label.y, tint: CRT.mid });
       }
       if (d.edge) segments(contours, dashCircle(d.edge.x, d.edge.y, d.edge.r, DASH, GAP, seg), 2, CRT.main, 0.7);
+      // Engineering spike §10.4: the sensor range, dotted, and the ghosts: a hollow chevron (a small one for a torpedo),
+      // fading with its alpha.
+      if (d.sensor) segments(contours, dashCircle(d.sensor.x, d.sensor.y, Math.max(1, d.sensor.r), 2, 6, seg), 1, CRT.mid, 0.6);
+      for (const g of d.ghosts ?? []) {
+        const fx = Math.sin(g.angle), fy = -Math.cos(g.angle), rx = -fy, ry = fx, n = g.kind === 'missile' ? 4 : 10;
+        contours.poly([g.x + fx * n, g.y + fy * n, g.x - fx * n * 0.8 + rx * n * 0.7, g.y - fy * n * 0.8 + ry * n * 0.7, g.x - fx * n * 0.4, g.y - fy * n * 0.4,
+          g.x - fx * n * 0.8 - rx * n * 0.7, g.y - fy * n * 0.8 - ry * n * 0.7]).stroke({ width: 1, color: CRT.mid, alpha: g.alpha });
+      }
 
       if (d.planet) {
         const p = d.planet;
@@ -364,6 +372,19 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       // Valkyrn spec §7.4: the gun's tracers, the crosshair at its reach, the lead pip (a diamond with a thin line to the enemy;
       // hot with brackets on target) and the heat bar under the crosshair, all on the ramp.
       for (const r of c?.rounds ?? []) combat.moveTo(r.x1, r.y1).lineTo(r.x2, r.y2).stroke({ width: 1, color: CRT.main });
+      // W-1 (pew pew spec §1): the pew cone's two edges (dim) and the aim line (mid) on the Weapons map; every pew round as a
+      // short hot streak, on the ramp as Feel and CRT do.
+      const pc = c?.pewCone ?? null;
+      if (pc) for (const side of [-1, 1]) {
+        const a = pc.angle + side * pc.half;
+        combat.moveTo(pc.x, pc.y).lineTo(pc.x + Math.sin(a) * pc.r, pc.y - Math.cos(a) * pc.r).stroke({ width: 1, color: CRT.dim });
+      }
+      const pa = c?.pewAim ?? null;
+      if (pa) combat.moveTo(pa.x1, pa.y1).lineTo(pa.x2, pa.y2).stroke({ width: 1, color: CRT.mid });
+      // W-2 (pew pew spec §2): the MANUAL laser's aim line, dashed main, while it is charged.
+      const la = c?.laserAim ?? null;
+      if (la) { line.length = 0; line.push(la.x1, la.y1, la.x2, la.y2); segments(combat, dashLine(line, DASH, GAP, seg), 1, CRT.main); }
+      for (const r of c?.pewRounds ?? []) combat.moveTo(r.x1, r.y1).lineTo(r.x2, r.y2).stroke({ width: 2, color: CRT.hot });
       const gs = c?.gunSight ?? null;
       if (gs) {
         const { x, y } = gs.cross, k = CROSS_PX;

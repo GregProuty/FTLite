@@ -10,6 +10,7 @@
 // bounded caches. Every check keeps its order; only the regeneration is shared. The cached tactical shape is read only
 // by validateTacticalValues and never leaves this module.
 import { hashF64 } from '../../../../shared/hash';
+import { POWER_VALUES, validatePowerValues } from './power';
 import { canonicalFields, type CanonicalField } from '../canonicalFields';
 import { deriveLayout, type Derived } from '../ship/derived';
 import type { ShipLayout } from '../ship/schema';
@@ -147,7 +148,7 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   // -0 is written as 0 (flattenDuel and here): no sim path distinguishes the two zeros (no 1/x, atan2 or Object.is on state),
   // so the snapshot and the live state hash and behave identically.
   const values = (snap.values as number[]).map((v) => (v === 0 ? 0 : v));
-  const space = seed.spaceLength, repairAt = 1 + space + n, roundAt = repairAt + 3, helmAt = roundAt + 4, interiorAt = helmAt + 6;   // playtest2feedback §7: the helm module holds six values
+  const space = seed.spaceLength, repairAt = 1 + space + n, roundAt = repairAt + 3, helmAt = roundAt + 4, powerAt = helmAt + 6, interiorAt = powerAt + POWER_VALUES;   // playtest2feedback §7: the helm module holds six values; Engineering spike spec §7: power after helm
   if (values.length !== interiorAt + crew.interiorCount) throw new Error('duel snapshot length does not match the layout and map');
   if (values[0] !== SIM_VERSION) throw new Error('duel snapshot sim version does not match its values');
   if (values[2] !== h.seed) throw new Error('duel snapshot seed does not match its values');
@@ -180,11 +181,12 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   // Playtest2feedback §7: the crew Helm's held throttle −250..1000, the tank 0..RCS_TANK, its sixtieths 0..59 and the
   // COMPRESSOR share 0..3, each an integer.
   const whole = (v: number, lo: number, hi: number): boolean => Number.isInteger(v) && v >= lo && v <= hi;
-  const [thrMille, rcsGas, rcsAcc, compressor] = values.slice(helmAt + 2, interiorAt) as [number, number, number, number];
+  const [thrMille, rcsGas, rcsAcc, compressor] = values.slice(helmAt + 2, powerAt) as [number, number, number, number];
   if (!whole(thrMille, THR_MIN, THR_MAX)) throw new Error(`duel snapshot thrMille ${thrMille} is invalid`);
   if (!whole(rcsGas, 0, RCS_TANK)) throw new Error(`duel snapshot rcsGas ${rcsGas} is invalid`);
   if (!whole(rcsAcc, 0, 59)) throw new Error(`duel snapshot rcsAcc ${rcsAcc} is invalid`);
   if (!whole(compressor, 0, COMPRESSOR_MAX)) throw new Error(`duel snapshot compressor ${compressor} is invalid`);
+  validatePowerValues(values.slice(powerAt, interiorAt));   // Engineering spike spec §7: heat, coolant, failed
   const interior = values.slice(interiorAt);
   validateCanonicalValues(layout, derived, n, interior);
   // The identity values unflatten checks (flatten.ts), required here so nothing is allocated for a snapshot it would refuse.

@@ -1,0 +1,39 @@
+docs/superpowers/plans/2026-11-13-net-1a-boundary.md
+docs/superpowers/reviews/2026-11-16-helm-h2b-ii-plan/dirty-baseline
+docs/superpowers/reviews/2026-11-16-react-ui-spec/dirty-baseline
+docs/superpowers/reviews/2026-11-18-engineering-spike-ii-hud-plan-v2/dirty-baseline
+.superpowers/net1b-merge/results.json
+.superpowers/refine-codex-skill/
+.superpowers/refine-skill-inspect/
+docs/superpowers/prompts/2026-11-14-claude-cloudflare-setup.md
+docs/superpowers/prompts/2026-11-18-sci-2-handoff.md
+docs/superpowers/research/2026-11-14-cloudflare-setup-handoff.md
+docs/superpowers/specs/2026-11-13-ftl-gap-audit.md
+ideas.txt
+reports/2026-11-13-playtest-audit.json
+reports/Free game sound and piano score.md
+reports/Painted battlemap asset matches.md
+reports/Premium pixel art and VFX.md
+research/coop-i-sim.diff
+research/coop-ii-sim.diff
+research/demo-ix.diff
+research/demo-vii-render.diff
+research/demo-vii-sim.diff
+research/demo-viii-render.diff
+research/demo-viii-sim.diff
+research/sectors-core.diff
+research_notes/Free game sound and piano score/combat_fire_sfx.md
+research_notes/Free game sound and piano score/integration.md
+research_notes/Free game sound and piano score/piano_score.md
+research_notes/Free game sound and piano score/ship_movement_sfx.md
+research_notes/Free game sound and piano score/ui_console_sfx.md
+research_notes/Painted battlemap asset matches/2mt_catalog_licence.md
+research_notes/Painted battlemap asset matches/painted_vfx.md
+research_notes/Painted battlemap asset matches/props_and_cohesion.md
+research_notes/Painted battlemap asset matches/topdown_crew_tokens.md
+research_notes/Premium pixel art and VFX/paid_characters_ui.md
+research_notes/Premium pixel art and VFX/paid_environment_assets.md
+research_notes/Premium pixel art and VFX/polish_and_game_feel.md
+research_notes/Premium pixel art and VFX/vfx_craft_and_packs.md
+scratch.txt
+scripts/playtest-audit.ts

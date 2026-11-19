@@ -2,7 +2,7 @@
 // Pure: never touches the state. It stops at the first planet or asteroid contact, which it does not resolve.
 import { flyMissile } from './missiles';
 import { rockAt, rocksNear } from './rocks';
-import { flightFor, flyShip } from './physics';
+import { flightFor, flyShip, shipEngineFactor } from './physics';
 import { classOf, cloneShip, missileOf, Room, type Axes, type TacticalState } from './state';
 import { MISSILE_RADIUS, type FlightTuning } from './tuning';
 
@@ -28,10 +28,10 @@ export function predictPath(state: TacticalState, shipIndex: number, axes: Axes,
  *  1-based), or null when the path ran its whole length. */
 export function predictFlight(state: TacticalState, shipIndex: number, axes: Axes, ticks: number, every: number, tuning?: FlightTuning): { points: PathPoint[]; contact: (PathPoint & { tick: number }) | null } {
   const s = cloneShip(state.ships[shipIndex]!), stride = Math.max(1, Math.floor(every)), fly = tuning ?? flightFor(state, shipIndex);   // playtest2feedback §2
-  const cls = classOf(state, shipIndex), engines = state.systems[shipIndex]!.rooms[Room.Engines];
+  const cls = classOf(state, shipIndex), engines = state.systems[shipIndex]!.rooms[Room.Engines], factor = shipEngineFactor(state, shipIndex);   // Task 8
   const points: PathPoint[] = [];
   for (let t = 1; t <= ticks; t++) {
-    flyShip(s, axes, fly, engines, cls);
+    flyShip(s, axes, fly, engines, cls, factor);
     if (touchesSolid(state, s.x, s.y, cls.radius)) { points.push({ x: s.x, y: s.y }); return { points, contact: { x: s.x, y: s.y, tick: t } }; }
     if (t % stride === 0) points.push({ x: s.x, y: s.y });
   }

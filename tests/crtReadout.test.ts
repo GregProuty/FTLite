@@ -48,6 +48,7 @@ describe('readoutRows emphasis (CRT map spec section 2)', () => {
     const d = createDuel(layout, 5), t = d.tactical, c = t.ships[0];
     d.interior.stations.occupant[d.nav] = -1; d.interior.stations.occupant[d.weapons] = -1;
     placeMissile(t, 1, { x: c.x + 100, y: c.y, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });
+    Object.assign(t.ships[1]!, { x: c.x + 600, y: c.y });   // Engineering spike §10.4: seen, so ENEMY and BEARING show
     const rows = readoutRows({ duel: d, mode: 'interior', active: 0 });
     expect(marks(rows).slice(13)).toEqual([['OUTSIDE', '-'], ['HELM', 'alert'], ['COASTING', 'alert'], ['WEAPONS', 'alert'], ['ENEMY', '-'], ['BEARING', '-'], ['TORPEDO INBOUND', 'alert']]);
     disposeDuel(d);

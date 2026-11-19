@@ -16,6 +16,7 @@ import { createTacticalState, Outcome, placeMissile, Room, type TacticalState } 
 import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
 
@@ -23,6 +24,7 @@ afterEach(() => resetSits());
 /** The enemy `dist` units off the crew's nose, `deg` degrees clockwise of it, both at rest, in open space far from the planet. */
 function place(st: TacticalState, dist: number, deg = 0): void {
   const me = st.ships[0], e = st.ships[1], r = (deg * Math.PI) / 180;
+  todaysCrewWeapons(st);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   Object.assign(me, { x: 3000, y: 0, vx: 0, vy: 0, heading: 0 });
   st.map.asteroids.length = 0;
   const fx0 = hx(0), fy0 = hy(0), c = Math.cos(r), s = Math.sin(r);
@@ -201,6 +203,7 @@ describe('sitting down (spec §1)', () => {
     expect(countSit('weapons')).toBe(true);
     expect(sitCard('helm', 0.5, false)).toMatchObject({ title: 'HELM: POINT AT THE ENEMY', keys: ['HOLD LMB  STEER', 'W/S  THROTTLE', 'A/D  THRUSTERS'], alpha: 1, top: false });
     expect(sitCard('weapons', 0.5, false, true)).toMatchObject({ title: 'WEAPONS: CLICK A WEAPON, THEN A ROOM OR ROCK', top: true });
+    expect(sitCard('weapons', 0.5, false, true)?.keys).toContain('L-CLICK MAP  PEW');   // W-1
     expect(sitCard('helm', SIT_CARD_S - 0.25, false)!.alpha).toBeCloseTo(0.5, 6);
     expect([sitCard('helm', SIT_CARD_S, false), sitCard('helm', 1, true)]).toEqual([null, null]);
   });

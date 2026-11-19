@@ -21,6 +21,7 @@ import { createTacticalState, Outcome } from '../src/renderer/src/sim/tactical/s
 import { VALKYRN_HULL } from '../src/renderer/src/sim/tactical/tuning';
 import { hashF64 } from '../src/shared/hash';
 import { standAtStation } from './helpers/duelSeat';
+import { holdInSight } from './helpers/sensorSight';
 import { createSeatedValkyrn, createValkyrnDuel, VALKYRN_TEST, valkyrnTestLayout } from './helpers/valkyrnDuel';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
@@ -115,6 +116,7 @@ describe('the crew class (spec §6.1)', () => {
     for (const [cls, want] of [[ShipClass.Valkyrn, 'unavailable'], [ShipClass.ValkyrnLaser, 'applied']] as const) {
       const d = createSeatedValkyrn(5, cls);
       try {
+        holdInSight(d.tactical);   // Engineering spike spec §10.4: a lock needs the target seen
         const r = step(d, [cmd(d, 0, { kind: 'laserLock', room: 0 }), cmd(d, 0, { kind: 'laserCharge', held: true }), cmd(d, 0, { kind: 'laserFrequency', freq: 1 }), cmd(d, 0, { kind: 'torpLock', room: 2 })]);
         expect(r.map((x) => x.reason ?? x.status), `class ${cls}`).toEqual([want, want, want, 'applied']);
       } finally { disposeDuel(d); }

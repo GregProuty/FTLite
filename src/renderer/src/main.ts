@@ -17,6 +17,16 @@ import { startDuelMode } from './app/duel/duelMode';
 import { createOnlineBridge } from './app/onlineBridge';
 import { createPageOnline } from './app/online/pageSession';
 import { watchHostVisibility } from './app/online/hostVisibility';
+import { versionPollActive, watchVersion } from './app/web/versionWatch';
+import { inMatch, installPageGuards } from './app/web/pageGuards';
+import { createBrowserFullscreen, type KeyboardLockApi } from './app/web/browserFullscreen';
+import { checkBrowserSupport, ONE_TAB_TEXT, SAFARI_NOTE, UNSUPPORTED_TEXT, type SupportGlobals } from './app/web/browserSupport';
+import { acquireOnlineLock, type OnlineLock } from './app/web/onlineLock';
+import { installAudioUnlock } from './app/audioUnlock';
+import { createIndexedDbDuelRecordStore } from './app/web/duelRecordStore';
+import { downloadText } from './app/web/download';
+import { installLeavePrompt, leaveWanted } from './app/web/leavePrompt';
+import type { DuelPlaytestRecord } from './net/duelRecord';
 import { validatePageOnlineConfig } from '../../shared/onlineConfig';
 import { createOnlineRendererSession } from './app/onlineSession';
 import { createOnlineModeSession } from './app/onlineModeSession';
@@ -81,25 +91,47 @@ async function startApp(): Promise<void> {
   audio.setVolumes(settings);
   renderer.setShake?.(settings.shake);   // Feel-i: the console maps' screen shake
   const scheduler = { schedule(delay: number, cb: () => void) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } };
-  // The online session runs in this page (web build spec §3.3); Electron's preload hands it main's resolved config.
-  const onlineConfig = window.ftlite?.onlineConfig;
-  const pageOnline = onlineConfig && validatePageOnlineConfig(onlineConfig) ? createPageOnline(onlineConfig, { window }) : null;
+  // The online session runs in this page (web build spec §3.3): Electron's preload hands it main's resolved config, and
+  // the web build bakes its own in (§5.1). A browser must have the online APIs (§7.7), and only the tab holding the
+  // ftlite-online lock runs the session (§7.5).
+  const web = !window.ftlite;
+  const support = web ? checkBrowserSupport(globalThis as unknown as SupportGlobals) : null;
+  const configured = window.ftlite ? window.ftlite.onlineConfig : support?.ok ? __FTLITE_WEB_CONFIG__ : null;
+  const lock: OnlineLock = web && configured ? await acquireOnlineLock(navigator.locks) : { state: 'unavailable' };
+  const onlineConfig = configured && (!web || lock.state === 'held') ? configured : null;
+  const pageOnline = onlineConfig && validatePageOnlineConfig(onlineConfig)
+    ? createPageOnline(onlineConfig, { window, persistStorage: web ? () => navigator.storage?.persist?.() : undefined }) : null;
+  // A lock manager that fails or never answers (review R1-F2, R1-F6) leaves online off with the unsupported text, not
+  // the "configured local service" one.
+  const browserInit = web ? { web: true, unsupported: support?.ok ? null : UNSUPPORTED_TEXT, note: support?.safari ? SAFARI_NOTE : null,
+    onlineBlocked: lock.state === 'busy' ? ONE_TAB_TEXT : lock.state === 'unavailable' && configured ? UNSUPPORTED_TEXT : null, playtestLog: true } : undefined;
+  // Web build spec §7.4: the browser keeps duel records in IndexedDB; Electron still writes them to disk through main.
+  const duelRecords = web ? createIndexedDbDuelRecordStore() : null;
+  const recordDuel = (record: DuelPlaytestRecord): Promise<boolean> | undefined => window.ftlite?.recordDuel ? window.ftlite.recordDuel(record) : duelRecords?.append(record);
   const bridge = pageOnline ? createOnlineBridge(pageOnline) : null;
   const offVisibility = bridge && !window.ftlite ? watchHostVisibility({ document, onStatus: cb => bridge.onStatus(cb) }) : undefined;   // Electron does not throttle its page, so the warning is browser-only
   const offPrepareExit = window.ftlite?.onPrepareExit?.(() => pageOnline ? pageOnline.prepareExit() : Promise.resolve());
   let online: ReturnType<typeof createOnlineModeSession> | null = null, status: OnlineStatus | null = null;
   let blocked = true;
   const win = window.ftlite?.window;
-  const store = createUiStore({ onlineAvailable: !!bridge, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, fullscreenAvailable: !!win, controls: controlSections(),
+  // Web build spec §7.2: no preload window API in the browser, so the Fullscreen API with the keyboard-lock rule.
+  const pageFullscreen = window.ftlite ? null : createBrowserFullscreen({ document,
+    keyboard: (navigator as Navigator & { keyboard?: KeyboardLockApi }).keyboard,
+    window: { addEventListener: (type, fn, capture) => window.addEventListener(type, fn as (e: KeyboardEvent) => void, capture),
+      removeEventListener: (type, fn, capture) => window.removeEventListener(type, fn as (e: KeyboardEvent) => void, capture),
+      dispatchEscape: () => { for (const type of ['keydown', 'keyup']) window.dispatchEvent(new KeyboardEvent(type, { code: 'Escape', key: 'Escape', bubbles: true })); } },
+    matchRunning: () => inMatch(store.getState().menu), now: () => performance.now(), onChange: () => actions.windowResized() });
+  const store = createUiStore({ onlineAvailable: !!bridge, browser: browserInit, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, fullscreenAvailable: !!win || !!pageFullscreen?.available, controls: controlSections(),
     ships: SOLO_SHIPS.map(({ id, name, line }) => ({ id, name, line })), soloShip: settings.soloShip, valkyrnLaserFit: settings.valkyrnLaserFit } });   // Valkyrn spec §9
   bootCrt(renderer, store);
+  const offGuards = installPageGuards(window, () => inMatch(store.getState().menu));   // web build spec §7.1 (harmless in Electron)
   const hud = createHudSink(store, perf), duelSink = createDuelSink(store, perf), latencySink = createLatencySink(store, perf);
   const session = createSessionRouter({ resetInput: keyboard.reset,
     single: () => {
       const pick = soloShip(settings.soloShip), layout = soloLayouts.get(pick.id)!;   // Valkyrn spec §9: the picked ship
       const cls = settings.valkyrnLaserFit && pick.laserFit !== null ? classIndexById(pick.laserFit) : undefined;   // §8: the developer laser fit
       const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout, cls, lifecycle: window.ftlite, ui: duelSink, audio,   // Audio-i: Single player was silent
-        onExit: () => { session.home(); actions.leaveSingle(); }, recordDuel: record => window.ftlite?.recordDuel?.(record), setConsole: (input) => actions.setConsole(input),
+        onExit: () => { session.home(); actions.leaveSingle(); }, recordDuel, setConsole: (input) => actions.setConsole(input),
         setContact: (contact) => actions.setContact(contact) });
       return { frame() { /* the duel runs on its own ticker callback */ }, dispose };
     },
@@ -108,7 +140,7 @@ async function startApp(): Promise<void> {
       const resolveLayout = (id: string) => { const layout = Object.values(ships).find(ship => ship.id === id); if (!layout) throw Error('unknown-layout'); return layout; };
       online = createOnlineModeSession({
         duel: () => createOnlineDuelSession({ renderer, ui: duelSink, latency: latencySink, now: () => performance.now(), scheduler, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, api: bridge!,
-          leave: () => actions.leave(), audio, recordDuel: record => window.ftlite?.recordDuel?.(record), setConsole: (input) => actions.setConsole(input),
+          leave: () => actions.leave(), audio, recordDuel, setConsole: (input) => actions.setConsole(input),
           setContact: (contact) => actions.setContact(contact) }),   // Audio-i: local duel sounds; the replicated cues would play twice
         sector: () => createOnlineRendererSession({ sampleDevices: keyboard.sample, resetInput: keyboard.reset, renderer, hud, now: () => performance.now(), scheduler,
           resolveLayout, api: bridge!, playCue: audio.play, sound: createSectorAudio(audio) })
@@ -131,7 +163,10 @@ async function startApp(): Promise<void> {
     home() { session.home(); online = null; }, pause() { online?.pause(); },
     setVolume(channel, volume) { settings = { ...settings, [channel]: volume }; audio.setVolumes(settings); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     setShake(shake) { settings = { ...settings, shake }; renderer.setShake?.(shake); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
-    fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) } : undefined,
+    fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) }
+      : pageFullscreen ? { get: () => pageFullscreen.get(), set: (on) => pageFullscreen.set(on) } : undefined,
+    reload() { location.reload(); },   // web build spec §5.4: the update banner
+    downloadPlaytestLog: duelRecords ? async () => { const log = await duelRecords.exportLog(); if (!log) return null; downloadText(document, URL, log.name, log.text); return log.name; } : undefined,
     quit() { window.close(); }   // the main window's close: main quits the app on window-all-closed, as the close button does
   });
   // Online input is blocked everywhere but a viewed session (React UI spec §2), applied when the derived value changes.
@@ -139,6 +174,11 @@ async function startApp(): Promise<void> {
   setBlocked(inputBlockedOf(store.getState()));
   const offBlocked = store.subscribe((s) => { const value = inputBlockedOf(s); if (value !== blocked) setBlocked(value); });
   const offStatus = bridge?.onStatus(next => { status = next; online?.setStatus(next); actions.setStatus(next); });
+  // Web build spec §5.4: version.json at start and every 5 minutes on the menu or in a lobby (the browser only).
+  const offVersion = window.ftlite ? undefined : watchVersion({ fetch: (url, init) => fetch(url, init),
+    local: { build: __FTLITE_BUILD__, sim: __FTLITE_BUILD__.sim, digest: __GAMEPLAY_CONTENT_DIGEST__ },
+    active: () => versionPollActive(store.getState()), onUpdate: () => actions.updateAvailable(),
+    setInterval: (cb, ms) => window.setInterval(cb, ms), clearInterval: handle => window.clearInterval(handle as number) });
   if (document.hidden || !document.hasFocus()) session.pause();
   // The session strip's height (written by the menu while it is the strip, 0 otherwise) moves the canvas down.
   const resize = (): void => {
@@ -154,8 +194,8 @@ async function startApp(): Promise<void> {
   window.addEventListener('resize', () => actions.windowResized());   // F11 fullscreen changes keep the Settings label true
   const uiRoot = document.createElement('div'); uiRoot.id = 'ui'; document.body.append(uiRoot);
   const unmountUi = await mountUi({ el: uiRoot, store, actions, images });
-  const unlockOnce = (): void => audio.unlock();   // first gesture (and every focus) resumes a suspended AudioContext; guarded inside
-  window.addEventListener('keydown', unlockOnce, { once: true }); window.addEventListener('pointerdown', unlockOnce, { once: true }); window.addEventListener('focus', unlockOnce);
+  const offAudio = installAudioUnlock(window, audio);   // web build spec §7.3: the first gesture (and every focus) resumes a suspended AudioContext
+  const offLeave = web ? installLeavePrompt(window, () => leaveWanted(store.getState())) : undefined;   // web build spec §7.6
   window.addEventListener('blur', () => session.pause());
   document.addEventListener('visibilitychange', () => {   // Audio-i spec section 5: a hidden window is paused and silent
     if (document.hidden) { session.pause(); audio.suspend(); }
@@ -164,10 +204,17 @@ async function startApp(): Promise<void> {
   window.addEventListener('focus', () => session.resume());
   renderer.app.ticker.add(() => session.frame());
   renderer.app.ticker.add(() => audio.tick(performance.now() / 1000));   // Audio-i spec section 5: the music, the hum and the fire loop
-  window.addEventListener('beforeunload', () => {
+  // Teardown when the page is really going (web build spec §7.6): not on beforeunload, where a "Stay" answer to the leave
+  // prompt would keep a dead game; a back-forward-cache pagehide only suspends (the page session handles it).
+  let tornDown = false;
+  window.addEventListener('pagehide', (event) => {
+    if (event.persisted || tornDown) return;
+    tornDown = true;
+    offLeave?.(); offVersion?.(); offGuards(); pageFullscreen?.dispose(); offAudio();
     offPrepareExit?.(); offVisibility?.(); offPort?.(); offStatus?.(); offStrip(); setBlocked(true); offBlocked(); actions.dispose(); unmountUi();
     session.dispose(); bridge?.dispose(); keyboard.destroy();
-  }, { once: true });
+    if (lock.state === 'held') lock.release();   // review R1-F2: hand ftlite-online on at once, so a reload gets it
+  });
 }
 
 /** The dev flight view (H-1 spec §9): the renderer and its letterbox, but no sector session. */

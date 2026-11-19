@@ -3,13 +3,14 @@
 // crew's Cutter in slot 0 and the hunter in slot 1; slots always update in slot order. A slot's weapons fire at its
 // locked target (`systems[i].target`). All fields are flat scalars or arrays, so the flatten and the clone stay simple.
 import { createRng, nextInt, type RngState } from '../../../../shared/rng';
-import { DUEL_CLASSES, SHIP_CLASSES, ShipClass, type ShipClassDef } from './defs';
+import { DUEL_CLASSES, pewFullCharge, SHIP_CLASSES, ShipClass, type ShipClassDef } from './defs';
+import { DUEL_SYSTEM_COUNT, SHIELD_LAYERS_BY_BARS, START_BARS, START_WEAPON_POWER, WEAPON_SLOTS } from './bars';
 import { dirBetween } from './direction';
 import { buildGrid, type BroadPhase } from './grid';
 import { generateMap, type MapDef, type Spawn } from './map';
 import { cloneTacticalFromModule } from './hash';
 import { initRocks, rockCapacity } from './rocks';
-import { DERELICT_FAR_MIN, DERELICT_NEAR_MIN, DERELICT_PHASE_DRAWS, DERELICT_SPAWN_CLEAR, GUN_POOL, HEADING_COUNT, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_TRAIL_TICKS } from './tuning';
+import { DERELICT_FAR_MIN, DERELICT_NEAR_MIN, DERELICT_PHASE_DRAWS, DERELICT_SPAWN_CLEAR, GUN_POOL, HEADING_COUNT, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_TRAIL_TICKS, PEW_POOL } from './tuning';
 
 /** Tactical rooms (spec §5); the index into ShipSystems.rooms. */
 export const Room = { Weapons: 0, Shields: 1, Engines: 2 } as const;
@@ -70,13 +71,33 @@ export interface ShipSystems {
   gunHeat: number; gunLocked: boolean; gunCooldown: number; gunMuzzle: number;
   gunWear: number; gunHull: number; gunRoomWear: [number, number, number];
   gunShots: number; gunHits: number;
+  /** Engineering spike spec §2: the crew ship's powered reactor bars per system (Shields, Weapons, Engines, Sensors,
+   *  Oxygen; sim/tactical/bars.ts). START_BARS on the crew slot at a round's start, zeros on every other slot (never read). */
+  bars: number[];
+  /** Engineering spike spec §10.3: the Weapons bars the officer gave each weapon (pew pew, beam, torpedo; 0..3, or 4 with
+   *  the overdrive bar). The crew slot starts at START_WEAPON_POWER, every other slot at zeros (never read). Readers trim it. */
+  weaponPower: number[];
+  /** W-1 (pew pew spec §1, §4): the pew's charge in units, 0..shots × pewThird (Engineering spike §11: a third is
+   *  rechargeTicks × PEW_CHARGE_SCALE units; the crew's refills at its pew pew bars' rate; a round spends one third), and its telemetry counters (rounds fired, rounds that hit a ship). All zero on a class
+   *  without the pew. */
+  pewCharge: number; pewShots: number; pewHits: number;
+  /** W-2 (pew pew spec §2, §4): the laser's mode, false AUTO (it fires at its target by itself, as before) or true MANUAL
+   *  (it charges as before but fires only on laserFire, along an aim); only the crew's is ever MANUAL (laserMode), and every
+   *  round starts AUTO. `laserAim`: the fine aim (0..AIM_STEPS − 1) a MANUAL burst's pending shots fire along, −1 while no
+   *  MANUAL burst is pending. An inactive slot holds zeros. */
+  laserManual: boolean; laserAim: number;
+  /** W-3 (pew pew spec §3, §4): the torpedo's mode, false AUTO (launched on a lock in range, homing, as before) or true
+   *  MANUAL (launched by missileLaunch alone, with no lock or range, and flown by the Weapons seat); only the crew's is
+   *  ever MANUAL (torpMode), and every round starts AUTO. A launch copies it onto the torpedo (Missile.manual). */
+  torpManual: boolean;
 }
 
 /** A cruise missile's flight (spec §7b). */
 export interface MissileFlight { x: number; y: number; vx: number; vy: number; heading: number; headingAcc: number; age: number }
 /** A missile pool entry: in flight or free, and the ship slot that launched it. At most one in flight per ship; a free
- *  entry holds zeros. */
-export interface Missile extends MissileFlight { active: boolean; owner: number }
+ *  entry holds zeros. W-3 (pew pew spec §3): `manual`, the launcher's torpedo mode at launch (a MANUAL torpedo flies its
+ *  ship's Weapons input and strikes the room under its impact point); a toggle during the flight never changes it. */
+export interface Missile extends MissileFlight { active: boolean; owner: number; manual: boolean }
 /** Valkyrn spec §7.2: a gun round in the pool: its position, velocity (u/s) and ticks flown, the ship slot that fired
  *  it, and whether it flies. A free entry holds zeros. */
 export interface GunRound { x: number; y: number; vx: number; vy: number; age: number; owner: number; active: boolean }
@@ -94,6 +115,9 @@ export interface Hunter {
   lastLaunch: number;
   /** Ring buffer of its target's last HUNTER_TRAIL_TICKS positions (x, y pairs); trailHead is the oldest entry. */
   trail: Float64Array; trailHead: number;
+  /** W-1 (pew pew spec §1): the pew rounds still to fire in this attack burst (0: none, it waits for a full charge), and
+   *  the ticks until the burst's next round may go. */
+  pewBurst: number; pewClock: number;
 }
 
 export const Outcome = { Running: 0, CrewWins: 1, EnemyWins: 2, Draw: 3 } as const;
@@ -120,14 +144,18 @@ export type DuelEvent =
    *  SPIKE: `rock`, the rock slot the shot struck instead (x2, y2 the impact point), when present and ≥ 0. */
   | { kind: 'laser'; ship: number; hit: boolean; stripped: boolean; room: number; x1: number; y1: number; x2: number; y2: number; rock?: number }
   /** A missile ended. `target`: the ship it landed on (its own ship for a self-hit), or −1; `room`: the Room it struck, or −1. */
-  | { kind: 'missileEnd'; ship: number; cause: 'ship' | 'planet' | 'asteroid' | 'edge' | 'expired' | 'missile'; target: number; room: number; x: number; y: number }
+  | { kind: 'missileEnd'; ship: number; cause: 'ship' | 'planet' | 'asteroid' | 'edge' | 'expired' | 'missile' | 'shot'; target: number; room: number; x: number; y: number }
   /** Sci-1 spec §4.6: the enemy turned hostile this tick, and why (laser before gun before missile before clock; Valkyrn spec §7.2). */
-  | { kind: 'hostile'; cause: 'clock' | 'laser' | 'gun' | 'missile' }
+  | { kind: 'hostile'; cause: 'clock' | 'laser' | 'gun' | 'pew' | 'missile' }
   /** Valkyrn spec §7.1: ship `ship` fired a gun round from muzzle `muzzle` (0 starboard, 1 port). */
   | { kind: 'gunFire'; ship: number; muzzle: number }
   /** Valkyrn spec §7.2: a round hit ship `ship` (the target) at the closest-approach point (x, y): `room` the Room it
    *  struck, or −1 on a shield hit; `stripped` when that hit took a layer. */
   | { kind: 'gunHit'; ship: number; room: number; stripped: boolean; hull: boolean; level: boolean; x: number; y: number }   // level: the hit raised the Room's level (Valkyrn spec §7.4)
+  /** W-1 (pew pew spec §1): ship `ship` fired a pew round from its muzzle (x, y). */
+  | { kind: 'pewFire'; ship: number; x: number; y: number }
+  /** W-1: ship `owner`'s pew round hit ship `ship` at (x, y): `stripped` it took a shield layer, `hull` it cost hull. */
+  | { kind: 'pewHit'; ship: number; owner: number; stripped: boolean; hull: boolean; x: number; y: number }
   /** A scan finished: `contact` is now known to `level`. */
   | { kind: 'scanDone'; contact: number; level: number }
   /** The derelict was salvaged: its loot, and whether it was trapped. */
@@ -155,6 +183,8 @@ export interface TacticalState {
   missiles: Slots<Missile>;
   /** Valkyrn spec §7.2: the gun round pool, GUN_POOL entries. */
   rounds: GunRound[];
+  /** W-1 (pew pew spec §1): the pew round pool, PEW_POOL entries shared by every ship (the GunRound shape). */
+  pew: GunRound[];
   hunter: Hunter;
   outcome: number;
   events: DuelEvent[];
@@ -191,26 +221,32 @@ function emptyShip(bodies: number): Ship {
  *  with no setup); a class without a laser (Valkyrn spec §6.1) starts empty and untargeted. Every round, the rematch's
  *  included, is built here. */
 function systemsFor(cls: number, target: number, crew = false): ShipSystems {
-  const c = SHIP_CLASSES[cls]!, laser = c.slots.laser;
+  const c = SHIP_CLASSES[cls]!, laser = c.slots.laser, pew = c.slots.pew;
   return {
-    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: c.shields.layers, shieldClock: 0, laserCharge: crew && laser ? laser.chargeUnits : 0, laserHold: 0, fireHeld: false, lock: Room.Shields,
+    cls, target, hull: c.hull, rooms: [0, 0, 0], shields: crew ? Math.min(c.shields.layers, SHIELD_LAYERS_BY_BARS[START_BARS[0]!]!) : c.shields.layers, shieldClock: 0, laserCharge: crew && laser ? laser.chargeUnits : 0, laserHold: 0, fireHeld: false, lock: Room.Shields,
     laserTargeted: crew && laser !== null, torpLock: -1, torpRoom: -1, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: c.slots.missile.magazine, magazineClock: 0, laserRock: -1, torpRock: -1, torpRockFlying: -1, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
-    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0
+    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0,
+    pewCharge: pew ? pewFullCharge(pew) : 0, pewShots: 0, pewHits: 0,   // W-1: a pew starts the round full
+    laserManual: false, laserAim: -1,   // W-2: every round starts AUTO, with no MANUAL burst pending
+    torpManual: false,   // W-3: and the torpedo too
+    bars: crew ? [...START_BARS] : Array<number>(DUEL_SYSTEM_COUNT).fill(0),   // Engineering spike spec §2
+    weaponPower: crew ? [...START_WEAPON_POWER] : Array<number>(WEAPON_SLOTS).fill(0)   // spec §10.3
   };
 }
 function emptySystems(): ShipSystems {
   return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, laserTargeted: false, torpLock: 0, torpRoom: 0, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: 0, magazineClock: 0, laserRock: 0, torpRock: 0, torpRockFlying: 0, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
-    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0 };
+    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0, pewCharge: 0, pewShots: 0, pewHits: 0, laserManual: false, laserAim: 0, torpManual: false,
+    bars: Array<number>(DUEL_SYSTEM_COUNT).fill(0), weaponPower: Array<number>(WEAPON_SLOTS).fill(0) };
 }
 /** A free missile pool entry. */
-export function emptyMissile(): Missile { return { active: false, owner: 0, x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 }; }
+export function emptyMissile(): Missile { return { active: false, owner: 0, x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0, manual: false }; }
 
 function hunterFor(crew: Spawn): Hunter {
   const trail = new Float64Array(2 * HUNTER_TRAIL_TICKS);
   for (let k = 0; k < HUNTER_TRAIL_TICKS; k++) { trail[2 * k] = crew.x; trail[2 * k + 1] = crew.y; }
-  return { mode: HunterMode.Hunt, room: 0, timer: 0, working: false, fireAt: -1, lastLaunch: -HUNTER_MISSILE_COOLDOWN_TICKS, trail, trailHead: 0 };
+  return { mode: HunterMode.Hunt, room: 0, timer: 0, working: false, fireAt: -1, lastLaunch: -HUNTER_MISSILE_COOLDOWN_TICKS, trail, trailHead: 0, pewBurst: 0, pewClock: 0 };
 }
 
 /** Sci-1 spec §4.5's draws, in order, from the tactical rng right after the map: the enemy's weak frequency; the
@@ -248,6 +284,7 @@ export function createTacticalState(seed: number, slots = DUEL_CLASSES.length, c
     systems: [systemsFor(crewClass, 1, true),systemsFor(DUEL_CLASSES[1]!, 0), ...extra.map(emptySystems)],
     missiles: [emptyMissile(), emptyMissile(), ...extra.map(emptyMissile)],
     rounds: Array.from({ length: GUN_POOL }, emptyRound),
+    pew: Array.from({ length: PEW_POOL }, emptyRound),   // W-1 (pew pew spec §1)
     hunter: hunterFor(map.spawns[0]), outcome: Outcome.Running, events: [],
     // Sci-1 (spec §4): the round starts with the enemy unidentified and holding, the scanner idle.
     startTick: 0, hostileAt: -1, known: [0, 0], scan: idleScan(), designated: -1, weakFreq: science.weakFreq, derelict: science.derelict
@@ -265,11 +302,11 @@ export function missileOf(state: TacticalState, i: number): Missile | null {
   return null;
 }
 /** Put a missile in flight for ship i with these flight values: in the entry it already flies in, or the first free one
- *  (the launch, and tests). Returns it. */
-export function placeMissile(state: TacticalState, i: number, f: MissileFlight): Missile {
+ *  (the launch, and tests). W-3: `manual` its mode (default AUTO). Returns it. */
+export function placeMissile(state: TacticalState, i: number, f: MissileFlight, manual = false): Missile {
   const m = missileOf(state, i) ?? state.missiles.find((e) => !e.active);
   if (!m) throw new Error(`no free missile pool entry for ship ${i}`);
-  Object.assign(m, { active: true, owner: i, x: f.x, y: f.y, vx: f.vx, vy: f.vy, heading: f.heading, headingAcc: f.headingAcc, age: f.age });
+  Object.assign(m, { active: true, owner: i, x: f.x, y: f.y, vx: f.vx, vy: f.vy, heading: f.heading, headingAcc: f.headingAcc, age: f.age, manual });
   return m;
 }
 /** Free ship i's missile entry, with no event (a missile ending goes through the missile step). */

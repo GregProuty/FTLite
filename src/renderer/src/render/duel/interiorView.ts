@@ -20,8 +20,9 @@ import { AMBER, DIM, FONT_NATIVE, GOOD, TEXT, WARN } from '../theme';
 import { HEALTH_LOW } from './readoutModel';
 import { HEALTH_MAX } from '../../sim/tuning';
 import { createTileLayer } from '../tiles';
-import { duelFit, interiorOverlay, INTERIOR_BAND, stationBadges, type StationBadge } from './interiorModel';
-import { placeInterior, type InteriorCamera } from './interiorCamera';
+import { airTints, duelFit, hazardMarkers, interiorOverlay, INTERIOR_BAND, stationBadges, type StationBadge } from './interiorModel';
+import { placeInterior, type InteriorCamera, type Placement } from './interiorCamera';
+import { shipControlAt } from './shipControls';
 import { createInteriorFeel } from '../interiorFeel';
 import { backdropOption } from '../twinkleLayer';
 import { DEFAULT_FEEL, type FeelSetting } from '../feel';
@@ -43,12 +44,17 @@ export interface InteriorView {
    *  `presentDt`: the light and feel's seconds this frame (Art-i spec section 7), 0 while the duel is paused so the
    *  particles, the pulse and the ambient life hold; it defaults to `dt`, which the tiles and boarders keep.
    *  `zoom`: the interior's zoom camera and the character it follows (interior zoom spec); absent, the plain fit. */
-  draw(d: DuelState, crewPrev: readonly { x: number; y: number }[], alpha: number, dt: number, events?: readonly ViewEvent[], presentDt?: number, zoom?: { camera: InteriorCamera; active: number }): void;
+  draw(d: DuelState, crewPrev: readonly { x: number; y: number }[], alpha: number, dt: number, events?: readonly ViewEvent[], presentDt?: number, zoom?: { camera: InteriorCamera; active: number }, hover?: { x: number; y: number } | null): void;
+  /** Engineering spike §5: the last draw's placement (the world's scale and offset before the shake), or null before the
+   *  first; the scene's click hit-test reads it. */
+  placement(): Placement | null;
   destroy(): void;
 }
 
 /** The room tint by damage level (amber, red), and darker shades of both for the marker and its label on the light floor. */
 const TINT: readonly number[] = [0, AMBER, WARN], MARK: readonly number[] = [0, 0x8a5a00, 0xa8281c];
+/** Engineering spike §6: the most fire and breach markers drawn at once (8 rooms and 8 sites on the Hound). */
+export const HAZARD_LABELS = 16;
 
 /** `stageScale`: the letterbox's stage scale, read every frame so the fit snaps to whole screen pixels per art pixel (Art-i spec section 4); tests leave it at 1.
  *  `feel`: the feel setting (Art-i spec section 7), read every frame; tests leave it at full. */
@@ -67,7 +73,12 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   const tiles = createTileLayer(assets, memory), effects = createEffectsLayer(assets, memory), icons = createIconLayer(['navigation', 'medbay']);   // the badges stand in for these two (start-aboard spec §2)
   const props = createPropLayer(assets);   // Art-iii spec section 4: the set dressing, directly over the tiles
   const desks = createConsoleLayer(assets), crew = createCrewLayer(assets, memory), boarders = createBoarderLayer(assets);
-  const damage = new Graphics(), marks = new Graphics();
+  const air = new Graphics(), damage = new Graphics(), marks = new Graphics();   // Engineering spike §6: the air tint under the damage tint
+  let last: Placement | null = null;
+  const hazardLabels = Array.from({ length: HAZARD_LABELS }, () => {
+    const t = new BitmapText({ text: '', style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE } });
+    t.anchor.set(0.5, 0); t.roundPixels = true; t.visible = false; return t;
+  });
   const crewLabels = Array.from({ length: DUEL_CREW_MAX }, () => {   // duel-health spec §2: DOWNED under a downed character; one per player of the largest crew (Sci-2 spec §7)
     const t = new BitmapText({ text: '', style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE } });
     t.anchor.set(0.5, 0); t.roundPixels = true; t.visible = false; return t;
@@ -92,13 +103,14 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   // damage tint under the crew, crew, boarders (always empty in the duel), effects above, the lights, and the markers and
   // labels on top so the lights never wash them out.
   const battlemap = createBattlemapLayer(assets);
-  world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, badges, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels, ...crewLabels, healMarks, ...revivedLabels);
+  world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, badges, air, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels, ...hazardLabels, ...crewLabels, healMarks, ...revivedLabels);
   const badgeText = new Container();
   world.addChild(badgeText);
   desks.container.addChild(fx.fixtures); effects.below.addChild(fx.paintedBelow); effects.above.addChild(fx.above, fx.paintedAbove);
   return {
     container, world, memory,
-    draw(d, crewPrev, alpha, dt, events = [], presentDt = dt, zoom) {
+    placement: () => last,
+    draw(d, crewPrev, alpha, dt, events = [], presentDt = dt, zoom, hover = null) {
       const st = d.interior, stage = stageScale(), rect = fitRect(st.layout.id, st.derived.width, st.derived.height, missing), fit0 = duelFit(st.derived.width, st.derived.height, stage, rect);
       // The zoom camera places the world on whole screen pixels per art pixel; it follows the active character's drawn (interpolated) position.
       const eid = zoom ? st.crew[zoom.active] : undefined;
@@ -108,6 +120,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
       })();
       const fit = zoom ? placeInterior(zoom.camera, { band: INTERIOR_BAND, rect: { x: rect.x * TILE_PX, y: rect.y * TILE_PX, w: rect.w * TILE_PX, h: rect.h * TILE_PX }, fit: fit0, stage }, target) : fit0;
       world.scale.set(fit.scale);
+      last = { scale: fit.scale, x: fit.x, y: fit.y };   // before the shake: the click hit-test's placement
       const zoomed = !!zoom && zoom.camera.level !== 0;
       if (world.mask !== (zoomed ? clip : null)) world.mask = zoomed ? clip : null;   // level 0 draws exactly as before
       clip.visible = zoomed;
@@ -132,7 +145,8 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
       }
       bs.forEach((b, k) => { const c = BADGE_TINT[b.tint]; (badges.children[k * 2 + 1] as Graphics).tint = c; badgeLabels[k]!.tint = c; });
       const o = interiorOverlay(d);
-      damage.clear(); marks.clear();
+      damage.clear(); marks.clear(); air.clear();
+      for (const t of airTints(d)) for (const p of t.tiles) air.rect(p.x, p.y, TILE_PX, TILE_PX).fill({ color: t.color, alpha: t.alpha });
       for (const t of o.tints) for (const p of t.tiles) damage.rect(p.x, p.y, TILE_PX, TILE_PX).fill({ color: TINT[t.level]!, alpha: 0.28 });
       for (const c of o.consoles) marks.rect(c.x + 1, c.y + 1, TILE_PX - 2, TILE_PX - 2).stroke({ width: 2, color: c.free ? AMBER : DIM, alpha: c.free ? 0.95 : 0.4 });
       labels.forEach((t, k) => {
@@ -145,6 +159,21 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         if (t.text !== m.label) t.text = m.label;
         t.tint = colour; t.position.set(Math.round(m.x), Math.round(m.y + TILE_PX * 0.5));
       });
+      // Engineering spike §4, §6: fires outside the repair rooms and breaches, worked by holding E at the marker.
+      const hz = hazardMarkers(d);
+      hazardLabels.forEach((t, k) => {
+        const m = hz[k];
+        t.visible = m !== undefined;
+        if (!m) return;
+        const colour = MARK[2]!, r = TILE_PX * 0.42;
+        marks.poly([m.x, m.y - r, m.x + r, m.y, m.x, m.y + r, m.x - r, m.y]).stroke({ width: 2, color: colour });
+        if (m.progress > 0) marks.moveTo(m.x, m.y).arc(m.x, m.y, r * 0.7, -Math.PI / 2, -Math.PI / 2 + m.progress * Math.PI * 2).closePath().fill({ color: TEXT, alpha: 0.8 });
+        if (t.text !== m.label) t.text = m.label;
+        t.tint = colour; t.position.set(Math.round(m.x), Math.round(m.y + TILE_PX * 0.5));
+      });
+      // Spec §5, §6: the door or airlock under the pointer, outlined (anyone can click it).
+      const over = hover ? shipControlAt(d, last, hover.x, hover.y) : null;
+      if (over) { const w = st.derived.width, tx = over.tile % w, ty = Math.floor(over.tile / w); marks.rect(tx * TILE_PX + 1, ty * TILE_PX + 1, TILE_PX - 2, TILE_PX - 2).stroke({ width: 2, color: AMBER, alpha: 0.95 }); }
       // Health (duel-health spec §2): a bar above each character below full, and a downed character's pick-up ring and label.
       const drawn: { x: number; y: number }[] = [];
       for (const c of o.crew) {

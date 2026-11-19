@@ -14,6 +14,7 @@ import { scanCommand } from '../src/renderer/src/sim/tactical/science';
 import { createTacticalState, Outcome } from '../src/renderer/src/sim/tactical/state';
 import { SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../src/renderer/src/sim/tactical/tuning';
 import { CUTTER } from './helpers/scriptedDuel';
+import { holdInSight } from './helpers/sensorSight';
 
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 let seq = 0;
@@ -71,6 +72,7 @@ describe('designate (spec §5)', () => {
   it('stale-tick, then invalid-seat (only the Science attendant), then malformed, then noop; the last applied wins', () => {
     const d = seated(['nav', 'science']);
     try {
+      holdInSight(d.tactical);   // Engineering spike spec §10.4: designate needs the contact seen
       const r = step(d, [
         cmd(d, 1, { kind: 'designate', contact: 0 }, d.interior.tick + 1),
         cmd(d, 0, { kind: 'designate', contact: 0 }),
@@ -97,6 +99,7 @@ describe('contactScan (spec §5)', () => {
     const d = seated(['science', -1]);
     try {
       d.tactical.known = [2, 0];
+      holdInSight(d.tactical);   // Engineering spike spec §10.4: contactScan needs the contact seen
       const r = step(d, [
         cmd(d, 1, { kind: 'contactScan', contact: 0 }, d.interior.tick + 1),
         cmd(d, 1, { kind: 'contactScan', contact: 1 }),
@@ -112,6 +115,7 @@ describe('contactScan (spec §5)', () => {
     for (const [seat, rate] of [['nav', SCAN_RATE_OTHER], ['weapons', SCAN_RATE_OTHER], ['science', SCAN_RATE_SCIENCE]] as const) {
       const d = seated([seat, -1]);
       try {
+        holdInSight(d.tactical);   // Engineering spike spec §10.4: contactScan needs the contact seen
         expect(step(d, [cmd(d, 0, { kind: 'contactScan', contact: 0 })])[0]!.status).toBe('applied');
         expect(d.tactical.scan).toMatchObject({ contact: 0, level: 1, rate, by: d[seat] });   // progress is Task 4's
       } finally { disposeDuel(d); }

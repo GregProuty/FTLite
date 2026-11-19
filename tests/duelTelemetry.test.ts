@@ -10,10 +10,12 @@ import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick, type DuelInput } from '../src/renderer/src/sim/duel/step';
 import { BAIT_WINDOW_TICKS, createTelemetry, endedFromPlanet, recordTick, type DuelTelemetry } from '../src/renderer/src/sim/duel/telemetry';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
-import { missileOf, Outcome, Room } from '../src/renderer/src/sim/tactical/state';
+import { placeRound } from '../src/renderer/src/sim/tactical/gun';
+import { placeMissile, missileOf, Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
 import { inTorpedoRange } from './helpers/torpedoRange';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 const layout = parseShip(cutter);
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -108,6 +110,7 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
   });
   it('a laser kill is attributed to the laser, not the planet', () => {
     const d = createSeatedDuel(layout, 5), t = createTelemetry(d), [s, e] = d.tactical.ships;
+    todaysCrewWeapons(d.tactical);   // Engineering spike spec §10.3: the round starts the beam dark; give it its bars
     e.x = s.x + hx(s.heading) * 200; e.y = s.y + hy(s.heading) * 200; e.vx = s.vx; e.vy = s.vy; d.tactical.systems[1].shields = 0; d.tactical.systems[1].hull = 1;
     d.tactical.systems[0].laserCharge = LASER_CHARGE_UNITS;
     step(d, t, [cmd(d, 1, { kind: 'laserCharge', held: true })]);   // FTL targeting spec §2: one press fires a full laser
@@ -134,6 +137,7 @@ describe('telemetry (H-0c-ii-a spec §4)', () => {
   });
   it('counts Weapons as idle only with nothing to do: full, no launch possible, enemy out of the arc', () => {
     const d = createSeatedDuel(layout, 5), t = createTelemetry(d), s = d.tactical.systems[0];
+    todaysCrewWeapons(d.tactical);   // Engineering spike spec §10.3: the round starts the beam dark; give it its bars
     s.laserCharge = LASER_CHARGE_UNITS;
     step(d, t);                                                             // the duel's start: the enemy beyond torpedo range (weapons update spec §2)
     expect(t.weaponsIdleTicks).toBe(1);
@@ -171,5 +175,40 @@ describe('a set throttle is a manoeuvre (Artemis spec §5.3)', () => {
     };
     expect(bait([2], 0)).toBe(1);
     expect(bait([2, 0], BAIT_WINDOW_TICKS)).toBe(0);
+  });
+});
+
+describe('the pew in telemetry (W-1 pew pew spec §1)', () => {
+  /** A crew pew round (owner 0) one step short of the enemy ship, flying at it. */
+  const roundAtEnemy = (d: DuelState) => {
+    const e = d.tactical.ships[1]!;
+    placeRound(d.tactical, { x: e.x, y: e.y + SHIP_RADIUS + 5, vx: 0, vy: -900, age: 0, owner: 0 }, d.tactical.pew);
+  };
+  it('a pew round that takes the last hull is attributed to the pew', () => {
+    const d = createSeatedDuel(layout, 5), t = createTelemetry(d);
+    d.tactical.systems[1].shields = 0; d.tactical.systems[1].hull = 1;
+    roundAtEnemy(d);
+    step(d, t);
+    expect(t.outcome).toBe(Outcome.CrewWins);
+    expect(t.terminal).toEqual([[], ['pew']]);
+  });
+  it('a pew round that only strips a layer does not set the pew cause', () => {
+    const d = createSeatedDuel(layout, 5), t = createTelemetry(d);
+    d.tactical.systems[1].shields = 1; d.tactical.systems[1].hull = 1;
+    roundAtEnemy(d);
+    step(d, t);
+    expect(d.tactical.events.some((e) => e.kind === 'pewHit' && e.stripped)).toBe(true);
+    expect(d.tactical.systems[1].shields).toBe(0);
+    expect(t.terminal).toEqual([[], []]);
+    expect(t.ships[0].layersStripped).toBe(0);
+  });
+  it('a torpedo a pew round shoots down counts under missileLosses.missile', () => {
+    const d = createSeatedDuel(layout, 5), t = createTelemetry(d), s = d.tactical.ships[0]!;
+    placeMissile(d.tactical, 0, { x: s.x + 300, y: s.y, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 30 });
+    const m = missileOf(d.tactical, 0)!;
+    placeRound(d.tactical, { x: m.x + 10, y: m.y, vx: -900, vy: 0, age: 0, owner: 1 }, d.tactical.pew);
+    step(d, t);
+    expect(missileOf(d.tactical, 0)).toBeNull();
+    expect(t.ships[0].missileLosses.missile).toBe(1);
   });
 });

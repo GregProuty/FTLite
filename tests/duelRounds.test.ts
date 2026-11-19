@@ -113,12 +113,14 @@ describe('a decided round and the rematch (spec §7)', () => {
       const T = d.baseTick, fresh = createDuel(CUTTER, d.tactical.seed), pa = createScriptedPair(d.tactical.seed), pb = createScriptedPair(d.tactical.seed);
       // Tick stamps: these hold an encounter tick, so a round started at T holds the fresh duel's value plus T.
       const stamps = /^(space\.tick|space\.ships\.\d+\.graceUntil|space\.hunter\.lastLaunch|science\.startTick|interior\.tick)$/, fireAt = 'space.hunter.fireAt';
+      // Engineering spike spec §4: oxygenStep now runs on the duel's hazard tick and stamps lsDeliveredTick (-1 until then).
+      const lsStamp = 'interior.skills.lsDeliveredTick';
       try {
         for (let k = 0; k <= 600; k++) {
           const a = named(d), b = named(fresh);
           for (const [name, values] of a) {
             if (name.startsWith('round.')) continue;
-            const want = b.get(name)!, shift = stamps.test(name) ? T : name === fireAt && want[0]! >= 0 ? T : 0;
+            const want = b.get(name)!, shift = stamps.test(name) ? T : (name === fireAt || name === lsStamp) && want[0]! >= 0 ? T : 0;   // Engineering spike spec §4: lsStamp
             expect(values, `${name} at round tick ${k}`).toEqual(want.map((v) => v + shift));
           }
           if (d.tactical.outcome !== Outcome.Running) break;

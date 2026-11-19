@@ -7,11 +7,12 @@ import { flyMissile, homingTurn } from '../src/renderer/src/sim/tactical/missile
 import { createTacticalState, HunterMode, missileOf, Outcome, placeMissile, removeMissile, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { HUNTER_JITTER_TICKS, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_WALK_TICKS, LASER_CHARGE_UNITS, REPAIR_WORK_TICKS, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
-import { makeHostile } from './helpers/hostile';
+import { makeHostile, noHunterPew } from './helpers/hostile';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 /** Enemy at (−300, −300) facing west at the crew 300 units away: in arc, in range, clear of the planet. */
 function facing(): TacticalState {
-  const st = makeHostile(createTacticalState(5));
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
   return st;
@@ -61,21 +62,26 @@ describe('hunter: flying (spec §9 Hunt)', () => {
     while (nextInt({ s: seed }, HUNTER_JITTER_TICKS + 1) < 3) seed++;   // a seed whose first jitter is at least 3 ticks
     st.rng.s = seed;
     const expected = { s: seed }, j = nextInt(expected, HUNTER_JITTER_TICKS + 1);
+    noHunterPew(st);   // W-1: this test predates the Hunter's pew
     expect(hunterThink(st).laserCharge).toBe(null);                      // scheduled, not yet released
     expect(st.rng.s).toBe(expected.s);                                    // exactly one draw
     expect(st.hunter.fireAt).toBe(st.tick + j);
     st.tick++;
+    noHunterPew(st);   // W-1: this test predates the Hunter's pew
     expect(hunterThink(st).laserCharge).toBe(null);
     expect(st.rng.s).toBe(expected.s);                                    // waiting draws nothing
     st.ships[0].x = 0;                                                    // the crew leaves the arc (behind the enemy): cancel
+    noHunterPew(st);   // W-1: this test predates the Hunter's pew
     hunterThink(st);
     expect(st.hunter.fireAt).toBe(-1);
     expect(st.rng.s).toBe(expected.s);
     st.ships[0].x = -600;                                                 // back in arc: a fresh draw
+    noHunterPew(st);   // W-1: this test predates the Hunter's pew
     hunterThink(st);
     nextInt(expected, HUNTER_JITTER_TICKS + 1);
     expect(st.rng.s).toBe(expected.s);
     for (let t = 0; t <= HUNTER_JITTER_TICKS && st.hunter.fireAt >= 0; t++) {
+      noHunterPew(st);   // W-1: this test predates the Hunter's pew
       if (st.tick >= st.hunter.fireAt) { expect(hunterThink(st).laserCharge).toBe(false); break; }
       expect(hunterThink(st).laserCharge).toBe(null);
       st.tick++;

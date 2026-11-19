@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DuelSystem } from '../src/renderer/src/sim/tactical/bars';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { inReachOfTile } from '../src/renderer/src/sim/interact';
@@ -7,10 +8,12 @@ import { DoorState, roomAt } from '../src/renderer/src/sim/grid';
 import type { HeldInput } from '../src/renderer/src/net/contracts';
 import type { DuelCommand, DuelEnvelope } from '../src/renderer/src/sim/duel/commands';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
+import { siteOfRoom } from '../src/renderer/src/sim/duel/hazards';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { inTorpedoRange } from './helpers/torpedoRange';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { missileOf, Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { LASER_CHARGE_UNITS } from '../src/renderer/src/sim/tactical/tuning';
@@ -30,13 +33,13 @@ function standAt(d: DuelState, pid: number, tx: number, ty: number): void {
 }
 
 describe('createDuel (spec §8)', () => {
-  it('starts both players standing at the layout spawns with every console free, holds every door open, and resolves the repair points', () => {
+  it('starts both players standing at the layout spawns with every console free, every door in auto (closed), and resolves the repair points', () => {
     const d = createDuel(layout, 5), st = d.interior;
     expect([...st.stations.occupant].every((o) => o === -1)).toBe(true);
     expect([st.stations.occupant[d.nav], st.stations.occupant[d.weapons]]).toEqual([-1, -1]);
     expect([Seated.station[st.crew[0]!], Seated.station[st.crew[1]!]]).toEqual([-1, -1]);
     expect([0, 1].map((p) => [Math.floor(Position.x[st.crew[p]!]!), Math.floor(Position.y[st.crew[p]!]!)])).toEqual([[...layout.spawns[0]!], [...layout.spawns[1]!]]);
-    expect([...st.doors.state].every((s) => s === DoorState.HeldOpen)).toBe(true);
+    expect([...st.doors.state].every((s) => s === DoorState.Closed)).toBe(true);   // Engineering spike spec §5: doors start in auto, no longer held open
     expect(d.points.map((p) => [p.tacticalRoom, p.room])).toEqual([[Room.Weapons, st.derived.roomIndex.get('W')], [Room.Shields, st.derived.roomIndex.get('R')], [Room.Engines, st.derived.roomIndex.get('E')]]);
     expect(d.present).toEqual([true, true]);
   });
@@ -44,7 +47,7 @@ describe('createDuel (spec §8)', () => {
 
 describe('DuelState shape', () => {
   it('has exactly these fields; a new field must also go into flattenDuel in duel/hash.ts', () => {
-    expect(Object.keys(createSeatedDuel(layout, 5)).sort()).toEqual(['baseTick', 'decidedTick', 'events', 'helmPlayer', 'interior', 'nav', 'points', 'present', 'repair', 'round', 'science', 'tactical', 'throttle', 'weapons', 'holdHeading', 'crewClass', 'thrMille', 'rcsGas', 'rcsAcc', 'compressor', 'helmBars', 'helmVent'].sort());   // Valkyrn-i: crewClass is hashed as systems.0.cls (plan Decision 4)
+    expect(Object.keys(createSeatedDuel(layout, 5)).sort()).toEqual(['baseTick', 'decidedTick', 'events', 'helmPlayer', 'interior', 'nav', 'points', 'present', 'repair', 'round', 'science', 'tactical', 'throttle', 'weapons', 'holdHeading', 'crewClass', 'thrMille', 'rcsGas', 'rcsAcc', 'compressor', 'helmBars', 'helmVent', 'power', 'systemRooms'].sort());   // Engineering spike spec §7: power (hashed) and systemRooms (derived, not snapshotted); Valkyrn-i: crewClass is hashed as systems.0.cls (plan Decision 4)
   });
   it('disposeDuel is idempotent', () => {
     const d = createSeatedDuel(layout, 5);
@@ -85,6 +88,7 @@ describe('consoles are roles (spec §8, §13)', () => {
     step(d, [], [{ moveX: 1, moveY: 0, interactHeld: false }, NONE]);
     expect(s.heading).toBe((h0 + 2) % 256);                              // the Valkyrn's turn (playtest2feedback Decision 17; the Cutter's 1.78 steps a tick no longer answers moveX): two whole steps on the first tick
     const coast = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn), thrust = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn), held = createSeatedDuel(layout, 5, 0, 2, ShipClass.Valkyrn);
+    thrust.tactical.systems[0].bars[DuelSystem.Engines] = 4;   // Engineering spike spec §10.2 (fallout a): Engines starts at 3 bars (cap 3); a throttle of 4 needs the 4th bar
     step(coast); step(thrust, [cmd(thrust, 0, { kind: 'throttle', level: 4 })]); step(held, [], [{ moveX: 0, moveY: -1, interactHeld: false }, NONE]);
     const [a, b, w] = [coast.tactical.ships[0], thrust.tactical.ships[0], held.tactical.ships[0]];
     const dx = b.vx - a.vx, dy = b.vy - a.vy;                           // the velocity full throttle added this tick
@@ -95,6 +99,7 @@ describe('consoles are roles (spec §8, §13)', () => {
   });
   it('accepts weapon commands only from the present player seated at Weapons', () => {
     const d = createSeatedDuel(layout, 5);
+    todaysCrewWeapons(d.tactical);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
     const helmPress = cmd(d, 0, { kind: 'laserCharge', held: true }), gunPress = cmd(d, 1, { kind: 'laserCharge', held: true });
     const results = step(d, [helmPress, gunPress]);
     expect(results.find((r) => r.id === helmPress.id)).toMatchObject({ status: 'rejected', reason: 'not-at-weapons' });
@@ -105,6 +110,7 @@ describe('consoles are roles (spec §8, §13)', () => {
   it('weapon commands take effect lock, then charge, then launch, whatever their envelope order', () => {
     for (const launchFirst of [true, false]) {
       const d = createSeatedDuel(layout, 5), s = d.tactical.systems[0];
+      todaysCrewWeapons(d.tactical);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
       inTorpedoRange(d.tactical);                                       // weapons update spec §2: a launch needs the target within 360
       s.laserCharge = LASER_CHARGE_UNITS;                               // a full charge
       const launch = cmd(d, 1, { kind: 'missileLaunch' }), release = cmd(d, 1, { kind: 'laserCharge', held: true });
@@ -114,6 +120,7 @@ describe('consoles are roles (spec §8, §13)', () => {
     }
     for (const lockFirst of [true, false]) {
       const d = createSeatedDuel(layout, 5), [s, e] = d.tactical.ships;
+      todaysCrewWeapons(d.tactical);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
       Object.assign(e, { x: s.x + hx(s.heading) * 300, y: s.y + hy(s.heading) * 300 }); d.tactical.systems[1].shields = 0;   // dead ahead, shields down
       d.tactical.systems[0].laserCharge = LASER_CHARGE_UNITS;
       const lock = cmd(d, 1, { kind: 'laserLock', room: Room.Engines }), release = cmd(d, 1, { kind: 'laserCharge', held: true });
@@ -272,7 +279,8 @@ describe('the interior stays quiet (spec §17 risk 7)', () => {
     }
     expect(d.tactical.tick).toBeGreaterThan(100);
     expect([...st.rooms.fire].every((f, room) => f === 0 || started.has(room))).toBe(true);   // no spread, no sector fire
-    expect([...st.breaches.active].every((b) => b === 0)).toBe(true);
+    const hitSites = new Set(d.points.map((p) => siteOfRoom(d, p.room)));
+    expect([...st.breaches.active].every((b, s) => b === 0 || hitSites.has(s))).toBe(true);   // Engineering spike spec §4: hits breach their room's site; no sector breach
     expect([...st.boarders.active].every((b) => b === 0)).toBe(true);
     expect(st.run.event).toBe(event0);
   });

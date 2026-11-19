@@ -31,11 +31,13 @@ export interface Session {
 }
 /** `face` (Feel-i, console feel spec §2): the Helm's auto-face, Space held at the Helm; absent means false. `aim`
  *  (Valkyrn spec §6.2): the Flight seat's mouse aim, a heading index 0..255, −1 or absent for none (the sim counts any
- *  other value as none). `gunHeld` (Valkyrn spec §7.1): the gun's trigger; absent means false. Only the duel reads them:
- *  `face` and `aim` from the Helm's attendant (A/D, moveX, overrides both), `gunHeld` from Weapons'. Playtest2feedback §7:
- *  `throttleHeld` (1 W, −1 S), `rcsX` (−1 port, 1 starboard) and `rcsY` (−1 aft, 1 forward) are the
- *  crew Helm's held throttle and thrusters, each an integer −1..1; absent means 0. */
-export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean; aim?: number; gunHeld?: boolean; throttleHeld?: number; rcsX?: number; rcsY?: number }
+ *  other value as none). `gunHeld` (Valkyrn spec §7.1): the gun's trigger; absent means false. W-3 (pew pew spec §3):
+ *  `torpTurn` the MANUAL torpedo's A/D (−1, 0 or 1; absent 0) and `torpHeading` the heading it holds (0..255; −1 or
+ *  absent none). Only the duel reads them: `face` and `aim` from the Helm's attendant (A/D, moveX, overrides both),
+ *  `gunHeld`, `torpTurn` and `torpHeading` from Weapons'. Playtest2feedback §7: `throttleHeld` (1 W, −1 S), `rcsX`
+ *  (−1 port, 1 starboard) and `rcsY` (−1 aft, 1 forward) are the crew Helm's held throttle and thrusters, each an
+ *  integer −1..1; absent means 0. */
+export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean; aim?: number; gunHeld?: boolean; torpTurn?: number; torpHeading?: number; throttleHeld?: number; rcsX?: number; rcsY?: number }
 export interface HeldFrame { runId: RunId; player: PlayerId; tick: number; sequence: number; held: HeldInput }
 export interface LifecyclePause { paused: boolean; reason: string }
 export interface CommandId { player: PlayerId; sequence: number }
@@ -100,8 +102,31 @@ export type DuelCommand =
   | { kind: 'designate'; contact: number }
   /** Weapons tunes the crew laser to frequency 0..2 (A..C). */
   | { kind: 'laserFrequency'; freq: number }
+  /** W-1 (pew pew spec §1, §4): Weapons fires the pew along heading index `aim` 0..255 plus `aimAcc` 0..255 256ths of a
+   *  step, clamped into the cone by the sim. Any integers pass the codec; the sim answers an out-of-range one malformed. */
+  | { kind: 'pewFire'; aim: number; aimAcc: number }
+  /** W-2 (pew pew spec §2, §4): Weapons sets the crew laser's mode: true MANUAL (it fires only on laserFire, along an aim),
+   *  false AUTO (it fires at its target by itself, as before). */
+  | { kind: 'laserMode'; manual: boolean }
+  /** W-2: Weapons fires the MANUAL laser along heading index `aim` 0..255 plus `aimAcc` 0..255 256ths of a step (pewFire's
+   *  aim), clamped into the laser's ±60° by the sim. Any integers pass the codec; the sim answers an out-of-range one malformed. */
+  | { kind: 'laserFire'; aim: number; aimAcc: number }
+  /** W-3 (pew pew spec §3): Weapons sets the crew torpedo's mode: true MANUAL (launched by missileLaunch alone, no lock or
+   *  range, and flown by the Weapons seat's held torpTurn and torpHeading), false AUTO (as before). A torpedo in flight
+   *  keeps the mode it launched with. */
+  | { kind: 'torpMode'; manual: boolean }
   /** On a decided round's end card: start the next round (H-2 spec §7). */
   | { kind: 'rematch' }
+  /** Engineering spike spec §7 (any present, conscious player; the sim checks ranges): move one reactor bar into (+1) or
+   *  out of (−1) system 0..4 (Shields, Weapons, Engines, Sensors, Oxygen); cycle system 0..3's coolant; toggle a door
+   *  edge auto ↔ held open; toggle an airlock open or closed. Named ship* because the sector owns `power` and `coolant`. */
+  | { kind: 'shipPower'; system: number; delta: number }
+  | { kind: 'shipCoolant'; system: number }
+  | { kind: 'shipDoor'; edge: number }
+  | { kind: 'shipAirlock'; index: number }
+  /** Engineering spike spec §10.3: the Weapons seat moves one bar onto (+1) or off (−1) weapon slot 0..2 (pew pew, beam,
+   *  torpedo). The sim checks the ranges. */
+  | { kind: 'weaponPower'; slot: number; delta: number }
   | { kind: 'setPaused'; paused: boolean };
 /** The one command union (engine refactor spec §6): every mode's kinds; `setPaused` is the core's control. */
 export type Command = SectorCommand | DuelCommand;

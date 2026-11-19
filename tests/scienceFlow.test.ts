@@ -17,7 +17,9 @@ import { DERELICT_NEAR_MAX, HOSTILE_AFTER_TICKS, LASER_CHARGE_UNITS } from '../s
 import { applyWeaponsInput, IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { makeHostile } from './helpers/hostile';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { CUTTER } from './helpers/scriptedDuel';
+import { holdInSight } from './helpers/sensorSight';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -27,6 +29,7 @@ const step = (d: DuelState, commands: DuelEnvelope[] = []) => stepDuelTick(d, { 
 /** Player 1 at Weapons, the crew at (−600, −300) facing the enemy 300 east, the laser full and held, the enemy at 2 layers. */
 function gunnery(): DuelState {
   const d = createDuel(CUTTER, 5), t = d.tactical;
+  todaysCrewWeapons(t);   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   sitDown(d.interior, 1, d.weapons);
   Object.assign(t.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(t.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
@@ -86,7 +89,7 @@ describe('the laser frequency (spec §4.4)', () => {
     Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
     st.systems[1].freq = st.weakFreq; st.systems[1].fireHeld = true; st.systems[1].laserCharge = LASER_CHARGE_UNITS;
     applyWeaponsInput(st, 1, { ...IDLE_INPUT, laserCharge: false });
-    expect(st.systems[0].shields).toBe(classOf(st, 0).shields.layers - 1);
+    expect(st.systems[0].shields).toBe(1 - 1);   // Engineering spike spec §2: the crew starts at 1 layer (2 Shields bars), so one strip leaves 0 (was classOf(st, 0).shields.layers - 1)
   });
 });
 
@@ -114,6 +117,7 @@ describe('snapshots with the behaviour on (spec §10 Snapshots)', () => {
         if (k === 5) commands.push(cmd(auth, 1, { kind: 'designate', contact: 1 }));
         if (k === 7) commands.push(cmd(auth, 0, { kind: 'laserFrequency', freq: 2 }));
         if (k === 200) commands.push(cmd(auth, 1, { kind: 'contactScan', contact: 1 }));
+        if (k < 400) holdInSight(auth.tactical);   // Engineering spike spec §10.4: the scans and the designation need their contacts seen
         if (k >= 400 && k < 720) { const p = derelictPos(auth.tactical); Object.assign(auth.tactical.ships[0], { x: p.x, y: p.y, vx: p.vx, vy: p.vy }); }   // hold the crew on the wreck
         step(auth, commands);
         if (k % 3 === 2) {

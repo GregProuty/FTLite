@@ -13,6 +13,7 @@ import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { CUTTER, passiveInput } from './helpers/scriptedDuel';
 import { makeHostile } from './helpers/hostile';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { classOf, createTacticalState, emptyMissile, missileOf, placeMissile, removeMissile, shipBody, targetOf, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import {
   ENGINE_FACTOR, HUNTER_HULL, LASER_CHARGE_UNITS, LASER_HULL, LASER_RANGE, MAGAZINE, MISSILE_HULL, MISSILE_LIFE_TICKS, SHIELD_LAYERS, SHIP_HULL, SHIP_RADIUS, THRUST, TURN_STEPS_PER_TICK
@@ -55,7 +56,7 @@ describe('ship classes and weapons as definitions (spec §5)', () => {
     expect([classOf(st, 0), classOf(st, 1)]).toEqual([CUTTER_CLASS, HUNTER_CLASS]);
     expect([targetOf(st, 0), targetOf(st, 1)]).toEqual([1, 0]);
     expect(hunterSlot(st)).toBe(1);
-    expect(st.systems.map((y) => [y.hull, y.shields, y.magazine])).toEqual([[SHIP_HULL, SHIELD_LAYERS, MAGAZINE], [HUNTER_HULL, SHIELD_LAYERS, MAGAZINE]]);   // full shields while holding (owner decision 2026-11-17)
+    expect(st.systems.map((y) => [y.hull, y.shields, y.magazine])).toEqual([[SHIP_HULL, 1, MAGAZINE], [HUNTER_HULL, SHIELD_LAYERS, MAGAZINE]]);   // full shields while holding (owner decision 2026-11-17); Engineering spike spec §2: the crew's shields start at 1 layer (2 Shields bars)
   });
 });
 
@@ -77,7 +78,7 @@ describe('ship slots (spec §5 "arrays, not pairs")', () => {
     }
   }, 60_000);
   it('contacts and the laser work across any pair of active slots, by the locked target', () => {
-    const st = makeHostile(createTacticalState(5, 3));
+    const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 3)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
     quiet(st);
     Object.assign(st.ships[2]!, { active: true, x: 500, y: -1800, vx: 0, vy: 0, heading: 192 });   // a third ship, west-facing
     Object.assign(st.systems[2]!, { ...st.systems[1], rooms: [0, 0, 0], target: 0 });
@@ -158,6 +159,6 @@ describe('the declared-added fields (new in the R-2 alias table)', () => {
     } finally { disposeDuel(d); }
     expect(ticks).toBeGreaterThan(0);
     expect(wrong).toBe(0);
-    if (crew === 'scripted') expect(ticks).toBe(16878);   // seed 1's scripted Cutter duel (playtest2feedback (SIM 55) moved it from 19199; SIM_VERSION 53, spike ii with the fan split at r 13; 20252 with the fan split at r 25: the Hunter shoves belt rock 39 at tick 2058 and no longer dives into the planet; 5125 before, SIM_VERSION 52; 16340 before FTL targeting, SIM_VERSION 49; 18793 before the weapons update, SIM_VERSION 48; 9724 before Sci-1's merge, SIM_VERSION 47; 10320 before homing torpedoes, SIM_VERSION 46; 16268 before the Hunter's grace, SIM_VERSION 45; 15772 before duel fire)
+    if (crew === 'scripted') expect(ticks).toBe(8047);   // seed 1's scripted Cutter duel (merge of the Engineering spike with W-1, W-2 and W-3: was 11460 on master at SIM 57 and 7207 on the spike at SIM 55; SIM_VERSION 55, W-1's pew merged with asteroids-ii, HUNTER_PEW_ERROR 16; 19199 before, SIM_VERSION 54 on master; 5716 on the W-1 branch, SIM_VERSION 54, with W-1's pew and duel hull ×1.75; SIM_VERSION 53, spike ii with the fan split at r 13; 20252 with the fan split at r 25: the Hunter shoves belt rock 39 at tick 2058 and no longer dives into the planet; 5125 before, SIM_VERSION 52; 16340 before FTL targeting, SIM_VERSION 49; 18793 before the weapons update, SIM_VERSION 48; 9724 before Sci-1's merge, SIM_VERSION 47; 10320 before homing torpedoes, SIM_VERSION 46; 16268 before the Hunter's grace, SIM_VERSION 45; 15772 before duel fire)
   }, 60_000);
 });

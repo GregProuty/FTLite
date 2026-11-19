@@ -38,6 +38,8 @@ export interface PageOnlineDeps {
   WebSocket?: typeof WebSocket;
   hostPlatform?(lifecycle: OnlineLifecycle): HostPlatform;
   createSession?(deps: OnlineSessionDeps): OnlineSessionOwner;
+  /** Web build spec §7.4: navigator.storage.persist(), asked once on the first host, join, reconnect or rehost; a refusal is not an error. */
+  persistStorage?(): Promise<unknown> | void;
 }
 const invalidStatus = (): OnlineStatus => ({ phase: 'error', role: null, ownSeat: null, snapshot: null, attachmentEpoch: 0, error: 'invalid-status', retryAtMs: null,
   mirror: { committed: null, receivedAgeMs: null, localPending: false, persistent: false, error: null }, persistent: false, actions: [] });
@@ -86,8 +88,13 @@ export function createPageOnline(config: PageOnlineConfig, deps: PageOnlineDeps)
     const value = envelope();
     for (const cb of [...statusListeners]) { try { cb(structuredClone(value)); } catch { /* isolate UI observers */ } }
   });
+  let persistAsked = false;
   async function action(value: OnlineAction): Promise<OnlineResult> {
     if (!validateOnlineAction(value)) return { ok: false, code: 'invalid-action' };
+    if (!persistAsked && (value.type === 'host' || value.type === 'join' || value.type === 'reconnect' || value.type === 'rehost')) {
+      persistAsked = true;
+      try { void Promise.resolve(deps.persistStorage?.()).catch(() => {}); } catch { /* a refusal is not an error */ }
+    }
     try {
       const result = await owner.dispatch(structuredClone(value));
       return validateOnlineResult(result) ? structuredClone(result) : { ok: false, code: 'invalid-status' };

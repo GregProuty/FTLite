@@ -52,7 +52,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
   let pingKey = false;
   const takePingAt = (): { x: number; y: number } | null => { const key = pingKey ? pointer.position() : null; pingKey = false; return pointer.takeMiddleClick() ?? key; };
   const scene = createDuelScene(renderer, { seed: deps.seed, pauseText, ui: deps.ui, audio: deps.audio, contact, takeClick: () => pointer.takeClick(), pointer: () => pointer.position(),
-    takeAim: () => pointer.takeAim(), requests, takePingAt, leftHeld: () => pointer.leftHeld() });   // playtest2feedback §4a
+    takeAim: () => pointer.takeAim(), requests, takePingAt, leftHeld: () => pointer.leftHeld(), shipCommand: (c) => keyboard.ui.ship?.(c) });   // Engineering spike §5; playtest2feedback §4a
   const canvas = renderer.app.canvas;
   const keyboard = createDuelKeyboard(window as unknown as EventSource, { intercept: (code) => contact.intercept(code) || (code === PING_CODE && (pingKey = true)) });
   deps.setConsole?.(keyboard.ui);
@@ -66,7 +66,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     now: () => performance.now(),
     scheduler: { schedule(delay, cb) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } },
     sampleKeys: () => keyboard.sample(), samplePointer: () => pointer.sample(),
-    takeContactRequests: () => contact.takeRequests(), takeHeading: () => requests.takeHeading(),
+    takeContactRequests: () => contact.takeRequests(), takeHeading: () => requests.takeHeading(), takePew: () => requests.takePew(), laserAim: () => requests.laserAim(), takeTorpHeading: () => requests.takeTorpHeading(),   // W-2, W-3
     cls: deps.cls, takeSteer: () => requests.takeSteer(), takeLaunches: () => requests.takeLaunches(), gunHeld: () => pointer.leftHeld(), steerHeld: () => pointer.leftHeld(),   // Valkyrn spec §5.1, §8; playtest2feedback §4a
     clearKeys: () => { keyboard.clear(); pointer.clear(); },
     staleKeys: () => keyboard.staleHeld(),   // playtest2feedback final review I1: held keys do not carry onto the crew Helm
@@ -79,8 +79,8 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     seatWeapons: () => { const d = runtime.duel; sitDown(d.interior, runtime.active(), d.weapons); }
   };
   // Feel-ii visual checks: a staging hook, Single player only, set only when the page asked for it before the duel began.
-  const stage = window as unknown as { __FTLITE_STAGE__?: boolean; __ftliteDuel?: unknown };
-  if (stage.__FTLITE_STAGE__ === true) stage.__ftliteDuel = runtime;
+  const stage = window as unknown as { __FTLITE_STAGE__?: boolean; __ftliteDuel?: unknown; __ftliteScene?: unknown };
+  if (stage.__FTLITE_STAGE__ === true) { stage.__ftliteDuel = runtime; stage.__ftliteScene = scene; }   // Engineering spike §8: the smoke reads the interior placement
   // The solo record (H-2 spec §8, Helm §11a); `seat` is the character the keyboard drives when the round is decided.
   const solo = soloRecorder({ now: () => new Date().toISOString(), active: () => runtime.active(), helmPlayer: () => runtime.duel.helmPlayer });
 
@@ -113,6 +113,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     offSuspend?.(); offResume?.();
     deps.setConsole?.(null); deps.setContact?.(null);
     if (stage.__ftliteDuel === runtime) delete stage.__ftliteDuel;
+    if (stage.__ftliteScene === scene) delete stage.__ftliteScene;
     keyboard.destroy(); pointer.destroy(); runtime.dispose(); scene.dispose();
   };
   window.addEventListener('beforeunload', dispose, { once: true });

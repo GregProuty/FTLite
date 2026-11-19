@@ -2,7 +2,8 @@
 // stack happens in the page (page-probe.js, injected before any page script) and is read back here.
 const electron = require('electron');
 const { app, BrowserWindow, ipcMain, powerMonitor, session } = electron;
-// Local debugging only (FTL_DEBUG=1, never set by the gates): raw diagnostics on stderr. Without it every diagnostic is a
+// FTL_DEBUG=1 prints raw diagnostics on stderr. The web-net gate (scripts/web/net/players.ts) sets it and parses the 'DBG console' and
+// 'DBG loaded' lines as a contract (page errors, and proof the console is watched): do not change those formats casually. Without it every diagnostic is a
 // fixed category with validated context (tests/onlineAppDiagnostics.test.ts).
 const debug = !!process.env?.FTL_DEBUG;
 process.on('uncaughtException', e => { if (debug) console.error('APP_DRIVER_UNCAUGHT', e); else console.error('APP_DRIVER_UNCAUGHT'); app.exit(1); });
@@ -119,13 +120,21 @@ async function click(id) {
       return js(`(() => { const id=${JSON.stringify(id)}, e=document.querySelector('[data-testid="'+id+'"]'); if(!e||e.disabled) throw Error('unavailable control');
         window.onlineDriverHit='miss'; const listener=event=>{const target=event.target.closest?.('[data-testid]'); window.onlineDriverHit=target?.dataset.testid===id?'target':event.target.closest?.('button,input,select')?'other':'miss';};
         window.onlineDriverClickListener=listener;document.addEventListener('click',listener,true);
-        const r=e.getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)};})()`);
+        let r=e.getBoundingClientRect(); if((!r.width||!r.height)&&e.firstElementChild) r=e.firstElementChild.getBoundingClientRect();   /* a zero-height wrapper (the console's pips) is clicked at its absolutely placed child */
+        return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)};})()`);
     },
     send: point => { visible.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 }); visible.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 }); },
     settle: () => delay(60),
     observed: () => js(`(() => {document.removeEventListener('click',window.onlineDriverClickListener,true);delete window.onlineDriverClickListener;return window.onlineDriverHit;})()`)
   });
   bound(recovery.clicks, { id, attempts });
+}
+/** A native right click on a test id's control (the console's pips take a right click to remove a bar). Right clicks fire no `click`, so it is not verified. */
+async function rightClick(id) {
+  visible.focus();
+  const point = await js(`(() => { const e=document.querySelector('[data-testid="'+${JSON.stringify(id)}+'"]'); if(!e) throw Error('unavailable control'); let r=e.getBoundingClientRect(); if((!r.width||!r.height)&&e.firstElementChild) r=e.firstElementChild.getBoundingClientRect(); return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}; })()`);
+  visible.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'right', clickCount: 1 }); visible.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'right', clickCount: 1 });
+  await delay(60);
 }
 async function resources() {
   await absorb();
@@ -156,6 +165,7 @@ async function command(message) {
     }
     case 'layout': return js(`(() => { const rect = e => { const r=e.getBoundingClientRect(); return {top:r.top,bottom:r.bottom,width:r.width,height:r.height}; }; return {width:innerWidth,height:innerHeight,menu:rect(document.querySelector('[data-testid="session-menu"]')),canvas:rect(document.querySelector('canvas'))}; })()`);
     case 'click': await click(message.id); return true;
+    case 'right-click': await rightClick(message.id); return true;
     case 'open-multiplayer': await click('multiplayer'); return true;
     // The sector's test-only entry (H-2 spec §10) through the test facade (Web-i deviation D-1).
     case 'host-sector': if (!Number.isSafeInteger(message.capacity)) throw Error('invalid test capacity');
@@ -177,7 +187,7 @@ async function command(message) {
       writeFileSync(message.path, bytes); return { bytes: bytes.length };
     }
     case 'resources': return resources();
-    case 'resource-counts': { const r = await resources(); return { workers: r.workers, windows: r.windows, ports: r.ports, listeners: r.listeners, rendererPid: r.rendererPid }; }
+    case 'resource-counts': { const r = await resources(); return { workers: r.workers, windows: r.windows, ports: r.ports, portsCreated: await js('window.onlineProbe.counts().observedPagePorts'), listeners: r.listeners, rendererPid: r.rendererPid }; }
     // Only --inject-transport-failure uses this; the run must then fail. Every native peer connection in the page closes.
     case 'transport-death': return js('window.rtcNative.closeAll()');
     // The next lobby request waits 1.2 s: the window the old slow hidden-window load gave the cancel case.
@@ -213,7 +223,7 @@ async function command(message) {
 // Hold the wrapper alive long enough to report the shutdown (or close-gate) result.
 app.on('window-all-closed', event => { if (stopping || holdQuit) event?.preventDefault?.(); });
 app.on('before-quit', event => { if (stopping || holdQuit) event.preventDefault(); });
-const diagnosticCommands = new Set(['status', 'click', 'open-multiplayer', 'host-sector', 'join-sector', 'type', 'capacity', 'key', 'focus', 'blur', 'resize', 'layout', 'screenshot',
+const diagnosticCommands = new Set(['status', 'click', 'right-click', 'open-multiplayer', 'host-sector', 'join-sector', 'type', 'capacity', 'key', 'focus', 'blur', 'resize', 'layout', 'screenshot',
   'resources', 'resource-counts', 'transport-death', 'delay-next-transport', 'shutdown', 'close-window', 'delay-exit-commit', 'hold-upload', 'hold-restore', 'release-restore', 'block-next-grant', 'suspend-hook']);
 process.on('message', message => { if (ignoreDriver) return; void command(message).then(result => {
   if (message.command === 'shutdown') return;

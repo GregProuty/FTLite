@@ -10,8 +10,12 @@ import type { DuelState } from '../../sim/duel/state';
 import { throttleThrust } from '../../sim/duel/throttle';
 import { crewAxes, helmTurn } from '../../sim/duel/step';
 import { RCS_GAS_PER_TICK } from '../../sim/duel/tuning';
-import { laserEligible, laserFull, laserOffline, torpedoInRange } from '../../sim/tactical/weapons';
+import { pewPowered, pewReady } from '../../sim/tactical/pew';
+import { laserEligible, laserFull, laserOffline, manualLaserReady, torpedoInRange } from '../../sim/tactical/weapons';
 import { TICK_HZ } from '../../sim/tuning';
+import { trimmedWeaponPower, WeaponSlot } from '../../sim/tactical/bars';
+import { pointSeen, shipSeen } from '../../sim/tactical/science';
+import { shipEngineFactor } from '../../sim/tactical/physics';
 
 /** Seconds a released shot keeps the solution lit, so a volley that auto-fires the tick it is ready still reads FIRING. */
 export const SOLUTION_HOLD_S = 0.6;
@@ -30,9 +34,17 @@ export function gunnerPresent(d: DuelState): boolean {
 export type LaserSituation =
   | { kind: 'range'; range: number; reach: number; rock?: true }
   | { kind: 'arc'; turn: 'LEFT' | 'RIGHT'; rock?: true }
-  | { kind: 'blocked' } | { kind: 'offline' } | { kind: 'frozen' } | { kind: 'nogunner' }
+  | { kind: 'blocked' } | { kind: 'offline'; damaged: boolean } | { kind: 'frozen' } | { kind: 'nogunner' }
   | { kind: 'solution'; targeted: boolean } | { kind: 'charging'; targeted: boolean }
   | { kind: 'none' };
+
+/** Engineering spike §10.3, §11 (merge decision 4): all three crew weapons are dark: pew pew (no bar, or a class without
+ *  it), the beam and the torpedo. Bars only, one source of truth: a level-2 Weapons Room zeroes every weapon's trimmed bars
+ *  (trimmedWeaponPower reads effectiveBars), laserOffline reads the beam's and pewPowered pew pew's. */
+export function weaponsOffline(t: TacticalState): boolean {
+  return (classOf(t, CREW_SLOT).slots.pew === null || !pewPowered(t, CREW_SLOT)) && laserOffline(t, CREW_SLOT)
+    && trimmedWeaponPower(t.systems[CREW_SLOT])[WeaponSlot.Torpedo] === 0;
+}
 
 /** `sinceShot`: seconds since the crew laser's last release on this screen (Infinity when none); `gunner`: whether Weapons
  *  is attended (gunnerPresent). */
@@ -44,7 +56,7 @@ export function laserSituation(t: TacticalState, sinceShot = Infinity, gunner = 
     const r = rockAt(t, sysRock.laserRock), rx = r.x - own.x, ry = r.y - own.y, surface = Math.sqrt(rx * rx + ry * ry) - r.r;
     if (surface > reach.range) return { kind: 'range', range: Math.round(surface), reach: reach.range, rock: true };
     if (!inArc(own.heading, rx, ry, reach.arcCos)) return { kind: 'arc', turn: (sideOf(own.heading, rx, ry) || 1) > 0 ? 'RIGHT' : 'LEFT', rock: true };
-    if (laserOffline(t, CREW_SLOT)) return { kind: 'offline' };
+    if (laserOffline(t, CREW_SLOT)) return weaponsOffline(t) ? { kind: 'offline', damaged: t.systems[CREW_SLOT].rooms[Room.Weapons] >= 2 } : !gunner ? { kind: 'nogunner' } : missileOf(t, CREW_SLOT) ? { kind: 'frozen' } : { kind: 'none' };   // Engineering spike §10.3: the beam dark, the torpedo powered: its card speaks
     if (sysRock.laserBurst > 0 || sinceShot < SOLUTION_HOLD_S) return { kind: 'solution', targeted: sysRock.laserTargeted };
     if (!gunner) return { kind: 'nogunner' };
     if (missileOf(t, CREW_SLOT)) return { kind: 'frozen' };
@@ -52,12 +64,13 @@ export function laserSituation(t: TacticalState, sinceShot = Infinity, gunner = 
   }
   const me = t.ships[CREW_SLOT], target = targetOf(t, CREW_SLOT), e = t.ships[target], sys = t.systems[CREW_SLOT];
   if (!e || !e.active || target === CREW_SLOT) return { kind: 'none' };
+  if (!shipSeen(t, target)) return { kind: 'none' };   // Engineering spike §10.4: no words of an unseen enemy
   const laser = classOf(t, CREW_SLOT).slots.laser, dx = e.x - me.x, dy = e.y - me.y, range = Math.round(Math.sqrt(dx * dx + dy * dy));
   if (!laser) return { kind: 'none' };   // Valkyrn-i: Part ii adds the gun's reasons (spec §6.1)
   if (dx * dx + dy * dy > laser.range * laser.range) return { kind: 'range', range, reach: laser.range };
   if (!inArc(me.heading, dx, dy, laser.arcCos)) return { kind: 'arc', turn: (sideOf(me.heading, dx, dy) || 1) > 0 ? 'RIGHT' : 'LEFT' };
   if (!lineOfSight(t, me.x, me.y, e.x, e.y)) return { kind: 'blocked' };
-  if (laserOffline(t, CREW_SLOT)) return { kind: 'offline' };
+  if (laserOffline(t, CREW_SLOT)) return weaponsOffline(t) ? { kind: 'offline', damaged: t.systems[CREW_SLOT].rooms[Room.Weapons] >= 2 } : !gunner ? { kind: 'nogunner' } : missileOf(t, CREW_SLOT) ? { kind: 'frozen' } : { kind: 'none' };   // Engineering spike §10.3
   const targeted = sys.laserTargeted;
   if (sys.laserBurst > 0 || sinceShot < SOLUTION_HOLD_S) return { kind: 'solution', targeted };   // the burst fires attended or not
   if (!gunner) return { kind: 'nogunner' };
@@ -76,7 +89,7 @@ export function statusSentence(s: LaserSituation): string {
     case 'range': return s.rock ? `ROCK OUT OF RANGE: CLOSE TO ${s.reach}` : `ENEMY OUT OF RANGE: CLOSE TO ${s.reach}`;
     case 'arc': return s.rock ? `ROCK OUT OF ARC: TURN ${s.turn}` : `ENEMY OUT OF ARC: TURN ${s.turn}`;
     case 'blocked': return 'NO LINE OF SIGHT: CLEAR THE ROCK';
-    case 'offline': return 'WEAPONS OFFLINE: REPAIR';
+    case 'offline': return s.damaged ? 'WEAPONS OFFLINE: REPAIR' : 'WEAPONS OFFLINE: POWER A WEAPON';
     case 'frozen': return 'LASER HOLDS: TORPEDO FLYING';
     case 'nogunner': return 'NO GUNNER: SIT AT WEAPONS';
     case 'solution': return s.targeted ? 'FIRING SOLUTION' : 'FIRING SOLUTION: PICK A ROOM';
@@ -104,6 +117,12 @@ export function laserCardReason(s: LaserSituation, offline = false): string | nu
     case 'solution': return s.targeted ? 'FIRING' : 'PICK A ROOM TO FIRE';
     default: return null;
   }
+}
+
+/** W-2 (pew pew spec §2): the LASER card's why-not in MANUAL. It never fires by itself, so a firing solution (FIRING, or
+ *  PICK A ROOM TO FIRE) reads MANUAL: SPACE FIRES; every other reason stands. */
+export function manualCardReason(reason: string | null): string | null {
+  return reason === 'FIRING' || reason === 'PICK A ROOM TO FIRE' ? 'MANUAL: SPACE FIRES' : reason;
 }
 
 // Feel-ii (spec 2026-11-18-feel-ii-design §1.2, §1.6, §2.8): the flight alerts above the laser's words, the EVADE side and
@@ -139,6 +158,7 @@ export function flightAlert(t: TacticalState, axes: Axes): FlightAlert {
   if (t.outcome !== Outcome.Running) return null;
   const s = collisionIn(t, axes);
   if (s !== null && s < COLLISION_WARN_S) return { kind: 'collision', seconds: s };
+  // Engineering spike §10.4 (owner's call): a warning receiver, so an unseen torpedo still alerts, with no direction.
   return missileOf(t, targetOf(t, CREW_SLOT)) ? { kind: 'torpedo' } : null;
 }
 
@@ -168,10 +188,10 @@ export const EVADE_LOOK = 600, EVADE_STEP = 50;
 /** Feel-ii §1.6: the unit direction the crew ship should dodge an inbound enemy torpedo: perpendicular to its approach (its
  *  velocity relative to the ship, else the line from it to the ship), on the side with more clear room (the distance to the
  *  first planet or asteroid along each side, up to EVADE_LOOK); a tie takes the right of the approach. Null with none
- *  inbound. */
+ *  inbound, or with it outside sensor range (Engineering spike §10.4: the arrow would give its bearing away). */
 export function evadeDir(t: TacticalState): { x: number; y: number } | null {
   const m = missileOf(t, targetOf(t, CREW_SLOT)), s = t.ships[CREW_SLOT];
-  if (!m || !s || t.outcome !== Outcome.Running) return null;
+  if (!m || !s || t.outcome !== Outcome.Running || !pointSeen(t, m.x, m.y)) return null;
   let ax = m.vx - s.vx, ay = m.vy - s.vy;
   if (Math.hypot(ax, ay) < 1e-6) { ax = s.x - m.x; ay = s.y - m.y; }
   const n = Math.hypot(ax, ay);
@@ -186,25 +206,41 @@ export function evadeDir(t: TacticalState): { x: number; y: number } | null {
   return room(left.x, left.y) > room(right.x, right.y) ? left : right;
 }
 
-/** The console controls a refusal can name (the buttons, and their keys). */
-export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser' | 'thrusters';   // thrusters: playtest2feedback §4
+/** The console controls a refusal can name (the buttons, and their keys). W-1: `pew`, the Weapons map's left click. */
+export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser' | 'pew' | 'thrusters';   // thrusters: playtest2feedback §4
 /** Valkyrn spec §6.1: the reason a laser key (1, 3/4/5) gives on a class without a laser (the `laser` control, Flight only). */
 export const NO_LASER = 'NO LASER';
+/** Engineering spike §10.4 (final review): why the sim refuses a lock on the target ship (a laserLock or torpLock on a
+ *  room): NO CONTACT while the crew cannot see it, else null. */
+export function lockRefusal(d: DuelState): string | null {
+  return shipSeen(d.tactical, targetOf(d.tactical, CREW_SLOT)) ? null : 'NO CONTACT';
+}
+
 /** Feel-ii §2.8: why the sim would refuse a control's command (or do nothing with it), or null when it would act. FIRE is
  *  laserCharge (the gunner, then canCharge: no torpedo flying, then Weapons offline, where it is admitted to no effect);
  *  LAUNCH is missileLaunch (the gunner, then canLaunch's checks in its order: flying, the magazine, Weapons, range); the
- *  Helm's turn, auto-face, throttle and heading fly nothing while Engines are off (level 2). */
-export function refusal(d: DuelState, control: RefusedControl): string | null {
-  const t = d.tactical, sys = t.systems[CREW_SLOT];
+ *  Helm's turn, auto-face, throttle and heading fly nothing with 0 effective Engines bars: ENGINES OFFLINE when the Engines
+ *  Room is at level 2, else ENGINES UNPOWERED (no bar, or an overheat failure). PEW (W-1) is pewFire: the gunner,
+ *  the pew, then a pew pew bar (WEAPONS OFFLINE / PEW UNPOWERED, Engineering spike §11), then a third stored (NO CHARGE). W-2 (pew pew spec §2): FIRE in MANUAL (`manual`, default the laser's mode) is laserFire: after the same checks, NO CHARGE without
+ *  manualLaserReady. W-3 (pew pew spec §3): LAUNCH in MANUAL (`manual`, default the torpedo's mode) has no range: never OUT OF RANGE. */
+export function refusal(d: DuelState, control: RefusedControl, manual?: boolean): string | null {
+  const t = d.tactical, sys = t.systems[CREW_SLOT], m = manual ?? (control === 'launch' ? sys.torpManual : sys.laserManual);   // W-3: the control's own weapon's mode
+  if (control === 'pew') {   // W-1 (pew pew spec §1): the gunner, then the class, then a third stored
+    if (!gunnerPresent(d)) return 'NO GUNNER';
+    if (classOf(t, CREW_SLOT).slots.pew === null) return 'NO PEW';
+    if (!pewPowered(t, CREW_SLOT)) return weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'PEW UNPOWERED';   // Engineering spike §11: no pew pew bar
+    return pewReady(t, CREW_SLOT) ? null : 'NO CHARGE';
+  }
   if (control === 'fire' || control === 'launch') {
     if (!gunnerPresent(d)) return 'NO GUNNER';
     if (control === 'fire' && classOf(t, CREW_SLOT).slots.laser === null) return gunReason(t);   // Valkyrn spec §6.1: the gun's reasons
     if (missileOf(t, CREW_SLOT)) return 'TORPEDO FLYING';
-    if (control === 'fire') return laserOffline(t, CREW_SLOT) ? 'WEAPONS OFFLINE' : null;
+    if (control === 'fire') return laserOffline(t, CREW_SLOT) ? (weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'BEAM UNPOWERED') : m && !manualLaserReady(t, CREW_SLOT) ? 'NO CHARGE' : null;   // Space fires the beam (spec §10.3); W-2: a MANUAL press needs a full charge
     if (sys.magazine <= 0) return 'NO TORPEDOES';
-    if (sys.rooms[Room.Weapons] >= 2) return 'WEAPONS OFFLINE';
-    return torpedoInRange(t, CREW_SLOT) ? null : 'OUT OF RANGE';
+    if (trimmedWeaponPower(sys)[WeaponSlot.Torpedo] === 0) return weaponsOffline(t) ? 'WEAPONS OFFLINE' : 'TORPEDO UNPOWERED';   // a level-2 Weapons Room lands here too
+    return m || torpedoInRange(t, CREW_SLOT) ? null : 'OUT OF RANGE';   // W-3: a MANUAL launch has no range
   }
   if (control === 'thrusters') return d.rcsGas < RCS_GAS_PER_TICK ? 'NO PRESSURE' : null;   // playtest2feedback §4: cold gas is not the Engines
-  return sys.rooms[Room.Engines] >= 2 ? 'ENGINES OFFLINE' : null;
+  if (shipEngineFactor(t, CREW_SLOT) > 0) return null;   // Engineering spike §10.2: the Engines bars, not the Room alone
+  return sys.rooms[Room.Engines] >= 2 ? 'ENGINES OFFLINE' : 'ENGINES UNPOWERED';
 }

@@ -8,7 +8,7 @@ import { inArc } from '../tactical/geometry';
 import { rockAt, rockCapacity } from '../tactical/rocks';
 import { classOf, missileOf, Outcome, targetOf } from '../tactical/state';
 import { CONTACT_GRACE_TICKS, LASER_ARC_COS, LASER_RANGE } from '../tactical/tuning';
-import { canLaunch, laserFull } from '../tactical/weapons';
+import { beamShots, canLaunch, laserFull } from '../tactical/weapons';
 import type { DuelState } from './state';
 import { heldAim, type DuelInput } from './step';
 
@@ -19,7 +19,7 @@ export const BAIT_RANGE = 900;
 
 /** `downed`: the crew ship only, every character down at once (duel-health spec §1.5, owner 2026-11-17; Sci-2: all n).
  *  `gun`: a round's hull hit (Valkyrn spec §7.3). */
-export type TerminalCause = 'planet' | 'asteroid' | 'ship' | 'laser' | 'gun' | 'missile' | 'downed';
+export type TerminalCause = 'planet' | 'asteroid' | 'ship' | 'laser' | 'gun' | 'pew' | 'missile' | 'downed';
 export type MissileLoss = 'planet' | 'asteroid' | 'edge' | 'expired' | 'own' | 'missile';
 
 export interface ShipTelemetry {
@@ -99,18 +99,19 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
   const now = counters(d), [crew, enemy] = tac.ships;
 
   // Weapons and missiles, from the tick's events.
-  const laserOn = [false, false], missileOn = [false, false], gunOn = [false, false];
+  const laserOn = [false, false], missileOn = [false, false], gunOn = [false, false], pewOn = [false, false];
   for (const e of tac.events) {
     if (e.kind === 'gunHit') { if (e.hull) gunOn[e.ship] = true; continue; }   // Valkyrn spec §7.3: a round's hull hit (the hit that took a hull point, not wear)
+    if (e.kind === 'pewHit') { if (e.hull) pewOn[e.ship] = true; continue; }   // W-1: a pew round that cost hull
     if (e.kind !== 'laser' && e.kind !== 'missileEnd') continue;   // Sci-1's and the gun's other events are not these weapons
     const s = t.ships[e.ship as 0 | 1]!;
     if (e.kind === 'laser') {
-      if (tac.systems[e.ship]!.laserBurst > 0 || classOf(tac, e.ship).slots.laser?.shots === 1) s.laserReleases++;   // a burst's first shot (its rest still pending) is the release; only a laser class emits one
+      if (tac.systems[e.ship]!.laserBurst > 0 || beamShots(tac, e.ship) === 1) s.laserReleases++;   // a burst's first shot (its rest still pending) is the release; only a laser class emits one; Engineering spike spec §10.3: the crew's burst is the beam's bars
       if (e.hit) { s.laserHits++; if (e.stripped) s.layersStripped++; else laserOn[targetOf(tac, e.ship)] = true; } else s.laserMisses++;
     } else if (e.cause === 'ship') {
       missileOn[e.target] = true;
       if (e.target === e.ship) s.missileLosses.own++; else s.missileHitsByRoom[e.room as 0 | 1 | 2]++;
-    } else s.missileLosses[e.cause]++;
+    } else s.missileLosses[e.cause === 'shot' ? 'missile' : e.cause]++;   // W-1 (pew pew spec §1; constraints decision 6): a torpedo a pew round shot down is counted under 'missile', the stored wire shape
   }
   for (let i = 0; i < 2; i++) t.ships[i]!.missilesLaunched += now[i]![3]! - t.prev.counters[i]![3]!;
 
@@ -179,6 +180,7 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
     if (is[2]! > was[2]!) c.push('ship');
     if (laserOn[i]) c.push('laser');
     if (gunOn[i]) c.push('gun');
+    if (pewOn[i]) c.push('pew');
     if (missileOn[i]) c.push('missile');
     if (downed) c.push('downed');
     t.terminal[i as 0 | 1] = c;

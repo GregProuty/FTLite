@@ -3,10 +3,12 @@
 // circle (both consoles, weapons update spec §2), the Weapons layer (bearing ring, both laser arcs, the enemy's bearing
 // and range) and the event effects. Pure, like tacticalModel, which it
 // sits beside: the layer draws TacticalDraw and CombatDraw together.
-import { classOf, Contact, Outcome, targetOf } from '../../sim/tactical/state';
+import { classOf, Contact, missileOf, Outcome, targetOf } from '../../sim/tactical/state';
 import { predictMissile } from '../../sim/tactical/predict';
-import { laserEligible, torpedoInRange } from '../../sim/tactical/weapons';
-import { LASER_ARC_COS, LASER_RANGE, MISSILE_RADIUS, MISSILE_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
+import { laserEligible, manualLaserReady, torpedoInRange } from '../../sim/tactical/weapons';
+import { clampAim } from '../../sim/tactical/pew';
+import { pointSeen } from '../../sim/tactical/science';
+import { AIM_STEPS, HEADING_COUNT, LASER_ARC_COS, LASER_ARC_STEPS, LASER_RANGE, MISSILE_RADIUS, MISSILE_RANGE, PEW_ARC, PEW_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { ROOM_NAMES } from '../duel/interiorModel';
 import { alertSentence, evadeDir, gunReason, gunSentence, laserSituation, linedUp, type FlightAlert } from '../duel/situationModel';
 import { gunSightDraw, roundDraws, type GunSightDraw } from '../duel/leadModel';
@@ -17,7 +19,7 @@ import { worldToScreen, type Point } from './camera';
 import { rockEffectDraw } from './rockFx';
 import { CORE_S, FLOAT_RISE_PX, FLOAT_S, FLOAT_STEP_PX, interpolatedMissile, KILL_S, type FxState } from './fxModel';
 import {
-  BEARING_RING_ZOOM, headingAngle, interpolatedShip, drawnScale, ringDraw, SHIP_CHEVRON_PX, type Label, type PrevBody, type RingDraw,
+  BEARING_RING_ZOOM, fineHeadingOf, headingAngle, interpolatedShip, drawnScale, ringDraw, SHIP_CHEVRON_PX, type Label, type PrevBody, type RingDraw,
   type TacticalModelInput
 } from './tacticalModel';
 import { HULLS, hullFor, roomCentre } from './hullModel';
@@ -25,6 +27,11 @@ import { calloutDraws, CHARGE_COLOUR, CHARGE_RING_MIN_PX, CHARGE_RING_RADII, cha
 
 /** The laser arc's half-angle in radians: ±60° (cos 0.5). */
 export const ARC_HALF = Math.acos(LASER_ARC_COS);
+/** W-1 (pew pew spec §1): the pew cone's half-angle in radians (±PEW_ARC), and a round's streak in seconds of its flight. */
+export const PEW_HALF = (PEW_ARC * Math.PI) / 180;
+export const PEW_STREAK_S = 0.03;
+/** A screen-space line segment. */
+export interface Segment { x1: number; y1: number; x2: number; y2: number }
 
 /** `bright` (Feel-i, console feel spec §2): the enemy is inside the arc and the laser is ready, so the wedge lights up. */
 export interface ArcDraw { x: number; y: number; r: number; /** Radians clockwise from north. */ angle: number; half: number; bright?: boolean }
@@ -70,6 +77,11 @@ export interface CombatDraw {
   torpedoPath?: Point[]; evade?: EvadeDraw | null; pings?: PingDraw[];
   /** Valkyrn spec §7.4: the gun sight on the Flight map, and the rounds in flight as tracers (a gun class only). */
   gunSight?: GunSightDraw | null; rounds?: { x1: number; y1: number; x2: number; y2: number }[];
+  /** W-1 (pew pew spec §1): on the Weapons map the pew cone (its edges drawn dim) and the aim line toward the pointer,
+   *  clamped into the cone (mid); on every console map each pew round as a short streak (hot). */
+  pewCone?: ArcDraw | null; pewAim?: Segment | null; pewRounds?: Segment[];
+  /** W-2 (pew pew spec §2): on the Weapons map in MANUAL, while Space would fire, the laser's aim line (drawn dashed main). */
+  laserAim?: Segment | null;
 }
 /** Feel-ii §1.6: the EVADE arrow beside the own ship (its tip, the way it points in radians clockwise from north) and its word. */
 export interface EvadeDraw { x: number; y: number; angle: number; label: Label }
@@ -104,6 +116,10 @@ export interface CombatModelInput extends TacticalModelInput {
   pings?: readonly Ping[];
   /** Valkyrn spec §5: the Flight seat's map (the Helm map with the Weapons side tools): the gun sight, the torpedo circle lit. */
   flight?: boolean;
+  /** W-1: the pointer on the Weapons map (screen px), for the pew's aim line; absent or null draws none. */
+  pewPointer?: Point | null;
+  /** W-2: the MANUAL laser's aim on the Weapons map (a fine heading, MapRequests.laserAim); null or absent aims along the nose. */
+  laserAim?: number | null;
 }
 
 /** Bearing in whole degrees, 0 to 359, north 0, clockwise. */
@@ -144,7 +160,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   const missiles: MissileDraw[] = [];
   for (let i = 0; i < 2; i++) {
     const m = interpolatedMissile(state, input.missilePrev, alpha, i);
-    if (!m) continue;
+    if (!m || (i !== 0 && input.fog && !input.fog.seen.missile)) continue;   // Engineering spike §10.4: the enemy torpedo is fogged
     const p = toS(m.x, m.y);
     missiles.push({ x: p.x, y: p.y, r: Math.max(TORPEDO_DOT_PX, MISSILE_RADIUS * z), crew: i === 0, trail: input.fx.trails[i as 0 | 1].map((q) => toS(q.x, q.y)) });
   }
@@ -152,7 +168,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   // The lock marker sits on the locked room of the enemy's hull (the scout), or on the chevron when the ship is drawn as one.
   let lock: LockDraw | null = null;
   const room = state.systems[0].lock;
-  if (!(input.contacts && state.known[Contact.Enemy] === 0) && onScreen(enemyS, SHIP_RADIUS * 2 * z + 40)) {   // Sci-1: no lock mark on an unknown contact
+  if (input.ships.includes(target) && !(input.contacts && state.known[Contact.Enemy] === 0) && onScreen(enemyS, SHIP_RADIUS * 2 * z + 40)) {   // Sci-1: no lock mark on an unknown contact; Engineering spike §10.4: nor an unseen one
     const chevron = 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, a = headingAngle(enemy.h), fx = Math.sin(a), fy = -Math.cos(a), rx = -fy, ry = fx;
     const c = chevron ? { f: 0, s: 0 } : roomCentre(hullFor(false), room), k = SHIP_RADIUS * drawnScale(z);
     const x = enemyS.x + (fx * c.f + rx * c.s) * k, y = enemyS.y + (fy * c.f + ry * c.s) * k, r = Math.max(7, k * 0.45);
@@ -171,11 +187,12 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   let weapons: WeaponsDraw | null = null;
   if (input.console === 'weapons') {
     const dx = enemy.x - own.x, dy = enemy.y - own.y, range = Math.round(Math.sqrt(dx * dx + dy * dy)), inArc = laserEligible(state, 0, target);
+    // Engineering spike §10.4: the bearing and range only while the enemy is drawn, or while its kill plays (the dying ship's).
     weapons = {
       ownArc,
       enemyArc: input.ships.includes(target) ? { x: enemyS.x, y: enemyS.y, r: LASER_RANGE * z, angle: headingAngle(enemy.h), half: ARC_HALF } : null,
       ring: z >= BEARING_RING_ZOOM ? ringDraw(ownS.x, ownS.y) : null,
-      info: bandLabel(weaponsInfoText(bearingDeg(dx, dy), range, inRange), centre, input.infoBand, input.infoBand ? INFO_Y : 12, input.infoBand ? 1 : FONT_SIZE / FONT_NATIVE),
+      info: bandLabel(input.ships.includes(target) || input.fx.kill !== null ? weaponsInfoText(bearingDeg(dx, dy), range, inRange) : 'NO CONTACT IN SENSOR RANGE', centre, input.infoBand, input.infoBand ? INFO_Y : 12, input.infoBand ? 1 : FONT_SIZE / FONT_NATIVE),
       inArc, torpedoInRange: inRange
     };
   }
@@ -247,7 +264,7 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   }
   // Feel-ii §1.6: an enemy torpedo in flight draws its own 2 s path (the sim's flight on a copy), on every console; at the
   // Helm an EVADE arrow points the way to dodge, beside the own ship.
-  const torpedoPath = state.outcome === Outcome.Running ? predictMissile(state, target, TORPEDO_PATH_TICKS, TORPEDO_PATH_STRIDE).map((q) => toS(q.x, q.y)) : [];
+  const torpedoPath = state.outcome === Outcome.Running && !(input.fog && !input.fog.seen.missile) ? predictMissile(state, target, TORPEDO_PATH_TICKS, TORPEDO_PATH_STRIDE).map((q) => toS(q.x, q.y)) : [];
   let evade: EvadeDraw | null = null;
   const dodge = input.console === 'helm' && input.ships.includes(0) ? evadeDir(state) : null;
   if (dodge) {
@@ -257,5 +274,32 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   // Feel-ii §2.7: the pings, target pings riding on the enemy's drawn marker while it is shown.
   const pings = pingDraws(input.pings ?? [], toS, enemyShown ? enemyS : null);
   const gun = cls.slots.gun ? { gunSight: input.flight ? gunSightDraw({ state, prev, alpha, camera: cam, viewport: vp, t: input.t ?? 0 }) : null, rounds: roundDraws(state, toS) } : {};   // Valkyrn spec §7.4
-  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange, status, helmArc, solution, goal, floats, torpedoPath, evade, pings, ...gun };
+  // W-1 (pew pew spec §1): the pew cone about the nose (the sim's integer heading, which it clamps about), the aim line toward
+  // the pointer clamped as the sim will clamp it, and every round as a streak ending at the round.
+  const pewDef = cls.slots.pew;
+  let pewCone: ArcDraw | null = null, pewAim: Segment | null = null;
+  if (input.console === 'weapons' && pewDef && input.ships.includes(0)) {
+    const heading = state.ships[0].heading, r = PEW_RANGE * z;
+    pewCone = { x: ownS.x, y: ownS.y, r, angle: headingAngle(heading), half: (pewDef.arcSteps / AIM_STEPS) * 2 * Math.PI };
+    const p = input.pewPointer ?? null;
+    if (p && Math.hypot(p.x - ownS.x, p.y - ownS.y) > 1) {
+      const a = (clampAim(heading, fineHeadingOf(p.x - ownS.x, p.y - ownS.y), pewDef.arcSteps) / AIM_STEPS) * 2 * Math.PI;
+      pewAim = { x1: ownS.x, y1: ownS.y, x2: ownS.x + Math.sin(a) * r, y2: ownS.y - Math.cos(a) * r };
+    }
+  }
+  // W-2 (pew pew spec §2): in MANUAL, while Space would fire (charged, no burst pending, Weapons online, no own torpedo in
+  // flight), the laser's aim line: from the own ship's drawn marker along the aim clamped as the sim clamps it, to its reach.
+  let laserAim: Segment | null = null;
+  if (input.console === 'weapons' && cls.slots.laser && input.ships.includes(0) && state.systems[0]!.laserManual && manualLaserReady(state, 0) && missileOf(state, 0) === null) {
+    const heading = state.ships[0].heading, r = LASER_RANGE * z, aim = input.laserAim ?? heading * HEADING_COUNT;
+    const a = (clampAim(heading, aim, LASER_ARC_STEPS) / AIM_STEPS) * 2 * Math.PI;
+    laserAim = { x1: ownS.x, y1: ownS.y, x2: ownS.x + Math.sin(a) * r, y2: ownS.y - Math.cos(a) * r };
+  }
+  // Engineering spike §10.4 (merge decision 1d): under the fog another ship's pew round at an unseen point is hidden; the
+  // crew's own rounds are always shown.
+  const pewRounds: Segment[] = state.pew.filter((q) => q.active && (q.owner === 0 || !input.fog || pointSeen(state, q.x, q.y))).map((q) => {
+    const a = toS(q.x - q.vx * PEW_STREAK_S, q.y - q.vy * PEW_STREAK_S), b = toS(q.x, q.y);
+    return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+  });
+  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange, status, helmArc, solution, goal, floats, torpedoPath, evade, pings, pewCone, pewAim, pewRounds, laserAim, ...gun };
 }

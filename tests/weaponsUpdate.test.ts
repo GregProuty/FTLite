@@ -9,10 +9,11 @@ import { createTacticalState, missileOf, Room, type DuelEvent, type TacticalStat
 import { HUNTER_MISSILE_COOLDOWN_TICKS, LASER_BURST_GAP_TICKS, LASER_CHARGE_UNITS, LASER_HULL, MISSILE_RANGE } from '../src/renderer/src/sim/tactical/tuning';
 import { applyWeaponsInput, canLaunch, IDLE_INPUT, tickWeapons, torpedoInRange, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
 import { makeHostile } from './helpers/hostile';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 /** The crew at (−600, −300) facing east at the enemy 300 units away (the enemy facing west at it): in arc and range. */
 function facing(): TacticalState {
-  const st = makeHostile(createTacticalState(5));
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   st.map = { ...st.map, asteroids: [] };
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });

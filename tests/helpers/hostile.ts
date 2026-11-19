@@ -15,3 +15,9 @@ export function holding(st: TacticalState): TacticalState {
   st.hostileAt = -1;
   return st;
 }
+
+/** W-1: empty the Hunter's pew for this tick (call before each step), for a test whose subject is another weapon and whose
+ *  numbers predate the Hunter's pew rounds. */
+export function noHunterPew(st: TacticalState): void {
+  st.systems[1].pewCharge = 0;
+}

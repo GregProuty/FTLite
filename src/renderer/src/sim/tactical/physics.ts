@@ -4,6 +4,7 @@ import { CUTTER_CLASS, type ShipClassDef } from './defs';
 import { hx, hy, wrapHeading } from './direction';
 import { hitStatics, resolveContacts } from './contacts';
 import { classOf, CREW_SLOT, Room, type Axes, type Ship, type TacticalState } from './state';
+import { DuelSystem, effectiveBars, ENGINE_FACTOR_BY_BARS } from './bars';
 import { CREW_FLIGHT, DEFAULT_FLIGHT, DT, GM, GRAVITY_EPS, K_EDGE, MAX_SPEED, R_MAP, RCS_THRUST, RCS_TURN_BOOST, type FlightTuning } from './tuning';
 
 /** Acceleration toward the planet at the origin: a = −GM · d / (|d|² + ε²)^{3/2}. */
@@ -28,13 +29,13 @@ export function engineFactor(cls: ShipClassDef, engines: number): number { retur
  *  turn. Shared by the step and by predictPath, so the prediction is exact. Playtest2feedback §2: a ship flying with
  *  drag 0 caps its thrust at max(MAX_SPEED, its speed before the thrust), then adds gravity and the edge uncapped; a ship
  *  flying with drag runs the arithmetic it always has, bit for bit. */
-export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning, engines = 0, cls: ShipClassDef = CUTTER_CLASS): void {
+export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning, engines = 0, cls: ShipClassDef = CUTTER_CLASS, factor = engineFactor(cls, engines)): void {
   // The turn is quantised by sign; the thrust (playtest2feedback §3) is rounded to thousandths and clamped to −1..1, so the
   // crew's held throttle flies smoothly. `|| 0` maps NaN and −0 to 0. Whole axes (the hunter's −1, 0, 1, the Valkyrn's
   // levels −1, ¼, ½, ¾, 1, the flight view) give exactly the quarter-quantised q they always did.
   const turn = Math.sign(axes.turn) || 0, q = Math.max(-1, Math.min(1, Math.round(axes.thrust * 1000) / 1000)) || 0;
   const boost = axes.turnBoost === RCS_TURN_BOOST ? RCS_TURN_BOOST : 1, rcsX = Math.sign(axes.rcsX ?? 0) || 0, rcsY = Math.sign(axes.rcsY ?? 0) || 0;   // §4, §4a
-  const f = engineFactor(cls, engines);
+  const f = factor;   // Engineering spike Decision 7: flySlot and predictFlight pass shipEngineFactor
   s.headingAcc += turn * boost * cls.turnStepsPerTick * f;
   while (s.headingAcc >= 1) { s.heading = wrapHeading(s.heading + 1); s.headingAcc -= 1; }
   while (s.headingAcc <= -1) { s.heading = wrapHeading(s.heading - 1); s.headingAcc += 1; }
@@ -85,9 +86,16 @@ export function flightFor(state: TacticalState, i: number): FlightTuning {
   return i === CREW_SLOT && classOf(state, i).newtonianHelm ? CREW_FLIGHT : DEFAULT_FLIGHT;
 }
 
-/** Ship slot i's flight for one tick: its body, its Engines level and its class. */
+/** Engineering spike spec §10.2 (Task 8): ship i's thrust and turn factor: the crew slot's from its effective Engines
+ *  bars (times its class's undamaged factor, 1 for every class today), any other slot's from its Engines level as before. */
+export function shipEngineFactor(state: TacticalState, i: number): number {
+  const sys = state.systems[i]!, cls = classOf(state, i);
+  return i === CREW_SLOT ? cls.engineFactor[0]! * ENGINE_FACTOR_BY_BARS[effectiveBars(sys, DuelSystem.Engines)]! : engineFactor(cls, sys.rooms[Room.Engines]);
+}
+
+/** Ship slot i's flight for one tick: its body, its engine factor and its class. */
 export function flySlot(state: TacticalState, i: number, axes: Axes, tuning: FlightTuning): void {
-  flyShip(state.ships[i]!, axes, tuning, state.systems[i]!.rooms[Room.Engines], classOf(state, i));
+  flyShip(state.ships[i]!, axes, tuning, state.systems[i]!.rooms[Room.Engines], classOf(state, i), shipEngineFactor(state, i));
 }
 
 /** One duel tick of flight: the active ships fly in slot order, then contacts resolve, then the tick advances. `tuning`

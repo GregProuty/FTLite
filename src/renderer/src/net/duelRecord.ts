@@ -6,6 +6,13 @@ import { z } from 'zod';
 import { MISSILE_LOSSES, TERMINAL_CAUSES, type DuelRoundRecord } from '../sim/duel/summary';
 
 export const DUEL_RECORD_MAX_BYTES = 8192;
+/** A day's log stops growing here, so a renderer bug looping on round events cannot fill the disk or the browser's storage. */
+export const DUEL_RECORD_DAY_MAX_BYTES = 16 * 1024 * 1024;
+/** The local date a record is filed under, YYYY-MM-DD (Electron's file name, the browser's duelRecords key). Typed by
+ *  shape, not as the platform date class, because this module is in the deterministic module graph (tests/boundary). */
+export function duelRecordDay(now: { getFullYear(): number; getMonth(): number; getDate(): number }): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
 /** The largest millisecond figure a record holds; the helpers drop larger samples so the record is never lost. */
 export const DUEL_RECORD_MAX_MS = 3_600_000;
 /** count, median, 95th percentile and maximum, in milliseconds (null with no samples). */

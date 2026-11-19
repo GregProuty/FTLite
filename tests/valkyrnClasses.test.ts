@@ -17,13 +17,14 @@ import { DT, GUN_POOL, HEADING_COUNT, SHIP_RADIUS, VALKYRN_HULL, VALKYRN_THRUST,
 import { IDLE_INPUT, laserEligible, laserFull } from '../src/renderer/src/sim/tactical/weapons';
 import { duelInit, resolveCutter } from './helpers/duelAuthority';
 import { makeHostile } from './helpers/hostile';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { liveDuel } from './helpers/liveDuel';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 /** The crew ship of class `cls` at (−600, −300) facing east at the enemy 300 units away (facing west at it), hostile,
  *  no asteroids: inside the Cutter laser's arc and range. */
 function facing(cls: number): TacticalState {
-  const st = makeHostile(createTacticalState(5, 2, cls));
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 2, cls)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   st.map = { ...st.map, asteroids: [] }; st.grid = buildGrid([], st.map.rMap);
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
@@ -38,12 +39,12 @@ describe('the Valkyrn classes (spec §6.1)', () => {
     expect(['cutter', 'hunter', 'valkyrn', 'valkyrnLaser'].map(classIndexById)).toEqual([0, 1, 2, 3]);
     expect(() => classIndexById('skiff')).toThrow(/unknown ship class skiff/);
   });
-  it('the Valkyrn: hull 30, thrust 160, 200°/s, the gun and the torpedo, no laser; the laser fit has the Cutter\'s laser and no gun', () => {
-    expect([VALKYRN_HULL, VALKYRN_THRUST, VALKYRN_TURN_DEG_PER_S]).toEqual([30, 160, 200]);
-    expect(VALKYRN_CLASS).toMatchObject({ id: 'valkyrn', ai: 'crew', hull: 30, thrust: 160, radius: SHIP_RADIUS, turnStepsPerTick: (VALKYRN_TURN_DEG_PER_S / 360) * HEADING_COUNT * DT });
-    expect(VALKYRN_CLASS.slots).toEqual({ laser: null, gun: GUN, missile: MISSILE });
-    expect(VALKYRN_LASER_CLASS).toMatchObject({ id: 'valkyrnLaser', ai: 'crew', hull: 30, thrust: 160, turnStepsPerTick: VALKYRN_CLASS.turnStepsPerTick });
-    expect(VALKYRN_LASER_CLASS.slots).toEqual({ laser: LASER, gun: null, missile: MISSILE });
+  it('the Valkyrn: hull 53, thrust 160, 200°/s, the gun and the torpedo, no laser; the laser fit has the Cutter\'s laser and no gun', () => {
+    expect([VALKYRN_HULL, VALKYRN_THRUST, VALKYRN_TURN_DEG_PER_S]).toEqual([53, 160, 200]);   // W-1: duel hull ×1.75 to hold the 180 s floor with the pew (30 before)
+    expect(VALKYRN_CLASS).toMatchObject({ id: 'valkyrn', ai: 'crew', hull: 53, thrust: 160, radius: SHIP_RADIUS, turnStepsPerTick: (VALKYRN_TURN_DEG_PER_S / 360) * HEADING_COUNT * DT });
+    expect(VALKYRN_CLASS.slots).toEqual({ laser: null, gun: GUN, pew: null, missile: MISSILE });
+    expect(VALKYRN_LASER_CLASS).toMatchObject({ id: 'valkyrnLaser', ai: 'crew', hull: 53, thrust: 160, turnStepsPerTick: VALKYRN_CLASS.turnStepsPerTick });
+    expect(VALKYRN_LASER_CLASS.slots).toEqual({ laser: LASER, gun: null, pew: null, missile: MISSILE });
     expect([CUTTER_CLASS.slots.gun, HUNTER_CLASS.slots.gun]).toEqual([null, null]);
     expect(VALKYRN_CLASS.shields).toEqual(CUTTER_CLASS.shields);
     for (const c of SHIP_CLASSES) expect(c.turnStepsPerTick, c.id).toBeLessThan(3);   // spec §6.2: the aim band is three indices
@@ -60,7 +61,7 @@ describe('the crew slot\'s class (spec §6.1)', () => {
     const cutter = createTacticalState(5), valkyrn = createTacticalState(5, 2, ShipClass.Valkyrn), fit = createTacticalState(5, 2, ShipClass.ValkyrnLaser);
     expect([cutter.systems[0].cls, valkyrn.systems[0].cls, fit.systems[0].cls]).toEqual([0, 2, 3]);
     expect([valkyrn.systems[1].cls, valkyrn.systems[1].hull]).toEqual([ShipClass.Hunter, HUNTER_CLASS.hull]);
-    expect(valkyrn.systems[0]).toMatchObject({ hull: VALKYRN_HULL, laserCharge: 0, laserTargeted: false, shields: 2, magazine: MISSILE.magazine });
+    expect(valkyrn.systems[0]).toMatchObject({ hull: VALKYRN_HULL, laserCharge: 0, laserTargeted: false, shields: 1, magazine: MISSILE.magazine });   // Engineering spike spec §2 and Decision 5: every crew class starts at 1 layer (2 Shields bars)
     expect(fit.systems[0]).toMatchObject({ hull: VALKYRN_HULL, laserCharge: LASER.chargeUnits, laserTargeted: true });   // Feel-i: the crew laser starts full and targeted
     expect(Array.from(flattenTactical(valkyrn))).not.toEqual(Array.from(flattenTactical(cutter)));
     for (const bad of [ShipClass.Hunter, 4, -1, 1.5]) expect(() => createTacticalState(5, 2, bad), `class ${bad}`).toThrow(/invalid crew ship class/);

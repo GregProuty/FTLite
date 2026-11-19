@@ -48,7 +48,7 @@ describe('the console screen (spec §2)', () => {
       expect([n, btn(n)]).not.toEqual([n, null]);
     for (const n of ['lock-0', 'lock-1', 'lock-2']) expect([n, btn(n)]).toEqual([n, null]);   // FTL targeting spec §1: the cards replace the lock row
     expect(btn('tab-weapons').dataset.uiButton).toBe('lit');
-    for (const t of ['LASER', 'x2', 'TGT --', 'MAG 4/4', '1', '2', '3/4/5']) expect(find(t), t).toBeDefined();
+    for (const t of ['BEAM', 'x2', 'TGT --', 'MAG 4/4', '1', '2', '3/4/5']) expect(find(t), t).toBeDefined();
     for (const n of ['steer-left', 'steer-right']) expect([n, btn(n)]).toEqual([n, null]);   // homing torpedo spec §3: no STEER
     expect(find('TORPEDO')).toBeDefined(); expect(find('STEER')).toBeUndefined(); expect(find('MISSILE')).toBeUndefined();
     expect(find('ZOOM 0.90')).toBeUndefined(); expect(find('0.90')).toBeDefined(); expect(find('CAMERA')).toBeDefined();

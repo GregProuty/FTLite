@@ -6,11 +6,12 @@ import { predictFlight } from '../../sim/tactical/predict';
 import { derelictPos } from '../../sim/tactical/science';
 import { classOf, Contact, CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
 import { rockAlive, rockAt, rockHpMax, RockKind, rockSlots } from '../../sim/tactical/rocks';
-import { HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS } from '../../sim/tactical/tuning';
+import { AIM_STEPS, HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
 import { hullFor, type HullId } from './hullModel';
 import type { HelmVent } from '../../sim/duel/helmFlight';
+import type { FogView, GhostKind } from './fogModel';
 
 /** The grid square's half-size: the smallest multiple of 500 that encloses the map circle (plan decision 4). */
 export const GRID_EXTENT = Math.ceil(R_MAP / 500) * 500;
@@ -92,6 +93,8 @@ export interface ContactMarkDraw { contact: 0 | 1; x: number; y: number; r: numb
 export interface SalvageDraw { x: number; y: number; r: number; fill: number }
 /** Science's slow rotating ring on the crew laser's target (Artemis). */
 export interface LockRingDraw { x: number; y: number; r: number }
+/** Engineering spike §10.4: a ghost in screen space (its heading as radians clockwise from north) at its fade. */
+export interface GhostDraw { kind: GhostKind; x: number; y: number; angle: number; alpha: number }
 /** Spike ii §6.5: a bracket about a rock: a weapon's rock target, or the rock under the pointer while a weapon is picked up. */
 export interface RockMarkDraw { x: number; y: number; r: number; weapon: 'laser' | 'torpedo'; hover: boolean }
 export interface TacticalDraw {
@@ -110,6 +113,8 @@ export interface TacticalDraw {
   marks?: ContactMarkDraw[]; salvage?: SalvageDraw | null; lockRing?: LockRingDraw | null;
   /** Feel-ii §1.3, the Helm only: the G 0.5 and G 1 rings. */
   gravity?: GravityDraw[];
+  /** Engineering spike §10.4 (only with `fog`): the sensor range ring about the crew ship, and the ghosts. */
+  sensor?: CircleDraw | null; ghosts?: GhostDraw[];
   /** Spike ii §6.5 (only with contacts): the rock brackets. */
   rockMarks?: RockMarkDraw[];
   /** Playtest2feedback §6: the crew ship's cold gas puffs this frame. */
@@ -153,6 +158,9 @@ export interface TacticalModelInput {
   /** Playtest2feedback §6: the crew ship's vented thruster axes and boost this tick (the puffs), and the cursor the held left
    *  button steers to (the steering marker), in screen px; absent: none. */
   vent?: HelmVent | null; steerTo?: Point | null;
+  /** Engineering spike §10.4: the fog this frame (the scene's stepFog). The scene leaves the enemy out of `ships` while it
+   *  is unseen; the derelict's mark needs `seen.derelict`. Absent (the flight view): no fog. */
+  fog?: FogView | null;
   /** Own ship window spec §3: a console window the off-screen arrows go around (OWN_SHIP); absent: none. */
   avoid?: { x: number; y: number; w: number; h: number };
 }
@@ -177,6 +185,13 @@ export function gravityRadius(g: number, thrust: number): number {
   if (hit !== undefined) return hit;
   const r = contourRadius(a); gravityRadii.set(a, r); return r;
 }
+/** W-1 (pew pew spec §4): the fine heading (0..AIM_STEPS − 1, a heading index × HEADING_COUNT + its fraction) of a screen
+ *  direction (dx, dy), north 0 clockwise. The view's aim; the sim clamps it. */
+export function fineHeadingOf(dx: number, dy: number): number {
+  const a = Math.atan2(dx, -dy), k = Math.round((a / (2 * Math.PI)) * AIM_STEPS);
+  return ((k % AIM_STEPS) + AIM_STEPS) % AIM_STEPS;
+}
+
 /** The heading index (0..255) of a screen direction (dx, dy), north 0 clockwise. */
 export function headingOf(dx: number, dy: number): number {
   const a = Math.atan2(dx, -dy), k = Math.round((a / (2 * Math.PI)) * HEADING_COUNT);
@@ -471,7 +486,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
       }
     }
     const w = derelictPos(state), dr = state.derelict, known = state.known[Contact.Derelict] >= 1;
-    if (onScreen(w.x, w.y, 40)) {
+    if (onScreen(w.x, w.y, 40) && (input.fog?.seen.derelict ?? true)) {   // Engineering spike §10.4: an unseen derelict is a ghost
       const p = toS(w.x, w.y);
       marks.push({ contact: Contact.Derelict, x: p.x, y: p.y, r: 14, unknown: !known, wreck: known, label: known ? `DERELICT ${dr.salvaged ? 'SALVAGED' : LOOT_NAMES[dr.loot] ?? ''}` : null,
         alert: known && dr.trapped && !dr.salvaged ? 'TRAPPED' : null, scan: scanOf(Contact.Derelict), designated: state.designated === Contact.Derelict });
@@ -506,11 +521,19 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     if (input.rockHover) mark(input.rockHover.rock, input.rockHover.weapon, true);
   }
 
+  // Engineering spike §10.4: the sensor range ring and the ghosts of contacts last seen.
+  let sensor: CircleDraw | null = null, ghosts: GhostDraw[] = [];
+  if (input.fog) {
+    const r = input.fog.range * z;
+    if (input.ships.includes(CREW_SLOT) && ringCrossesRect(ownS.x, ownS.y, r, vp.w, vp.h)) sensor = { x: ownS.x, y: ownS.y, r };
+    ghosts = input.fog.ghosts.flatMap((g) => { if (!onScreen(g.x, g.y, 40)) return []; const p = toS(g.x, g.y); return [{ kind: g.kind, x: p.x, y: p.y, angle: headingAngle(g.h), alpha: g.alpha }]; });
+  }
   const units = [...SCALE_STEPS].reverse().find((u) => u * z <= SCALE_BAR_MAX_PX) ?? SCALE_STEPS[0]!;
   return {
     grid: gridDraw(cam, vp), contours, edge, planet, asteroids, ships, helm, arrows,
     ...(marks ? { marks, salvage, lockRing } : {}),
     ...(gravity ? { gravity } : {}),
+    ...(input.fog ? { sensor, ghosts } : {}),
     ...(rockMarks ? { rockMarks } : {}),
     ...(puffs.length > 0 ? { puffs } : {}),
     overlay: { zoomText: `ZOOM ${z.toFixed(2)}`, scaleBar: { px: units * z, units }, snapHint: cam.follow === 'free', paused: input.paused },
@@ -525,11 +548,12 @@ export function pickRadius(z: number): number { return Math.max(PICK_MIN_PX, 2 *
 
 /** Spec §6.2: the ship under a map click, or null. Only slots other than the crew's whose ship is active, each at the
  *  interpolated position and camera the map draws with; the nearest hit wins. Reads no reserves. */
-export function pickShip(input: Pick<TacticalModelInput, 'state' | 'prev' | 'alpha' | 'camera' | 'viewport'>, p: Point): number | null {
+export function pickShip(input: Pick<TacticalModelInput, 'state' | 'prev' | 'alpha' | 'camera' | 'viewport' | 'fog'>, p: Point): number | null {
   const r = pickRadius(input.camera.zoom);
   let best: number | null = null, bestD = Infinity;
   for (let i = 0; i < input.state.ships.length; i++) {
     if (i === CREW_SLOT || !input.state.ships[i]!.active) continue;
+    if (input.fog && !input.fog.seen.enemy && i === targetOf(input.state, CREW_SLOT)) continue;   // Engineering spike §10.4: unseen
     const b = interpolatedShip(input.state, input.prev, input.alpha, i), s = worldToScreen(input.camera, input.viewport, b.x, b.y);
     const d = Math.hypot(s.x - p.x, s.y - p.y);
     if (d <= r && d < bestD) { best = i; bestD = d; }
@@ -539,7 +563,7 @@ export function pickShip(input: Pick<TacticalModelInput, 'state' | 'prev' | 'alp
 
 /** Sci-1 spec §7.2: the contact under a map click, or null: the enemy by pickShip, the derelict at derelictPos within
  *  the same pickRadius; the nearer of the two wins. */
-export function pickContact(input: Pick<TacticalModelInput, 'state' | 'prev' | 'alpha' | 'camera' | 'viewport'>, p: Point): 0 | 1 | null {
+export function pickContact(input: Pick<TacticalModelInput, 'state' | 'prev' | 'alpha' | 'camera' | 'viewport' | 'fog'>, p: Point): 0 | 1 | null {
   const r = pickRadius(input.camera.zoom), slot = pickShip(input, p);
   let best: 0 | 1 | null = null, bestD = Infinity;
   if (slot !== null) {
@@ -547,7 +571,7 @@ export function pickContact(input: Pick<TacticalModelInput, 'state' | 'prev' | '
     best = Contact.Enemy; bestD = Math.hypot(s.x - p.x, s.y - p.y);
   }
   const w = derelictPos(input.state), s = worldToScreen(input.camera, input.viewport, w.x, w.y), dd = Math.hypot(s.x - p.x, s.y - p.y);
-  if (dd <= r && dd < bestD) best = Contact.Derelict;
+  if (dd <= r && dd < bestD && (input.fog?.seen.derelict ?? true)) best = Contact.Derelict;   // Engineering spike §10.4: unseen, no pick
   return best;
 }
 

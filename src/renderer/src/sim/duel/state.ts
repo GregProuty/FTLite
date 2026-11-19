@@ -1,13 +1,14 @@
 // The duel's state (spec §8, §13): today's SimState for the Cutter interior, the tactical state, who is present, and
 // the repair progress of each tactical room. Only the interior systems the duel lists ever run on `interior`.
 import { RECRUIT } from '../characters';
-import { DoorState, roomAt } from '../grid';
+import { roomAt } from '../grid';
 import type { ShipLayout } from '../ship/schema';
 import { createSimState, disposeSimState, type SimState } from '../state';
 import { StationKind } from '../stationKinds';
 import { validateMap } from '../tactical/map';
 import { classIndexById, DUEL_CLASSES, ShipClass } from '../tactical/defs';
-import { createTacticalState, type TacticalState } from '../tactical/state';
+import { createTacticalState, Room, type TacticalState } from '../tactical/state';
+import { createPowerState, type PowerState } from './power';
 import { DUEL_REPAIR_POINTS, HELM_BARS, HELM_BARS_MAX, RCS_TANK } from './tuning';
 import { noVent, type HelmVent } from './helmFlight';
 
@@ -35,7 +36,7 @@ export type RepairEvent =
  *  health this tick to a fire or a hit. `downed`: pid reached 0 and went down. `revived`: pid stood up at 1 health; `by`
  *  names the teammates in reach, ascending. */
 export type HealthEvent =
-  | { kind: 'crewHurt'; player: number; amount: number; cause: 'fire' | 'hit' }
+  | { kind: 'crewHurt'; player: number; amount: number; cause: 'fire' | 'hit' | 'air' }   // 'air': Engineering spike spec §4
   | { kind: 'downed'; player: number }
   | { kind: 'revived'; player: number; by: number[] };
 
@@ -80,12 +81,17 @@ export interface DuelState {
    *  else the Cutter. Hashed and snapshotted as the tactical `systems.0.cls`, which always equals it, and carried in the
    *  snapshot header; a rematch keeps it. */
   crewClass: number;
+  /** Engineering spike spec §3, §7: the power module (heat, coolant, failed per system); the bars are systems[0].bars. */
+  power: PowerState;
+  /** Engineering spike Decision 3: each system's interior room (Shields, Weapons, Engines: their repair point's room;
+   *  Sensors: the Science station's, else Weapons'; Oxygen: the Life Support station's, else −1). Derived from the layout. */
+  systemRooms: number[];
 }
 
 /**
  * A duel on `layout` (the Hound in the app; the Cutter in older tests): `crew` trait-free Recruits (1..4 locally,
  * Valkyrn spec §4.4; online callers keep 2..4; equal to the layout's `crew` when it sets one; no XP is ever awarded,
- * since xpSystem never runs), every door held open, every player standing at the layout's spawns in player order with
+ * since xpSystem never runs), every door in auto (closed), quirk 3 (Engineering spike spec §4, §5), every player standing at the layout's spawns in player order with
  * every console free (start-aboard spec §1; `helmPlayer` is kept for the round module and the wire but seats no one),
  * and a tactical state from the same seed, its crew slot of class `cls` (else the layout's `shipClass`, else the Cutter;
  * Valkyrn spec §6.1), whose map must validate. Round 0, beginning on tick 0, the throttle at STOP. Playtest2feedback §5: opts.helmBars is the Helm's bar budget (default HELM_BARS); the round starts with compressor min(1, helmBars). Throws if the crew,
@@ -103,9 +109,10 @@ export function createDuel(layout: ShipLayout, seed: number, helmPlayer = 0, cre
   const tactical = createTacticalState(seed, DUEL_CLASSES.length, crewClass);   // throws for a class that is not a crew class
   const problems = validateMap(tactical.map);
   if (problems.length > 0) throw new Error(`invalid duel map for seed ${seed}: ${problems[0]}`);
-  const interior = createSimState(layout, crew, seed, Array<number>(crew).fill(RECRUIT));
+  // Engineering spike spec §4 (Decision 15): quirk 3 (Lucky Hull) touches only sector debris, so every quirk hook the
+  // duel's hazards reach is neutral. Spec §5 (Decision 14): the doors start in auto (Closed), no longer held open.
+  const interior = createSimState(layout, crew, seed, Array<number>(crew).fill(RECRUIT), { quirk: 3 });
   try {
-    interior.doors.state.fill(DoorState.HeldOpen);
     const nav = interior.derived.stationOfKind[StationKind.Navigation]!, weapons = interior.derived.stationOfKind[StationKind.Weapons]!;
     if (nav < 0 || weapons < 0) throw new Error('duel layout needs Navigation and Weapons consoles');
     const science = interior.derived.stationOfKind[StationKind.Science] ?? -1;   // Sci-1 spec §6.1: the third seat
@@ -120,8 +127,13 @@ export function createDuel(layout: ShipLayout, seed: number, helmPlayer = 0, cre
       if (room < 0 || roomAt(interior, tx + 0.5, ty + 0.5) !== room) throw new Error(`repair point ${p.room} ${tx},${ty} is not inside its room`);
       return { tacticalRoom: p.tacticalRoom, room, tile: ty * interior.derived.width + tx };
     });
+    const pointRoom = (r: number): number => points.find((p) => p.tacticalRoom === r)?.room ?? -1;
+    const ls = interior.derived.stationOfKind[StationKind.LifeSupport] ?? -1;
+    const systemRooms = [pointRoom(Room.Shields), pointRoom(Room.Weapons), pointRoom(Room.Engines),
+      science >= 0 ? interior.derived.stationRoom[science]! : pointRoom(Room.Weapons), ls >= 0 ? interior.derived.stationRoom[ls]! : -1];   // Engineering spike Decision 3
     return { interior, tactical, present: Array<boolean>(crew).fill(true), repair: [0, 0, 0], points, nav, weapons, science, events: [], round: 0, helmPlayer, baseTick: 0, decidedTick: -1, throttle: 0, holdHeading: -1, crewClass,
-      thrMille: 0, rcsGas: RCS_TANK, rcsAcc: 0, compressor: Math.min(1, helmBars), helmBars, helmVent: noVent() };   // playtest2feedback §4, §5: 3 + 1 with the stand-in
+      thrMille: 0, rcsGas: RCS_TANK, rcsAcc: 0, compressor: Math.min(1, helmBars), helmBars, helmVent: noVent(),   // playtest2feedback §4, §5: 3 + 1 with the stand-in
+      power: createPowerState(), systemRooms };
   } catch (err) {
     disposeSimState(interior);   // release its entities and component storage before rethrowing
     throw err;

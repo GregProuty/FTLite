@@ -10,12 +10,13 @@ import { createDuelProducers } from '../src/network/modes/duelProducers';
 import { standAtStation } from './helpers/duelSeat';
 import { linkPair } from './helpers/linkPair';
 import { onlineDuel } from './helpers/onlineDuel';
+import { holdInSight } from './helpers/sensorSight';
 
 const peerLost = (rig: ReturnType<typeof onlineDuel>) => rig.captures.filter((c) => c.cause === 'pause' && c.checkpoint.pauseReason === 'peer-lost');
 
 describe('a crew of three online (spec §4.4)', () => {
   it('a human at seat 2 sits at Science and scans; every replica is the authority\'s state', () => {
-    const rig = onlineDuel(2, { crew: 3, place: (d) => standAtStation(d, 2, d.science) });
+    const rig = onlineDuel(2, { crew: 3, place: (d) => { standAtStation(d, 2, d.science); holdInSight(d.tactical); } });   // Engineering spike spec §10.4: the scan needs the enemy seen
     const seats = [rig.connect(0), rig.connect(1), rig.connect(2)];
     rig.tick(3);
     expect(seats.map((s) => s.client.commandStatus(s.seat).state)).toEqual(['ready', 'ready', 'ready']);

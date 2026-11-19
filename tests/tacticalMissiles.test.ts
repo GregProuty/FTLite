@@ -5,11 +5,12 @@ import { applyWeaponsInput, IDLE_INPUT, tickWeapons, type ShipInput } from '../s
 import { HUNTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
 import { DT, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, MISSILE_LIFE_TICKS, MISSILE_THRUST, MISSILE_BOOST_TICKS, MISSILE_TURN_STEPS_PER_TICK, R_MAP, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
 import { makeHostile } from './helpers/hostile';
+import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 /** Crew at (−600, −300) heading east, enemy 350 to the south at (−600, 50), inside the torpedo range (weapons update
  *  spec §2; it was 900 away before the range): inside the belt and clear of the planet. */
 function duel(): TacticalState {
-  const st = makeHostile(createTacticalState(5));
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -600, y: 50, vx: 0, vy: 0, heading: 0 });
   return st;

@@ -20,6 +20,7 @@ import { SIT_CARDS } from '../src/renderer/src/render/duel/sitModel';
 import type { DuelRoundRecord } from '../src/renderer/src/sim/duel/summary';
 import { soloDuelRecord, validateDuelRecord } from '../src/renderer/src/net/duelRecord';
 import { inTorpedoRange } from './helpers/torpedoRange';
+import { holdInSight } from './helpers/sensorSight';
 
 const layout = parseShip(valkyrnJson);
 const TICK_MS = 1000 / 60;
@@ -151,6 +152,7 @@ describe('the Flight seat (Valkyrn spec §5, §5.1)', () => {
   });
   it('W/S throttle; E and Q step the torpedo room from none', () => {
     const { rt, tick, sit, press } = rig();
+    holdInSight(rt.duel.tactical);   // Engineering spike spec §10.4: a torpLock needs the target seen
     sit(); tick();
     press('throttleUp'); tick();
     expect(rt.duel.throttle).toBe(1);

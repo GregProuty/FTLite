@@ -36,7 +36,7 @@ describe('telemetry (spec §7.3)', () => {
     } finally { disposeDuel(d); }
   });
   it('a gun kill is the terminal cause gun, after laser in TERMINAL_CAUSES', () => {
-    expect(TERMINAL_CAUSES).toEqual(['planet', 'asteroid', 'ship', 'laser', 'gun', 'missile', 'downed']);
+    expect(TERMINAL_CAUSES).toEqual(['planet', 'asteroid', 'ship', 'laser', 'gun', 'pew', 'missile', 'downed']);   // W-1 appended 'pew' after 'gun'
     const d = createValkyrnDuel(5), t = createTelemetry(d);
     try {
       const h = d.tactical.ships[1], hs = d.tactical.systems[1];

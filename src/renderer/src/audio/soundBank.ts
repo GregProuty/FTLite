@@ -7,7 +7,10 @@ interface SfxDef { readonly pack: Pack; readonly stem: string; readonly numbers:
 
 /** Each effect key: its pack, the Kenney file stem, and the file numbers of its variants (variant n is numbers[n]). */
 export const SFX = {
-  laserSmall: { pack: 'sci', stem: 'laserSmall', numbers: [0, 1, 2, 3, 4] },
+  laserSmall: { pack: 'sci', stem: 'laserSmall', numbers: [0, 1, 2] },
+  /** W-1 (pew pew spec 1): the pew, two of the Kenney Sci-fi laserSmall files (the manifest lists a file once, so the crew
+   *  laser keeps the other three); played fast and short by duelSounds.ts. */
+  pew: { pack: 'sci', stem: 'laserSmall', numbers: [3, 4] },
   laserLarge: { pack: 'sci', stem: 'laserLarge', numbers: [0, 1, 2, 3, 4] },
   impactMetal: { pack: 'sci', stem: 'impactMetal', numbers: [0, 1, 2, 3, 4] },
   explosionCrunch: { pack: 'sci', stem: 'explosionCrunch', numbers: [0, 1, 2, 3, 4] },

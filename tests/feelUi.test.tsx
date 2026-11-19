@@ -37,12 +37,12 @@ function mount() {
 describe('the Weapons LASER card (spec §3)', () => {
   it('says why not in words under the cards', () => {
     const { duel } = mount(); act(() => duel.frame(view(weapons({ laserReason: 'OUT OF ARC: HELM TURN RIGHT' }))));
-    expect(texts()).toContain('LASER: OUT OF ARC: HELM TURN RIGHT');
+    expect(texts()).toContain('BEAM: OUT OF ARC: HELM TURN RIGHT');
     expect(texts()).toContain('READY');
   });
   it('flashes FIRING while the shot is lined up, and glows (the goal) while it has no target', () => {
     const { duel } = mount(); act(() => duel.frame(view(weapons({ laserReason: 'FIRING' }))));
-    expect(texts()).toContain('FIRING'); expect(texts()).toContain('LASER: FIRING');
+    expect(texts()).toContain('FIRING'); expect(texts()).toContain('BEAM: FIRING');
     expect(document.querySelector('[data-ui-card-firing]')).not.toBeNull();
     act(() => duel.frame(view(weapons({ laserReason: null, laserTarget: -1, goal: true }))));
     expect(document.querySelector('[data-ui-card-goal]')).not.toBeNull();

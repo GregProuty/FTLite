@@ -35,6 +35,8 @@ const NotchHelmStation = memo(function NotchHelmStation({ helm }: { helm: HelmPa
     ? <PixelText text={r.reason} x={rx} y={y} size={FONT_NATIVE} tint={hot} />
     : <PixelText text={text} x={rx} y={y} size={FONT_NATIVE} tint={dim} />;
   const hold = helm.holdHeading ?? -1, holdDeg = hold >= 0 ? ((Math.round((hold / 256) * 360) % 360) + 360) % 360 : -1;
+  // Engineering spike §10.2: notches above the Engines bars' cap are locked, and so is REV with no Engines bar.
+  const cap = helm.cap ?? 4, locked = (level: number): boolean => level > cap || (level < 0 && cap <= 0);
   return (
     <>
       <Panel x={STATION.x} y={top} w={STATION.w} h={STATION.h.helm} />
@@ -44,14 +46,14 @@ const NotchHelmStation = memo(function NotchHelmStation({ helm }: { helm: HelmPa
       <div data-testid="console-throttle-wheel" onWheel={(e) => {
         wheel.current += e.deltaMode === 1 ? e.deltaY * 100 / 3 : e.deltaY;
         const n = Math.trunc(wheel.current / THROTTLE_WHEEL_PX);
-        if (n !== 0) { wheel.current -= n * THROTTLE_WHEEL_PX; actions.console.throttle(Math.max(-1, Math.min(4, set - n))); }
+        if (n !== 0) { wheel.current -= n * THROTTLE_WHEEL_PX; actions.console.throttle(Math.max(cap <= 0 ? 0 : -1, Math.min(cap, set - n))); }
       }}>
         <Box x={x0} y={y0} w={124} h={186} style={{ pointerEvents: 'auto' }} />
       {NOTCHES.map((n, k) => {
         const y = y0 + 18 + k * 26, filled = n.level >= 1 && n.level <= set;
         return (
           <Fragment key={n.name}>
-            <Button name={`throttle-${n.name}`} label={n.label} x={x0} y={y} w={52} h={22} lit={n.level === set} flash={n.level === set && flash('throttle')} onPress={() => actions.console.throttle(n.level)} />
+            <Button name={`throttle-${n.name}`} label={n.label} x={x0} y={y} w={52} h={22} lit={n.level === set} disabled={locked(n.level)} flash={n.level === set && flash('throttle')} onPress={() => actions.console.throttle(n.level)} />
             <Box x={x0 + 58} y={y} w={14} h={22} attrs={{ 'data-ui-throttle': n.label, 'data-ui-lit': filled ? '1' : '0' }}
               style={{ background: hex(filled ? (crt ? CRT.main : AMBER) : (crt ? CRT.faint : BAR_OFF)), border: `1px solid ${hex(dim)}` }} />
             {n.level === set && <PixelText text="<" x={x0 + 78} y={y + 2} size={FONT_SIZE} tint={main} />}

@@ -8,15 +8,18 @@ import { Health, Life, LifeState, Position, Seated } from '../components';
 import { roomAt, solidAt } from '../grid';
 import { inReachOfTile } from '../interact';
 import { stationOnline } from '../stations';
+import { levelWithinCap, weaponBars, WeaponSlot } from '../tactical/bars';
 import { hx, hy } from '../tactical/direction';
 import { inArc, sideOf } from '../tactical/geometry';
+import { pewLead, pewReady } from '../tactical/pew';
 import { autoFaceTurn } from '../tactical/hunter';
 import { rockAt, rocksNear } from '../tactical/rocks';
 import { circularSpeed } from '../tactical/map';
 import { predictPath } from '../tactical/predict';
 import { nearestHeading } from '../tactical/lead';
 import { classOf, missileOf, Room, targetOf, type Axes } from '../tactical/state';
-import { BELT_OUTER, LASER_ARC_COS, LASER_RANGE, R_MAP, SHIP_RADIUS } from '../tactical/tuning';
+import { BELT_OUTER, HEADING_COUNT, HUNTER_PD_RANGE, LASER_ARC_COS, LASER_RANGE, PEW_ARC_COS, PEW_RANGE, R_MAP, SHIP_RADIUS } from '../tactical/tuning';
+import { shipSeen } from '../tactical/science';
 import { canLaunch, laserEligible, laserFull } from '../tactical/weapons';
 import { CREW_SPEED, DT, HEALTH_MAX, REACH } from '../tuning';
 import { isDowned, medbayOnline, medbayRoom, revivers } from './health';
@@ -45,6 +48,10 @@ export const EVADE_RANGE = 350;
 /** Ticks between two crew missile launches. 1500 (was 900) from the telemetry gate at the FTL targeting update (FTL
  *  targeting spec §3): with the laser always ready and auto-firing, 900 won all ten gate seeds, and the gate wants a loss. */
 export const MISSILE_GAP = 1500;
+/** W-1 (pew pew spec §1, §5): the fewest ticks between two scripted pew rounds. Start 20 (a round about every third of a
+ *  second while the Hunter is in the cone), kept at the start value; the duel gates (tests/duelGates.test.ts): Hound
+ *  median 224.1 s, 7 crew wins, 3 losses (the Valkyrn pilot has no pew). */
+export const SCRIPTED_PEW_GAP = 20;
 /** A bot below this health with nothing to repair goes to the Medbay and stays until full (duel-health spec §1.9). */
 export const HURT_HEALTH = 50;
 /** Salt for the pair's own stream, so it never shares a sequence with rng.tactical. */
@@ -68,6 +75,10 @@ export interface ScriptedPair {
   axes: Axes;
   /** Tick of the last crew missile launch the pair sent. */
   lastLaunch: number;
+  /** W-1: tick of the last scripted pew round. */
+  lastPew: number;
+  /** Engineering spike Decision 20 (kept at the merge with W-1): whether the gunner has made its one bar move yet. */
+  barMoved: boolean;
   /** The tactical Room each character is assigned to repair, or −1. */
   task: [number, number];
   /** Whether each character is on its way to (or in) the Medbay to heal to full. */
@@ -77,7 +88,7 @@ export interface ScriptedPair {
 export function createScriptedPair(seed: number): ScriptedPair {
   const rng = createRng((seed ^ PAIR_SALT) >>> 0);
   const orbitR = ORBIT_MIN + nextFloat(rng) * (ORBIT_MAX - ORBIT_MIN);
-  return { rng, orbitR, seq: [0, 0], axes: { turn: 0, thrust: 0 }, lastLaunch: -MISSILE_GAP, task: [-1, -1], heal: [false, false] };
+  return { rng, orbitR, seq: [0, 0], axes: { turn: 0, thrust: 0 }, lastLaunch: -MISSILE_GAP, lastPew: -SCRIPTED_PEW_GAP, barMoved: false, task: [-1, -1], heal: [false, false] };
 }
 
 /** Turn toward (dx, dy): the sign of the heading error, ties clockwise. */
@@ -160,7 +171,14 @@ export function orbitSteer(d: DuelState, orbitR: number): Axes & { dx: number; d
   return { turn, thrust, dx, dy };
 }
 
-// --- Walking (spec §3): a BFS over the Cutter's walkable tiles, doors held open, four-way only. ---
+// --- Walking (spec §3): a BFS over the layout's walkable tiles (door tiles included, Engineering spike spec §5), four-way only. ---
+
+/** Engineering spike spec §5: a tile the bots may plan through: inside the grid and not a wall. Door tiles count
+ *  whatever their state, because an auto door opens for a crew member walking into it (doorSystem). */
+function walkable(d: DuelState, tx: number, ty: number): boolean {
+  const de = d.interior.derived;
+  return tx >= 0 && ty >= 0 && tx < de.width && ty < de.height && de.wallTile[ty * de.width + tx] === 0;
+}
 
 /** Tiles inside `room` whose centre is within REACH of tile `target`'s square: where a character can act on it. */
 export function goalTiles(d: DuelState, room: number, target: number): Set<number> {
@@ -169,14 +187,14 @@ export function goalTiles(d: DuelState, room: number, target: number): Set<numbe
     if (st.derived.roomOfTile[i] !== room) continue;
     const x = (i % w) + 0.5, y = Math.floor(i / w) + 0.5;
     const ddx = Math.max(tx - x, 0, x - (tx + 1)), ddy = Math.max(ty - y, 0, y - (ty + 1));
-    if (Math.sqrt(ddx * ddx + ddy * ddy) <= REACH && !solidAt(st, i % w, Math.floor(i / w))) out.add(i);
+    if (Math.sqrt(ddx * ddx + ddy * ddy) <= REACH && walkable(d, i % w, Math.floor(i / w))) out.add(i);
   }
   return out;
 }
 
 /** Shortest four-way path from tile `from` to the nearest goal tile: the tiles to step through, without `from` itself
  *  ([] when `from` is a goal), or null when none is reachable. Neighbours in a fixed order (up, left, right, down), so
- *  the path is deterministic. Walkable means not solid (doors are held open in the duel). */
+ *  the path is deterministic. Walkable means not a wall: door tiles count whatever their state (Engineering spike spec §5). */
 export function bfsPath(d: DuelState, from: number, goals: ReadonlySet<number>): number[] | null {
   const st = d.interior, w = st.derived.width, h = st.derived.height, prev = new Int32Array(w * h).fill(-2);
   if (goals.has(from)) return [];
@@ -185,7 +203,7 @@ export function bfsPath(d: DuelState, from: number, goals: ReadonlySet<number>):
   for (let head = 0; head < queue.length; head++) {
     const c = queue[head]!, cx = c % w, cy = (c - cx) / w;
     for (const [nx, ny] of [[cx, cy - 1], [cx - 1, cy], [cx + 1, cy], [cx, cy + 1]] as const) {
-      if (solidAt(st, nx, ny)) continue;
+      if (!walkable(d, nx, ny)) continue;   // Engineering spike spec §5: through auto doors too
       const n = ny * w + nx;
       if (prev[n] !== -2) continue;
       prev[n] = c;
@@ -281,13 +299,43 @@ export function roomTiles(d: DuelState, room: number): Set<number> {
   return out;
 }
 
+/** W-1 (pew pew spec §1): the scripted gunner's pew, sent only when the sim will apply it (a third stored, the gap since its
+ *  last round): defence first, the Hunter's torpedo within HUNTER_PD_RANGE inside the cone, then the Hunter itself within
+ *  PEW_RANGE inside the cone, each aimed with pewLead (no error). */
+function gunnerPew(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void {
+  const t = d.tactical, s = t.ships[0], target = targetOf(t, 0), e = t.ships[target]!, inbound = missileOf(t, target);
+  if (!pewReady(t, 0) || weaponBars(t.systems[0], WeaponSlot.Pew) === 0 || t.tick - pair.lastPew < SCRIPTED_PEW_GAP) return;   // Engineering spike §11: no round without a pew pew bar
+  let aim = -1;
+  if (inbound) {
+    const dx = inbound.x - s.x, dy = inbound.y - s.y;
+    if (dx * dx + dy * dy <= HUNTER_PD_RANGE * HUNTER_PD_RANGE && inArc(s.heading, dx, dy, PEW_ARC_COS)) aim = pewLead(t, 0, inbound.x, inbound.y, inbound.vx, inbound.vy);
+  }
+  if (aim < 0 && e.active) {
+    const dx = e.x - s.x, dy = e.y - s.y;
+    if (dx * dx + dy * dy <= PEW_RANGE * PEW_RANGE && inArc(s.heading, dx, dy, PEW_ARC_COS)) aim = pewLead(t, 0, e.x, e.y, e.vx, e.vy);
+  }
+  if (aim < 0) return;
+  out.push({ kind: 'pewFire', aim: Math.floor(aim / HEADING_COUNT), aimAcc: aim % HEADING_COUNT });
+  pair.lastPew = t.tick;
+}
+
 /** The gunner's commands while seated at Weapons (spec §3; FTL targeting spec §3: it uses targets). The laser targets the
  *  enemy's Shields while they are up, else its Weapons, and auto-fires; its missile homes by itself (homing torpedo spec),
- *  so the gunner holds nothing. */
+ *  so the gunner holds nothing. W-1: it fires the pew by gunnerPew. */
 function gunner(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void {
   const t = d.tactical, target = targetOf(t, 0), sys = t.systems[0];
+  // Engineering spike Decision 20 (spec §11), kept at the merge with W-1 (merge brief decision 2): the beam starts dark and
+  // the gunner's laser is AUTO (a laserLock it fires on), and the gates need it to fire, so on its first seated tick the
+  // gunner moves pew pew's bar to the beam (−1 then +1, applied in sequence order), then fights with the beam and the
+  // torpedo as before. The pew (gunnerPew) fires only while pew pew holds a bar, so the bots fire it only when a test
+  // gives it one; never in the tick of the move.
+  const moving = !pair.barMoved && weaponBars(sys, WeaponSlot.Pew) > 0 && weaponBars(sys, WeaponSlot.Beam) === 0;
+  pair.barMoved = true;
+  if (moving) out.push({ kind: 'weaponPower', slot: WeaponSlot.Pew, delta: -1 }, { kind: 'weaponPower', slot: WeaponSlot.Beam, delta: 1 });
   const want = t.systems[target]!.shields > 0 ? Room.Shields : Room.Weapons;
+  if (!shipSeen(t, target)) return;   // Engineering spike spec §10.4: a lock on an unseen target is refused
   if (!sys.laserTargeted || sys.lock !== want) out.push({ kind: 'laserLock', room: want });
+  if (!moving) gunnerPew(pair, d, out);   // W-1: before the torpedo's early return (the pew fires while a torpedo flies)
   if (missileOf(t, 0) || sys.torpLock >= 0) return;
   // Weapons update spec §2: the torpedo launches only within its range, so it is targeted when the laser has no shot to
   // make (not full and on target, no burst shot pending), since a torpedo in flight freezes the laser; the target
@@ -338,7 +386,7 @@ export function scriptedInput(pair: ScriptedPair, d: DuelState): DuelInput {
       // Playtest2feedback §7 (Decision 8): on a newtonianHelm class it holds W for thrust, S for reverse, neither for 0.
       const crewHelm = classOf(d.tactical, 0).newtonianHelm, thr = Math.sign(axes.thrust) || 0;
       if (!crewHelm) {
-        const level = axes.thrust > 0 ? THROTTLE_MAX : axes.thrust < 0 ? THROTTLE_MIN : 0;
+        const level = levelWithinCap(d.tactical.systems[0], axes.thrust > 0 ? THROTTLE_MAX : axes.thrust < 0 ? THROTTLE_MIN : 0);   // Engineering spike Decision 16: within the Engines cap (3 at the start)
         if (level !== d.throttle) cmds[pid]!.push({ kind: 'throttle', level });
       }
       const lever = crewHelm && thr !== 0 ? { throttleHeld: thr } : {};

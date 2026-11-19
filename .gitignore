@@ -16,3 +16,8 @@ dist
 # Paid art packs (never commit; the manifest entries are committed) and the art import contact sheet (Art-i spec sections 2-3)
 public/assets/paid/
 .art/
+
+# Vercel Build Output and project link (web build spec §5.1, §5.2; never commit)
+.vercel/
+.vercel
+.env*

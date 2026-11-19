@@ -17,6 +17,8 @@ import { createInteriorCamera, resetInteriorCamera } from '../../render/duel/int
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import { crewHelmSeat, seatOf } from './controls';
+import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
+import { createTorpedoFollow, trackManualTorpedo } from './torpedoCamera';
 import { NO_HELD_FLAGS, type HeldFlags, type KeySample, type PointerSample } from './input';
 import { createCameraInput, heldTurn, type DuelView } from './runtime';
 import type { HeldInput } from '../../net/contracts';
@@ -30,12 +32,12 @@ export interface ConfirmedDuel {
    *  across it. Absent means always live. */
   live?(): boolean;
 }
-interface Counters { shots: number; laserHits: number; stripped: number; launched: number; ended: number; missileHits: number; gunHits: number; contacts: [number, number, number]; rooms: [number, number, number] }
+interface Counters { shots: number; laserHits: number; stripped: number; launched: number; ended: number; missileHits: number; gunHits: number; pewShots: number; pewHits: number; contacts: [number, number, number]; rooms: [number, number, number] }
 /** Ship i's cumulative counters, which the snapshot carries. `ended` is every missile that has ended: launched minus the
  *  one in flight, which also counts a self-hit (neither a hit nor a loss); never fewer than hits plus losses. */
 export const duelCounters = (t: TacticalState, i: number): Counters => {
   const s = t.systems[i]!, b = t.ships[i]!, ended = Math.max(s.missileHits + s.missilesLost, s.missilesLaunched - (missileOf(t, i) ? 1 : 0));
-  return { shots: s.shots, laserHits: s.laserHits, stripped: s.layersStripped, launched: s.missilesLaunched, ended, missileHits: s.missileHits, gunHits: s.gunHits, contacts: [b.planetHits, b.asteroidHits, b.shipHits], rooms: [s.rooms[0], s.rooms[1], s.rooms[2]] };
+  return { shots: s.shots, laserHits: s.laserHits, stripped: s.layersStripped, launched: s.missilesLaunched, ended, missileHits: s.missileHits, gunHits: s.gunHits, pewShots: s.pewShots, pewHits: s.pewHits, contacts: [b.planetHits, b.asteroidHits, b.shipHits], rooms: [s.rooms[0], s.rooms[1], s.rooms[2]] };
 };
 const body = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
 const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null);
@@ -48,6 +50,9 @@ const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.
  * contact counter increment is a spark at the ship; each gunHits increment is a gun hit at the target (Valkyrn spec §7.3).
  * An ending and a relaunch in one gap are told apart because both
  * counters rose: the ending is drawn at the old missile's last position.
+ * W-2 approximation (plan Decision 13): the crew laser's mode is read once per gap, from the replica's current state, for
+ * every shot in it, so a shot fired in the other mode before a Z toggle inside the same gap may name the wrong room; and a
+ * MANUAL hit on a room already at level 2 (the level did not rise) is drawn with no room callout.
  */
 export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: readonly (PrevBody | null)[], t: TacticalState): ViewEvent[] {
   const out: ViewEvent[] = [];
@@ -55,7 +60,7 @@ export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: r
     if (!ship.active) return;
     const was = beforeCounters[i], now = duelCounters(t, i);
     if (!was) return;
-    const target = t.systems[i]!.target, tgt = t.ships[target], lock = t.systems[i]!.lock;
+    const target = t.systems[i]!.target, tgt = t.ships[target], lock = t.systems[i]!.lock, manual = t.systems[i]!.laserManual;
     // What each hit did (duel polish i spec §B, online): the first `stripped` hits took a shield layer; the rest struck the
     // laser's lock room. A missile hit struck a room whose level rose beyond what those laser hits explain, else unknown (−1).
     const tw = beforeCounters[target], tn = tgt ? duelCounters(t, target) : null;
@@ -64,7 +69,9 @@ export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: r
     const hits = now.laserHits - was.laserHits, weak = i === CREW_SLOT && t.systems[i]!.freq === t.weakFreq;
     let layers = now.stripped - was.stripped;
     for (let k = 0; k < now.shots - was.shots; k++) {
-      const hit = k < hits && !!tgt, stripped = hit && layers > 0, room = hit && !stripped ? lock : -1;
+      // W-2 (pew pew spec §2): a MANUAL hit struck the room under its hit point, which the snapshot does not carry: the first
+      // room whose level rose in the gap, else none.
+      const hit = k < hits && !!tgt, stripped = hit && layers > 0, room = hit && !stripped ? (manual ? rose.findIndex((r) => r > 0) : lock) : -1;
       if (stripped) layers -= weak ? Math.min(2, layers) : 1;
       if (room >= 0 && rose[room]! > 0) rose[room]!--;
       const x2 = hit ? tgt!.x : ship.x + hx(ship.heading) * LASER_RANGE, y2 = hit ? tgt!.y : ship.y + hy(ship.heading) * LASER_RANGE;
@@ -80,6 +87,10 @@ export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: r
     // Valkyrn spec §7.3: each gunHits increment is a round that hit the target; the snapshot carries neither the Room nor
     // a strip, so the event names none (−1, not stripped), at the target's position.
     if (tgt) for (let k = 0; k < now.gunHits - was.gunHits; k++) out.push({ kind: 'gunHit', ship: target, room: -1, stripped: false, hull: false, level: false, x: tgt.x, y: tgt.y } satisfies DuelEvent);
+    // W-1 (pew pew spec §1): each pewShots increment is a round fired at the ship, each pewHits increment a round that hit the
+    // target (the snapshot carries neither the strip nor the hull, so the event names neither).
+    for (let k = 0; k < now.pewShots - was.pewShots; k++) out.push({ kind: 'pewFire', ship: i, x: ship.x, y: ship.y } satisfies DuelEvent);
+    if (tgt) for (let k = 0; k < now.pewHits - was.pewHits; k++) out.push({ kind: 'pewHit', ship: target, owner: i, stripped: false, hull: false, x: tgt.x, y: tgt.y } satisfies DuelEvent);
     (['planet', 'asteroid', 'ship'] as const).forEach((kind, k) => {
       for (let n = 0; n < now.contacts[k]! - was.contacts[k]!; n++) out.push({ kind: 'contact', ship: i, body: kind, x: ship.x, y: ship.y });
     });
@@ -94,7 +105,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [];
   let latest: { bodies: PrevBody[]; missiles: (PrevBody | null)[]; crew: { x: number; y: number }[]; counters: Counters[] } | null = null;
   let events: ViewEvent[] = [], sentHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
-  let cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() };
+  let cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() }, torpFollow = createTorpedoFollow();
   let uiHeld: HeldFlags = NO_HELD_FLAGS, shownThrottle: number | null = null, refusals: Refusal[] = [];
   let unackedFrames = 0;   // playtest2feedback Decision 14: this seat's held frames the replica has not taken yet
   /** Playtest2feedback §3: this seat flies the crew Helm (a newtonianHelm class) in a running round. */
@@ -109,7 +120,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     const t = d.tactical, now = deps.now();
     if (d.round !== round) {   // the first publication or a new round: no interpolation across it, fresh cameras
       round = d.round; latest = null; lastTick = -1;
-      const s = t.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y), science: createCamera(s.x, s.y) }; cameraInput.reset(); resetInteriorCamera(interiorCamera);
+      const s = t.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y), science: createCamera(s.x, s.y) }; torpFollow = createTorpedoFollow(); cameraInput.reset(); resetInteriorCamera(interiorCamera);
     }
     if (latest) events.push(...gapEvents(latest.counters, latest.missiles, t));
     prev = latest ? latest.bodies : t.ships.map(body);
@@ -185,7 +196,8 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const d = client.state(); if (!d) return;
       frameAlpha = Math.max(0, Math.min(1, (deps.now() - receivedAt) * TICK_HZ / (1000 * gap)));
       const view = seatOf(d, seat), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : view === 'science' ? cameras.science : null;
-      if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer, view === 'helm'); else cameraInput.applyInterior(interiorCamera, keys, pointer); }
+      if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer, view === 'helm' || (view === 'weapons' && manualTorpedoFlying(d.tactical))); else cameraInput.applyInterior(interiorCamera, keys, pointer); }   // W-3: at Weapons the right button steers a MANUAL torpedo
+      trackManualTorpedo(cameras.weapons, torpFollow, manualTorpedoFlying(d.tactical));   // W-3 (pew pew spec §3): follow a MANUAL torpedo, then go back
       for (const c of [cameras.helm, cameras.weapons, cameras.science]) {
         if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');
         const target = c.follow === 'missile' ? interpolatedMissile(d.tactical, missilePrev, frameAlpha, 0) : followTarget(d.tactical, prev, frameAlpha, c.follow);
