@@ -106,6 +106,12 @@ export function laserCardReason(s: LaserSituation, offline = false): string | nu
   }
 }
 
+/** W-2 (pew pew spec §2): the LASER card's why-not in MANUAL. It never fires by itself, so a firing solution (FIRING, or
+ *  PICK A ROOM TO FIRE) reads MANUAL: SPACE FIRES; every other reason stands. */
+export function manualCardReason(reason: string | null): string | null {
+  return reason === 'FIRING' || reason === 'PICK A ROOM TO FIRE' ? 'MANUAL: SPACE FIRES' : reason;
+}
+
 // Feel-ii (spec 2026-11-18-feel-ii-design §1.2, §1.6, §2.8): the flight alerts above the laser's words, the EVADE side and
 // the dead-click reasons. Pure reads with the sim's own rules (predictFlight is the Helm's predicted path, the refusals
 // are canCharge's and canLaunch's checks in their order), so the words never disagree with what the sim will do.

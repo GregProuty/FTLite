@@ -8,7 +8,7 @@ import { HEADING_COUNT, MAGAZINE } from '../../sim/tactical/tuning';
 import { canLaunch, torpedoInRange } from '../../sim/tactical/weapons';
 import type { MapOverlayView } from '../../ui/views';
 import { chargeRow, type ReadoutRow } from './readoutModel';
-import { gunnerPresent, laserCardReason, laserSituation, type RefusedControl } from './situationModel';
+import { gunnerPresent, laserCardReason, laserSituation, manualCardReason, type RefusedControl } from './situationModel';
 import { laserOffline } from '../../sim/tactical/weapons';
 
 export type ConsoleStation = 'helm' | 'weapons' | 'science' | 'flight' | 'ship';
@@ -36,6 +36,8 @@ export interface HelmPanel {
 export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: string; canLaunch: boolean; torpedoInRange: boolean; missileFlying: boolean; fireHeld: boolean; held: HeldFlags; freq: number; weakFreq: number | null;
   laserTarget: number; torpTarget: number; burst: number; laserReason?: string | null; goal?: boolean; refused?: RefusedView | null;
   laserRock?: boolean; torpRock?: boolean; torpRockFlying?: boolean;
+  /** W-2 (pew pew spec §2): the laser's mode for the LASER card's AUTO / MAN tag (true MANUAL); absent draws no tag. */
+  laserManual?: boolean;
   /** Spike ii §7 item 9: the rocks the crew broke this round. */
   rocks?: number;
   /** W-1 (pew pew spec 1): each third's fill 0..1 (the PEW card's pips); absent or null without the pew. */
@@ -119,11 +121,15 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
         refused: i.refused && HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, holdHeading: d.holdHeading, ...(station === 'flight' ? { flight: true } : {}) }
     : null;
   const flying = missileOf(t, 0) !== null, sys = t.systems[0];
-  const weaponsPanel = (): WeaponsPanel => ({ lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null,
+  const weaponsPanel = (): WeaponsPanel => {
+    const reason = laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), laserOffline(t, 0));
+    return { lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null,
       laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock, burst: classOf(t, 0).slots.laser?.shots ?? 0,   // Valkyrn-i: Part ii gives the gun its own card
       laserRock: sys.laserRock >= 0, torpRock: sys.torpRock >= 0, torpRockFlying: sys.torpRockFlying >= 0, rocks: sys.rocksBroken,   // spike ii §6.5, §7 item 9
-      laserReason: laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), laserOffline(t, 0)), goal: (i.goal ?? false) && !sys.laserTargeted,
-      refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, pew: pewPips(t) });
+      // W-2 (pew pew spec §2): the mode for the tag; in MANUAL the laser never fires by itself, so no FIRING and no goal glow.
+      laserReason: sys.laserManual ? manualCardReason(reason) : reason, goal: (i.goal ?? false) && !sys.laserTargeted && !sys.laserManual, laserManual: sys.laserManual,
+      refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, pew: pewPips(t) };
+  };
   const weapons: WeaponsPanel | null = station === 'weapons' ? weaponsPanel() : null;
   const gunDef = classOf(t, 0).slots.gun;   // Valkyrn spec §5, §8: the Flight seat's GUN card (null with the laser fit) and its weapons
   const flight: FlightPanel | null = station === 'flight'
