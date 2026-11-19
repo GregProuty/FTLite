@@ -18,6 +18,7 @@ import { disposeDuel, type DuelState } from '../../sim/duel/state';
 import type { DuelRoundRecord } from '../../sim/duel/summary';
 import { Outcome } from '../../sim/tactical/state';
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
+import { HEADING_COUNT } from '../../sim/tactical/tuning';
 import { computeLetterbox } from '../../render/letterbox';
 import { endModel } from '../../render/duel/endModel';
 import { createKeyToggle, latencyOverlayLines, type KeyTarget } from '../../render/duel/latencyOverlay';
@@ -99,6 +100,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   let attaches = 0, pauses = 0, roundAttaches = 1, roundPauses = 0, startedAtIso = new Date().toISOString(), cancel = () => {}, offClose = () => {};
   let lastHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false }, lastFlags: HeldFlags = NO_HELD_FLAGS;
   const requests0 = (): number | null => requests.takeHeading();   // Feel-ii §1.1: drained every pump
+  const pewRequest = (): number | null => requests.takePew();   // W-1: the Weapons map's pew aim, drained every pump
   // Artemis spec §5.4: the throttle this seat last asked for, until its result comes back; the base W, S and the console build on.
   let throttleSent: { level: number; sequence: number; round: number } | null = null;
   // Feel-ii §1.1: the heading this seat last asked for, until its result comes back (as throttleSent); the dedupe's base.
@@ -188,7 +190,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     }
   }
   /** One frame's press edges for this seat, by where its character is (H-1 spec §5 table, without Tab). */
-  function play(k: KeySample, d: DuelState, me: number, requests: ContactRequests, heading: number | null, prevHeld: HeldFlags): void {
+  function play(k: KeySample, d: DuelState, me: number, requests: ContactRequests, heading: number | null, prevHeld: HeldFlags, pew: number | null): void {
     const seat = seatOf(d, me), p = k.presses;
     if (seat === 'standing') {
       if (p.interact > 0 && repairInReach(d, me) < 0) { const c = consoleInReach(d, me); if (c >= 0) { throttleSent = null; headingSent = null; send({ kind: 'sit', station: c }); } }
@@ -242,12 +244,18 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     const fireWhy = p.fireDown > 0 ? refusal(d, 'fire') : null, launchWhy = p.launch > 0 ? refusal(d, 'launch') : null;
     if (fireWhy) source?.refuse('fire', fireWhy);
     if (launchWhy) source?.refuse('launch', launchWhy);
+    // W-1 (pew pew spec §1): the pew from the Weapons map's left click, or NO CHARGE from the replica's charge.
+    if (pew !== null) {
+      const why = refusal(d, 'pew');
+      if (why) source?.refuse('pew', why);
+      else send({ kind: 'pewFire', aim: Math.floor(pew / HEADING_COUNT), aimAcc: pew % HEADING_COUNT });
+    }
     if (p.camera > 0 && source) { const cam = source.cameras.weapons; snapBack(cam, missileOf(d.tactical, 0) && cam.follow !== 'missile' ? 'missile' : 'ship'); }
   }
   function pump(): void {
     if (disposed) return;
     observe(); pollLink();
-    const k = keyboard.sample(), requests = contact.takeRequests(), heading = requests0();
+    const k = keyboard.sample(), requests = contact.takeRequests(), heading = requests0(), pew = pewRequest();
     const prevHeld = lastFlags; lastFlags = k.held ?? NO_HELD_FLAGS;
     source?.heldFlags(k.held ?? NO_HELD_FLAGS);
     cameraKeys = { ...cameraKeys, presses: { ...cameraKeys.presses, zoomIn: cameraKeys.presses.zoomIn + k.presses.zoomIn, zoomOut: cameraKeys.presses.zoomOut + k.presses.zoomOut, camera: cameraKeys.presses.camera + k.presses.camera } };
@@ -265,7 +273,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (leaveConfirm.open || keys.leave) { producing = true; client.held(me, { moveX: 0, moveY: 0, interactHeld: false }); return; }
     if (p.phase !== 'running') return;
     if (decided) { if (k.presses.confirm > 0) send({ kind: 'rematch' }); }
-    else play(k, d, me, requests, heading, prevHeld);
+    else play(k, d, me, requests, heading, prevHeld, pew);
     // Held input every pump, quantised to −1, 0 and 1 (spec §3); a change is stamped for the held delay.
     // Feel-i (console feel spec §2): Space held at the Helm is auto-face, sent only from the Helm, as the sim admits it.
     const held: HeldInput = { moveX: Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld, ...(k.fireHeld && seatOf(d, me) === 'helm' ? { face: true } : {}) };

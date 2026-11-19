@@ -93,6 +93,7 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
   it('the Weapons help names the torpedo and has nothing to steer (homing torpedo spec §3)', () => {
     const help = readoutHelp('weapons').join(' ');
     expect(help).toContain('F TORPEDO');
+    expect(help).toContain('L-CLICK MAP PEW');   // W-1
     expect(help).not.toMatch(/STEER|MISSILE/);
   });
   it('the interior help names the zoom, the drag and C (interior zoom spec rule 6)', () => {

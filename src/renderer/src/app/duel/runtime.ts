@@ -18,6 +18,7 @@ import type { ShipLayout } from '../../sim/ship/schema';
 import { stepSoloFlight } from '../../sim/tactical/physics';
 import { classOf, CONTACT_MAX_LEVEL, createTacticalState, missileOf, NO_AXES, Outcome, type Axes, type Missile, type TacticalState } from '../../sim/tactical/state';
 import { TICK_HZ } from '../../sim/tuning';
+import { HEADING_COUNT } from '../../sim/tactical/tuning';
 import { createCamera, followBody, pan, snapBack, updateCamera, zoomBy, type Camera, type Viewport } from '../../render/tactical/camera';
 import { createFeelTracker, recordFeel, type FeelTracker } from '../../render/tactical/feelModel';
 import { createInteriorCamera, interiorInput, refollowInteriorCamera, resetInteriorCamera, type InteriorCamera } from '../../render/duel/interiorCamera';
@@ -181,6 +182,8 @@ export interface DuelRuntimeDeps extends FlightRuntimeDeps {
   takeContactRequests?(): ContactRequests;
   /** Feel-ii §1.1: the Helm map's heading request since the last frame (mapRequests.ts), sent from the Helm only. */
   takeHeading?(): number | null;
+  /** W-1 (pew pew spec §1): the Weapons map's pew aim since the last frame (mapRequests.ts), a fine heading, or null. */
+  takePew?(): number | null;
 }
 
 export interface DuelRuntime {
@@ -233,7 +236,7 @@ export interface DuelRuntime {
   dispose(): void;
 }
 
-const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'laserCharge' || c.kind === 'missileLaunch';
+const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'laserCharge' || c.kind === 'missileLaunch' || c.kind === 'pewFire';
 /** The commands only a seated console's player sends (Weapons, the Helm's throttle, Sci-1's three): a Tab or a stand drops them. */
 const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'heading' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';
 const NO_REQUESTS: ContactRequests = { designate: null, scan: null };
@@ -359,7 +362,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   }
 
   /** One frame's press edges for the active character, by where it is (spec §5 table). */
-  function play(k: KeySample, requests: ContactRequests, heading: number | null, launches: number): KeySample {
+  function play(k: KeySample, requests: ContactRequests, heading: number | null, launches: number, pew: number | null): KeySample {
     if (k.presses.switch > 0 && crew === 1) {   // Valkyrn spec §4.4: no other character; Tab toggles the console and the ship view while seated
       if (seatOf(d, active) !== 'standing' && k.presses.switch % 2 === 1) shipView = !shipView;
       cameraInput.reset(); refollowInteriorCamera(interiorCamera);
@@ -461,6 +464,13 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     const fireWhy = p.fireDown > 0 ? refusal(d, 'fire') : null, launchWhy = p.launch > 0 ? refusal(d, 'launch') : null;
     if (fireWhy) refuse('fire', fireWhy);
     if (launchWhy) refuse('launch', launchWhy);
+    // W-1 (pew pew spec §1): a left click on the Weapons map fires the pew along its aim; with less than a third stored it
+    // says NO CHARGE and nothing is queued.
+    if (pew !== null) {
+      const why = refusal(d, 'pew');
+      if (why) refuse('pew', why);
+      else queue({ kind: 'pewFire', aim: Math.floor(pew / HEADING_COUNT), aimAcc: pew % HEADING_COUNT });
+    }
     if (p.camera > 0) {
       const cam = cameras.weapons;
       snapBack(cam, missileOf(d.tactical, 0) && cam.follow !== 'missile' ? 'missile' : 'ship');
@@ -487,7 +497,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       prevHeld = lastHeld; lastHeld = k.held ?? NO_HELD_FLAGS;
       const requests = deps.takeContactRequests?.() ?? NO_REQUESTS;   // drained every frame; dropped while paused or ended
       const heading = deps.takeHeading?.() ?? null;   // Feel-ii §1.1: drained every frame, like the contact requests
-      const steerNow = deps.takeSteer?.() ?? null, launchesNow = deps.takeLaunches?.() ?? 0;   // Valkyrn spec §5.1: drained every frame
+      const steerNow = deps.takeSteer?.() ?? null, launchesNow = deps.takeLaunches?.() ?? 0, pewNow = deps.takePew?.() ?? null;   // Valkyrn spec §5.1: drained every frame
       const sampled = deps.samplePointer();
       let pointer = sampled;
       pacer.toggleUser(k.presses.pause);
@@ -495,7 +505,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       // A Tab or a rematch changes which camera the pointer would move: this frame's sampled drag and wheel belong to the old one.
       const moved = (): void => { pointer = { ...sampled, wheel: 0, dragX: 0, dragY: 0, rightX: 0, rightY: 0 }; };   // the right drag too: the Helm pans by minus it
       if (ended()) { if (k.presses.confirm > 0 && !pending.some((c) => c.command.kind === 'rematch')) { pending.push({ player: active, command: { kind: 'rematch' } }); k = IDLE_KEYS(); moved(); } }
-      else if (pacer.reasons.size === 0) { if (k.presses.switch > 0) moved(); k = play(k, requests, heading, launchesNow); }   // while paused, gameplay presses are dropped; the camera still moves
+      else if (pacer.reasons.size === 0) { if (k.presses.switch > 0) moved(); k = play(k, requests, heading, launchesNow, pewNow); }   // while paused, gameplay presses are dropped; the camera still moves
       // Quantised as online (H-2 spec §3), and neutral on the end card as online sends it.
       // Feel-i (console feel spec §2): Space held at the Helm is auto-face, sent only from the Helm, as the sim admits it.
       const seatNow = seatOf(d, active);

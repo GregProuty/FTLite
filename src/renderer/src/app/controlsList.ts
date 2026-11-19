@@ -48,9 +48,10 @@ export function controlSections(): ControlSection[] {
     if (action === 'interact') duel.push({ keys: `Hold ${keyLabel(INTERACT_HELD)}`, action: 'Repair the damaged system you stand at' });
   }
   duel.find((r) => r.keys === keyLabel(FIRE_HELD))!.keys = `Hold ${keyLabel(FIRE_HELD)}`;
-  // Feel-ii: Shift+W, the ping (G or a middle click), the Helm's right-click heading and the wheel over the throttle.
+  // Feel-ii: Shift+W, the ping (G or a middle click), the Helm's right-click heading and the wheel over the throttle; W-1: the Weapons map's left click (the pew).
   duel.push({ keys: `Shift+${keyLabel(MOVE_CODES.up)}`, action: 'At the Helm, full throttle' }, { keys: `${keyLabel(PING_CODE)} / Middle click`, action: 'Ping the map point (or the enemy) for the crew' });
   duel.push({ keys: 'Mouse wheel', action: 'Zoom (the maps and the ship); over the Helm throttle, step it' },
+    { keys: 'Left click', action: 'At Weapons, fire the pew at the map point (3 shots, then it recharges; inside a 60° cone of the nose)' },
     { keys: 'Right click or drag', action: 'At the Helm, set a heading to hold (on your ship: clear); elsewhere pan' },
     { keys: 'Middle drag', action: 'Pan the camera (in the ship, when zoomed in)' });
   const k = SECTOR_KEYS;

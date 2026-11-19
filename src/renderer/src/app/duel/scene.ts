@@ -39,8 +39,8 @@ import type { InteriorCamera } from '../../render/duel/interiorCamera';
 import type { AimSample, HeldFlags } from './input';
 import type { ContactController } from './contactController';
 import type { MapRequests } from './mapRequests';
-import { headingOf, pickRadius } from '../../render/tactical/tacticalModel';
-import { flightPointer } from './flightPointer';
+import { fineHeadingOf, headingOf, pickRadius } from '../../render/tactical/tacticalModel';
+import { flightPointer, onWeaponsMap } from './flightPointer';
 import { flightAlert, type RefusedControl } from '../../render/duel/situationModel';
 import { pingAllowed, pushPing, stepPings, type Ping, type PingRequest } from '../../render/duel/pingModel';
 import type { TorpedoTone } from './duelAudio';
@@ -178,7 +178,19 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const station = hidden ? null : consoleStation(d, source.active());
       const onMap = view !== 'interior' && (station === 'helm' || station === 'weapons' || station === 'science' || station === 'flight');   // Sci-1 spec §7.2: the window on all three
       const click = options.takeClick?.() ?? null;   // drained every frame, so a click never waits for a later frame
-      if (contact && click && onMap && station !== 'flight')   // Valkyrn spec §5.1: on the Flight seat the left button is the gun
+      // W-1 (pew pew spec §1): at the Weapons seat a left click on the open map fires the pew at the map point (the bearing from
+      // the own ship's drawn marker, a fine heading), unless a weapon card is picked up (then the click is the window's, as
+      // before). At Weapons the contact window opens by T and the weapon cards; Helm and Science keep the map click. A click
+      // over a console block (tab strip, status table, side column, the Weapons block with its PEW row and cards) or the open
+      // window is not the map's and falls through to today's contact.click path: the canvas hears every press (the Stage root
+      // has pointer-events none; only Buttons, the card hit boxes, the throttle box and the window take their own).
+      const pewClick = click !== null && onMap && station === 'weapons' && view === 'weapons' && d.tactical.outcome === Outcome.Running && !overlay.layerPaused
+        && (contact?.aimWeapon() ?? null) === null && classOf(d.tactical, CREW_SLOT).slots.pew !== null
+        && onWeaponsMap(click, contact?.state() != null, readoutRows({ duel: d, mode: view, active: source.active(), console: onConsole }).length);
+      if (pewClick && click) {
+        const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), w = screenToWorld(cam!, viewport, click.x, click.y);
+        if (Math.hypot(w.x - b.x, w.y - b.y) > 0) options.requests?.pew(fineHeadingOf(w.x - b.x, w.y - b.y));
+      } else if (contact && click && onMap && station !== 'flight')   // Valkyrn spec §5.1: on the Flight seat the left button is the gun
         contact.click(pickContact({ state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport }, click));
       // Feel-ii §1.1: the Helm's right button aims the held heading. A press or a release on the map asks for the bearing from
       // the own ship's drawn marker to the pointer (on the ship itself: clear); while it is held, a preview marker follows.

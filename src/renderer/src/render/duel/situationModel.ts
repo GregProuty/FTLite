@@ -8,6 +8,7 @@ import { classOf, CREW_SLOT, missileOf, NO_AXES, Outcome, Room, targetOf, type A
 import type { DuelState } from '../../sim/duel/state';
 import { throttleThrust } from '../../sim/duel/throttle';
 import { helmTurn } from '../../sim/duel/step';
+import { pewReady } from '../../sim/tactical/pew';
 import { laserEligible, laserFull, laserOffline, torpedoInRange } from '../../sim/tactical/weapons';
 import { TICK_HZ } from '../../sim/tuning';
 
@@ -170,16 +171,22 @@ export function evadeDir(t: TacticalState): { x: number; y: number } | null {
   return room(left.x, left.y) > room(right.x, right.y) ? left : right;
 }
 
-/** The console controls a refusal can name (the buttons, and their keys). */
-export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser';
+/** The console controls a refusal can name (the buttons, and their keys). W-1: `pew`, the Weapons map's left click. */
+export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser' | 'pew';
 /** Valkyrn spec §6.1: the reason a laser key (1, 3/4/5) gives on a class without a laser (the `laser` control, Flight only). */
 export const NO_LASER = 'NO LASER';
 /** Feel-ii §2.8: why the sim would refuse a control's command (or do nothing with it), or null when it would act. FIRE is
  *  laserCharge (the gunner, then canCharge: no torpedo flying, then Weapons offline, where it is admitted to no effect);
  *  LAUNCH is missileLaunch (the gunner, then canLaunch's checks in its order: flying, the magazine, Weapons, range); the
- *  Helm's turn, auto-face, throttle and heading fly nothing while Engines are off (level 2). */
+ *  Helm's turn, auto-face, throttle and heading fly nothing while Engines are off (level 2). PEW (W-1) is pewFire: the gunner,
+ *  the pew, then a third stored (NO CHARGE). */
 export function refusal(d: DuelState, control: RefusedControl): string | null {
   const t = d.tactical, sys = t.systems[CREW_SLOT];
+  if (control === 'pew') {   // W-1 (pew pew spec §1): the gunner, then the class, then a third stored
+    if (!gunnerPresent(d)) return 'NO GUNNER';
+    if (classOf(t, CREW_SLOT).slots.pew === null) return 'NO PEW';
+    return pewReady(t, CREW_SLOT) ? null : 'NO CHARGE';
+  }
   if (control === 'fire' || control === 'launch') {
     if (!gunnerPresent(d)) return 'NO GUNNER';
     if (control === 'fire' && classOf(t, CREW_SLOT).slots.laser === null) return gunReason(t);   // Valkyrn spec §6.1: the gun's reasons
