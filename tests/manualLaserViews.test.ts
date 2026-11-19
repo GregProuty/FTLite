@@ -13,6 +13,7 @@ import type { PrevBody } from '../src/renderer/src/render/tactical/tacticalModel
 import { combatModel, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
 import { createTacticalState, placeMissile, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { AIM_STEPS, HEADING_COUNT, LASER_ARC_STEPS, LASER_CHARGE_UNITS, LASER_RANGE } from '../src/renderer/src/sim/tactical/tuning';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const vp = { w: 1280, h: 720 };
 const prevOf = (st: TacticalState): PrevBody[] => st.ships.map((s) => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc }));
@@ -20,7 +21,7 @@ function input(st: TacticalState, cam: Camera, console: 'helm' | 'weapons', lase
   return { state: st, prev: prevOf(st), alpha: 1, camera: cam, viewport: vp, console, axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: 236, missilePrev: [null, null], fx: createFx(), laserAim };
 }
 function northFacing(): TacticalState {
-  const st = todaysCrewWeapons(createTacticalState(5));
+  const st = todaysCrewWeapons(createTacticalState(5, 2, ShipClass.ValkyrnLaser));   // W-4 spec §14.1: the beam's rule, on the laser fit
   Object.assign(st.ships[0], { heading: 0, headingAcc: 0, vx: 0, vy: 0 });
   return st;
 }
@@ -53,7 +54,7 @@ describe('the MANUAL laser\'s aim line (spec §2)', () => {
 describe('the online view (spec §2)', () => {
   it('a MANUAL hit\'s gap event names the room whose level rose; an AUTO hit keeps the lock room', () => {
     for (const manual of [false, true]) {
-      const st = todaysCrewWeapons(createTacticalState(5));
+      const st = todaysCrewWeapons(createTacticalState(5, 2, ShipClass.ValkyrnLaser));   // W-4 spec §14.1: the beam's rule, on the laser fit
       st.systems[0].laserManual = manual;
       st.systems[1].shields = 0;
       const before = [duelCounters(st, 0), duelCounters(st, 1)];

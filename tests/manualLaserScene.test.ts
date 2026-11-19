@@ -19,6 +19,7 @@ import { createMapRequests } from '../src/renderer/src/app/duel/mapRequests';
 import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import { createUiStore } from '../src/renderer/src/ui/store';
 import { STATION, stationTop } from '../src/renderer/src/render/duel/consoleLayout';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const layout = parseShip(cutter);
 const assets: GameAssets = {
@@ -36,7 +37,7 @@ function rig() {
   let now = 0, keys: KeySample = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() }, pointerAt: { x: number; y: number } | null = null;
   const tasks: { at: number; cb: () => void }[] = [];
   const rt = createDuelRuntime({
-    now: () => now, seed: 5, viewport: vp, layout,
+    now: () => now, seed: 5, viewport: vp, layout, cls: ShipClass.ValkyrnLaser,   // W-4 spec §14.1: the beam's rule, on the laser fit
     scheduler: { schedule(delay, cb) { const t = { at: now + delay, cb }; tasks.push(t); return () => { const i = tasks.indexOf(t); if (i >= 0) tasks.splice(i, 1); }; } },
     sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses() }; return k; },
     samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }),

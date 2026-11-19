@@ -11,11 +11,12 @@ import { beginRockTick } from '../src/renderer/src/sim/tactical/rocks';
 import { cloneTactical, createTacticalState, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { AIM_STEPS, LASER_ARC_STEPS, LASER_CHARGE_UNITS, PEW_ARC_STEPS } from '../src/renderer/src/sim/tactical/tuning';
 import { applyWeaponsInput, IDLE_INPUT, manualLaserReady, tickWeapons } from '../src/renderer/src/sim/tactical/weapons';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 /** The crew at (0, 1500) nose north and still, no rocks, the Hunter at `enemyAt` (default far off, out of laser range),
  *  still, a fresh tick's rock masks, no events. */
 function open(enemyAt = { x: 2000, y: 2000 }): TacticalState {
-  const st = todaysCrewWeapons(createTacticalState(5));
+  const st = todaysCrewWeapons(createTacticalState(5, 2, ShipClass.ValkyrnLaser));   // W-4 spec §14.1: the beam's rule, on the laser fit
   st.rocks.fill(0);   // every seeded rock gone (the seeded grid ignores empty slots)
   beginRockTick(st);
   Object.assign(st.ships[0], { x: 0, y: 1500, vx: 0, vy: 0, heading: 0, headingAcc: 0 });
@@ -34,7 +35,7 @@ const offsetOf = (s: TacticalState, name: string): number => {
 
 describe('the laser mode (spec §2)', () => {
   it('every slot starts AUTO with no burst aim; the arc in fine units is the pew cone\'s 60°', () => {
-    const st = todaysCrewWeapons(createTacticalState(5));
+    const st = todaysCrewWeapons(createTacticalState(5, 2, ShipClass.ValkyrnLaser));   // W-4 spec §14.1: the beam's rule, on the laser fit
     expect([st.systems[0].laserManual, st.systems[1].laserManual, st.systems[0].laserAim, st.systems[1].laserAim]).toEqual([false, false, -1, -1]);
     expect(LASER_ARC_STEPS).toBe(10922);
     expect(LASER_ARC_STEPS).toBe(PEW_ARC_STEPS);   // the laser's existing ±60° (LASER_ARC_COS 0.5)
@@ -76,7 +77,7 @@ describe('the laser mode (spec §2)', () => {
 
 describe('the mode in the modules (spec §4)', () => {
   it('moves the hash, is copied by the clone, and is bounded by the validator', () => {
-    const st = todaysCrewWeapons(createTacticalState(5)), shape = todaysCrewWeapons(createTacticalState(5)), base = hashTactical(st);
+    const st = todaysCrewWeapons(createTacticalState(5, 2, ShipClass.ValkyrnLaser)), shape = todaysCrewWeapons(createTacticalState(5, 2, ShipClass.ValkyrnLaser)), base = hashTactical(st);   // W-4 spec §14.1: the beam's rule, on the laser fit
     st.systems[0].laserManual = true;
     expect(hashTactical(st)).not.toBe(base);
     const copy = cloneTactical(st);
