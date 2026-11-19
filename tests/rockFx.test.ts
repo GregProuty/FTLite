@@ -36,7 +36,7 @@ describe('rock fx (spec §7)', () => {
     pushRockFx(fx, [{ ...rock('split', 'torpedo'), burst: true } as ViewEvent]);
     expect(of(fx.items, 'burst')).toMatchObject([{ size: 30 }]);
     const shards = of(fx.items, 'speck');
-    expect(shards).toHaveLength(SHARD_COUNT);
+    expect(shards).toHaveLength(16); expect(SHARD_COUNT).toBe(16);
     for (const s of shards) {
       const sp = Math.hypot(s.vx! - 20, s.vy!);
       expect(sp).toBeGreaterThanOrEqual(150); expect(sp).toBeLessThanOrEqual(250);
@@ -64,9 +64,28 @@ describe('rock fx (spec §7)', () => {
     expect(holdFrame(fx, 1 / 60)).toBe(false);
     fx.hold = HIT_STOP_S;
     let held = 0;
-    for (let k = 0; k < 10; k++) if (holdFrame(fx, 1 / 60)) held++;
-    expect(held).toBe(5);   // 80 ms at 60 frames a second
+    for (let k = 0; k < 20; k++) if (holdFrame(fx, 1 / 60)) held++;
+    expect(held / 60).toBeGreaterThanOrEqual(HIT_STOP_S - 1 / 60); expect(held / 60).toBeLessThanOrEqual(HIT_STOP_S + 1 / 60);
     expect(fx.hold).toBe(0);
+  });
+  it('a chain of bursts gives at most one 80 ms hold per 330 ms', () => {
+    const fx = createFx(), burst = { ...rock('split', 'torpedo'), burst: true } as ViewEvent;
+    let held = 0, starts = 0, prev = false;
+    for (let k = 0; k < 120; k++) {   // two seconds at 60 Hz, a burst every 5 frames
+      if (k % 5 === 0) pushRockFx(fx, [burst]);
+      const h = holdFrame(fx, 1 / 60); if (h) held++; if (h && !prev) starts++; prev = h;
+    }
+    expect(starts).toBeLessThanOrEqual(Math.ceil(2 / 0.33)); expect(starts).toBeGreaterThan(1);
+    expect(held / 60).toBeLessThan(2 * (HIT_STOP_S / (HIT_STOP_S + 0.25)) + 0.2);
+  });
+  it('a soft cap: over 300 items the oldest specks go first, other kinds stay', () => {
+    const fx = createFx();
+    fx.items.push({ kind: 'shock', age: 0, life: 1, x1: 0, y1: 0, x2: 0, y2: 0, colour: 0 });
+    for (let k = 0; k < 400; k++) fx.items.push({ kind: 'speck', age: 0, life: 1, x1: k, y1: 0, x2: k, y2: 0, colour: 0 });
+    pushRockFx(fx, []);
+    expect(fx.items).toHaveLength(300);
+    expect(of(fx.items, 'shock')).toHaveLength(1);
+    expect(of(fx.items, 'speck')[0]!.x1).toBe(101);
   });
   it('a blast: a shockwave to its radius over 0.35 s, a core flash, 18 to 24 specks; a damaging rock-rock bump: one spark; a ram: none', () => {
     const fx = createFx();
