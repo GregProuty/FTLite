@@ -55,13 +55,19 @@ describe('steering by the held aim (spec §4a)', () => {
       expect(Math.abs(headingDelta(d.tactical.ships[0].heading, 64))).toBeLessThanOrEqual(2);
     } finally { disposeDuel(d); }
   });
-  it('a held moveX does not turn a newtonianHelm class, nor clear its held heading', () => {
+  it('owner 2026-11-19: a held moveX (A/D) turns a newtonianHelm class unboosted and clears its held heading', () => {
     const d = still();
     try {
       step(d, NONE, [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: d.interior.tick, command: { kind: 'heading', heading: 0 } }]);
+      expect(d.holdHeading).toBe(0);
+      expect([helmTurn(d, { ...NONE, moveX: -1 }), helmTurn(d, { ...NONE, moveX: 1 })]).toEqual([-1, 1]);
+      expect(helmBoost(d, { ...NONE, moveX: 1 })).toBe(1);
       for (let k = 0; k < 30; k++) step(d, { ...NONE, moveX: 1 });
-      expect([d.tactical.ships[0].heading, d.holdHeading]).toEqual([0, 0]);
-      expect(helmTurn(d, { ...NONE, moveX: -1 })).toBe(0);
+      expect(d.tactical.ships[0].heading).not.toBe(0);
+      expect(d.holdHeading).toBe(-1);
+      const h = d.tactical.ships[0].heading;
+      for (let k = 0; k < 10; k++) step(d, NONE);
+      expect(d.tactical.ships[0].heading).toBe(h);   // let go, the nose stays where A/D left it
     } finally { disposeDuel(d); }
   });
   it('the Valkyrn is unchanged: its A/D still turn it and its held aim still becomes the held heading', () => {

@@ -34,13 +34,16 @@ function fakeTarget() {
 const key = (code: string) => ({ code, repeat: false, preventDefault() {} });
 
 describe('the crew Helm\'s keys (spec §3, §4, §5)', () => {
-  it('W/S hold the throttle; A Q ← and D E → push port and starboard; ↑ ↓ fore and aft; opposite keys cancel; 1 and 2 are not power', () => {
+  it('W/S hold the throttle; Q ← and E → push port and starboard (A and D turn, owner 2026-11-19); ↑ ↓ fore and aft; opposite keys cancel; 1 and 2 are not power', () => {
     const t = fakeTarget(), kb = createDuelKeyboard(t);
     const sample = (codes: string[]): KeySample => { for (const c of codes) t.fire('keydown', key(c)); const s = kb.sample(); for (const c of codes) t.fire('keyup', key(c)); return s; };
     expect([sample(['KeyW']).throttleHeld, sample(['KeyS']).throttleHeld, sample(['KeyW', 'KeyS']).throttleHeld, sample([]).throttleHeld]).toEqual([1, -1, 0, 0]);
-    for (const c of ['KeyA', 'KeyQ', 'ArrowLeft']) expect(sample([c]).rcsX, c).toBe(-1);
-    for (const c of ['KeyD', 'KeyE', 'ArrowRight']) expect(sample([c]).rcsX, c).toBe(1);
-    expect([sample(['KeyA', 'KeyD']).rcsX, sample(['ArrowUp']).rcsY, sample(['ArrowDown']).rcsY, sample(['ArrowUp', 'ArrowDown']).rcsY]).toEqual([0, 1, -1, 0]);
+    for (const c of ['KeyQ', 'ArrowLeft']) expect(sample([c]).rcsX, c).toBe(-1);
+    for (const c of ['KeyE', 'ArrowRight']) expect(sample([c]).rcsX, c).toBe(1);
+    for (const c of ['KeyA', 'KeyD']) expect(sample([c]).rcsX, c).toBe(0);
+    expect([sample(['KeyA']).moveX, sample(['KeyD']).moveX]).toEqual([-1, 1]);
+    expect([sample(['KeyQ']).held!.port, sample(['ArrowRight']).held!.starboard, sample(['KeyA']).held!.port]).toEqual([true, true, false]);
+    expect([sample(['KeyQ', 'KeyE']).rcsX, sample(['ArrowUp']).rcsY, sample(['ArrowDown']).rcsY, sample(['ArrowUp', 'ArrowDown']).rcsY]).toEqual([0, 1, -1, 0]);
     for (const c of ['Digit1', 'Digit2']) expect(Object.keys(sample([c])), c).not.toContain('power');   // owner 2026-11-19
     expect(Object.keys(kb.ui)).not.toContain('helmPower');
   });
@@ -101,12 +104,12 @@ function rig() {
 }
 
 describe('Single player at the crew Helm (spec §3, §4, §4a, §5)', () => {
-  it('sends moveX 0 and the three held fields; W/S presses send no throttle command', () => {
+  it('sends the A/D moveX and the three held fields; W/S presses send no throttle command', () => {
     const r = rig();
     r.tick();
     r.set({ moveX: -1, moveY: -1, throttleHeld: 1, rcsX: -1, presses: { ...emptyPresses(), throttleUp: 1 } });
     r.tick(); r.tick();
-    expect(r.rt.held()[0]).toMatchObject({ moveX: 0, throttleHeld: 1, rcsX: -1 });
+    expect(r.rt.held()[0]).toMatchObject({ moveX: -1, throttleHeld: 1, rcsX: -1 });
     expect(r.rt.lastResults().length).toBe(0);
     expect(r.rt.duel.thrMille).toBeGreaterThan(0);
     expect(r.rt.thrMille()).toBe(r.rt.duel.thrMille);
