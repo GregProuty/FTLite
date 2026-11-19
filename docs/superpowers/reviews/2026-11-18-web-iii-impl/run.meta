@@ -1,0 +1,11 @@
+topic=web-iii-impl
+subject_kind=impl
+subject=docs/gates.md package.json scripts/web/live-smoke.ts scripts/web/live/duel.ts scripts/web/live/headers.ts scripts/web/live/local-smoke.ts scripts/web/live/relay.ts scripts/web/live/report.ts scripts/web/net/stack.ts scripts/web/net/web-net-smoke.ts scripts/web/web-output.ts tests/webDeployScripts.test.ts tests/webLiveHeaders.test.ts tests/webLiveRelay.test.ts tests/webLiveReport.test.ts
+worktree=C:\Users\djuar\FTLite\.worktrees\web-iii
+base=master
+cap=2
+effort=high
+confirm=0
+verify=npm run typecheck && npm test
+created=2026-11-18
+head_at_setup=14cd1b03

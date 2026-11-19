@@ -13,4 +13,7 @@ describe('deploy:web', () => {
     expect(pkg.devDependencies.vercel).toBe('65.10.0'); expect(pkg.devDependencies.esbuild).toBe('0.25.12');
   });
   it('never commits .vercel/', () => { expect(readFileSync('.gitignore', 'utf8')).toMatch(/^\.vercel\/$/m); });
+  it('runs the live smoke from its own entry and never builds or deploys in it', () => {
+    expect(pkg.scripts['test:web-live']).toBe('tsx scripts/web/live-smoke.ts');
+  });
 });
