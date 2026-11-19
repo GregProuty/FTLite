@@ -9,6 +9,7 @@
     "dev:duel": "tsx scripts/dev-mode.ts duel",
     "build": "electron-vite build",
     "build:web": "tsx scripts/web/build-web.ts",
+    "build:vercel": "tsx scripts/web/fetch-paid-art.ts && npm run build:web && tsx scripts/web/check-output.ts .vercel/output",
     "deploy:web": "npm run build:web && tsx scripts/web/check-output.ts .vercel/output && vercel deploy --prebuilt --prod",
     "test:web-output": "tsx scripts/web/build-web.ts --test --allow-missing-paid --service-origin=http://127.0.0.1:8787 --out=out/web-output-check && tsx scripts/web/check-output.ts out/web-output-check",
     "test": "vitest run",

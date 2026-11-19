@@ -11,7 +11,7 @@ The owner made these decisions on 2026-11-18:
 | # | Question | Decision |
 |---|---|---|
 | D1 | Do the browser and Electron both stay? | **Both stay, with one networking path.** The browser path becomes the only online path, and Electron becomes a thin window running the same page code. |
-| D2 | Who is it for at first? | **The owner and invited friends only.** It is a private site behind a passcode. The build is made locally, including the gitignored paid art, and uploaded with the Vercel CLI. Vercel never builds from git. |
+| D2 | Who is it for at first? | **The owner and invited friends only.** It is a private site behind a passcode. The build is made locally, including the gitignored paid art, and uploaded with the Vercel CLI. Vercel never builds from git. **Amended by the owner 2026-11-19:** continuous deployment from GitHub `master`. The Vercel build runs `npm run build:vercel`: it fetches the paid art from a private GitHub repo with a read-only token, runs the production `build:web` (passcode middleware included) and the output check. It fails closed when the art is missing. `deploy:web` stays as the manual path (see `docs/gates.md`, "Continuous deployment"). |
 | D3 | Should it ship in stages? | **No. It is one project, because the game is multiplayer first.** Nothing goes live until browser multiplayer works. Internally the work splits into three parts (§9). |
 | D4 | Which browsers? | **Chrome, Edge and Firefox on desktop**, all supported and tested. Safari is "not tested, may work". There is no mobile support; play is keyboard and mouse only. |
 | D5 | Which Vercel plan? | **Hobby (free)**, at a `*.vercel.app` address. There is no custom domain. |

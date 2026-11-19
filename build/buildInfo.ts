@@ -12,7 +12,11 @@ export function computeBuildInfo(root: string): { version: string; rev: string; 
     rev = execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
     const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=no', '--', 'src', 'public', 'package.json'], { cwd: root, encoding: 'utf8' }).trim();
     if (dirty) rev += '+';
-  } catch { /* no git: dev */ }
+  } catch {
+    // No git: a Vercel Git build names its commit in VERCEL_GIT_COMMIT_SHA; otherwise dev.
+    const sha = process.env.VERCEL_GIT_COMMIT_SHA ?? '';
+    if (/^[0-9a-f]{7,40}$/.test(sha)) rev = sha.slice(0, 7);
+  }
   return { version, rev, sim: readSimVersion(root) };
 }
 

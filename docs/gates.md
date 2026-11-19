@@ -982,6 +982,33 @@ Electron's online stack (service client, RTC, lease owner) now runs in the page,
 - [ ] Owner: step 5 `npm run test:web-live` prints `LIVE SMOKE PASS` (Firefox guest, or note the Chromium fallback). Date, live `version.json` build/sim and notes: pending owner.
 - [ ] Owner: step 7 friend playtest on different networks: passcode, host, join by code, a finished duel, rehost after the host tab closes. Date and notes: pending owner.
 
+## Continuous deployment (owner 2026-11-19)
+
+The owner connected the Vercel project `gregproutys-projects/ftlite` to GitHub for continuous deployment. This amends spec D2 and replaces the "git disconnected" and failing-`buildCommand` items above. The game repo is public, so the paid art comes from a private repo.
+
+- `vercel.json`: `framework: null`; install `ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci`; build `npm run build:vercel`; Git deploys from `master` only (`"**": false, "master": true`).
+- `npm run build:vercel` runs `scripts/web/fetch-paid-art.ts` (it downloads the private art repo's tarball into `public/assets/paid`, or does nothing when the art is already there), then the production `build:web`, then the output check. It writes `.vercel/output`, which Vercel serves as the Build Output. A missing token, a failed download or empty art stops the build, and `build:web` refuses production without the paid art, so a site without the art or the passcode is never served. The token is never printed.
+- The version banner's `rev` comes from `VERCEL_GIT_COMMIT_SHA` when the build has no git.
+- `npm run deploy:web` (prebuilt, from this machine) still works as the manual path.
+
+**Owner one-time setup:**
+1. Create a **private** GitHub repo, for example `GregProuty/FTLite-art`. Its root holds what `public/assets/paid` holds (`2mt/`, `limezu/`, `maru/`, `pimen/`). In PowerShell:
+   ```powershell
+   cd public/assets/paid
+   git init -b main; git add .; git commit -m "FTLite paid art (private; never public)"
+   gh repo create GregProuty/FTLite-art --private --source . --push
+   Remove-Item -Recurse -Force .git
+   cd ../../..
+   ```
+   The last line removes the art folder's own `.git`, so the game checkout is unchanged. Afterwards, when the art changes, update it in a separate clone of the art repo.
+2. A fine-grained GitHub token (github.com → Settings → Developer settings → Fine-grained tokens): repository access **only** `FTLite-art`, permission **Contents: Read-only**, and an expiry you will remember to renew.
+3. Vercel env vars for **Production**: `FTLITE_ART_REPO` = `GregProuty/FTLite-art`, `FTLITE_ART_TOKEN` = the token (mark it Sensitive), `FTLITE_WEB_SERVICE_ORIGIN` = `https://ftlite-signalling-dev.gprout009.workers.dev`, plus `FTLITE_PASSCODE` and `FTLITE_COOKIE_SECRET` as before.
+4. Vercel production branch: the repo's GitHub default branch is `sector-map`, so set Project Settings → Environments → Production → Branch Tracking to `master`.
+5. Push `master`. The deployment builds and goes live at the production address. Then do Web-iii steps 3 (`ALLOWED_ORIGINS` with that exact address), 5 (`npm run test:web-live`; run it from a checkout at the deployed commit, or the version comparison reports the mismatch) and 7. The rollback rule (step 6) is unchanged: `npx vercel rollback`, or Dashboard → Deployments → Instant Rollback.
+
+- [x] Automated: `tests/webFetchPaidArt.test.ts` (it fails closed and never shows the token, unpacks GitHub's tarball layout, and keeps local art); `tests/vercelGuard.test.ts` (the config above); `npm run build:vercel` locally gives WEB OUTPUT PASS (125 static paths need the cookie).
+- [ ] Owner: steps 1-5, then the first Git deployment is Ready and `npm run test:web-live` prints `LIVE SMOKE PASS`.
+
 ## W-2: the manual laser (2026-11-18)
 
 Spec `docs/superpowers/specs/2026-11-18-pew-pew-weapons-design.md` §2; plan `docs/superpowers/plans/2026-11-18-w2-manual-laser.md`.

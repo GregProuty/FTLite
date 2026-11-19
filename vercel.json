@@ -1,3 +1,12 @@
 {
-  "buildCommand": "node -e \"console.error('Use npm run deploy:web (prebuilt, passcode). A source build would serve the site without its passcode.'); process.exit(1)\""
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci",
+  "buildCommand": "npm run build:vercel",
+  "git": {
+    "deploymentEnabled": {
+      "**": false,
+      "master": true
+    }
+  }
 }

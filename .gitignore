@@ -19,3 +19,5 @@ public/assets/paid/
 
 # Vercel Build Output and project link (web build spec §5.1, §5.2; never commit)
 .vercel/
+.vercel
+.env*
