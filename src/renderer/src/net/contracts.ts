@@ -98,6 +98,12 @@ export type DuelCommand =
   /** W-1 (pew pew spec §1, §4): Weapons fires the pew along heading index `aim` 0..255 plus `aimAcc` 0..255 256ths of a
    *  step, clamped into the cone by the sim. Any integers pass the codec; the sim answers an out-of-range one malformed. */
   | { kind: 'pewFire'; aim: number; aimAcc: number }
+  /** W-2 (pew pew spec §2, §4): Weapons sets the crew laser's mode: true MANUAL (it fires only on laserFire, along an aim),
+   *  false AUTO (it fires at its target by itself, as before). */
+  | { kind: 'laserMode'; manual: boolean }
+  /** W-2: Weapons fires the MANUAL laser along heading index `aim` 0..255 plus `aimAcc` 0..255 256ths of a step (pewFire's
+   *  aim), clamped into the laser's ±60° by the sim. Any integers pass the codec; the sim answers an out-of-range one malformed. */
+  | { kind: 'laserFire'; aim: number; aimAcc: number }
   /** On a decided round's end card: start the next round (H-2 spec §7). */
   | { kind: 'rematch' }
   | { kind: 'setPaused'; paused: boolean };
