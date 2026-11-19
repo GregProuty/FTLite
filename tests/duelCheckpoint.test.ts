@@ -18,15 +18,18 @@ import { LAYOUT } from './helpers/sim';
 import { runReplay } from '../src/renderer/src/authority/replay';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
-/** Seed 1's scripted duel is a crew win at tick 5980 (SIM_VERSION 50, Feel-i's opener and auto-face; at SPLIT 5000; seeds
- *  3 to 8 and 10 have no qualifying tick, seed 2 and 9 do at 10146 and 5125). Seed 5 was used before: a crew win at tick
+/** Seed 2's scripted duel is a crew loss at tick 14424 (SIM_VERSION 53, spike ii with the fan split at r 13; at SPLIT 7195;
+ *  seeds 1, 5 and 7 to 9 have no qualifying tick, seeds 3, 4, 6 and 10 do at 5823, 6156, 6055 and 9861). Before the fan
+ *  tuning it was a crew win at tick 25426 (SIM_VERSION 53, spike ii billiard asteroids; at SPLIT 7195; seeds
+ *  1 and 4 to 10 had no qualifying tick, seed 3 did at 9599). Seed 1 was used before: a crew win at tick 5980 (SIM_VERSION 50,
+ *  Feel-i's opener and auto-face; at SPLIT 5000; seeds 3 to 8 and 10 had no qualifying tick, seed 2 and 9 did at 10146 and 5125). Seed 5 was used before: a crew win at tick
  *  14986 (SIM_VERSION 49, FTL targeting; at SPLIT 5434). Seed 3 was used before: a crew win at tick 15361 (SIM_VERSION 48, the weapons
  *  update; at SPLIT 5395). Seed 6 was used before: a crew win at tick 11401 (SIM_VERSION 47, Sci-1 merged with the Hunter grace; at SPLIT 6249;
  *  seed 9 has no qualifying tick since). Seed 9 was used before: a crew loss at tick 8777 (SIM_VERSION 46, homing
  *  torpedoes; at SPLIT 5108). Seed 4 before that: a crew loss at tick 8859 with SPLIT 5193 (SIM_VERSION 45, the Hunter's grace; now a crew win at 9346); seed 7 before that: a crew loss at tick 8069 (8311 before Artemis-ii, SIM_VERSION 43; 7282 before duel health, SIM_VERSION 41; 8832 before duel fire), short enough to run to its end twice.
  *  SPLIT is the first tick from 5000 on that ends with a missile in flight, a damaged crew room and a repair in
  *  progress (found by stepping the scripted duel; the test asserts all three). */
-const SEED = 1, SPLIT = 5000;
+const SEED = 2, SPLIT = 7195;
 function runToEnd(h: DuelCore, driver: ReturnType<typeof createDriver>, hashes: string[], frames: ReplayFrame[] = [], until = Infinity) {
   while (h.state.duel.tactical.outcome === Outcome.Running && duelRules.tick(h.state) < until) {   // to the round's decision (H-2: the run itself never ends)
     for (const frame of stepScripted(h, driver)) { frames.push(frame); if (frame.action.kind === 'tick') hashes.push(frame.after!.hash); }
@@ -57,8 +60,8 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
         const end = reference.state.summary;
         expect(resumed.state.summary).toEqual(end);
         expect(resumed.core.captureCheckpoint().modeMemory, 'the final telemetry accumulator of the restored run').toEqual(reference.core.captureCheckpoint().modeMemory);
-        expect(end).toMatchObject({ outcome: Outcome.CrewWins, ticks: referenceHashes.length,
-          terminal: [[], ['planet']], laserReleases: [3, 6], laserHits: [3, 6], missilesLaunched: [2, 2], missileHits: [1, 1], repairsFinished: [0, 3] });   // seed 1 (SIM_VERSION 50, Feel-i)
+        expect(end).toMatchObject({ outcome: Outcome.EnemyWins, ticks: referenceHashes.length,
+          terminal: [['laser'], []], laserReleases: [13, 24], laserHits: [22, 24], missilesLaunched: [6, 7], missileHits: [3, 3], repairsFinished: [3, 9] });   // seed 2 (SIM_VERSION 53, spike ii, the fan split at r 13)
         expect(Object.isFrozen(end)).toBe(true);
         expect(referenceHashes.length).toBeGreaterThan(SPLIT);
         console.log(`continuation proof: seed ${SEED}, ${SPLIT} + ${referenceHashes.length - SPLIT} ticks; summary ${JSON.stringify(end)}`);
@@ -141,7 +144,7 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
   it('the duel codec admits exactly the duel modules\' command kinds plus the core\'s setPaused', () => {
     const codec = duelCodec(2), envelope = (command: unknown) => ({ kind: 'command' as const, envelope: { runId: 'r', id: { player: 0, sequence: 1 }, requestedTick: 0, command } as CommandEnvelope });
     const examples: Record<string, unknown> = { sit: { kind: 'sit', station: 0 }, stand: { kind: 'stand' }, presence: { kind: 'presence', present: true },
-      laserLock: { kind: 'laserLock', room: 1 }, torpLock: { kind: 'torpLock', room: -1 }, laserCharge: { kind: 'laserCharge', held: true }, missileLaunch: { kind: 'missileLaunch' }, rematch: { kind: 'rematch' }, throttle: { kind: 'throttle', level: 2 }, heading: { kind: 'heading', heading: 64 }, contactScan: { kind: 'contactScan', contact: 0 }, designate: { kind: 'designate', contact: 1 }, laserFrequency: { kind: 'laserFrequency', freq: 2 } };
+      laserLock: { kind: 'laserLock', room: 1 }, torpLock: { kind: 'torpLock', room: -1 }, rockLock: { kind: 'rockLock', weapon: 'laser', rock: 0 }, laserCharge: { kind: 'laserCharge', held: true }, missileLaunch: { kind: 'missileLaunch' }, rematch: { kind: 'rematch' }, throttle: { kind: 'throttle', level: 2 }, heading: { kind: 'heading', heading: 64 }, contactScan: { kind: 'contactScan', contact: 0 }, designate: { kind: 'designate', contact: 1 }, laserFrequency: { kind: 'laserFrequency', freq: 2 } };
     const kinds = DUEL_MODULES.flatMap(({ module }) => [...module.commands]);
     expect(kinds.sort()).toEqual(Object.keys(examples).sort());
     for (const command of [...kinds.map((k) => examples[k]), { kind: 'setPaused', paused: true }]) expect(codec.decodeMessage(codec.encodeMessage(envelope(command)))).toEqual(envelope(command));

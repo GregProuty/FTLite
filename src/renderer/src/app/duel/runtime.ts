@@ -8,7 +8,8 @@ import { createTickDriver } from '../../authority/tickDriver';
 import type { HeldInput, Scheduler } from '../../net/contracts';
 import { Position } from '../../sim/components';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope, type DuelResult } from '../../sim/duel/commands';
-import { canCharge, canLaunch } from '../../sim/tactical/weapons';
+import { rockAlive } from '../../sim/tactical/rocks';
+import { canCharge, canLaunch, validRockLock, validTarget } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, DUEL_CREW_MIN, type DuelState } from '../../sim/duel/state';
 import { helmTurn, stepDuelTick } from '../../sim/duel/step';
 import { throttleThrust } from '../../sim/duel/throttle';
@@ -233,7 +234,7 @@ export interface DuelRuntime {
   dispose(): void;
 }
 
-const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'laserCharge' || c.kind === 'missileLaunch';
+const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'rockLock' || c.kind === 'laserCharge' || c.kind === 'missileLaunch';
 /** The commands only a seated console's player sends (Weapons, the Helm's throttle, Sci-1's three): a Tab or a stand drops them. */
 const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'heading' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';
 const NO_REQUESTS: ContactRequests = { designate: null, scan: null };
@@ -292,6 +293,15 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     }
     // Weapons commands go out only when the sim would accept them (spec §7 table; canCharge / canLaunch), judged against the
     // state this tick will see. FTL targeting spec §2: Space is a single press (a full laser fires), with no release.
+    // Spike ii §6.1: a launch is judged with this tick's effective torpedo rock target (the sim's rule: the last valid
+    // rockLock(torpedo), else −1 after a torpLock, else the stored value).
+    let torpRockNext: number | null = null, torpLocked = false;
+    for (const c of pending) {
+      const k = c.command;
+      if (k.kind === 'torpLock' && validTarget(k.room)) torpLocked = true;
+      else if (k.kind === 'rockLock' && k.weapon === 'torpedo' && validRockLock(d.tactical, k.weapon, k.rock) && (k.rock < 0 || rockAlive(d.tactical, k.rock))) torpRockNext = k.rock;
+    }
+    const torpRockNow = torpRockNext ?? (torpLocked ? -1 : d.tactical.systems[0].torpRock);
     let launched = false;
     for (const c of pending) {
       const k = c.command;
@@ -300,7 +310,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
         // charge command; only a missile already flying does.
         if (!canCharge(d.tactical, 0)) continue;
       } else if (k.kind === 'missileLaunch') {
-        if (launched || !canLaunch(d.tactical, 0)) continue;
+        if (launched || !canLaunch(d.tactical, 0, torpRockNow)) continue;
         launched = true;
       }
       commands.push(envelope(c.player, k));
@@ -400,6 +410,8 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
         queue({ kind: 'torpLock', room: stepTorpRoom(last && last.kind === 'torpLock' ? last.room : d.tactical.systems[0].torpLock, steps) });
       }
       if (k.torpTo !== undefined && k.torpTo !== null && k.torpTo >= -1 && k.torpTo <= 2) queue({ kind: 'torpLock', room: k.torpTo });
+      // Spike ii §6.5 on the Flight seat (merge): a rock drop or a card's clear sends rockLock; the laser's only on the laser fit.
+      for (const rl of [requests.rockLock, k.rockTo]) if (rl && (rl.weapon === 'torpedo' || hasLaser())) queue({ kind: 'rockLock', weapon: rl.weapon, rock: rl.rock });
       if (hasLaser()) {   // §8, the laser fit: the LASER card's room and 3/4/5
         if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });
         const freq = frequencyRequest(freqBase(), k.freqTo);
@@ -447,6 +459,9 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });   // a room click or a card's clear
     // The torpedo's target (FTL targeting spec §1): a room click or a card's clear, then E / Q while it is picked up.
     if (k.torpTo !== undefined && k.torpTo !== null && k.torpTo >= -1 && k.torpTo <= 2) queue({ kind: 'torpLock', room: k.torpTo });
+    // Spike ii §6.5: a rock drop (the contact controller) or a card's clear (a right-click) sends rockLock.
+    if (requests.rockLock) queue({ kind: 'rockLock', weapon: requests.rockLock.weapon, rock: requests.rockLock.rock });
+    if (k.rockTo) queue({ kind: 'rockLock', weapon: k.rockTo.weapon, rock: k.rockTo.rock });
     if (requests.torpStep) {
       // From the torpedo's own target (the latest queued one, else the sim's), never the laser's.
       const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'torpLock')?.command;

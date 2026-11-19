@@ -1,0 +1,36 @@
+{
+  "simVersion": 53,
+  "stress": {
+    "seeds": 20,
+    "ticks": 4000,
+    "restoreTicks": 1000,
+    "failures": [],
+    "stepDuelMs": {
+      "median": 0.0099,
+      "p99": 0.0297,
+      "max": 1.3063
+    },
+    "p99GateMs": 0.5,
+    "p99Pass": true,
+    "movingEvery10s": {
+      "max": [
+        20,
+        29,
+        40,
+        49,
+        68,
+        60
+      ],
+      "median": [
+        13.5,
+        20.5,
+        25.5,
+        34.5,
+        38.5,
+        39.5
+      ]
+    }
+  },
+  "feel": null,
+  "sizes": null
+}

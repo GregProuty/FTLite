@@ -11,7 +11,7 @@ import { stationOnline } from '../stations';
 import { hx, hy } from '../tactical/direction';
 import { inArc, sideOf } from '../tactical/geometry';
 import { autoFaceTurn } from '../tactical/hunter';
-import { queryGrid } from '../tactical/grid';
+import { rockAt, rocksNear } from '../tactical/rocks';
 import { circularSpeed } from '../tactical/map';
 import { predictPath } from '../tactical/predict';
 import { missileOf, Room, targetOf, type Axes } from '../tactical/state';
@@ -88,11 +88,11 @@ export function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } |
     if (len(q.x - p.x, q.y - p.y) < p.r + keep) return { x: s.x - p.x, y: s.y - p.y };
     if (len(q.x, q.y) > t.map.rMap - AVOID_MARGIN) return { x: -s.x, y: -s.y };
     let best = -1, bestClear = 0;
-    for (const k of queryGrid(t.grid, q.x, q.y, keep)) {
-      const a = t.map.asteroids[k]!, dist = len(q.x - a.x, q.y - a.y);
+    for (const k of rocksNear(t, q.x, q.y, keep)) {
+      const a = rockAt(t, k), dist = len(q.x - a.x, q.y - a.y);
       if (dist < a.r + keep && (best < 0 || dist - a.r < bestClear)) { best = k; bestClear = dist - a.r; }   // ascending k: ties keep the lower index
     }
-    if (best >= 0) { const a = t.map.asteroids[best]!; return { x: s.x - a.x, y: s.y - a.y }; }
+    if (best >= 0) { const a = rockAt(t, best); return { x: s.x - a.x, y: s.y - a.y }; }
   }
   return null;
 }

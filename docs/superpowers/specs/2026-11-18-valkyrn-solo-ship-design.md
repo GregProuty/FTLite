@@ -395,3 +395,25 @@ the `gunHits` counter, for completeness (the Valkyrn is not online).
   PASS line closest to the start values: `hull=12 vhull=30` (distance 3.0).
 - **Hound unchanged:** `duel-oracle.ts same` and `canonical-trace.ts same` pass at SIM_VERSION 53. The tuning moves only gun
   rounds and the Valkyrn class, so there is no version bump (Valkyrn iii plan Decision 11).
+
+### 12.1 As built: the merge with asteroids-ii (billiard rocks; SIM 54, 2026-11-18)
+
+- **Rounds and rocks.** Rounds now sweep the live rock pool (`state.rocks`, via `rocksNear`) as it stands when
+  `stepRounds` runs, after the rocks moved this tick; a piece born this tick is not in the way (as the laser's
+  `firstBlocker`). A round that meets a rock is absorbed: it ends as before, and the rock takes no push, wear or event
+  (asteroids-ii spec §12 gives the reasons). Test: `tests/valkyrnRoundsRocks.test.ts`.
+- **No laser, no laser rock target:** `rockLock(laser)` is rejected `unavailable` for a class without a laser.
+- **Gate retune.** With billiard rocks the gate fell to median 150.5 s, crew 7 Hunter 3 (six rounds ended on the
+  planet). `GUN_HITS_PER_HULL` 13 to 18 changed nothing (151.0 to 152.0 s), since the planet, not the gun, ended the
+  rounds. The pilot's orbit radius did change it (`PILOT_ORBIT_R`, seeds 1 to 10):
+  ```
+  1500  median 172.0 s  crew 7 hunter 3  FAIL
+  1950  median 173.9 s  crew 8 hunter 2  FAIL
+  2000  median 196.3 s  crew 9 hunter 1  PASS
+  2100  median 195.1 s  crew 8 hunter 2  PASS
+  2200  median 218.7 s  crew 8 hunter 2  PASS   (chosen: the middle of the passing run 2100..2300, the most slack)
+  2300  median 190.3 s  crew 8 hunter 2  PASS
+  2400  median 166.1 s  crew 9 hunter 1  FAIL
+  2600  median 197.4 s  crew 9 hunter 1  PASS
+  ```
+  The other numbers are unchanged (`GUN_HITS_PER_LAYER` 8, `GUN_HITS_PER_HULL` 12, `GUN_HITS_PER_LEVEL` 6, `VALKYRN_HULL` 30).

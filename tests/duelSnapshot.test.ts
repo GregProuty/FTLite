@@ -66,14 +66,18 @@ describe('the duel snapshot (spec §6)', () => {
     } finally { disposeDuel(d); }
   });
   it('rejects tactical, presence and repair values the module writers would refuse, even rehashed, before allocating', () => {
-    const { d } = scriptedDuel(5, 5434);   // a missile in flight, a damaged crew room and a repair in progress (seed 3 tick 5395 before FTL targeting, SIM_VERSION 49; seed 6 tick 6249 before the weapons update, SIM_VERSION 48; seed 9 tick 5108 before Sci-1's merge, SIM_VERSION 47; seed 4 tick 5193 before homing torpedoes, SIM_VERSION 46)
+    const { d } = scriptedDuel(4, 6156);   // a missile in flight, a damaged crew room and a repair in progress: the first such tick from 5000 on (SIM_VERSION 53, spike ii with the fan split at r 13: seed 4 tick 6156; seeds 1 to 3, 5 and 7 to 10 have none, seed 6 does at 6055; seed 1 tick 6472 before, SIM_VERSION 53 with the fan split at r 25, when seeds 2 to 5 and 7 to 10 had none and seed 6 did at 9888; seed 5 tick 7011 before, SIM_VERSION 50; seed 3 tick 5395 before FTL targeting, SIM_VERSION 49; seed 6 tick 6249 before the weapons update, SIM_VERSION 48; seed 9 tick 5108 before Sci-1's merge, SIM_VERSION 47; seed 4 tick 5193 before homing torpedoes, SIM_VERSION 46)
     try {
+      // The fixture's precondition first, so a trajectory change fails here by name rather than further down.
+      const flying = d.tactical.missiles.findIndex((m) => m.active);
+      expect(flying, 'one missile in flight at seed 4 tick 6156').toBeGreaterThanOrEqual(0);
+      expect(d.tactical.missiles[1 - flying]!.active, 'only one missile in flight at seed 4 tick 6156').toBe(false);
+      expect(d.tactical.systems[0].rooms.some((r) => r > 0), 'a damaged crew room at seed 4 tick 6156').toBe(true);
+      expect(d.repair.some((r) => r > 0), 'a repair in progress at seed 4 tick 6156').toBe(true);
       const good = saveDuelSnapshot(d, DIGEST), names = new Map<string, number>();
       let at = 1;
       for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) { names.set(f.name, at); at += f.count; }
-      const flying = d.tactical.missiles.findIndex((m) => m.active), slot = `missiles.${flying}`, free = `missiles.${1 - flying}`, owner = d.tactical.missiles[flying]!.owner;
-      expect(flying, 'one missile in flight at seed 5 tick 5434').toBeGreaterThanOrEqual(0);
-      expect(d.tactical.missiles[1 - flying]!.active).toBe(false);
+      const slot = `missiles.${flying}`, free = `missiles.${1 - flying}`, owner = d.tactical.missiles[flying]!.owner;
       const cases: [string, number, number, RegExp][] = [
         ['ships.0.heading', 0, 256, /ships\.0\.heading: out of range/], ['ships.1.heading', 0, 1.5, /ships\.1\.heading/],
         ['systems.0.rooms', 1, 3, /systems\.0\.rooms/], ['systems.0.shields', 0, 4, /systems\.0\.shields/], ['systems.1.magazine', 0, 5, /systems\.1\.magazine/],
@@ -120,7 +124,7 @@ describe('the duel snapshot (spec §6)', () => {
       // The round module (H-2 spec §7): a round index, the Helm player, a base tick no later than the tick, and a
       // decided tick that is −1 exactly while the round runs.
       for (const [k, value, error] of [[0, -1, /round -1/], [0, 0.5, /round 0.5/], [0, MAX_DUEL_ROUNDS + 1, /round 1025 is invalid/], [0, 1, /round 1 is invalid/],
-        [1, 2, /helm player/], [2, 6250, /base tick/], [2, -1, /base tick/], [3, 7, /decided tick/]] as const) {
+        [1, 2, /helm player/], [2, 8000, /base tick/], [2, -1, /base tick/], [3, 7, /decided tick/]] as const) {
         const snap = structuredClone(good); snap.values[at + 5 + k] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));
         expect(() => validateDuelSnapshot(CUTTER, snap, DIGEST), `round[${k}] = ${value}`).toThrow(error);
       }

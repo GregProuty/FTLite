@@ -3,6 +3,10 @@
 // Commands arrive as one ShipInput per ship per tick; the duel step builds these from the authority's admitted commands.
 import { inArc, lineOfSight } from './geometry';
 import { launchMissile } from './missiles';
+import { firstBlocker, rockAlive, rockAt, rockSlots } from './rocks';
+import { AUTO_DIG } from './rockTuning';
+import { laserStrikesRock, rockOnTarget, rockShotLine } from './rockWeapons';
+import { hx, hy } from './direction';
 import { tickGun } from './gun';
 import { classOf, CREW_SLOT, missileOf, Room, type Axes, type TacticalState } from './state';
 
@@ -17,6 +21,9 @@ export interface ShipInput {
   laserLock: number | null;
   /** `torpLock {room}` (FTL targeting spec §2, the crew only): the torpedo's target Room, −1 to clear, or null. */
   torpLock: number | null;
+  /** Spike ii §6.1: `rockLock {weapon, rock}` folded per weapon: a slot, −1 to clear, or null for no command this tick
+   *  (the crew only). Applied after laserLock and torpLock, so it wins over a same-tick room lock for its weapon. */
+  rockLock: { laser: number | null; torpedo: number | null };
   /** `laserCharge {held}`: true = press, false = release, null = no command this tick. The crew's laser charges by
    *  itself, so for the crew a press fires a full laser and a release does nothing (FTL targeting spec §2). */
   laserCharge: boolean | null;
@@ -31,9 +38,9 @@ export interface ShipInput {
 }
 
 /** A crew that sits at both consoles and does nothing. */
-export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, gunHeld: false, scanner: true };
+export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, scanner: true };
 /** Nobody at either console: a ship nobody flies. */
-export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, laserCharge: null, missileLaunch: false, gunHeld: false, scanner: true };
+export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, scanner: true };
 
 /** Whether ship i's laser is fully charged; never for a class without a laser (Valkyrn spec §6.1). */
 export function laserFull(state: TacticalState, i: number): boolean {
@@ -44,23 +51,34 @@ export function laserFull(state: TacticalState, i: number): boolean {
 /** Admission (spec §7 table; the duel step uses these to give reject reasons): laserCharge is accepted only with no missile in flight. */
 export function canCharge(state: TacticalState, i: number): boolean { return missileOf(state, i) === null; }
 /** Weapons update spec §2: whether ship i's target ship is active and its centre within the class's torpedo range of
- *  ship i's, from any bearing. */
-export function torpedoInRange(state: TacticalState, i: number): boolean {
-  const a = state.ships[i]!, j = state.systems[i]!.target, b = state.ships[j], range = classOf(state, i).slots.missile.range;
+ *  ship i's, from any bearing. Spike ii §6.4: with a rock target (`torpRock` ≥ 0, default the stored one) the rock's
+ *  centre is tested instead. */
+export function torpedoInRange(state: TacticalState, i: number, torpRock = state.systems[i]!.torpRock): boolean {
+  const a = state.ships[i]!, range = classOf(state, i).slots.missile.range;
+  if (torpRock >= 0) {
+    if (!rockAlive(state, torpRock)) return false;
+    const r = rockAt(state, torpRock), dx = r.x - a.x, dy = r.y - a.y;
+    return dx * dx + dy * dy <= range * range;
+  }
+  const j = state.systems[i]!.target, b = state.ships[j];
   if (!b || !b.active || j === i) return false;
   const dx = b.x - a.x, dy = b.y - a.y;
   return dx * dx + dy * dy <= range * range;
 }
 /** missileLaunch is accepted only with no missile in flight, a missile in the magazine, Weapons below level 2 and the
- *  target within torpedo range (weapons update spec §2). */
-export function canLaunch(state: TacticalState, i: number): boolean {
+ *  target (spike ii: the rock target, `torpRock`) within torpedo range (weapons update spec §2). */
+export function canLaunch(state: TacticalState, i: number, torpRock = state.systems[i]!.torpRock): boolean {
   const s = state.systems[i]!;
-  return missileOf(state, i) === null && s.magazine > 0 && s.rooms[Room.Weapons] < 2 && torpedoInRange(state, i);
+  return missileOf(state, i) === null && s.magazine > 0 && s.rooms[Room.Weapons] < 2 && torpedoInRange(state, i, torpRock);
 }
 /** A lock target must be a Room index. */
 export function validLock(room: number): boolean { return Number.isInteger(room) && room >= 0 && room <= 2; }
 /** FTL targeting spec §2: a `laserLock` or `torpLock` command's room, a Room index or −1 (clear the target). */
 export function validTarget(room: number): boolean { return room === -1 || validLock(room); }
+/** Spike ii §6.1: a rockLock command's weapon is the laser or the torpedo, and its rock a whole slot −1 .. rockSlots − 1. */
+export function validRockLock(state: TacticalState, weapon: unknown, rock: number): boolean {
+  return (weapon === 'laser' || weapon === 'torpedo') && Number.isInteger(rock) && rock >= -1 && rock < rockSlots(state);
+}
 
 /** Weapons at damage level 2 is off (owner 2026-11-17, FTL-style): the laser cannot charge, hold or fire and keeps no
  *  charge; canLaunch refuses missiles. A laserCharge command is still admitted (canCharge): it is held, to no effect,
@@ -81,11 +99,39 @@ export function laserEligible(state: TacticalState, i: number, j: number): boole
   return inArc(a.heading, dx, dy, laser.arcCos) && lineOfSight(state, a.x, a.y, b.x, b.y);
 }
 
+/** SPIKE (destructible asteroids): whether ship j is an active slot inside ship i's laser arc and range (no line of sight). */
+function inLaserReach(state: TacticalState, i: number, j: number): boolean {
+  const a = state.ships[i]!, b = state.ships[j], laser = classOf(state, i).slots.laser;
+  if (!laser || !b || !b.active || j === i) return false;
+  const dx = b.x - a.x, dy = b.y - a.y;
+  return dx * dx + dy * dy <= laser.range * laser.range && inArc(a.heading, dx, dy, laser.arcCos);
+}
+
+/** SPIKE: the rock a shot of ship i that misses its target strikes instead, with the impact point, or null. The line to
+ *  an in-arc, in-range target when a rock is its first blocker (the planet first: nothing); else, the target out of reach,
+ *  the first rock along the nose within laser range. */
+export function laserRockTarget(state: TacticalState, i: number): { rock: number; x: number; y: number } | null {
+  const laser = classOf(state, i).slots.laser;
+  if (!laser) return null;   // Valkyrn spec §6.1: no laser, no laser rock target
+  const a = state.ships[i]!, j = state.systems[i]!.target, range = laser.range;
+  const b = state.ships[j];
+  const [ex, ey] = b && inLaserReach(state, i, j) ? [b.x, b.y] : [a.x + hx(a.heading) * range, a.y + hy(a.heading) * range];
+  const f = firstBlocker(state, a.x, a.y, ex, ey);
+  if (!f || f.rock < 0) return null;
+  return { rock: f.rock, x: a.x + (ex - a.x) * f.t, y: a.y + (ey - a.y) * f.t };
+}
+
+/** SPIKE: the crew laser's auto-dig, a rock between it and its in-arc, in-range target. */
+export function laserDiggable(state: TacticalState, i: number): boolean {
+  return AUTO_DIG && inLaserReach(state, i, state.systems[i]!.target) && laserRockTarget(state, i) !== null;
+}
+
 /** One laser shot of ship i at its target and lock room as they stand now (spec §7a; weapons update spec §1: every shot of a
  *  burst re-checks eligibility, strips shields or strikes the room, counts and pushes its own `laser` event). */
 function shoot(state: TacticalState, i: number): void {
   const laser = classOf(state, i).slots.laser;
   if (!laser) return;
+  if (state.systems[i]!.laserRock >= 0) { shootRock(state, i); return; }   // spike ii §6.2: a rock target
   const a = state.ships[i]!, as = state.systems[i]!, j = as.target, b = state.ships[j] ?? a, bs = state.systems[j], hit = laserEligible(state, i, j);
   let stripped = false, room = -1;
   as.shots++;
@@ -101,7 +147,31 @@ function shoot(state: TacticalState, i: number): void {
       bs.hull = Math.max(0, bs.hull - laser.hull);
     }
   }
+  if (!hit) {   // spike i, kept (spec §6.3): a blocked or aimless shot strikes the first rock on its line instead
+    const r = laserRockTarget(state, i);
+    if (r) {
+      state.events.push({ kind: 'laser', ship: i, hit: false, stripped: false, room: -1, x1: a.x, y1: a.y, x2: r.x, y2: r.y, rock: r.rock });
+      laserStrikesRock(state, i, r.rock, r.x, r.y);
+      return;
+    }
+  }
   state.events.push({ kind: 'laser', ship: i, hit, stripped, room, x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+}
+
+/** Spike ii §6.2: one shot of ship i with a rock target. On target, the line to the rock's centre decides what it meets
+ *  (the planet: a miss; another rock: that rock); off target, spike i's miss path (the blocked enemy line or the nose ray).
+ *  A shot that meets no rock is a miss beam to the planet's entry point or the nose ray's end. */
+function shootRock(state: TacticalState, i: number): void {
+  const a = state.ships[i]!, as = state.systems[i]!, range = classOf(state, i).slots.laser?.range ?? 0;   // shoot() returns first without a laser
+  as.shots++;
+  const line = rockOnTarget(state, i, as.laserRock) ? rockShotLine(state, i, as.laserRock) : laserRockTarget(state, i);
+  if (line && line.rock >= 0) {
+    state.events.push({ kind: 'laser', ship: i, hit: false, stripped: false, room: -1, x1: a.x, y1: a.y, x2: line.x, y2: line.y, rock: line.rock });
+    laserStrikesRock(state, i, line.rock, line.x, line.y);
+    return;
+  }
+  const end = line ?? { x: a.x + hx(a.heading) * range, y: a.y + hy(a.heading) * range };
+  state.events.push({ kind: 'laser', ship: i, hit: false, stripped: false, room: -1, x1: a.x, y1: a.y, x2: end.x, y2: end.y });
 }
 
 /** A full charge's release: the first shot now, the rest of the class's burst queued a burst gap apart. */
@@ -126,15 +196,23 @@ function stepBurst(state: TacticalState, i: number): void {
 
 /** Apply ship i's weapon commands for this tick, before anything moves (spec §7 table). The crew's ship (FTL targeting
  *  spec §2): `laserLock` sets the laser's target (−1 clears it, keeping the lock room for a manual shot) and `torpLock`
- *  the torpedo's; a charge press fires a full laser; then, attended, the laser with a target fires its burst when full
+ *  the torpedo's, and an accepted room lock clears the matching rock target; `rockLock` sets that weapon's rock target (a rock lock clears its room lock); a charge press fires a full laser; then, attended, the laser with a target fires its burst when full
  *  and eligible, and a torpedo with a target launches when the launch is legal (launchMissile clears torpLock). */
 export function applyWeaponsInput(state: TacticalState, i: number, input: ShipInput): void {
   const s = state.systems[i]!, crew = i === CREW_SLOT, armed = classOf(state, i).slots.laser !== null;   // Valkyrn spec §6.1: a null laser skips lock, charge and auto-fire
-  if (armed && input.weapons && input.laserLock !== null) {   // first: a burst shot reads this tick's lock
+  if (armed && input.weapons && input.laserLock !== null && validTarget(input.laserLock)) {   // first: a burst shot reads this tick's lock
+    s.laserRock = -1;   // spike ii §6.1: an accepted laserLock clears the laser's rock target first
     if (validLock(input.laserLock)) { s.lock = input.laserLock; if (crew) s.laserTargeted = true; }
-    else if (input.laserLock === -1 && crew) s.laserTargeted = false;
+    else if (crew) s.laserTargeted = false;
   }
-  if (input.weapons && crew && input.torpLock !== null && validTarget(input.torpLock)) s.torpLock = input.torpLock;
+  if (input.weapons && crew && input.torpLock !== null && validTarget(input.torpLock)) { s.torpRock = -1; s.torpLock = input.torpLock; }
+  if (input.weapons && crew) {   // spike ii §6.1: rockLock, after laserLock and torpLock, before the burst
+    const rl = input.rockLock, live = (k: number): boolean => k >= 0 && k < rockSlots(state) && rockAlive(state, k);
+    // Merge (Valkyrn spec §6.1): a class without a laser takes no laser rock target.
+    if (armed && rl.laser !== null) { if (live(rl.laser)) { s.laserRock = rl.laser; s.laserTargeted = true; } else if (rl.laser === -1) { s.laserRock = -1; s.laserTargeted = false; } }
+    if (rl.torpedo !== null) { if (live(rl.torpedo)) { s.torpRock = rl.torpedo; s.torpLock = -1; } else if (rl.torpedo === -1) s.torpRock = -1; }
+  }
+  const torpOnRock = s.torpRock >= 0;   // impl review R1-F3: a shot below that breaks this rock must not turn the launch on the enemy
   stepBurst(state, i);
   tickGun(state, i, input);   // Valkyrn spec §7.1: before anything moves; its clocks run attended or not (Decision 8)
   if (!input.weapons) { s.fireHeld = false; return; }   // unattended: Fire lets go without firing or discarding
@@ -148,12 +226,14 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
       else { s.laserCharge = 0; s.laserHold = 0; }
     }
   }
-  if (armed && crew && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && laserEligible(state, i, s.target)) fireLaser(state, i);   // auto-fire
+  // Auto-fire: on the enemy when eligible; spike ii §6.2: on a rock target when it is on target (AUTO_DIG is false).
+  if (armed && crew && s.laserTargeted && s.laserBurst === 0 && laserFull(state, i) && !laserFrozen(state, i, input) && (s.laserRock >= 0 ? rockOnTarget(state, i, s.laserRock) : laserEligible(state, i, s.target) || laserDiggable(state, i))) fireLaser(state, i);
+  if (torpOnRock && s.torpRock < 0) return;   // the torpedo's rock broke this call: no launch this tick (the command can still read 'applied')
   if (input.missileLaunch && canLaunch(state, i)) {
     launchMissile(state, i);
     s.fireHeld = false;
   }
-  if (crew && s.torpLock >= 0 && canLaunch(state, i)) launchMissile(state, i);   // auto-launch, once
+  if (crew && (s.torpLock >= 0 || s.torpRock >= 0) && canLaunch(state, i)) launchMissile(state, i);   // auto-launch, once (spike ii: or on a rock target)
 }
 
 /** Advance ship i's laser charge and hold timer, shields and magazine by one tick (spec §5, §7). */
