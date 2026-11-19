@@ -99,7 +99,7 @@
 7. **The fresh press is a latch on the trigger only.** A left click is a press event (`PointerSource.takeClick`), so a button held across the flight's end makes no new click: it can neither fire the pew nor launch a second torpedo. Only the held trigger (the autocannon) could carry over. So `flightFrame` sets `stale` when the flight ends with the trigger held, and clears it once the trigger is released. While `stale`, the trigger counts as released.
 8. **The selection returns on the flight's end frame, before this frame's keys.** If `weaponSel` is the torpedo (2) when the latch sees the flight end, it becomes `lastGunSel` (W-4a's: the last of 0 or 1 selected, 0 by default). A select key pressed on the same frame then wins, because `nextWeaponSel` runs after `flightFrame`. Online keeps its own `lastGunSel` (W-4a's online branch has none: Task 5 adds it, beside `weaponSel`).
 9. **`torpHold` is cleared only when no MANUAL torpedo flies** (or off the Weapons seat, a new round, a sit or stand, and an attach online, as today). A/D no longer clear it. A pointer over the torpedo's own marker gives no bearing (`torpedoSteer` returns null, as `helmSteer` does on the ship), so the last heading stands. W-3's "a right click on the torpedo clears the hold" goes with the right button.
-10. **The online prediction (W-4b's `turret()`) counts 0 frames while a MANUAL torpedo flies**, read from the replica (spec §11's "from W-4c"). The replica's turret is drawn, and it holds while flying, since the authority holds a MAN turret.
+10. **The online prediction (W-4b's `turret(slot)`) counts 0 frames while a MANUAL torpedo flies**, read from the replica (spec §11's "from W-4c"). The replica's turret is drawn, and it holds while flying, since the authority holds a MAN turret.
 11. **The additive proof uses the oracle's `same` mode.** W-4c adds and removes no hashed field: `torpTurn` was never state, and `Missile.manual` and `torpManual` stay. No oracle run (the scripted and passive gate seeds and the rematch) sends `torpMode` or `gunMode`. So Task 1's baseline must match Task 7's code field for field, and Task 7's bless leaves `duel-1.json` and `duel-rematch.json` byte for byte (only `basic.json`'s content digest moves). If a duel golden moves, the AUTO path changed: stop, never re-bless around it.
 12. **The duel app smoke's seed** (`DUEL_TEST_SEED`) is re-picked in Task 8 only if step 3's forced round end times out at V + 1, by b7c0919e's search (seeds 1..8000, no flight or weapon input, the earliest decided round). The bump changes no run, so a re-pick should not be needed. If W-4a or W-4b moved the seed, Task 8 only verifies it.
 
@@ -125,8 +125,8 @@ Expected: `src/renderer/src/sim/tuning.ts:7:export const SIM_VERSION = <V>;`. No
 Run: `git log --oneline -3; git rev-parse --short=8 HEAD`
 Expected: W-4b's last commit on top (its gate-entry commit). The short hash is `W4C_BASE`.
 
-Run: `git grep -n "torpTurn" -- src | wc -l` and `git grep -n "export function slewTurrets\|export function turret\|turret()" -- src/renderer/src/sim/tactical/turret.ts src/renderer/src/app/duel/onlineSource.ts`
-Expected: a non-zero count, which is what Task 2 removes, and W-4b's `slewTurrets` and the online `turret()` present. If either W-4b name is missing, stop and report: W-4c depends on them.
+Run: `git grep -n "torpTurn" -- src | wc -l` and `git grep -n "export function slewTurrets\|turret: (slot: 0 | 1)\|export function predictTurret" -- src/renderer/src/sim/tactical/turret.ts src/renderer/src/app/duel/onlineSource.ts src/renderer/src/app/duel/weaponsSeat.ts`
+Expected: a non-zero count, which is what Task 2 removes, and W-4b's `slewTurrets`, the online `turret(slot)` and `predictTurret` present (W-4b's "Seam for W-4c"). If either W-4b name is missing, stop and report: W-4c depends on them.
 
 - [ ] **Step 2: The full suite at the W-4c start**
 
@@ -566,7 +566,7 @@ So the order is the spec's: stale, seat, no pew, AUTO, `missile-in-flight`, the 
 
 ```ts
   // W-4 spec §3.4, §7: while the crew's MANUAL torpedo flies, MAN guns hold (the reticle is ignored); AUTO is untouched.
-  if (sys.gunsManual && manualTorpedoFlying(state, i)) return;   // inside the MAN branch, before any slew
+  if (manualTorpedoFlying(state, i)) continue;   // the first statement of W-4b's MAN branch (`if (s.gunsManual) { ... }`), inside its per-gun loop: hold this gun
 ```
 
 Place it as the MAN branch's first statement, using W-4b's own name for the systems record (`sys` or `s`). Import `manualTorpedoFlying` from `./manualTorpedo`. Check that this adds no import cycle: `manualTorpedo.ts` imports `hunter.ts` and `state.ts`; if `hunter.ts` imports `turret.ts`, put the check inline as `missileOf(state, i)?.manual === true` instead, with the same comment. If W-4b's MAN branch is a separate function (for example `slewMan`), put the guard at its top. The AUTO branch is not touched.
@@ -797,12 +797,12 @@ git commit -m "feat(w4c): the held left button flies the MANUAL torpedo toward t
 
 **Files:**
 - Modify: `src/renderer/src/app/duel/weaponsSeat.ts` (`FlightLatch`, `NO_FLIGHT`, `flightFrame`; `nextWeaponSel` loses `steering`)
-- Modify: `src/renderer/src/app/duel/runtime.ts` (the Hound branch of `play`, `frame`'s held merge, the resets), `app/duel/onlineDuel.ts` (the same, plus `lastGunSel`), `app/duel/onlineSource.ts` (`turret()`'s k = 0 gate)
+- Modify: `src/renderer/src/app/duel/runtime.ts` (the Hound branch of `play`, `frame`'s held merge, the resets), `app/duel/onlineDuel.ts` (the same, plus `lastGunSel`), `app/duel/onlineSource.ts` (`turret(slot)`'s k = 0 gate)
 - Modify: `tests/w4Input.test.ts` (`nextWeaponSel`'s two flight lines, kind a)
 - Create: `tests/w4TorpedoSeat.test.ts`
 
 **Interfaces:**
-- Consumes: W-4a's `weaponSel`, `lastGunSel`, `triggerPrev`, `weaponsSeatHeld(sel, trigger)`, `MapRequests.triggerHeld()`, `DuelRuntimeDeps.triggerHeld?()`, `houndWeaponsSeat`, `WeaponSlot`; W-4b's Hound branch additions (Z → `gunMode`) and `onlineSource.turret()`.
+- Consumes: W-4a's `weaponSel`, `lastGunSel`, `triggerPrev`, `weaponsSeatHeld(sel, trigger)`, `MapRequests.triggerHeld()`, `DuelRuntimeDeps.triggerHeld?()`, `houndWeaponsSeat`, `WeaponSlot`; W-4b's Hound branch additions (Z → `gunMode`) and `onlineSource.turret(slot)` / `predictTurret`.
 - Produces: `FlightLatch`, `NO_FLIGHT`, `flightFrame(...)`, `nextWeaponSel(sel, k)`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -863,12 +863,12 @@ Add a `describe('Single player around a MANUAL flight (W-4 spec §7)', …)` to 
 Add a `describe('online around a MANUAL flight (W-4 spec §7, §11)', …)` with the `tests/w4Online.test.ts` rig (W-4a Task 11 and W-4b's prediction cases):
 1. While the replica shows the crew's MANUAL torpedo flying (`placeMissile(r.d.tactical, 0, { … age: 30 }, true)`), a held trigger with the autocannon selected sends no `gunHeld`, and a click sends no `pewFire`.
 2. Removing it from the replica brings a torpedo selection back to the last gun in the next held frame's `weaponSel`.
-3. In MAN with the autocannon selected, a reticle set and `unacked(5)`, `source.turret()` equals the replica's `gunTurret` while the MANUAL torpedo flies, and differs from it (it is predicted) once it is gone.
+3. In MAN with the autocannon selected, a reticle set and `unacked(5)`, `source.turret(1)` equals the replica's `gunTurret` while the MANUAL torpedo flies, and differs from it (it is predicted) once it is gone.
 
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `npx vitest run tests/w4TorpedoSeat.test.ts tests/w4Input.test.ts`
-Expected: FAIL. `flightFrame` is not exported, `nextWeaponSel` still takes `steering`, the runtimes still fire on LMB and send `gunHeld` during a flight, and `turret()` still predicts.
+Expected: FAIL. `flightFrame` is not exported, `nextWeaponSel` still takes `steering`, the runtimes still fire on LMB and send `gunHeld` during a flight, and `turret(1)` still predicts.
 
 - [ ] **Step 3: The helper**
 
@@ -935,17 +935,17 @@ export function flightFrame(latch: FlightLatch, flyingNow: boolean, sel: number,
 3. At the top of the online Hound branch, replace W-4a's `weaponSel = nextWeaponSel(weaponSel, k, manualTorpedoFlying(d.tactical));` with:
 
 ```ts
-      const ff = flightFrame(flight, manualTorpedoFlying(d.tactical), weaponSel, lastGunSel, requests.triggerHeld());   // W-4 spec §7: the replica's flight
+      const ff = flightFrame(flight, manualTorpedoFlying(d.tactical), weaponSel, lastGunSel, triggerNow());   // W-4 spec §7: the replica's flight
       flight = ff.latch; triggerLive = ff.trigger;
       weaponSel = nextWeaponSel(ff.sel, k);
       if (weaponSel !== WeaponSlot.Torpedo) lastGunSel = weaponSel;
       const click = ff.clicks ? pew : null;
 ```
 
-   Then, in that branch, `pew !== null` becomes `click !== null` in the launch count (`p.launch + (pew !== null && weaponSel === WeaponSlot.Torpedo ? 1 : 0)`) and in the pew-pew send. `const trig = requests.triggerHeld();` becomes `const trig = triggerLive;`.
-4. In `pump`, W-4a's `sessionHeld(k, d, me, steer, { sel: weaponSel, trigger: requests.triggerHeld() })` becomes `sessionHeld(k, d, me, steer, { sel: weaponSel, trigger: triggerLive })`. `play` runs before this line in the same pump, so `triggerLive` is this pump's value.
+   Then, in that branch, `pew !== null` becomes `click !== null` in the launch count (`p.launch + (pew !== null && weaponSel === WeaponSlot.Torpedo ? 1 : 0)`) and in the pew-pew send. W-4a's `const trig = triggerNow();` becomes `const trig = triggerLive;`.
+4. In `pump`, W-4b's `sessionHeld(k, d, me, steer, { sel: weaponSel, trigger: triggerNow() && (gunModeSent ? gunModeSent.manual : d.tactical.systems[0].gunsManual), aim: reticleNow() ?? -1 })` becomes the same call with `triggerLive` in place of `triggerNow()`. `play` runs before this line in the same pump, so `triggerLive` is this pump's value.
 
-`app/duel/onlineSource.ts`, W-4b's `turret()`: its `k` is `unackedFrames` only when every listed condition holds (MAN, a powered gun selected, the Hound's Weapons seat, a reticle). Add the spec §11 "(from W-4c)" condition: `k` is 0 while `manualTorpedoFlying(d.tactical)`. Add it to the same conjunction, commented "W-4 spec §11: (from W-4c) no MANUAL torpedo flies".
+`app/duel/onlineSource.ts`, W-4b's `turret(slot)`: it returns `predictTurret(d.tactical, slot, sentHeld, gunModeShown ?? d.tactical.systems[0].gunsManual, unackedFrames)` at the Hound's Weapons seat, and `predictTurret` holds the other k = 0 gates. Add the spec §11 "(from W-4c)" condition at that call's `k` argument: `manualTorpedoFlying(d.tactical) ? 0 : unackedFrames`, commented "W-4 spec §11: (from W-4c) no MANUAL torpedo flies". Import `manualTorpedoFlying` from `../../sim/tactical/manualTorpedo` if it is not already imported.
 
 - [ ] **Step 6: Run**
 
@@ -1284,4 +1284,4 @@ git commit -m "docs(w4c): W-4 complete at SIM_VERSION <V + 1>: the bump, the smo
   - `torpedoSteer` (Task 4) is read by the scene (Task 4) and the tests.
   - `flightFrame` / `FlightLatch` / `NO_FLIGHT` (Task 5) are read by both runtimes (Task 5) and the tests.
   - `nextWeaponSel(sel, k)` (Task 5) is read by both runtimes and `w4Input`.
-  - W-4b's names (`slewTurrets`, `gunsManual`, `gunTurret`, `turretAim`, `gunMode`, `turret()`) are consumed by anchor in Tasks 3 and 5.
+  - W-4b's names (`slewTurrets`, `gunsManual`, `gunTurret`, `turretAim`, `gunMode`, `turret(slot)`, `predictTurret`) are consumed by anchor in Tasks 3 and 5.
