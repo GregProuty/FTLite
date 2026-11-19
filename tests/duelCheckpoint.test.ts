@@ -61,7 +61,7 @@ describe('the duel checkpoint through the generic core (spec §6)', () => {
         expect(resumed.state.summary).toEqual(end);
         expect(resumed.core.captureCheckpoint().modeMemory, 'the final telemetry accumulator of the restored run').toEqual(reference.core.captureCheckpoint().modeMemory);
         expect(end).toMatchObject({ outcome: Outcome.EnemyWins, ticks: referenceHashes.length,
-          terminal: [['laser'], []], laserReleases: [2, 20], laserHits: [3, 20], missilesLaunched: [1, 3], missileHits: [0, 2], repairsFinished: [10, 9] });   // Engineering spike (SIM 55): was releases [13, 24], hits [22, 24], launched [6, 7], missile hits [3, 3], repairs [3, 9]
+          terminal: [['laser'], []], laserReleases: [2, 20], laserHits: [3, 20], missilesLaunched: [1, 4], missileHits: [0, 2], repairsFinished: [4, 9] });   // Engineering spike (SIM 55): was launched [1, 3], repairs [10, 9] (before the interior hazards ran); originally releases [13, 24], hits [22, 24], launched [6, 7], missile hits [3, 3], repairs [3, 9]
         expect(Object.isFrozen(end)).toBe(true);
         expect(referenceHashes.length).toBeGreaterThan(SPLIT);
         console.log(`continuation proof: seed ${SEED}, ${SPLIT} + ${referenceHashes.length - SPLIT} ticks; summary ${JSON.stringify(end)}`);
