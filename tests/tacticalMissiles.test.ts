@@ -2,16 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { flyMissile, resolveMissiles } from '../src/renderer/src/sim/tactical/missiles';
 import { createTacticalState, missileOf, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { applyWeaponsInput, IDLE_INPUT, tickWeapons, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
-import { HUNTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
-import { DT, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, MISSILE_LIFE_TICKS, MISSILE_THRUST, MISSILE_BOOST_TICKS, MISSILE_TURN_STEPS_PER_TICK, R_MAP } from '../src/renderer/src/sim/tactical/tuning';
+import { HUNTER_CLASS, ShipClass } from '../src/renderer/src/sim/tactical/defs';
+import { DT, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MAGAZINE, MISSILE_LIFE_TICKS, MISSILE_THRUST, MISSILE_BOOST_TICKS, MISSILE_TURN_STEPS_PER_TICK, R_MAP, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
 import { makeHostile } from './helpers/hostile';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
-import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 /** Crew at (−600, −300) heading east, enemy 350 to the south at (−600, 50), inside the torpedo range (weapons update
  *  spec §2; it was 900 away before the range): inside the belt and clear of the planet. */
-function duel(): TacticalState {
-  const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 2, ShipClass.ValkyrnLaser)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)   // W-4 spec §14.1: the beam's rule, on the laser fit
+function duel(cls: number = ShipClass.Cutter): TacticalState {
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 2, cls)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -600, y: 50, vx: 0, vy: 0, heading: 0 });
   return st;
@@ -53,7 +52,7 @@ describe('launch (spec §7b)', () => {
     expect(missileOf(st, 0)).toBeNull();
   });
   it('freezes the laser while it flies and ignores laserCharge commands', () => {
-    const st = duel(), s = st.systems[0];
+    const st = duel(ShipClass.ValkyrnLaser), s = st.systems[0];   // W-4 spec §14.1: the beam's rule, on the laser fit
     tick(st, input({ laserCharge: true }));
     for (let t = 0; t < 59; t++) tick(st, input());
     const charge = s.laserCharge;
@@ -91,7 +90,7 @@ describe('flight (spec §7b)', () => {
     expect(m.vx - vx).toBeLessThan(0.2);                                 // tick 361: gravity only
   });
   it('self-destructs at the end of its 480th tick, after that tick\'s move and contacts, unfreezing the laser that tick', () => {
-    const st = duel(), s = st.systems[0];
+    const st = duel(ShipClass.ValkyrnLaser), s = st.systems[0];   // W-4 spec §14.1: the beam's rule, on the laser fit
     tick(st, input({ missileLaunch: true }));
     const m = missileOf(st, 0)!;
     Object.assign(m, { x: -300, y: 600, vx: 60, vy: 0, age: MISSILE_LIFE_TICKS - 2 });   // open space, coasting east
@@ -138,7 +137,7 @@ describe('missile contacts (spec §4 collision matrix)', () => {
     expect(st.events).toContainEqual(expect.objectContaining({ kind: 'missileEnd', ship: 0, cause: 'ship', target: 1, room: Room.Engines }));
   });
   it('the lock room is read at impact: a lock changed in flight is the room struck', () => {
-    const st = duel(), b = st.ships[1];
+    const st = duel(ShipClass.ValkyrnLaser), b = st.ships[1];   // W-4 spec §14.1: the beam's rule, on the laser fit
     Object.assign(b, { x: -400, y: -300, heading: 192 });
     st.systems[0].lock = Room.Engines;
     tick(st, input({ missileLaunch: true }));
@@ -157,7 +156,7 @@ describe('missile contacts (spec §4 collision matrix)', () => {
     m.age = 61;
     resolveMissiles(st);
     expect(missileOf(st, 0)).toBeNull();
-    expect(st.systems[0].hull).toBe(50);   // W-4 spec §14.1 (laser fit): was SHIP_HULL - 3 (67); the laser fit has VALKYRN_HULL 53
+    expect(st.systems[0].hull).toBe(SHIP_HULL - 3);
     expect(st.systems[0].missileHits).toBe(0);                                      // a self-hit is not a hit
     expect(st.events.at(-1)).toMatchObject({ kind: 'missileEnd', cause: 'ship', target: 0, room: Room.Weapons });   // the impact room
     expect(st.systems[0].rooms).toEqual([1, 0, 0]);
@@ -185,7 +184,7 @@ describe('missile contacts (spec §4 collision matrix)', () => {
     expect(st.systems[1].hull).toBe(HUNTER_CLASS.hull);
   });
   it('a frozen part charge holds while the missile flies and charges again the tick it ends; a full crew charge never vents (FTL targeting spec §2)', () => {
-    const st = duel(), s = st.systems[0];
+    const st = duel(ShipClass.ValkyrnLaser), s = st.systems[0];   // W-4 spec §14.1: the beam's rule, on the laser fit
     s.laserCharge = 1000;
     tick(st, input({ missileLaunch: true }));                          // the launch freezes before the clocks run
     for (let t = 0; t < 50; t++) tick(st, input());
@@ -198,7 +197,7 @@ describe('missile contacts (spec §4 collision matrix)', () => {
     expect([s.laserCharge, s.laserHold]).toEqual([LASER_CHARGE_UNITS, 0]);   // full, held, never vented
   });
   it('unfreezes the laser when the missile ends; a single press then fires the full charge', () => {
-    const st = duel(), s = st.systems[0];
+    const st = duel(ShipClass.ValkyrnLaser), s = st.systems[0];   // W-4 spec §14.1: the beam's rule, on the laser fit
     expect(s.laserCharge).toBe(LASER_CHARGE_UNITS);                      // the round starts full
     tick(st, input({ missileLaunch: true }));
     Object.assign(missileOf(st, 0)!, { x: 0, y: -60 });                  // into the planet

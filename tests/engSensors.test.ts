@@ -47,7 +47,7 @@ describe('engineering spike: Sensors (spec §10.4)', () => {
     } finally { disposeDuel(d); }
   });
   it('the gates: contactScan, laser and torpedo locks, and designate need the contact seen', () => {
-    const d = createDuel(HOUND, 13, 0, 3, ShipClass.ValkyrnLaser);   // a crew of 3: designate is the Science seat's (step.ts answers invalid-seat first)   // W-4 spec §14.1: the beam's rule, on the laser fit
+    const d = createDuel(HOUND, 13, 0, 3, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit. a crew of 3: designate is the Science seat's (step.ts answers invalid-seat first)
     try {
       sitDown(d.interior, 0, d.nav); sitDown(d.interior, 1, d.weapons); sitDown(d.interior, 2, d.science); enemyAt(d, 1200);
       for (const [pid, c] of [[0, { kind: 'contactScan', contact: 0 }], [1, { kind: 'laserLock', room: 1 }], [1, { kind: 'torpLock', room: 2 }], [2, { kind: 'designate', contact: 0 }]] as [number, DuelCommand][])

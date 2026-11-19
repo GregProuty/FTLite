@@ -13,19 +13,18 @@ import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { flyMissile, resolveMissiles } from '../src/renderer/src/sim/tactical/missiles';
 import { flattenTactical, shipModule, spaceModule, validateTacticalValues } from '../src/renderer/src/sim/tactical/hash';
 import { createTacticalState, missileOf, placeMissile, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
-import { CUTTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
+import { CUTTER_CLASS, ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { LASER_BURST_GAP_TICKS, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, MISSILE_RANGE } from '../src/renderer/src/sim/tactical/tuning';
 import { applyWeaponsInput, IDLE_INPUT, laserEligible, tickWeapons, validTarget, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { holdInSight } from './helpers/sensorSight';
 import { makeHostile } from './helpers/hostile';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
-import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const layout = parseShip(cutter);
 /** The crew at (−600, −300) facing east, the enemy 300 east facing west: in arc, laser range and torpedo range. */
-function facing(): TacticalState {
-  const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 2, ShipClass.ValkyrnLaser)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)   // W-4 spec §14.1: the beam's rule, on the laser fit
+function facing(cls: number = ShipClass.Cutter): TacticalState {
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 2, cls)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   st.map = { ...st.map, asteroids: [] };
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
@@ -52,7 +51,7 @@ describe('the crew laser always charges (spec §2)', () => {
     expect(st.systems[1].laserCharge).toBe(0);
   });
   it('with a target it charges with no hold and fires its burst on full and eligible', () => {
-    const st = facing(), s = st.systems[0];
+    const st = facing(ShipClass.ValkyrnLaser), s = st.systems[0];
     s.laserCharge = 0;
     tick(st, input({ laserLock: Room.Engines }));
     expect([s.laserTargeted, s.lock, s.fireHeld]).toEqual([true, Room.Engines, false]);
@@ -63,7 +62,7 @@ describe('the crew laser always charges (spec §2)', () => {
     expect(s.shots).toBe(2);
   });
   it('holds a full charge out of arc without venting, and fires the tick the enemy comes into arc', () => {
-    const st = facing(), s = st.systems[0];
+    const st = facing(ShipClass.ValkyrnLaser), s = st.systems[0];
     behind(st);
     tick(st, input({ laserLock: Room.Shields }));
     for (let k = 0; k < 3 * LASER_HOLD_TICKS; k++) expect(tick(st)).toBe(0);
@@ -73,7 +72,7 @@ describe('the crew laser always charges (spec §2)', () => {
     expect(tick(st)).toBe(1);
   });
   it('re-fires every charge while it keeps its target, and clearing the target (laserLock −1) stops it', () => {
-    const st = facing(), s = st.systems[0];
+    const st = facing(ShipClass.ValkyrnLaser), s = st.systems[0];
     tick(st, input({ laserLock: Room.Shields }));
     expect(s.shots).toBe(1);                                            // full from the start: fires at once
     for (let k = 0; k < 280; k++) tick(st);
@@ -86,7 +85,7 @@ describe('the crew laser always charges (spec §2)', () => {
     expect(s.shots).toBe(5);
   });
   it('an unattended console neither charges nor auto-fires, and keeps the target', () => {
-    const st = facing(), s = st.systems[0];
+    const st = facing(ShipClass.ValkyrnLaser), s = st.systems[0];
     behind(st);
     tick(st, input({ laserLock: Room.Shields }));
     s.laserCharge = 100;
@@ -95,7 +94,7 @@ describe('the crew laser always charges (spec §2)', () => {
     expect([s.laserCharge, s.laserTargeted]).toEqual([100, true]);
   });
   it('the Hunter is unchanged: its lock commands set no target and its full charge still vents', () => {
-    const st = facing(), h = st.systems[1];
+    const st = facing(ShipClass.ValkyrnLaser), h = st.systems[1];
     applyWeaponsInput(st, 1, input({ laserLock: Room.Weapons, torpLock: Room.Engines }));
     expect([h.lock, h.laserTargeted, h.torpLock]).toEqual([Room.Weapons, false, -1]);
     h.laserCharge = LASER_CHARGE_UNITS; h.fireHeld = true;
@@ -126,7 +125,7 @@ describe('the torpedo target (spec §2)', () => {
     expect(s.missilesLaunched).toBe(1);                                 // a single shot: no second launch
   });
   it('a manual launch with no torpedo target strikes the laser lock room as it lands', () => {
-    const st = facing(), s = st.systems[0], e = st.systems[1];
+    const st = facing(ShipClass.ValkyrnLaser), s = st.systems[0], e = st.systems[1];   // W-4 spec §14.1: reads the laser lock, the beam's rule, on the laser fit
     tick(st, input({ missileLaunch: true, laserLock: -1 }));
     expect([s.torpRoom, s.torpLock]).toEqual([-1, -1]);
     s.lock = Room.Engines;

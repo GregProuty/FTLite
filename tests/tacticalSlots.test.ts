@@ -43,7 +43,7 @@ describe('ship classes and weapons as definitions (spec §5)', () => {
     }
     // Weapons update spec §1, §3: the Hunter's own hull, and the crew's double laser against the Hunter's single one.
     expect([CUTTER_CLASS.hull, HUNTER_CLASS.hull]).toEqual([SHIP_HULL, HUNTER_HULL]);
-    expect([CUTTER_CLASS.slots.laser, HUNTER_CLASS.slots.laser]).toEqual([LASER, HUNTER_LASER]);
+    expect([VALKYRN_LASER_CLASS.slots.laser, HUNTER_CLASS.slots.laser]).toEqual([LASER, HUNTER_LASER]);   // W-4 spec §14.1: the beam's def, read from the laser fit
     expect([LASER.shots, HUNTER_LASER.shots]).toEqual([2, 1]);
     expect(HUNTER_LASER).toEqual({ ...LASER, shots: 1 });
     expect([CUTTER_CLASS.ai, HUNTER_CLASS.ai]).toEqual(['crew', 'hunter']);

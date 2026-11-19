@@ -167,7 +167,7 @@ describe('hits are loud (spec §3)', () => {
     const fx = createFx(), at = laser({});
     pushEvents(fx, [at]); stepFx(fx, 0.2); pushEvents(fx, [at, at]);
     expect(fx.floats.map((f) => f.slot)).toEqual([0, 1, 2]);
-    const xs = combatModel(input(createTacticalState(5, 2, ShipClass.ValkyrnLaser), 'weapons', fx)).floats!.map((f) => f.x);   // W-4 spec §14.1: the beam's rule, on the laser fit
+    const xs = combatModel(input(createTacticalState(5), 'weapons', fx)).floats!.map((f) => f.x);
     expect([xs[1]! - xs[0]!, xs[2]! - xs[1]!]).toEqual([FLOAT_STEP_PX, FLOAT_STEP_PX]);
     stepFx(fx, 0.95);   // the first has ended
     pushEvents(fx, [at]);
@@ -183,7 +183,7 @@ describe('hits are loud (spec §3)', () => {
     expect(Math.hypot(low.x, low.y)).toBeLessThanOrEqual(Math.hypot(full.x, full.y));
   });
   it('the kill: an explosion, TARGET DESTROYED, the hull flying apart, and 0.4 s of render-only slow motion', () => {
-    const fx = createFx(), st = createTacticalState(5, 2, ShipClass.ValkyrnLaser); place(st, 300);   // W-4 spec §14.1: the beam's rule, on the laser fit
+    const fx = createFx(), st = createTacticalState(5); place(st, 300);
     pushKill(fx, st.ships[1].x, st.ships[1].y, 0);
     pushKill(fx, 0, 0, 0);   // once
     expect(fx.items.map((i) => i.kind)).toEqual(['boom']);

@@ -8,14 +8,13 @@ import { beamShots, canLaunch, IDLE_INPUT, laserOffline, tickWeapons } from '../
 import { MAGAZINE_REGEN_UNITS, WeaponSlot } from '../src/renderer/src/sim/tactical/bars';
 import { createTacticalState, placeMissile, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { resolveMissiles } from '../src/renderer/src/sim/tactical/missiles';
-import { CUTTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
+import { ShipClass, VALKYRN_LASER_CLASS } from '../src/renderer/src/sim/tactical/defs';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { requireApplied, CUTTER } from './helpers/scriptedDuel';
 import { RockKind, ROCK_STRIDE, rockSlots } from '../src/renderer/src/sim/tactical/rocks';
 import { touchesSolid } from '../src/renderer/src/sim/tactical/predict';
-import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 /** A tactical state whose crew Weapons holds 10 bars (all spendable) split as `power`. */
 function powered(power: number[]): TacticalState {
@@ -74,7 +73,7 @@ describe('engineering spike: the beam and the torpedo by bars (spec §10.3, §11
     const st = createTacticalState(1);
     expect(beamShots(st, 1)).toBe(1);
     st.systems[1].rooms[Room.Weapons] = 2; expect(laserOffline(st, 1)).toBe(true);
-    expect(CUTTER_CLASS.slots.laser!.shots).toBe(2);                     // the class keeps 2; the crew's bars decide
+    expect(VALKYRN_LASER_CLASS.slots.laser!.shots).toBe(2);                     // W-4 spec §14.1: the beam's def, read from the laser fit; the class keeps 2, the crew's bars decide
   });
   it('the scripted gunner moves pew pew\'s bar to the beam on its first seated tick, and every command applies', () => {
     const d = createDuel(CUTTER, 1, 0, 2, ShipClass.ValkyrnLaser), pair = createScriptedPair(1);   // W-4 spec §14.1: the beam's rule, on the laser fit

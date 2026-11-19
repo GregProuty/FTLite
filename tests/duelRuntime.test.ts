@@ -261,7 +261,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     const ship = rt.duel.tactical.systems[0];
     hold({ lockTo: 0 }); tick(); expect([ship.lock, ship.laserTargeted]).toEqual([Room.Shields, true]);   // at the Helm: no weapons commands (the SHIELDS opener stands)
     rt.dispose();
-    const g = rig(5, undefined, true, ShipClass.ValkyrnLaser); holdInSight(g.rt.duel.tactical);   // Engineering spike spec §10.4: a lock or scan needs the enemy seen   // W-4 spec §14.1: the beam's rule, on the laser fit
+    const g = rig(5, undefined, true, ShipClass.ValkyrnLaser); holdInSight(g.rt.duel.tactical);   // W-4 spec §14.1: the beam's rule, on the laser fit. Engineering spike spec §10.4: a lock or scan needs the enemy seen
     g.press('switch'); g.tick();
     const s = g.rt.duel.tactical.systems[0];
     g.hold({ lockTo: 0 }); g.tick(); expect([s.lock, s.laserTargeted]).toEqual([0, true]);
@@ -277,7 +277,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     g.rt.dispose();
   });
   it('a pick-up on an unknown enemy (FTL targeting fix): the contact controller asks for the scan and the runtime starts the Level 1 scan from Weapons', () => {
-    const g = rig(5, undefined, true, ShipClass.ValkyrnLaser); holdInSight(g.rt.duel.tactical);   // Engineering spike spec §10.4: a lock or scan needs the enemy seen   // W-4 spec §14.1: the beam's rule, on the laser fit
+    const g = rig(5, undefined, true, ShipClass.ValkyrnLaser); holdInSight(g.rt.duel.tactical);   // W-4 spec §14.1: the beam's rule, on the laser fit. Engineering spike spec §10.4: a lock or scan needs the enemy seen
     g.press('switch'); g.tick();
     const t = g.rt.duel.tactical, c = createContactController();
     t.known[0] = 0;
