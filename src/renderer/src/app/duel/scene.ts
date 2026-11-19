@@ -316,7 +316,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         ? contactModel({ state: d.tactical, contact: open?.contact ?? null, aim: open?.aim ?? false, weapon: contact?.aimWeapon() ?? 'laser', station, t, weapons: consoleView?.weapons ?? consoleView?.flight?.weapons ?? null, flashes: open?.contact === 0 ? flashesFor(fx.struck, targetOf(d.tactical, CREW_SLOT)) : [] })
         : null;
       options.ui.frame({
-        readout: { rows: readoutRows({ duel: d, mode: view === 'flight' ? 'helm' : view, active: source.active(), console: onConsole }), help: onConsole ? [] : readoutHelp(view === 'flight' ? 'helm' : view) },
+        readout: { rows: readoutRows({ duel: d, mode: view === 'flight' ? 'helm' : view, active: source.active(), console: onConsole }), help: onConsole ? [] : readoutHelp(view === 'flight' ? 'helm' : view, view === 'helm' && classOf(d.tactical, CREW_SLOT).newtonianHelm) },
         end: overlay.end,
         console: consoleView,
         crt: crtActive(view),

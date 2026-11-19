@@ -10,6 +10,9 @@ import type { MapOverlayView } from '../../ui/views';
 import { chargeRow, type ReadoutRow } from './readoutModel';
 import { gunnerPresent, laserCardReason, laserSituation, type RefusedControl } from './situationModel';
 import { laserOffline } from '../../sim/tactical/weapons';
+import { engineBars, throttleCap, throttleFloor } from '../../sim/duel/helmFlight';
+import { COMPRESSOR_RATE, RCS_TANK, THR_MAX, THR_MIN } from '../../sim/duel/tuning';
+export { THR_MAX, THR_MIN };   // playtest2feedback §6: the throttle bar's range, for the UI (which imports no sim values)
 
 export type ConsoleStation = 'helm' | 'weapons' | 'science' | 'flight' | 'ship';
 export type TabState = 'current' | 'open' | 'locked';
@@ -20,8 +23,17 @@ export type ConsoleTabs = Record<TabKey, TabState> & { flight?: TabState };
 export type ConsoleTabActions = Record<TabKey, KeyAction | null> & { flight?: KeyAction | null };
 /** Feel-ii §2.8: a refused control on this block: which, the reason, and whether it is still in its flash. */
 export interface RefusedView { control: RefusedControl; reason: string; flash: boolean }
+/** Playtest2feedback §5, §6: the crew Helm's readings: the shown thrMille, the throttle's cap and floor from the ENGINE
+ *  share, the tank in percent, the COMPRESSOR share, the bar budget, and the compressor's rate in tank percent a second. */
+export interface CrewHelmPanel { thrMille: number; cap: number; floor: number; gas: number; compressor: number; bars: number; rate: number }
+export function crewPanel(d: DuelState, thrMille: number): CrewHelmPanel {
+  const engine = engineBars(d);
+  return { thrMille, cap: throttleCap(engine), floor: throttleFloor(engine), gas: Math.round((d.rcsGas * 100) / RCS_TANK), compressor: d.compressor, bars: d.helmBars, rate: COMPRESSOR_RATE[d.compressor]! / 10 };
+}
 export interface HelmPanel {
   heading: number; speed: number; held: HeldFlags; throttle: number; refused?: RefusedView | null; holdHeading?: number;
+  /** Playtest2feedback §6: the crew Helm's block (a newtonianHelm class at the Helm); absent: the notched throttle. */
+  crew?: CrewHelmPanel;
   /** Valkyrn spec §5: the Helm block on the Flight seat (its hints name the mouse and the torpedo). */
   flight?: boolean;
 }
@@ -108,7 +120,8 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   const ship = t.ships[0]!;
   const helm: HelmPanel | null = station === 'helm' || station === 'flight'
     ? { heading: ((Math.round((ship.heading / HEADING_COUNT) * 360) % 360) + 360) % 360, speed: Math.round(Math.hypot(ship.vx, ship.vy)), held, throttle: i.throttle ?? d.throttle,
-        refused: i.refused && HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, holdHeading: d.holdHeading, ...(station === 'flight' ? { flight: true } : {}) }
+        refused: i.refused && HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, holdHeading: d.holdHeading, ...(station === 'flight' ? { flight: true } : {}),
+        ...(station === 'helm' && classOf(t, 0).newtonianHelm ? { crew: crewPanel(d, i.thrMille ?? d.thrMille) } : {}) }   // playtest2feedback §6
     : null;
   const flying = missileOf(t, 0) !== null, sys = t.systems[0];
   const weaponsPanel = (): WeaponsPanel => ({ lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null,

@@ -53,7 +53,8 @@ export function createUiActions(deps: UiActionDeps) {
     torpLock: (room) => consoleInput?.torpLock(room),
     rockLock: (weapon, rock) => consoleInput?.rockLock?.(weapon, rock),
     throttle: (level) => consoleInput?.throttle(level),
-    frequency: (freq) => consoleInput?.frequency(freq)
+    frequency: (freq) => consoleInput?.frequency(freq),
+    helmPower: (delta) => consoleInput?.helmPower?.(delta)   // playtest2feedback §5: a HELM POWER cell
   };
 
   // The contact window's clicks (enemy ship window spec §6.6) go to the duel mode's contact controller while one is set;

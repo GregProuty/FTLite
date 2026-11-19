@@ -163,7 +163,8 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
 }
 
 /** Key help under the rows, per screen (spec §5 table). */
-export function readoutHelp(mode: ReadoutMode): string[] {
+export function readoutHelp(mode: ReadoutMode, crewHelm = false): string[] {
+  if (mode === 'helm' && crewHelm) return ['W/S THROTTLE   LMB STEER', 'A/D Q/E ARROWS GAS   1/2 POWER', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];   // playtest2feedback §6
   if (mode === 'helm') return ['W/S THROTTLE   A/D TURN', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];
   if (mode === 'weapons') return ['1/2 PICK WEAPON, CLICK ROOM', 'SPACE FIRE   F TORPEDO', 'E/Q LASER TARGET   C CAMERA', 'X STAND   TAB SWITCH', 'ESC PAUSE'];   // FTL targeting spec §1
   if (mode === 'science') return ['S SCAN   T NEXT CONTACT', 'CLICK A CONTACT: DESIGNATE', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE'];

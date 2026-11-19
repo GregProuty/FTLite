@@ -199,7 +199,7 @@ describe('sitting down (spec §1)', () => {
   it('the card shows on the first three sits at a seat per session, for 4 s or until the first action, then never', () => {
     expect([countSit('helm'), countSit('helm'), countSit('helm'), countSit('helm')]).toEqual([true, true, true, false]);
     expect(countSit('weapons')).toBe(true);
-    expect(sitCard('helm', 0.5, false)).toMatchObject({ title: 'HELM: POINT AT THE ENEMY', keys: ['A/D  TURN', 'W/S  THROTTLE', 'HOLD SPACE  AUTO-FACE'], alpha: 1, top: false });
+    expect(sitCard('helm', 0.5, false)).toMatchObject({ title: 'HELM: POINT AT THE ENEMY', keys: ['HOLD LMB  STEER', 'W/S  THROTTLE', 'A/D  THRUSTERS'], alpha: 1, top: false });
     expect(sitCard('weapons', 0.5, false, true)).toMatchObject({ title: 'WEAPONS: CLICK A WEAPON, THEN A ROOM OR ROCK', top: true });
     expect(sitCard('helm', SIT_CARD_S - 0.25, false)!.alpha).toBeCloseTo(0.5, 6);
     expect([sitCard('helm', SIT_CARD_S, false), sitCard('helm', 1, true)]).toEqual([null, null]);
