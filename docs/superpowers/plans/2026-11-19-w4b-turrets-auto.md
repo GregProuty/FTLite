@@ -55,7 +55,11 @@
 1. **`turret.ts` holds the slew law and AUTO; `pew.ts` and `gun.ts` do not import it.** `turret.ts` imports `pewLead` / `pewMuzzle` (pew.ts) and `gunLead` (gun.ts), so the reverse import would be a cycle. `pewAimFine` and `gunAimFine` therefore write `turretWorldAim`'s formula inline (`(heading × HEADING_COUNT + turret + AIM_STEPS) % AIM_STEPS`), and Task 4's test pins them equal to `turretWorldAim`. `turretOffset` is `clampAim`'s signed difference (pew.ts L55) without the clamp.
 2. **`slewTurrets` returns the AUTO on-solution flags** (`{ pew, gun }`), and `applyWeaponsInput` passes them on: `tickGun(state, i, input, auto.gun && enemyHostile(state))` and, last, the AUTO pew round. So the hold rule (§4.3: track, no fire while `hostileAt` is −1) lives in `weapons.ts`, beside the slew, and `gun.ts` needs no science import. MAN never sets a flag.
 3. **The range test is centre to centre, the line of sight muzzle to centre.** §4.2 says "its centre is within the gun's AUTO range" and "the line from the muzzle to it is clear": the range is the own ship's centre to the enemy's centre (squared, so no sqrt); the sight line runs from the gun's muzzle point (`pewMuzzle`; for the autocannon the nose point between its muzzles, `muzzleForward` along the heading) to the enemy's centre, through `geometry.ts lineOfSight` (planet and rocks).
-4. **AUTO pew from a full charge.** The rule is §4.3's literal "it fires one round … whenever it is on solution and a third is stored (`pewReady`)". A pew that starts the round full (3 thirds) therefore fires its stored thirds on three consecutive on-solution ticks once hostile, then one round per charged third. "It never bursts" is read as "it has no deliberate burst rule" (the Hunter's `pewBurst`). The reviewer or the owner may ask for a gap; if so it is a one-line `SCRIPTED`-style gap in `applyWeaponsInput`, not taken here.
+4. **The AUTO pew never bursts (spec §4.3).** The pew starts every round full (`state.ts` L230) and stays full through the hold, so the literal `pewReady` rule would open every round with three rounds on three ticks: a burst, which §4.3 rules out ("it fires each time a third has charged, and it never bursts"). The AUTO pew therefore fires only when it is on solution, hostile, and `pewAutoReady(state, i)` holds (new in `pew.ts`). That means `pewReady`, and either a full charge or a third completed by the last `tickPew`:
+   - `s.pewCharge >= pewFull(def)`, or
+   - `s.pewCharge % pewThird(def) < pewGain(state, i)`.
+
+   From full it fires one round, which leaves exactly two thirds. The next round comes when the charge is full again: one round each time a third has charged, every `PEW_TICKS_BY_BARS` ticks. AUTO's gains (6 / 8 / 12 / 15) divide the third (360) exactly, so the test is integer and exact. A charge drained by MAN shots fires again at each third it completes. The rule is stateless: no new hashed field.
 5. **The view draws the turret about the interpolated heading.** §10 says "`aimDir` of the interpolated turret". The turret is fixed to the hull, so the muzzle line is drawn at the interpolated nose angle plus the turret's current offset (`turret / AIM_STEPS` of a turn). The sim ticks at 60 Hz (`TICK_HZ`), so the offset needs no interpolation of its own; online, the own seat's selected turret is the predicted one (Task 7).
 6. **`predictTurret` is a pure app helper,** `predictTurret(t, slot, held, manual, k)` in `app/duel/weaponsSeat.ts`, beside W-4a's seat rules. The online source's `turret(slot)` calls it with its `sentHeld`, the mode in flight (`gunModeBase`, the throttle's `throttleBase` pattern) and `unackedFrames`; Single player's `turret(slot)` returns the sim's value. This makes spec §11's agreement test a unit test against the stepped sim.
 7. **LMB in AUTO does nothing.** Both runtimes send `pewFire` only in MAN and put `gunHeld` in the held frame only in MAN (`weaponsSeatHeld(sel, trigger && manual, aim)`), and the autocannon's dead-trigger refusal is shown only in MAN, so an AUTO gun gets no command and no refusal (§4.3). The mode the runtimes judge by is the latest queued / in-flight `gunMode`, else the sim's.
@@ -65,6 +69,16 @@
 11. **The ladder's knobs are Hound-only constants (Task 10).** `MISSILE_GAP` is also the Valkyrn pair's (`gunner` on the Valkyrn class, pinned by `tests/valkyrnIdentity.test.ts`), and `AUTOCANNON` copies `GUN`'s hit numbers. So Task 10 first adds `AUTOCANNON_HITS_PER_HULL`, `HOUND_MISSILE_GAP` and `HOUND_GUNNER_AUTOCANNON_BARS` at their base values (a no-op), then moves only those. Rung 4's 0 / 2 / 1 is the gunner sending `weaponPower {Pew, −1}` then `{Autocannon, +1}` twice after the `shipPower`, each pre-checked as §12 requires.
 12. **The duel app smoke presses Z before its quiet check (Task 5).** W-4a's step 5 asserts that Space fires nothing for 2 s. From Task 6 an AUTO gun may fire on its own once hostile, so the step first sets both guns to MAN (Z), where nothing fires without the left button.
 13. **The scripted gunner sends no `gunMode` and no held aim** (§12). Its `houndGunner` keeps W-4a's bar move and torpedo rule and loses the stand-in pew; its AUTO guns open the tick after its torpedo launch ends the hold, or at the 30 s clock.
+
+
+## Seam for W-4c
+
+W-4c (`docs/superpowers/plans/2026-11-19-w4c-manual-torpedo.md`) adds the MANUAL-torpedo flight gates on top of these exact shapes. W-4c's plan anchors on them as written here:
+- **The online prediction:** the online source's `turret(slot: 0 | 1)` returns `predictTurret(d.tactical, slot, sentHeld, gunModeShown ?? d.tactical.systems[0].gunsManual, unackedFrames)` at the Hound's Weapons seat (Task 7). W-4c's flight gate is the `k` argument at that call: `manualTorpedoFlying(d.tactical) ? 0 : unackedFrames`.
+- **The MAN slew:** in `slewTurrets` (`turret.ts`, Task 4), each gun is one pass of `for (const gun of ['pew', 'gun'] as const) { ... }`. The MAN branch is `if (s.gunsManual) { if (input.weaponSel !== slot || input.turretAim < 0) continue; next = slewTurret(...); }` inside that loop. W-4c's guard is `if (manualTorpedoFlying(state, i)) continue;` as the MAN branch's first statement, a `continue`, not a `return`.
+- **The `pewFire` AUTO refusal:** in `step.ts`'s `pewFire` block (Task 6), `if (!sys0.gunsManual) { result(e, 'unavailable'); continue; }`, just before the noop. W-4c's `missile-in-flight` refusal goes right after it.
+- **The crew literal:** `turretAim: gunner >= 0 ? heldTurretAim(gunnerHeld) : -1` (Task 2).
+- **The online held frame:** after Task 5, `pump` builds it as `sessionHeld(k, d, me, steer, { sel: weaponSel, trigger: triggerNow() && (gunModeSent ? gunModeSent.manual : d.tactical.systems[0].gunsManual), aim: reticleNow() ?? -1 })`.
 
 ---
 
@@ -467,7 +481,7 @@ describe("MAN's fire rate (W-4 spec §4.4)", () => {
 });
 ```
 
-(`tickGun`'s MAN trigger in this task is W-4a's `input.gunHeld`; Task 6 keeps it for MAN.) Check the noop's status string against W-4a's `tests/w4Frequency.test.ts` and match it if W-4a's executor found a different shape.
+(`tickGun`'s MAN trigger in this task is W-4a's `input.gunHeld`; Task 6 keeps it for MAN.) A noop result is `{ status: 'noop' }` (`step.ts` L317, L322: `result(e, undefined, 'noop')`), as the test reads.
 
 - [ ] **Step 2: Run it to see it fail**
 
@@ -613,7 +627,8 @@ describe('when a turret slews (W-4 spec §3.4)', () => {
     expect([autoSolution(st, 0, 'pew'), autoSolution(st, 0, 'gun')]).toEqual([null, null]);   // a rock in the line
     st.rocks.fill(0);
     Object.assign(st.ships[1], { x: hx(40) * 300, y: 1500 + hy(40) * 300 });   // 56° right: inside the pew's ±60°, outside the autocannon's ±30°
-    expect(autoSolution(st, 0, 'pew')).toBe(40 * 256);
+    const e = st.ships[1]!;
+    expect(autoSolution(st, 0, 'pew')).toBe(turretOffset(0, pewLead(st, 0, e.x, e.y, 0, 0)));   // 42 × 256: the lead is from the muzzle, 21 u ahead, so bearing 40 from the centre is 42.46 steps from it
     expect(autoSolution(st, 0, 'gun')).toBeNull();
     for (let k = 0; k < 30; k++) tick(st, IDLE_INPUT);
     expect(s.gunTurret).toBe(0);   // no solution: back to the nose
@@ -861,11 +876,53 @@ describe('the reticle and Z (W-4 spec §9, W-4b)', () => {
 });
 ```
 
-Append to `tests/w4Runtime.test.ts`, in its own idiom (its `rt` factory with `triggerHeld` and the new `reticleAim` dep, seated at the Hound's Weapons seat), these `it`s with every named assertion:
-- `Z queues gunMode {manual: true}, a second Z queues {manual: false}; the laser fit's Weapons seat still queues laserMode`;
-- `in AUTO a left click with pew pew selected queues nothing and refuses nothing; in MAN it queues pewFire {}`;
-- `in AUTO the held trigger with the autocannon selected puts no gunHeld in the held frame and refuses nothing; in MAN it puts gunHeld and a dead trigger refuses NO POWER`;
-- `the held frame carries turretAim from deps.reticleAim, and none while it returns null`.
+In `tests/w4Runtime.test.ts` (W-4a's file, its `rig(cls?)`), extend the rig with a reticle: add `reticle: number | null = null` beside `trigger`, the dep `reticleAim: () => reticle` beside `triggerHeld`, and `const aim = (v: number | null): void => { reticle = v; };` returned with the others. Then:
+
+**Kind (a), W-4 spec §4.3, §9** (each round starts AUTO, where LMB does nothing). In W-4a's case "LMB: pewFire with pew pew selected …", insert `r.press('weaponMode'); r.tick();` after the Space check and before the first click. In W-4a's case "the held trigger sends gunHeld only with the autocannon selected …", insert `r.press('weaponMode'); r.tick();` as its first line. Their assertions stay. In the laser-fit case, `r.press('laserMode')` becomes `r.press('weaponMode')` (the renamed press).
+
+Append:
+
+```ts
+describe("the Hound's Weapons seat in W-4b (W-4 spec §4.1, §4.3, §9)", () => {
+  it("Z queues gunMode {manual: true}, a second Z {manual: false}; the laser fit's Weapons seat still queues laserMode", () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      r.press('weaponMode'); r.tick(); expect([sys.gunsManual, r.statuses()]).toEqual([true, ['applied']]);
+      r.press('weaponMode'); r.tick(); expect(sys.gunsManual).toBe(false);
+    } finally { r.rt.dispose(); }
+    const f = rig(ShipClass.ValkyrnLaser);
+    try { f.press('weaponMode'); f.tick(); expect(f.d.tactical.systems[0].laserManual).toBe(true); } finally { f.rt.dispose(); }
+  });
+  it('in AUTO a left click with pew pew selected queues nothing and refuses nothing; in MAN it queues pewFire {}', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      r.rt.takeRefusals();
+      r.click(); r.tick(); expect([sys.pewShots, r.statuses(), r.rt.takeRefusals()]).toEqual([0, [], []]);
+      r.press('weaponMode'); r.tick();
+      r.click(); r.tick(); expect([sys.pewShots, r.statuses()]).toEqual([1, ['applied']]);
+    } finally { r.rt.dispose(); }
+  });
+  it('in AUTO the held trigger puts no gunHeld and refuses nothing; in MAN it puts gunHeld and a dead trigger refuses NO POWER', () => {
+    const r = rig();
+    try {
+      r.set({ selectTo: 1 }); r.tick(); r.rt.takeRefusals();
+      r.hold(true); r.tick();
+      expect([r.rt.held()[0]!.gunHeld, r.rt.takeRefusals()]).toEqual([undefined, []]);
+      r.hold(false); r.press('weaponMode'); r.tick(); r.rt.takeRefusals();
+      r.hold(true); r.tick();
+      expect(r.rt.held()[0]!.gunHeld).toBe(true);
+      expect(r.rt.takeRefusals()).toContainEqual({ control: 'autocannon', reason: 'NO POWER' });
+    } finally { r.rt.dispose(); }
+  });
+  it('the held frame carries turretAim from deps.reticleAim, and none while it returns null', () => {
+    const r = rig();
+    try {
+      r.aim(12000); r.tick(); expect(r.rt.held()[0]!.turretAim).toBe(12000);
+      r.aim(null); r.tick(); expect(r.rt.held()[0]!.turretAim).toBeUndefined();
+    } finally { r.rt.dispose(); }
+  });
+});
+```
 
 Append to `tests/w4Online.test.ts`:
 
@@ -883,7 +940,36 @@ describe('the online reticle and mode (W-4 spec §11, W-4b)', () => {
 });
 ```
 
-and, in the idiom of `tests/onlineDuelSession.test.ts` (its session rig), the cases: (1) Z sends `gunMode {manual: true}` once, a second Z in a later pump before the result sends `{manual: false}` (from `gunModeSent`, not the replica); (2) in AUTO a left click with pew pew selected sends nothing; after Z it sends `pewFire {}`; (3) a change of the reticle alone is stamped as a held change.
+In `tests/onlineDuelSession.test.ts`, add `reticle(aim: number): void;` to both `requests` type literals (L56, L70; the rename below turns their `aimLaser` into `reticle`, so it is that entry). **Kind (a), W-4 spec §4.3:** W-4a's "the online Hound Weapons seat" cases (1) and (2) start with `r.key('keydown', 'KeyZ'); r.key('keyup', 'KeyZ'); r.pump();` (MAN), and their assertions stay. Then add, in the same block, with `const r = rig(1), c = r.attach(); r.session.frame();` and the same key idiom:
+
+```ts
+  it('Z sends gunMode {manual: true}; a second Z before the result sends {manual: false} (from gunModeSent)', () => {
+    const r = rig(1), c = r.attach(); r.session.frame();
+    const z = (): void => { r.key('keydown', 'KeyZ'); r.key('keyup', 'KeyZ'); r.pump(); };
+    z(); z();
+    expect(c.commands().filter((x) => x.kind === 'gunMode')).toEqual([{ kind: 'gunMode', manual: true }, { kind: 'gunMode', manual: false }]);
+    r.dispose();
+  });
+  it('in AUTO a left click with pew pew selected sends nothing; after Z it sends pewFire {}', () => {
+    const r = rig(1), c = r.attach(); r.session.frame();
+    h.sceneOpts[0]!.requests!.pew(1234); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'pewFire')).toEqual([]);
+    r.key('keydown', 'KeyZ'); r.key('keyup', 'KeyZ'); r.pump();
+    h.sceneOpts[0]!.requests!.pew(1234); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'pewFire')).toEqual([{ kind: 'pewFire' }]);
+    r.dispose();
+  });
+  it('a change of the reticle alone is a held change', () => {
+    const r = rig(1), c = r.attach(); r.session.frame();
+    h.sceneOpts[0]!.requests!.reticle(4000); r.pump();
+    const n = c.helds().length;
+    expect(c.helds().at(-1)).toMatchObject({ turretAim: 4000 });
+    h.sceneOpts[0]!.requests!.reticle(5000); r.pump();
+    expect(c.helds().length).toBeGreaterThan(n);
+    expect(c.helds().at(-1)).toMatchObject({ turretAim: 5000 });
+    r.dispose();
+  });
+```
 
 - [ ] **Step 2: Run them to see them fail**
 
@@ -903,7 +989,7 @@ Expected: FAIL (`KeyZ` is `laserMode`; no `reticle`; `weaponsSeatHeld` has no th
 
 `app/duel/runtime.ts`: `DuelRuntimeDeps.laserAim?(): number | null;` → `reticleAim?(): number | null;` (doc: "W-2, W-4: the reticle (mapRequests reticleAim)"), and `deps.laserAim?.()` → `deps.reticleAim?.()`.
 
-`app/duel/onlineDuel.ts`: `const laserAimNow = (): number | null => requests.laserAim();` → `const reticleNow = (): number | null => requests.reticleAim();   // W-2, W-4: the reticle (kept, not drained)`, and its use `laserAimNow()` → `reticleNow()`. **Inside `pump` and `play` the name `requests` is the ContactRequests**; read the map requests only through closures declared beside `reticleNow` (`takeSteer0` is the precedent). If W-4a's code reads `requests.triggerHeld()` there, it must already go through such a closure (W-4a's executor fixed it, or tsc would fail); use the same closure, here called `triggerNow`.
+`app/duel/onlineDuel.ts`: `const laserAimNow = (): number | null => requests.laserAim();` → `const reticleNow = (): number | null => requests.reticleAim();   // W-2, W-4: the reticle (kept, not drained)`, and its use `laserAimNow()` → `reticleNow()`. **Inside `pump` and `play` the name `requests` is the ContactRequests**; read the map requests only through closures declared beside `reticleNow` (`takeSteer0` is the precedent). W-4a declares `const triggerNow = (): boolean => requests.triggerHeld();` there (W-4a Task 11 Step 3.7) and uses it in `play` and `pump`.
 
 Rename the uses in `tests/manualLaserScene.test.ts` and the `onlineDuelSession.test.ts` fakes (`aimLaser` → `reticle`, `laserAim()` → `reticleAim()`, `resetLaserAim()` → `resetReticle()`), kind (a), citing W-4 spec §9.
 
@@ -975,7 +1061,7 @@ In `app/duel/onlineDuel.ts`:
 
 and gate its pew click and dead-trigger refusal on `gunsManual` exactly as Step 6.3 does.
 5. `sessionHeld`: change the `weapons` parameter's type to `{ sel: number; trigger: boolean; aim?: number }` and its spread to `weaponsSeatHeld(weapons.sel, weapons.trigger, weapons.aim ?? -1)`; extend its doc ("and the reticle as turretAim").
-6. In `pump`, replace W-4a's `sessionHeld(k, d, me, steer, { sel: weaponSel, trigger: <the trigger closure>() })` with
+6. In `pump`, replace W-4a's `sessionHeld(k, d, me, steer, { sel: weaponSel, trigger: triggerNow() })` with
 
 ```ts
 sessionHeld(k, d, me, steer, { sel: weaponSel, trigger: triggerNow() && (gunModeSent ? gunModeSent.manual : d.tactical.systems[0].gunsManual), aim: reticleNow() ?? -1 })
@@ -995,13 +1081,13 @@ and add "(both guns in MAN)" to the step's comment.
 
 - [ ] **Step 9: Run**
 
-Run: `npx tsc -b` then `npx vitest run tests/w4Input.test.ts tests/w4Runtime.test.ts tests/w4Online.test.ts tests/manualLaserScene.test.ts tests/manualLaserInput.test.ts tests/manualLaserUi.test.tsx tests/onlineDuelSession.test.ts tests/duelCheckpoint.test.ts tests/duelRuntime.test.ts tests/settingsAndControls.test.ts tests/scienceInput.test.ts`
+Run: `npx tsc -b` then `npx vitest run tests/w4Input.test.ts tests/w4Runtime.test.ts tests/w4Online.test.ts tests/onlineDuelSession.test.ts tests/manualLaserScene.test.ts tests/manualLaserInput.test.ts tests/manualLaserUi.test.tsx tests/onlineDuelSession.test.ts tests/duelCheckpoint.test.ts tests/duelRuntime.test.ts tests/settingsAndControls.test.ts tests/scienceInput.test.ts`
 Expected: tsc clean; all PASS (a `duelCheckpoint` whole-run pin may stay known-red). Then `npm run test:duel-app-runtime`: the smoke passes.
 
 - [ ] **Step 10: Commit**
 
 ```bash
-git add src/renderer/src/app/duel/mapRequests.ts src/renderer/src/app/duel/scene.ts src/renderer/src/app/duel/duelMode.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/app/duel/input.ts src/renderer/src/app/duel/weaponsSeat.ts src/renderer/src/app/controlsList.ts src/renderer/src/ui/duel/WeaponsStation.tsx scripts/network/duel-app-smoke.ts tests/w4Input.test.ts tests/w4Runtime.test.ts tests/w4Online.test.ts <each renamed test>
+git add src/renderer/src/app/duel/mapRequests.ts src/renderer/src/app/duel/scene.ts src/renderer/src/app/duel/duelMode.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/app/duel/input.ts src/renderer/src/app/duel/weaponsSeat.ts src/renderer/src/app/controlsList.ts src/renderer/src/ui/duel/WeaponsStation.tsx scripts/network/duel-app-smoke.ts tests/w4Input.test.ts tests/w4Runtime.test.ts tests/w4Online.test.ts tests/onlineDuelSession.test.ts <each renamed test>
 git commit -m "feat(w4b): the reticle drives turretAim, Z toggles both guns (gunMode), LMB fires only in MAN, local and online (W-4 spec §4.1, §4.3, §9, §11)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -1010,25 +1096,26 @@ git commit -m "feat(w4b): the reticle drives turretAim, Z toggles both guns (gun
 ### Task 6: AUTO fires: the pew on each third, the autocannon to 80 % heat, nothing in the hold; the scripted gunner on AUTO
 
 **Files:**
-- Modify: `src/renderer/src/sim/tactical/gun.ts` (`tickGun`), `sim/tactical/weapons.ts` (`applyWeaponsInput`), `sim/duel/step.ts` (`pewFire`'s AUTO refusal), `sim/duel/scripted.ts` (`houndGunner`)
+- Modify: `src/renderer/src/sim/tactical/gun.ts` (`tickGun`), `sim/tactical/pew.ts` (`pewAutoReady`), `sim/tactical/weapons.ts` (`applyWeaponsInput`), `sim/duel/step.ts` (`pewFire`'s AUTO refusal), `sim/duel/scripted.ts` (`houndGunner`)
 - Create: `tests/w4Auto.test.ts`
-- Modify: `tests/w4Manual.test.ts`, `tests/duelScripted.test.ts` (kind (a): W-4a's stand-in tests), `tests/w4PewFire.test.ts` (its admission now needs MAN: kind (a))
+- Modify: `tests/w4Manual.test.ts`, `tests/duelScripted.test.ts` (kind (a): W-4a's stand-in tests), `tests/w4PewFire.test.ts`, `tests/w4Autocannon.test.ts`, `tests/w4Turret.test.ts` (kind (a): AUTO ignores the held trigger, Step 4)
 
 **Interfaces:**
 - Consumes: `slewTurrets` → `AutoOnSolution` (Task 4), `enemyHostile(t)` (science.ts L29), `GUN_AUTO_HEAT_STOP` (tuning.ts), W-4a's `tickGun` (quoted in Step 3), W-4a's `houndGunner` (quoted in Step 5), W-4a's `pewFire` admission block (quoted in Step 4).
-- Produces: `tickGun(state, i, input, auto = false)`.
+- Produces: `tickGun(state, i, input, auto = false)`; `pewAutoReady(state, i): boolean` (pew.ts).
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 // W-4 spec §4.2, §4.3: AUTO fires only at a seen, hostile enemy ship in range, arc and line of sight, on solution, attended
-// and powered: the pew one round per stored third (Decision 4), the autocannon at its interval until 80 % heat (it never
+// and powered: the pew one round each time a third has charged, never a burst (Decision 4), the autocannon at its interval until 80 % heat (it never
 // locks; it settles at the cooling rate); in the hold (hostileAt −1) both track and fire nothing, and the first AUTO round
 // comes the tick after a crew shot or the clock ends the hold; a torpedo crossing a round aimed at the ship is still hit.
 import { describe, expect, it } from 'vitest';
 import { applyWeaponsInput, IDLE_INPUT, tickWeapons, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
-import { stepPew } from '../src/renderer/src/sim/tactical/pew';
-import { createTacticalState, placeMissile, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { pewAutoReady, pewGain, stepPew } from '../src/renderer/src/sim/tactical/pew';
+import { pewThird } from '../src/renderer/src/sim/tactical/defs';
+import { classOf, createTacticalState, placeMissile, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { hostilityStep } from '../src/renderer/src/sim/tactical/science';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import { AUTOCANNON } from '../src/renderer/src/sim/tactical/defs';
@@ -1053,12 +1140,19 @@ function tick(st: TacticalState, input: ShipInput = IDLE_INPUT): { gun: number; 
 }
 
 describe('AUTO firing (W-4 spec §4.3)', () => {
-  it('the pew: its stored thirds, then one round per charged third (60 ticks at 1 bar), on solution only', () => {
+  it('the pew: one round from full, then one round per charged third (60 ticks at 1 bar); never a burst (Decision 4)', () => {
     const st = scene([1, 0, 1]), at: number[] = [];
     for (let k = 0; k < 400; k++) if (tick(st).pew) at.push(k);
-    expect(at.length).toBeGreaterThanOrEqual(8);
-    const later = at.slice(3).map((t, j, a) => (j === 0 ? 0 : t - a[j - 1]!)).slice(1);
-    expect(new Set(later)).toEqual(new Set([PEW_RECHARGE_TICKS]));   // 1 bar: a third every 60 ticks
+    expect(at.length).toBeGreaterThanOrEqual(6);
+    expect(at[1]! - at[0]!).toBe(PEW_RECHARGE_TICKS);   // no second round on the next tick from the stored thirds
+    expect(new Set(at.slice(1).map((t, j) => t - at[j]!))).toEqual(new Set([PEW_RECHARGE_TICKS]));   // 1 bar: a third every 60 ticks
+  });
+  it('pewAutoReady: full, or a third just completed; not mid-third', () => {
+    const st = scene([1, 0, 1]), s = st.systems[0]!, def = classOf(st, 0).slots.pew!;
+    expect(pewAutoReady(st, 0)).toBe(true);   // full
+    s.pewCharge = 2 * pewThird(def) + pewGain(st, 0); expect(pewAutoReady(st, 0)).toBe(false);   // mid-third, two stored
+    s.pewCharge = 2 * pewThird(def); expect(pewAutoReady(st, 0)).toBe(true);   // a third just completed
+    s.pewCharge = pewGain(st, 0) - 1; expect(pewAutoReady(st, 0)).toBe(false);   // under a third: pewReady fails
   });
   it('the autocannon: every 10 ticks at 1 bar on solution; it stops at 80 % heat and never locks over 3000 ticks; it settles near one round per 12.5 ticks', () => {
     const one = scene([0, 1, 1]), at: number[] = [];
@@ -1183,7 +1277,19 @@ with
   tickGun(state, i, input, auto.gun && hostile);   // Valkyrn spec §7.1: before anything moves; its clocks run attended or not (Decision 8)
 ```
 
-and replace W-4a's
+In `src/renderer/src/sim/tactical/pew.ts`, after `pewReady`, add:
+
+```ts
+/** W-4 spec §4.3 (Decision 4): whether ship i's AUTO pew may fire now: pewReady, and either full or a third completed by
+ *  the last tickPew (the charge sits within one tick's gain above a whole third). So AUTO fires one round each time a third
+ *  has charged and never bursts the stored thirds. Integers on AUTO's gains (they divide the third). */
+export function pewAutoReady(state: TacticalState, i: number): boolean {
+  const def = classOf(state, i).slots.pew, c = state.systems[i]!.pewCharge;
+  return def !== null && pewReady(state, i) && (c >= pewFull(def) || c % pewThird(def) < pewGain(state, i));
+}
+```
+
+and import `pewAutoReady` in `weapons.ts` from `./pew` (beside `firePewTrigger`). Then, in `weapons.ts`, replace W-4a's
 
 ```ts
   if (input.pewTrigger) firePewTrigger(state, i);   // W-4 spec §6, §8: the crew's pewFire, along the turret; last, as before
@@ -1194,7 +1300,7 @@ with
 
 ```ts
   if (input.pewTrigger) firePewTrigger(state, i);   // W-4 spec §6, §8: the crew's MAN pewFire, along the turret; last, as before
-  else if (auto.pew && hostile) firePewTrigger(state, i);   // W-4 spec §4.3: AUTO, a round whenever on solution with a third stored (firePew checks pewReady)
+  else if (auto.pew && hostile && pewAutoReady(state, i)) firePewTrigger(state, i);   // W-4 spec §4.3 (Decision 4): AUTO, one round each time a third has charged, never a burst
   else if (input.pewAim >= 0) firePew(state, i, input.pewAim);   // W-1 (pew pew spec §1): the Hunter's aim; attended (above)
 ```
 
@@ -1213,7 +1319,10 @@ with
       if (crew.pewTrigger) { result(e, undefined, 'noop'); continue; }
 ```
 
-Fix `tests/w4PewFire.test.ts` (W-4a): its admission test now sets MAN first (`d.tactical.systems[0].gunsManual = true` after creating the duel), citing W-4 spec §6 (kind (a)).
+Kind (a) rewrites, each citing W-4 spec §4.3 (from this task on, a turret gun in AUTO ignores `gunHeld`, and every round starts AUTO):
+- `tests/w4PewFire.test.ts` (W-4a): its admission test sets MAN first (`d.tactical.systems[0].gunsManual = true` after creating the duel). Its case "on the Hound gunHeld fires the autocannon only with weaponSel 1" also sets `gunsManual = true` on the Hound duel before stepping.
+- `tests/w4Autocannon.test.ts` (W-4a): the interval-by-bars, rounds-along-the-aim, cooldown, six-hits-a-level and 0-bar cases call `tickGun(st, 0, IDLE_INPUT, true)` instead of `tickGun(st, 0, TRIGGER)`. That is AUTO on solution with the AUTO rows, so W-4a's 10 / 8 / 6 / 5 assertions stand. The heat-and-lock case sets `s.gunsManual = true` and keeps `TRIGGER`, because only MAN can lock, and its interval at the bars it uses is the MAN row's: re-pin those interval numbers to `AUTOCANNON_MAN_INTERVAL_BY_BARS` with a `// W-4b: MAN` note.
+- `tests/w4Turret.test.ts` (Task 4's "a pew round and an autocannon round leave along them"): `tickGun(st, 0, { ...IDLE_INPUT, gunHeld: true })` becomes `tickGun(st, 0, IDLE_INPUT, true)`.
 
 - [ ] **Step 5: The scripted gunner on AUTO (spec §12)**
 
@@ -1347,7 +1456,23 @@ describe('the predicted own turret (W-4 spec §11)', () => {
 });
 ```
 
-Add, in the idiom of `tests/onlineDuelSession.test.ts`, one case: after Z in a pump whose `gunMode` result has not come back, the source's `turret(0)` moves toward the reticle at MAN's traverse with `unacked` k > 0 (the mode in flight is used), and once the result comes back the replica's mode is the base again.
+Add to `tests/onlineDuelSession.test.ts`'s Hound block (the rig's replica is the published duel, never stepped, so its turret stays 0 and its mode AUTO):
+
+```ts
+  it("the source's turret(0) follows the reticle at MAN traverse while gunMode is in flight, then the replica's again", () => {
+    const r = rig(1), c = r.attach(); r.session.frame();
+    const src = () => h.sources.at(-1) as unknown as { turret(slot: 0 | 1): number };
+    h.sceneOpts[0]!.requests!.reticle(8000); r.pump(); r.session.frame();
+    expect(src().turret(0)).toBe(0);   // AUTO: the replica's
+    r.key('keydown', 'KeyZ'); r.key('keyup', 'KeyZ'); r.pump(); r.pump(); r.session.frame();
+    const p = src().turret(0);
+    expect(p).toBeGreaterThan(0); expect(p % 455 === 0 || p === 8000).toBe(true);   // k unacknowledged frames of MAN's 455 a frame toward 8000
+    const id = c.ids[c.commands().map((x) => x.kind).lastIndexOf('gunMode')]!;
+    c.results.push({ id, tick: 3, status: 'applied' }); r.pump(); r.session.frame();
+    expect(src().turret(0)).toBe(0);   // gunModeSent cleared: the replica's mode (AUTO) is the base again
+    r.dispose();
+  });
+```
 
 - [ ] **Step 2: Run it to see it fail**
 
@@ -1379,7 +1504,7 @@ export function predictTurret(t: TacticalState, slot: 0 | 1, held: Pick<HeldInpu
 
 `app/duel/scene.ts` `DuelViewSource`: add `/** W-4 spec §10, §11: gun slot's turret offset to draw (0 pew pew, 1 the autocannon): online the own seat's prediction, else the sim's. Absent: the sim's. */ turret?(slot: 0 | 1): number;`.
 
-`app/duel/runtime.ts`, in the returned object after W-4a's `weaponSel: () => weaponSel,` add `turret: (slot: 0 | 1) => (slot === 0 ? d.tactical.systems[0].pewTurret : d.tactical.systems[0].gunTurret),   // W-4 spec §11: no lag locally`.
+`app/duel/runtime.ts`: in `interface DuelRuntime` (it declares every returned member, and `createDuelRuntime` returns an object literal, so an undeclared member fails the excess-property check), after W-4a's `weaponSel(): number;` add `/** W-4 spec §11: gun slot's turret offset (the sim's; no lag locally). */ turret(slot: 0 | 1): number;`. Then, in the returned object after W-4a's `weaponSel: () => weaponSel,`, add `turret: (slot: 0 | 1) => (slot === 0 ? d.tactical.systems[0].pewTurret : d.tactical.systems[0].gunTurret),   // W-4 spec §11: no lag locally`.
 
 `app/duel/onlineSource.ts`:
 - imports: `houndWeaponsSeat` from `./controls` (beside `crewHelmSeat`), `predictTurret` from `./weaponsSeat`;
@@ -1427,28 +1552,87 @@ git commit -m "feat(w4b): the online seat predicts its own selected turret over 
 
 - [ ] **Step 1: Write the failing test**
 
-Build the combat model input the way `tests/pewViews.test.ts` (W-1) does for the Weapons console (its camera, viewport and `fx` helpers), on a Hound tactical state, then:
+Write `tests/w4Map.test.ts` on `tests/pewViews.test.ts`'s rig (its `input()` helper, `vp` and `prevOf`), with the new fields passed through:
 
 ```ts
 // W-4 spec §10 (W-4b): on the Hound's Weapons map the selected gun's arc about the nose (dim), each gun's muzzle line along
 // its turret (the selected one mid, the other dim; the pew to PEW_RANGE, the autocannon to 600), the reticle at the pointer,
 // and in AUTO a bracket on the enemy while a gun is on solution (hot once hostile, dim in the hold); no W-1 cone or aim line;
-// on the Helm and Science maps the muzzle lines only, dim, and no reticle.
+// on the Helm map the muzzle lines only, dim, and no reticle.
+import { describe, expect, it } from 'vitest';
+import { createCamera, worldToScreen, type Camera } from '../src/renderer/src/render/tactical/camera';
+import { createFx } from '../src/renderer/src/render/tactical/fxModel';
+import { headingAngle, type PrevBody } from '../src/renderer/src/render/tactical/tacticalModel';
+import { combatModel, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
+import { createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { autoSolution } from '../src/renderer/src/sim/tactical/turret';
+import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
+import { AIM_STEPS, AUTOCANNON_ARC_STEPS, AUTOCANNON_AUTO_RANGE, PEW_ARC_STEPS, PEW_RANGE } from '../src/renderer/src/sim/tactical/tuning';
+
+const vp = { w: 1280, h: 720 }, Z = 0.5;
+const prevOf = (st: TacticalState): PrevBody[] => st.ships.map((s) => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc }));
+function input(st: TacticalState, cam: Camera, console: 'helm' | 'weapons', over: Partial<CombatModelInput> = {}): CombatModelInput {
+  return { state: st, prev: prevOf(st), alpha: 1, camera: cam, viewport: vp, console, axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: 236, missilePrev: [null, null], fx: createFx(), ...over };
+}
+/** The Hound at (0, 1500) nose north, still, the Hunter 300 u ahead on `bearing`; pew 1, autocannon 1. */
+function scene(bearing = 0, cls?: number): { st: TacticalState; cam: Camera } {
+  const st = createTacticalState(5, 2, cls), s = st.systems[0]!;
+  s.bars[1] = 3; s.weaponPower = [1, 1, 1];
+  Object.assign(st.ships[0], { x: 0, y: 1500, vx: 0, vy: 0, heading: 0, headingAcc: 0 });
+  Object.assign(st.ships[1], { x: hx(bearing) * 300, y: 1500 + hy(bearing) * 300, vx: 0, vy: 0, heading: 0, headingAcc: 0 });
+  st.rocks.fill(0); st.hostileAt = 0;
+  return { st, cam: createCamera(0, 1500, Z) };
+}
+const angleOf = (m: { x1: number; y1: number; x2: number; y2: number }): number => Math.atan2(m.x2 - m.x1, -(m.y2 - m.y1));
+
 describe("the Hound's Weapons map (W-4 spec §10)", () => {
-  it('the selected arc is the selected gun\'s; none with the torpedo selected', () => {
-    // weaponSel 0: turretArc.half === PEW_ARC_STEPS / AIM_STEPS * 2π; weaponSel 1: AUTOCANNON_ARC_STEPS / AIM_STEPS * 2π; weaponSel 2: turretArc null; pewCone and pewAim null
+  it("the selected arc is the selected gun's; none with the torpedo selected; no W-1 cone or aim line", () => {
+    const { st, cam } = scene();
+    const c0 = combatModel(input(st, cam, 'weapons', { weaponSel: 0 })), c1 = combatModel(input(st, cam, 'weapons', { weaponSel: 1 })), c2 = combatModel(input(st, cam, 'weapons', { weaponSel: 2 }));
+    expect(c0.turretArc!.half).toBeCloseTo((PEW_ARC_STEPS / AIM_STEPS) * 2 * Math.PI, 12);
+    expect(c1.turretArc!.half).toBeCloseTo((AUTOCANNON_ARC_STEPS / AIM_STEPS) * 2 * Math.PI, 12);
+    expect(c2.turretArc ?? null).toBeNull();
+    expect([c0.pewCone ?? null, c0.pewAim ?? null]).toEqual([null, null]);
   });
   it('the muzzle lines follow the turrets (input.turrets wins over the state) and the selection', () => {
-    // turrets { pew: 16384 / 4 (a quarter of the arc... use 2731), gun: -2731 }: two muzzles; the first's angle from ownS equals headingAngle(own.h) + 2731 / AIM_STEPS * 2π (atan2(dx, -dy)); its length PEW_RANGE * zoom; selected flags [true, false] at weaponSel 0
+    const { st, cam } = scene();
+    const c = combatModel(input(st, cam, 'weapons', { weaponSel: 0, turrets: { pew: 2731, gun: -2731 } }));
+    expect(c.muzzles!.map((m) => m.selected)).toEqual([true, false]);
+    const [p, g] = c.muzzles!;
+    expect(angleOf(p!)).toBeCloseTo(headingAngle(0) + (2731 / AIM_STEPS) * 2 * Math.PI, 9);
+    expect(angleOf(g!)).toBeCloseTo(headingAngle(0) - (2731 / AIM_STEPS) * 2 * Math.PI, 9);
+    expect(Math.hypot(p!.x2 - p!.x1, p!.y2 - p!.y1)).toBeCloseTo(PEW_RANGE * Z, 9);
+    expect(Math.hypot(g!.x2 - g!.x1, g!.y2 - g!.y1)).toBeCloseTo(AUTOCANNON_AUTO_RANGE * Z, 9);
   });
-  it('the reticle is the pointer on the Weapons map only', () => {});
-  it('the AUTO bracket: present on solution (live when hostileAt ≥ 0, not live in the hold), absent in MAN or off solution', () => {});
-  it('on the Helm map: two dim muzzle lines, no arc, no reticle, no bracket', () => {});
-  it('the laser fit\'s Weapons map draws no muzzle lines (no turret)', () => {});
+  it('the reticle is the pointer on the Weapons map only', () => {
+    const { st, cam } = scene(), at = { x: 700, y: 300 };
+    expect(combatModel(input(st, cam, 'weapons', { reticle: at })).reticle).toEqual(at);
+    expect(combatModel(input(st, cam, 'helm', { reticle: at })).reticle ?? null).toBeNull();
+  });
+  it('the AUTO bracket: on solution, live when hostile and not in the hold; absent in MAN or off solution', () => {
+    const { st, cam } = scene(6), s = st.systems[0]!, e = worldToScreen(cam, vp, st.ships[1].x, st.ships[1].y);
+    expect(combatModel(input(st, cam, 'weapons')).bracket ?? null).toBeNull();   // turrets at 0, the solution at bearing 6
+    s.pewTurret = autoSolution(st, 0, 'pew')!;
+    expect(combatModel(input(st, cam, 'weapons')).bracket).toMatchObject({ x: e.x, y: e.y, live: true });
+    st.hostileAt = -1;
+    expect(combatModel(input(st, cam, 'weapons')).bracket).toMatchObject({ live: false });
+    s.gunsManual = true;
+    expect(combatModel(input(st, cam, 'weapons')).bracket ?? null).toBeNull();
+  });
+  it('on the Helm map: two dim muzzle lines, no arc, no reticle, no bracket', () => {
+    const { st, cam } = scene(6);
+    st.systems[0]!.pewTurret = autoSolution(st, 0, 'pew')!;
+    const c = combatModel(input(st, cam, 'helm', { reticle: { x: 1, y: 1 } }));
+    expect(c.muzzles!.map((m) => m.selected)).toEqual([false, false]);
+    expect([c.turretArc ?? null, c.reticle ?? null, c.bracket ?? null]).toEqual([null, null, null]);
+  });
+  it("the laser fit's Weapons map draws no muzzle lines (no turret)", () => {
+    const { st, cam } = scene(0, ShipClass.ValkyrnLaser);
+    expect(combatModel(input(st, cam, 'weapons')).muzzles ?? []).toEqual([]);
+  });
 });
 ```
-
-Fill each `it` with the assertions its comment names, using the real numbers (`PEW_ARC_STEPS`, `AUTOCANNON_ARC_STEPS`, `AIM_STEPS`, `PEW_RANGE`, `AUTOCANNON_AUTO_RANGE`). For the bracket, put the Hunter 300 u ahead and set `systems[0].pewTurret = autoSolution(st, 0, 'pew')!`.
 
 - [ ] **Step 2: Run it to see it fail**
 
@@ -1511,7 +1695,7 @@ export interface BracketDraw { x: number; y: number; r: number; live: boolean }
   }
 ```
 
-(`enemyShown` is declared earlier in `combatModel`; if it is declared after this point, move this block below it.) Add `drawnScale` to the tacticalModel import.
+(`enemyShown` is declared at `weaponsModel.ts` L202, above W-1's pew block at L279, so it is in scope here.) Add `drawnScale` to the tacticalModel import.
 7. In the return, add `turretArc, muzzles, reticle, bracket`.
 
 - [ ] **Step 4: The layer**
@@ -1572,11 +1756,46 @@ git commit -m "feat(w4b): the Weapons map draws the selected arc, both muzzle li
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/w4Ui.test.tsx`, in its own rig (W-4a's), these `it`s with real assertions:
-- `the two gun tags read AUTO once hostile, HOLD in the hold, MAN (both lit) in MAN`: set `hostileAt` 0 / −1 and `gunsManual` on the duel, render, read the text of `[data-testid="console-gun-mode-pew"]` and `[data-testid="console-gun-mode-autocannon"]` and their lit state (the attribute `Button` sets for `lit`, as W-3's `console-torp-mode` test reads it);
-- `a click on either tag presses weaponMode` (the store's console input records `press('weaponMode')`);
-- `the hint row reads LMB FIRE · A/D SELECT · W/S POWER · Z AUTO/MAN`;
-- `the laser fit's BEAM tag presses weaponMode too`.
+Append to `tests/w4Ui.test.tsx` (W-4a's rig: `mount()`, `texts()`, `q()`, `view()`, `weapons(over)`, `AC`, `input()`). The panel fields `gunsManual` and `gunsHold` are set directly in the view, and `Button`'s `lit` state is `dataset.uiButton === 'lit'`, as the `console-torp-mode` test reads it:
+
+```tsx
+describe('the shared AUTO / MAN / HOLD tag (W-4 spec §4.3, §10)', () => {
+  const tags = () => ['pew', 'autocannon'].map((w) => q(`[data-testid="console-gun-mode-${w}"]`)!);
+  it('the two gun tags read AUTO once hostile, HOLD in the hold, MAN (both lit) in MAN', () => {
+    const { duel } = mount();
+    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, gunsManual: false, gunsHold: false }))));
+    expect(tags().map((t) => t.dataset.uiButton === 'lit')).toEqual([false, false]);
+    expect(texts().filter((t) => t === 'AUTO')).toHaveLength(2);
+    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, gunsManual: false, gunsHold: true }))));
+    expect(texts().filter((t) => t === 'HOLD')).toHaveLength(2);
+    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, gunsManual: true, gunsHold: true }))));
+    expect(tags().map((t) => t.dataset.uiButton === 'lit')).toEqual([true, true]);
+    expect(texts().filter((t) => t === 'MAN')).toHaveLength(2);
+  });
+  it('a click on either tag presses weaponMode', () => {
+    const { ui, duel } = mount(), i = input();
+    ui.actions.setConsole(i);
+    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, gunsManual: false, gunsHold: false }))));
+    fireEvent.pointerDown(tags()[0]!, { button: 0 }); fireEvent.pointerDown(tags()[1]!, { button: 0 });
+    expect(i.press).toHaveBeenCalledTimes(2);
+    expect(i.press).toHaveBeenCalledWith('weaponMode');
+  });
+  it('the hint row reads LMB FIRE · A/D SELECT · W/S POWER · Z AUTO/MAN', () => {
+    const { duel } = mount();
+    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, gunsManual: false, gunsHold: false }))));
+    expect(texts()).toContain('LMB FIRE · A/D SELECT · W/S POWER · Z AUTO/MAN');
+  });
+  it("the laser fit's BEAM tag presses weaponMode too", () => {
+    const { ui, duel } = mount(), i = input();
+    ui.actions.setConsole(i);
+    act(() => duel.frame(view(weapons({ laserTarget: 1, burst: 2, laserManual: false }))));
+    fireEvent.pointerDown(q('[data-testid="console-laser-mode"]')!, { button: 0 });
+    expect(i.press).toHaveBeenCalledWith('weaponMode');
+  });
+});
+```
+
+The `console-laser-mode` button shows only when the panel carries `laserManual` (`WeaponsStation.tsx` L121-L122), which the last case sets.
 
 - [ ] **Step 2: Run it to see it fail**
 
@@ -1648,7 +1867,7 @@ export const AUTOCANNON_HITS_PER_HULL = 12;
  *  the spare bar, 1 / 1 / 1; 2: also pew pew's, 0 / 2 / 1). The tuning ladder's rungs 3 and 4; the Valkyrn's gunner keeps
  *  MISSILE_GAP. */
 export const HOUND_MISSILE_GAP = 1500;
-export const HOUND_GUNNER_AUTOCANNON_BARS: 1 | 2 = 1;
+export const HOUND_GUNNER_AUTOCANNON_BARS = 1 as 1 | 2;   // `as`, so `=== 2` type-checks while it holds 1
 ```
 
 In `houndGunner`: the torpedo rule's `MISSILE_GAP` → `HOUND_MISSILE_GAP`; the bar move becomes
@@ -1685,6 +1904,14 @@ Try each setting below in order, with every earlier knob back at its base value.
 
 Never touch a Hunter or a Valkyrn knob. If no setting meets the target, restore every knob to its base value; the base numbers ship.
 
+For the setting kept, update the tests it pins (kind (a), citing W-4 spec §12):
+- rung 1: `tests/w4Loadout.test.ts`'s `AUTOCANNON.hitsPerHull` assertion reads the constant, so it needs no change;
+- rung 2: W-4a's `w4Loadout` pin of `AUTOCANNON_AUTO_RANGE` (600) becomes the kept value, with `// W-4b ladder: was 600`;
+- rung 3: no test pins `HOUND_MISSILE_GAP`'s value;
+- rung 4: Task 6's "its first seated tick sends shipPower … then weaponPower Autocannon +1" reads the four commands (`shipPower`, then `weaponPower` Pew −1, then Autocannon +1 twice), and the resulting bars `[0, 2, 1]`.
+
+Add the changed test files to Step 5's commit.
+
 - [ ] **Step 4: The report**
 
 Under `## W-4b` in `docs/superpowers/research/2026-11-19-w4-report.md` write: the ladder table (every setting tried, in order), the setting kept (or "none met the target: base numbers ship; the owner decides"), and for the kept setting the per-seed table (seed, length s, outcome, pew rounds, gun rounds, torpedo launches, hold end rt, hold cause) from `telemetryLine` and the `gateSummary` lines. The aggregate gate stays `it.skip` (kind (c)); its numbers are these.
@@ -1695,7 +1922,7 @@ Expected: the per-seed gates PASS (if no setting met the target and a per-seed t
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/renderer/src/sim/tactical/tuning.ts src/renderer/src/sim/tactical/defs.ts src/renderer/src/sim/duel/scripted.ts tests/w4Loadout.test.ts docs/superpowers/research/2026-11-19-w4-report.md
+git add src/renderer/src/sim/tactical/tuning.ts src/renderer/src/sim/tactical/defs.ts src/renderer/src/sim/duel/scripted.ts tests/w4Loadout.test.ts docs/superpowers/research/2026-11-19-w4-report.md <tests/w4Auto.test.ts if rung 4 is kept>
 git commit -m "tune(w4b): the spec §12 ladder on the Hound-only knobs; <the setting kept, or base numbers>" -m "<the ladder table, one line per setting>" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -1780,4 +2007,3 @@ git commit -m "test(w4b): same-version bless at SIM_VERSION V for the turrets an
 - **Spec coverage (W-4b scope):** §3.1 state → Task 1; §3.2 slew law → Task 1, wired in Task 4; §3.3 numbers → W-4a's tuning constants, exercised in Tasks 1 and 4; §3.4 when a turret slews → Task 4 (§19.1: the MANUAL-torpedo hold is W-4c's); §4.1 the mode and `gunMode` → Task 3, the keys in Task 5; §4.2 targets and solutions (ship only, `pewLead`, `gunLead`, line of sight) → Task 4; §4.3 AUTO firing, the heat stop, LMB on an AUTO gun, the hold → Task 6 (sim) and Task 5 (app); §4.4 MAN tables → Task 3; §6 `pewFire`'s AUTO refusal → Task 6; §8 `turretAim`, `gunMode`, the tick order → Tasks 2, 3, 4, 6; §9 the mouse reticle and Z → Task 5; §10 the tags and hint → Task 9, the map → Task 8; §11 online (the authority decides, held fields, prediction, `gunModeSent`) → Tasks 5 and 7; §12 AUTO gunner and the ladder → Tasks 6 and 10; §13.1 hash and bounds → Task 1 (the cooldown bound is W-4a's Task 3); §13.4 the Valkyrn identity → Task 1, the fences → every sim task; §14's turret, AUTO, MAN, online, hash and snapshot tests → Tasks 1-9; §19.1 the per-part bless and gates → Tasks 10 and 11.
 - **Placeholders:** the app-rig tests in Tasks 5, 7, 8 and 9 name every assertion and the file whose rig to copy, as W-4a's Tasks 10-12 do, because those rigs are long and file-local. Every sim test is written in full.
 - **Type consistency:** `turretOffset`, `slewTurret`, `turretWorldAim`, `autoSolution`, `AutoOnSolution`, `slewTurrets`, `gunLead`, `tickGun(…, auto)`, `heldTurretAim`, `predictTurret`, `weaponsSeatHeld(sel, trigger, aim)`, `sessionHeld(…, { sel, trigger, aim })`, `gunModeSent`, `gunModeBase`, `DuelViewSource.turret`, `MapRequests.reticle/reticleAim/resetReticle`, `DuelRuntimeDeps.reticleAim`, `KeyAction 'weaponMode'`, `CombatModelInput.turrets/weaponSel/reticle`, `CombatDraw.turretArc/muzzles/reticle/bracket` and `WeaponsPanel.gunsManual/gunsHold` are each defined once and used with the same signature in later tasks.
-- **Seen in W-4a's plan that W-4b depends on (for the controller):** W-4a Task 3's `validateTacticalValues(Array.from(flattenTactical(st)), st)` has its arguments reversed (the export is `(shape, values, offset)`; W-4a tells its executor to check); W-4a Tasks 10 and 11 call `requests.triggerHeld()` inside `play` / `pump`, where `requests` is the ContactRequests (online, inside `pump`; local `play`'s `requests` parameter likewise), so the trigger must be read through a closure or a dep (`deps.triggerHeld?.()` locally): W-4b's Task 5 relies on that closure existing and calls it `triggerNow`.
