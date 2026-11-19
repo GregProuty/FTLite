@@ -22,6 +22,7 @@ const DUEL_ACTION: Readonly<Record<Exclude<KeyAction, 'fireUp'>, string>> = {
   fireDown: 'At Weapons, fire a full laser (in MANUAL, along the map aim); at the Helm, hold to turn the nose onto the enemy (auto-face)',
   launch: 'At Weapons, launch a torpedo',
   laserMode: 'At Weapons, switch the laser between AUTO (it fires at its target by itself) and MANUAL (Space fires it along the map aim)',
+  torpMode: 'At Weapons, switch the torpedo between AUTO (it homes on its target) and MANUAL (F launches it with no target; A/D and the right mouse fly it)',
   stand: 'Stand up from a console',
   switch: 'Switch between the Helm and Weapons characters',
   pause: 'Pause and resume',
@@ -42,7 +43,7 @@ function codesFor(action: KeyAction): string[] {
 export function controlSections(): ControlSection[] {
   const move = [MOVE_CODES.up, MOVE_CODES.left, MOVE_CODES.down, MOVE_CODES.right].map(keyLabel).join(' ');
   // The mouse rows are written here by hand (createPointerSource in duel/input.ts: wheel zooms, right or middle drag pans).
-  const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, A/D turn' }];
+  const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, A/D turn; at Weapons, A/D steer a MANUAL torpedo in flight' }];
   for (const action of Object.keys(DUEL_ACTION) as (keyof typeof DUEL_ACTION)[]) {
     const keys = codesFor(action).map(keyLabel).join(' / ');
     duel.push({ keys, action: DUEL_ACTION[action] });
@@ -53,7 +54,7 @@ export function controlSections(): ControlSection[] {
   duel.push({ keys: `Shift+${keyLabel(MOVE_CODES.up)}`, action: 'At the Helm, full throttle' }, { keys: `${keyLabel(PING_CODE)} / Middle click`, action: 'Ping the map point (or the enemy) for the crew' });
   duel.push({ keys: 'Mouse wheel', action: 'Zoom (the maps and the ship); over the Helm throttle, step it' },
     { keys: 'Left click', action: 'At Weapons, fire the pew at the map point (3 shots, then it recharges; inside a 60° cone of the nose)' },
-    { keys: 'Right click or drag', action: 'At the Helm, set a heading to hold (on your ship: clear); elsewhere pan' },
+    { keys: 'Right click or drag', action: 'At the Helm, set a heading to hold (on your ship: clear); at Weapons, the heading a MANUAL torpedo in flight holds (on it: clear); elsewhere pan' },
     { keys: 'Middle drag', action: 'Pan the camera (in the ship, when zoomed in)' });
   const k = SECTOR_KEYS;
   const sector: ControlRow[] = [

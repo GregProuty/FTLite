@@ -198,9 +198,10 @@ export const NO_LASER = 'NO LASER';
  *  laserCharge (the gunner, then canCharge: no torpedo flying, then Weapons offline, where it is admitted to no effect);
  *  LAUNCH is missileLaunch (the gunner, then canLaunch's checks in its order: flying, the magazine, Weapons, range); the
  *  Helm's turn, auto-face, throttle and heading fly nothing while Engines are off (level 2). PEW (W-1) is pewFire: the gunner,
- *  the pew, then a third stored (NO CHARGE). W-2 (pew pew spec §2): FIRE in MANUAL (`manual`, default the sim's mode) is laserFire: after the same checks, NO CHARGE without manualLaserReady. */
-export function refusal(d: DuelState, control: RefusedControl, manual = d.tactical.systems[CREW_SLOT].laserManual): string | null {
-  const t = d.tactical, sys = t.systems[CREW_SLOT];
+ *  the pew, then a third stored (NO CHARGE). W-2 (pew pew spec §2): FIRE in MANUAL (`manual`, default the laser's mode) is laserFire: after the same checks, NO CHARGE without
+ *  manualLaserReady. W-3 (pew pew spec §3): LAUNCH in MANUAL (`manual`, default the torpedo's mode) has no range: never OUT OF RANGE. */
+export function refusal(d: DuelState, control: RefusedControl, manual?: boolean): string | null {
+  const t = d.tactical, sys = t.systems[CREW_SLOT], m = manual ?? (control === 'launch' ? sys.torpManual : sys.laserManual);   // W-3: the control's own weapon's mode
   if (control === 'pew') {   // W-1 (pew pew spec §1): the gunner, then the class, then a third stored
     if (!gunnerPresent(d)) return 'NO GUNNER';
     if (classOf(t, CREW_SLOT).slots.pew === null) return 'NO PEW';
@@ -210,10 +211,10 @@ export function refusal(d: DuelState, control: RefusedControl, manual = d.tactic
     if (!gunnerPresent(d)) return 'NO GUNNER';
     if (control === 'fire' && classOf(t, CREW_SLOT).slots.laser === null) return gunReason(t);   // Valkyrn spec §6.1: the gun's reasons
     if (missileOf(t, CREW_SLOT)) return 'TORPEDO FLYING';
-    if (control === 'fire') return laserOffline(t, CREW_SLOT) ? 'WEAPONS OFFLINE' : manual && !manualLaserReady(t, CREW_SLOT) ? 'NO CHARGE' : null;   // W-2: a MANUAL press needs a full charge
+    if (control === 'fire') return laserOffline(t, CREW_SLOT) ? 'WEAPONS OFFLINE' : m && !manualLaserReady(t, CREW_SLOT) ? 'NO CHARGE' : null;   // W-2: a MANUAL press needs a full charge
     if (sys.magazine <= 0) return 'NO TORPEDOES';
     if (sys.rooms[Room.Weapons] >= 2) return 'WEAPONS OFFLINE';
-    return torpedoInRange(t, CREW_SLOT) ? null : 'OUT OF RANGE';
+    return m || torpedoInRange(t, CREW_SLOT) ? null : 'OUT OF RANGE';   // W-3: a MANUAL launch has no range
   }
   return sys.rooms[Room.Engines] >= 2 ? 'ENGINES OFFLINE' : null;
 }

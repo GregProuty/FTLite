@@ -11,6 +11,7 @@ import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
+import { placeMissile } from '../src/renderer/src/sim/tactical/state';
 import { sitDown, standUp } from '../src/renderer/src/sim/stations';
 import type { OnlinePortDescriptor, OnlineStatus } from '../src/shared/onlineSession';
 import { duelCompatibility } from '../src/network/online/onlineDuel';
@@ -50,7 +51,7 @@ function stubClient() {
 type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
   clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null; notice?: string | null }[], overlay: [] as (readonly string[] | null)[],
-  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 }
+  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void; torpHeading(h: number): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 }
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
 vi.mock('../src/network/portLink', () => ({
@@ -63,7 +64,7 @@ vi.mock('../src/network/portLink', () => ({
 vi.mock('../src/network/transport/bridge', () => ({ browserPortEndpoint: () => ({}) }));
 vi.mock('../src/renderer/src/app/duel/scene', () => ({
   // Mirrors the real scene: draw hands the UI a frame, dispose clears the sink (scene.ts dispose: options.ui.clear()).
-  createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void } }) => {
+  createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void; torpHeading(h: number): void } }) => {
     h.sceneOpts.push(opts);
     return {
       draw: (source: unknown, _dt: number, o: { banner: string | null; notice?: string | null }) => {
@@ -211,6 +212,68 @@ describe('the online manual laser (W-2)', () => {
     c.results.push({ id, tick: 3, status: 'rejected', reason: 'unavailable' }); r.pump();
     r.session.frame();
     expect(fireRefusals()).toEqual([{ control: 'fire', reason: 'NO CHARGE' }]);
+    r.dispose();
+  });
+});
+
+describe('the online manual torpedo (W-3)', () => {
+  const sent = (c: Stub, kind: string) => c.commands().filter((x) => x.kind === kind);
+  const launchRefusals = () => h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'launch');
+  /** The crew far from the enemy (out of torpedo range). */
+  const apart = (d: DuelState): void => { Object.assign(d.tactical.ships[0], { x: 0, y: 1500, vx: 0, vy: 0 }); Object.assign(d.tactical.ships[1], { x: 0, y: -1500, vx: 0, vy: 0 }); };
+  it('V sends torpMode from the mode in flight, else the replica\'s', () => {
+    const r = rig(1), c = r.attach();
+    r.session.frame();
+    r.key('keydown', 'KeyV'); r.key('keyup', 'KeyV'); r.pump();
+    r.key('keydown', 'KeyV'); r.key('keyup', 'KeyV'); r.pump();
+    expect(sent(c, 'torpMode')).toEqual([{ kind: 'torpMode', manual: true }, { kind: 'torpMode', manual: false }]);
+    r.dispose();
+  });
+  it('in MANUAL F is sent out of range and on an empty replica magazine; an unavailable answer names NO TORPEDOES', () => {
+    const r = rig(1);
+    apart(r.d);
+    r.d.tactical.systems[0]!.torpManual = true;
+    r.d.tactical.systems[0]!.magazine = 0;   // the lagging replica: empty
+    const c = r.attach();
+    r.session.frame();
+    r.key('keydown', 'KeyF'); r.key('keyup', 'KeyF'); r.pump();
+    expect(sent(c, 'missileLaunch')).toEqual([{ kind: 'missileLaunch' }]);
+    r.session.frame(); expect(launchRefusals()).toEqual([]);   // nothing is shown before the authority answers
+    const id = c.ids[c.commands().map((x) => x.kind).lastIndexOf('missileLaunch')]!;
+    c.results.push({ id, tick: 3, status: 'rejected', reason: 'unavailable' }); r.pump();
+    r.session.frame();
+    expect(launchRefusals()).toEqual([{ control: 'launch', reason: 'NO TORPEDOES' }]);
+    r.dispose();
+  });
+  it('in AUTO F out of range is not sent and says OUT OF RANGE', () => {
+    const r = rig(1);
+    apart(r.d);
+    const c = r.attach();
+    r.session.frame();
+    r.key('keydown', 'KeyF'); r.key('keyup', 'KeyF'); r.pump();
+    expect(sent(c, 'missileLaunch')).toEqual([]);
+    r.session.frame();
+    expect(launchRefusals()).toEqual([{ control: 'launch', reason: 'OUT OF RANGE' }]);
+    r.dispose();
+  });
+  it('while the replica shows the MANUAL torpedo flying, A/D are torpTurn and the right button\'s heading is torpHeading', () => {
+    const r = rig(1);
+    apart(r.d);
+    r.d.tactical.systems[0]!.torpManual = true;
+    placeMissile(r.d.tactical, 0, { x: 0, y: 1300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 30 }, true);
+    const c = r.attach();
+    r.session.frame();
+    r.key('keydown', 'KeyD'); r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ torpTurn: 1 });
+    r.key('keyup', 'KeyD');
+    h.sceneOpts[0]!.requests!.torpHeading(40); r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ torpHeading: 40 });
+    expect('torpTurn' in c.helds().at(-1)!).toBe(false);
+    r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ torpHeading: 40 });   // re-sent while it holds
+    r.key('keydown', 'KeyA'); r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ torpTurn: -1 });
+    expect('torpHeading' in c.helds().at(-1)!).toBe(false);
     r.dispose();
   });
 });
