@@ -26,11 +26,22 @@ The notes for this spike:
 > "power in helm is used for how quickly cold gas pressure tank recharges (air compressor power) or how much max
 > throttle can be achieved with helm (1 power = 25% max throttle, 4 power = 100% max throttle)"
 
+A follow-up from the teammate, the same day:
+
+> "WS should be used for continuous ... up and down the throttle and then AD can be used for short side-by-side bursts
+> for the cold gas thrusters, and then your ships heading can be controlled with the mouse wherever your mouse is
+> pointing the ship can point when you're holding down left click ... you can use cold gas tank also to be consumed for
+> changing turning radius ... WASD for movement forward back throttle side to side cold gas pretty much makes movement
+> on the ship really really similar to how your dude moves around on the ground"
+
 The owner's decisions in brainstorming:
 - Scope is the Helm only.
 - No drag, but gravity stays.
-- The thrusters push relative to the ship. Q and E strafe as well as ← and →.
+- The thrusters push relative to the ship. A/D, Q/E and ←/→ all strafe; ↑/↓ push fore and aft.
 - Holding a key gives a steady push.
+- Holding the left mouse button steers: the ship turns to point at the cursor. A and D no longer turn the ship.
+- Gas speeds up turns: while the ship turns and the tank has gas, it vents gas to turn faster. Turning without gas
+  works at the normal rate.
 - The Helm splits its bars between ENGINE and COMPRESSOR, the way Weapons splits its bars.
 
 Starting point: master at SIM_VERSION 53. The Helm lives in:
@@ -54,8 +65,8 @@ All paths are under `src/renderer/src/`. All numbers are starting values, kept i
 
 - **No drag:** the crew ship flies with drag 0 and stabilise 0. It coasts at the same velocity until something
   changes it: an input, gravity, a bounce or a collision.
-- **Turning:** heading holds still unless A or D is held or a held heading is set. That matches today; there is no
-  angular momentum.
+- **Turning:** heading holds still unless the mouse is steering (§4a) or a held heading is set. There is no angular
+  momentum.
 - **Gravity stays:** planet gravity, bounces and contact damage are unchanged.
 - **Top speed:** `MAX_SPEED` = 400 u/s. Without drag, the speed would otherwise have no limit.
   - Main engine or thruster thrust is applied only up to the cap. Any thrust component that would take the speed past
@@ -93,7 +104,8 @@ All paths are under `src/renderer/src/`. All numbers are starting values, kept i
   - the clickable throttle notches;
   - the W/S notch stepping.
 - **Kept:** the old envelope kind is refused `malformed`, like any unknown kind.
-- **Kept:** the held heading. The `heading` command, right-click and drag, and A/D cancelling the hold all stay.
+- **Kept:** the held heading, set by the `heading` command with right-click and drag. Left-button steering cancels it
+  (§4a), which used to be A/D's job.
 - **Unattended Helm** (solo play, or the Valkyrn's `helmHoldsUnattended`):
   - the throttle returns to 0, and the ship coasts;
   - a held heading still turns it, as today.
@@ -101,8 +113,8 @@ All paths are under `src/renderer/src/`. All numbers are starting values, kept i
 ## 4. Cold gas thrusters
 
 - **Keys:**
-  - ← and Q push to port.
-  - → and E push to starboard.
+  - A, Q and ← push to port.
+  - D, E and → push to starboard.
   - ↑ pushes forward.
   - ↓ pushes aft.
   - Each push is relative to the ship's nose: the push direction is the heading table's forward or right vector.
@@ -126,6 +138,35 @@ All paths are under `src/renderer/src/`. All numbers are starting values, kept i
   - It's kept as an integer accumulator in sixtieths, so tick counts are exact. Refill happens even while the tank is
     venting.
 - **Round start:** the tank is full.
+
+## 4a. Mouse steering and the gas-boosted turn
+
+- **Steering:** while the Helm player holds the left mouse button on the Helm view, the ship turns toward the cursor.
+  - The client sends the world heading from the ship's centre to the cursor, as a heading index, in the existing
+    `HeldInput.aim` field. It's sent every frame the button is held.
+  - The sim already turns toward a held aim: `heldAim` and `aimTurn` in `sim/duel/step.ts` (Valkyrn spec §6.2). The
+    priority in `helmTurn` is unchanged: auto-face, then aim, then the held heading.
+  - Releasing the button stops the turn, and the heading then holds still.
+- **A/D no longer turn.** For the crew Helm (the Cutter and Hound classes), the client maps A/D into `rcsX` and sends
+  `moveX` as 0. So `helmTurn`'s A/D branch never fires for the crew Helm, and its code stays as it is for the Valkyrn.
+- **Steering clears the held heading:** a tick whose Helm attendant has a held aim sets `holdHeading` to −1. A/D used
+  to do that.
+- **What a left click no longer does:** a left click on the Helm view only steers. Any left-click handling the Helm
+  view has today (throttle notches) is removed with §3. Right-click and drag still set a held heading.
+- **The gas boost:** on a tick the crew ship turns (the turn axis is non-zero) and the tank holds at least
+  `RCS_TURN_GAS` = 4 units:
+  - the turn rate is multiplied by `RCS_TURN_BOOST` = 2. `flyShip` reduces the turn axis to its sign, so the boost
+    can't travel in the axis. `Axes` gains an optional `turnBoost` (1 or 2, default 1), and `flyShip`'s turn becomes
+    `sign(turn) × turnBoost × cls.turnStepsPerTick × engine factor`;
+  - the tank loses 4 units.
+  - It applies to any turn of the crew ship: the mouse, auto-face or a held heading. Without gas, the turn runs at the
+    normal rate.
+  - ENGINE bars set only the throttle cap; they don't change turning. When the Engines room is failed (damage level 2),
+    the engine factor is 0 and the ship can't turn, as today. That tick spends no boost gas.
+- **The aim band:** `aimTurn`'s three-index dead band assumes the turn is under 3 steps a tick. At 2× it's about 3.56
+  steps, so the boosted turn needs a matching dead band: `aimTurn` and `headingTurn` take the tick's step size, and
+  stop within it, so the nose never oscillates around the target.
+- **Gas spending order** in a tick: the turn boost first, then `rcsY`, then `rcsX`.
 
 ## 5. Helm power: ENGINE and COMPRESSOR
 
@@ -171,7 +212,10 @@ The changes are in `ui/duel/HelmStation.tsx` and the console models:
 - **Sound:**
   - A soft hiss loop plays while venting: a Kenney CC0 sample, added as `sfx.rcs` in `audio/soundBank.ts`.
   - The engine hum, which already scales with the flame, now follows the continuous throttle.
-- **Key hints:** the Helm's key hint line lists "W/S throttle · ←→↑↓ / Q E thrusters · 1/2 power".
+- **Key hints:** the Helm's key hint line lists "W/S throttle · hold LMB steer · A/D Q/E ←→↑↓ thrusters · 1/2
+  power".
+- **Steering marker:** while the left button is held, a dashed amber line runs from the ship to the cursor on the Helm
+  view.
 
 ## 7. Sim rules, state and the wire
 
@@ -192,7 +236,7 @@ The changes are in `ui/duel/HelmStation.tsx` and the console models:
   1. `helmPower` admission;
   2. the cap clamp;
   3. the throttle ramp;
-  4. thruster venting;
+  4. the turn boost (§4a), then thruster venting;
   5. the compressor refill;
   6. the crew's axes, `{ turn, thrust, rcsX, rcsY }`, for flight.
 - **The flight step** (`sim/tactical`) adds the thruster push to the main thrust, applies the top speed cap, then
@@ -226,6 +270,12 @@ The changes are in `ui/duel/HelmStation.tsx` and the console models:
   - The tank won't go negative, and the `rcsY`-first rule holds.
   - Refill timing for 0-3 bars is exact.
   - Engines room damage at level 2 leaves the thrusters working.
+- **Steering:**
+  - A held `aim` turns the crew ship toward it and clears `holdHeading`.
+  - A/D on the crew Helm give `rcsX` and no turn.
+  - With gas, a turn runs at 2× and drains 4 units a tick; without gas it runs at 1×.
+  - A boosted turn settles on the aim without oscillating.
+  - The Valkyrn's A/D turning is unchanged.
 - **`helmPower`:**
   - Helm seat only.
   - The range is refused at both ends.
@@ -253,4 +303,5 @@ The changes are in `ui/duel/HelmStation.tsx` and the console models:
 - Newtonian flight for the Hunter.
 - Angular momentum.
 - Thrusters for the Hunter, or on the sector map.
+- The Valkyrn solo ships: their Flight seat keeps today's controls (A/D turn, and the left button is the gun).
 - Engineering's real Engines bars, which plug in at merge (§5).
