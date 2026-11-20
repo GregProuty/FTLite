@@ -8,7 +8,8 @@
 // step plus its hash) p99 <= 0.8 ms; one publication (verify, or restore and 12 ticks) p99 <= 4 ms. --force-resim
 // perturbs the partner's published held input so every publication re-simulates (the worst case). Exit 1 on a G6 miss.
 //   npx tsx scripts/measure-prediction.ts [--force-resim] [--json <path>]
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { computeContentDigest } from '../build/contentDigest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
@@ -124,5 +125,5 @@ const a = [partA('quiet', 4, 0), partA('busy, a burst every 10 s', 4, 600), part
 console.table(a);
 const b = partB(force);
 console.log(`G6 (${force ? 'every publication re-simulated' : 'natural'}): one local tick p99 ${b.tickP99.toFixed(3)} ms (<= 0.8), one publication p99 ${b.pubP99.toFixed(3)} ms (<= 4), verified ${b.verified}, re-simulated ${b.resimulated}, live rocks max ${b.liveRocksMax}`);
-if (json) writeFileSync(json, JSON.stringify({ a, b }, null, 2));
+if (json) { mkdirSync(dirname(json), { recursive: true }); writeFileSync(json, JSON.stringify({ a, b }, null, 2)); }
 if (b.tickP99 > 0.8 || b.pubP99 > 4) process.exitCode = 1;
