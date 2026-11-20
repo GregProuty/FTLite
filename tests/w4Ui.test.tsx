@@ -92,7 +92,7 @@ describe("the Hound's Weapons station (W-4 spec §10)", () => {
     for (const t of ['LMB FIRE · A/D SELECT · W/S POWER', 'PEW: NO CHARGE', 'PEW: WEAPONS OFFLINE', 'AUTOCANNON: NO POWER', 'AUTOCANNON: OVERHEAT', 'AUTOCANNON: WEAPONS OFFLINE', 'AUTOCANNON: NO GUNNER', 'TORPEDO: TORPEDO UNPOWERED', 'TORPEDO: OUT OF RANGE', 'POWER: NO FREE BAR'])
       expect(x0 + textPx(t, 1) + 8, t).toBeLessThanOrEqual(right - textPx(freeText(9), 1));
     for (const lock of [0, 1, 2]) for (const t of [houndRoomHint(lock, false), houndRoomHint(lock, true)])   // the second row as rendered, every room and both forms
-      expect(x0 + textPx(t, 1) + 8, t).toBeLessThanOrEqual(right - textPx('ROCKS 99', 1));
+      expect(x0 + textPx(t, 1) + 8, t).toBeLessThanOrEqual(right);
   });
   it('TORPEDO in MAN while it flies and can turn reads STEER LMB (W-4 spec §10)', () => {
     const { duel } = mount();
@@ -209,7 +209,7 @@ describe('a switch on each card: the AUTO / MAN / HOLD tags (W-4 spec §4.3, §1
     for (const o of others) for (const t of [pew, gun]) expect(overlap(t, o), `${t} vs ${o}`).toBe(false);
     expect(overlap(pew, gun)).toBe(false);
   });
-  it('the hint rows: LMB FIRE · A/D SELECT · W/S POWER, then R AUTO/MAN · Q/E ROOM: <NAME>, or Q/E ROOM: <NAME> · RMB TORPEDO: CLEAR while the torpedo has a target; each clear of FREE / ROCKS by 8 px', () => {
+  it('the hint rows: LMB FIRE · A/D SELECT · W/S POWER, then R AUTO/MAN · Q/E ROOM: <NAME>, or Q/E ROOM: <NAME> · RMB TORPEDO: CLEAR while the torpedo has a target; each clear of FREE by 8 px', () => {
     const { duel } = mount(), names = ['WEAPONS', 'SHIELDS', 'ENGINES'];
     names.forEach((name, lock) => {
       act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, lock, torpTarget: -1 }))));
@@ -225,8 +225,8 @@ describe('a switch on each card: the AUTO / MAN / HOLD tags (W-4 spec §4.3, §1
     const x0 = STATION.x + 8, right = STATION.x + STATION.w - 8;
     expect(x0 + textPx('LMB FIRE · A/D SELECT · W/S POWER', 1) + 8).toBeLessThanOrEqual(right - textPx(freeText(9), 1));
     for (const lock of [0, 1, 2]) for (const t of [houndRoomHint(lock, false), houndRoomHint(lock, true)])
-      expect(x0 + textPx(t, 1) + 8, t).toBeLessThanOrEqual(right - textPx('ROCKS 99', 1));
-    expect([textPx(houndRoomHint(0, false), 1), textPx(houndRoomHint(0, true), 1)]).toEqual([173, 218]);   // the widest name (WEAPONS); 229 px is the room left of ROCKS 99 and its 8 px
+      expect(x0 + textPx(t, 1) + 8, t).toBeLessThanOrEqual(right);
+    expect([textPx(houndRoomHint(0, false), 1), textPx(houndRoomHint(0, true), 1)]).toEqual([173, 218]);   // the widest name (WEAPONS); the room left of the panel's right edge is wider
   });
   it("the laser fit's BEAM tag still presses laserMode", () => {
     const { ui, duel } = mount(), i = input();

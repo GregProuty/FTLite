@@ -9,6 +9,7 @@ import { createRenderer } from './render/renderer';
 import { createKeyboardSources } from './input/sources';
 import { createAudio } from './app/audio';
 import { createSectorAudio } from './app/sectorAudio';
+import { createFpsMeter } from './app/fpsMeter';
 import { loadSettings, saveSettings } from './app/settingsStore';
 import { controlSections } from './app/controlsList';
 import { DEFAULT_SEED, readMode, readSeed } from './app/duel/mode';
@@ -120,11 +121,11 @@ async function startApp(): Promise<void> {
   // Web build spec §7.2: no preload window API in the browser, so the Fullscreen API with the keyboard-lock rule.
   const pageFullscreen = window.ftlite ? null : createBrowserFullscreen({ document,
     keyboard: (navigator as Navigator & { keyboard?: KeyboardLockApi }).keyboard,
-    window: { addEventListener: (type, fn, capture) => window.addEventListener(type, fn as (e: KeyboardEvent) => void, capture),
+    window: { preventF11: true, addEventListener: (type, fn, capture) => window.addEventListener(type, fn as (e: KeyboardEvent) => void, capture),
       removeEventListener: (type, fn, capture) => window.removeEventListener(type, fn as (e: KeyboardEvent) => void, capture),
       dispatchEscape: () => { for (const type of ['keydown', 'keyup']) window.dispatchEvent(new KeyboardEvent(type, { code: 'Escape', key: 'Escape', bubbles: true })); } },
     matchRunning: () => inMatch(store.getState().menu), now: () => performance.now(), onChange: () => actions.windowResized() });
-  const store = createUiStore({ onlineAvailable: !!bridge, browser: browserInit, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, mapGrid: settings.mapGrid, throttleTapMs: settings.throttleTapMs, fullscreenAvailable: !!win || !!pageFullscreen?.available, controls: controlSections(),
+  const store = createUiStore({ onlineAvailable: !!bridge, browser: browserInit, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, mapGrid: settings.mapGrid, throttleTapMs: settings.throttleTapMs, fpsCounter: settings.fpsCounter, fullscreenAvailable: !!win || !!pageFullscreen?.available, controls: controlSections(),
     ships: SOLO_SHIPS.map(({ id, name, line }) => ({ id, name, line })), soloShip: settings.soloShip, valkyrnLaserFit: settings.valkyrnLaserFit } });   // Valkyrn spec §9
   bootCrt(renderer, store);
   const offGuards = installPageGuards(window, () => inMatch(store.getState().menu));   // web build spec §7.1 (harmless in Electron)
@@ -167,6 +168,7 @@ async function startApp(): Promise<void> {
     setVolume(channel, volume) { settings = { ...settings, [channel]: volume }; audio.setVolumes(settings); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     setShake(shake) { settings = { ...settings, shake }; renderer.setShake?.(shake); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     setMapGrid(mapGrid) { settings = { ...settings, mapGrid }; renderer.setMapGrid?.(mapGrid); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
+    setFpsCounter(fpsCounter) { settings = { ...settings, fpsCounter }; try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     setThrottleTap(throttleTapMs) { settings = { ...settings, throttleTapMs }; try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },   // helm round 2 §6.3: the keyboards read it live
     fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) }
       : pageFullscreen ? { get: () => pageFullscreen.get(), set: (on) => pageFullscreen.set(on) } : undefined,
@@ -209,6 +211,8 @@ async function startApp(): Promise<void> {
   window.addEventListener('focus', () => session.resume());
   renderer.app.ticker.add(() => session.frame());
   renderer.app.ticker.add(() => audio.tick(performance.now() / 1000));   // Audio-i spec section 5: the music, the hum and the fire loop
+  const fpsMeter = createFpsMeter();   // UI round §1.7
+  renderer.app.ticker.add(() => { const v = fpsMeter.frame(performance.now()); if (v !== null && store.getState().fps !== v) store.setState({ fps: v }); });
   // Teardown when the page is really going (web build spec §7.6): not on beforeunload, where a "Stay" answer to the leave
   // prompt would keep a dead game; a back-forward-cache pagehide only suspends (the page session handles it).
   let tornDown = false;

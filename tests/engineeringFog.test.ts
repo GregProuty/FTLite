@@ -31,7 +31,7 @@ import { Room } from '../src/renderer/src/sim/tactical/state';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { readoutRows } from '../src/renderer/src/render/duel/readoutModel';
 import { evadeDir, flightAlert } from '../src/renderer/src/render/duel/situationModel';
-import { fogEvents, fogPan, pushMapEffects, rockHoverAt, torpedoTone } from '../src/renderer/src/app/duel/scene';
+import { fogEvents, fogPan, pushMapEffects, torpedoTone } from '../src/renderer/src/app/duel/scene';
 import { createFx, type ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import { worldToScreen } from '../src/renderer/src/render/tactical/camera';
 import { arena, mover } from './helpers/rockArena';
@@ -204,14 +204,6 @@ describe('no fog leaks, review round 1 (spec §10.4)', () => {
     const t = createTacticalState(5), own = t.ships[0]!, r = sensorRange(t.systems[0]!), pan = fogPan(t, () => 0.8);
     expect(pan(own.x + r * 2, own.y)).toBe(0);
     expect(pan(own.x + r / 2, own.y)).toBe(0.8);
-  });
-  it('a rock over an unseen enemy takes the hover bracket (with the fog); a seen enemy over it is the contact', () => {
-    const st = arena(), e = st.ships[1]!, camera = createCamera(0, 2000, 1);
-    Object.assign(e, { x: 0, y: 2000, active: true }); mover(st, 7, 0, 2000, 0, 0, 40);
-    const at = { state: st, prev: [], alpha: 1, camera, viewport: vp }, p = worldToScreen(camera, vp, 0, 2000);
-    const fog = (enemy: boolean) => ({ range: 900, seen: { enemy, derelict: false, missile: false }, ghosts: [] });
-    expect(rockHoverAt({ ...at, fog: fog(false) }, p)).toBe(7);
-    expect(rockHoverAt({ ...at, fog: fog(true) }, p)).toBeNull();
   });
   it('the contact window on an unseen contact has no SCAN button', () => {
     const t = createTacticalState(5);

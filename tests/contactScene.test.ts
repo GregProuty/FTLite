@@ -61,7 +61,7 @@ function rig(cls?: number) {
 }
 
 describe('the scene and the contact window (spec §6.5)', () => {
-  it('T over the enemy at the Weapons console opens the contact view; a pause clears it on that frame', () => {
+  it('T over the enemy at the Weapons console opens the contact view; a pause keeps it open', () => {
     const r = rig(ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     try {
       expect(r.rt.view()).toBe('weapons');
@@ -80,7 +80,8 @@ describe('the scene and the contact window (spec §6.5)', () => {
       r.scene.draw(r.rt, 1 / 60, LIVE);   // stays open without a click
       expect(r.view()?.title).toBe('ENEMY SHIP');
       r.scene.draw(r.rt, 1 / 60, PAUSED);
-      expect(r.view()).toBeNull(); expect(r.contact.state()).toBeNull();
+      // UI round §1.5: a pause keeps the UI
+      expect(r.view()?.title).toBe('ENEMY SHIP'); expect(r.contact.state()).toEqual({ contact: 0, aim: false });
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
   it('W-1: a left click over the enemy at Weapons asks for the pew at its bearing and opens nothing', () => {
@@ -188,15 +189,16 @@ describe('the scene and the contact window (spec §6.5)', () => {
       expect(r.contact.state()).toBeNull(); expect(r.view()).toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
-  it('spike ii §6.5: with a weapon picked up, a click on a rock (no ship under it) drops it there: a rockLock request, the window closes', () => {
+  it('UI round §1.4: with a weapon picked up, a click on a rock picks nothing: no rockLock request', () => {
     const r = rig();
     try {
       const t = r.rt.duel.tactical, me = t.ships[0], slot = rockSlots(t) - 1;
       writeRock(t, slot, RockKind.Free, me.x + 150, me.y, 0, 0, 25, 3);
       r.contact.pickUp('laser'); r.scene.draw(r.rt, 1 / 60, LIVE);
       r.clicks.push(worldToScreen(r.rt.cameras.weapons, vp, me.x + 150, me.y)); r.scene.draw(r.rt, 1 / 60, LIVE);
-      expect(r.contact.takeRequests().rockLock).toEqual({ weapon: 'laser', rock: slot });
-      expect(r.contact.state()).toBeNull();
+      expect(r.contact.takeRequests().rockLock).toBeUndefined();
+      expect(r.contact.state()).toEqual({ contact: 0, aim: true });   // click(null) does nothing: the window stays open, the aim armed
+      expect(r.contact.aimWeapon()).toBe('laser');
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
 });

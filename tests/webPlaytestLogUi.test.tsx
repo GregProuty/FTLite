@@ -12,7 +12,7 @@ describe('Download playtest log', () => {
     renderUi(); fireEvent.click(screen.getByTestId('settings')); expect(screen.queryByTestId('download-playtest-log')).toBeNull();
     expect(screen.getByTestId('fullscreen-note').textContent).toBe('F11 also toggles fullscreen.');
   });
-  it('in a browser, says F11 is the browser’s own fullscreen (review R1-F7)', () => {
+  it('in a browser, says F11 also toggles fullscreen (UI round §1.6)', () => {
     const { store } = renderUi(); act(() => store.setState((s) => ({ browser: { ...s.browser, web: true } }))); fireEvent.click(screen.getByTestId('settings'));
     expect(screen.getByTestId('fullscreen-note').textContent).toBe(BROWSER_F11_TEXT);
   });

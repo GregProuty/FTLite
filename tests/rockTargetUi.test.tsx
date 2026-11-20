@@ -50,15 +50,11 @@ describe('the Weapons cards with rock targets (spec §6.5)', () => {
     expect(b.input.rockLock).not.toHaveBeenCalled();
     expect([b.input.lock.mock.calls, b.input.torpLock.mock.calls]).toEqual([[[-1]], [[-1]]]);
   });
-  it('shows the ROCKS tally (spec §7 item 9)', () => {
-    mount({ rocks: 3 });
-    expect(texts()).toContain('ROCKS 3');
-  });
-  it('the hint names rocks too, and fits its row left of the ROCKS tally', () => {
-    mount({ laserReason: 'NO TARGET', rocks: 99 });
-    expect(WEAPONS_HINT).toBe('CLICK A WEAPON, THEN A ROOM OR ROCK');
+  it('the hint names rooms only, and fits its row', () => {
+    mount({ laserReason: 'NO TARGET' });
+    expect(WEAPONS_HINT).toBe('CLICK A WEAPON, THEN A ROOM');
     expect(texts()).toContain(WEAPONS_HINT);
     const x0 = STATION.x + 8, right = STATION.x + STATION.w - 8;
-    expect(x0 + textPx(WEAPONS_HINT, 1) + 8).toBeLessThanOrEqual(right - textPx('ROCKS 99', 1));
+    expect(x0 + textPx(WEAPONS_HINT, 1)).toBeLessThanOrEqual(right);
   });
 });

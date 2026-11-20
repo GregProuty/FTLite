@@ -10,6 +10,7 @@ import { createDuelSink, createFlightSink, createLatencySink } from '../src/rend
 import type { DuelUiView } from '../src/renderer/src/ui/views';
 import { INTERNAL_H, INTERNAL_W } from '../src/shared/resolution';
 import { READOUT_COLUMN } from '../src/renderer/src/render/duel/interiorModel';
+import { PAUSE_H, PAUSE_Y } from '../src/renderer/src/ui/duel/Banners';
 import { READOUT_MARGIN, READOUT_W } from '../src/renderer/src/render/duel/readoutModel';
 import { AMBER, LINE, PAD, TEXT } from '../src/renderer/src/render/theme';
 import { FEEL_PANEL_MARGIN, FEEL_PANEL_W } from '../src/renderer/src/render/tactical/feelModel';
@@ -72,11 +73,14 @@ describe('the end card, banners and map overlay', () => {
     expect(find('VICTORY')).toMatchObject({ x: INTERNAL_W / 2, y: top + 24, anchor: '0.5' });
     expect(find('DUEL LENGTH 1:23')).toMatchObject({ y: top + 96 }); expect(find('ENTER: REMATCH')).toMatchObject({ y: top + 140 });
   });
-  it('places the three banners', () => {
+  it('places the pause line and the notice', () => {
+    // UI round §1.5: one pause line at top centre (y 66 to 90) for either pause text; the tactical one wins; the notice keeps its place
     const { duel } = mount(); act(() => duel.frame(view({ banners: { interior: 'I', tactical: 'T', notice: 'YOU: HELM' } })));
-    expect(find('I')).toMatchObject({ x: (INTERNAL_W - READOUT_COLUMN) / 2, y: 80 });
-    expect(find('T')).toMatchObject({ x: INTERNAL_W / 2, y: INTERNAL_H / 2 - 80 });
+    expect(find('I')).toBeUndefined();
+    expect(find('T')).toMatchObject({ x: INTERNAL_W / 2, y: PAUSE_Y + PAUSE_H / 2 });
     expect(find('YOU: HELM')).toMatchObject({ x: (INTERNAL_W - READOUT_COLUMN) / 2, y: 130 });
+    act(() => duel.frame(view({ banners: { interior: 'I', tactical: null, notice: null } })));
+    expect(find('I')).toMatchObject({ x: INTERNAL_W / 2, y: PAUSE_Y + PAUSE_H / 2 });
   });
   it('draws the zoom text, scale label and snap hint where the tactical layer did', () => {
     const { duel } = mount(); act(() => duel.frame(view({ overlay: { zoomText: 'ZOOM 0.50', scaleBar: { px: 80, units: 500 }, snapHint: true } })));
@@ -89,11 +93,11 @@ describe('the end card, banners and map overlay', () => {
 
 describe('the flight region', () => {
   it('draws the feel panel with its title, rows and help', () => {
-    const { flight } = mount(); act(() => flight.frame({ feel: [['SPEED', '12 u/s']], banners: { ...banners, tactical: 'PAUSED   ESC: RESUME' }, overlay: null, crt: false }));
+    const { flight } = mount(); act(() => flight.frame({ feel: [['SPEED', '12 u/s']], banners: { ...banners, tactical: 'PAUSED   ESC: RESUME   F11: FULLSCREEN' }, overlay: null, crt: false }));
     const X = INTERNAL_W - FEEL_PANEL_W - FEEL_PANEL_MARGIN, Y = FEEL_PANEL_MARGIN;
     expect(find('FLIGHT FEEL')).toMatchObject({ x: X + PAD, y: Y + PAD - 6 });
     expect(find('SPEED')).toMatchObject({ x: X + PAD, y: Y + PAD - 6 + LINE }); expect(find('12 u/s')).toMatchObject({ x: X + FEEL_PANEL_W - PAD, anchor: '1' });
-    expect(find('W/S  THRUST / REVERSE')).toBeDefined(); expect(find('PAUSED   ESC: RESUME')).toBeDefined();
+    expect(find('W/S  THRUST / REVERSE')).toBeDefined(); expect(find('PAUSED   ESC: RESUME   F11: FULLSCREEN')).toBeDefined();
   });
 });
 

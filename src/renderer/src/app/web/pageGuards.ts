@@ -1,5 +1,5 @@
 // Keys and mouse in the page (web build spec §7.1, deviation W-4). The duel keyboard already prevents Tab, Space, the
-// arrows and Backspace on its own keys; this guard covers the rest of the page during a match. F11 is the browser's;
+// arrows and Backspace on its own keys; this guard covers the rest of the page during a match. F11 is left to browserFullscreen.ts (UI round §1.6);
 // browser-reserved shortcuts (Ctrl+W, Ctrl+T) cannot be caught, and modified keys are left alone.
 import { FREQ_CODES, GUN_FREQ_CODES, WEAPON_SELECT_CODES, INTERACT_HELD, MOVE_CODES, PING_CODE, PRESS_CODES, WEAPON_CODES } from '../duel/input';
 import { SECTOR_KEYS } from '../../input/sources';

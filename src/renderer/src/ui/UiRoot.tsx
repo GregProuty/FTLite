@@ -2,6 +2,7 @@
 // each in its own boundary. The regions' reset keys are their sinks' epochs.
 import { DuelUi } from './duel/DuelUi';
 import { FlightUi } from './duel/FlightUi';
+import { FpsCounter } from './FpsCounter';
 import { Hud } from './hud/Hud';
 import { useUi } from './context';
 import { Menu, MenuFallback } from './menu/Menu';
@@ -18,6 +19,7 @@ export function UiRoot(props: { menu?: boolean }) {
       {hasDuel && <RegionBoundary name="duel" resetKey={String(duelEpoch)} fallback={null}><DuelUi /></RegionBoundary>}
       {hasFlight && <RegionBoundary name="flight" resetKey={String(flightEpoch)} fallback={null}><FlightUi /></RegionBoundary>}
       {(props.menu ?? true) && <RegionBoundary name="menu" resetKey={`${page}|${phase}|${resetEpoch}`} fallback={<MenuFallback />}><Menu /></RegionBoundary>}
+      <FpsCounter />
     </>
   );
 }

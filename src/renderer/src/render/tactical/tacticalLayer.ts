@@ -59,7 +59,7 @@ export function starField(seed: number, w: number, h: number): { x: number; y: n
 export interface TacticalLayerOptions {
   fontFamily: string; viewport: Viewport; seed?: number;
 }
-export const PAUSE_TEXT = 'PAUSED   ESC: RESUME';
+export const PAUSE_TEXT = 'PAUSED   ESC: RESUME   F11: FULLSCREEN';   // UI round §1.5, §1.6
 
 export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
   const { w, h } = opts.viewport;
@@ -292,9 +292,6 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         } else segments(marks, dashCircle(m.x, m.y, m.r, DASH, GAP, seg), 2, colour);
       }
 
-      // Weapons update spec §2: the torpedo's range circle, dashed, mid while the target is in range at Weapons, else dim.
-      const tr = c?.torpedoRange ?? null;
-      if (tr) segments(arcs, dashCircle(tr.x, tr.y, Math.max(1, tr.r), DASH, GAP, seg), 1, tr.lit ? CRT.mid : CRT.dim);
       const wd = c?.weapons ?? null;
       if (wd) {
         if (wd.enemyArc) arc(arcs, wd.enemyArc, false, 0);
