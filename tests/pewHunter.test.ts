@@ -24,11 +24,14 @@ function facing(seed: number, dist: number, bearing = 0): TacticalState {
 const hunterShots = (events: readonly DuelEvent[]) => events.filter((e) => e.kind === 'pewFire' && e.ship === 1).length;
 /** The fine difference a − b in −AIM_STEPS/2..AIM_STEPS/2. */
 const fineDiff = (a: number, b: number) => ((a - b + AIM_STEPS + AIM_STEPS / 2) % AIM_STEPS) - AIM_STEPS / 2;
-/** The first seed (1..60) whose crew torpedo the Hunter shoots down, pinned from the defence test's console line (Step 5);
+/** The first seed (1..120) whose crew torpedo the Hunter shoots down, pinned from the defence test's console line (Step 5);
  *  Task 6 re-pins it by the same rule if it moves HUNTER_PEW_ERROR, HUNTER_PEW_GAP or HUNTER_PD_CHANCE. Re-pinned at Task 6's
  *  tuning (error 8, gap 20, PD 0.3, recharge 120, duel hull ×1.75): still 4, 7 of 60 shot (12 of 60 at the start values).
- *  Re-pinned at the merge with asteroids-ii (billiard rocks; HUNTER_PEW_ERROR 8 -> 16, SIM_VERSION 55): 4 -> 19, 6 of 60 shot. */
-const PD_SEED = 19;
+ *  Re-pinned at the merge with asteroids-ii (billiard rocks; HUNTER_PEW_ERROR 8 -> 16, SIM_VERSION 55): 4 -> 19, 6 of 60 shot.
+ *  Re-pinned at asteroids-iii (SIM_VERSION 60, the new map generation gives every seed a new random stream): 19 -> 58; the
+ *  first 60 seeds had only 1 shot (0.017, under the band's 0.02), so the band runs over 120 seeds, 6 shot (0.05); over 1000
+ *  seeds the rate is 0.041 here against 0.051 at the branch base ab6b0ef2, so the defence itself is unchanged. */
+const PD_SEED = 58;
 
 describe('the Hunter attacks (spec §1)', () => {
   it('aims at the crew\'s lead point with an error within ±HUNTER_PEW_ERROR', () => {
@@ -80,8 +83,8 @@ describe('the Hunter defends (spec §1, §5)', () => {
     }
     return 'flying';
   }
-  it('sometimes shoots a crew torpedo down: a known seed, and a rate over 60 seeds within a band', () => {
-    const runs = Array.from({ length: 60 }, (_, k) => torpedoRun(k + 1));
+  it('sometimes shoots a crew torpedo down: a known seed, and a rate over 120 seeds within a band', () => {
+    const runs = Array.from({ length: 120 }, (_, k) => torpedoRun(k + 1));
     expect(runs[PD_SEED - 1]).toBe('shot');
     const rate = runs.filter((c) => c === 'shot').length / runs.length;
     expect(rate).toBeGreaterThanOrEqual(0.02);
