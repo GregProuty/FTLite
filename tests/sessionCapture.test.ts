@@ -216,7 +216,7 @@ describe('completed session captures', () => {
     const send = (kind: string, rest: object) => owner.receive({ kind, hostGeneration: 1, requestId: ++id, ...rest }, []);
     const start = () => owner.receive({ kind: 'command', command: { kind: 'start', hostGeneration: 1, requestId: ++id, initBytes: bytes(init) } }, []);
     try {
-      owner.receive({ kind: 'initialize', protocolVersion: 2, modeId: 'sector', schemaVersion: 1, simVersion: SIM_VERSION,
+      owner.receive({ kind: 'initialize', protocolVersion: 2, modeId: 'sector', schemaVersion: sectorMode.schemaVersion, simVersion: SIM_VERSION,
         contentDigest: init.contentDigest, hostGeneration: 1 }, []);
       start(); const first = messages.find(m => m.kind === 'checkpoint').candidate;
       send('capture-checkpoint', { cause: 'exit' });

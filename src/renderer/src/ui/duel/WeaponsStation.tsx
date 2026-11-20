@@ -13,7 +13,7 @@
 // Sci-1 spec §7.4: the frequency row, A B C with the tuned one lit and the weak one marked after a Level 2 scan (keys 3/4/5).
 // Feel-i (console feel spec §1, §3): the BEAM card flashes FIRING while the shot is lined up, says why not in words on the
 // row under the cards (`BEAM: OUT OF ARC: HELM TURN RIGHT`), and its frame pulses (the goal glow) while it has no target.
-// Spike ii: TGT ROCK on a card with a rock target, the hint names rocks, the ROCKS tally.
+// Spike ii: TGT ROCK on a card with a rock target. UI round §1.4: no rock in the hint, no ROCKS tally.
 // W-4 spec §10 (W-4a): on the Hound (a panel with `autocannon`) the block is PEW PEW, AUTOCANNON and TORPEDO in slot order, the
 // selected card's frame hot (a card click selects; TORPEDO is also picked up), AUTOCANNON's rate and heat bar with OVERHEAT,
 // no BEAM and no FIRE, and the frequency row's key hint 4/5/6; a laser class keeps the BEAM block below.
@@ -143,7 +143,7 @@ function FreqRow({ weapons, hint }: { weapons: WeaponsPanel; hint: string }) {
 }
 
 /** The Weapons station's how-to hint (spike ii: a rock is a target too). */
-export const WEAPONS_HINT = 'CLICK A WEAPON, THEN A ROOM OR ROCK';
+export const WEAPONS_HINT = 'CLICK A WEAPON, THEN A ROOM';
 /** Engineering spike §10.3: the free Weapons bars' words, right-aligned on the reason row (every refusal and reason starts
  *  at the block's left edge, so the two never meet: the test measures the widest). */
 export const freeText = (n: number): string => `FREE ${n}`;
@@ -208,7 +208,6 @@ function HoundWeapons({ weapons, aim }: { weapons: WeaponsPanel; aim: Weapon | n
       <PixelText text={refused !== null ? `${who(refused.control)}: ${refused.reason}` : 'LMB FIRE · A/D SELECT · W/S POWER'} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={refused !== null ? hot : dim} />
       {bars && <PixelText text={freeText(weapons.weaponFree ?? 0)} x={right} y={y0 + 116} size={FONT_NATIVE} tint={(weapons.weaponFree ?? 0) > 0 ? hot : dim} anchorX={1} />}
       <PixelText text={houndRoomHint(weapons.lock, weapons.torpTarget >= 0 || weapons.torpRock === true)} x={x0} y={y0 + 134} size={FONT_NATIVE} tint={dim} />
-      <PixelText text={`ROCKS ${weapons.rocks ?? 0}`} x={right} y={y0 + 134} size={FONT_NATIVE} tint={(weapons.rocks ?? 0) > 0 ? main : dim} anchorX={1} />
       <FreqRow weapons={weapons} hint="4/5/6" />
     </>
   );
@@ -260,7 +259,6 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
       {bars && <PixelText text={freeText(weapons.weaponFree ?? 0)} x={right} y={y0 + 116} size={FONT_NATIVE} tint={(weapons.weaponFree ?? 0) > 0 ? hot : dim} anchorX={1} />}
       <PixelText text={reason !== null && !firing ? WEAPONS_HINT : 'RIGHT-CLICK A WEAPON: CLEAR'} x={x0} y={y0 + 134} size={FONT_NATIVE} tint={dim} />
       <FreqRow weapons={weapons} hint="3/4/5" />
-      <PixelText text={`ROCKS ${weapons.rocks ?? 0}`} x={right} y={y0 + 134} size={FONT_NATIVE} tint={(weapons.rocks ?? 0) > 0 ? main : dim} anchorX={1} />
     </>
   );
 });

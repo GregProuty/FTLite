@@ -44,7 +44,7 @@ function publication(state = makeState(1), sequence = 1): PublishedState {
   const snapshot = saveSnapshot(state);
   return { runId: 'stream', tick: state.tick, publicationSequence: sequence, snapshot, hash: hashF64(Float64Array.from(snapshot.values)),
     phase: 'running', pauseOwner: null, pauseReason: null, controlRevision: 0, lagTicks: 0, tickTimeMs: null,
-    commandHighWater: Array(state.playerCount).fill(0), heldHighWater: Array(state.playerCount).fill(0), auxiliaryHighWater: Array(state.playerCount).fill(0), eventSequence: 0 };
+    commandHighWater: Array(state.playerCount).fill(0), heldHighWater: Array(state.playerCount).fill(0), auxiliaryHighWater: Array(state.playerCount).fill(0), eventSequence: 0, held: Array.from({ length: state.playerCount }, () => ({ moveX: 0, moveY: 0, interactHeld: false })) };
 }
 
 describe('sector publication and acceptance boundary', () => {

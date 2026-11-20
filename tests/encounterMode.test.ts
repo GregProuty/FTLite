@@ -36,7 +36,7 @@ function harness(mode: ModeDefinition) {
   let now = 0; const callbacks = new Set<() => void>();
   const deps: ModeHostDeps = { contentDigest: __GAMEPLAY_CONTENT_DIGEST__, clock: { nowMs: () => now },
     scheduler: { schedule: (_, cb) => { callbacks.add(cb); return () => { callbacks.delete(cb); }; } }, onCrash() {} };
-  const runtime = createHostRuntime(createModeRegistry([sectorMode, copy]), deps, { modeId: mode.modeId, schemaVersion: 1, simVersion: SIM_VERSION, hostGeneration: 1 });
+  const runtime = createHostRuntime(createModeRegistry([sectorMode, copy]), deps, { modeId: mode.modeId, schemaVersion: mode.schemaVersion, simVersion: SIM_VERSION, hostGeneration: 1 });
   ownTestCleanup(() => runtime.dispose());
   let id = 0;
   return { runtime, deps, advance(t: number) { now = t; for (const cb of [...callbacks]) { callbacks.delete(cb); cb(); } },

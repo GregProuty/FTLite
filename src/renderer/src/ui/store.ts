@@ -12,17 +12,17 @@ export type UiStore = StoreApi<UiState>;
 export interface UiStoreInit {
   onlineAvailable: boolean;
   browser?: Partial<BrowserSlice>;
-  settings?: { master: number; music: number; effects: number; fullscreenAvailable: boolean; controls: readonly ControlSection[]; shake?: ShakeSetting; mapGrid?: MapGridSetting; ships?: readonly ShipChoice[]; soloShip?: string; valkyrnLaserFit?: boolean; throttleTapMs?: number };
+  settings?: { master: number; music: number; effects: number; fullscreenAvailable: boolean; controls: readonly ControlSection[]; shake?: ShakeSetting; mapGrid?: MapGridSetting; ships?: readonly ShipChoice[]; soloShip?: string; valkyrnLaserFit?: boolean; throttleTapMs?: number; fpsCounter?: boolean };
 }
 export function createUiStore(init: UiStoreInit): UiStore {
   return createStore<UiState>()(() => ({
     menu: INITIAL_MENU,
     online: { available: init.onlineAvailable, status: null, receivedAt: 0 },
-    settings: init.settings ? { available: true, shake: DEFAULT_SHAKE, mapGrid: DEFAULT_MAP_GRID, ships: [], soloShip: '', valkyrnLaserFit: false, throttleTapMs: DEFAULT_THROTTLE_TAP_MS, ...init.settings }
-      : { available: false, master: 1, music: 1, effects: 1, fullscreenAvailable: false, controls: [], shake: DEFAULT_SHAKE, mapGrid: DEFAULT_MAP_GRID, ships: [], soloShip: '', valkyrnLaserFit: false, throttleTapMs: DEFAULT_THROTTLE_TAP_MS },
+    settings: init.settings ? { available: true, shake: DEFAULT_SHAKE, mapGrid: DEFAULT_MAP_GRID, ships: [], soloShip: '', valkyrnLaserFit: false, throttleTapMs: DEFAULT_THROTTLE_TAP_MS, fpsCounter: true, ...init.settings }
+      : { available: false, master: 1, music: 1, effects: 1, fullscreenAvailable: false, controls: [], shake: DEFAULT_SHAKE, mapGrid: DEFAULT_MAP_GRID, ships: [], soloShip: '', valkyrnLaserFit: false, throttleTapMs: DEFAULT_THROTTLE_TAP_MS, fpsCounter: true },
     layout: { stripHeight: 0, scale: 1, offsetX: 0, offsetY: 0, dpr: 1 },
     browser: { ...INITIAL_BROWSER, ...init.browser },
-    duel: null, flight: null, hud: null, latency: null, epochs: { duel: 0, flight: 0, hud: 0 }, crt: DEFAULT_CRT
+    duel: null, flight: null, hud: null, latency: null, fps: null, epochs: { duel: 0, flight: 0, hud: 0 }, crt: DEFAULT_CRT
   }));
 }
 

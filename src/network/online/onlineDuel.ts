@@ -16,7 +16,7 @@ import { onlineFault } from './onlineRetry';
 
 const resolveLayout = (id: string) => { if (id !== DUEL_LAYOUT.id) throw Error('unknown duel layout'); return DUEL_LAYOUT; };
 /** The duel mode's schema version (src/network/modes/duel.ts). */
-export const DUEL_SCHEMA_VERSION = 2;
+export const DUEL_SCHEMA_VERSION = 3;
 export interface DuelChoice { helmPlayer: number }
 
 export function duelCompatibility(): RoomCompatibility {

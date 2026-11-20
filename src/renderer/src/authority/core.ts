@@ -280,7 +280,8 @@ function createLiveCore<T extends EncounterTypes>(rules: EncounterRules<T>, deps
     const sequence = ++publicationSequence, snapshot = snapshotOf();
     const publication: PublishedState<Snap> = { runId: deps.init.runId, tick: tickOf(), publicationSequence: sequence,
       snapshot, hash: (completedHash = hashF64(Float64Array.from(snapshot.values))), phase, pauseOwner, pauseReason, controlRevision, lagTicks: driver.lagTicks(), tickTimeMs,
-      commandHighWater: highWater(), heldHighWater: [...heldSequences], auxiliaryHighWater: [...auxiliarySequences], eventSequence };
+      commandHighWater: highWater(), heldHighWater: [...heldSequences], auxiliaryHighWater: [...auxiliarySequences], eventSequence,
+      held: held.map((h) => ({ ...h })) };   // Net-4a §3.2: what the tick just run used (a pause clears it before its publication)
     // A stopped clock cannot replace a lost latest packet. Control boundaries
     // share reliable delivery with the events that depend on their state.
     const channel = reliable || phase === 'paused' || phase === 'ended' ? 'reliable-ordered' : 'unreliable-latest';

@@ -35,12 +35,12 @@ describe('the ship picker (Valkyrn spec §9)', () => {
     expect(setLaserFit).toHaveBeenCalledWith(true);
     expect(store.getState().settings.valkyrnLaserFit).toBe(true);
   });
-  it('the Settings map grid starts on the gravity well and switches to the square grid (owner 2026-11-19)', () => {
+  it('the Settings map grid starts Off, lists Off first and switches to the square grid (owner 2026-11-19)', () => {
     const setMapGrid = vi.fn(), { store } = renderUi({ deps: { setMapGrid } });
     click('settings');
     const pick = screen.getByTestId('map-grid') as HTMLSelectElement;
-    expect(pick.value).toBe('gravity');
-    expect(Array.from(pick.options).map((o) => o.textContent)).toEqual(['Gravity well', 'Square']);
+    expect(pick.value).toBe('off');
+    expect(Array.from(pick.options).map((o) => o.textContent)).toEqual(['Off', 'Gravity well', 'Square']);
     act(() => { fireEvent.change(pick, { target: { value: 'square' } }); });
     expect(setMapGrid).toHaveBeenCalledWith('square');
     expect(store.getState().settings.mapGrid).toBe('square');
@@ -66,9 +66,9 @@ describe('the settings record (Valkyrn spec §9)', () => {
     map.set(SETTINGS_KEY, '{"version":2,"master":1,"music":1,"effects":1,"shake":"full","soloShip":"cutter","valkyrnLaserFit":"yes"}');
     expect(loadSettings(storage)).toMatchObject({ soloShip: 'hound', valkyrnLaserFit: false });
   });
-  it('helm round 2 §6.3: throttleTapMs round-trips and stays a version 2 record', () => {
+  it('helm round 2 §6.3: throttleTapMs round-trips in a version 3 record (UI round §1.3)', () => {
     saveSettings(storage, { ...DEFAULT_SETTINGS, throttleTapMs: 150 });
-    expect(loadSettings(storage)).toMatchObject({ version: 2, throttleTapMs: 150 });
+    expect(loadSettings(storage)).toMatchObject({ version: 3, throttleTapMs: 150 });
     expect(DEFAULT_SETTINGS.throttleTapMs).toBe(200);
   });
 });

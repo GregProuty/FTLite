@@ -31,6 +31,7 @@ import { duelHit } from '../impactModel';
 import { damagedRepairPoints, duelWorking } from '../particles/sources';
 import type { ViewEvent } from '../tactical/fxModel';
 import { featureReady } from '../fallback';
+import { crewDrawAt, crewPresentation, type CrewOverride } from './crewOverride';
 import { CARRY_LIFT_3D } from '../crew3dModel';
 import { createHealFx, crewLife, healFxDraw, stepHealFx } from './healFxModel';
 import { createRandom, hashString } from '../particles/random';
@@ -45,7 +46,7 @@ export interface InteriorView {
    *  `presentDt`: the light and feel's seconds this frame (Art-i spec section 7), 0 while the duel is paused so the
    *  particles, the pulse and the ambient life hold; it defaults to `dt`, which the tiles and boarders keep.
    *  `zoom`: the interior's zoom camera and the character it follows (interior zoom spec); absent, the plain fit. */
-  draw(d: DuelState, crewPrev: readonly { x: number; y: number }[], alpha: number, dt: number, events?: readonly ViewEvent[], presentDt?: number, zoom?: { camera: InteriorCamera; active: number }, hover?: { x: number; y: number } | null): void;
+  draw(d: DuelState, crewPrev: readonly { x: number; y: number }[], alpha: number, dt: number, events?: readonly ViewEvent[], presentDt?: number, zoom?: { camera: InteriorCamera; active: number }, hover?: { x: number; y: number } | null, override?: CrewOverride | null): void;
   /** Engineering spike §5: the last draw's placement (the world's scale and offset before the shake), or null before the
    *  first; the scene's click hit-test reads it. */
   placement(): Placement | null;
@@ -113,7 +114,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   return {
     container, world, memory,
     placement: () => last,
-    draw(d, crewPrev, alpha, dt, events = [], presentDt = dt, zoom, hover = null) {
+    draw(d, crewPrev, alpha, dt, events = [], presentDt = dt, zoom, hover = null, override = null) {
       const st = d.interior, stage = stageScale(), rect = fitRect(st.layout.id, st.derived.width, st.derived.height, missing), fit0 = duelFit(st.derived.width, st.derived.height, stage, rect);
       // The zoom camera places the world on whole screen pixels per art pixel; it follows the active character's drawn (interpolated) position.
       const eid = zoom ? st.crew[zoom.active] : undefined;
@@ -180,7 +181,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
       // Health (duel-health spec §2): a bar above each character below full, and a downed character's pick-up ring and label.
       const drawn: { x: number; y: number }[] = [];
       for (const c of o.crew) {
-        const was = crewPrev[c.pid], x = was ? (was.x + (c.x / TILE_PX - was.x) * alpha) * TILE_PX : c.x, y = was ? (was.y + (c.y / TILE_PX - was.y) * alpha) * TILE_PX : c.y;
+        const at = crewDrawAt(c.pid, c.x / TILE_PX, c.y / TILE_PX, crewPrev, alpha, override), x = at.x * TILE_PX, y = at.y * TILE_PX;
         drawn[c.pid] = { x, y };
         if (c.bar) {
           const w = TILE_PX * 0.8, bx = x - w / 2, by = y - (bar3d && crew3d() ? CARRY_LIFT_3D - 2 : TILE_PX * 0.75);   // Crew3D: over the standing figure's head, not across its chest
@@ -212,8 +213,9 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
       const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working, artPx: 2 * fit.scale, starPx: 2 * fit0.scale }, presentDt, dt);
       world.position.set(fit.x + shake.x, fit.y + shake.y);   // only the interior world shakes; the readout column stays still
       // Crew3D spec section 4: the 3D crew pose from the same list, on the presentation clock: `presentDt` is 0 while the
-      // duel is paused or decided, and then they hold their pose and frame.
-      crew.draw(st, alpha, undefined, bob, working, { dt: presentDt, paused: presentDt === 0 && dt > 0 });
+      // duel is paused or decided, and then they hold their pose and frame. Net-4a §3.6: online, the other players' crew
+      // are drawn from the confirmed publications (crewPresentation).
+      crew.draw(st, alpha, crewPresentation(override), bob, working, { dt: presentDt, paused: presentDt === 0 && dt > 0 });
       boarders.draw(st, dt, presentDt);
     },
     destroy() { memory.reset(); fx.destroy(); container.destroy({ children: true }); }   // the feel first: it frees its shared GraphicsContexts

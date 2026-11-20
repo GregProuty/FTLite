@@ -19,6 +19,8 @@ import { rockSounds, type RockSoundWatch } from '../../audio/rockSounds';
 export interface DuelAudioFrame {
   duel: DuelState; events: readonly ViewEvent[]; axes: Axes; paused: boolean; pan: Pan; live?: boolean;
   me: number; crew: CrewLife; dt: number;
+  /** Net-4a §3.6: the confirmed state and its crew, which the one-shot watchers read online (absent: `duel`, `crew`). */
+  confirmed?: DuelState; confirmedCrew?: CrewLife;
   /** The enemy is hostile (Sci-1 spec §4.1, the Hunter-grace rule): the combat track waits until it is; absent means
    *  hostile. The scene reads it from the sim (`hostileAt >= 0`), since audio imports nothing from sim at runtime. */
   hostile?: boolean;
@@ -35,20 +37,20 @@ export function createDuelAudio(out: AudioOut) {
   let rockWatch: RockSoundWatch | null = null, nextHiss: number | null = null;
   return {
     frame(f: DuelAudioFrame): void {
-      const t = f.duel.tactical, ev = duelEventSounds(f.events, f.pan);
-      const st = duelStateSounds(duelWatch, { tick: t.tick, round: f.duel.round, outcome: t.outcome, missiles: t.missiles }, f.pan);
+      const t = f.duel.tactical, w = f.confirmed ?? f.duel, wt = w.tactical, ev = duelEventSounds(f.events, f.pan);
+      const st = duelStateSounds(duelWatch, { tick: wt.tick, round: w.round, outcome: wt.outcome, missiles: wt.missiles }, f.pan);
       duelWatch = st.watch;
-      const ins = interiorSounds(inside, interiorAudioView(f.duel.interior, t.tick));
+      const ins = interiorSounds(inside, interiorAudioView(w.interior, wt.tick));   // Net-4a §3.6: one-shot, so confirmed
       inside = ins.watch;
       // Duel polish i spec §C: a fire alarm at most once a second, the downed and revived cues, and the heartbeat. A frozen view
       // has no heartbeat.
       clock += Math.max(0, f.dt);
-      const alarm = fireAlarm(lastAlarm, ins.ignited, clock), life = crewLifeSounds(crewWatch, { tick: t.tick, round: f.duel.round, downed: f.crew.downed });
+      const alarm = fireAlarm(lastAlarm, ins.ignited, clock), life = crewLifeSounds(crewWatch, { tick: wt.tick, round: w.round, downed: (f.confirmedCrew ?? f.crew).downed });
       lastAlarm = alarm.last; crewWatch = life.watch;
       const beat = heartbeat(nextBeat, f.live !== false && heartbeatOn({ health: f.crew.health[f.me] ?? Infinity, downed: f.crew.downed[f.me] ?? true, running: t.outcome === OUTCOME_RUNNING, paused: f.paused }), clock);
       nextBeat = beat.next;
       // Feel-ii §2.5: the lock tone (silent on a frozen or paused view); the crew torpedo's launch is a missile going active.
-      const flying = t.missiles.some((m) => m.active && m.owner === CREW), launched = flying && !crewFlying;
+      const flying = wt.missiles.some((m) => m.active && m.owner === CREW), launched = flying && !crewFlying;
       crewFlying = flying;
       // A frozen frame keeps the watch (the steady tone already played stays played on resume).
       const tone = f.torpedo && f.live !== false && !f.paused ? lockTone(lock, f.torpedo, launched, clock) : { watch: lock, sounds: [] };
@@ -63,7 +65,7 @@ export function createDuelAudio(out: AudioOut) {
       // The mood (music spike; duelMood): combat once the Hunter is hostile (hunter grace spec: none through the grace). The hum: thrust as the Helm holds it (a non-Helm online seat sees no
       // axes, so only the speed part), and the crew ship's speed. A frozen view (not live) holds no combat track, hum or crackle.
       if (f.live === false) { out.status({ mood: 'calm', paused: f.paused, duck: ev.duck, fires: 0, hum: null }); return; }
-      const mood = duelMood({ running: t.outcome === OUTCOME_RUNNING, won: t.outcome === OUTCOME_CREW_WINS, hostile: f.hostile !== false, scanning: t.scan.contact >= 0, known: t.known.some((k) => k >= 1), fires: ins.fires });
+      const mood = duelMood({ running: wt.outcome === OUTCOME_RUNNING, won: wt.outcome === OUTCOME_CREW_WINS, hostile: f.hostile !== false, scanning: wt.scan.contact >= 0, known: wt.known.some((k) => k >= 1), fires: ins.fires });
       out.status({ mood, paused: f.paused, duck: ev.duck, fires: ins.fires,
         hum: { thrust: Number.isFinite(f.axes.thrust) ? Math.min(1, Math.abs(f.axes.thrust)) : 0, speed: Math.hypot(ship.vx, ship.vy), charge: 0 } });
     },

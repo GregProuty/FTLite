@@ -16,7 +16,7 @@ export type SitSeat = 'helm' | 'weapons' | 'flight';
 export interface SitCardView { seat: SitSeat; title: string; keys: readonly string[]; alpha: number; top: boolean; under?: boolean }
 export const SIT_CARDS: Readonly<Record<SitSeat, { title: string; keys: readonly string[] }>> = {
   helm: { title: 'HELM: POINT AT THE ENEMY', keys: ['HOLD LMB  STEER', 'W/S  THROTTLE (IT STAYS)', 'TAP S  CUT THRUST', 'BRAKE: TAP S, OR FLIP AND BURN'] },   // helm round 2 §6.4: the lever, the tap and braking (four keys fit, plan Decision 4)
-    weapons: { title: 'WEAPONS: CLICK A WEAPON, THEN A ROOM OR ROCK', keys: ['1  LASER', '2  TORPEDO', 'E/Q  NEXT ROOM', 'L-CLICK MAP  PEW'] },   // W-1: the pew
+    weapons: { title: 'WEAPONS: CLICK A WEAPON, THEN A ROOM', keys: ['1  LASER', '2  TORPEDO', 'E/Q  NEXT ROOM', 'L-CLICK MAP  PEW'] },   // W-1: the pew
   flight: { title: 'FLIGHT: MOUSE TO STEER', keys: ['W/S THROTTLE', 'L-CLICK GUN', 'R-CLICK TORPEDO'] }   // Valkyrn spec §9
 };
 

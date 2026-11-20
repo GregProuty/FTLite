@@ -16,7 +16,7 @@ function resolveLayout(id: string) { if (id !== DUEL_LAYOUT.id) throw Error('unk
 const decode = duelCodec(DUEL_CREW_MAX);
 
 export const duelMode: ModeDefinition = defineEncounterMode<DuelTypes>({
-  modeId: 'duel', schemaVersion: 2, simVersion: SIM_VERSION, rules: duelRules, resolveLayout,
+  modeId: 'duel', schemaVersion: 3, simVersion: SIM_VERSION, rules: duelRules, resolveLayout,
   codecs: jsonModeCodecs(duelRules, resolveLayout, 'duel'),
   producers: ({ authority, init, contentDigest, pause }) => createDuelProducers({ authority, runId: init.runId, contentDigest, playerCount: init.playerCount, pause }),
   publication: (link, options) => createDuelStreamBinding(link, options),

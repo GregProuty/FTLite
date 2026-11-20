@@ -54,7 +54,7 @@ export const MUSIC: Readonly<Record<Mood, MusicTrack>> = {
   space: track('space', 'raw/yd/observing-the-star.ogg', 1.8),
   intrigue: track('intrigue', 'raw/joth/cyberpunk-moonlight-sonata.ogg'),
   adventure: track('adventure', 'raw/alexandr-zhelanov/brave-space-explorers.ogg'),
-  combat: track('combat', 'raw/alexandr-zhelanov/law-in-the-city.ogg')
+  combat: track('combat', 'raw/matthew-pablo/orbital-colossus.ogg')
 };
 export const MUSIC_CALM = MUSIC.calm.name, MUSIC_COMBAT = MUSIC.combat.name;
 export const MUSIC_FILES: Readonly<Record<string, string>> = Object.fromEntries(MOODS.map((m) => [MUSIC[m].name, MUSIC[m].file]));

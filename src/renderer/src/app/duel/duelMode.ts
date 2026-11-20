@@ -47,7 +47,7 @@ export interface DuelModeDeps {
 
 export function startDuelMode(deps: DuelModeDeps): () => void {
   const { renderer } = deps, viewport = { w: INTERNAL_W, h: INTERNAL_H };
-  const exitHint = deps.onExit ? '   M: MAIN MENU' : '', pauseText = `PAUSED   ESC: RESUME${exitHint}`;
+  const exitHint = deps.onExit ? '   M: MAIN MENU' : '', pauseText = `PAUSED   ESC: RESUME   F11: FULLSCREEN${exitHint}`;   // UI round §1.5, §1.6
   // Enemy ship window spec §6.1: the contact window's state, local to this screen; its intercept takes Esc and T first.
   const contact = createContactController(), requests = createMapRequests();
   // Feel-ii §2.7: G pings at the pointer (taken from the keyboard, as the contact window's keys are); a middle click pings too.

@@ -1036,6 +1036,8 @@ Spec `docs/superpowers/specs/2026-11-18-pew-pew-weapons-design.md` §3; plan `do
 
 ## Music spike: five moods (2026-11-19, branch spike/music)
 - [x] Five tracks, one per mood, replace the two Scott Buckley tracks: calm "Bit Space (FTL Inspired)" (Beam Theory, OGA-BY 3.0), space "Observing the Star" (yd, CC0), intrigue "Cyberpunk Moonlight Sonata" (Joth, CC0), adventure "Brave Space Explorers" and combat "Law in the City" (Alexandr Zhelanov, CC-BY 4.0). All from OpenGameArt, trimmed, level-matched and re-encoded to OGG (12.3 MB together; the old pair was 18.5 MB). Credits and notices regenerated.
+- [x] 2026-11-20: combat swapped to "Orbital Colossus" (Matthew Pablo, CC-BY 3.0, OpenGameArt space boss-battle theme) because "Law in the City" felt too 80s. Same trim/level-match/OGG pipeline; credits and notices regenerated.
+- [ ] Owner ear check: does "Orbital Colossus" fit combat?
 - [x] `tests/audioMusic.test.ts`, `audioEngine`, `audioManifest`, `audioSector`, `audioDuel`, `duelAudio`: the five-mood state machine (combat at once and held 8 s, a quiet mood after 1 s, idle goes calm), one gain and one source per mood, the sector and duel mood rules. `npm run typecheck` and `npm run build` pass; the built app logs `[audio] decoded 55/55 files`. Audio leaves SIM_VERSION unchanged.
 - [ ] Manual (owner), by ear. The tracks were picked without listening, so this is the real test.
   1. Main menu: the calm track plays.
@@ -1179,6 +1181,14 @@ Spec `docs/superpowers/specs/2026-11-20-asteroids-look-design.md`. No plan: a sm
   4. Let two free rocks meet. Nothing sparks.
 
   Do the rocks now read as background? Still as before, and yours to call: the 2 px screen shake when a rock breaks on screen (`BREAK_SHAKE` in `src/renderer/src/render/tactical/rockFx.ts`), the laser's hot chips off a rock, and the dotted predicted path of a targeted rock. The crack strength is `CRACK_ALPHA` in `src/renderer/src/render/tactical/tacticalModel.ts`.
+
+## UI round Part 1 (quick fixes), SIM_VERSION 65
+
+Spec: docs/superpowers/specs/2026-11-20-ui-round-design.md §1. Report: docs/superpowers/research/2026-11-20-ui-round-1-report.md.
+
+- [x] Automated: suite, typecheck, determinism (Node, Electron, Firefox), canonical trace and duel oracle across 64 -> 65, duel app smoke.
+- [x] Claude's screenshots (FTLite-shots/ui-round-1): grid off, no torpedo ring, rooms-only hint, pause keeps the UI, pause line clear of the hull bar, FPS corner, Settings.
+- [ ] Owner playtest: the Hunter at 95 hull feels right; the Valkyrn feels fast enough; the pause line and the FPS counter read well; F11 in the browser.
 
 ## Asteroids-iv-a: cell rocks, real pieces with true shapes (2026-11-20)
 

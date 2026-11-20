@@ -68,7 +68,7 @@ describe('audio manifest entries (Audio-i spec section 2)', () => {
     for (const [name, file] of Object.entries(MUSIC_FILES)) { expect(byName.get(name)?.file, name).toBe(file); expect(existsSync(join('public/assets', file)), file).toBe(true); }
     expect(byName.size).toBe(55);
     for (const e of byName.values()) expect(e.required, e.file).toBe(false);
-    expect(byName.get(MUSIC_COMBAT)!.credit).toBe("'Law in the City' by Alexandr Zhelanov (opengameart.org/users/alexandr-zhelanov), CC-BY 4.0");
+    expect(byName.get(MUSIC_COMBAT)!.credit).toBe("'Orbital Colossus' by Matthew Pablo (opengameart.org/users/matthew-pablo), CC-BY 3.0");
     expect(byName.get(MUSIC_CALM)!.license).toBe('OGA-BY-3.0');
     for (const m of MOODS) { const e = byName.get(MUSIC[m].name)!; expect(e.archived, e.file).toMatch(/^https:\/\/web\.archive\.org\/web\/\d{14}\/https:\/\/opengameart\.org\/content\//); expect(e.modifications, e.file).not.toBe('none'); }
   });

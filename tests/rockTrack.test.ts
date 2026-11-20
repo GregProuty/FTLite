@@ -3,7 +3,8 @@
 // target. Look pass (docs/superpowers/specs/2026-11-20-asteroids-look-design.md): no trails and no streaks.
 import { describe, expect, it } from 'vitest';
 import { createCamera, worldToScreen } from '../src/renderer/src/render/tactical/camera';
-import { createRockTrack, JUMP_RESET_U, rockDrawPos, updateRockTrack } from '../src/renderer/src/render/tactical/rockTrack';
+import { createRockTrack, JUMP_RESET_U, rockDrawPos, rockDrawTick, updateRockTrack } from '../src/renderer/src/render/tactical/rockTrack';
+import { createCorrectionSmoother, SMOOTH_MS } from '../src/renderer/src/render/duel/correctionSmoother';
 import { tacticalModel, type TacticalModelInput } from '../src/renderer/src/render/tactical/tacticalModel';
 import { circularVelocity, orbitRate, railPos, type RailOut } from '../src/renderer/src/sim/tactical/rails';
 import { predictRock } from '../src/renderer/src/sim/tactical/predict';
@@ -98,6 +99,56 @@ describe('the rock track (spec §7.1, §13.5)', () => {
     expect(track.px[4]).not.toBe(rockX(st, 4));
     st.tick = 3; updateRockTrack(track, st);
     expect(track.px[4]).toBe(rockX(st, 4)); expect(track.py[4]).toBe(rockY(st, 4));
+  });
+  it('a small backward tick (a prediction retarget, Fable #8) re-syncs: no reset, the free rock does not lerp across it', () => {
+    const st = arena(), track = createRockTrack();
+    mover(st, 4, 0, 1700, 1, 1, 10); rail(st, 3, 0, 1700, 20); updateRockTrack(track, st);
+    for (let i = 0; i < 120; i++) { stepDuel(st, IDLE_INPUT); updateRockTrack(track, st); }
+    st.tick -= 4; updateRockTrack(track, st);
+    expect(track.gap).toBe(1);
+    expect(track.px[4]).toBe(track.cx[4]);
+    expect(rockDrawPos(track, st, 4, 0.3)).toEqual({ x: track.cx[4], y: track.cy[4] });
+  });
+  it('online while predicting the blend spans one tick (Fable #8): a gap given to the track wins over the ticks seen; none keeps the observed gap', () => {
+    const st = arena(), given = createRockTrack(), seen = createRockTrack();
+    rail(st, 3, 0, 1700, 20); updateRockTrack(given, st, 1); updateRockTrack(seen, st);
+    stepDuel(st, IDLE_INPUT); stepDuel(st, IDLE_INPUT); updateRockTrack(given, st, 1); updateRockTrack(seen, st);
+    expect([given.gap, seen.gap]).toEqual([1, 2]);   // Single player and the guest's replica keep the observed gap
+    const at = (t: typeof given) => { const p = rockDrawPos(t, st, 3, 0.5), a = Math.atan2(-p.x, p.y); return a * 60 / orbitRate(1700); };
+    expect(at(given)).toBeCloseTo(st.tick - 0.5, 6);
+    expect(at(seen)).toBeCloseTo(st.tick - 1, 6);
+    updateRockTrack(given, st, 1); expect(given.gap).toBe(1);   // the same tick again: still one
+  });
+  for (const shift of [3, -3]) it(`rock jump brief §2: a ${shift > 0 ? 'backward' : 'forward'} 3-tick retarget, smoothed: the drawn rail tick moves at most 1 + 3 × (frame ms / SMOOTH_MS) a frame, never back, and is on P by 100 ms; the free rock follows it`, () => {
+    // Online at 60 Hz: one tick, then one frame drawn at alpha 0.4 with the one-tick gap. At frame 30 P is retargeted: back
+    // 3 ticks (restored to the rocks it had 3 ticks ago) or on 3 ticks, and the session's smoother keeps the draw-tick
+    // offset, before minus after, decaying over SMOOTH_MS, which the track takes each frame.
+    const st = arena(), track = createRockTrack(), smoother = createCorrectionSmoother(), none = { ships: [], missiles: [], crew: [] };
+    const [vx, vy] = circularVelocity(0, 1700), TICK = 1000 / 60, A = 0.4;
+    rail(st, 3, 1700, 0, 20); mover(st, 4, 0, 1700, vx, vy + 5, 10);   // a quarter turn apart
+    const saved: { tick: number; rocks: Float64Array }[] = [], frames: { at: number; tick: number; drawn: number; free: { x: number; y: number } }[] = [];
+    let shiftAt = Infinity;
+    for (let f = 0; f < 60; f++) {
+      const now = f * TICK;
+      if (f === 30) {
+        const before = st.tick;
+        if (shift > 0) { const back = saved.at(-shift)!; st.tick = back.tick; st.rocks.set(back.rocks); } else for (let k = 0; k < -shift; k++) stepDuel(st, IDLE_INPUT);
+        smoother.shift(none, none, now, before - st.tick); shiftAt = now;
+      }
+      saved.push({ tick: st.tick, rocks: st.rocks.slice() });
+      stepDuel(st, IDLE_INPUT);
+      updateRockTrack(track, st, 1, smoother.tickOffset(now));
+      if (f >= 5) frames.push({ at: now, tick: st.tick, drawn: rockDrawTick(track, st, A), free: rockDrawPos(track, st, 4, A) });   // from the fifth frame: the free blend is under way
+    }
+    const bound = 1 + 3 * (TICK / SMOOTH_MS) + 1e-9, speed = Math.hypot(vx, vy + 5) / 60;   // the free rock's distance a tick, about
+    for (let k = 1; k < frames.length; k++) {
+      const a = frames[k - 1]!, b = frames[k]!, step = b.drawn - a.drawn, dx = b.free.x - a.free.x, dy = b.free.y - a.free.y;
+      expect(step).toBeGreaterThan(0); expect(step).toBeLessThanOrEqual(bound);
+      expect(Math.hypot(dx, dy)).toBeLessThanOrEqual(bound * speed * 1.01);
+      expect(Math.hypot(dx, dy)).toBeGreaterThan(0.4 * speed);   // it never stalls or turns back
+      if (b.at >= shiftAt + SMOOTH_MS || b.at < shiftAt) expect(b.drawn).toBe(b.tick - (1 - A));   // no offset: exactly the old draw tick
+    }
+    expect(frames.find((f) => f.at === shiftAt)!.drawn - frames.find((f) => f.at === shiftAt - TICK)!.drawn).toBeCloseTo(1, 9);   // the retarget frame moves one tick, like any other
   });
   it('keeps no trail: the track holds only the last two places of each slot (look pass spec §2)', () => {
     const st = arena(), track = createRockTrack();

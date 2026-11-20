@@ -10,7 +10,7 @@ import { HULLS } from '../src/renderer/src/render/tactical/hullModel';
 import { DENT_FULL_R, DENT_PULL_MAX, DENT_SUM_MAX, dentEase, dentOf, WELL_MAX_SHIFT, WELL_PULL, wellScale } from '../src/renderer/src/render/tactical/mapGrid';
 import { RockKind, writeRock } from '../src/renderer/src/sim/tactical/rocks';
 import { gravityAccel, stepSoloFlight } from '../src/renderer/src/sim/tactical/physics';
-import { createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { createTacticalState, placeMissile, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 
 const vp = { w: 1280, h: 720 };
 const prevOf = (st: TacticalState): PrevBody[] => st.ships.map((s) => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc }));
@@ -210,6 +210,37 @@ describe('bodies and ships (H-1 spec §7 items 4 to 6)', () => {
     const prev = [{ x: 0, y: 0, h: 255 }, { x: 0, y: 0, h: 0 }];
     const b = interpolatedShip(st, prev, 0.5, 0);
     expect(b.x).toBe(50); expect(b.h).toBe(256);
+  });
+});
+
+describe('correction smoothing offsets on the own ship (Net-4a §3.8)', () => {
+  /** A screen point rotated clockwise (y down) by `steps` heading steps about c. */
+  const rot = (p: { x: number; y: number }, c: { x: number; y: number }, steps: number) => {
+    const a = (steps / 256) * 2 * Math.PI, dx = p.x - c.x, dy = p.y - c.y;
+    return { x: c.x + dx * Math.cos(a) - dy * Math.sin(a), y: c.y + dx * Math.sin(a) + dy * Math.cos(a) };
+  };
+  it('the Helm path and its contact move and turn with the own ship: rotated by oh about the ship, then shifted by (ox, oy)', () => {
+    const st = createTacticalState(4), s = st.ships[0];
+    Object.assign(s, { x: 0, y: -400, vx: 0, vy: 0, heading: 128 });   // nose south, toward the planet: the path ends at a contact
+    const cam = createCamera(0, -400, 0.12), z = cam.zoom, axes = { turn: 0, thrust: 1 };
+    const bare = tacticalModel(input(st, cam, { axes })).helm!;
+    const prev = prevOf(st); prev[0] = { ...prev[0]!, ox: 30, oy: -10, oh: 64 };
+    const moved = tacticalModel(input(st, cam, { axes, prev })).helm!;
+    const c = { x: vp.w / 2 + (s.x - cam.centreX) * z, y: vp.h / 2 + (s.y - cam.centreY) * z };
+    expect(bare.collision).not.toBeNull();
+    const want = (q: { x: number; y: number }) => { const r = rot(q, c, 64); return { x: r.x + 30 * z, y: r.y - 10 * z }; };
+    bare.path.forEach((q, k) => { const w = want(q); expect(moved.path[k]!.x).toBeCloseTo(w.x, 6); expect(moved.path[k]!.y).toBeCloseTo(w.y, 6); });
+    const wc = want(bare.collision!);
+    expect(moved.collision!.x).toBeCloseTo(wc.x, 6); expect(moved.collision!.y).toBeCloseTo(wc.y, 6);
+    expect(moved.origin.x).toBeCloseTo(c.x + 30 * z, 6);   // the marker it starts from carries the same offset
+  });
+  it("the own torpedo's edge arrow carries the missile's offset", () => {
+    const st = createTacticalState(4), s = st.ships[0], cam = createCamera(s.x, s.y, 1.0);
+    placeMissile(st, 0, { x: s.x + 3000, y: s.y, vx: 0, vy: 0, heading: 64, headingAcc: 0, age: 0 });
+    const arrowOf = (missilePrev?: (PrevBody | null)[]) => tacticalModel(input(st, cam, missilePrev ? { missilePrev } : {})).arrows.find((a) => a.target === 'missile')!;
+    expect(arrowOf().distance).toBe(3000);
+    expect(arrowOf([{ x: s.x + 3000, y: s.y, h: 64, ox: -500, oy: 0, oh: 0 }, null]).distance).toBe(2500);
+    expect(arrowOf([{ x: s.x + 3000, y: s.y, h: 64 }, null]).distance).toBe(3000);   // no offset: unchanged
   });
 });
 

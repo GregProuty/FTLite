@@ -28,7 +28,7 @@ const LIVE = { banner: null, layerPaused: false, end: null };
 const PAUSED = { banner: 'PAUSED', layerPaused: true, end: null };
 
 describe('the scene and the ship HUD (spec §E)', () => {
-  it('standing: the SHIP view frame carries shipHud(d), paused too (the console hides, the hull stays); seated at the Helm: none', () => {
+  it('standing: the SHIP view frame carries shipHud(d), paused too (UI round §1.5: the console and the hull stay); seated at the Helm: none', () => {
     let now = 0;
     const keys: KeySample = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() };
     const rt = createDuelRuntime({
@@ -47,7 +47,8 @@ describe('the scene and the ship HUD (spec §E)', () => {
       expect(duel().console?.station).toBe('ship');
       expect(duel().hud).toEqual(shipHud(rt.duel));
       scene.draw(rt, 1 / 60, PAUSED);
-      expect(duel().console).toBeNull(); expect(duel().hud).toEqual(shipHud(rt.duel));
+      // UI round §1.5: a pause keeps the UI
+      expect(duel().console?.station).toBe('ship'); expect(duel().hud).toEqual(shipHud(rt.duel));
       seatDuelCrew(rt.duel);
       scene.draw(rt, 1 / 60, LIVE);
       expect(duel().console?.station).toBe('helm'); expect(duel().hud).toBeNull();

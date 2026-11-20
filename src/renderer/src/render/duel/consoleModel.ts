@@ -65,8 +65,6 @@ export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: stri
    *  `torpSteer`: the crew's torpedo in flight is a MANUAL one that can turn now (past its boost, fuel left: the card says
    *  STEER LMB, W-4 spec §10); `torpCoast`: it is a MANUAL one whose fuel is spent (COASTING). Both false during its boost (FLYING). */
   torpManual?: boolean; torpSteer?: boolean; torpCoast?: boolean;
-  /** Spike ii §7 item 9: the rocks the crew broke this round. */
-  rocks?: number;
   /** Engineering spike §10.3: the bars each weapon stands on now (pew pew, beam, torpedo; 0..4, trimmed) and the Weapons
    *  bars not yet spent. Optional, so a hand-built panel may leave them out (the probe's fixture). */
   weaponBars?: number[]; weaponFree?: number;
@@ -175,7 +173,7 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
     return { lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null,
       laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock, burst: classOf(t, 0).slots.laser ? beamShots(t, 0) : 0,   // spec §10.3: the beam's shots by its bars
       weaponBars: w, weaponFree: weaponBarsUsable(sys) - (w[0]! + w[1]! + w[2]!),
-      laserRock: sys.laserRock >= 0, torpRock: sys.torpRock >= 0, torpRockFlying: sys.torpRockFlying >= 0, rocks: sys.rocksBroken,   // spike ii §6.5, §7 item 9
+      laserRock: sys.laserRock >= 0, torpRock: sys.torpRock >= 0, torpRockFlying: sys.torpRockFlying >= 0,   // spike ii §6.5
       // W-2 (pew pew spec §2): the mode for the tag; in MANUAL the laser never fires by itself, so no FIRING and no goal glow.
       laserReason: sys.laserManual ? manualCardReason(reason) : reason, goal: (i.goal ?? false) && classOf(t, 0).slots.laser !== null && !sys.laserTargeted && !sys.laserManual,   /* W-4 spec §2.1: the FTL opener's glow is the laser's */ laserManual: sys.laserManual,
       torpManual: sys.torpManual, torpSteer: flightM?.manual === true && flightM.age > torpDef.boostTicks && flightM.age <= torpDef.fuelTicks, torpCoast: flightM?.manual === true && flightM.age > torpDef.fuelTicks,   // W-3 (pew pew spec §3): canLaunch above reads the mode (no range in MANUAL); the words follow flyMissile's steering window

@@ -21,7 +21,7 @@ import { CUTTER } from './scriptedDuel';
 export interface Seat { seat: number; pair: LinkPair; client: ReturnType<typeof createDuelRemoteClient>; detach(): void; origin: AttachmentOrigin }
 /** `crew` (Sci-2): the run's crew size, 2 by default, a restore's from its init; `place` changes the fresh duel after the
  *  old seated start and before the core sees it (a third player put at a console). */
-export function onlineDuel(seed: number, options: { helmPlayer?: number; runId?: string; drop?: (k: number) => boolean; restore?: DuelCheckpoint; crew?: DuelCrew; place?: (d: DuelState) => void } = {}) {
+export function onlineDuel(seed: number, options: { helmPlayer?: number; runId?: string; drop?: (k: number) => boolean; link?: (peer: string) => LinkPair; restore?: DuelCheckpoint; crew?: DuelCrew; place?: (d: DuelState) => void } = {}) {
   const runId = options.runId ?? `online-${seed}`, contentDigest = __GAMEPLAY_CONTENT_DIGEST__, crew = options.restore?.init.playerCount ?? options.crew ?? 2;
   let now = 0, ordinal = 0, request: ((control: LifecyclePause) => void) | undefined;
   const clock = { nowMs: () => now }, captures: { checkpoint: DuelCheckpoint; cause: CaptureCause }[] = [];
@@ -38,7 +38,7 @@ export function onlineDuel(seed: number, options: { helmPlayer?: number; runId?:
   ownTestCleanup(() => { producers.dispose(); authority.dispose(); });
   const seats: (Seat | undefined)[] = Array.from({ length: crew });
   function connect(seat: number, origin: AttachmentOrigin = 'remote'): Seat {
-    const pair = linkPair(`seat-${seat}`, options.drop);
+    const pair = options.link ? options.link(`seat-${seat}`) : linkPair(`seat-${seat}`, options.drop);
     const binding = createDuelStreamBinding(pair.host.link, { resolveLayout: resolveCutter, contentDigest, clock, latestPayloadLimit: 16088 });
     const off = producers.attachHuman(binding.link, [seat], { ...binding.attachOptions, admissionPolicy: 'receive-time' }, origin);
     const client = createDuelRemoteClient(pair.guest.link, [seat], { runId, contentDigest, resolveLayout: resolveCutter, clock });

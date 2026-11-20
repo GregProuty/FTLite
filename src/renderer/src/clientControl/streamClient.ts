@@ -193,15 +193,17 @@ export function createStreamClient<S extends { header: { tick: number } }, R>(li
       const clamp = (v: number): number => Math.max(-1e6, Math.min(1e6, v));
       link.send('reliable-ordered', codec.encodeMessage({ kind: 'ping', runId: options.runId, player, sequence, x: clamp(x), y: clamp(y), target }));
     },
-    neutralize(player: PlayerId): void {
+    neutralize(player: PlayerId): number | null {
       // Focus loss stops the ordinary producer. Neutralization only needs a
       // confirmed publication and shares its held sequence with the producer.
-      if (disposed || !publication || !owned.includes(player) || !heldSequences.has(player)) return;
+      // Net-4a §3.3: the sequence sent, so the session logs the frame as a neutral entry; null when none was sent.
+      if (disposed || !publication || !owned.includes(player) || !heldSequences.has(player)) return null;
       const sequence = heldSequences.get(player) + 1;
-      if (!Number.isSafeInteger(sequence)) { link.close('held-sequence-exhausted'); return; }
+      if (!Number.isSafeInteger(sequence)) { link.close('held-sequence-exhausted'); return null; }
       heldSequences.set(player, sequence);
       link.send('reliable-ordered', codec.encodeMessage({ kind: 'held', frame: { runId: options.runId, player, tick: publication.tick, sequence,
         held: { moveX: 0, moveY: 0, interactHeld: false } } }));
+      return sequence;
     },
     send(actions: ClientActions): void {
       if (!canProduce() || (receiveTime && !publication)) return;

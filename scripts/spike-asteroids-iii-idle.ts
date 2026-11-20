@@ -43,7 +43,7 @@ export function median(xs: readonly number[]): number {
 function publication(d: DuelState, sequence: number): DuelPublication {
   const snapshot = saveDuelSnapshot(d, contentDigest);
   return { runId: 'quiet', tick: d.interior.tick, publicationSequence: sequence, snapshot, hash: hashF64(Float64Array.from(snapshot.values)), phase: 'running',
-    pauseOwner: null, pauseReason: null, controlRevision: 0, lagTicks: 0, tickTimeMs: null, commandHighWater: [0, 0], heldHighWater: [0, 0], auxiliaryHighWater: [0, 0], eventSequence: 0 };
+    pauseOwner: null, pauseReason: null, controlRevision: 0, lagTicks: 0, tickTimeMs: null, commandHighWater: [0, 0], heldHighWater: [0, 0], auxiliaryHighWater: [0, 0], eventSequence: 0, held: [{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }] };
 }
 /** The Hunter antipodal to the crew with its weapons empty: it neither fires nor meets a rock. */
 function pinHunter(d: DuelState): void {

@@ -56,19 +56,19 @@ describe('the combat model (H-1 spec §7)', () => {
     const [a, b] = st.ships, range = Math.round(Math.hypot(b.x - a.x, b.y - a.y));
     expect(w.info.text).toBe(`BRG ${String(bearingDeg(b.x - a.x, b.y - a.y)).padStart(3, '0')}  RNG ${range}  TORP ${range <= MISSILE_RANGE ? 'IN' : 'OUT'}`);   // Feel-i: the arc's words are the status sentence's
   });
-  it('the torpedo range circle (weapons update spec §2): radius 360 · zoom about the own ship on both maps; lit at Weapons only while in range', () => {
+  it('the torpedo range ring is gone (UI round §1.4)', () => {
     const st = createTacticalState(11);
     for (const z of [0.25, 0.5, 1]) {
       const cam = createCamera(st.ships[0].x, st.ships[0].y, z);
       Object.assign(st.ships[1], { x: st.ships[0].x + 500, y: st.ships[0].y });          // out of range
       const out = combatModel(input(st, cam, 'weapons'));
-      expect(out.torpedoRange).toEqual({ x: 640, y: 360, r: MISSILE_RANGE * cam.zoom, lit: false });
+      expect('torpedoRange' in out).toBe(false);
       expect(out.weapons!.torpedoInRange).toBe(false); expect(out.weapons!.info.text).toMatch(/TORP OUT$/);
       st.ships[1].x = st.ships[0].x - 300;                                                  // in range, behind
       const inside = combatModel(input(st, cam, 'weapons'));
-      expect(inside.torpedoRange).toEqual({ x: 640, y: 360, r: MISSILE_RANGE * cam.zoom, lit: true });
+      expect('torpedoRange' in inside).toBe(false);
       expect(inside.weapons!.info.text).toMatch(/TORP IN$/);
-      expect(combatModel(input(st, cam, 'helm')).torpedoRange).toEqual({ x: 640, y: 360, r: MISSILE_RANGE * cam.zoom, lit: false });   // the Helm: dim only
+      expect('torpedoRange' in combatModel(input(st, cam, 'helm'))).toBe(false);
     }
   });
   it('the info text centres between a left and a right reserve (the Artemis console)', () => {

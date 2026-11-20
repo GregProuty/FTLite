@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import electron from 'electron';
 import { computeContentDigest } from '../../build/contentDigest';
 import { executeFixture, unpackFixture } from './fixture';
+import { duelRestoreCheck } from './duelRestore';
 import { browserExecutable, compareReports, receiveBrowser } from './protocol';
 async function main() {
   const digest = computeContentDigest(process.cwd()), fixtureBytes = readFileSync('tests/fixtures/determinism-v2.json'), fixture = unpackFixture(JSON.parse(fixtureBytes.toString()));
@@ -15,6 +16,8 @@ async function main() {
     ?? '.superpowers/sdd/2026-11-14-net-1b-durability/task-5-logs'); mkdirSync(output, { recursive: true });
   const began = performance.now();
   const expected = executeFixture(fixture, digest); compareReports(fixture.expected, expected);
+  const duelExpected = duelRestoreCheck(digest, { seed: 2, ticks: 1800, bursts: true });   // Net-4a G2 on Node
+  console.log(`Node: duel restore ${duelExpected.checks} checks PASS (${duelExpected.finalHash})`);
   const evidence: any = { platform: `${process.platform}/${process.arch}`, digest, node: process.version, samples: expected.samples.length, runs: fixture.runs.map(r => ({ ship: r.ship, runId: r.checkpoint.init.runId, seed: r.checkpoint.init.seed, ticks: r.ticks, ended: r.ended })), engines: [{ engine: `Node ${process.version}; V8 ${process.versions.v8}`, seconds: (performance.now() - began) / 1000 }] };
   console.log(`Node ${process.version}: ${expected.samples.length} canonical samples, ${expected.boundaries.length} result/event boundaries PASS (${evidence.engines[0].seconds.toFixed(2)}s)`);
   const temporary = mkdtempSync(join(tmpdir(), 'ftlite-determinism-')), bundle = join(temporary, 'bundle');
@@ -56,9 +59,10 @@ async function main() {
       child.once('error', error => active?.report({ error: String(error) }));
       child.once('exit', code => { if (code && code !== 0) active?.report({ error: `${engine} exited ${code}: ${diagnostics}` }); });
       const result = await active.promise; compareReports(expected, result.report);
+      if (result.duelRestore.checks !== duelExpected.checks || result.duelRestore.finalHash !== duelExpected.finalHash) throw Error(`${engine}: duel restore differs from Node (${JSON.stringify(result.duelRestore)})`);
       const seconds = (performance.now() - started) / 1000; evidence.engines.push({ engine: result.engine, seconds, status: 'PASS' });
       writeFileSync(join(output, `${engine.toLowerCase()}.log`), `${result.engine}\n${diagnostics}\n1800 samples; ${result.report.boundaries.length} boundaries; first difference: none\n`);
-      console.log(`${result.engine}: ${result.report.samples.length} samples PASS (${seconds.toFixed(2)}s)`);
+      console.log(`${result.engine}: ${result.report.samples.length} samples PASS (${seconds.toFixed(2)}s); duel restore ${result.duelRestore.checks} checks`);
       await stopChild(); child = undefined;
     }
     evidence.gaps = ['Safari/JSC not run', 'ARM not run']; writeFileSync(join(output, 'engines.json'), JSON.stringify(evidence, null, 2));

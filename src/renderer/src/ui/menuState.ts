@@ -29,25 +29,27 @@ export interface ShipChoice { id: string; name: string; line: string }
 /** Valkyrn spec §8, §9: `ships` the picker's list, `soloShip` the remembered choice, `valkyrnLaserFit` the developer switch. */
 export interface SettingsSlice extends Volumes {
   available: boolean; fullscreenAvailable: boolean; controls: readonly ControlSection[]; shake: import('../render/shake').ShakeSetting; mapGrid: import('../render/tactical/mapGrid').MapGridSetting;
-  ships: readonly ShipChoice[]; soloShip: string; valkyrnLaserFit: boolean; throttleTapMs: number;   // helm round 2 §6.3
+  ships: readonly ShipChoice[]; soloShip: string; valkyrnLaserFit: boolean; throttleTapMs: number; fpsCounter: boolean;   // helm round 2 §6.3; UI round §1.7
 }
 /** The canvas's place (React UI spec §4): the strip above it, the letterbox scale and offsets, the device pixel ratio. */
 export interface LayoutSlice { stripHeight: number; scale: number; offsetX: number; offsetY: number; dpr: number }
 /** Browser-only menu facts (web build spec §5.4, §7.4, §7.5, §7.7); all off in Electron. `unsupported` replaces Home's
  *  Multiplayer button, `note` is the Safari line, `onlineBlocked` the Multiplayer screen's one-tab text, `playtestLog`
  *  shows Settings' Download playtest log and `playtestLogText` its last result. `web`: the page runs in a browser (no
- *  preload), where F11 is the browser's own fullscreen (review R1-F7). */
+ *  preload), where the page takes F11 for the Fullscreen API (UI round §1.6; was the browser's own, review R1-F7). */
 export interface BrowserSlice { web: boolean; update: boolean; unsupported: string | null; note: string | null; onlineBlocked: string | null; playtestLog: boolean; playtestLogText: string }
 export const INITIAL_BROWSER: BrowserSlice = { web: false, update: false, unsupported: null, note: null, onlineBlocked: null, playtestLog: false, playtestLogText: '' };
 export const NO_PLAYTEST_RECORDS_TEXT = 'No playtest records yet.', PLAYTEST_LOG_FAILED_TEXT = 'The playtest log could not be read.';
-/** Settings' fullscreen note in a browser (R1-F7): F11 there is the browser's fullscreen, which the toggle cannot see. */
-export const BROWSER_F11_TEXT = "F11 is the browser's own fullscreen; this switch does not follow it.";
+/** Settings' fullscreen note in a browser: UI round §1.6 made F11 the page's, so the switch follows it. */
+export const BROWSER_F11_TEXT = 'F11 also toggles fullscreen.';
 export interface UiState {
   menu: MenuState; online: OnlineSlice; settings: SettingsSlice; layout: LayoutSlice; browser: BrowserSlice;
   duel: import('./views').DuelUiView | null; flight: import('./views').FlightUiView | null;
   hud: import('../render/hudModel').HudModel | null;
   /** The online duel's F3 latency overlay lines (H-2b); null while hidden. */
   latency: readonly string[] | null;
+  /** UI round §1.7: the last FPS reading (main.ts's meter, at most twice a second); null before the first. */
+  fps: number | null;
   /** The CRT strength setting (CRT map spec section 4), written at boot and by the dev F10 cycle (app/crtBoot.ts). */
   crt: import('../render/crt').CrtSetting;
   /** Bumped by a sink each time its slice goes null -> non-null: the regions' error-boundary reset keys (spec §2). */

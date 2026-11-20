@@ -107,10 +107,10 @@ describe('createUiStore', () => {
   it('starts at home with no status and the given settings', () => {
     const s = createUiStore({ onlineAvailable: true, settings: { master: 0.5, music: 0.25, effects: 1, fullscreenAvailable: true, controls: [] } }).getState();
     expect(s.menu).toEqual(INITIAL_MENU); expect(s.online).toEqual({ available: true, status: null, receivedAt: 0 });
-    expect(s.settings).toEqual({ available: true, master: 0.5, music: 0.25, effects: 1, fullscreenAvailable: true, controls: [], shake: 'full', mapGrid: 'gravity', ships: [], soloShip: '', valkyrnLaserFit: false, throttleTapMs: 200 });   // helm round 2 §6.3; Feel-i: shake defaults full; Valkyrn spec §9: no ships until main fills them
+    expect(s.settings).toEqual({ available: true, master: 0.5, music: 0.25, effects: 1, fullscreenAvailable: true, controls: [], shake: 'full', mapGrid: 'off', ships: [], soloShip: '', valkyrnLaserFit: false, throttleTapMs: 200, fpsCounter: true });   // helm round 2 §6.3; Feel-i: shake defaults full; Valkyrn spec §9: no ships until main fills them
     expect(s.layout).toEqual({ stripHeight: 0, scale: 1, offsetX: 0, offsetY: 0, dpr: 1 });
   });
   it('marks settings unavailable without them', () => {
-    expect(createUiStore({ onlineAvailable: false }).getState().settings).toEqual({ available: false, master: 1, music: 1, effects: 1, fullscreenAvailable: false, controls: [], shake: 'full', mapGrid: 'gravity', ships: [], soloShip: '', valkyrnLaserFit: false, throttleTapMs: 200 });
+    expect(createUiStore({ onlineAvailable: false }).getState().settings).toEqual({ available: false, master: 1, music: 1, effects: 1, fullscreenAvailable: false, controls: [], shake: 'full', mapGrid: 'off', ships: [], soloShip: '', valkyrnLaserFit: false, throttleTapMs: 200, fpsCounter: true });
   });
 });

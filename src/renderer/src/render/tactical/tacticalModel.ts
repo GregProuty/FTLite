@@ -48,7 +48,9 @@ export const SCALE_BAR_MAX_PX = 160;
  *  at every zoom (plan decision 8). The ship at 800 u/s drifts the stars by 16 px/s. */
 export const STAR_PARALLAX = 0.02;
 
-export interface PrevBody { x: number; y: number; h: number }
+/** A body at the previous tick. Net-4a §3.8: online while predicting, `ox, oy, oh` are a correction's decaying visual
+ *  offset, added after the blend; absent (Single player, the confirmed view) the blend is unchanged. */
+export interface PrevBody { x: number; y: number; h: number; ox?: number; oy?: number; oh?: number }
 export interface Line { x1: number; y1: number; x2: number; y2: number }
 export interface Label { text: string; x: number; y: number }
 /** `curves` (the gravity grid only; `lines` is then empty): each bent line as a flat x, y, x, y… screen polyline. */
@@ -155,13 +157,17 @@ export interface TacticalModelInput {
   state: TacticalState;
   /** Each ship's position and continuous heading (heading + headingAcc) at the previous tick. */
   prev: readonly PrevBody[];
+  /** Each ship's missile at the previous tick, by owner; here only its correction offset is read (Net-4a §3.8: the own
+   *  torpedo's edge arrow). Absent: no offset. */
+  missilePrev?: readonly (PrevBody | null)[];
   alpha: number;
   camera: Camera;
   viewport: Viewport;
   console: 'helm' | 'weapons' | 'science';
   /** The duel's contacts (Sci-1 spec §7.1): hide an unknown enemy's silhouette and draw the marks. The flight view leaves it off. */
   contacts?: boolean;
-  /** Spike ii §6.5: the rock under the pointer while a weapon is picked up (the scene's pickRock), for its hover bracket. */
+  /** Spike ii §6.5: the rock under the pointer while a weapon is picked up, for its hover bracket. UI round §1.4: the duel
+   *  scene no longer sets it (rocks are not picked from the map); kept for pickRock's tests. */
   rockHover?: { rock: number; weapon: 'laser' | 'torpedo' } | null;
   /** Asteroids-iii §7.1: the scene's rock track (smooth motion); absent: rocks at their tick positions. */
   rockTrack?: RockTrack | null;
@@ -195,7 +201,7 @@ export interface TacticalModelInput {
   fog?: FogView | null;
   /** Own ship window spec §3: a console window the off-screen arrows go around (OWN_SHIP); absent: none. */
   avoid?: { x: number; y: number; w: number; h: number };
-  /** The grid's style (Settings, mapGrid.ts); absent: the square grid. */
+  /** The grid's style (Settings, mapGrid.ts); absent: the square grid; 'off': no lines, the names only. */
   mapGrid?: MapGridSetting;
 }
 
@@ -249,7 +255,7 @@ export function interpolatedShip(state: TacticalState, prev: readonly PrevBody[]
   if (!p) return { x: s.x, y: s.y, h: h1 };
   let dh = h1 - p.h;
   dh -= Math.round(dh / HEADING_COUNT) * HEADING_COUNT;
-  return { x: p.x + (s.x - p.x) * a, y: p.y + (s.y - p.y) * a, h: p.h + dh * a };
+  return { x: p.x + (s.x - p.x) * a + (p.ox ?? 0), y: p.y + (s.y - p.y) * a + (p.oy ?? 0), h: p.h + dh * a + (p.oh ?? 0) };   // Net-4a §3.8: the offset after the blend
 }
 
 /** The followed body's interpolated world position, or null when there is none (the camera then holds still). */
@@ -282,7 +288,7 @@ export function ringCrossesRect(x: number, y: number, r: number, w: number, h: n
   return fx * fx + fy * fy >= r * r;
 }
 
-function gridDraw(cam: Camera, vp: Viewport, well: Point | null, dents: readonly Dent[] = []): GridDraw {
+function gridDraw(cam: Camera, vp: Viewport, well: Point | null, dents: readonly Dent[] = [], drawLines = true): GridDraw {
   const spacing = cam.zoom > GRID_MINOR_ZOOM ? GRID_MINOR : GRID_MAJOR;
   const v = visibleWorld(cam, vp), E = GRID_EXTENT;
   const x0 = Math.max(-E, v.x0), x1 = Math.min(E, v.x1), y0 = Math.max(-E, v.y0), y1 = Math.min(E, v.y1);
@@ -291,7 +297,7 @@ function gridDraw(cam: Camera, vp: Viewport, well: Point | null, dents: readonly
   const sy0 = worldToScreen(cam, vp, 0, y0).y, sy1 = worldToScreen(cam, vp, 0, y1).y;
   const sx0 = worldToScreen(cam, vp, x0, 0).x, sx1 = worldToScreen(cam, vp, x1, 0).x;
   const curves = well ? wellCurves(cam, vp, well, spacing / WELL_DENSITY, dents) : undefined;
-  if (!well) {
+  if (!well && drawLines) {
     for (let k = Math.ceil((x0 + E) / spacing); -E + k * spacing <= x1; k++) {
       const wx = -E + k * spacing, sx = worldToScreen(cam, vp, wx, 0).x;
       lines.push({ x1: sx, y1: sy0, x2: sx, y2: sy1, major: (wx + E) % GRID_MAJOR === 0 });
@@ -533,12 +539,20 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   let helm: HelmDraw | null = null;
   if (input.console === 'helm' && input.ships.includes(0)) {
     const s = state.ships[0];
-    const flight = predictFlight(state, 0, input.axes, Math.round(pathSeconds(z) * 60), PATH_STRIDE), path = flight.points.map((q) => toS(q.x, q.y));
+    // Net-4a §3.8: the path is P's, so it moves and turns with the own ship's correction offset (rotated by oh about P's
+    // ship, then shifted by ox, oy), and starts where the smoothed marker is drawn. Without an offset it is unchanged.
+    const o = prev[0], oh = o?.oh ?? 0, ox = o?.ox ?? 0, oy = o?.oy ?? 0, ra = headingAngle(oh), rc = Math.cos(ra), rs = Math.sin(ra);
+    const placed = (q: Point): Point => {
+      if (oh === 0 && ox === 0 && oy === 0) return toS(q.x, q.y);
+      const dx = q.x - s.x, dy = q.y - s.y;
+      return toS(s.x + dx * rc - dy * rs + ox, s.y + dx * rs + dy * rc + oy);
+    };
+    const flight = predictFlight(state, 0, input.axes, Math.round(pathSeconds(z) * 60), PATH_STRIDE), path = flight.points.map(placed);
     const a = headingAngle(own.h), hxs = Math.sin(a), hys = -Math.cos(a), nose = SHIP_RADIUS * 1.3 * drawnScale(z) + 4;
     // Feel-ii §1.2: the contact the path stops at, its last segment drawn hot from the point before it.
     let collision: CollisionDraw | null = null;
     if (flight.contact) {
-      const p = toS(flight.contact.x, flight.contact.y), from = path.length > 1 ? path[path.length - 2]! : ownS, seconds = flight.contact.tick / TICK_HZ;
+      const p = placed(flight.contact), from = path.length > 1 ? path[path.length - 2]! : ownS, seconds = flight.contact.tick / TICK_HZ;
       collision = { x: p.x, y: p.y, from, seconds, label: { text: collisionTag(seconds), x: p.x + 10, y: p.y - 22 } };
     }
     // Feel-ii §1.1: the held heading's chevron on the bearing ring and the dashed line from the nose.
@@ -601,7 +615,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   }
   arrow('planet', map.planet.x, map.planet.y, own.x, own.y);
   const m = missileOf(state, 0);
-  if (m) arrow('missile', m.x, m.y, own.x, own.y);
+  if (m) { const mo = input.missilePrev?.[0]; arrow('missile', m.x + (mo?.ox ?? 0), m.y + (mo?.oy ?? 0), own.x, own.y); }   // Net-4a §3.8: with the torpedo's offset
   if (input.spreadArrows) spreadArrows(arrows, vp, input.reserveRight, input.reserveLeft ?? 0, input.reserveTop ?? 0, input.avoid);
 
   // Sci-1 spec §7.1: the contact marks, the salvage ring and Science's ring, in the duel only.
@@ -669,7 +683,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   }
   const units = [...SCALE_STEPS].reverse().find((u) => u * z <= SCALE_BAR_MAX_PX) ?? SCALE_STEPS[0]!;
   return {
-    grid: gridDraw(cam, vp, input.mapGrid === 'gravity' ? map.planet : null, dents), contours, edge, planet, asteroids, ships, helm, arrows,
+    grid: gridDraw(cam, vp, input.mapGrid === 'gravity' ? map.planet : null, dents, input.mapGrid !== 'off'), contours, edge, planet, asteroids, ships, helm, arrows,
     ...(marks ? { marks, salvage, lockRing } : {}),
     ...(gravity ? { gravity } : {}),
     ...(input.fog ? { sensor, ghosts, blip } : {}),

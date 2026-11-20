@@ -29,6 +29,8 @@ export interface UiActionDeps {
   setMapGrid?(grid: import('../render/tactical/mapGrid').MapGridSetting): void;
   /** Helm round 2 §6.3: the throttle tap time changed (main saves it; the keyboards read it live). */
   setThrottleTap?(ms: number): void;
+  /** UI round §1.7: the FPS counter setting changed (main saves it). */
+  setFpsCounter?(on: boolean): void;
   fullscreen?: { get(): Promise<boolean>; set(on: boolean): Promise<boolean> };
   /** performance.now(), injectable for tests. */
   perfNow?(): number;
@@ -109,6 +111,7 @@ export function createUiActions(deps: UiActionDeps) {
       if (ship !== undefined) store.setState((s) => ({ settings: { ...s.settings, soloShip: ship } }));
       setMenu({ localError: '', page: 'single' }); deps.single(ship);
     },
+    setFpsCounter(on: boolean): void { store.setState((s) => ({ settings: { ...s.settings, fpsCounter: on } })); deps.setFpsCounter?.(on); },
     setLaserFit(on: boolean): void { store.setState((s) => ({ settings: { ...s.settings, valkyrnLaserFit: on } })); deps.setLaserFit?.(on); },
     openMultiplayer(): void { setMenu({ localError: '', page: 'multiplayer' }); },
     quit(): void { deps.quit?.(); },

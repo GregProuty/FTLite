@@ -29,16 +29,20 @@ are written once it has merged. W-4 (which the owner first chose to stack on) is
 `HUNTER_HULL` in `src/renderer/src/sim/tactical/tuning.ts` goes 123 → 95 (−23%). The crew ships are unchanged.
 
 ### 1.2 Valkyrn faster
-- Top speed becomes per class. Today `MAX_SPEED = 400` (`tuning.ts`) is shared by every ship. Add a `maxSpeed` to
-  `ShipClassDef` (`sim/tactical/defs.ts`): the Valkyrn classes (both fits) get **520**, every other class keeps **400**.
-  Every place that clamps to `MAX_SPEED` reads the ship's class instead.
-- `VALKYRN_THRUST` 160 → **200** u/s². The turn rate is unchanged (200°/s).
+- **Correction (planning, 2026-11-20):** the brainstorm's "shared top speed of 400" was wrong. `MAX_SPEED = 400` only
+  caps a ship flying with drag 0, and since Helm round 2 no game ship does (`tuning.ts` says so). Every game ship's top
+  speed is its thrust over its drag: Hound and Hunter 120 / 0.15 = 800 u/s, Valkyrn 160 / 0.15 ≈ 1067 u/s. A 520 cap
+  would have made the Valkyrn slower. So no per-class cap.
+- `VALKYRN_THRUST` 160 → **200** u/s². That raises the Valkyrn's acceleration and its top speed by 25% (top ≈ 1333 u/s);
+  the Hound and the Hunter stay at 800. The turn rate is unchanged (200°/s). `MAX_SPEED` is not touched.
 - Asteroid speed (`ROCK_MAX_SPEED`) is not touched.
 
 ### 1.3 Grid off by default
 `MapGridSetting` (`render/tactical/mapGrid.ts`) gains `'off'`, which draws no grid lines (the sector letters and the scale
-bar stay). `DEFAULT_MAP_GRID` becomes `'off'`. Settings shows Off / Gravity well / Square. Saved settings that already
-hold a grid value keep it. The settings version goes up only if the store's validation needs it to accept `'off'`.
+bar stay). `DEFAULT_MAP_GRID` becomes `'off'`. Settings shows Off / Gravity well / Square. Every saved record holds a
+grid value (the old default was written on the first save), so the settings record goes to **version 3**: a version 2
+record keeps every field but its grid, which reads `'off'`; a version 3 record keeps its grid. A grid picked after this
+change is kept.
 
 ### 1.4 No torpedo range ring, no rock targeting
 - Remove the torpedo's dashed range circle about the crew ship (`tacticalLayer.ts`, "Weapons update spec §2" block).
@@ -56,17 +60,23 @@ hold a grid value keep it. The settings version goes up only if the store's vali
 - The enemy window no longer closes for good on a pause (`contactController.ts`). It stays open while paused.
 - While paused, the pointer still hovers (tooltips, highlights) so the owner can inspect. Gameplay presses stay dropped,
   as today.
-- The pause text (`PAUSED   ESC: RESUME   M: MAIN MENU`, or online `PAUSED BY PLAYER n` / `PARTNER LOST`) draws as one
-  line at **top centre, under the tab strip**, on a small backing so it never overlaps the hull bar or a panel. Same text
-  on every view, in the CRT style on terminals and in the interior colours in ship view.
+- The pause text (`PAUSED   ESC: RESUME   F11: FULLSCREEN   M: MAIN MENU`, or online `PAUSED BY PLAYER n` /
+  `PARTNER LOST`) draws as one line at **top centre**, at the native font size, on a small panel from y 66 to y 90. That
+  is under the map's headline (y 12) and info line (y 44), and centred, so it clears the tab strip, the hull bar, the
+  status table, the own ship window and the enemy window. Same place on every view, in the CRT style on terminals and in
+  the interior colours in ship view.
 
 ### 1.6 F11 fullscreen in game
-F11 calls the existing `app/web/browserFullscreen.ts` toggle in the menu and in game (web build; the Electron build
-toggles its window). The controls list and Settings → Controls show it. The existing Settings button stays.
+In the web build, F11 is caught by the page (keydown, `preventDefault`) and toggles the existing
+`app/web/browserFullscreen.ts` Fullscreen API path, menu or game, so the Settings switch follows it and Esc reaches the
+game where the keyboard lock works. If a browser keeps F11 for itself, its own fullscreen still happens. The Electron
+build already toggles its window on F11 (`src/main/index.ts`) and is unchanged. Settings' browser note changes to say
+F11 toggles fullscreen. The controls list already shows F11.
 
 ### 1.7 FPS counter
-A small FPS readout in the **bottom-right corner**, in every view and the menus: whole frames per second, averaged over
-the last half second, at the native small font, dim. Settings gains "FPS counter" (on/off), **on** by default, saved
+A small FPS readout in the **bottom-right corner** (`NN FPS`, right edge 8 px in, top at y 702, under the console scale
+bar's label), in every view and the menus, above the menu layer: whole frames per second, averaged over the last half
+second, at the native small font, dim. Settings gains "FPS counter" (on/off), **on** by default, saved
 with the other settings.
 
 ### 1.8 Tests and gates
@@ -123,6 +133,32 @@ On terminals it replaces the status table and the separate `PowerStrip`. Room st
 columns: damaged levels shown on the column, FIRE as a blinking inverse label, the repair or extinguish progress as the
 column's bar. Clicks on the strip work on every view, as they do in ship view today. Terminal panels that sat where the
 HUD now goes shift to clear it, and the own ship window moves below the HUD.
+
+### 2.4a Terminal layout at 1280×720 (decided at planning, 2026-11-20)
+Part 2 is built in two plans: **2a** (§2.2-§2.4, this layout) and **2b** (§2.1, filling the window). 2a keeps the fixed
+1280×720 stage. 2b then turns every rect below into an anchor.
+- **The HUD** stays where the ship view has it: hull bar and shields top left (x 12-330, y 46-114), a health row under
+  them when hurt or downed (y 124-150: HEALTH and a bar, or DOWNED blinking), and the power panel bottom left (x 6-334, y 529-712 with its REACTOR line).
+- **The station blocks** (Helm, Weapons, Science) and the Valkyrn's Flight block move to the right of the power panel,
+  bottom aligned: `STATION.x = 346` (Helm 346-646; Flight beside it at 658-958). The Flight block already sat there.
+- **The own ship window** moves under the HUD: x 12, y 160, 240×170 (to y 330).
+- **The enemy window** moves up to the top-right corner (y 42), where the zoom box was: x 968-1268, y 42-462.
+- **The map's top band** (status sentence, info line) runs from the tab strip to the enemy window's left edge (408-968).
+- **The map's reserves:** left 264 (the own ship window's right edge + 12), right 12, or the enemy window's 324 while
+  it shows.
+- **The console strip** (the WEAP / ENG / SENS POWER strip) goes: the HUD's power panel shows every system. Science's
+  sensor range moves onto the Science block (`SENSOR RANGE n`).
+- **C: SNAP BACK** shows at native size left of the scale bar (bottom right) while the camera is free, on the consoles
+  too, since the zoom box that lit its SNAP button is gone. The `ZOOM 0.50` text goes everywhere.
+- **Room state on the power columns** (WEAP, SHLD, ENG, the three tactical rooms): a damaged room's column name turns
+  hot, an offline room's name sits on an inverse block, a burning room's name blinks inverse, and the repair or
+  extinguish progress is a 2 px bar under the name.
+- **Helm range and bearing:** the Helm map gets the Weapons map's info line (`BRG 074  RNG 728`, no TORP) at y 44, or
+  `NO CONTACT IN SENSOR RANGE`. That is "beside the marker" made consistent with Weapons. The off-screen arrow already
+  carries the range.
+- **Ship view only:** `TORPEDO INBOUND` (the old readout's rule: the enemy torpedo within 600) blinks hot at top centre
+  (y 100, FONT_SIZE). An AWAY player gets an `AWAY` label under their character, the way DOWNED does. An empty Helm or
+  Weapons console's badge blinks WARN.
 
 ### 2.5 Tests and gates
 - Layout unit tests: for viewports of 16:9, 21:9, 32:9, 4:3 and 16:10, no two panels overlap, every panel is inside the
@@ -186,7 +222,7 @@ view already is the ship).
 - Pause: a text line in a clear spot, never hiding the UI, so the owner can pause to examine it (option B).
 - Aspect ratio: fill the window and show more of the game (option A).
 - FPS counter added, bottom right.
-- Hunter hull 95; Valkyrn top speed 520, thrust 200 (option A).
+- Hunter hull 95; Valkyrn thrust 200 (option A; its "top speed 520" was dropped at planning, see §1.2).
 - FTL ship windows: real ship art, kept in the amber CRT style.
 - Hunter art: a new original Blender render (option A).
 - Shields: a hexagonal shimmer on hit.

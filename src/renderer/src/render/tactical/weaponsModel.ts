@@ -11,7 +11,7 @@ import { predictMissile } from '../../sim/tactical/predict';
 import { laserEligible, manualLaserReady, torpedoInRange } from '../../sim/tactical/weapons';
 import { clampAim } from '../../sim/tactical/pew';
 import { enemyHostile, pointSeen } from '../../sim/tactical/science';
-import { AIM_STEPS, AUTOCANNON_AUTO_RANGE, HEADING_COUNT, LASER_ARC_COS, LASER_ARC_STEPS, LASER_RANGE, MISSILE_RADIUS, MISSILE_RANGE, PEW_ARC, PEW_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
+import { AIM_STEPS, AUTOCANNON_AUTO_RANGE, HEADING_COUNT, LASER_ARC_COS, LASER_ARC_STEPS, LASER_RANGE, MISSILE_RADIUS, PEW_ARC, PEW_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { ROOM_NAMES } from '../duel/interiorModel';
 import { alertSentence, evadeDir, gunReason, gunSentence, laserSituation, linedUp, type FlightAlert } from '../duel/situationModel';
 import { gunSightDraw, roundDraws, type GunSightDraw } from '../duel/leadModel';
@@ -57,9 +57,6 @@ export interface SolutionDraw { x: number; y: number; r: number; alpha: number; 
 export interface GoalDraw { x: number; y: number; r: number; alpha: number }
 /** A floating damage number (Feel-i spec §3), in screen px with its fade. */
 export interface FloatDraw { text: string; x: number; y: number; alpha: number }
-/** Weapons update spec §2: the torpedo's range circle about the own ship, radius MISSILE_RANGE · zoom. `lit` (CRT.mid)
- *  on the Weapons map while the target is in range; otherwise, and always on the Helm map, CRT.dim. */
-export interface RangeDraw { x: number; y: number; r: number; lit: boolean }
 export interface LockDraw { x: number; y: number; r: number; room: number; label: Label }
 /** A torpedo in flight (homing torpedo spec §3): a filled dot of radius `r` screen px (TORPEDO_DOT_PX or more), the
  *  crew's or the Hunter's, with its short fading trail. */
@@ -72,11 +69,10 @@ export interface EffectDraw { kind: 'beam' | 'burst' | 'spark' | 'flare' | 'pop'
 /** Duel polish i spec §A: the Hunter's held charge as a ring about its drawn marker, the arc from 12 o'clock clockwise
  *  `fill` of the way round; at a full charge the whole ring at the pulse `alpha` and the label FIRING. */
 export interface ChargeDraw { x: number; y: number; r: number; fill: number; full: boolean; alpha: number; colour: number; label: Label }
-/** `charge`, `callouts` (duel polish i spec §A, §B) and `torpedoRange` (weapons update spec §2) are optional so a
+/** `charge` and `callouts` (duel polish i spec §A, §B) are optional so a
  *  hand-built frame may leave them out. */
 export interface CombatDraw {
   weapons: WeaponsDraw | null; lock: LockDraw | null; missiles: MissileDraw[]; effects: EffectDraw[]; charge?: ChargeDraw | null; callouts?: CalloutDraw[];
-  torpedoRange?: RangeDraw | null;
   /** Feel-i: the status sentence (on a console), the Helm's own laser arc, the FIRING SOLUTION bracket, the goal glow and
    *  the floating numbers. */
   status?: StatusDraw | null; helmArc?: ArcDraw | null; solution?: SolutionDraw | null; goal?: GoalDraw | null; floats?: FloatDraw[];
@@ -188,8 +184,6 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   }
 
   const inRange = torpedoInRange(state, 0);
-  const torpedoRange: RangeDraw | null = (input.console === 'weapons' || input.console === 'helm') && input.ships.includes(0)
-    ? { x: ownS.x, y: ownS.y, r: MISSILE_RANGE * z, lit: (input.console === 'weapons' || input.flight === true) && inRange } : null;
   // Feel-i (console feel spec §1, §2): the laser's situation drives the sentence, the bright arc and the bracket.
   const situation = laserSituation(state, input.fx.sinceShot, input.gunner ?? true), lined = linedUp(situation), ready = situation.kind === 'solution';
   const centre = ((input.reserveLeft ?? 0) + vp.w - input.reserveRight) / 2;
@@ -316,7 +310,8 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   // flight), the laser's aim line: from the own ship's drawn marker along the aim clamped as the sim clamps it, to its reach.
   let laserAim: Segment | null = null;
   if (input.console === 'weapons' && cls.slots.laser && input.ships.includes(0) && state.systems[0]!.laserManual && manualLaserReady(state, 0) && missileOf(state, 0) === null) {
-    const heading = state.ships[0].heading, r = LASER_RANGE * z, aim = input.laserAim ?? heading * HEADING_COUNT;
+    // Net-4a §3.8: about the drawn nose, so the line turns with the own ship's correction offset (none: P's heading).
+    const heading = (((state.ships[0].heading + (prev[0]?.oh ?? 0)) % HEADING_COUNT) + HEADING_COUNT) % HEADING_COUNT, r = LASER_RANGE * z, aim = input.laserAim ?? heading * HEADING_COUNT;
     const a = (clampAim(heading, aim, LASER_ARC_STEPS) / AIM_STEPS) * 2 * Math.PI;
     laserAim = { x1: ownS.x, y1: ownS.y, x2: ownS.x + Math.sin(a) * r, y2: ownS.y - Math.cos(a) * r };
   }
@@ -326,5 +321,5 @@ export function combatModel(input: CombatModelInput): CombatDraw {
     const a = toS(q.x - q.vx * PEW_STREAK_S, q.y - q.vy * PEW_STREAK_S), b = toS(q.x, q.y);
     return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
   });
-  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange, status, helmArc, solution, goal, floats, torpedoPath, evade, pings, pewRounds, laserAim, turretArc, muzzles, reticle, bracket, ...gun };
+  return { weapons, lock, missiles, effects, charge, callouts, status, helmArc, solution, goal, floats, torpedoPath, evade, pings, pewRounds, laserAim, turretArc, muzzles, reticle, bracket, ...gun };
 }
