@@ -202,6 +202,21 @@ describe('the online source follows the throttle (Artemis spec §5.3, §6.1)', (
       expect(gunner.axes()).toEqual({ turn: 0, thrust: 0 });
     } finally { disposeDuel(d); c.dispose(); }
   });
+  it('while predicting, throttle() is P\'s level, not the replica\'s (Net-4a §3.9)', () => {
+    const d = createSeatedDuel(CUTTER, 3, 0, 2, ShipClass.Valkyrn), c = confirmed();
+    d.throttle = 1; c.publish(d);
+    const p = loadDuelSnapshot(CUTTER, saveDuelSnapshot(d, DIGEST), DIGEST);
+    p.throttle = 3;   // a throttle command this seat sent, in P and not yet in the replica
+    let on = true;
+    const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 },
+      prediction: { active: () => on, state: () => p, before: () => null, alpha: () => 0 } });
+    try {
+      source.observe();
+      expect([c.client.state()!.throttle, source.throttle()]).toEqual([1, 3]);
+      on = false;
+      expect(source.throttle()).toBe(1);   // no prediction: the replica's
+    } finally { disposeDuel(p); disposeDuel(d); c.dispose(); }
+  });
   it('the end card flies nothing: axes() is NO_AXES on a decided round whatever the throttle', () => {
     const d = createSeatedDuel(CUTTER, 3, 0, 2, ShipClass.Valkyrn), c = confirmed();
     const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });

@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createIndexedDbDuelRecordStore } from '../src/renderer/src/app/web/duelRecordStore';
 import { downloadText } from '../src/renderer/src/app/web/download';
 import { createIndexedDbRecordStore } from '../src/network/online/recordStore';
-import { DUEL_RECORD_DAY_MAX_BYTES, DUEL_RECORD_MAX_BYTES, duelRecordDay, latencyFigure, validateDuelRecord, type DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
+import { DUEL_RECORD_DAY_MAX_BYTES, DUEL_RECORD_MAX_BYTES, duelRecordDay, fineFigure, latencyFigure, validateDuelRecord, type DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
 import { DUEL_RECORD_FILE_MAX_BYTES, duelRecordPath } from '../src/main/network/duelRecords';
 
 const losses = { planet: 0, asteroid: 0, edge: 0, expired: 0, own: 0, missile: 0 };
@@ -44,6 +44,20 @@ describe('the duelRecords store', () => {
   });
 });
 
+describe('the record’s prediction block (Net-4a §3.10)', () => {
+  it('an old record with no prediction block still validates; one with the block validates too', () => {
+    const old = JSON.parse(JSON.stringify(record(0))) as DuelPlaytestRecord;
+    expect('prediction' in old).toBe(false);
+    expect(validateDuelRecord(old)).toEqual(old);
+    const withBlock = { ...old, prediction: { lead: latencyFigure([6, 7]), verifiedShare: 0.95, correction: fineFigure([0.12]), resimP99Ms: 0.84 } };
+    expect(validateDuelRecord(withBlock).prediction).toEqual(withBlock.prediction);
+  });
+  it('fineFigure rounds to 0.001 (latencyFigure to whole ms)', () => {
+    expect(fineFigure([0.12344, 0.5, 1.23456])).toEqual({ count: 3, median: 0.5, p95: 1.235, max: 1.235 });
+    expect(fineFigure([0.0004])).toEqual({ count: 1, median: 0, p95: 0, max: 0 });
+    expect(fineFigure([])).toEqual({ count: 0, median: null, p95: null, max: null });
+  });
+});
 describe('downloadText', () => {
   it('saves through a Blob link and revokes it later', async () => {
     const clicks: { href: string; download: string }[] = [];
