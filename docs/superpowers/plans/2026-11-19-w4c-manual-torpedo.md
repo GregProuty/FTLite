@@ -134,8 +134,8 @@ Expected: `src/renderer/src/sim/tuning.ts:7:export const SIM_VERSION = <V>;`. No
 Run: `git log --oneline -3; git rev-parse --short=8 HEAD`
 Expected: W-4b's last commit on top (its gate-entry commit). The short hash is `W4C_BASE`.
 
-Run: `git grep -n "torpTurn" -- src | wc -l` and `git grep -n "export function slewTurrets\|turret: (slot: 0 | 1)\|export function predictTurret" -- src/renderer/src/sim/tactical/turret.ts src/renderer/src/app/duel/onlineSource.ts src/renderer/src/app/duel/weaponsSeat.ts`
-Expected: a non-zero count, which is what Task 2 removes, and W-4b's `slewTurrets`, the online `turret(slot)` and `predictTurret` present (W-4b's "Seam for W-4c"). If either W-4b name is missing, stop and report: W-4c depends on them.
+Run: `git grep -n "torpTurn" -- src | wc -l` and `git grep -n "export function slewTurrets\|turret: (slot: 0 | 1)\|export function predictTurret\|export function handControl" -- src/renderer/src/sim/tactical/turret.ts src/renderer/src/app/duel/onlineSource.ts src/renderer/src/app/duel/weaponsSeat.ts src/renderer/src/sim/tactical/state.ts`
+Expected: a non-zero count, which is what Task 2 removes, and W-4b's `slewTurrets`, the online `turret(slot)`, `predictTurret` and `handControl` (in `state.ts`, the anchor Task 3 edits) present (W-4b's "Seam for W-4c"). If any of these W-4b names is missing, stop and report: W-4c depends on them.
 
 - [ ] **Step 2: The full suite at the W-4c start**
 
@@ -535,6 +535,7 @@ import { disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state'
 import type { DuelCommand } from '../src/renderer/src/sim/duel/commands';
 import type { HeldInput } from '../src/renderer/src/net/contracts';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
+import { pewGain } from '../src/renderer/src/sim/tactical/pew';
 import { placeMissile, removeMissile } from '../src/renderer/src/sim/tactical/state';
 import { createSeatedDuel } from './helpers/duelSeat';
 
@@ -622,6 +623,24 @@ describe('the guns during a MANUAL flight (W-4 spec §7)', () => {
       expect(s.gunManual).toBe(true);
       expect(s.gunTurret).toBeGreaterThan(0);   // toward the ship to starboard, not the reticle to port
       expect(s.gunShots).toBeGreaterThan(0);   // the trigger is dropped in flight, so every round is AUTO's
+    } finally { disposeDuel(d); }
+  });
+  it('pew pew on MAN and selected fights on AUTO too while a MANUAL torpedo flies: it slews to the ship, fires with no pewFire sent, and charges at AUTO\'s rate (W-4 amendment §2.3)', () => {
+    const { d, g } = hound();
+    try {
+      const t = d.tactical, s = t.systems[0]!;
+      t.hostileAt = 0;
+      Object.assign(t.ships[1], { x: 150, y: 1500 - 300, vx: 0, vy: 0 });   // as the AUTO case: inside both arcs, to starboard
+      stepDuelTick(d, { held: [], commands: [env(d, g, { kind: 'gunMode', slot: 0, manual: true }, 1)] });   // pew pew's own switch
+      fly(d, true);
+      const west = 49152;   // a reticle due west: a pew in hand would slew to port
+      for (let k = 0; k < 120; k++) stepDuelTick(d, { held: held(d, g, { weaponSel: 0, turretAim: west }), commands: [] });
+      expect(s.pewManual).toBe(true);
+      expect(s.pewTurret).toBeGreaterThan(0);   // toward the ship to starboard, not the reticle to port
+      expect(s.pewShots).toBeGreaterThan(0);   // no pewFire was sent, so every round is AUTO's
+      s.pewCharge = 0;   // below full, so one tick's gain shows
+      stepDuelTick(d, { held: held(d, g, { weaponSel: 0, turretAim: west }), commands: [] });
+      expect(s.pewCharge).toBe(pewGain(t, 0, false));   // tickPew reads handControl: AUTO's gain, not MAN's, during the flight
     } finally { disposeDuel(d); }
   });
   it('the Valkyrn\'s trigger is today\'s: it fires with a MANUAL torpedo of its own in flight (no turret, no flight gate)', () => {
@@ -1396,7 +1415,7 @@ Spec `docs/superpowers/specs/2026-11-19-w4-weapons-controls-design.md` §7, §9,
   1. Select the torpedo (3) and press R (or click its tag) to set it MANUAL, then F (or click the map). V does nothing here.
   2. Hold the left button on the map: the torpedo swings toward the cursor, and the card reads STEER LMB. Let go: it holds that heading.
   3. While it flies, the muzzle lines do not follow the reticle and the left button fires nothing. Once the enemy is hostile the guns, on MAN or AUTO, track it and fire on their own (owner 2026-11-19: no gun is in your hands during the flight); a gun set to MAN reads AUTO (or HOLD), still lit, until it ends.
-  4. A / D and 1 / 2 / 3 still move the selection during the flight, and R and Shift+R still flip the tags. The right drag pans the map.
+  4. A / D and 1 / 2 / 3 still move the selection during the flight, and R and Shift+R still flip each tag's light (its switch); the words stay AUTO or HOLD until the flight ends. The right drag pans the map.
   5. When it ends, the selection is the gun you had before. A held left button fires nothing until you let go and press again, even if it was held over the console and dragged onto the map.
   6. Select the torpedo (3), R to MANUAL, and click the map: it launches. Keep the button down and it turns toward the pointer once its boost ends; a quick click leaves it flying straight on the nose's heading. A torpedo picked up by its card before the launch is dropped, so holding the button steers at once.
 
@@ -1530,9 +1549,9 @@ In `docs/superpowers/research/2026-11-19-w4-report.md`, under `## W-4c`, add:
 - whether `DUEL_TEST_SEED` moved;
 - the final test count from Step 7;
 - the identity checks' result;
-- "W-4 complete on `w4-weapons-controls` at SIM_VERSION <V + 1>; merge to master is the controller's".
+- "W-4 complete on `w4-weapons-controls` at SIM_VERSION <V + 1>; merge to master is the controller's (the branch is cut from SIM 60 and master is at 61, so the merge controller bumps to <V + 2> at the merge, W-4 amendment §4)".
 
-In `docs/gates.md`'s W-4c entry, add one line after the Automated box: `  SIM_VERSION <V> → <V + 1> alone (canonical trace and duel oracle per tick), blessed; <the smoke seed line>.`
+In `docs/gates.md`'s W-4c entry, add one line after the Automated box: `  SIM_VERSION <V> → <V + 1> alone (canonical trace and duel oracle per tick), blessed; the merge to master bumps once more (master is already at <V + 1>); <the smoke seed line>.`
 
 Run `head -c 64` on both files, as in Task 7 Step 7.
 
