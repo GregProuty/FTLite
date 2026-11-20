@@ -158,7 +158,7 @@ Part 2 is built in two plans: **2a** (§2.2-§2.4, this layout) and **2b** (§2.
   `NO CONTACT IN SENSOR RANGE`. That is "beside the marker" made consistent with Weapons. The off-screen arrow already
   carries the range.
 - **Ship view only:** `TORPEDO INBOUND` (the old readout's rule: the enemy torpedo within 600) blinks hot at top centre
-  (y 100, FONT_SIZE). An AWAY player gets an `AWAY` label under their character, the way DOWNED does. An empty Helm or
+  (centred on y 106, FONT_SIZE: between the pause line and the notice). An AWAY player gets an `AWAY` label under their character, the way DOWNED does. An empty Helm or
   Weapons console's badge blinks WARN.
 
 ### 2.5 Tests and gates

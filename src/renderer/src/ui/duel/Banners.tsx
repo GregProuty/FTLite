@@ -30,7 +30,7 @@ export const Banners = memo(function Banners({ banners, cx = PLAY_CX }: { banner
         <Panel x={box.x} y={box.y} w={box.w} h={box.h} />
         <PixelText text={pause} x={INTERNAL_W / 2} y={box.y + box.h / 2} size={FONT_NATIVE} tint={TEXT_TINT} anchorX={0.5} anchorY={0.5} />
       </>}
-      {banners.alert !== null && <div data-ui-alert="" style={{ display: 'contents' }}><PixelText text={banners.alert} x={INTERNAL_W / 2} y={100} size={FONT_SIZE} tint={alertTint} anchorX={0.5} anchorY={0.5} /></div>}
+      {banners.alert !== null && <div data-ui-alert="" style={{ display: 'contents' }}><PixelText text={banners.alert} x={INTERNAL_W / 2} y={106} size={FONT_SIZE} tint={alertTint} anchorX={0.5} anchorY={0.5} /></div>}
       {banners.notice !== null && <PixelText text={banners.notice} x={cx} y={130} size={SIZE} tint={TEXT_TINT} anchorX={0.5} anchorY={0.5} />}
     </>
   );
