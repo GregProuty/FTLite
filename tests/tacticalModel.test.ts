@@ -9,7 +9,7 @@ import { OWN_SHIP } from '../src/renderer/src/render/duel/consoleLayout';
 import { HULLS } from '../src/renderer/src/render/tactical/hullModel';
 import { DENT_FULL_R, DENT_PULL_MAX, DENT_SUM_MAX, dentEase, dentOf, WELL_MAX_SHIFT, WELL_PULL, wellScale } from '../src/renderer/src/render/tactical/mapGrid';
 import { RockKind, writeRock } from '../src/renderer/src/sim/tactical/rocks';
-import { gravityAccel, stepSoloFlight } from '../src/renderer/src/sim/tactical/physics';
+import { shipGravityAccel, stepSoloFlight } from '../src/renderer/src/sim/tactical/physics';
 import { createTacticalState, placeMissile, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 
 const vp = { w: 1280, h: 720 };
@@ -17,10 +17,10 @@ const prevOf = (st: TacticalState): PrevBody[] => st.ships.map((s) => ({ x: s.x,
 function input(st: TacticalState, cam: Camera, over: Partial<TacticalModelInput> = {}): TacticalModelInput {
   return { state: st, prev: prevOf(st), alpha: 1, camera: cam, viewport: vp, console: 'helm', axes: { turn: 0, thrust: 0 }, ships: [0], paused: false, reserveRight: 0, ...over };
 }
-const pull = (r: number) => Math.hypot(...gravityAccel(r, 0));
+const pull = (r: number) => Math.hypot(...shipGravityAccel(r, 0));   // the pull a ship feels (the slingshot)
 
 describe('gravity contours (H-1 spec §7 item 3)', () => {
-  it('inverts gravityAccel: the pull at each radius is the contour value', () => {
+  it('inverts shipGravityAccel: the pull at each radius is the contour value', () => {
     for (const a of [40, 10, 3]) expect(pull(contourRadius(a))).toBeCloseTo(a, 6);
     expect(contourRadius(40)).toBeLessThan(contourRadius(10));
   });

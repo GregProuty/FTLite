@@ -1,6 +1,6 @@
 // The console map's grid (owner 2026-11-19): 'gravity' bends the grid toward the planet, like a rubber sheet seen from
-// above; 'square' is the plain lettered grid; 'off' (UI round spec §1.3, the default) draws no lines, only the squares'
-// names. Saved with the volumes (app/settingsStore.ts) and read by the duel scene each frame through the renderer.
+// above; 'square' is the plain lettered grid; 'off' (UI round spec §1.3, the default) draws nothing: no lines and,
+// since the owner's 2026-11-20 note, no square names either. Saved with the volumes (app/settingsStore.ts) and read by the duel scene each frame through the renderer.
 // Drawing only: ships, rocks, contours and the squares' names keep their true places.
 export const MAP_GRID_SETTINGS = ['off', 'gravity', 'square'] as const;
 export type MapGridSetting = (typeof MAP_GRID_SETTINGS)[number];

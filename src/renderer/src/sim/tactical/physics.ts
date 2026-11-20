@@ -5,13 +5,25 @@ import { hx, hy, wrapHeading } from './direction';
 import { hitStatics, resolveContacts } from './contacts';
 import { classOf, CREW_SLOT, Room, type Axes, type Ship, type TacticalState } from './state';
 import { DuelSystem, effectiveBars, ENGINE_FACTOR_BY_BARS } from './bars';
-import { CREW_FLIGHT, DEFAULT_FLIGHT, DT, GM, GRAVITY_EPS, K_EDGE, MAX_SPEED, R_MAP, RCS_THRUST, type FlightTuning } from './tuning';
+import { CREW_FLIGHT, DEFAULT_FLIGHT, DT, GM, GRAVITY_EPS, K_EDGE, MAX_SPEED, R_MAP, RCS_THRUST, SHIP_GRAVITY, SLING_CALM_R, SLING_MIN_SPEED, SLING_OUT_CUT, type FlightTuning } from './tuning';
 
 /** Acceleration toward the planet at the origin: a = −GM · d / (|d|² + ε²)^{3/2}. */
 export function gravityAccel(x: number, y: number): [number, number] {
   const q = x * x + y * y + GRAVITY_EPS * GRAVITY_EPS;
   const k = -GM / (q * Math.sqrt(q));
   return [k * x, k * y];
+}
+
+/** The planet's pull on a ship (the slingshot, tuning.ts): SHIP_GRAVITY times gravityAccel. */
+export function shipGravityAccel(x: number, y: number): [number, number] {
+  const [ax, ay] = gravityAccel(x, y);
+  return [ax * SHIP_GRAVITY, ay * SHIP_GRAVITY];
+}
+
+/** The share of a ship's drag that applies at (x, y): 0 within SLING_CALM_R of the planet, 1 from 2 · SLING_CALM_R. */
+export function slingDragShare(x: number, y: number): number {
+  const d = Math.sqrt(x * x + y * y);
+  return d <= SLING_CALM_R ? 0 : d >= 2 * SLING_CALM_R ? 1 : d / SLING_CALM_R - 1;
 }
 
 /** Inward acceleration past the map edge: a = −K_EDGE · (|d| − R_MAP) · d/|d|; zero inside. */
@@ -54,7 +66,12 @@ export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning, engines = 0, 
   }
   // The field: gravity and the edge spring, summed from 0 in today's order.
   let gx = 0, gy = 0;
-  if (tuning.gravity) { const [ax, ay] = gravityAccel(s.x, s.y); gx += ax; gy += ay; }
+  if (tuning.gravity) {
+    // The slingshot: the ship's stronger pull, cut by SLING_OUT_CUT while it moves away from the planet faster than SLING_MIN_SPEED.
+    const fast = s.vx * s.vx + s.vy * s.vy > SLING_MIN_SPEED * SLING_MIN_SPEED;
+    const [ax, ay] = shipGravityAccel(s.x, s.y), out = fast && s.x * s.vx + s.y * s.vy > 0 ? 1 - SLING_OUT_CUT : 1;
+    gx += ax * out; gy += ay * out;
+  }
   if (tuning.edge) { const [ex, ey] = edgeAccel(s.x, s.y); gx += ex; gy += ey; }
   // The pushes: the main engine scaled by the Engines factor, its reverse in proportion (§3: |q| of the full reverse),
   // and the cold gas thrusters (§4: RCS_THRUST per vented axis along the nose or its right, never scaled by the Engines).
@@ -74,7 +91,7 @@ export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning, engines = 0, 
   } else {
     const ax = gx + tx, ay = gy + ty;   // the field then the push: today's sum, value for value
     s.vx += ax * DT; s.vy += ay * DT;
-    const keep = 1 - tuning.drag * DT;
+    const keep = 1 - tuning.drag * (tuning.gravity ? slingDragShare(s.x, s.y) : 1) * DT;   // the slingshot: no drag near the planet (a flight with no field has no planet)
     s.vx *= keep; s.vy *= keep;
     s.skidBudget *= keep;   // drag shrinks the remaining skid too, so the assist never pushes past zero
   }
