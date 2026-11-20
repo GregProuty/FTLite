@@ -16,6 +16,24 @@ Decisions taken (owner, 2026-11-20):
 - Pipeline: a Blender headless script (not three.js offline, not live 3D in the game).
 - Look development: agents drive Blender live through an MCP server, then the result is frozen into the script.
 
+## North star (owner, 2026-11-20)
+
+The long-term look is a 2D game with a pseudo-3D top-down feel, much like Alien Swarm (2010): on our own ship, when
+boarding, and when exploring abandoned space stations and derelicts. This slice is the first step toward that look,
+not the whole of it. What it means for this slice:
+
+- The rig is the house pipeline for the whole Alien Swarm look, not a one-off for crew. The camera tilt, light
+  direction, toon bands and ink weight chosen here become the standard for later pre-rendered pieces (walls with
+  height, doors, props, derelict tiles), so they must be in rig config, not hard-coded per character.
+- The rig also writes a **normal-map pass** per sheet (Blender normal pass, same layout as the sheet). The game does
+  not use it in this slice. It is there so a later lighting spec can light sprites with 2D dynamic lights (torches,
+  flashlights, alarm strobes, muzzle flashes), which is most of the Alien Swarm mood, without re-rendering.
+- The painted 2MT Hound stays for this slice. Pre-rendered modular environments that would replace or sit beside the
+  painted maps are a later spec, decided after the crew look gate.
+- Later specs this points to (not planned): pre-rendered modular ship and station tiles from the same rig; 2D normal
+  lighting with darkness and flashlights; an on-foot boarding/derelict mode. Park them in the roadmap until the owner
+  orders them.
+
 ## 1. Render rig and look
 
 - **Camera.** Orthographic, tilted 60 degrees from the horizon, always looking screen-up. The tilt is one value in
@@ -28,7 +46,7 @@ Decisions taken (owner, 2026-11-20):
   painted and sit on the 2MT painting. Colours stay near the house palette; no hard palette snap in this slice.
 - **Mask pass.** Each render also writes a mask holding only the outfit's team-colour areas. The game tints the mask
   with the player's `CREW_COLORS` entry, so one model serves every player.
-- **Output per character.** One WebP sheet, one WebP mask sheet, and one JSON block in the existing manifest format
+- **Output per character.** One WebP sheet, one WebP mask sheet, one normal-map sheet (see North star; not loaded by the game yet), and one JSON block in the existing manifest format
   (`frames`, `animations`), with names `crew3d.<char>.<anim>.<dir>`. The JSON also records the foot row and the head
   row, so the game reads its anchor and lifts from data.
 - **Determinism.** Fixed seeds and sample counts: re-running the script on unchanged inputs gives the same sheets.
