@@ -99,3 +99,29 @@ passive median 129.9 s, shortest 85.1 s
 
 Full suite after Task 6 (typecheck clean, electron-vite build ok): 519 files, 6217 passed, 7 failed, 2 skipped. All 7 failures are kind (b) in the known-red window and listed above: `duelGolden`, `duelRematchGolden`, `tacticalSlots:162`, `duelSnapshot` fixture, `duelCheckpoint:51`, `duelOracle:85`, `duelModules:90`. No timeouts.
 
+
+## Task 14
+
+- Step 2: `per-tick canonical trace unchanged at sim version 63: golden 7200 ticks, determinism-v2 108000 ticks in 13 runs (baseline HEAD e65d84fe1a35bfba79294e93a0373bee14411982)`, exit 0.
+- The same-version bless at 63 (`npm run bless`, exit 0):
+
+```
+blessed tests/golden/basic.json: 120 checkpoints, final f616991e
+blessed tests/golden/duel-1.json: 14 checkpoints, 8621 ticks, outcome 2, final 83c0a17f
+blessed tests/fixtures/determinism-v2.json: sim version 63, 1800 samples and 330 boundaries re-executed
+blessed tests/golden/duel-rematch.json: 27 checkpoints, rematch on tick 8621, rounds 8621 ticks outcome 2 then 7891 ticks outcome 2, final 7423c3b6
+```
+
+  `determinism-v2.json` unchanged; `basic.json` one line, its content digest. `canonical-trace.ts golden`: `tests/golden/basic.json: 4 leaves differ, 0 outside version, digest and hashes`, exit 0. blessGuard, golden, duelGolden, duelRematchGolden: 4 files, 20 tests pass.
+- Kind (b) re-picks, each by the property its comment states:
+  - `tests/tacticalSlots.test.ts`: seed 1's scripted duel length 7796 -> 7303.
+  - `tests/duelSnapshot.test.ts`: the fixture seed 1 tick 6465 -> seed 2 tick 6134 (the first tick from 5000 on with exactly one missile in flight, a damaged crew room and a repair in progress, on the lowest seed whose crew pew turret is slewed there; turret -3476). Seed 1's first such tick, 5975 (turret -5632), was passed over: the Hunter's pew charge there is 438, under the Cutter's full 1080, so the test's `systems.1.cls = 0` case reached `duel slot identity` instead of `pewCharge: out of range`. Seed 2's charge is 1728. Seeds 3 to 9 first qualify at 6039, 6475, 6119, 6398, 5975, 5119 (turret 0), 5352; seed 10 none.
+  - `tests/duelCheckpoint.test.ts`: seed 10 SPLIT 6048 -> 6583 (the first tick from 5000 on with a missile in flight, a damaged crew room and a repair in progress); seed 10 is now a crew loss at tick 7673; its end summary was `[['downed'], []]`, `[0, 15]`, `[0, 15]`, `[1, 3]`, `[0, 3]`, `[3, 8]` and is now `[['laser'], []]`, `[0, 18]`, `[0, 18]`, `[1, 3]`, `[0, 2]`, `[2, 7]`.
+  - `tests/duelOracle.test.ts`: scripted-3's first difference, tick 1 -> tick 265 (from the run; with drag the Hound no longer drifts from tick 1, as at SIM 54).
+  - `tests/duelModules.test.ts`: seed 6's first tick with a missile in flight, 2746 -> 2798.
+  - `tests/duelGolden.test.ts`, `tests/duelRematchGolden.test.ts`: by the bless.
+  - `tests/duelScripted.test.ts` was already green (Task 6) and needed no re-pick.
+- The ten targeted files: 10 passed, 96 tests passed, 2 skipped.
+- Gates unchanged since Task 6 (the duel telemetry's summary and passive median, `diff` empty; median 136.7 s, still outside 180 to 300 as at the base); Valkyrn gate unchanged since `HR2_BASE` (all 25 lines, `diff` empty). The fences: no diff since e65d84fe; 5 files, 21 tests pass.
+- Full verification: typecheck clean; electron-vite build ok; full suite 522 files passed, 6258 tests passed, 2 skipped, no timeouts; `npm run test:determinism`: Node, Electron and Firefox 1800 samples PASS (logs checked out after); the removed-names grep prints nothing.
+- `DUEL_TEST_SEED` moved, 423 -> 1921 (both smoke scripts). The smoke's step 3 timed out on 423. The brief's search (no input, the crew standing) found seed 84 at tick 4946, but the smoke seats both players, and seated seed 84 decides on tick 7609 (423 on 9286), past the 90 s step; the smoke with 84 failed step 3 too. A search with both crew seated from tick 0 over seeds 1 to 4000 before tick 5000 found only seed 1921, decided on tick 4276, a crew win. With 1921 the smoke passes and prints the `ACTUAL DUEL APP` line.
