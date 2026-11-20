@@ -39,7 +39,7 @@ export function loadSettings(storage: RecordStorage): Settings {
       soloShip: isSoloShipId(r.soloShip) ? r.soloShip : DEFAULT_SETTINGS.soloShip, valkyrnLaserFit: r.valkyrnLaserFit === true,
       mapGrid: r.version === 3 && validMapGrid(r.mapGrid) ? r.mapGrid : DEFAULT_SETTINGS.mapGrid,   // UI round §1.3: a v2 record's grid was the old default
       throttleTapMs: typeof r.throttleTapMs === 'number' && THROTTLE_TAP_STEPS.includes(r.throttleTapMs) ? r.throttleTapMs : DEFAULT_THROTTLE_TAP_MS,
-      fpsCounter: r.fpsCounter !== false };   // helm round 2 §6.3
+      fpsCounter: r.fpsCounter !== false };   // UI round §1.7
   } catch { return { ...DEFAULT_SETTINGS }; }
 }
 

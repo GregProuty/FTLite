@@ -66,7 +66,7 @@ describe('the settings record (Valkyrn spec §9)', () => {
     map.set(SETTINGS_KEY, '{"version":2,"master":1,"music":1,"effects":1,"shake":"full","soloShip":"cutter","valkyrnLaserFit":"yes"}');
     expect(loadSettings(storage)).toMatchObject({ soloShip: 'hound', valkyrnLaserFit: false });
   });
-  it('helm round 2 §6.3: throttleTapMs round-trips and stays a version 2 record', () => {
+  it('helm round 2 §6.3: throttleTapMs round-trips in a version 3 record (UI round §1.3)', () => {
     saveSettings(storage, { ...DEFAULT_SETTINGS, throttleTapMs: 150 });
     expect(loadSettings(storage)).toMatchObject({ version: 3, throttleTapMs: 150 });
     expect(DEFAULT_SETTINGS.throttleTapMs).toBe(200);

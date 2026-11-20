@@ -36,7 +36,7 @@ export interface LayoutSlice { stripHeight: number; scale: number; offsetX: numb
 /** Browser-only menu facts (web build spec §5.4, §7.4, §7.5, §7.7); all off in Electron. `unsupported` replaces Home's
  *  Multiplayer button, `note` is the Safari line, `onlineBlocked` the Multiplayer screen's one-tab text, `playtestLog`
  *  shows Settings' Download playtest log and `playtestLogText` its last result. `web`: the page runs in a browser (no
- *  preload), where F11 is the browser's own fullscreen (review R1-F7). */
+ *  preload), where the page takes F11 for the Fullscreen API (UI round §1.6; was the browser's own, review R1-F7). */
 export interface BrowserSlice { web: boolean; update: boolean; unsupported: string | null; note: string | null; onlineBlocked: string | null; playtestLog: boolean; playtestLogText: string }
 export const INITIAL_BROWSER: BrowserSlice = { web: false, update: false, unsupported: null, note: null, onlineBlocked: null, playtestLog: false, playtestLogText: '' };
 export const NO_PLAYTEST_RECORDS_TEXT = 'No playtest records yet.', PLAYTEST_LOG_FAILED_TEXT = 'The playtest log could not be read.';
