@@ -98,7 +98,7 @@ const feel = want('feel') ? { seed: 2026, allOn: switches(true, feelRun), allOff
 const stress = want('stress') ? (() => {
   const times: number[] = [], failures: string[] = [], freeEvery10s: number[][] = [];
   let edgeDust = 0, tidalBreaks = 0, tidalPieces = 0, slotDust = 0, capHits = 0, gridChecks = 0;
-  const rejoins = { lane: 0, group: 0, own: 0, cluster: 0 }, refused: Record<string, number> = {}, gridWrong: string[] = [];
+  const rejoins = { lane: 0, group: 0, own: 0, cluster: 0 }, clusterJoins = { tumble: 0, ring: 0 }, refused: Record<string, number> = {}, gridWrong: string[] = [];
   for (let seed = 1; seed <= 20; seed++) {
     const a = createTacticalState(seed), b = createTacticalState(seed), marks: number[] = [];
     switchOff(a, 1); switchOff(b, 1);
@@ -110,7 +110,7 @@ const stress = want('stress') ? (() => {
         if (e.kind !== 'rock') continue;
         if (e.what === 'dust' && e.by === 'edge') edgeDust++;
         if (e.what === 'split' && e.by === 'tidal') { tidalBreaks++; tidalPieces += e.pieces?.length ?? 0; }
-        if (e.what === 'rejoin' && e.how) rejoins[e.how]++;
+        if (e.what === 'rejoin' && e.how) { rejoins[e.how]++; if (e.join) clusterJoins[e.join]++; }
       }
       if (a.tick % 600 === 0) marks.push(count(a, RockKind.Free));
       if (a.tick % 60 === 0) { tallyRefusals(a, refused); gridChecks++; const w = gridAgainstBrute(a); if (w) gridWrong.push(`seed ${seed} tick ${a.tick}: ${w}`); }   // plan deviations 3, 18
@@ -126,7 +126,7 @@ const stress = want('stress') ? (() => {
   }
   const safety = { edgeDust, slotDust, capHits };
   if (gridWrong.length > 0) failures.push(...gridWrong.slice(0, 5).map((w) => `grid: ${w}`));
-  return { seeds: 20, ticks: 4000, restoreTicks: 1000, failures, safety, refused, gridChecks, safetyPass: edgeDust === 0 && slotDust === 0 && capHits === 0, tidalBreaks, tidalPieces, rejoins,
+  return { seeds: 20, ticks: 4000, restoreTicks: 1000, failures, safety, refused, gridChecks, safetyPass: edgeDust === 0 && slotDust === 0 && capHits === 0, tidalBreaks, tidalPieces, rejoins, clusterJoins,
     stepDuelMs: { median: round(median(times)), p99: round(quantile(times, 0.99)) }, freeEvery10sMax: Array.from({ length: freeEvery10s[0]?.length ?? 0 }, (_, j) => Math.max(...freeEvery10s.map((m) => m[j] ?? 0))) };
 })() : null;
 

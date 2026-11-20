@@ -19,8 +19,9 @@ import { isRail, railCentreRadius, railRowChanged, rockPhase, RockKind, rockSlot
 import type { TacticalState } from './state';
 import { ASTEROID_GAP, LANES, PLANET_RADIUS, R_MAP } from './tuning';
 
-/** How a Free rock rejoins: its ρω and how; a cluster join (§14 D14) also carries the cluster's kind and its centre at T + 1. */
-export interface RejoinChoice { rhoW: number; how: 'lane' | 'group' | 'own' | 'cluster'; kind?: number; cx?: number; cy?: number }
+/** How a Free rock rejoins: its ρω and how; a cluster join (§14 D14) also says which (the tumble group, or the ring: the
+ *  cluster's rotation as a plain Rail), and a tumble join carries the cluster's kind and its centre at T + 1. */
+export interface RejoinChoice { rhoW: number; how: 'lane' | 'group' | 'own' | 'cluster'; join?: 'tumble' | 'ring'; kind?: number; cx?: number; cy?: number }
 /** Why a Free rock stays Free (the first rule that refused it): its kind or masks, the clock, the speed, the ρ bounds, a
  *  live rock overlapping, a lane zone but too far off its lane, a group snap of 2 u/s or more, or (plan deviation 3) a
  *  cluster rock's, a lane rock's or another rejoined rail's sweep across its annulus. */
@@ -85,32 +86,72 @@ export function rejoinChoice(s: TacticalState, k: number, why?: { reason: Rejoin
 }
 
 const centreOut: RailOut = { x: 0, y: 0, vx: 0, vy: 0 };
-/** §14 D14: Free rock k joining the cluster of ρω `group` (it passed every other check), or null: the cluster's centre at the
- *  phase tick from its lowest live slot, V_group(p) = ω·perp(centre) + ω_s·perp(p − centre) (ω_s = ω + SPIN_RATE for a
- *  Tumble, ω for a Rail), |v − V_group| < CLUSTER_JOIN_SNAP, |offset| ≤ RAIL_OFFSET_MAX, and the member's sweep crossing no
- *  rail outside the cluster. */
+/** Whether any live rail outside the cluster of ρω `group` sweeps across [lo, hi]. */
+function crossesOutside(s: TacticalState, k: number, group: number, lo: number, hi: number): boolean {
+  const v = s.rocks;
+  for (let j = 0, n = rockSlots(s); j < n; j++) {
+    if (j === k || !isRail(v[j * ROCK_STRIDE]!) || Math.abs(railCentreRadius(s, j) - group) < SAME_RHO) continue;
+    const [a, z] = sweep(s, j);
+    if (lo < z && hi > a) return true;
+  }
+  return false;
+}
+/** §14 D14: Free rock k joining the cluster C of ρω `group` (it passed every other check and only C's sweep refused it), or
+ *  null (it stays Free). C's centre at the phase tick is read from its lowest live Tumble (its lowest live rail when none
+ *  tumbles); D = |p − centre|.
+ *  - Near (D ≤ RAIL_OFFSET_MAX): it joins the tumble group, C's kind with centre the centre and offset p − centre, when
+ *    |v − V_group(p)| < CLUSTER_JOIN_SNAP (V_group = ω·perp(centre) + ω_s·perp(offset), ω_s = ω + SPIN_RATE for a Tumble),
+ *    its member sweep crosses no rail outside C, and its member circle stays clear of C's ring rocks.
+ *  - Far (the controller's extension: D > ρo_max + r_max + r + ASTEROID_GAP over C's tumbling members): it joins C's
+ *    rotation as a plain Rail at ρω = ρc = |C's stored centre| (centre p · ρc / ρ, offset radial, at most RAIL_OFFSET_MAX)
+ *    when |v − ω(ρc)·perp(p)| < CLUSTER_JOIN_SNAP and its annulus crosses no rail outside C: a fixed distance D from the
+ *    centre, so it never meets a tumbling member.
+ *  - Between the two: null. */
 function clusterJoin(s: TacticalState, k: number, group: number): RejoinChoice | null {
   const v = s.rocks, n = rockSlots(s), b = k * ROCK_STRIDE;
-  let g = -1;
-  for (let j = 0; j < n && g < 0; j++) if (j !== k && isRail(v[j * ROCK_STRIDE]!) && Math.abs(railCentreRadius(s, j) - group) < SAME_RHO) g = j;
-  if (g < 0) return null;
-  const G = g * ROCK_STRIDE, kind = v[G]!, tumble = kind === RockKind.Tumble, gx = v[G + 1]!, gy = v[G + 2]!;
-  railPos(gx, gy, 0, 0, v[G + 7]!, rockPhase(s), false, centreOut);   // the centre alone: the same turn a member's centre takes
-  const cx = centreOut.x, cy = centreOut.y, x = v[b + 1]!, y = v[b + 2]!, r = v[b + 5]!, ox = x - cx, oy = y - cy, ro2 = ox * ox + oy * oy;
-  if (ro2 > RAIL_OFFSET_MAX * RAIL_OFFSET_MAX) return null;
-  const w = orbitRate(Math.sqrt(gx * gx + gy * gy)), ws = tumble ? w + SPIN_RATE : w;
-  const dvx = v[b + 3]! - (-w * cy - ws * oy), dvy = v[b + 4]! - (w * cx + ws * ox);
-  if (dvx * dvx + dvy * dvy >= CLUSTER_JOIN_SNAP * CLUSTER_JOIN_SNAP) return null;
-  const rc = Math.sqrt(cx * cx + cy * cy);
-  if (tumble) {   // as a member its sweep is |centre| ± (|offset| + r): it must cross no rail outside the cluster
-    const ro = Math.sqrt(ro2), lo = rc - ro - r - ASTEROID_GAP, hi = rc + ro + r + ASTEROID_GAP;
-    for (let j = 0; j < n; j++) {
-      if (j === k || !isRail(v[j * ROCK_STRIDE]!) || Math.abs(railCentreRadius(s, j) - group) < SAME_RHO) continue;
-      const [a, z] = sweep(s, j);
-      if (lo < z && hi > a) return null;
+  let g = -1, firstRail = -1, roMax = 0, rMax = 0;
+  for (let j = 0; j < n; j++) {
+    const J = j * ROCK_STRIDE;
+    if (j === k || !isRail(v[J]!) || Math.abs(railCentreRadius(s, j) - group) >= SAME_RHO) continue;
+    if (firstRail < 0) firstRail = j;
+    if (v[J] === RockKind.Tumble) {
+      if (g < 0) g = j;
+      const ro = Math.sqrt(v[J + 3]! * v[J + 3]! + v[J + 4]! * v[J + 4]!); if (ro > roMax) roMax = ro; if (v[J + 5]! > rMax) rMax = v[J + 5]!;
     }
   }
-  return { rhoW: rc, how: 'cluster', kind, cx, cy };
+  const tumbling = g >= 0;
+  if (!tumbling) {   // the clusterTumble switch off: every member a Rail; the extents over all of them
+    g = firstRail;
+    for (let j = 0; j < n; j++) { const J = j * ROCK_STRIDE; if (j !== k && isRail(v[J]!) && Math.abs(railCentreRadius(s, j) - group) < SAME_RHO) { const ro = Math.sqrt(v[J + 3]! * v[J + 3]! + v[J + 4]! * v[J + 4]!); if (ro > roMax) roMax = ro; if (v[J + 5]! > rMax) rMax = v[J + 5]!; } }
+  }
+  if (g < 0) return null;
+  const G = g * ROCK_STRIDE, kind = v[G]!, gx = v[G + 1]!, gy = v[G + 2]!, rho_c = Math.sqrt(gx * gx + gy * gy), w = orbitRate(rho_c);
+  railPos(gx, gy, 0, 0, v[G + 7]!, rockPhase(s), false, centreOut);   // the centre alone: the same turn a member's centre takes
+  const cx = centreOut.x, cy = centreOut.y, x = v[b + 1]!, y = v[b + 2]!, r = v[b + 5]!, ox = x - cx, oy = y - cy, D = Math.sqrt(ox * ox + oy * oy);
+  if (D <= RAIL_OFFSET_MAX) {   // near: the tumble group
+    const ws = tumbling ? w + SPIN_RATE : w, dvx = v[b + 3]! - (-w * cy - ws * oy), dvy = v[b + 4]! - (w * cx + ws * ox);
+    let ok = dvx * dvx + dvy * dvy < CLUSTER_JOIN_SNAP * CLUSTER_JOIN_SNAP;
+    if (ok && tumbling) {
+      const rc = Math.sqrt(cx * cx + cy * cy);
+      ok = !crossesOutside(s, k, group, rc - D - r - ASTEROID_GAP, rc + D + r + ASTEROID_GAP);
+      for (let j = 0; j < n && ok; j++) {   // C's ring rocks (its Rails) sit at a fixed distance from the centre: keep the member circle inside theirs
+        const J = j * ROCK_STRIDE;
+        if (j === k || v[J] !== RockKind.Rail || Math.abs(railCentreRadius(s, j) - group) >= SAME_RHO) continue;
+        const ex = rockX(s, j) - cx, ey = rockY(s, j) - cy;
+        if (D + r + ASTEROID_GAP >= Math.sqrt(ex * ex + ey * ey) - v[J + 5]!) ok = false;
+      }
+    }
+    if (ok) return { rhoW: Math.sqrt(cx * cx + cy * cy), how: 'cluster', join: 'tumble', kind, cx, cy };
+  }
+  if (D > roMax + rMax + r + ASTEROID_GAP) {   // far: the cluster's rotation as a plain Rail
+    const rho = Math.sqrt(x * x + y * y);
+    if (Math.abs(rho - rho_c) > RAIL_OFFSET_MAX) return null;
+    const dvx = v[b + 3]! - -w * y, dvy = v[b + 4]! - w * x;
+    if (dvx * dvx + dvy * dvy >= CLUSTER_JOIN_SNAP * CLUSTER_JOIN_SNAP) return null;
+    if (crossesOutside(s, k, group, rho - r - ASTEROID_GAP, rho + r + ASTEROID_GAP)) return null;
+    return { rhoW: rho_c, how: 'cluster', join: 'ring' };
+  }
+  return null;
 }
 
 /** §3.4, §13.2: the end-of-tick rejoin pass, ascending (a rock that rejoins counts as a live rail for the later ones).
@@ -125,9 +166,9 @@ export function settleRocks(s: TacticalState): void {
     const c = rejoinChoice(s, k);
     if (!c) continue;
     const b = k * ROCK_STRIDE, x = v[b + 1]!, y = v[b + 2]!, f = c.rhoW / Math.sqrt(x * x + y * y);
-    const cx = c.how === 'cluster' ? c.cx! : x * f, cy = c.how === 'cluster' ? c.cy! : y * f;
-    v[b] = c.how === 'cluster' ? c.kind! : RockKind.Rail; v[b + 1] = cx; v[b + 2] = cy; v[b + 3] = x - cx; v[b + 4] = y - cy; v[b + 7] = T1;
+    const tumble = c.join === 'tumble', cx = tumble ? c.cx! : x * f, cy = tumble ? c.cy! : y * f;
+    v[b] = tumble ? c.kind! : RockKind.Rail; v[b + 1] = cx; v[b + 2] = cy; v[b + 3] = x - cx; v[b + 4] = y - cy; v[b + 7] = T1;
     railRowChanged(s, k);
-    s.events.push({ kind: 'rock', what: 'rejoin', by: 'settle', rock: k, x, y, r: v[b + 5]!, vx: 0, vy: 0, how: c.how });
+    s.events.push({ kind: 'rock', what: 'rejoin', by: 'settle', rock: k, x, y, r: v[b + 5]!, vx: 0, vy: 0, how: c.how, ...(c.join ? { join: c.join } : {}) });
   }
 }

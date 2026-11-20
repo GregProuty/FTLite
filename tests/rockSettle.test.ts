@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { laserStrikesRock } from '../src/renderer/src/sim/tactical/rockWeapons';
-import { circularVelocity, orbitRate, SPIN_RATE } from '../src/renderer/src/sim/tactical/rails';
+import { circularVelocity, orbitRate, railPos, SPIN_RATE, type RailOut } from '../src/renderer/src/sim/tactical/rails';
 import { rejoinChoice, settleRocks } from '../src/renderer/src/sim/tactical/rockSettle';
 import { rockAt, RockKind, ROCK_STRIDE, rockX, rockY, writeRock } from '../src/renderer/src/sim/tactical/rocks';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
@@ -51,9 +51,9 @@ describe('rejoining a rail (spec §3.4, §13.2)', () => {
     settled(st, 104, 0, -1500, 0); mover(st, 110, 12, -1500, 0, 0, 8, 5, 490);   // a live rock overlaps it
     writeRock(st, 7, RockKind.Tumble, 1900, 0, 40, 0, 30, 5, 0);                 // a tumbling rail sweeps [1830, 1970]
     settled(st, 105, 0, -1935, 0);
-    expect([100, 101, 102, 103, 104, 105].map((k) => rejoinChoice(st, k) !== null)).toEqual([false, true, false, true, false, false]);
+    expect([100, 101, 102, 103, 104].map((k) => rejoinChoice(st, k) !== null)).toEqual([false, true, false, true, false]);
+    expect(rejoinChoice(st, 105)).toMatchObject({ how: 'cluster', join: 'ring' });   // §14 D14 extension: far round the tumbling rail's ring, it joins that rotation
     const why: { reason: string | null } = { reason: null };
-    expect(rejoinChoice(st, 105, why as never)).toBeNull(); expect(why.reason).toBe('sweepCluster');
     rejoinChoice(st, 100, why as never); expect(why.reason).toBe('bounds');
     rejoinChoice(st, 104, why as never); expect(why.reason).toBe('overlap');
   });
@@ -144,7 +144,7 @@ describe('joining a tumbling cluster\'s group (spec §14 D14)', () => {
     cluster(st);
     settled(st, 100, 0, 1940, 0);
     const before = rockAt(st, 100), why: { reason: string | null } = { reason: null };
-    expect(rejoinChoice(st, 100, why as never)).toMatchObject({ how: 'cluster' });
+    expect(rejoinChoice(st, 100, why as never)).toMatchObject({ how: 'cluster', join: 'tumble' });
     settleRocks(st);
     const v = slot(st, 100), after = rockAt(st, 100);
     expect([v[0], v[5], v[7]]).toEqual([RockKind.Tumble, 10, 500]);
@@ -161,9 +161,10 @@ describe('joining a tumbling cluster\'s group (spec §14 D14)', () => {
     expect(gap(-150, 1900)).toBeLessThan(6); expect(gap(199, 1900)).toBeGreaterThan(6);
     const st = arena(); st.tick = 500;
     cluster(st);
+    writeRock(st, 9, RockKind.Tumble, 0, 1900, 0, 180, 15, 5, 500);   // ρo_max 180: far is D > 215, so 101 (D 199) is not far
     settled(st, 100, -150, 1900, 0);
     settled(st, 101, 199, 1900, 0);
-    expect(rejoinChoice(st, 100)).toMatchObject({ how: 'cluster' });
+    expect(rejoinChoice(st, 100)).toMatchObject({ how: 'cluster', join: 'tumble' });
     const why: { reason: string | null } = { reason: null };
     expect(rejoinChoice(st, 101, why as never)).toBeNull(); expect(why.reason).toBe('sweepCluster');
   });
@@ -189,5 +190,59 @@ describe('the staggered rejoin re-check (spec §14, the cost fix)', () => {
     st.tick = 530;                                    // (530 + 100) % 30 = 0
     settleRocks(st);
     expect(st.rocks[100 * ROCK_STRIDE]).toBe(RockKind.Rail);
+  });
+});
+
+describe('joining a tumbling cluster\'s rotation from far round its ring (spec §14 D14, the controller\'s extension)', () => {
+  /** The cluster's centre at the current tick (centre (0, 1900) at tick 500). */
+  function centreNow(st: ReturnType<typeof arena>): [number, number] {
+    const o: RailOut = { x: 0, y: 0, vx: 0, vy: 0 }; railPos(0, 1900, 0, 0, 500, st.tick, false, o); return [o.x, o.y];
+  }
+  it('a settled rock in the ring far from the cluster joins as a Rail at ω(ρc): centre p · ρc / ρ, offset p − centre, t the tick, its position unchanged; for 30 minutes its distance to the cluster\'s centre holds and it stays clear of every cluster rock', () => {
+    const st = arena(); st.tick = 500;
+    writeRock(st, 7, RockKind.Tumble, 0, 1900, 60, 0, 15, 5, 500);
+    writeRock(st, 8, RockKind.Tumble, 0, 1900, -60, 0, 15, 5, 500);
+    settled(st, 100, 0, -1940, 0);                    // across the planet: D ≈ 3840 > 60 + 15 + 10 + 10
+    const before = rockAt(st, 100);
+    expect(rejoinChoice(st, 100)).toMatchObject({ how: 'cluster', join: 'ring', rhoW: 1900 });
+    settleRocks(st);
+    const v = slot(st, 100), after = rockAt(st, 100);
+    expect([v[0], v[1], v[3], v[5], v[7]]).toEqual([RockKind.Rail, 0, 0, 10, 500]);
+    expect(v[2]).toBeCloseTo(-1900, 9); expect(v[4]).toBeCloseTo(-40, 9);
+    expect(Math.abs(after.x - before.x)).toBeLessThan(1e-9); expect(Math.abs(after.y - before.y)).toBeLessThan(1e-9);
+    expect(rockEvents(st, 'rejoin')).toMatchObject([{ rock: 100, how: 'cluster', join: 'ring' }]);
+    const [c0x, c0y] = centreNow(st), d0 = Math.hypot(rockX(st, 100) - c0x, rockY(st, 100) - c0y);
+    let worst = 0, closest = Infinity;
+    for (let n = 0; n < 30 * 60; n++) {
+      st.tick += 60;
+      const [cx, cy] = centreNow(st);
+      worst = Math.max(worst, Math.abs(Math.hypot(rockX(st, 100) - cx, rockY(st, 100) - cy) - d0));
+      for (const j of [7, 8]) closest = Math.min(closest, Math.hypot(rockX(st, 100) - rockX(st, j), rockY(st, 100) - rockY(st, j)));
+    }
+    expect(worst).toBeLessThan(1e-6);
+    expect(closest).toBeGreaterThan(25);
+  });
+  it('only under the snap: |v − ω(ρc)·perp(p)| < 6 u/s', () => {
+    const snap = (x: number, y: number, dv: number): number => {   // the rock moving at V_c(p) plus dv along V_c
+      const [vx, vy] = circularVelocity(x, y), m = Math.hypot(vx, vy), w = orbitRate(1900);
+      return Math.hypot(vx * (1 + dv / m) - -w * y, vy * (1 + dv / m) - w * x);
+    };
+    expect(snap(0, -1702, -0.45)).toBeLessThan(6); expect(snap(0, -1702, 0.45)).toBeGreaterThan(6);
+    for (const [dv, joins] of [[-0.45, true], [0.45, false]] as const) {
+      const st = arena(); st.tick = 500;
+      writeRock(st, 7, RockKind.Tumble, 0, 1900, 190, 0, 15, 5, 500);   // sweeps [1695, 2105]
+      const [vx, vy] = circularVelocity(0, -1702), m = Math.hypot(vx, vy);
+      mover(st, 100, 0, -1702, vx * (1 + dv / m), vy * (1 + dv / m), 10, 5, 0);
+      const why: { reason: string | null } = { reason: null }, c = rejoinChoice(st, 100, why as never);
+      if (joins) expect(c).toMatchObject({ how: 'cluster', join: 'ring' }); else { expect(c).toBeNull(); expect(why.reason).toBe('sweepCluster'); }
+    }
+  });
+  it('a rock neither near the cluster (D ≤ 200) nor far from it (D > ρo_max + r_max + r + ASTEROID_GAP) stays Free', () => {
+    const st = arena(); st.tick = 500;
+    writeRock(st, 7, RockKind.Tumble, 0, 1900, 190, 0, 15, 5, 500);   // far means D > 190 + 15 + 10 + 10 = 225
+    writeRock(st, 8, RockKind.Tumble, 0, 1900, -60, 0, 15, 5, 500);
+    settled(st, 100, 0, 2110, 0);                     // D = 210
+    const why: { reason: string | null } = { reason: null };
+    expect(rejoinChoice(st, 100, why as never)).toBeNull(); expect(why.reason).toBe('sweepCluster');
   });
 });
