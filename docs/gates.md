@@ -1107,3 +1107,17 @@ Spec `docs/superpowers/specs/2026-11-19-w4-weapons-controls-design.md` §7, §9,
   1. A MANUAL torpedo under the left-button steer, with the STEER LMB card.
 
   Does it feel like the Helm's steer?
+
+## Sensors blip: an enemy beyond sensor range is a rough ping (2026-11-19)
+
+Spec `docs/superpowers/specs/2026-11-19-sensors-blip-design.md`; plan `docs/superpowers/plans/2026-11-19-sensors-blip.md`.
+
+- [x] Automated (sensors blip): `npx vitest run` passes (516 files, 6192 tests). This includes the ping (a blip from the first unseen frame, the radius 150 to 600 by the distance beyond range, the centre within 0.8 r of the enemy by the pinned hash, held for 120 game ticks and aged 0 to 1, no new ping while the tick stands still, dropped when seen or destroyed, cleared by a new round, no enemy ghost), the map model (the circle's on-screen rule, the `?` or the `BLIP ~n` edge arrow and never both, no enemy arrow, goal glow or FIRING SOLUTION on it, no pick), the layer (the dotted circle, the `?` and the hollow arrow in the ramp, nothing allocated), the readout's `ENEMY  BLIP ~n` and the sit card's place (`tests/sensorsBlip*.test.ts`, `tests/engineeringFog.test.ts`). `npx tsc -b` is clean and `npm run build` passes. Drawing only: no file under `src/renderer/src/sim/`, no wire schema and no golden changed, and SIM_VERSION is untouched.
+- [ ] Manual (owner): play a Single player duel.
+  1. At the round's start the Hunter is beyond sensor range. At the Helm an arrow at the map's edge reads `BLIP ~<n>`. Zoom out until the dotted circle with a `?` is on screen: it jumps to a new guess about every 2 s and fades between jumps. Press Esc: while paused it does not jump.
+  2. Fly toward it. The circle shrinks as you close, and at sensor range the Hunter's ship takes its place. Fly away again: the ship turns into a blip at once, with no fading ghost left behind.
+  3. With the Hunter in sight, lower the Sensors power until the range ring falls short of it: it turns into a blip. Raise it again: the ship is back.
+  4. Stand up (the ship view): the OUTSIDE strip reads `ENEMY  BLIP ~<n>`, a round number close to the arrow's.
+  5. At Weapons, click the blip and press T: nothing is picked, and a lock still reads NO CONTACT.
+
+  Does the blip read as a rough fix on the amber CRT, is the 2 s ping comfortable to watch, and is the circle the right size near and far? The numbers are starting values: `BLIP_R_MIN`, `BLIP_GROW`, `BLIP_R_MAX` and `BLIP_PING_TICKS` in `src/renderer/src/render/tactical/fogModel.ts`.
