@@ -85,3 +85,40 @@ Confirmed. The known-red window's `duelGates` entry now opens at Task 5 (the sta
 
 ---
 
+# Round 2 (delta, reviewing a566b1ef, effort medium, 31 s, 93595 in / 65385 cached / 2206 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — Task 8 now lists tests/valkyrnRounds.test.ts as a kind (a) edit in Files (plan L2128). Step 9 replaces the line exactly as it stands on the branch (.worktrees/w4/tests/valkyrnRounds.test.ts:L58) with the same pin plus room: 0, citing amendment §3.3. Step 10 expects it to pass, Step 12's git add stages it, and the Global Constraints fences bullet (L47) says it is not a fence file. It is not one of the four named fences, so the fence rule is not broken.
+- R1-F2: resolved — Task 9's Files (Modify) list and its Step 6 git add now both name tests/onlineDuelSession.test.ts, so Task 9's two prediction cases land in Task 9's own commit.
+- R1-F3: resolved — Task 11 Step 3 now says to render gun-mode-pew after the console-card-pew div and gives the reason: Button sets no z-index, so DOM order decides which element takes the click. The click test asserts overlay.compareDocumentPosition(tag) & DOCUMENT_POSITION_FOLLOWING. The ids are correct: the overlay is data-testid="console-card-pew" (WeaponsStation.tsx:L133), and tags() reads console-gun-mode-pew. The test uses document.querySelector, which the file already uses elsewhere (pewUi.test.tsx:L59).
+- R1-F4: resolved — The known-red entry for duelGates now opens 'from Task 5 (the stand-in pew flies along the slewed turret; …)' until Task 13 (plan L52). That agrees with Task 5 Step 7's instruction to record a failing seed for Task 13 and go on.
+
+## Verified
+- The old line quoted in Task 8 Step 9 matches .worktrees/w4/tests/valkyrnRounds.test.ts:L58 character for character, so the replacement anchor is on the branch.
+- WeaponsStation.tsx:L133-L135: the console-card-pew div holds a Box with pointerEvents 'auto' covering x0..right, top+6..top+22. The tag rendered after it in the DOM sits on top.
+- Task 8 Step 12's git add includes tests/valkyrnRounds.test.ts, and Step 10's run list already included that file.
+- The duelGates known-red window (L52) and the rule that every other test passes (L53) no longer contradict Task 5 Step 7.
+- No regressions in the touched regions: the Global Constraints fence list is still the four fence files, and the Task 9 and Task 11 edits do not conflict with Task 12's staging.
+
+## Not verified
+- I did not check whether jsdom's Node.DOCUMENT_POSITION_FOLLOWING is in scope as a global in the Task 11 test environment. It normally is under vitest's jsdom environment.
+- Per the delta-round scope, I did not re-review the unchanged sections.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the subject at `a566b1ef`. 0 accepted, 0 rejected, 0 deferred. The reviewer confirmed all four round 1 fixes as resolved (R1-F1 to R1-F4) and raised nothing new; the verdict is "ready".
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
