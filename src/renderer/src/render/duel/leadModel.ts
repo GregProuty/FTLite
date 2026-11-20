@@ -2,6 +2,7 @@
 // when the nose points where the target will be, in the shooter's frame, after the round's flight. Pure: no Pixi; only
 // leadPipFor reads a state.
 import { DT, HEADING_COUNT } from '../../sim/tactical/tuning';
+import { shipSeen } from '../../sim/tactical/science';
 import { classOf, CREW_SLOT, Outcome, targetOf, type TacticalState } from '../../sim/tactical/state';
 import { worldToScreen, type Camera, type Point, type Viewport } from '../tactical/camera';
 import { interpolatedShip, type Label, type PrevBody } from '../tactical/tacticalModel';
@@ -68,7 +69,7 @@ export function gunSightDraw(i: { state: TacticalState; prev: readonly PrevBody[
   const reach = gun.speed * gun.lifeTicks * DT, cross = toS(own.x + Math.sin(a) * reach, own.y - Math.cos(a) * reach);
   const target = targetOf(st, CREW_SLOT), e = st.ships[target];
   let pip: GunSightDraw['pip'] = null;
-  if (e?.active && target !== CREW_SLOT) {
+  if (e?.active && target !== CREW_SLOT && shipSeen(st, target)) {   // sensors blip spec §3: nothing of an unseen enemy, no pip and no line to it
     const eb = interpolatedShip(st, i.prev, i.alpha, target), lead = leadPip(own.x, own.y, body.vx, body.vy, eb.x, eb.y, e.vx, e.vy, gun.speed);
     if (lead) { const p = toS(lead.x, lead.y); pip = { x: p.x, y: p.y, on: onTarget(own.x, own.y, own.h, lead.x, lead.y, classOf(st, target).radius), enemy: toS(eb.x, eb.y) }; }
   }

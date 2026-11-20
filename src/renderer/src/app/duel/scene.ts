@@ -54,7 +54,7 @@ import { flightAlert, type RefusedControl } from '../../render/duel/situationMod
 import { pingAllowed, pushPing, stepPings, type Ping, type PingRequest } from '../../render/duel/pingModel';
 import type { TorpedoTone } from './duelAudio';
 import { viewCamera, type DuelView } from './runtime';
-import { createFog, stepFog } from '../../render/tactical/fogModel';
+import { createFog, stepFog, type FogView } from '../../render/tactical/fogModel';
 import { weaponBars, WeaponSlot } from '../../sim/tactical/bars';
 import { hasTurret } from '../../sim/tactical/defs';
 
@@ -173,6 +173,13 @@ export function pushMapEffects(fx: FxState, events: readonly ViewEvent[], t: Tac
  *  unseen enemy no contact, so a rock over it still takes the bracket (no bracket missing gives the enemy away). */
 export function rockHoverAt(at: Parameters<typeof pickContact>[0], point: { x: number; y: number }): number | null {
   return pickContact(at, point) === null ? pickRock(at, point) : null;
+}
+
+/** Sensors blip spec §3: whether the sit-down card's test point is below the crew ship (the card then sits at the top of
+ *  the map). While the enemy is unseen the point is the ping's centre, so the card's place tells no more than the blip
+ *  does; with no blip it is the enemy ship, as before. */
+export function sitCardBelow(t: TacticalState, fog: FogView): boolean {
+  return (fog.blip ? fog.blip.y : t.ships[targetOf(t, CREW_SLOT)]?.y ?? 0) > t.ships[CREW_SLOT].y;
 }
 
 export interface DuelSceneOptions {
@@ -452,7 +459,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         ? contactModel({ state: d.tactical, contact: open?.contact ?? null, aim: open?.aim ?? false, weapon: contact?.aimWeapon() ?? 'laser', station, t, weapons: consoleView?.weapons ?? consoleView?.flight?.weapons ?? null, seen: open?.contact === 0 ? fogView.seen.enemy : open?.contact === 1 ? fogView.seen.derelict : true, flashes: open?.contact === 0 ? flashesFor(fx.struck, targetOf(d.tactical, CREW_SLOT)) : [] })
         : null;
       options.ui.frame({
-        readout: { rows: readoutRows({ duel: d, mode: view === 'flight' ? 'helm' : view, active: source.active(), console: onConsole }), help: onConsole ? [] : readoutHelp(view === 'flight' ? 'helm' : view, view === 'helm' && crewSeat) },
+        readout: { rows: readoutRows({ duel: d, mode: view === 'flight' ? 'helm' : view, active: source.active(), console: onConsole, fog: fogView }), help: onConsole ? [] : readoutHelp(view === 'flight' ? 'helm' : view, view === 'helm' && crewSeat) },
         end: overlay.end,
         console: consoleView,
         crt: crtActive(view),
@@ -461,7 +468,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         ...(contact ? { contact: contactView } : {}),
         ownShip: onMap ? ownShipModel(d, OWN_SHIP_BOX, t, flashUntil) : null,   // own ship window spec §4: the console map views only
         ...(contactView?.aimWeapon ? { pointer: options.pointer?.() ?? null } : {}),   // FTL targeting spec §1: seeds the targeting line
-        sitCard: onConsole && seat !== null && carded ? sitCard(seat, t - sitAt, acted, (d.tactical.ships[enemySlot]?.y ?? 0) > d.tactical.ships[CREW_SLOT].y, !!overlay.notice) : null   // Feel-i §1; Feel-ii §3.9: under the online notice
+        sitCard: onConsole && seat !== null && carded ? sitCard(seat, t - sitAt, acted, sitCardBelow(d.tactical, fogView), !!overlay.notice) : null   // Feel-i §1; Feel-ii §3.9: under the online notice
       });
       // Art-i spec section 7: the interior shakes its own world; the console views keep the fx shake (Feel-i: scaled by Settings).
       const shake = view === 'interior' ? { x: 0, y: 0 } : shakeOffset(fx, shakeScale(renderer.shake?.() ?? 'full'));

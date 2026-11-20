@@ -1,10 +1,11 @@
 // Engineering spike §10.4: the fog of war is view state. A contact (the enemy, the derelict, the enemy torpedo) is seen
 // inside the sensor range; once unseen it leaves a ghost at its last seen place and heading, fading over 10 s, then gone.
 // The map hides an unseen derelict's mark, draws the range ring and the ghosts; the contact window says CONTACT LOST.
+// Sensors blip spec §2.1 (2026-11-19) amends it: the enemy ship leaves no ghost; unseen, it is a blip (tests/sensorsBlip*.test.ts).
 import { describe, expect, it } from 'vitest';
 import { createTacticalState, Contact, placeMissile } from '../src/renderer/src/sim/tactical/state';
 import { derelictPos, sensorRange } from '../src/renderer/src/sim/tactical/science';
-import { createFog, GHOST_SECONDS, stepFog } from '../src/renderer/src/render/tactical/fogModel';
+import { BLIP_GROW, BLIP_R_MIN, createFog, GHOST_SECONDS, stepFog } from '../src/renderer/src/render/tactical/fogModel';
 import { tacticalModel, type TacticalModelInput } from '../src/renderer/src/render/tactical/tacticalModel';
 import { createCamera } from '../src/renderer/src/render/tactical/camera';
 import { contactModel } from '../src/renderer/src/render/duel/contactModel';
@@ -47,27 +48,34 @@ const assets: GameAssets = {
 };
 
 describe('stepFog (spec §10.4)', () => {
-  it('the enemy inside the range is seen; moved out it is a ghost at its last place, fading over 10 s, then gone', () => {
+  it('the enemy inside the range is seen and has no blip; moved out it leaves no ghost but a blip, at once and past the old 10 s fade (sensors blip spec §2.1)', () => {
     const t = createTacticalState(5), f = createFog(), own = t.ships[0]!, e = t.ships[1]!, r = sensorRange(t.systems[0]!);
     e.x = own.x + r / 2; e.y = own.y; e.active = true;
     let v = stepFog(f, t, 100, 0);
-    expect(v.range).toBe(r); expect(v.seen.enemy).toBe(true); expect(v.ghosts.filter((g) => g.kind === 'enemy')).toEqual([]);
-    const at = { x: e.x, y: e.y, h: e.heading + e.headingAcc };
+    expect(v.range).toBe(r); expect(v.seen.enemy).toBe(true); expect(v.ghosts.filter((g) => g.kind === 'enemy')).toEqual([]); expect(v.blip ?? null).toBeNull();
     e.x = own.x + r * 2;
     v = stepFog(f, t, 101, 0);
     expect(v.seen.enemy).toBe(false);
-    expect(v.ghosts.find((g) => g.kind === 'enemy')).toEqual({ kind: 'enemy', ...at, alpha: 1 - 1 / GHOST_SECONDS });
-    expect(stepFog(f, t, 100 + GHOST_SECONDS, 0).ghosts.find((g) => g.kind === 'enemy')).toBeUndefined();
+    expect(v.ghosts.filter((g) => g.kind === 'enemy')).toEqual([]);
+    expect(v.blip!.r).toBeCloseTo(BLIP_R_MIN + BLIP_GROW * r, 6); expect(v.blip!.age).toBe(0);   // r beyond the range
+    v = stepFog(f, t, 100 + GHOST_SECONDS, 0);
+    expect(v.ghosts.filter((g) => g.kind === 'enemy')).toEqual([]); expect(v.blip ?? null).not.toBeNull();   // it never fades away for good
   });
-  it('a destroyed enemy leaves no ghost; a new round clears every ghost; never seen, never a ghost', () => {
+  it('never seen, a blip from the first frame and no ghost; a new round makes a new ping; a destroyed enemy has neither (sensors blip spec §2.1, §2.3)', () => {
     const t = createTacticalState(5), f = createFog(), own = t.ships[0]!, e = t.ships[1]!, r = sensorRange(t.systems[0]!);
     e.x = own.x + r * 3; e.y = own.y; e.active = true;   // on the crew ship's line, so the r / 2 step below is inside the range
-    expect(stepFog(f, t, 0, 0).ghosts).toEqual(expect.not.arrayContaining([expect.objectContaining({ kind: 'enemy' })]));   // never seen
-    e.x = own.x + r / 2; stepFog(f, t, 1, 0);
-    e.x = own.x + r * 3; expect(stepFog(f, t, 2, 0).ghosts.some((g) => g.kind === 'enemy')).toBe(true);
-    expect(stepFog(f, t, 2.5, 1).ghosts.some((g) => g.kind === 'enemy')).toBe(false);   // a new round
-    e.x = own.x + r / 2; stepFog(f, t, 3, 1); e.active = false;
-    expect(stepFog(f, t, 4, 1).ghosts.some((g) => g.kind === 'enemy')).toBe(false);   // destroyed: no ghost
+    const first = stepFog(f, t, 0, 0);
+    expect(first.ghosts.some((g) => g.kind === 'enemy')).toBe(false); expect(first.blip).toMatchObject({ age: 0 });   // never seen: a blip at once
+    e.x = own.x + r / 2; expect(stepFog(f, t, 1, 0).blip ?? null).toBeNull();   // seen: no blip
+    e.x = own.x + r * 3;
+    const again = stepFog(f, t, 2, 0);
+    expect(again.ghosts.some((g) => g.kind === 'enemy')).toBe(false);   // unseen again: still no ghost
+    expect(again.blip).toEqual(first.blip);   // the same round and ping index: the same ping
+    const next = stepFog(f, t, 2.5, 1).blip!;   // a new round
+    expect([next.x, next.y]).not.toEqual([first.blip!.x, first.blip!.y]);
+    e.active = false;
+    const gone = stepFog(f, t, 4, 1);
+    expect(gone.blip ?? null).toBeNull(); expect(gone.ghosts.some((g) => g.kind === 'enemy')).toBe(false);   // destroyed: neither
   });
   it('the enemy torpedo is seen by distance; gone while seen, it leaves no ghost', () => {
     const t = createTacticalState(5), f = createFog(), own = t.ships[0]!, r = sensorRange(t.systems[0]!);
@@ -89,9 +97,9 @@ describe('the fog on the map and the window (spec §10.4)', () => {
     const cam = createCamera(w.x, w.y, 0.5);
     const seen = tacticalModel(input(t, { camera: cam, fog: { range: 900, seen: { enemy: false, derelict: true, missile: false }, ghosts: [] } }));
     expect(seen.marks!.some((m) => m.contact === Contact.Derelict)).toBe(true);
-    const fogged = tacticalModel(input(t, { camera: cam, fog: { range: 900, seen: { enemy: false, derelict: false, missile: false }, ghosts: [{ kind: 'enemy', x: w.x, y: w.y, h: 0, alpha: 0.5 }] } }));
+    const fogged = tacticalModel(input(t, { camera: cam, fog: { range: 900, seen: { enemy: false, derelict: false, missile: false }, ghosts: [{ kind: 'derelict', x: w.x, y: w.y, h: 0, alpha: 0.5 }] } }));
     expect(fogged.marks!.some((m) => m.contact === Contact.Derelict)).toBe(false);
-    expect(fogged.ghosts).toEqual([{ kind: 'enemy', x: vp.w / 2, y: vp.h / 2, angle: 0, alpha: 0.5 }]);
+    expect(fogged.ghosts).toEqual([{ kind: 'derelict', x: vp.w / 2, y: vp.h / 2, angle: 0, alpha: 0.5 }]);   // sensors blip spec §2.1: no enemy ghost exists
     const own = tacticalModel(input(t, { fog: { range: 900, seen: { enemy: false, derelict: false, missile: false }, ghosts: [] } }));
     expect(own.sensor).toEqual({ x: vp.w / 2, y: vp.h / 2, r: 900 * 0.5 });
     expect(tacticalModel(input(t, {})).sensor).toBeUndefined();   // no fog given (the flight view): no ring

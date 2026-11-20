@@ -95,9 +95,12 @@ export interface HelmDraw { path: Point[]; origin: Point; velocity: Point; headi
 export interface PuffDraw { x: number; y: number; dx: number; dy: number }
 /** Feel-ii §1.3: a gravity ring about the planet (where its pull is `g` of the crew ship's full thrust) and its label. */
 export interface GravityDraw extends CircleDraw { g: number; label: Label }
-export type ArrowTarget = 'ship' | 'enemy' | 'planet' | 'missile';
+/** `'blip'` (sensors blip spec §3): the ping of an enemy beyond sensor range. It is not the `'enemy'` arrow, so the goal
+ *  glow and the FIRING SOLUTION mark (weaponsModel.ts), which read the enemy arrow, never attach to it. */
+export type ArrowTarget = 'ship' | 'enemy' | 'planet' | 'missile' | 'blip';
 /** `edge`: own ship window spec §3, set only on an arrow placed on the avoid rect's right or bottom side. */
-export interface ArrowDraw { target: ArrowTarget; x: number; y: number; angle: number; distance: number; label: string; edge?: 'avoidRight' | 'avoidBottom' }
+/** `alpha` (sensors blip spec §3): set only on a `'blip'` arrow, the ping's alpha; `distance` is then rounded to the nearest 100. */
+export interface ArrowDraw { target: ArrowTarget; x: number; y: number; angle: number; distance: number; label: string; edge?: 'avoidRight' | 'avoidBottom'; alpha?: number }
 export interface OverlayDraw { zoomText: string; scaleBar: { px: number; units: number }; snapHint: boolean; paused: boolean }
 /** The derelict's loot as the map and the contact window name it (Loot order). */
 export const LOOT_NAMES = ['HULL', 'TORPEDOES', 'SHIELD'] as const;
@@ -111,6 +114,8 @@ export interface SalvageDraw { x: number; y: number; r: number; fill: number }
 export interface LockRingDraw { x: number; y: number; r: number }
 /** Engineering spike §10.4: a ghost in screen space (its heading as radians clockwise from north) at its fade. */
 export interface GhostDraw { kind: GhostKind; x: number; y: number; angle: number; alpha: number }
+/** Sensors blip spec §3: the ping in screen pixels: its centre, its radius and its alpha (1 at age 0 down to 0.4 at age 1). */
+export interface BlipDraw { x: number; y: number; r: number; alpha: number }
 /** Spike ii §6.5: a bracket about a rock: a weapon's rock target, or the rock under the pointer while a weapon is picked up. */
 export interface RockMarkDraw { x: number; y: number; r: number; weapon: 'laser' | 'torpedo'; hover: boolean }
 export interface TacticalDraw {
@@ -131,6 +136,9 @@ export interface TacticalDraw {
   gravity?: GravityDraw[];
   /** Engineering spike §10.4 (only with `fog`): the sensor range ring about the crew ship, and the ghosts. */
   sensor?: CircleDraw | null; ghosts?: GhostDraw[];
+  /** Sensors blip spec §3 (only with `fog`): the ping's circle, or null when there is none or it is wholly off the view.
+   *  Its `?` is blipMark's. */
+  blip?: BlipDraw | null;
   /** Spike ii §6.5 (only with contacts): the rock brackets. */
   rockMarks?: RockMarkDraw[];
   /** Asteroids-iii §7.2: the Weapons map's rock target's predicted path (screen px). */
@@ -420,7 +428,7 @@ export function aroundAvoid(vp: Viewport, reserveLeft: number, reserveRight: num
   return { x: cx + dx * k, y: cy + dy * k, angle: Math.atan2(dx, -dy), edge: kx >= ky ? 'avoidRight' : 'avoidBottom' };
 }
 
-const ARROW_NAMES: Readonly<Record<ArrowTarget, string>> = { ship: 'SHIP', enemy: 'ENEMY', planet: 'PLANET', missile: 'TORPEDO' };   // homing torpedo spec §3: on screen it is a torpedo
+const ARROW_NAMES: Readonly<Record<ArrowTarget, string>> = { ship: 'SHIP', enemy: 'ENEMY', planet: 'PLANET', missile: 'TORPEDO', blip: 'BLIP' };   // homing torpedo spec §3: on screen it is a torpedo
 
 /**
  * Keep arrows on the same edge at least the label gap apart. Each edge's arrows are sorted along it and pushed on, from the
@@ -575,17 +583,31 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
 
   // Off-screen arrows: the own ship (distance from the camera centre), and the others (distance from the own ship).
   const arrows: ArrowDraw[] = [];
-  const arrow = (target: ArrowTarget, wx: number, wy: number, fromX: number, fromY: number): void => {
+  const arrow = (target: ArrowTarget, wx: number, wy: number, fromX: number, fromY: number, fade?: number): void => {
     const p = toS(wx, wy), rl = input.reserveLeft ?? 0, rt = input.reserveTop ?? 0;
     let e: { x: number; y: number; angle: number; edge?: 'avoidRight' | 'avoidBottom' } | null = edgePoint(vp, rl, input.reserveRight, p.x, p.y, rt);
     if (input.avoid) e = aroundAvoid(vp, rl, input.reserveRight, rt, input.avoid, p, e);
     if (!e) return;
-    const distance = Math.round(Math.sqrt((wx - fromX) ** 2 + (wy - fromY) ** 2));
-    arrows.push({ target, x: e.x, y: e.y, angle: e.angle, distance, label: `${target === 'enemy' && input.contacts && state.known[Contact.Enemy] === 0 ? 'CONTACT' : ARROW_NAMES[target]} ${distance}`, ...(e.edge ? { edge: e.edge } : {}) });
+    // Sensors blip spec §3: every arrow's distance is the exact rounded length, but the blip's is rounded to the nearest
+    // 100 and labelled `BLIP ~<n>`, as rough as the circle.
+    const len = Math.sqrt((wx - fromX) ** 2 + (wy - fromY) ** 2), distance = target === 'blip' ? Math.round(len / 100) * 100 : Math.round(len);
+    const name = target === 'enemy' && input.contacts && state.known[Contact.Enemy] === 0 ? 'CONTACT' : ARROW_NAMES[target];
+    arrows.push({ target, x: e.x, y: e.y, angle: e.angle, distance, label: target === 'blip' ? `${name} ~${distance}` : `${name} ${distance}`, ...(fade !== undefined ? { alpha: fade } : {}), ...(e.edge ? { edge: e.edge } : {}) });
   };
   if (input.ships.includes(0)) arrow('ship', own.x, own.y, cam.centreX, cam.centreY);
   const foe = targetOf(state, CREW_SLOT);   // the crew's locked target (engine refactor Decision 15)
   if (input.ships.includes(foe)) { const en = interpolatedShip(state, prev, alpha, foe); arrow('enemy', en.x, en.y, own.x, own.y); }
+  // Sensors blip spec §3: the ping. The circle is drawn when its ring crosses the view or its centre is in it (the
+  // ghosts' 40 px test would drop a large circle whose centre is just off the view). While the enemy is unseen the scene
+  // leaves it out of `ships`, so the 'enemy' arrow above is not built; a centre that is off screen by the helper's own
+  // test gets a 'blip' arrow instead, its range from the crew ship.
+  let blip: BlipDraw | null = null;
+  const ping = input.fog?.blip ?? null;
+  if (ping) {
+    const c = toS(ping.x, ping.y), r = ping.r * z, fade = 1 - 0.6 * ping.age;
+    if (ringCrossesRect(c.x, c.y, r, vp.w, vp.h) || onScreen(ping.x, ping.y, 0)) blip = { x: c.x, y: c.y, r, alpha: fade };
+    arrow('blip', ping.x, ping.y, own.x, own.y, fade);
+  }
   arrow('planet', map.planet.x, map.planet.y, own.x, own.y);
   const m = missileOf(state, 0);
   if (m) arrow('missile', m.x, m.y, own.x, own.y);
@@ -659,13 +681,20 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     grid: gridDraw(cam, vp, input.mapGrid === 'gravity' ? map.planet : null, dents), contours, edge, planet, asteroids, ships, helm, arrows,
     ...(marks ? { marks, salvage, lockRing } : {}),
     ...(gravity ? { gravity } : {}),
-    ...(input.fog ? { sensor, ghosts } : {}),
+    ...(input.fog ? { sensor, ghosts, blip } : {}),
     ...(rockMarks ? { rockMarks } : {}),
     ...(rockPath ? { rockPath } : {}),
     ...(puffs.length > 0 ? { puffs } : {}),
     overlay: { zoomText: `ZOOM ${z.toFixed(2)}`, scaleBar: { px: units * z, units }, snapHint: cam.follow === 'free', paused: input.paused },
     stars: starOffset(cam.centreX, cam.centreY, vp)
   };
+}
+
+/** Sensors blip spec §3: where the blip's `?` goes, or null. Only while the circle is drawn and the ping's centre has no
+ *  edge arrow: "off screen" is the arrow helper's own test, so the centre gets the `?` or the arrow, never both, and
+ *  never neither (a point with no arrow is inside the view, where the circle is always drawn). */
+export function blipMark(d: Pick<TacticalDraw, 'blip' | 'arrows'>): BlipDraw | null {
+  return d.blip && !d.arrows.some((a) => a.target === 'blip') ? d.blip : null;
 }
 
 /** Enemy ship window spec §3: a map click's hit radius in internal px at zoom z, the ships loop's cull radius in screen

@@ -8,6 +8,7 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { Room } from '../src/renderer/src/sim/tactical/state';
+import { sensorRange } from '../src/renderer/src/sim/tactical/science';
 import { GUN } from '../src/renderer/src/sim/tactical/defs';
 import { DT } from '../src/renderer/src/sim/tactical/tuning';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
@@ -51,6 +52,14 @@ describe('the gun sight (Valkyrn spec §7.4)', () => {
       expect(on.on).toBe(true);
       expect(on.x).toBeCloseTo(on.enemy.x, 6);   // at rest relative to the crew, the pip is the enemy
       place(d, 300, 120); expect(gunSightDraw(input(d))!.pip!.on).toBe(false);
+    } finally { disposeDuel(d); }
+  });
+  it('an enemy beyond sensor range gets no pip and no line to it (sensors blip spec §3)', () => {
+    const d = flying();
+    try {
+      place(d, sensorRange(d.tactical.systems[0]!) + 1000);
+      const gs = gunSightDraw(input(d))!;
+      expect(gs.pip).toBeNull(); expect(gs.cross).toBeDefined();
     } finally { disposeDuel(d); }
   });
   it('the heat bar fills with heat and blinks OVERHEAT while locked', () => {

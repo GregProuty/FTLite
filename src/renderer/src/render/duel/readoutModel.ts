@@ -15,6 +15,7 @@ import { LASER_CHARGE_UNITS, MAGAZINE, SHIELD_LAYERS } from '../../sim/tactical/
 import { AMBER, DIM, GOOD, LINE, PAD, TEXT, WARN } from '../theme';
 import { CREW_SHIP, ENEMY_SHIP } from '../tactical/shipColours';
 import { bearingDeg } from '../tactical/weaponsModel';
+import type { FogView } from '../tactical/fogModel';
 import { READOUT_COLUMN, ROOM_NAMES } from './interiorModel';
 
 export type ReadoutMode = 'helm' | 'weapons' | 'science' | 'interior';
@@ -58,6 +59,9 @@ export interface ReadoutInput {
   active: number;
   /** On an Artemis console (spec §2): no view heading (the tab strip says it) and no LASER block (the station block shows it). */
   console?: boolean;
+  /** Sensors blip spec §3: the frame's fog view. With its blip set and the enemy unseen, the OUTSIDE strip's ENEMY row reads
+   *  the rough range to the ping's centre. Absent or null (the scene's calls that only count rows, the tests): NO CONTACT. */
+  fog?: FogView | null;
 }
 
 /** The laser's CHARGE row (OFFLINE, FROZEN, HOLD n.n or a percentage, with its bar): the readout's and the Weapons station's. */
@@ -155,7 +159,12 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
     if (!crewed(helm)) rows.push(em(row('', 'COASTING', DIM, WARN), 'alert'));
     rows.push(em(row('WEAPONS', crewed(gun) ? 'CREWED' : 'EMPTY', DIM, crewed(gun) ? TEXT : WARN), crewed(gun) ? null : 'alert'));
     const dx = enemy.x - crew.x, dy = enemy.y - crew.y;
-    if (!shipSeen(t, target)) rows.push(row('ENEMY', 'NO CONTACT'));   // Engineering spike §10.4: no range or bearing unseen
+    if (!shipSeen(t, target)) {   // Engineering spike §10.4: no range or bearing unseen
+      // Sensors blip spec §3: with the frame's blip, the range to the ping's centre (not to the enemy) to the nearest 100,
+      // so the number is as rough as the circle. One row either way, so the count-only calls agree with the drawn rows.
+      const b = input.fog?.blip ?? null;
+      rows.push(row('ENEMY', b ? `BLIP ~${Math.round(Math.sqrt((b.x - crew.x) ** 2 + (b.y - crew.y) ** 2) / 100) * 100}` : 'NO CONTACT'));
+    }
     else {
       rows.push(row('ENEMY', `${Math.round(Math.sqrt(dx * dx + dy * dy))}`));
       rows.push(row('BEARING', String(bearingDeg(dx, dy)).padStart(3, '0')));
