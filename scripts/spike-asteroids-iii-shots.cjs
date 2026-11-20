@@ -1,5 +1,5 @@
 // Asteroids-iii screenshots (docs/superpowers/specs/2026-11-19-asteroids-iii-design.md §8.4): single player at Weapons on
-// the CRT map, staged through the solo hook globalThis.__spikeAsteroids (app/duel/duelMode.ts). Usage: install
+// the CRT map, staged through the solo hook globalThis.__spikeAsteroids (app/duel/duelMode.ts; set only behind the __FTLITE_STAGE__ flag, which this script sets). Usage: install
 // playwright-core@1.48.2 in a scratch folder, copy this file there, run `npm run build` in the worktree, then
 // `node spike-asteroids-iii-shots.cjs [out dir] [worktree]`. Shots: the belt at 0 and 120 s; a burst at 0, 2, 10 and 30 s;
 // cracks at wear 0.25, 0.5 and 1. The crew is pinned co-rotating with the main lane, 300 u outward of its target.
@@ -12,7 +12,9 @@ const { mkdtempSync, mkdirSync } = require('node:fs'); const { join } = require(
   const profile = mkdtempSync(join(tmpdir(), 'ftlite-ast3-'));
   const env = { ...process.env }; delete env.FTLITE_MODE;
   const app = await _electron.launch({ executablePath: 'C:/Users/djuar/FTLite/node_modules/electron/dist/electron.exe', args: [root, `--user-data-dir=${profile}`], env });
+  await app.context().addInitScript(() => { globalThis.__FTLITE_STAGE__ = true; });   // the staging hooks exist only behind this flag (app/duel/duelMode.ts)
   const page = await app.firstWindow();
+  await page.evaluate(() => { globalThis.__FTLITE_STAGE__ = true; });   // the first window may have loaded before the init script: set it before the duel begins
   const errs = []; page.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message)); page.on('console', (m) => { if (m.type() === 'error') errs.push('CONSOLE ' + m.text()); });
   await page.waitForTimeout(2500);
   await page.click('[data-testid="single-player"]'); await page.waitForTimeout(800);

@@ -3,7 +3,7 @@
 // nearest the crew, 0.5 s apart, so there are many free rocks, trails and shards). Frame times are requestAnimationFrame deltas
 // in the page. Usage: playwright-core@1.48.2 in a scratch folder, `npm run build` in the worktree, then
 // `node spike-asteroids-iii-frames.cjs [seconds per scene] [worktree] [json out]` (CPU_THROTTLE=4 slows the page 4x). The rAF delta is locked to the display's refresh when the page keeps up, so the numbers read as headroom only against that refresh interval. Reads the hooks __spikeAsteroids and
-// __spikeAsteroidsFx (app/duel/scene.ts). Report only; nothing is tuned.
+// __spikeAsteroidsFx (app/duel/scene.ts), both set only behind the __FTLITE_STAGE__ flag, which this script sets. Report only; nothing is tuned.
 const { _electron } = require('playwright-core');
 const { mkdtempSync, writeFileSync } = require('node:fs'); const { join } = require('node:path'); const { tmpdir } = require('node:os');
 (async () => {
@@ -11,7 +11,9 @@ const { mkdtempSync, writeFileSync } = require('node:fs'); const { join } = requ
   const profile = mkdtempSync(join(tmpdir(), 'ftlite-ast3f-'));
   const env = { ...process.env }; delete env.FTLITE_MODE;
   const app = await _electron.launch({ executablePath: 'C:/Users/djuar/FTLite/node_modules/electron/dist/electron.exe', args: [root, `--user-data-dir=${profile}`], env });
+  await app.context().addInitScript(() => { globalThis.__FTLITE_STAGE__ = true; });   // the staging hooks exist only behind this flag (app/duel/duelMode.ts)
   const page = await app.firstWindow();
+  await page.evaluate(() => { globalThis.__FTLITE_STAGE__ = true; });   // the first window may have loaded before the init script: set it before the duel begins
   const errs = []; page.on('pageerror', (e) => errs.push('PAGEERROR ' + e.message));
   await page.waitForTimeout(2500);
   await page.click('[data-testid="single-player"]'); await page.waitForTimeout(800);

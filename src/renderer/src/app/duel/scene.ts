@@ -207,7 +207,8 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
   root.addChild(scene);
   renderer.app.stage.addChild(root);
   const fx = createFx();
-  (globalThis as unknown as { __spikeAsteroidsFx?: unknown }).__spikeAsteroidsFx = fx;   // asteroids-iii: the frame-time check reads the live fx count (a read-only staging hook, like __spikeAsteroids)
+  const stageHook = globalThis as unknown as { __FTLITE_STAGE__?: boolean; __spikeAsteroidsFx?: unknown };
+  if (stageHook.__FTLITE_STAGE__ === true) stageHook.__spikeAsteroidsFx = fx;   // asteroids-iii: the frame-time check reads the live fx count (a read-only staging hook, behind duelMode's __FTLITE_STAGE__ flag like __spikeAsteroids)
   const rockTrack = createRockTrack();   // asteroids-iii §7.1: smooth motion and trails
   const sound = options.audio ? createDuelAudio(options.audio) : null;   // Audio-i spec section 4b: both modes, so Single player is no longer silent
   let epoch: number | null = null;

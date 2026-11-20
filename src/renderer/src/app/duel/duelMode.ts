@@ -72,15 +72,17 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     staleKeys: () => keyboard.staleHeld(),   // playtest2feedback final review I1: held keys do not carry onto the crew Helm
     seed: deps.seed, viewport, layout: deps.layout, onRound: (summary) => { void Promise.resolve(deps.recordDuel?.(solo.record(summary))).catch(() => {}); }
   });
-  // SPIKE ii (billiard asteroids): a staging hook for the screenshots, solo only. Never in a shipped build. `seatWeapons`
-  // sits the active character at Weapons (the tests' seatDuelCrew way), so the shots need no walking.
-  (globalThis as unknown as { __spikeAsteroids?: unknown }).__spikeAsteroids = {
-    duel: () => runtime.duel, rockAt, rockSlots, writeRock, RockKind, hitRock, breakRock, pushRock, beginRockTick,
-    seatWeapons: () => { const d = runtime.duel; sitDown(d.interior, runtime.active(), d.weapons); }
-  };
   // Feel-ii visual checks: a staging hook, Single player only, set only when the page asked for it before the duel began.
-  const stage = window as unknown as { __FTLITE_STAGE__?: boolean; __ftliteDuel?: unknown; __ftliteScene?: unknown };
-  if (stage.__FTLITE_STAGE__ === true) { stage.__ftliteDuel = runtime; stage.__ftliteScene = scene; }   // Engineering spike §8: the smoke reads the interior placement
+  const stage = window as unknown as { __FTLITE_STAGE__?: boolean; __ftliteDuel?: unknown; __ftliteScene?: unknown; __spikeAsteroids?: unknown };
+  if (stage.__FTLITE_STAGE__ === true) {
+    stage.__ftliteDuel = runtime; stage.__ftliteScene = scene;   // Engineering spike §8: the smoke reads the interior placement
+    // Asteroids ii/iii: the screenshot and frame-time scripts' hook, behind the same flag. `seatWeapons` sits the active
+    // character at Weapons (the tests' seatDuelCrew way), so the shots need no walking.
+    stage.__spikeAsteroids = {
+      duel: () => runtime.duel, rockAt, rockSlots, writeRock, RockKind, hitRock, breakRock, pushRock, beginRockTick,
+      seatWeapons: () => { const d = runtime.duel; sitDown(d.interior, runtime.active(), d.weapons); }
+    };
+  }
   // The solo record (H-2 spec §8, Helm §11a); `seat` is the character the keyboard drives when the round is decided.
   const solo = soloRecorder({ now: () => new Date().toISOString(), active: () => runtime.active(), helmPlayer: () => runtime.duel.helmPlayer });
 
