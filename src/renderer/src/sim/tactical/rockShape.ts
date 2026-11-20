@@ -26,7 +26,7 @@ export function rockCircleContact(s: TacticalState, k: number, cx: number, cy: n
 }
 
 /** Rock a against rock b: the normal from b's cell to a's cell over the least separated pair of cells (zero distance:
- *  north). True when they overlap. A cell of a out of reach of b's bounding circle is skipped. */
+ *  north). True when they overlap. A cell of a out of reach of b's bounding circle is skipped. When the rocks are apart the returned fields are not the nearest pair (the skip stops measuring); read them only when it returns true. */
 export function rockPairContact(s: TacticalState, a: number, b: number, out: Contact): boolean {
   rockCellsInto(s, a, cellsA); rockCellsInto(s, b, cellsB);
   const rr = cellsA.contactR + cellsB.contactR, bx = rockX(s, b), by = rockY(s, b), reach = s.rocks[b * ROCK_STRIDE + 5]! + cellsA.contactR;

@@ -8,12 +8,12 @@ import { hx, hy, wrapHeading } from './direction';
 import { roomAtImpact, sideOf } from './geometry';
 import { rockAimPoint, rockAlive, rockAt, rocksNear, rockTouch } from './rocks';
 
-const aimAt = { x: 0, y: 0 };   // homingTurn's aim-point scratch
 import { detonateTorpedo } from './rockBlast';
 import { gravityAccel } from './physics';
 import { classOf, CREW_SLOT, emptyMissile, missileOf, placeMissile, type DuelEvent, type Missile, type TacticalState } from './state';
 import { TORPEDO_LEVELS_BY_BARS, weaponBars, WeaponSlot } from './bars';
 import { DT, MISSILE_CRUISE_SPEED, MISSILE_LEAD_CAP_S, MISSILE_MIN_CLOSING, R_MAP } from './tuning';
+const aimAt = { x: 0, y: 0 };   // homingTurn's aim-point scratch
 
 type EndCause = Extract<DuelEvent, { kind: 'missileEnd' }>['cause'];
 

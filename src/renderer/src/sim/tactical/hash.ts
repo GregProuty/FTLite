@@ -331,6 +331,8 @@ function fieldNameParts(name: string): FieldNameParts {
   return parts;
 }
 
+/** validateTacticalValues' rock kinds by slot, reused across calls. */
+const rockKindsScratch: number[] = [];
 /** Check tactical values (the space then the ship module's) against their field bounds and slot invariants without
  *  writing them anywhere: heading indices, integer counters, room levels 0..2, shields, the laser and the magazine
  *  against the largest class, the hunter's and the outcome's enums, the map's asteroid count and the slot count; an
@@ -339,14 +341,14 @@ function fieldNameParts(name: string): FieldNameParts {
  *  from the same seed and slot count (only its map and slot count are read). Throws naming the first bad field; returns
  *  the offset after the values. Asteroids-iii §3.1: every rock slot by rockSlotProblem against the tick. */
 export function validateTacticalValues(shape: TacticalState, values: ArrayLike<number>, offset = 0): number {
-  let at = offset, tickSeen = 0, rockKinds: number[] = [];
+  let at = offset, tickSeen = 0; const rockKinds = rockKindsScratch; rockKinds.length = 0;
   const top = topRules(), slots = shape.ships.length, sys = systemsRules(slots, rockCapacity(shape.map)), inactive = new Set<number>(), owners = new Set<number>(), clsOf = new Map<number, number>(), burstOf = new Map<number, number>();
   for (const m of TACTICAL_MODULES) for (const f of m.fields(shape)) {
     const slice = Array.from({ length: f.count }, (_, k) => values[at + k]!);
     const bad = (why: string): never => { throw new Error(`duel snapshot tactical ${f.name}: ${why} (${slice.slice(0, 8).join(', ')})`); };
     if (slice.some((v) => typeof v !== 'number' || !Number.isFinite(v))) bad('not finite');
     if (f.name === 'tick') tickSeen = slice[0]!;
-    if (f.name === 'rocks') { rockKinds = []; for (let k = 0; k * ROCK_STRIDE < slice.length; k++) { rockKinds.push(slice[k * ROCK_STRIDE]!); const why = rockSlotProblem(slice, k * ROCK_STRIDE, tickSeen); if (why) bad(`slot ${k}: ${why}`); } }
+    if (f.name === 'rocks') { rockKinds.length = 0; for (let k = 0; k * ROCK_STRIDE < slice.length; k++) { rockKinds.push(slice[k * ROCK_STRIDE]!); const why = rockSlotProblem(slice, k * ROCK_STRIDE, tickSeen); if (why) bad(`slot ${k}: ${why}`); } }
     if (f.name === 'rockCells') for (let k = 0; k * CELL_STRIDE < slice.length; k++) { const why = rockCellsProblem(shape, rockKinds[k] ?? 0, slice[k * CELL_STRIDE]!, slice[k * CELL_STRIDE + 1]!); if (why) bad(`slot ${k}: ${why}`); }
     const { ship, missile, round } = fieldNameParts(f.name);
     if (f.name === 'map.asteroids.length') { if (slice[0] !== shape.map.asteroids.length) bad('does not match the map'); }

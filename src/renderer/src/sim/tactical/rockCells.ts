@@ -1,5 +1,5 @@
 // Asteroids-iv (docs/superpowers/specs/2026-11-20-asteroids-iv-cell-rocks-design.md §3.1, §3.2, §5.2, §5.3, §10a): the
-// cells a rock is built of. Pure: no state. Only + − × ÷, bit operations, Math.sqrt, floor, max and imul (the determinism
+// cells a rock is built of. Pure of game state: it keeps module scratch arrays and a per-template memo of shapes (bounded by the masks a match produces). Only + − × ÷, bit operations, Math.sqrt, floor, max and imul (the determinism
 // guard). Cells sit on a hexagonal lattice: cell (q, r) is at (q + r / 2, r · S3) spacings, and two cells are neighbours
 // one lattice step apart. A template is seeded asteroid `index`'s fixed cell set, centred on its centre of mass, its
 // farthest hit circle exactly at the asteroid's map radius R. A rock is a template and a mask of its cells (bit i: cell i;

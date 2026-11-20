@@ -7,9 +7,9 @@ import { escapeSpeed } from './rails';
 import { hitRock, pushRock } from './rockBreak';
 import { firstBlocker, rockAimPoint, rockAlive, rockAt, rockMassOf } from './rocks';
 
-const aimAt = { x: 0, y: 0 };   // rockShotLine's aim-point scratch
 import { LASER_PUSH_CAP, LASER_ROCK_DAMAGE, LASER_ROCK_PUSH } from './rockTuning';
 import { classOf, type TacticalState } from './state';
+const aimAt = { x: 0, y: 0 };   // rockShotLine's aim-point scratch
 
 /** §6.2: whether rock k is alive with its centre in ship i's laser arc and its surface within the laser's range. */
 export function rockOnTarget(state: TacticalState, i: number, k: number): boolean {
