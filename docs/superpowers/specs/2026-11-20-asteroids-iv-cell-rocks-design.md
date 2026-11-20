@@ -1,6 +1,6 @@
 # Asteroids-iv: cell rocks
 
-Date: 2026-11-20. Status: draft for the owner's review. Follows the look pass
+Date: 2026-11-20. Status: draft for the owner's review (a sketch of the look is named in §7). Follows the look pass
 (`2026-11-20-asteroids-look-design.md`), which is drawing only. This spec changes the sim.
 
 ## 1. Goal
@@ -199,8 +199,14 @@ circle. For a plain rock each gives today's circle answer.
 ## 7. Drawing
 
 - **Outline.** The boundary of the union of the rock's cells, as hexagons whose corners are each moved by a fixed hashed
-  offset of up to 0.18 d (a corner is shared by three cells, so neighbours still fit exactly). Built once per template and
-  mask, then turned and placed each frame. `CRT.dim` fill, 1 px `CRT.mid` outline, at any wear.
+  offset of up to 0.18 d (a corner is shared by three cells, so neighbours still fit exactly). Two more moves ease the
+  rim, so it reads as stone and not as a cog: a rim corner shared by two live cells (the notch between them) moves 0.2 d
+  outward, and one that belongs to a single live cell (a tip) moves 0.13 d toward that cell. Built once per template and
+  mask, then turned and placed each frame. `CRT.dim` fill, 1 px `CRT.mid` outline, at any wear. The drawn outline is
+  drawing only; shots and contacts meet the cells' circles (§3.1).
+- **Sketch.** `C:\Users\djuar\FTLite-shots\asteroids-iv\cell-rocks-sketch.png` (its source beside it) draws §3.2's
+  templates, §5.2's cut and §5.3's shatter by these rules: whole rocks at four sizes, worn rocks, a central cut, a
+  grazing cut and a torpedo's direct hit.
 - **Seams.** The edges between two live cells, in `CRT.faint` at alpha `CRACK_ALPHA · wear`: invisible on a whole rock,
   faint on a worn one. These replace the four invented cracks. They are the real lines a cut can open along.
 - **Orientation** is the sim's, lerped between ticks like the position. The hashed drawing-only spin is removed.
