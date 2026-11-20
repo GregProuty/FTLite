@@ -1193,5 +1193,7 @@ Spec `docs/superpowers/specs/2026-11-20-asteroids-iv-cell-rocks-design.md`, plan
   4. Hit a big rock with a torpedo. It leaves real chunks round a small gap, not round rocks.
   5. Fly the ship into the gap between two fresh halves, and past a half's flat face. You touch only what is drawn.
   6. Shoot through a bay in a rock at something behind it. The beam passes.
+  7. Decide: duelGates seed 7's guns check is skipped. Scripted duels with zero shots also occur on master, on seeds 23, 24 and 37 of 1-40. A follow-up should make the scripted crew's guns less fragile.
+  8. Decide: a torpedo's direct hit gives 2 to 4 chunks (median 3), not the spec's "about four to six", because the shatter point is the struck rim cell. Options: keep it, move the point one or two cells inward along the hit, or turn the sector lines by 30 degrees.
 
   Starting numbers, all in `src/renderer/src/sim/tactical/rockTuning.ts`: `RIM_DROP` 30 (how ragged), `CUT_KICK` 0.12 (how fast halves part), `CRATER_K` 0.75. The cell counts (7, 19, 31) are `SHELLS` in `rockCells.ts`. Nothing spins yet: that is iv-b.
