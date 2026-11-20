@@ -45,13 +45,13 @@ describe('the scene and the ship HUD (spec §E)', () => {
       scene.draw(rt, 1 / 60, LIVE);
       const duel = () => store.getState().duel!;
       expect(duel().console?.station).toBe('ship');
-      expect(duel().hud).toEqual(shipHud(rt.duel));
+      expect(duel().hud).toEqual(shipHud(rt.duel, rt.active()));
       scene.draw(rt, 1 / 60, PAUSED);
       // UI round §1.5: a pause keeps the UI
-      expect(duel().console?.station).toBe('ship'); expect(duel().hud).toEqual(shipHud(rt.duel));
+      expect(duel().console?.station).toBe('ship'); expect(duel().hud).toEqual(shipHud(rt.duel, rt.active()));
       seatDuelCrew(rt.duel);
       scene.draw(rt, 1 / 60, LIVE);
-      expect(duel().console?.station).toBe('helm'); expect(duel().hud).toEqual(shipHud(rt.duel));   // UI round §2.4: the HUD on every view
+      expect(duel().console?.station).toBe('helm'); expect(duel().hud).toEqual(shipHud(rt.duel, rt.active()));   // UI round §2.4: the HUD on every view
     } finally { scene.dispose(); rt.dispose(); }
   });
 });

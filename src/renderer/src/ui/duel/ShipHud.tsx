@@ -3,8 +3,10 @@
 // (raised, powered or beyond the bars' cap). Bottom left, on a glass backing: one power column per system (slots on,
 // empty or lost and crossed, the overdrive slot dashed), its heat bar and two coolant pips, and the reactor's bars. A left
 // click on a column adds a bar, a right click removes one, a click on the pips cycles the coolant (actions.ship).
+// UI round §2.4a: a power column's name shows its room (FIRE blinking inverse, OFFLINE inverse, damaged hot, a 2 px repair or
+// extinguish bar under it), and a HEALTH bar under the shields shows when the active player is hurt (DOWNED when downed).
 import { memo, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from 'react';
-import { coolantY, heatY, HUD, hullSegX, overdriveSlot, powerBarY, powerColumnX, powerNameY, powerPanel, slotState, type HullTone, type PowerColumn, type ShipHudView } from '../../render/duel/shipHudModel';
+import { coolantY, HEALTH_ROW, heatY, HUD, hullSegX, overdriveSlot, powerBarY, powerColumnX, powerNameY, powerPanel, slotState, type HullTone, type PowerColumn, type ShipHudView } from '../../render/duel/shipHudModel';
 import { ALERT_BLINK_HZ, blink, CRT } from '../../render/tactical/crtTheme';
 import { FONT_SIZE, textPx } from '../../render/theme';
 import { useActions, useUi } from '../context';
@@ -29,7 +31,8 @@ function Hit(p: { name: string; x: number; y: number; w: number; h: number; onLe
 function PowerCol({ c, n, now }: { c: PowerColumn; n: number; now: number }) {
   const actions = useActions(), x = powerColumnX(n), bx = x + (P.colW - P.barW) / 2;
   const hot = c.failed ? (blink(now, ALERT_BLINK_HZ) ? CRT.hot : CRT.dim) : c.overdriven || c.heat > 0.75 * c.heatMax ? CRT.hot : CRT.main;   // spec §6: hot near HEAT_MAX
-  const top = powerBarY(c.slots - 1);
+  const top = powerBarY(c.slots - 1), room = c.room, inverse = room?.state === 'fire' || room?.state === 'offline';
+  const nameTint = inverse ? CRT.glass : room?.state === 'damaged' ? CRT.hot : c.failed ? hot : CRT.mid, nameW = textPx(c.name, 2), nameY = powerNameY();
   return (
     <>
       {Array.from({ length: c.slots }, (_, k) => {
@@ -53,7 +56,11 @@ function PowerCol({ c, n, now }: { c: PowerColumn; n: number; now: number }) {
       ))}
       <Hit name={`hud-power-${c.system}`} x={x} y={top} w={P.colW} h={heatY() + P.heatH - top} onLeft={() => actions.ship.power(c.system, 1)} onRight={() => actions.ship.power(c.system, -1)} />
       {c.cools && <Hit name={`hud-coolant-${c.system}`} x={bx} y={coolantY()} w={2 * P.pipW + P.pipGap} h={P.pipH} onLeft={() => actions.ship.coolant(c.system)} />}
-      <PixelText text={c.name} x={x + P.colW / 2} y={powerNameY()} size={FONT_SIZE} tint={c.failed ? hot : CRT.mid} anchorX={0.5} />
+      {inverse && <Box x={x + (P.colW - nameW) / 2} y={nameY} w={nameW} h={26} attrs={{ 'data-ui-hud-room': room!.state }}
+        style={{ background: hex(room!.state === 'fire' ? (blink(now, ALERT_BLINK_HZ) ? CRT.hot : CRT.main) : CRT.main) }} />}
+      {room && !inverse && <Box x={x} y={nameY} w={1} h={1} attrs={{ 'data-ui-hud-room': room.state }} />}
+      <PixelText text={c.name} x={x + P.colW / 2} y={nameY} size={FONT_SIZE} tint={nameTint} anchorX={0.5} />
+      {room && room.progress > 0 && <Box x={x + 4} y={nameY + 22} w={(P.colW - 8) * room.progress} h={2} style={{ background: hex(CRT.hot) }} />}
     </>
   );
 }
@@ -89,6 +96,14 @@ function HudBody({ hud }: { hud: ShipHudView }) {
         return <Box key={k} x={pipX + k * (SH.pip + SH.gap)} y={SH.y} w={SH.pip} h={SH.pip} attrs={{ 'data-ui-hud-shield': state }}
           style={{ background: state === 'up' ? hex(CRT.main) : 'transparent', border: `1px ${state === 'unpowered' ? 'dashed' : 'solid'} ${hex(state === 'unpowered' ? CRT.faint : CRT.mid)}` }} />;
       })}
+      {hud.health && (hud.health.downed
+        ? <PixelText text="DOWNED" x={HUD.x} y={HEALTH_ROW.y} size={FONT_SIZE} tint={blink(now, ALERT_BLINK_HZ) ? CRT.hot : CRT.dim} />
+        : <>
+          <PixelText text="HEALTH" x={HUD.x} y={HEALTH_ROW.y - 2} size={FONT_SIZE} tint={CRT.mid} />
+          <Box x={HEALTH_ROW.barX} y={HEALTH_ROW.barY} w={HEALTH_ROW.barW} h={HEALTH_ROW.barH} attrs={{ 'data-ui-hud-health': String(Math.round(hud.health.fill * 100)) }} style={{ background: hex(CRT.faint) }}>
+            <div style={{ width: `${Math.round(100 * hud.health.fill)}%`, height: '100%', background: hex(hud.health.fill < 0.3 ? CRT.hot : CRT.main) }} />
+          </Box></>)}
+      {hud.health?.downed && <Box x={HUD.x} y={HEALTH_ROW.y} w={1} h={1} attrs={{ 'data-ui-hud-health': 'downed' }} />}
       <Box x={panel.x} y={panel.y} w={panel.w} h={panel.h} attrs={{ 'data-ui-hud-crt': '' }} style={{ background: hex(CRT.glass, 0.85), border: `1px solid ${hex(CRT.dim)}` }} />
       <PixelText text={`REACTOR ${hud.power.spare}/${hud.power.reactor}   COOLANT ${hud.power.coolantFree}/${hud.power.coolantPool}`} x={panel.x + P.pad} y={panel.y - 28} size={FONT_SIZE} tint={CRT.main} />
       {hud.power.systems.map((c, n) => <PowerCol key={c.system} c={c} n={n} now={now} />)}

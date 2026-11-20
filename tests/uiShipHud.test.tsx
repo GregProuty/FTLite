@@ -19,7 +19,7 @@ const texts = () => Array.from(document.querySelectorAll('canvas')).map((c) => (
 const all = (attr: string, v?: string) => Array.from(document.querySelectorAll<HTMLElement>(v === undefined ? `[${attr}]` : `[${attr}="${v}"]`));
 const shipConsole: ConsoleView = { station: 'ship', tabs: { helm: 'open', weapons: 'locked', science: 'locked', ship: 'current' }, tabActions: { helm: 'interact', weapons: null, science: null, ship: null }, helm: null, weapons: null, science: null };
 const col = (system: number, name: string, bars: number, capacity: number, slots: number, max: number, extra: Partial<PowerColumn> = {}): PowerColumn =>
-  ({ system, name, bars, capacity, slots, max, heat: 0, heatMax: 240, coolant: 0, cools: system < 4, failed: false, overdriven: false, ...extra });
+  ({ system, name, bars, capacity, slots, max, heat: 0, heatMax: 240, coolant: 0, cools: system < 4, failed: false, overdriven: false, room: null, ...extra });
 const hud: ShipHudView = {
   hull: { segments: 20, lit: 7, tone: 'warn' },
   shields: { layers: 2, up: 1, cap: 1 },
@@ -27,7 +27,8 @@ const hud: ShipHudView = {
     systems: [col(0, 'SHLD', 2, 5, 5, 4), col(1, 'WEAP', 2, 5, 10, 9), col(2, 'ENG', 5, 5, 5, 4, { overdriven: true, heat: 120, coolant: 1 }),
       col(3, 'SENS', 0, 0, 4, 3, { failed: true, heat: 240 }), col(4, 'O2', 1, 2, 2, 2)],
     spare: 0, reactor: 10, coolantFree: 7, coolantPool: 8
-  }
+  },
+  health: null
 };
 const view = (h: ShipHudView | null = hud): DuelUiView => ({
   end: null,
