@@ -9,9 +9,6 @@ docs/superpowers/reviews/2026-11-19-w4c-amended-plan/dirty-baseline
 docs/superpowers/prompts/2026-11-14-claude-cloudflare-setup.md
 docs/superpowers/prompts/2026-11-18-sci-2-handoff.md
 docs/superpowers/research/2026-11-14-cloudflare-setup-handoff.md
-docs/superpowers/reviews/2026-11-19-helm-round2-spec/.gitignore
-docs/superpowers/reviews/2026-11-19-helm-round2-spec/dirty-baseline
-docs/superpowers/reviews/2026-11-19-helm-round2-spec/run.meta
 docs/superpowers/specs/2026-11-13-ftl-gap-audit.md
 ideas.txt
 reports/2026-11-13-playtest-audit.json
