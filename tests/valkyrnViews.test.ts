@@ -90,7 +90,7 @@ describe('the Flight frame on a gun class (Valkyrn spec §6.1, §8)', () => {
     try {
       place(d, 300);
       const c = combatModel(input(d));
-      expect([c.helmArc, c.torpedoRange?.lit, c.gunSight === null]).toEqual([null, true, false]);
+      expect([c.helmArc, c.gunSight === null]).toEqual([null, false]);
       expect(c.status ?? null).toBeNull();   // nothing wrong: no sentence
       d.tactical.systems[0].gunLocked = true;
       expect(combatModel(input(d)).status?.label.text).toBe('GUN OVERHEAT');

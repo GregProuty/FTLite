@@ -38,8 +38,6 @@ function fullFrame(console: 'helm' | 'weapons', inRange = true): { d: TacticalDr
       ownArc: { x: 500, y: 360, r: 300, angle: 0.4, half: Math.PI / 3 }, enemyArc: { x: 760, y: 260, r: 300, angle: 3, half: Math.PI / 3 }, ring,
       info: { text: `BRG 055  RNG 294  IN ARC  TORP ${inRange ? 'IN' : 'OUT'}`, x: 507, y: 12 }, inArc: true, torpedoInRange: inRange
     } : null,
-    // Weapons update spec §2: the torpedo's range circle, lit at Weapons while in range, dim otherwise and at the Helm.
-    torpedoRange: { x: 500, y: 360, r: 324, lit: console === 'weapons' && inRange },
     lock: { x: 770, y: 262, r: 12, room: 1, label: { text: 'LOCK SHIELDS', x: 800, y: 252 } },
     missiles: [{ x: 560, y: 320, r: 4, crew: true, trail: trail(560, 320) }, { x: 700, y: 330, r: 4, crew: false, trail: trail(700, 330) }],
     effects: [

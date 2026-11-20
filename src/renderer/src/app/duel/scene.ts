@@ -31,7 +31,7 @@ import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
 import { createRockTrack, resetRockTrack, updateRockTrack } from '../../render/tactical/rockTrack';
 import { pushRockFx, pushRockShakes } from '../../render/tactical/rockFx';
 import { hullFor } from '../../render/tactical/hullModel';
-import { interpolatedShip, pickContact, pickRock, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
+import { interpolatedShip, pickContact, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
 import { combatModel } from '../../render/tactical/weaponsModel';
 import { screenToWorld, worldToScreen, zoomTo, type Camera } from '../../render/tactical/camera';
 import { screenPan, worldPan } from '../../audio/voices';
@@ -169,12 +169,6 @@ export function pushMapEffects(fx: FxState, events: readonly ViewEvent[], t: Tac
   if (shown.length < events.length && events.some((e) => hitsCrew(e) && !shown.includes(e))) startShake(fx, SHAKE_PX, SHAKE_S);
 }
 
-/** Spike ii §6.5: the rock under the pointer when no ship contact is there. Engineering spike §10.4: `at.fog` makes an
- *  unseen enemy no contact, so a rock over it still takes the bracket (no bracket missing gives the enemy away). */
-export function rockHoverAt(at: Parameters<typeof pickContact>[0], point: { x: number; y: number }): number | null {
-  return pickContact(at, point) === null ? pickRock(at, point) : null;
-}
-
 /** Sensors blip spec §3: whether the sit-down card's test point is below the crew ship (the card then sits at the top of
  *  the map). While the enemy is unseen the point is the ping's centre, so the card's place tells no more than the blip
  *  does; with no blip it is the enemy ship, as before. */
@@ -291,10 +285,9 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         // W-1 review F4: at Weapons the window's own click is only a picked-up card's, or a click inside the shown window; any other
         // click (over a console block, empty map the pew declined) is dropped, so a block never opens or closes the window.
         && !(station === 'weapons' && view === 'weapons' && (contact.aimWeapon() ?? null) === null && !(contact.state() != null && click.x >= CONTACT.x && click.x < CONTACT.x + CONTACT.w && click.y >= CONTACT.y && click.y < CONTACT.y + CONTACT.h))) {
-        // Spike ii §6.5: a ship contact under the pointer wins; else, with a weapon picked up, a rock under it takes the drop.
-        const at = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, fog: fogView }, ship = pickContact(at, click);
-        const rock = ship === null && contact.aimWeapon() !== null ? pickRock(at, click) : null;
-        if (rock !== null) contact.pickRock(rock); else contact.click(ship);
+        // UI round spec §1.4: a ship contact under the pointer, or none; rocks are not picked from the map.
+        const at = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, fog: fogView };
+        contact.click(pickContact(at, click));
       }
       // W-4 spec §8, §9: at the Hound's Weapons seat the left button held over the open map is the trigger (the autocannon
       // fires while it is held and selected); off the map, over a block, with a weapon picked up or paused, it is not.
@@ -428,9 +421,6 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       let overlayView: MapOverlayView | null = null;
       if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt, events, frozen ? 0 : dt, { camera: source.interiorCamera, active: source.active() }, options.pointer?.() ?? null);   // Art-i spec section 7: the light and feel hold while paused; Engineering spike §6: the hover outline
       else {
-        // Spike ii §6.5: with a weapon picked up, the rock under the pointer (no ship contact there) wears a hover bracket.
-        const point = aimed !== null ? options.pointer?.() ?? null : null, pickAt = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, fog: fogView };
-        const hoverRock = point ? rockHoverAt(pickAt, point) : null;
         // Step 4: the map keeps its arrows and info line clear of the window while it is shown.
         const input = {
           rockTrack, state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, console: camKey!, axes: source.axes(),
@@ -440,7 +430,6 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
           turrets: source.turret ? { pew: source.turret(0), gun: source.turret(1) } : null,   // W-4 spec §10, §11: online the own selected turret is predicted
           weaponSel: source.weaponSel?.() ?? 0,
           reticle: station === 'weapons' && view === 'weapons' && reticleOnMap ? reticlePointer : null,   // W-4 spec §10: the cross at the pointer
-          rockHover: hoverRock !== null && aimed !== null ? { rock: hoverRock, weapon: aimed } : null,
           vent, steerTo,   // playtest2feedback §6: the puffs and the steering marker
           mapGrid: renderer.mapGrid?.() ?? DEFAULT_MAP_GRID   // Settings: the gravity grid or the square one
         } as const;
