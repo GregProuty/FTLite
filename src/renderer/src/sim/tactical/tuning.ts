@@ -230,6 +230,10 @@ export const AUTOCANNON_TURRET_TRAVERSE: readonly [number, number] = [273, 341];
 export const AUTOCANNON_AUTO_RANGE = 600;
 /** W-4 spec §4.3: AUTO stops the autocannon at 80 % heat, so it never locks. */
 export const GUN_AUTO_HEAT_STOP = 800;
+/** W-4 spec §4.2 (owner 2026-11-19): AUTO is on solution when its turret ends the tick within this many fine steps (1.0°)
+ *  of the lead. With the lead's half step the worst aim error is 310 steps, 17.8 u at the autocannon's 600 u (the Hunter's
+ *  radius is 20); 182 is also the autocannon's per-tick lag in a 150°/s turn (455 − 273), so a trailing gun still fires. */
+export const AUTO_FIRE_TOLERANCE = 182;
 /** cos 60°, for the Hunter's "inside the cone" test by dot product (geometry.ts inArc). */
 export const PEW_ARC_COS = 0.5;
 /** A round's reach: PEW_SPEED · PEW_LIFE · DT (450). The Hunter attacks inside it. */

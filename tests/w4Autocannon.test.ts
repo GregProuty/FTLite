@@ -9,6 +9,8 @@ import { IDLE_INPUT, type ShipInput } from '../src/renderer/src/sim/tactical/wea
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import { HEADING_COUNT } from '../src/renderer/src/sim/tactical/tuning';
 import { houndWeapons } from './helpers/crewWeapons';
+import { aimDir } from '../src/renderer/src/sim/tactical/pew';
+import { turretWorldAim } from '../src/renderer/src/sim/tactical/turret';
 
 const TRIGGER: ShipInput = { ...IDLE_INPUT, gunHeld: true };
 /** The Hound at (0, 1500), nose `heading`, moving (vx, vy); the Hunter far off; the autocannon on `bars`. */
@@ -66,6 +68,16 @@ describe('the autocannon (W-4 spec §2, §5)', () => {
     expect(muzzles.length).toBeGreaterThanOrEqual(4);
     expect(muzzles.every((m, j) => j === 0 || m !== muzzles[j - 1])).toBe(true);   // the twin muzzles alternate
     expect(s.gunShots).toBe(muzzles.length + 1);
+  });
+  it('a round leaves along the turret, not the nose (W-4b; W-4 spec §3.2, §5): the turret offset plus the ship velocity', () => {
+    const st = hound(3, 64, 30, -10);
+    st.systems[0]!.gunTurret = -4000;
+    expect(gunAimFine(st, 0)).toBe(turretWorldAim(64, -4000));
+    tickGun(st, 0, TRIGGER);
+    const r = st.rounds.find((e) => e.active)!, [ux, uy] = aimDir(turretWorldAim(64, -4000));
+    expect(r.vx).toBeCloseTo(30 + ux * AUTOCANNON.speed, 9);
+    expect(r.vy).toBeCloseTo(-10 + uy * AUTOCANNON.speed, 9);
+    expect(Math.abs(r.vx - 30 - hx(64) * AUTOCANNON.speed)).toBeGreaterThan(10);   // not the nose
   });
   it('the cooldown is the interval of the moment: a bar taken mid-cooldown applies from the next round', () => {
     const st = hound(1), s = st.systems[0]!;

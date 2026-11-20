@@ -85,8 +85,10 @@ export function firePew(state: TacticalState, i: number, aim: number): boolean {
   return true;
 }
 
-/** W-4 spec §3.2, §6: ship i's pew turret's world aim, a fine aim 0..AIM_STEPS − 1. W-4a: the nose (W-4b adds pewTurret). */
-export function pewAimFine(state: TacticalState, i: number): number { return state.ships[i]!.heading * HEADING_COUNT; }
+/** W-4 spec §3.2, §6: ship i's pew turret's world aim, a fine aim 0..AIM_STEPS − 1: the nose plus pewTurret (W-4 spec §3.2). */
+export function pewAimFine(state: TacticalState, i: number): number {
+  return (((state.ships[i]!.heading * HEADING_COUNT + state.systems[i]!.pewTurret) % AIM_STEPS) + AIM_STEPS) % AIM_STEPS;   // turret.ts turretWorldAim's formula
+}
 /** W-4 spec §6: an admitted pewFire: a round along the turret (firePew's clamp leaves an aim inside the arc as it is). */
 export function firePewTrigger(state: TacticalState, i: number): boolean { return firePew(state, i, pewAimFine(state, i)); }
 

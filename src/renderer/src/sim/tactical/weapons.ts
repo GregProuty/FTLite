@@ -13,6 +13,7 @@ import { BEAM_RATE_BY_BARS, BEAM_SHOTS_BY_BARS, DuelSystem, effectiveBars, MAGAZ
 import { aimDir, clampAim, firePew, firePewTrigger, tickPew } from './pew';
 import { classOf, CREW_SLOT, handControl, missileOf, Room, type Axes, type TacticalState } from './state';
 import { shipSeen } from './science';
+import { slewTurrets } from './turret';
 import { AIM_STEPS, LASER_ARC_STEPS } from './tuning';
 
 /** One ship's inputs for one tick. `helm` / `weapons`: a present player is seated at that console ("attended", spec §8). */
@@ -300,7 +301,7 @@ function stepBurst(state: TacticalState, i: number): void {
 /** Apply ship i's weapon commands for this tick, before anything moves (spec §7 table). The crew's ship (FTL targeting
  *  spec §2): `laserLock` sets the laser's target (−1 clears it, keeping the lock room for a manual shot) and `torpLock`
  *  the torpedo's, and an accepted room lock clears the matching rock target; `rockLock` sets that weapon's rock target (a rock lock clears its room lock); a charge press fires a full laser; then, attended, the laser with a target fires its burst when full
- *  and eligible, and a torpedo with a target launches when the launch is legal (launchMissile clears torpLock). W-2 (pew pew spec §2): in MANUAL the laser fires neither on a charge press nor by itself. W-3 (pew pew spec §3): in MANUAL a torpedo lock never auto-launches, missileLaunch needs no range, and a stored rock target breaking this call does not cancel a launch. */
+ *  and eligible, and a torpedo with a target launches when the launch is legal (launchMissile clears torpLock). W-2 (pew pew spec §2): in MANUAL the laser fires neither on a charge press nor by itself. W-3 (pew pew spec §3): in MANUAL a torpedo lock never auto-launches, missileLaunch needs no range, and a stored rock target breaking this call does not cancel a launch. W-4: the turrets slew after the burst, before the gun. */
 export function applyWeaponsInput(state: TacticalState, i: number, input: ShipInput): void {
   const s = state.systems[i]!, crew = i === CREW_SLOT, armed = classOf(state, i).slots.laser !== null;   // Valkyrn spec §6.1: a null laser skips lock, charge and auto-fire
   if (armed && input.weapons && input.laserLock !== null && validTarget(input.laserLock)) {   // first: a burst shot reads this tick's lock
@@ -317,6 +318,7 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
   }
   const torpOnRock = s.torpRock >= 0;   // impl review R1-F3: a shot below that breaks this rock must not turn the launch on the enemy
   stepBurst(state, i);
+  slewTurrets(state, i, input);   // W-4 spec §3.4, §8: the turrets slew before the gun and the pew fire (the pre-move heading)
   tickGun(state, i, input);   // Valkyrn spec §7.1: before anything moves; its clocks run attended or not (Decision 8)
   if (!input.weapons) { s.fireHeld = false; return; }   // unattended: Fire lets go without firing or discarding
   if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; }   // a hit after its clock ran last tick: no shot

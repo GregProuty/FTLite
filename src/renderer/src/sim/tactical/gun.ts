@@ -9,7 +9,8 @@ import { dirBetween, hx, hy } from './direction';
 import { hitRock, pushRock } from './rockBreak';
 import { rockAt, rockMass, rocksNear } from './rocks';
 import { classOf, CREW_SLOT, emptyRound, handControl, Room, type GunRound, type TacticalState } from './state';
-import { DT, HEADING_COUNT } from './tuning';
+import { interceptTime, nearestHeading } from './lead';
+import { AIM_STEPS, DT, HEADING_COUNT } from './tuning';
 import type { ShipInput } from './weapons';
 
 /** Put a round in a pool (spec §7.2; W-1: the gun's `state.rounds` by default, or the pew's `state.pew`): the lowest free
@@ -30,8 +31,24 @@ export function gunInterval(state: TacticalState, i: number, manual = false): nu
   if (g.intervalByBars === null) return g.intervalTicks;
   return g.intervalByBars[manual ? 1 : 0]![weaponBars(state.systems[i]!, WeaponSlot.Autocannon)] ?? 0;   // W-4 spec §4.4: MAN's row for the gun in hand (W-4b)
 }
-/** W-4 spec §3.2, §5: ship i's turret gun's world aim, a fine aim 0..AIM_STEPS − 1. W-4a: the nose (W-4b adds gunTurret). */
-export function gunAimFine(state: TacticalState, i: number): number { return state.ships[i]!.heading * HEADING_COUNT; }
+/** W-4 spec §3.2, §5: ship i's turret gun's world aim, a fine aim 0..AIM_STEPS − 1: the nose plus gunTurret (W-4 spec §3.2). */
+export function gunAimFine(state: TacticalState, i: number): number {
+  return (((state.ships[i]!.heading * HEADING_COUNT + state.systems[i]!.gunTurret) % AIM_STEPS) + AIM_STEPS) % AIM_STEPS;   // turret.ts turretWorldAim's formula (no import: turret.ts imports this file)
+}
+/** W-4 spec §4.2: ship i's autocannon lead on a target at (tx, ty) moving at (tvx, tvy): the fine aim (a whole heading
+ *  index × HEADING_COUNT) from the nose point between its muzzles to where a round fired now meets the target holding its
+ *  velocity. A gun round inherits the ship's velocity (fireRound), so the velocity relative to ship i is used. −1 without a
+ *  gun, without an intercept, or when the intercept comes after the round's life (lifeTicks · DT, in seconds as
+ *  interceptTime's). */
+export function gunLead(state: TacticalState, i: number, tx: number, ty: number, tvx: number, tvy: number): number {
+  const g = classOf(state, i).slots.gun;
+  if (!g) return -1;
+  const s = state.ships[i]!, mx = s.x + hx(s.heading) * g.muzzleForward, my = s.y + hy(s.heading) * g.muzzleForward;
+  const rx = tx - mx, ry = ty - my, vx = tvx - s.vx, vy = tvy - s.vy, t = interceptTime(rx, ry, vx, vy, g.speed);
+  if (t < 0 || t > g.lifeTicks * DT) return -1;   // no intercept, or one the round would not live to reach
+  const h = nearestHeading(rx + vx * t, ry + vy * t);
+  return h < 0 ? -1 : h * HEADING_COUNT;
+}
 
 /** One round from ship i's next muzzle: `muzzleForward` ahead of the centre and `muzzleLateral` to starboard (90°
  *  clockwise of the nose, (−hy, hx)) or port, at `speed` along the nose plus the ship's velocity; the muzzles alternate,
