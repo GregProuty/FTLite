@@ -15,6 +15,7 @@ import { canCharge, canLaunch, validRockLock, validTarget } from '../../sim/tact
 import { createDuel, disposeDuel, DUEL_CREW_MIN, type DuelState } from '../../sim/duel/state';
 import { crewAxes, helmTurn, stepDuelTick } from '../../sim/duel/step';
 import { throttleThrust } from '../../sim/duel/throttle';
+import { GAS_SPEND } from '../../sim/duel/tuning';
 import { duelEndSummary, duelRoundRecord, type DuelRoundRecord } from '../../sim/duel/summary';
 import { createTelemetry, recordTick } from '../../sim/duel/telemetry';
 import type { ShipLayout } from '../../sim/ship/schema';
@@ -33,7 +34,7 @@ import { consoleInReach, crewHelmSeat, cycleLock, houndWeaponsSeat, repairInReac
 import { flightFrame, gunFreqRequest, laserFreqKey, modeRequests, nextWeaponSel, NO_FLIGHT, powerDelta, weaponsSeatHeld, type FlightLatch } from './weaponsSeat';
 import type { ContactRequests } from './contactController';
 import type { Refusal } from './scene';
-import { lockRefusal, NO_LASER, refusal } from '../../render/duel/situationModel';
+import { lockRefusal, NO_GAS, NO_LASER, refusal } from '../../render/duel/situationModel';
 import { accumulateWheel, crewHelmHeld, emptyPresses, frequencyRequest, helmAxes, NO_HELD_FLAGS, throttleRequest, WHEEL_IDLE_MS, type HeldFlags, type KeySample, type PointerSample } from './input';
 
 export type PauseReason = 'user' | 'blur' | 'hidden' | 'suspend';
@@ -263,7 +264,7 @@ export interface DuelRuntime {
 
 const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserMode' || c.kind === 'torpMode' || c.kind === 'gunMode' || c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'rockLock' || c.kind === 'laserCharge' || c.kind === 'laserFire' || c.kind === 'missileLaunch' || c.kind === 'pewFire';
 /** The commands only a seated console's player sends (Weapons, the Helm's throttle, Sci-1's three): a Tab or a stand drops them. */
-const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'heading' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';
+const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'throttleCut' || c.kind === 'heading' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';   // helm round 2 §2.3: a Tab or a stand drops a queued cut
 const NO_REQUESTS: ContactRequests = { designate: null, scan: null };
 const NEUTRAL: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 const IDLE_KEYS = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() });
@@ -285,6 +286,9 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   // Playtest2feedback §4a: whether this left-button hold has steered yet (the refusal's press edge), and whether the active
   // character flew the crew Helm on the last frame (final review I1).
   let steerPrev = false, crewHelmPrev = false;
+  // Helm round 2 §2.3 (Decision 9): the sim's throttle when each of W and S last went down (null: no press to judge), and
+  // §3.3: the thrusters on the last frame, for NO GAS's press edge.
+  let tapFrom: { w: number | null; s: number | null } = { w: null, s: null }, rcsPrev = { x: 0, y: 0 };
   const newtonian = (): boolean => classOf(d.tactical, 0).newtonianHelm;
   const hasGun = (): boolean => classOf(d.tactical, 0).slots.gun !== null;
   const hasLaser = (): boolean => classOf(d.tactical, 0).slots.laser !== null;
@@ -409,7 +413,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   function newRound(): void {
     round = d.round; pending = []; switching = false; deferred = [];
     activeHeld = NEUTRAL; sentHeld = idleHeld(); sentAxes = NO_AXES;
-    shipView = false; steer = -1; gunPrev = false; torpHold = -1; steerPrev = false; crewHelmPrev = false;
+    shipView = false; steer = -1; gunPrev = false; torpHold = -1; steerPrev = false; crewHelmPrev = false; tapFrom = { w: null, s: null }; rcsPrev = { x: 0, y: 0 };
     weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false;
     events = []; counts = hitCounts(d);
     capture(); freshCameras(); cameraInput.reset(); resetInteriorCamera(interiorCamera);
@@ -441,6 +445,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     }
     const seat = seatOf(d, active), p = k.presses;
     if (!houndWeaponsSeat(d, active)) { weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; }   // W-4 spec §9: a sit starts on pew pew
+    if (!crewHelmSeat(d, active)) { tapFrom = { w: null, s: null }; rcsPrev = { x: 0, y: 0 }; }   // helm round 2 Decision 9: a tap is judged at the crew Helm only
     if (seat !== 'flight') gunPrev = false;
     if (seat === 'standing') {
       if (p.interact > 0 && repairInReach(d, active) < 0) { const c = consoleInReach(d, active); if (c >= 0) queue({ kind: 'sit', station: c }); }
@@ -482,16 +487,25 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     }
     if (crewHelmSeat(d, active)) {   // playtest2feedback §3-§5: W/S, the thrusters and the steer go out on the held frame
       if (p.camera > 0) snapBack(cameras.helm);
-      if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== headingBase(k.fireHeld)) queue({ kind: 'heading', heading });   // RMB; only auto-face clears the hold
-      // §4a: a hold steers once the map gives a bearing (a press over a block or the ship steers nothing yet).
+      // Helm round 2 §4: no right-button heading and no Space here (the map's right button pans; the sim keeps both inputs
+      // for the scripted Helm and the other Helm). §4a: a hold steers once the map gives a bearing.
       const off = refusal(d, 'turn'), held = k.held ?? NO_HELD_FLAGS, steering = deps.steerHeld?.() ?? false, steered = steering && steerNow !== null;
+      // Helm round 2 §2.3: record the sim's throttle when a key goes down, then judge a tap against it: S cuts a forward
+      // throttle, W a reverse one; a tap from 0 or from the other side is a short press. Recorded first, so a press shorter
+      // than a frame (both fields in one sample) is judged too. Decision 10: no cut while the Engines refuse.
+      if (k.throttleDown === 1) tapFrom.w = d.thrMille; else if (k.throttleDown === -1) tapFrom.s = d.thrMille;
+      const from = k.throttleTap === -1 ? tapFrom.s : k.throttleTap === 1 ? tapFrom.w : null;
+      if (k.throttleTap === -1) tapFrom.s = null; else if (k.throttleTap === 1) tapFrom.w = null;
+      if (!off && from !== null && (k.throttleTap === -1 ? from > 0 : from < 0)) queue({ kind: 'throttleCut' });
+      // Helm round 2 §3.3: a thruster press (a key or PORT / STBD, both arrive as rcsX / rcsY) on an empty charge says why, once a press.
+      const rx = k.rcsX ?? 0, ry = k.rcsY ?? 0;
+      if (((rx !== 0 && rcsPrev.x === 0) || (ry !== 0 && rcsPrev.y === 0)) && d.gas < GAS_SPEND) refuse('gas', NO_GAS);
+      rcsPrev = { x: rx, y: ry };
       if (off) {
         if (steered && !steerPrev) refuse('turn', off);   // §4a: the hold's first steer, not A/D (final review M1)
-        if (held.fire && !prevHeld.fire) refuse('auto-face', off);
         if ((held.up && !prevHeld.up) || (held.down && !prevHeld.down)) refuse('throttle', off);
-        if (heading !== null && heading >= 0) refuse('heading', off);
       }
-      steerPrev = steering && (steerPrev || steered);   // owner 2026-11-19: the free cold gas has no refusal
+      steerPrev = steering && (steerPrev || steered);
       return k;
     }
     if (seat === 'helm') {
@@ -644,7 +658,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       // Final review I1: on the frame the active character's seat becomes the crew Helm, the keys held now (E sits and is a
       // thruster; W, A and D walk) are stale until pressed again, and this sample's crew fields are dropped.
       const crewHelmAtSample = crewHelmSeat(d, active);
-      if (crewHelmAtSample && !crewHelmPrev) { deps.staleKeys?.(); k = { ...k, throttleHeld: 0, rcsX: 0, rcsY: 0 }; }
+      if (crewHelmAtSample && !crewHelmPrev) { deps.staleKeys?.(); k = { ...k, throttleHeld: 0, rcsX: 0, rcsY: 0, throttleDown: 0, throttleTap: 0 }; }   // helm round 2 Decision 8: nor a W / S edge from before the sit
       crewHelmPrev = crewHelmAtSample;
       prevHeld = lastHeld; lastHeld = k.held ?? NO_HELD_FLAGS;
       const requests = deps.takeContactRequests?.() ?? NO_REQUESTS;   // drained every frame; dropped while paused or ended
@@ -676,7 +690,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       if (!torpSteering) torpHold = -1; else if (torpNow !== null && torpNow >= 0) torpHold = torpNow;
       activeHeld = ended() ? NEUTRAL : { moveX: look ? 0 : Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld,   // owner 2026-11-19: A/D turn at the crew Helm too
         ...(crewHelmNow ? crewHelmHeld(k, -1) : {}),
-        ...(k.fireHeld && !look && (seatNow === 'helm' || seatNow === 'flight') ? { face: true } : {}),
+        ...(k.fireHeld && !look && ((seatNow === 'helm' && !crewHelmNow) || seatNow === 'flight') ? { face: true } : {}),   // helm round 2 §4: no auto-face at the crew Helm
         ...(steer >= 0 ? { aim: steer } : {}), ...(gunNow ? { gunHeld: true } : {}),   // Valkyrn spec §5.1
         ...(torpHold >= 0 ? { torpHeading: torpHold } : {}) };   // W-3, W-4 spec §7
       if (!ended() && houndWeaponsSeat(d, active)) activeHeld = { ...activeHeld, ...weaponsSeatHeld(weaponSel, triggerLive && gunModeBase(1), deps.reticleAim?.() ?? -1) };   // W-4 spec §7, §8: the gated trigger, only while the autocannon's own switch is MAN
@@ -684,7 +698,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       pacer.pump();
       frameAlpha = alphaAt(deps.now(), lastTickTime);
       const shown = viewOf(), cam = shown === 'interior' ? null : cameras[viewCamera(shown)];
-      if (cam) cameraInput.apply(cam, k, pointer, shown === 'helm' || shown === 'flight');   // the Flight seat's right button is the torpedo, not a pan; W-4 spec §7: at Weapons it pans again
+      if (cam) cameraInput.apply(cam, k, pointer, (shown === 'helm' && !crewHelmNow) || shown === 'flight');   // the Flight seat's right button is the torpedo, not a pan; W-4 spec §7: at Weapons it pans again; helm round 2 §4: so does the crew Helm's
       else cameraInput.applyInterior(interiorCamera, k, pointer);
       trackManualTorpedo(cameras.weapons, torpFollow, manualTorpedoFlying(d.tactical));   // W-3 (pew pew spec §3): follow a MANUAL torpedo, then go back
       for (const c of [cameras.helm, cameras.weapons, cameras.science]) {

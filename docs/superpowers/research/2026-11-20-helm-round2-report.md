@@ -67,6 +67,8 @@ FAIL: median 140.1 s < 180
 
 - Task 5 (the free cold gas is replaced by the charge): `tests/crewThrusters.test.ts` (the describe renamed, the 3000-tick free-gas test deleted because no class keeps free gas, the header line), covered instead by `tests/helmGas.test.ts`. No kind (b) failures in the Task 5 targeted run.
 
+- Task 8 (the free cold gas's "never refused" at the crew Helm is replaced by NO GAS): `tests/crewHelmClient.test.ts` (the test 'a thruster press is never refused …' is retitled 'a thruster press on a charge is not refused (helm round 2 §3.3: only an empty one says NO GAS) …'; its body, at a full charge, is unchanged). The Step 7 grep's other hits (`crewSteering`, `crewTelemetry`, `crewThrottle`, `duelThrottle`, `duelCheckpoint`) pin the sim's `heading` command and `face` input, which the sim keeps (§4), so none is kind (a). No test deleted. No kind (b) failures in the Task 8 targeted run.
+
 ## Scripted Helm tuning (spec §5's gate rule)
 
 - Task 6: none. Every per-seed gate in `tests/duelGates.test.ts` passed with no constant moved (21 passed, the 2 aggregate bands skipped); no crew twin added.

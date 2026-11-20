@@ -135,7 +135,7 @@ describe('Single player at the crew Helm (spec §3, §4, §4a, §5)', () => {
     expect(r.rt.duel.holdHeading).toBe(64);   // the sim holds the last aim as the held heading
     r.rt.dispose();
   });
-  it('a thruster press is never refused (owner 2026-11-19: free cold gas); a steer with the Engines off says ENGINES OFFLINE', () => {
+  it('a thruster press on a charge is not refused (helm round 2 §3.3: only an empty one says NO GAS); a steer with the Engines off says ENGINES OFFLINE', () => {
     const r = rig();
     r.tick();
     r.set({ rcsX: 1 }); r.tick(); r.set({ rcsX: 0 }); r.tick(); r.set({ rcsX: -1, rcsY: 1 }); r.tick();

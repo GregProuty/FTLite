@@ -139,7 +139,7 @@ export function consoleStation(d: DuelState, me: number): ConsoleStation {
   return seat === 'standing' ? 'ship' : seat;
 }
 
-const HELM_CONTROLS: readonly RefusedControl[] = ['turn', 'auto-face', 'throttle', 'heading'];
+const HELM_CONTROLS: readonly RefusedControl[] = ['turn', 'auto-face', 'throttle', 'heading', 'gas'];   // helm round 2 §3.3: NO GAS shows on the Helm block
 
 /** W-1 (pew pew spec 1): the crew pew's pips, one per third, each its fill 0..1 (a full third 1, the one recharging its
  *  share, the rest 0); null for a class without the pew. A third is the def's pewThird (Engineering spike §11: charge units). */

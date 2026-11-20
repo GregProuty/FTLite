@@ -312,9 +312,10 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       }
       // Feel-ii §1.1: the Helm's right button aims the held heading. A press or a release on the map asks for the bearing from
       // the own ship's drawn marker to the pointer (on the ship itself: clear); while it is held, a preview marker follows.
+      // Helm round 2 §4: not at the crew Helm, whose right button pans; its left-button steer still draws the held heading.
       const aim = options.takeAim?.() ?? null, running = d.tactical.outcome === Outcome.Running;
       let preview: number | null = null;
-      if (aim && onMap && station === 'helm' && view === 'helm' && running) {
+      if (aim && onMap && station === 'helm' && view === 'helm' && running && !crewSeat) {
         const cam = source.cameras.helm, b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), s = worldToScreen(cam, viewport, b.x, b.y);
         const dx = aim.x - s.x, dy = aim.y - s.y, onShip = Math.hypot(dx, dy) <= pickRadius(cam.zoom), h = onShip ? -1 : headingOf(dx, dy);
         if (aim.held && !onShip) preview = h;
@@ -407,7 +408,8 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const held = source.uiHeld(), aimed = contact?.aimWeapon() ?? null;
       lastAimed = aimed;
       // The Helm goal is used by A/D or auto-face, and at the crew Helm by the steer too (owner 2026-11-19: A/D turn there again).
-      if (seat === 'helm' && (held.left || held.right || held.fire || (crewSeat && steerTo !== null))) goalUsed = true;
+      // Helm round 2 §4: Space is no auto-face at the crew Helm, so it does not use the goal there.
+      if (seat === 'helm' && (held.left || held.right || (held.fire && !crewSeat) || (crewSeat && steerTo !== null))) goalUsed = true;
       if (seat === 'weapons' && aimed === 'laser') goalUsed = true;
       if (seat !== null && (held.left || held.right || held.fire || held.up || held.down || aimed !== null || shownThrottle() !== sitThrottle)) acted = true;
       if (sound) {   // Audio-i spec section 4: the same events the effects use; pan from the screen on a map view, crew-relative inside
