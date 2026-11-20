@@ -60,7 +60,7 @@ function PowerCol({ c, n, now }: { c: PowerColumn; n: number; now: number }) {
         style={{ background: hex(room!.state === 'fire' ? (blink(now, ALERT_BLINK_HZ) ? CRT.hot : CRT.main) : CRT.main) }} />}
       {room && !inverse && <Box x={x} y={nameY} w={1} h={1} attrs={{ 'data-ui-hud-room': room.state }} />}
       <PixelText text={c.name} x={x + P.colW / 2} y={nameY} size={FONT_SIZE} tint={nameTint} anchorX={0.5} />
-      {room && room.progress > 0 && <Box x={x + 4} y={nameY + 26} w={(P.colW - 8) * room.progress} h={2} style={{ background: hex(CRT.hot) }} />}
+      {room && room.progress > 0 && <Box x={x + 4} y={nameY - 3} w={(P.colW - 8) * room.progress} h={2} style={{ background: hex(CRT.hot) }} />}
     </>
   );
 }

@@ -111,7 +111,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   const battlemap = createBattlemapLayer(assets);
   world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, badges, air, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels, ...hazardLabels, ...crewLabels, healMarks, ...revivedLabels);
   const badgeText = new Container();
-  world.addChild(badgeText);
+  world.addChild(badgeText, ...crewLabels);   // UI round 2a: the crew labels (DOWNED, AWAY) above the console badge names
   desks.container.addChild(fx.fixtures); effects.below.addChild(fx.paintedBelow); effects.above.addChild(fx.above, fx.paintedAbove);
   return {
     container, world, memory,
@@ -197,7 +197,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         t.visible = c.label !== '';
         if (!t.visible) continue;
         if (t.text !== c.label) t.text = c.label;
-        t.tint = c.label === 'AWAY' ? DIM : WARN; t.position.set(Math.round(x), Math.round(y + TILE_PX * 0.5));
+        t.tint = WARN;   // UI round 2a: AWAY reads in the DOWNED red (amber vanished on the light floor) t.position.set(Math.round(x), Math.round(y + TILE_PX * 0.5));
       }
       // Duel polish i spec §D: healing motes and the revive, on the presentation clock (held while paused).
       const life = crewLife(d);
