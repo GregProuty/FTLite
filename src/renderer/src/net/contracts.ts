@@ -114,6 +114,11 @@ export type DuelCommand =
    *  range, and flown by the Weapons seat's held torpTurn and torpHeading), false AUTO (as before). A torpedo in flight
    *  keeps the mode it launched with. */
   | { kind: 'torpMode'; manual: boolean }
+  /** W-4 spec §4.1, amendment §2.2: Weapons sets one of the Hound's guns' mode, `slot` 0 pew pew or 1 the autocannon: true
+   *  MAN (while it is the selected weapon it follows the reticle and fires on LMB), false AUTO (it aims with lead and fires
+   *  by itself at a seen, hostile enemy ship). Any integer slot passes the codec; the sim answers another one malformed,
+   *  and a slot whose weapon has no turret unavailable. */
+  | { kind: 'gunMode'; slot: 0 | 1; manual: boolean }
   /** On a decided round's end card: start the next round (H-2 spec §7). */
   | { kind: 'rematch' }
   /** Engineering spike spec §7 (any present, conscious player; the sim checks ranges): move one reactor bar into (+1) or

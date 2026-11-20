@@ -41,9 +41,9 @@ export interface DuelInput { held: readonly HeldInput[]; commands: readonly Duel
 
 const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 /** The fixed order weapon commands take effect in within one tick (W-1: the pew last, as applyWeaponsInput fires it). */
-const WEAPON_ORDER = ['laserMode', 'torpMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire'] as const;
+const WEAPON_ORDER = ['laserMode', 'torpMode', 'gunMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire'] as const;
 /** Every duel command kind the step handles; any other kind is rejected not-in-duel. */
-const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserMode', 'torpMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency',
+const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserMode', 'torpMode', 'gunMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency',
   'shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock', 'weaponPower'];   // Engineering spike spec §7, §10.3
 /** Engineering spike spec §7: the ship-view commands. */
 const SHIP_KINDS = new Set(['shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock']);
@@ -309,7 +309,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
 
   // Tactical commands, against the seats as they now stand. Within a tick they take effect in a fixed order, lock, then
   // the torpedo's target (FTL targeting spec §2), then the rock target (rockLock), then charge, then launch (the order applyWeaponsInput applies them), whatever their envelope order; admission is checked
-  // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins. W-1: pewFire last; only the first in a tick fires (the rest noop). W-2: laserMode first, set at once (as laserFrequency is), so a same-tick laserCharge or laserFire is judged in the new mode; laserFire after laserCharge, the first in a tick fires. W-3: torpMode second, set at once, so a same-tick missileLaunch is judged in the new mode.
+  // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins. W-1: pewFire last; only the first in a tick fires (the rest noop). W-2: laserMode first, set at once (as laserFrequency is), so a same-tick laserCharge or laserFire is judged in the new mode; laserFire after laserCharge, the first in a tick fires. W-3: torpMode second, set at once, so a same-tick missileLaunch is judged in the new mode. W-4: gunMode third, set at once, so a same-tick pewFire is judged in the new mode; one gun a command (amendment §2.2).
   const helm = attendant(d, d.nav), gunner = attendant(d, d.weapons);
   const steer = gunner >= 0 ? heldTorpSteer(input.held[gunner] ?? NO_HELD) : { turn: 0, heading: -1 };   // W-3: only Weapons' attendant flies the MANUAL torpedo
   const gunnerHeld = gunner >= 0 ? input.held[gunner] ?? NO_HELD : NO_HELD, weaponSel = gunner >= 0 ? heldWeaponSel(gunnerHeld) : -1;
@@ -322,7 +322,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   let torpRockNext: number | null = null, torpLocked = false;
   for (const e of WEAPON_ORDER.flatMap((kind) => input.commands.filter((x) => x.command.kind === kind))) {
     const c = e.command, sys0 = d.tactical.systems[0];
-    if (c.kind !== 'laserMode' && c.kind !== 'torpMode' && c.kind !== 'laserLock' && c.kind !== 'torpLock' && c.kind !== 'rockLock' && c.kind !== 'laserCharge' && c.kind !== 'laserFire' && c.kind !== 'missileLaunch' && c.kind !== 'pewFire') continue;
+    if (c.kind !== 'laserMode' && c.kind !== 'torpMode' && c.kind !== 'gunMode' && c.kind !== 'laserLock' && c.kind !== 'torpLock' && c.kind !== 'rockLock' && c.kind !== 'laserCharge' && c.kind !== 'laserFire' && c.kind !== 'missileLaunch' && c.kind !== 'pewFire') continue;
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }   // −1 is the empty-seat value, never a player
     if ((c.kind === 'laserMode' || c.kind === 'laserLock' || c.kind === 'laserCharge' || c.kind === 'laserFire' || (c.kind === 'rockLock' && c.weapon === 'laser')) && classOf(d.tactical, 0).slots.laser === null) { result(e, 'unavailable'); continue; }   // Valkyrn spec §6.1: no laser; W-2: nor its mode or MANUAL shot
@@ -336,6 +336,13 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
       if (typeof c.manual !== 'boolean') { result(e, 'malformed'); continue; }
       if (c.manual === sys0.torpManual) { result(e, undefined, 'noop'); continue; }
       sys0.torpManual = c.manual;
+    }
+    else if (c.kind === 'gunMode') {   // W-4 spec §4.1, amendment §2.2: one gun's mode (slot 0 pew pew, 1 the autocannon), set now, so a same-tick pewFire is judged in it
+      if ((c.slot !== 0 && c.slot !== 1) || typeof c.manual !== 'boolean') { result(e, 'malformed'); continue; }
+      const slots = classOf(d.tactical, 0).slots, key = c.slot === 0 ? 'pewManual' : 'gunManual';
+      if (((c.slot === 0 ? slots.pew : slots.gun)?.turret ?? null) === null) { result(e, 'unavailable'); continue; }   // no turret in that slot: the Valkyrn and its laser fit
+      if (c.manual === sys0[key]) { result(e, undefined, 'noop'); continue; }   // that gun's mode is unchanged (a second for the slot in a tick is judged against the first)
+      sys0[key] = c.manual;
     }
     else if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; } crew.laserLock = c.room; }   // −1 clears the target; Task 10, spec §10.4: seen
     else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; } crew.torpLock = c.room; torpLocked = true; }   // spec §10.4: seen

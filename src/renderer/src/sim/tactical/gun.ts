@@ -8,7 +8,7 @@ import { weaponBars, WeaponSlot } from './bars';
 import { dirBetween, hx, hy } from './direction';
 import { hitRock, pushRock } from './rockBreak';
 import { rockAt, rockMass, rocksNear } from './rocks';
-import { classOf, CREW_SLOT, emptyRound, Room, type GunRound, type TacticalState } from './state';
+import { classOf, CREW_SLOT, emptyRound, handControl, Room, type GunRound, type TacticalState } from './state';
 import { DT, HEADING_COUNT } from './tuning';
 import type { ShipInput } from './weapons';
 
@@ -23,12 +23,12 @@ export function placeRound(state: TacticalState, r: Omit<GunRound, 'active'>, po
 }
 
 /** W-4 spec §2, §4.4: ship i's gun interval now: a turret gun's table row by its trimmed slot-1 bars (0: no round), else
- *  its class's intervalTicks. W-4a: row 0 (AUTO); W-4b reads the mode. */
-export function gunInterval(state: TacticalState, i: number): number {
+ *  its class's intervalTicks. `manual`: the autocannon is in hand this tick (handControl, the caller's), read when a round fires. */
+export function gunInterval(state: TacticalState, i: number, manual = false): number {
   const g = classOf(state, i).slots.gun;
   if (!g) return 0;
   if (g.intervalByBars === null) return g.intervalTicks;
-  return g.intervalByBars[0]![weaponBars(state.systems[i]!, WeaponSlot.Autocannon)] ?? 0;
+  return g.intervalByBars[manual ? 1 : 0]![weaponBars(state.systems[i]!, WeaponSlot.Autocannon)] ?? 0;   // W-4 spec §4.4: MAN's row for the gun in hand (W-4b)
 }
 /** W-4 spec §3.2, §5: ship i's turret gun's world aim, a fine aim 0..AIM_STEPS − 1. W-4a: the nose (W-4b adds gunTurret). */
 export function gunAimFine(state: TacticalState, i: number): number { return state.ships[i]!.heading * HEADING_COUNT; }
@@ -36,7 +36,7 @@ export function gunAimFine(state: TacticalState, i: number): number { return sta
 /** One round from ship i's next muzzle: `muzzleForward` ahead of the centre and `muzzleLateral` to starboard (90°
  *  clockwise of the nose, (−hy, hx)) or port, at `speed` along the nose plus the ship's velocity; the muzzles alternate,
  *  the cooldown restarts, and the heat rises, locking the gun when it reaches heatMax. */
-function fireRound(state: TacticalState, i: number, g: GunDef): void {
+function fireRound(state: TacticalState, i: number, g: GunDef, manual = false): void {
   const ship = state.ships[i]!, s = state.systems[i]!, h0 = hx(ship.heading), h1 = hy(ship.heading), side = s.gunMuzzle === 0 ? 1 : -1;
   // W-4 spec §5: the muzzles stay on the hull (the nose frame); a turret gun's round flies along its aim (pew.ts aimDir's
   // arithmetic), the Valkyrn's along the nose as before.
@@ -46,7 +46,7 @@ function fireRound(state: TacticalState, i: number, g: GunDef): void {
     vx: ship.vx + ux * g.speed, vy: ship.vy + uy * g.speed, age: 0, owner: i
   });
   state.events.push({ kind: 'gunFire', ship: i, muzzle: s.gunMuzzle });
-  s.gunMuzzle = 1 - s.gunMuzzle; s.gunCooldown = g.turret === null ? g.intervalTicks : gunInterval(state, i); s.gunShots++;
+  s.gunMuzzle = 1 - s.gunMuzzle; s.gunCooldown = g.turret === null ? g.intervalTicks : gunInterval(state, i, manual); s.gunShots++;
   s.gunHeat = Math.min(g.heatMax, s.gunHeat + g.heatPerShot);
   if (s.gunHeat >= g.heatMax) s.gunLocked = true;
 }
@@ -66,8 +66,9 @@ export function tickGun(state: TacticalState, i: number, input: ShipInput): void
   if (s.gunLocked && s.gunHeat === 0) s.gunLocked = false;
   if (s.gunCooldown > 0) s.gunCooldown--;
   if (!input.weapons || !input.gunHeld || s.gunLocked || s.rooms[Room.Weapons] >= 2 || s.gunCooldown > 0) return;
-  if (g.turret !== null && gunInterval(state, i) === 0) return;   // W-4 spec §5: a turret gun on 0 bars fires nothing
-  fireRound(state, i, g);
+  const hand = g.turret !== null && handControl(state, i, input.weaponSel, WeaponSlot.Autocannon);   // W-4 spec §3.4, §4.4: the autocannon in hand
+  if (g.turret !== null && gunInterval(state, i, hand) === 0) return;   // W-4 spec §5: a turret gun on 0 bars fires nothing
+  fireRound(state, i, g, hand);
 }
 
 /** W-1: shared with the pew's rounds (pew.ts). The entry parameter t in [0, 1] of the segment (ox, oy) → (nx, ny) into the circle at (cx, cy) of radius r: 0 when

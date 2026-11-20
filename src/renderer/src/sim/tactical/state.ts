@@ -307,6 +307,15 @@ export function missileOf(state: TacticalState, i: number): Missile | null {
   for (const m of state.missiles) if (m.active && m.owner === i) return m;
   return null;
 }
+/** W-4 spec §3.4, amendment §2.3 (owner 2026-11-19): whether ship i's gun `slot` (0 pew pew, 1 the autocannon; bars.ts
+ *  WeaponSlot) is in the gunner's hands this tick: that gun's own switch is MAN (pewManual, gunManual), and it is the Weapons
+ *  seat's selected weapon (`weaponSel`, held input, −1 none). The gun in hand follows the reticle, fires on the trigger and
+ *  takes MAN's rates; every other powered gun is AUTO-driven, a MAN one that is not selected too. Only the crew slot of a
+ *  turret class is ever MAN (hash.ts), so this is false elsewhere, and for any other slot. W-4c adds the MANUAL flight here. */
+export function handControl(state: TacticalState, i: number, weaponSel: number, slot: number): boolean {
+  const s = state.systems[i]!, manual = slot === 0 ? s.pewManual : slot === 1 && s.gunManual;
+  return manual && weaponSel === slot;
+}
 /** Put a missile in flight for ship i with these flight values: in the entry it already flies in, or the first free one
  *  (the launch, and tests). W-3: `manual` its mode (default AUTO). Returns it. */
 export function placeMissile(state: TacticalState, i: number, f: MissileFlight, manual = false): Missile {

@@ -11,7 +11,7 @@ import { hx, hy } from './direction';
 import { tickGun } from './gun';
 import { BEAM_RATE_BY_BARS, BEAM_SHOTS_BY_BARS, DuelSystem, effectiveBars, MAGAZINE_REGEN_UNITS, SHIELD_LAYERS_BY_BARS, SHIELD_RATE_BY_BARS, TORPEDO_RELOAD_BY_BARS, weaponBars, WeaponSlot } from './bars';
 import { aimDir, clampAim, firePew, firePewTrigger, tickPew } from './pew';
-import { classOf, CREW_SLOT, missileOf, Room, type Axes, type TacticalState } from './state';
+import { classOf, CREW_SLOT, handControl, missileOf, Room, type Axes, type TacticalState } from './state';
 import { shipSeen } from './science';
 import { AIM_STEPS, LASER_ARC_STEPS } from './tuning';
 
@@ -368,5 +368,5 @@ export function tickWeapons(state: TacticalState, i: number, input: ShipInput): 
     const rate = TORPEDO_RELOAD_BY_BARS[weaponBars(s, WeaponSlot.Torpedo)]!;
     if (rate > 0 && (s.magazineClock += rate) >= MAGAZINE_REGEN_UNITS) { s.magazine++; s.magazineClock = 0; }
   } else if (++s.magazineClock >= c.slots.missile.regenTicks) { s.magazine++; s.magazineClock = 0; }
-  tickPew(state, i);   // W-1: the pew refills every tick, attended or not (spec §6 decision 4); the crew's at its pew pew bars' rate (Engineering spike §11)
+  tickPew(state, i, handControl(state, i, input.weaponSel, WeaponSlot.Pew));   // W-1: the pew refills every tick, attended or not (spec §6 decision 4); the crew's at its pew pew bars' rate (Engineering spike §11); W-4 spec §4.4: MAN's gain while the pew is in hand
 }
