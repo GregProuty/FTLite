@@ -44,7 +44,7 @@ Confirmed (`input.ts` L131: `KeyEventLike` has `code`, `repeat`, `shiftKey?`). �
 
 ## R1-F11 [P2]: The new `pewHit` room/level and its callout are unspecified online and in the view
 
-Confirmed (`hitModel.ts` L57, L76 have gun branches only; `onlineSource.ts` L89, L93 build both events with no room). §3.4 now specifies `hitCallouts`' pew branch (`PEW: `, on `level`), `pushHits`' flash (room ≥ 0), and that online synthesizes `room: -1, level: false` as the gun does today. §7 lists online room callouts as not in this build, and §8 item 13 records it.
+Confirmed (`hitModel.ts` L57, L76 have gun branches only; `onlineSource.ts` L89, L93 build both events with no room). §3.4 now specifies `hitCallouts`' pew branch (`PEW: `, on `level`), `pushHits`' flash (room >= 0), and that online synthesizes `room: -1, level: false` as the gun does today. §7 lists online room callouts as not in this build, and §8 item 13 records it.
 
 ## R1-F12 [P2]: An AUTO torpedo reads `lock` when it lands, so Q/E now retarget one in flight
 
