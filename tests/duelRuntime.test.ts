@@ -198,7 +198,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     rt.dispose();
   });
   it('single player fires while you fly: seated at both consoles, Tabbed back to the Helm, the lined-up laser auto-fires', () => {
-    const { rt, press, tick } = rig();
+    const { rt, press, tick } = rig(5, undefined, true, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     const t = rt.duel.tactical, me = t.ships[0], e = t.ships[1], sys = t.systems[0];
     const lineUp = (): void => {
       t.map.asteroids.length = 0;
@@ -216,7 +216,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     rt.dispose();
   });
   it('Space is one press that fires a full laser; E and Q step the laser target (FTL targeting spec §1, §2)', () => {
-    const { rt, press, tick } = rig();
+    const { rt, press, tick } = rig(5, undefined, true, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     holdInSight(rt.duel.tactical);   // Engineering spike spec §10.4: a lock or scan needs the enemy seen
     press('switch'); tick();
     const ship = rt.duel.tactical.systems[0];
@@ -245,7 +245,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     w.rt.dispose();
   });
   it('a press below full is sent and fires nothing; Space up sends nothing (no release)', () => {
-    const { rt, press, tick } = rig();
+    const { rt, press, tick } = rig(5, undefined, true, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     press('switch'); tick();
     rt.duel.tactical.systems[0].laserCharge = 0;
     press('fireDown'); tick();
@@ -256,12 +256,12 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     rt.dispose();
   });
   it('the targets (FTL targeting spec §1): a room click sets a target, a card clear sends −1, a torpStep steps the torpedo target alone (from none: E to 0, Q to 2)', () => {
-    const { rt, hold, ask, tick } = rig();
+    const { rt, hold, ask, tick } = rig(5, undefined, true, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     rt.frame(1 / 60); tick();
     const ship = rt.duel.tactical.systems[0];
     hold({ lockTo: 0 }); tick(); expect([ship.lock, ship.laserTargeted]).toEqual([Room.Shields, true]);   // at the Helm: no weapons commands (the SHIELDS opener stands)
     rt.dispose();
-    const g = rig(); holdInSight(g.rt.duel.tactical);   // Engineering spike spec §10.4: a lock or scan needs the enemy seen
+    const g = rig(5, undefined, true, ShipClass.ValkyrnLaser); holdInSight(g.rt.duel.tactical);   // W-4 spec §14.1: the beam's rule, on the laser fit. Engineering spike spec §10.4: a lock or scan needs the enemy seen
     g.press('switch'); g.tick();
     const s = g.rt.duel.tactical.systems[0];
     g.hold({ lockTo: 0 }); g.tick(); expect([s.lock, s.laserTargeted]).toEqual([0, true]);
@@ -277,7 +277,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     g.rt.dispose();
   });
   it('a pick-up on an unknown enemy (FTL targeting fix): the contact controller asks for the scan and the runtime starts the Level 1 scan from Weapons', () => {
-    const g = rig(); holdInSight(g.rt.duel.tactical);   // Engineering spike spec §10.4: a lock or scan needs the enemy seen
+    const g = rig(5, undefined, true, ShipClass.ValkyrnLaser); holdInSight(g.rt.duel.tactical);   // W-4 spec §14.1: the beam's rule, on the laser fit. Engineering spike spec §10.4: a lock or scan needs the enemy seen
     g.press('switch'); g.tick();
     const t = g.rt.duel.tactical, c = createContactController();
     t.known[0] = 0;
@@ -310,7 +310,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     rt.dispose();
   });
   it('F then a Space press before one tick: the sim fires the full charge, then launches (charge before launch)', () => {
-    const { rt, time, press, tick } = rig();
+    const { rt, time, press, tick } = rig(5, undefined, true, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     press('switch'); tick();
     inTorpedoRange(rt.duel.tactical);
     const ship = rt.duel.tactical.systems[0];
@@ -454,12 +454,12 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
     rt.dispose();
   });
   it("spike ii §6.5: a rock drop and a card's clear send rockLock from Weapons only; the sim's targets follow", () => {
-    const { rt, ask, tick } = rig();
+    const { rt, ask, tick } = rig(5, undefined, true, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     rt.frame(1 / 60); tick();
     ask({ rockLock: { weapon: 'laser', rock: 0 } }); tick();
     expect(rt.duel.tactical.systems[0].laserRock).toBe(-1);   // at the Helm: no weapons commands
     rt.dispose();
-    const g = rig(); g.press('switch'); g.tick();
+    const g = rig(5, undefined, true, ShipClass.ValkyrnLaser); g.press('switch'); g.tick();   // W-4 spec §14.1: the beam's rule, on the laser fit
     const s = g.rt.duel.tactical.systems[0];
     g.ask({ rockLock: { weapon: 'laser', rock: 0 } }); g.tick(); expect([s.laserRock, s.laserTargeted]).toEqual([0, true]);
     g.ask({ rockLock: { weapon: 'torpedo', rock: 0 } }); g.tick(); expect([s.torpRock, s.torpLock]).toEqual([0, -1]);
@@ -473,7 +473,7 @@ describe('the duel runtime (H-1 spec §4, §5)', () => {
 describe('weapons commands match the sim (H-1b impl review)', () => {
   const rejected = (rt: ReturnType<typeof rig>['rt']): string[] => rt.lastResults().filter((r) => r.status === 'rejected').map((r) => String(r.reason));
   it('Space while the missile flies sends nothing the sim would reject', () => {
-    const { rt, hold, press, tick, ticks } = rig();
+    const { rt, hold, press, tick, ticks } = rig(5, undefined, true, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     inTorpedoRange(rt.duel.tactical);
     press('switch'); tick(); press('launch'); tick(); ticks(2);
     expect(missileOf(rt.duel.tactical, 0)).not.toBeNull();
@@ -592,7 +592,7 @@ describe('the interior zoom camera input (interior zoom spec rules 1-4)', () => 
 
 describe('the Artemis console clicks (Artemis spec §4.1, §6.1)', () => {
   it('a lock click at Weapons queues laserLock to that room; the same click at the Helm changes nothing', () => {
-    const { rt, hold, press, tick } = rig();
+    const { rt, hold, press, tick } = rig(5, undefined, true, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     holdInSight(rt.duel.tactical);   // Engineering spike spec §10.4: a lock or scan needs the enemy seen
     const ship = rt.duel.tactical.systems[0], before = ship.lock;
     hold({ lockTo: 2 }); tick(); hold({ lockTo: null });   // player 0 sits at the Helm

@@ -88,7 +88,7 @@ describe('the duel admits face from the Helm like the turn (console feel spec §
 
 describe('the SHIELDS opener (console feel spec §3)', () => {
   it('every round starts with the crew laser targeted at Shields, the rematch included; the hunter stays untargeted', () => {
-    const d = createDuel(CUTTER, 5);
+    const d = createDuel(CUTTER, 5, 0, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the laser's opener, on the laser fit (the Hound has no laser: w4Loadout)
     try {
       const s = d.tactical.systems;
       expect([s[0].laserTargeted, s[0].lock, s[0].torpLock]).toEqual([true, Room.Shields, -1]);

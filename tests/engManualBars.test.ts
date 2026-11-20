@@ -16,10 +16,11 @@ import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { CUTTER } from './helpers/scriptedDuel';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 /** A tactical state whose crew Weapons holds 10 bars split as `power`, the laser and torpedo MANUAL, the Hunter far off. */
 function manualAt(power: number[]): TacticalState {
-  const st = createTacticalState(5), sys = st.systems[0];
+  const st = createTacticalState(5, 2, ShipClass.ValkyrnLaser), sys = st.systems[0];   // W-4 spec §14.1: the beam's rule, on the laser fit
   sys.bars[DuelSystem.Weapons] = 10; sys.weaponPower = power;
   sys.laserManual = true; sys.torpManual = true;
   Object.assign(st.ships[0], { x: 0, y: 1500, vx: 0, vy: 0, heading: 0, headingAcc: 0 });
@@ -100,7 +101,7 @@ describe('through the duel step', () => {
   const cmd = (d: DuelState, command: DuelCommand): DuelEnvelope => ({ runId: 'duel', id: { player: 1, sequence: ++seq }, requestedTick: d.interior.tick, command });
   const step = (d: DuelState, commands: DuelEnvelope[]) => stepDuelTick(d, { held: [NONE, NONE], commands }).map((x) => x.reason ?? x.status);
   it('MANUAL laserFire with 0 beam bars and a MANUAL launch with 0 torpedo bars are unavailable; with a bar, applied', () => {
-    const d = createDuel(CUTTER, 5);
+    const d = createDuel(CUTTER, 5, 0, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     try {
       sitDown(d.interior, 1, d.weapons);
       const sys = d.tactical.systems[0];

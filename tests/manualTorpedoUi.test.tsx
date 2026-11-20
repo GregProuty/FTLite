@@ -3,7 +3,7 @@
 // @vitest-environment jsdom
 // W-3 manual torpedo (spec 2026-11-18-pew-pew-weapons-design §3, §5): the TORPEDO card.
 // - Its AUTO / MAN tag shows the mode (MAN lit), and a click presses torpMode, as V does.
-// - In MANUAL the card says MANUAL instead of the range words, and a flying MANUAL torpedo says STEER A/D only while it can turn
+// - In MANUAL the card says MANUAL instead of the range words, and a flying MANUAL torpedo says STEER LMB (W-4 spec §10) only while it can turn
 //   (past its boost, fuel left), FLYING during the boost and COASTING once its fuel is spent.
 // - The Weapons panel carries the mode and the flying torpedo's, and LAUNCH is live out of range in MANUAL.
 // - The lock tone is off in MANUAL.
@@ -23,6 +23,7 @@ import { classOf, missileOf, placeMissile, Room } from '../src/renderer/src/sim/
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
 import { makeUi } from './helpers/uiStore';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 afterEach(() => { cleanup(); });
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((c) => c.dataset.text!);
@@ -62,17 +63,17 @@ describe('the TORPEDO card\'s AUTO / MAN tag (spec §3, §5)', () => {
     fireEvent.pointerDown(tag()!, { button: 0 });
     expect(press).toHaveBeenCalledWith('torpMode');
   });
-  it('a flying MANUAL torpedo says STEER A/D while it can turn, FLYING in its boost, COASTING once its fuel is spent; an AUTO one FLYING', () => {
+  it('a flying MANUAL torpedo says STEER LMB while it can turn, FLYING in its boost, COASTING once its fuel is spent; an AUTO one FLYING', () => {
     const { duel } = mount();
     act(() => duel.frame(view(weapons({ torpManual: true, missileFlying: true, torpSteer: true, torpCoast: false }))));
-    expect(texts()).toContain('STEER A/D');
+    expect(texts()).toContain('STEER LMB');
     expect(texts()).not.toContain('COASTING');
     act(() => duel.frame(view(weapons({ torpManual: true, missileFlying: true, torpSteer: false, torpCoast: false }))));   // the boost
     expect(texts()).toContain('FLYING');
-    expect(texts()).not.toContain('STEER A/D');
+    expect(texts()).not.toContain('STEER LMB');
     act(() => duel.frame(view(weapons({ torpManual: true, missileFlying: true, torpSteer: false, torpCoast: true }))));   // the fuel is spent
     expect(texts()).toContain('COASTING');
-    expect(texts()).not.toContain('STEER A/D');
+    expect(texts()).not.toContain('STEER LMB');
     expect(texts()).not.toContain('FLYING');
     act(() => duel.frame(view(weapons({ torpManual: false, missileFlying: true, torpSteer: false, torpCoast: false }))));   // an AUTO torpedo
     expect(texts()).toContain('FLYING');
@@ -81,7 +82,7 @@ describe('the TORPEDO card\'s AUTO / MAN tag (spec §3, §5)', () => {
 
 describe('the Weapons panel and the tone in MANUAL (spec §3)', () => {
   it('carries the mode and the flying torpedo\'s; LAUNCH is live out of range; the lock tone is off', () => {
-    const d = createSeatedDuel(CUTTER, 5); todaysCrewWeapons(d.tactical);
+    const d = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.ValkyrnLaser); todaysCrewWeapons(d.tactical);   // W-4 spec §14.1: the beam's rule, on the laser fit
     try {
       // Merge with the Engineering spike (kind a): out of torpedo range but inside sensor range (800 < 900 at 1 Sensors bar,
       // spec §10.4), since an unseen enemy never sounds the lock tone (was 3000 apart).

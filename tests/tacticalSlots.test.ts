@@ -43,7 +43,7 @@ describe('ship classes and weapons as definitions (spec §5)', () => {
     }
     // Weapons update spec §1, §3: the Hunter's own hull, and the crew's double laser against the Hunter's single one.
     expect([CUTTER_CLASS.hull, HUNTER_CLASS.hull]).toEqual([SHIP_HULL, HUNTER_HULL]);
-    expect([CUTTER_CLASS.slots.laser, HUNTER_CLASS.slots.laser]).toEqual([LASER, HUNTER_LASER]);
+    expect([VALKYRN_LASER_CLASS.slots.laser, HUNTER_CLASS.slots.laser]).toEqual([LASER, HUNTER_LASER]);   // W-4 spec §14.1: the beam's def, read from the laser fit
     expect([LASER.shots, HUNTER_LASER.shots]).toEqual([2, 1]);
     expect(HUNTER_LASER).toEqual({ ...LASER, shots: 1 });
     expect([CUTTER_CLASS.ai, HUNTER_CLASS.ai]).toEqual(['crew', 'hunter']);
@@ -78,14 +78,14 @@ describe('ship slots (spec §5 "arrays, not pairs")', () => {
     }
   }, 60_000);
   it('contacts and the laser work across any pair of active slots, by the locked target', () => {
-    const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 3)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
+    const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 3, ShipClass.ValkyrnLaser)));   // W-4 spec §14.1: the beam's rule, on the laser fit. Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
     quiet(st);
     Object.assign(st.ships[2]!, { active: true, x: 500, y: -1800, vx: 0, vy: 0, heading: 192 });   // a third ship, west-facing
     Object.assign(st.systems[2]!, { ...st.systems[1], rooms: [0, 0, 0], target: 0 });
     Object.assign(st.ships[0], { x: 465, y: -1800, vx: 100, vy: 0, heading: 64 });               // overlapping it by 5, closing
     stepFlight(st, [{ turn: 0, thrust: 0 }, { turn: 0, thrust: 0 }, { turn: 0, thrust: 0 }], { gravity: false, edge: false, drag: 0, stabilise: 0 });
     expect([st.ships[0].shipHits, st.ships[2]!.shipHits, st.ships[1].shipHits]).toEqual([1, 1, 0]);
-    expect([st.systems[0].hull, st.systems[2]!.hull]).toEqual([SHIP_HULL - 1, HUNTER_HULL - 1]);   // the third ship is a Hunter-class copy
+    expect([st.systems[0].hull, st.systems[2]!.hull]).toEqual([52, HUNTER_HULL - 1]);   // the third ship is a Hunter-class copy. W-4 spec §14.1 (laser fit): was SHIP_HULL - 1 (69); the laser fit has VALKYRN_HULL 53
     expect(st.ships[0].graceUntil[shipBody(st.map, 0, 2)]).toBeGreaterThan(0);
     expect(st.ships[2]!.graceUntil[shipBody(st.map, 2, 0)]).toBeGreaterThan(0);
     const before = { ...st.systems[1] };
@@ -159,6 +159,6 @@ describe('the declared-added fields (new in the R-2 alias table)', () => {
     } finally { disposeDuel(d); }
     expect(ticks).toBeGreaterThan(0);
     expect(wrong).toBe(0);
-    if (crew === 'scripted') expect(ticks).toBe(7444);   // seed 1's scripted Cutter duel (SIM_VERSION 60, asteroids-iii: was 6574; the merge with the Engineering spike and owner 2026-11-19 (playtest2feedback merge, SIM 59): was 8047; merge of the Engineering spike with W-1, W-2 and W-3: was 11460 on master at SIM 57 and 7207 on the spike at SIM 55; SIM_VERSION 55, W-1's pew merged with asteroids-ii, HUNTER_PEW_ERROR 16; 19199 before, SIM_VERSION 54 on master; 5716 on the W-1 branch, SIM_VERSION 54, with W-1's pew and duel hull ×1.75; SIM_VERSION 53, spike ii with the fan split at r 13; 20252 with the fan split at r 25: the Hunter shoves belt rock 39 at tick 2058 and no longer dives into the planet; 5125 before, SIM_VERSION 52; 16340 before FTL targeting, SIM_VERSION 49; 18793 before the weapons update, SIM_VERSION 48; 9724 before Sci-1's merge, SIM_VERSION 47; 10320 before homing torpedoes, SIM_VERSION 46; 16268 before the Hunter's grace, SIM_VERSION 45; 15772 before duel fire)
+    if (crew === 'scripted') expect(ticks).toBe(7796);   // seed 1's scripted Cutter duel (the W-4 merge with asteroids-iii, SIM 62: was 7362 on W-4 and 7444 on master; W-4b (SIM 60): was 8332; W-4a (SIM 60): was 6574; the merge with the Engineering spike and owner 2026-11-19 (playtest2feedback merge, SIM 59): was 8047; merge of the Engineering spike with W-1, W-2 and W-3: was 11460 on master at SIM 57 and 7207 on the spike at SIM 55; SIM_VERSION 55, W-1's pew merged with asteroids-ii, HUNTER_PEW_ERROR 16; 19199 before, SIM_VERSION 54 on master; 5716 on the W-1 branch, SIM_VERSION 54, with W-1's pew and duel hull ×1.75; SIM_VERSION 53, spike ii with the fan split at r 13; 20252 with the fan split at r 25: the Hunter shoves belt rock 39 at tick 2058 and no longer dives into the planet; 5125 before, SIM_VERSION 52; 16340 before FTL targeting, SIM_VERSION 49; 18793 before the weapons update, SIM_VERSION 48; 9724 before Sci-1's merge, SIM_VERSION 47; 10320 before homing torpedoes, SIM_VERSION 46; 16268 before the Hunter's grace, SIM_VERSION 45; 15772 before duel fire)
   }, 60_000);
 });

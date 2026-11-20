@@ -89,6 +89,11 @@ export interface ShipSystems {
    *  MANUAL (launched by missileLaunch alone, with no lock or range, and flown by the Weapons seat); only the crew's is
    *  ever MANUAL (torpMode), and every round starts AUTO. A launch copies it onto the torpedo (Missile.manual). */
   torpManual: boolean;
+  /** W-4 spec §3.1: the Hound's turrets, each a signed offset from the nose in fine heading steps (AIM_STEPS to the turn),
+   *  within ± its class's turret arcSteps (0 on a class without that turret). W-4 amendment §2.1: each gun's own mode,
+   *  pew pew's and the autocannon's, false AUTO, true MAN (gunMode {slot}; only the crew slot of a class whose weapon in
+   *  that slot has a turret is ever MAN). Every round starts 0 / 0 / AUTO / AUTO. */
+  pewTurret: number; gunTurret: number; pewManual: boolean; gunManual: boolean;
 }
 
 /** A cruise missile's flight (spec §7b). */
@@ -98,10 +103,14 @@ export interface MissileFlight { x: number; y: number; vx: number; vy: number; h
  *  ship's Weapons input and strikes the room under its impact point); a toggle during the flight never changes it. */
 export interface Missile extends MissileFlight { active: boolean; owner: number; manual: boolean }
 /** Valkyrn spec §7.2: a gun round in the pool: its position, velocity (u/s) and ticks flown, the ship slot that fired
- *  it, and whether it flies. A free entry holds zeros. */
-export interface GunRound { x: number; y: number; vx: number; vy: number; age: number; owner: number; active: boolean }
+ *  it, and whether it flies. W-4 amendment §3.3: `room`, the target room it was fired at: 0 for none, else the Room index
+ *  + 1 (1 Weapons, 2 Shields, 3 Engines); set only on a round the crew fires by hand from a turret, and never changed in
+ *  flight. A free entry holds zeros. */
+export interface GunRound { x: number; y: number; vx: number; vy: number; age: number; owner: number; active: boolean; room: number }
 /** A free round pool entry. */
-export function emptyRound(): GunRound { return { x: 0, y: 0, vx: 0, vy: 0, age: 0, owner: 0, active: false }; }
+export function emptyRound(): GunRound { return { x: 0, y: 0, vx: 0, vy: 0, age: 0, owner: 0, active: false, room: 0 }; }
+/** W-4 amendment §3.3: the Room a round's tag names (tag − 1), or −1 for an untagged round (0) or any other value. */
+export function roundRoom(tag: number): -1 | 0 | 1 | 2 { return tag === 1 ? 0 : tag === 2 ? 1 : tag === 3 ? 2 : -1; }
 
 export const HunterMode = { Hunt: 0, Repair: 1 } as const;
 /** The enemy's brain (spec §9). */
@@ -153,8 +162,10 @@ export type DuelEvent =
   | { kind: 'gunHit'; ship: number; room: number; stripped: boolean; hull: boolean; level: boolean; x: number; y: number }   // level: the hit raised the Room's level (Valkyrn spec §7.4)
   /** W-1 (pew pew spec §1): ship `ship` fired a pew round from its muzzle (x, y). */
   | { kind: 'pewFire'; ship: number; x: number; y: number }
-  /** W-1: ship `owner`'s pew round hit ship `ship` at (x, y): `stripped` it took a shield layer, `hull` it cost hull. */
-  | { kind: 'pewHit'; ship: number; owner: number; stripped: boolean; hull: boolean; x: number; y: number }
+  /** W-1: ship `owner`'s pew round hit ship `ship` at (x, y): `stripped` it took a shield layer, `hull` it cost hull.
+   *  W-4 amendment §3.4: `room` the Room a round fired by hand wore (−1 for none, and on a shield hit) and `level` whether
+   *  that raised its level, as gunHit has. */
+  | { kind: 'pewHit'; ship: number; owner: number; stripped: boolean; hull: boolean; room: number; level: boolean; x: number; y: number }
   /** A scan finished: `contact` is now known to `level`. */
   | { kind: 'scanDone'; contact: number; level: number }
   /** The derelict was salvaged: its loot, and whether it was trapped. */
@@ -169,7 +180,7 @@ export type DuelEvent =
   | { kind: 'rock'; what: 'hit' | 'split' | 'dust' | 'blast' | 'bump' | 'touch' | 'rejoin'; by: RockCause; rock: number; x: number; y: number; r: number; vx: number; vy: number; ship?: number; pieces?: number[]; other?: number; evicted?: true; burst?: true; speed?: number; how?: 'lane' | 'group' | 'own' | 'cluster'; join?: 'tumble' | 'ring' };
 
 /** Spike ii §8: what caused a rock event. */
-export type RockCause = 'laser' | 'torpedo' | 'collision' | 'ram' | 'planet' | 'edge' | 'tidal' | 'settle';
+export type RockCause = 'laser' | 'torpedo' | 'collision' | 'ram' | 'planet' | 'edge' | 'tidal' | 'settle' | 'gun';   // W-4 spec §5.1: 'gun' is the autocannon's rounds
 
 export interface TacticalState {
   tick: number; seed: number; rng: RngState; map: MapDef;
@@ -233,6 +244,7 @@ function systemsFor(cls: number, target: number, crew = false): ShipSystems {
     pewCharge: pew ? pewFullCharge(pew) : 0, pewShots: 0, pewHits: 0,   // W-1: a pew starts the round full
     laserManual: false, laserAim: -1,   // W-2: every round starts AUTO, with no MANUAL burst pending
     torpManual: false,   // W-3: and the torpedo too
+    pewTurret: 0, gunTurret: 0, pewManual: false, gunManual: false,   // W-4 spec §3.1, amendment §2.1: the turrets on the nose, each gun AUTO
     bars: crew ? [...START_BARS] : Array<number>(DUEL_SYSTEM_COUNT).fill(0),   // Engineering spike spec §2
     weaponPower: crew ? [...START_WEAPON_POWER] : Array<number>(WEAPON_SLOTS).fill(0)   // spec §10.3
   };
@@ -240,7 +252,7 @@ function systemsFor(cls: number, target: number, crew = false): ShipSystems {
 function emptySystems(): ShipSystems {
   return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, laserTargeted: false, torpLock: 0, torpRoom: 0, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: 0, magazineClock: 0, laserRock: 0, torpRock: 0, torpRockFlying: 0, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
-    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0, pewCharge: 0, pewShots: 0, pewHits: 0, laserManual: false, laserAim: 0, torpManual: false,
+    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0, pewCharge: 0, pewShots: 0, pewHits: 0, laserManual: false, laserAim: 0, torpManual: false, pewTurret: 0, gunTurret: 0, pewManual: false, gunManual: false,
     bars: Array<number>(DUEL_SYSTEM_COUNT).fill(0), weaponPower: Array<number>(WEAPON_SLOTS).fill(0) };
 }
 /** A free missile pool entry. */
@@ -303,6 +315,19 @@ export function targetOf(state: TacticalState, i: number): number { return state
 export function missileOf(state: TacticalState, i: number): Missile | null {
   for (const m of state.missiles) if (m.active && m.owner === i) return m;
   return null;
+}
+/** W-4 spec §3.4, amendment §2.3 (owner 2026-11-19): whether ship i's gun `slot` (0 pew pew, 1 the autocannon; bars.ts
+ *  WeaponSlot) is in the gunner's hands this tick: that gun's own switch is MAN (pewManual, gunManual), and it is the Weapons
+ *  seat's selected weapon (`weaponSel`, held input, −1 none). The gun in hand follows the reticle, fires on the trigger and
+ *  takes MAN's rates; every other powered gun is AUTO-driven, a MAN one that is not selected too. Only the crew slot of a
+ *  turret class is ever MAN (hash.ts), so this is false elsewhere, and for any other slot. W-4c: never while the ship's
+ *  MANUAL torpedo flies. */
+export function handControl(state: TacticalState, i: number, weaponSel: number, slot: number): boolean {
+  const s = state.systems[i]!, manual = slot === 0 ? s.pewManual : slot === 1 && s.gunManual;
+  // W-4 spec §3.4, §7 (owner 2026-11-19): while the ship's own MANUAL torpedo flies, no gun is in hand: the reticle is
+  // ignored and every powered gun, a MAN one included, slews and fires on AUTO ("guns left on auto keep firing; can't aim or
+  // fire guns by hand"). AUTO itself is untouched.
+  return manual && weaponSel === slot && missileOf(state, i)?.manual !== true;
 }
 /** Put a missile in flight for ship i with these flight values: in the entry it already flies in, or the first free one
  *  (the launch, and tests). W-3: `manual` its mode (default AUTO). Returns it. */

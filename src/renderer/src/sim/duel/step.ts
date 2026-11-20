@@ -11,12 +11,12 @@ import { roomAt } from '../grid';
 import { fireStep } from '../hazards/fire';
 import { oxygenStep } from '../hazards/oxygen';
 import { movementSystem } from '../movement';
-import { DuelSystem, effectiveBars, throttleAllowed, WEAPON_SLOTS } from '../tactical/bars';
+import { DuelSystem, effectiveBars, throttleAllowed, WeaponSlot, WEAPON_SLOTS } from '../tactical/bars';
 import { applyWeaponPower } from './weaponSlots';
 import { stepDuel } from '../tactical/duel';
 import { autoFacePoint, autoFaceTurn, headingTurn } from '../tactical/hunter';
 import { contactSeen, scanCommand, shipSeen } from '../tactical/science';
-import { BOOST_FAR, HEADING_COUNT, RCS_TURN_BOOST, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
+import { AIM_STEPS, BOOST_FAR, HEADING_COUNT, RCS_TURN_BOOST, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
 import { classOf, CONTACT_MAX_LEVEL, Outcome, type Axes } from '../tactical/state';
 import { hx, hy } from '../tactical/direction';
 import { shipEngineFactor } from '../tactical/physics';
@@ -24,6 +24,8 @@ import { HAZARD_EVERY } from '../tuning';
 import { rockAlive, rockSlots, ROCK_STRIDE } from '../tactical/rocks';
 import { canCharge, canLaunch, manualLaserReady, validRockLock, validTarget, type ShipInput } from '../tactical/weapons';
 import { pewReady, validAim } from '../tactical/pew';
+import { hasTurret } from '../tactical/defs';
+import { manualTorpedoFlying } from '../tactical/manualTorpedo';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
 import { clampThrottle } from './engines';
 import { extinguishRoomWork, extinguishWork, firePhase, pointBurning } from './fire';
@@ -40,9 +42,9 @@ export interface DuelInput { held: readonly HeldInput[]; commands: readonly Duel
 
 const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 /** The fixed order weapon commands take effect in within one tick (W-1: the pew last, as applyWeaponsInput fires it). */
-const WEAPON_ORDER = ['laserMode', 'torpMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire'] as const;
+const WEAPON_ORDER = ['laserMode', 'torpMode', 'gunMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire'] as const;
 /** Every duel command kind the step handles; any other kind is rejected not-in-duel. */
-const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserMode', 'torpMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency',
+const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserMode', 'torpMode', 'gunMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency',
   'shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock', 'weaponPower'];   // Engineering spike spec §7, §10.3
 /** Engineering spike spec §7: the ship-view commands. */
 const SHIP_KINDS = new Set(['shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock']);
@@ -115,11 +117,22 @@ export function heldAim(h: HeldInput): number {
   const a = h.aim;
   return typeof a === 'number' && Number.isInteger(a) && a >= 0 && a < HEADING_COUNT ? a : -1;
 }
-/** W-3 (pew pew spec §3): the MANUAL torpedo's steering in a held input: `turn` the sign of torpTurn (absent or NaN: 0) and
- *  `heading` torpHeading, a heading index 0..255 (absent, −1, a non-integer or out of range: −1, none). */
-export function heldTorpSteer(h: HeldInput): { turn: number; heading: number } {
-  const t = h.torpTurn, a = h.torpHeading;
-  return { turn: typeof t === 'number' ? Math.sign(t) || 0 : 0, heading: typeof a === 'number' && Number.isInteger(a) && a >= 0 && a < HEADING_COUNT ? a : -1 };
+/** W-4 spec §8: the reticle in a held frame: an integer 0..65535, else −1 (none). */
+export function heldTurretAim(h: HeldInput): number {
+  const a = h.turretAim;
+  return typeof a === 'number' && Number.isInteger(a) && a >= 0 && a < AIM_STEPS ? a : -1;
+}
+/** W-3 (pew pew spec §3), W-4 spec §7: the heading a held frame's torpHeading asks a MANUAL torpedo to hold: a heading index
+ *  0..255 (absent, −1, a non-integer or out of range: −1, none). */
+export function heldTorpHeading(h: HeldInput): number {
+  const a = h.torpHeading;
+  return typeof a === 'number' && Number.isInteger(a) && a >= 0 && a < HEADING_COUNT ? a : -1;
+}
+
+/** W-4 spec §8: the selected slot in a held frame: an integer 0..2, else −1 (none). */
+export function heldWeaponSel(h: HeldInput): number {
+  const w = h.weaponSel;
+  return typeof w === 'number' && Number.isInteger(w) && w >= 0 && w <= 2 ? w : -1;
 }
 
 /** Valkyrn spec §6.2: the turn from `heading` toward the aim index `aim`. The signed index difference is
@@ -299,20 +312,25 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
 
   // Tactical commands, against the seats as they now stand. Within a tick they take effect in a fixed order, lock, then
   // the torpedo's target (FTL targeting spec §2), then the rock target (rockLock), then charge, then launch (the order applyWeaponsInput applies them), whatever their envelope order; admission is checked
-  // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins. W-1: pewFire last; only the first in a tick fires (the rest noop). W-2: laserMode first, set at once (as laserFrequency is), so a same-tick laserCharge or laserFire is judged in the new mode; laserFire after laserCharge, the first in a tick fires. W-3: torpMode second, set at once, so a same-tick missileLaunch is judged in the new mode.
+  // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins. W-1: pewFire last; only the first in a tick fires (the rest noop). W-2: laserMode first, set at once (as laserFrequency is), so a same-tick laserCharge or laserFire is judged in the new mode; laserFire after laserCharge, the first in a tick fires. W-3: torpMode second, set at once, so a same-tick missileLaunch is judged in the new mode. W-4: gunMode third, set at once, so a same-tick pewFire is judged in the new mode; one gun a command (amendment §2.2).
   const helm = attendant(d, d.nav), gunner = attendant(d, d.weapons);
-  const steer = gunner >= 0 ? heldTorpSteer(input.held[gunner] ?? NO_HELD) : { turn: 0, heading: -1 };   // W-3: only Weapons' attendant flies the MANUAL torpedo
+  const gunnerHeld = gunner >= 0 ? input.held[gunner] ?? NO_HELD : NO_HELD, weaponSel = gunner >= 0 ? heldWeaponSel(gunnerHeld) : -1;
+  // W-4 spec §8: on a turret class (the Hound) the trigger fires the autocannon only while it is the selected weapon, and
+  // (W-4 spec §7) never while the crew's MANUAL torpedo flies as the tick starts; elsewhere today's rule.
+  const turretClass = hasTurret(classOf(d.tactical, 0)), flying = turretClass && manualTorpedoFlying(d.tactical);
+  const trigger = gunner >= 0 && gunnerHeld.gunHeld === true && (!turretClass || (weaponSel === WeaponSlot.Autocannon && !flying));
   const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false,
-    gunHeld: gunner >= 0 && (input.held[gunner] ?? NO_HELD).gunHeld === true, pewAim: -1, laserFire: -1, torpTurn: steer.turn, torpHeading: steer.heading, scanner: true };   // Valkyrn spec §7.1: the trigger of Weapons' attendant; W-1: pewFire sets pewAim; W-2: laserFire sets laserFire; W-3: the held steering
+    gunHeld: trigger, pewAim: -1, laserFire: -1, torpHeading: gunner >= 0 ? heldTorpHeading(gunnerHeld) : -1, weaponSel, pewTrigger: false, turretAim: gunner >= 0 ? heldTurretAim(gunnerHeld) : -1, scanner: true };   // W-4 spec §8: the reticle; Valkyrn spec §7.1: the trigger of Weapons' attendant; W-2: laserFire sets laserFire; W-3: the held steering; W-4: only Weapons' attendant flies the MANUAL torpedo; W-4: pewFire sets pewTrigger
   // Spike ii §6.1: missileLaunch is admitted with this tick's effective torpedo rock target: the last accepted
   // rockLock(torpedo), else −1 after an accepted torpLock (it clears torpRock first), else the stored value.
   let torpRockNext: number | null = null, torpLocked = false;
   for (const e of WEAPON_ORDER.flatMap((kind) => input.commands.filter((x) => x.command.kind === kind))) {
     const c = e.command, sys0 = d.tactical.systems[0];
-    if (c.kind !== 'laserMode' && c.kind !== 'torpMode' && c.kind !== 'laserLock' && c.kind !== 'torpLock' && c.kind !== 'rockLock' && c.kind !== 'laserCharge' && c.kind !== 'laserFire' && c.kind !== 'missileLaunch' && c.kind !== 'pewFire') continue;
+    if (c.kind !== 'laserMode' && c.kind !== 'torpMode' && c.kind !== 'gunMode' && c.kind !== 'laserLock' && c.kind !== 'torpLock' && c.kind !== 'rockLock' && c.kind !== 'laserCharge' && c.kind !== 'laserFire' && c.kind !== 'missileLaunch' && c.kind !== 'pewFire') continue;
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }   // −1 is the empty-seat value, never a player
-    if ((c.kind === 'laserMode' || c.kind === 'laserLock' || c.kind === 'laserCharge' || c.kind === 'laserFire' || (c.kind === 'rockLock' && c.weapon === 'laser')) && classOf(d.tactical, 0).slots.laser === null) { result(e, 'unavailable'); continue; }   // Valkyrn spec §6.1: no laser; W-2: nor its mode or MANUAL shot
+    // Valkyrn spec §6.1: no laser; W-2: nor its mode or MANUAL shot. W-4 amendment §3.2: on a class with a turret gun (the Hound) laserLock is the target room's command, so it is not caught here.
+    if ((c.kind === 'laserMode' || (c.kind === 'laserLock' && !hasTurret(classOf(d.tactical, 0))) || c.kind === 'laserCharge' || c.kind === 'laserFire' || (c.kind === 'rockLock' && c.weapon === 'laser')) && classOf(d.tactical, 0).slots.laser === null) { result(e, 'unavailable'); continue; }
     if (c.kind === 'pewFire' && classOf(d.tactical, 0).slots.pew === null) { result(e, 'unavailable'); continue; }   // W-1: no pew (the Valkyrn)
     if (c.kind === 'laserMode') {   // W-2 (pew pew spec §2): the mode, set now
       if (typeof c.manual !== 'boolean') { result(e, 'malformed'); continue; }
@@ -324,7 +342,19 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
       if (c.manual === sys0.torpManual) { result(e, undefined, 'noop'); continue; }
       sys0.torpManual = c.manual;
     }
-    else if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; } crew.laserLock = c.room; }   // −1 clears the target; Task 10, spec §10.4: seen
+    else if (c.kind === 'gunMode') {   // W-4 spec §4.1, amendment §2.2: one gun's mode (slot 0 pew pew, 1 the autocannon), set now, so a same-tick pewFire is judged in it
+      if ((c.slot !== 0 && c.slot !== 1) || typeof c.manual !== 'boolean') { result(e, 'malformed'); continue; }
+      const slots = classOf(d.tactical, 0).slots, key = c.slot === 0 ? 'pewManual' : 'gunManual';
+      if (((c.slot === 0 ? slots.pew : slots.gun)?.turret ?? null) === null) { result(e, 'unavailable'); continue; }   // no turret in that slot: the Valkyrn and its laser fit
+      if (c.manual === sys0[key]) { result(e, undefined, 'noop'); continue; }   // that gun's mode is unchanged (a second for the slot in a tick is judged against the first)
+      sys0[key] = c.manual;
+    }
+    else if (c.kind === 'laserLock') {
+      if (!validTarget(c.room)) { result(e, 'malformed'); continue; }
+      if (c.room < 0 && classOf(d.tactical, 0).slots.laser === null) { result(e, 'unavailable'); continue; }   // W-4 amendment §3.2: the Hound's target room has no "none": nothing to clear
+      if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; }   // Task 10, spec §10.4: seen
+      crew.laserLock = c.room;   // −1 clears the laser's target (a laser class only)
+    }
     else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; } crew.torpLock = c.room; torpLocked = true; }   // spec §10.4: seen
     else if (c.kind === 'rockLock') {
       if (!validRockLock(d.tactical, c.weapon, c.rock)) { result(e, 'malformed'); continue; }
@@ -349,11 +379,12 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
       if (!canLaunch(d.tactical, 0, torpRock)) { result(e, 'unavailable'); continue; }
       crew.missileLaunch = true;
     }
-    else {   // W-1 (pew pew spec §1, §4): the aim, then one round a tick (the first wins), then a pew pew bar (Engineering spike §11) and a third stored (pewReady)
-      if (!validAim(c.aim, c.aimAcc)) { result(e, 'malformed'); continue; }
-      if (crew.pewAim >= 0) { result(e, undefined, 'noop'); continue; }
+    else {   // W-4 spec §6: no aim; MAN only; one round a tick (the first wins), then a pew pew bar and a third stored (pewReady)
+      if (!sys0.pewManual) { result(e, 'unavailable'); continue; }   // W-4b, amendment §2.3: pew pew's own switch; on AUTO it fires itself
+      if (manualTorpedoFlying(d.tactical)) { result(e, 'missile-in-flight'); continue; }   // W-4 spec §6, §7: no gun is fired by hand while the MANUAL torpedo flies
+      if (crew.pewTrigger) { result(e, undefined, 'noop'); continue; }
       if (!pewReady(d.tactical, 0)) { result(e, 'unavailable'); continue; }
-      crew.pewAim = c.aim * HEADING_COUNT + c.aimAcc;
+      crew.pewTrigger = true;
     }
     result(e);
   }
@@ -386,7 +417,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     const freq = e.command.freq;
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }
-    if (classOf(t, 0).slots.laser === null) { result(e, 'unavailable'); continue; }   // Valkyrn spec §6.1: no laser to tune
+    if (classOf(t, 0).slots.laser === null && !hasTurret(classOf(t, 0))) { result(e, 'unavailable'); continue; }   // Valkyrn spec §6.1: nothing to tune; W-4 spec §5.2: the Hound's guns tune
     if (!Number.isInteger(freq) || freq < 0 || freq > 2) { result(e, 'malformed'); continue; }
     if (freq === t.systems[0].freq) { result(e, undefined, 'noop'); continue; }
     t.systems[0].freq = freq; result(e);

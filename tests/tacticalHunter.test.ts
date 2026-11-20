@@ -9,10 +9,11 @@ import { HUNTER_JITTER_TICKS, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_WALK_TICKS, 
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { makeHostile, noHunterPew } from './helpers/hostile';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 /** Enemy at (−300, −300) facing west at the crew 300 units away: in arc, in range, clear of the planet. */
-function facing(): TacticalState {
-  const st = todaysCrewWeapons(makeHostile(createTacticalState(5)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
+function facing(cls: number = ShipClass.Cutter): TacticalState {
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 2, cls)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
   return st;
@@ -153,7 +154,7 @@ describe('hunter: firing (spec §9 Firing)', () => {
     expect(hunterThink(st).missileLaunch).toBe(true);
   });
   it('a launch refused on the tick (the crew knocks its Weapons room to level 2 first) costs no cooldown', () => {
-    const st = facing(), [crew, me] = st.systems;
+    const st = facing(ShipClass.ValkyrnLaser), [crew, me] = st.systems;   // W-4 spec §14.1: the crew's laser release, the beam's rule, on the laser fit
     me.rooms[Room.Weapons] = 1; me.shields = 0;
     crew.lock = Room.Weapons; crew.fireHeld = true; crew.laserCharge = LASER_CHARGE_UNITS;
     const before = st.hunter.lastLaunch;

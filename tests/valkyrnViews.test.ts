@@ -64,13 +64,13 @@ describe('the gun sight (Valkyrn spec §7.4)', () => {
       expect(gunSightDraw({ ...input(d), t: 0.13 })!.heat.label).toBeNull();
     } finally { disposeDuel(d); }
   });
-  it('the Hound draws no gun sight and its combat frame has no gun keys', () => {
+  it('the Hound (the autocannon, W-4 spec §2) draws its rounds; its frame off the Flight seat carries no gun sight', () => {
     const d = createDuel(hound, 7);
     try {
-      expect(gunSightDraw(input(d))).toBeNull();
+      expect(gunSightDraw(input(d))).not.toBeNull();   // W-4 spec §2: the Hound has a gun now (was: no gun sight)
       const c = combatModel(input(d, false));
-      expect('gunSight' in c || 'rounds' in c).toBe(false);
-      expect(c.helmArc).not.toBeNull();
+      expect(['rounds' in c, (c as { gunSight?: unknown }).gunSight ?? null]).toEqual([true, null]);   // W-4 spec §2: the autocannon's rounds are drawn (was: no gun keys)
+      expect(c.helmArc).toBeNull();   // W-4 spec §2: the Helm's arc is the laser's, and the Hound has none (was: not null)
     } finally { disposeDuel(d); }
   });
 });

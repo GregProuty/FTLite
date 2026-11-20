@@ -11,6 +11,7 @@ import { endModel } from '../src/renderer/src/render/duel/endModel';
 import { readoutHelp, readoutRows, READOUT_ROWS, READOUT_W, type ReadoutInput, type ReadoutMode } from '../src/renderer/src/render/duel/readoutModel';
 import { PAD, textPx } from '../src/renderer/src/render/theme';
 import { makeHostile } from './helpers/hostile';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const layout = parseShip(cutter);
 const pairs = (input: ReadoutInput) => readoutRows(input).map((r) => [r.label, r.value]);
@@ -56,7 +57,7 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     disposeDuel(d);
   });
   it('Weapons and Engines at level 2 read OFFLINE, the laser CHARGE too; Shields at 2 stays DMG 2 (owner 2026-11-17)', () => {
-    const d = createDuel(layout, 5), s = d.tactical.systems[0];
+    const d = createDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser), s = d.tactical.systems[0];   // W-4 spec §14.1: the beam's rule, on the laser fit
     s.rooms = [2, 2, 2]; s.laserCharge = LASER_CHARGE_UNITS;
     const w = pairs({ duel: d, mode: 'weapons', active: 1 });
     expect(w.slice(4, 7)).toEqual([['WEAPONS', 'OFFLINE'], ['SHIELDS', 'DMG 2'], ['ENGINES', 'OFFLINE']]);
@@ -67,7 +68,7 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     disposeDuel(d);
   });
   it('Weapons adds the lock, the charge bar (READY when full: the crew laser never vents, FTL targeting spec §2), and the magazine', () => {
-    const d = createDuel(layout, 5), s = d.tactical.systems[0];
+    const d = createDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser), s = d.tactical.systems[0];   // W-4 spec §14.1: the beam's rule, on the laser fit
     s.laserCharge = LASER_CHARGE_UNITS / 2;
     let w = pairs({ duel: d, mode: 'weapons', active: 1 });
     expect(w.slice(11, 15)).toEqual([['LASER', ''], ['LOCK', 'SHIELDS'], ['CHARGE', '50%'], ['MAG', '4/4']]);
@@ -101,7 +102,7 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     expect(readoutHelp('interior')).toContain('WHEEL ZOOM  DRAG PAN  C FOLLOW');
   });
   it('every row and help line fits the 220-px column', () => {
-    const d = createDuel(layout, 5);
+    const d = createDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     d.tactical.systems[0].rooms = [2, 2, 2]; d.tactical.systems[0].laserCharge = LASER_CHARGE_UNITS; placeMissile(d.tactical, 0, { x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });
     placeMissile(d.tactical, 1, { ...d.tactical.ships[0], heading: 0, headingAcc: 0, age: 0 });
     for (const mode of ['helm', 'weapons', 'interior'] as ReadoutMode[]) {

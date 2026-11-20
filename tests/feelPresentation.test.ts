@@ -19,6 +19,7 @@ import { CUTTER } from './helpers/scriptedDuel';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
 import { disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 afterEach(() => resetSits());
 /** The enemy `dist` units off the crew's nose, `deg` degrees clockwise of it, both at rest, in open space far from the planet. */
@@ -38,7 +39,7 @@ const input = (st: TacticalState, console: 'helm' | 'weapons', fx = createFx()) 
 
 describe('the status sentence and the card why-not (spec §1, §3)', () => {
   it('reads out of range, out of arc (turn left or right), the solution, charging; the card says why in words', () => {
-    const st = createTacticalState(5);
+    const st = createTacticalState(5, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     place(st, 612);
     let s = laserSituation(st);
     expect([statusSentence(s), laserCardReason(s)]).toEqual(['ENEMY OUT OF RANGE: CLOSE TO 450', 'OUT OF RANGE 612/450']);
@@ -63,14 +64,14 @@ describe('the status sentence and the card why-not (spec §1, §3)', () => {
     expect(laserCardReason(laserSituation(st), true)).toBe('WEAPONS OFFLINE');   // offline first on the card
   });
   it('the torpedo in flight holds the laser; the Weapons panel carries the reason and the goal glow only while untargeted', () => {
-    const st = createTacticalState(5);
+    const st = createTacticalState(5, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     place(st, 300, 10);   // lined up, full and targeted: the sim would fire but for the torpedo (laserFrozen)
     expect(laserSituation(st).kind).toBe('solution');
     placeMissile(st, 0, { x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });
     let s = laserSituation(st);
     expect([statusSentence(s), laserCardReason(s), linedUp(s)]).toEqual(['LASER HOLDS: TORPEDO FLYING', 'HOLDS: TORPEDO FLYING', true]);
     expect(laserSituation(st, SOLUTION_HOLD_S / 2).kind).toBe('solution');   // a volley already released is real
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     try {
       place(d.tactical, 612);
       const p = consoleModel({ duel: d, me: 1, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null, goal: true })!.weapons!;
@@ -83,13 +84,13 @@ describe('the status sentence and the card why-not (spec §1, §3)', () => {
 
 describe('the words never disagree with the sim (Feel-i review)', () => {
   it('no gunner at Weapons, with a full laser lined up: NO GUNNER, no bracket, no bright arc, no FIRING', () => {
-    const st = createTacticalState(5); place(st, 300, 10);
+    const st = createTacticalState(5, 2, ShipClass.ValkyrnLaser); place(st, 300, 10);   // W-4 spec §14.1: the beam's rule, on the laser fit
     const s = laserSituation(st, Infinity, false);
     expect([statusSentence(s), laserCardReason(s), linedUp(s)]).toEqual(['NO GUNNER: SIT AT WEAPONS', 'NO GUNNER', false]);
     const fx = createFx(); trackSolution(fx, linedUp(s), 0); trackSolution(fx, linedUp(s), 0.3);
     const h = combatModel({ ...input(st, 'helm', fx), gunner: false });
     expect([h.status!.label.text, h.status!.colour, h.solution, h.helmArc!.bright]).toEqual(['NO GUNNER: SIT AT WEAPONS', CRT.main, null, false]);
-    const d = createSeatedDuel(CUTTER, 5);
+    const d = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     try {
       place(d.tactical, 300, 10);
       const panel = () => consoleModel({ duel: d, me: 1, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null })!.weapons!;
@@ -99,7 +100,7 @@ describe('the words never disagree with the sim (Feel-i review)', () => {
     } finally { disposeDuel(d); }
   });
   it('once the round is decided: no sentence, no bracket or its label, no bright arc', () => {
-    const st = createTacticalState(5); place(st, 300, 10);
+    const st = createTacticalState(5, 2, ShipClass.ValkyrnLaser); place(st, 300, 10);   // W-4 spec §14.1: the beam's rule, on the laser fit
     const fx = createFx(); trackSolution(fx, true, 0); trackSolution(fx, true, 0.3);
     expect(combatModel(input(st, 'helm', fx)).solution!.label?.text).toBe('FIRING SOLUTION');
     st.outcome = Outcome.EnemyWins;   // a loss: the end card is up
@@ -113,7 +114,7 @@ describe('the words never disagree with the sim (Feel-i review)', () => {
 
 describe('the map: the sentence, the info line, the bright arc and the FIRING SOLUTION bracket (spec §1, §2)', () => {
   it('both seats show the same sentence at the top inside the band; Weapons keeps the BRG line under it; the Helm draws its arc', () => {
-    const st = createTacticalState(5); place(st, 612);
+    const st = createTacticalState(5, 2, ShipClass.ValkyrnLaser); place(st, 612);   // W-4 spec §14.1: the beam's rule, on the laser fit
     const w = combatModel(input(st, 'weapons')), h = combatModel(input(st, 'helm'));
     expect(w.status!.label.text).toBe(h.status!.label.text);
     expect([w.status!.label.y, w.weapons!.info.y]).toEqual([STATUS_Y, INFO_Y]);
@@ -122,7 +123,7 @@ describe('the map: the sentence, the info line, the bright arc and the FIRING SO
     expect(combatModel({ ...input(st, 'weapons'), infoBand: undefined }).status).toBeNull();   // no console, no sentence
   });
   it('lined up: the arc brightens with the laser ready; the bracket closes about the enemy, hot with its label once closed', () => {
-    const st = createTacticalState(5); place(st, 300, 10);
+    const st = createTacticalState(5, 2, ShipClass.ValkyrnLaser); place(st, 300, 10);   // W-4 spec §14.1: the beam's rule, on the laser fit
     const fx = createFx();
     expect(combatModel(input(st, 'helm', fx)).solution).toBeNull();   // the scene has not seen it lined up yet
     trackSolution(fx, true, 0);
@@ -150,7 +151,7 @@ describe('hits are loud (spec §3)', () => {
     const beams = fx.items.filter((i) => i.kind === 'beam');
     expect(beams.map((b) => b.side)).toEqual([-1, 1]);
     expect(fx.sinceShot).toBe(0);
-    const draw = combatModel(input(createTacticalState(5), 'weapons', fx));
+    const draw = combatModel(input(createTacticalState(5, 2, ShipClass.ValkyrnLaser), 'weapons', fx));   // W-4 spec §14.1: the beam's rule, on the laser fit
     expect(draw.effects.filter((e) => e.kind === 'beam').every((e) => e.width === 5 && e.core === true)).toBe(true);
     expect(draw.floats!.map((f) => f.text)).toEqual(['-2']);
   });

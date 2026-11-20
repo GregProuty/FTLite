@@ -17,18 +17,19 @@ import { aimDir, clampAim } from '../src/renderer/src/sim/tactical/pew';
 import { HEADING_COUNT, LASER_ARC_STEPS } from '../src/renderer/src/sim/tactical/tuning';
 import type { ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import { seatDuelCrew } from './helpers/duelSeat';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const layout = parseShip(cutter), vp = { w: 1280, h: 720 };
 function rig(aim: { at: number | null }) {
   let now = 0, keys: KeySample = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() };
   const tasks: { at: number; cb: () => void }[] = [];
   const rt = createDuelRuntime({
-    now: () => now, seed: 5, viewport: vp, layout,
+    now: () => now, seed: 5, viewport: vp, layout, cls: ShipClass.ValkyrnLaser,   // W-4 spec §14.1: the beam's rule, on the laser fit
     scheduler: { schedule(delay, cb) { const t = { at: now + delay, cb }; tasks.push(t); return () => { const i = tasks.indexOf(t); if (i >= 0) tasks.splice(i, 1); }; } },
     sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses() }; return k; },
     samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }),
     clearKeys: () => { keys = { ...keys, presses: emptyPresses() }; },
-    laserAim: () => aim.at
+    reticleAim: () => aim.at   // W-4 spec §9: the dep is the reticle (was laserAim; kind (a) rename)
   });
   const press = (a: KeyAction): void => { keys = { ...keys, presses: { ...keys.presses, [a]: 1 } }; };
   const tick = (): void => { rt.frame(1 / 60); now += 1000 / 60; tasks.sort((a, b) => a.at - b.at); while (tasks[0] && tasks[0].at <= now) tasks.shift()!.cb(); rt.frame(1 / 60); };

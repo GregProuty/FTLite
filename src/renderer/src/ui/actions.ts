@@ -62,7 +62,9 @@ export function createUiActions(deps: UiActionDeps) {
     throttle: (level) => consoleInput?.throttle(level),
     frequency: (freq) => consoleInput?.frequency(freq),
     ship: (command) => consoleInput?.ship?.(command),
-    weaponPower: (slot, delta) => consoleInput?.weaponPower?.(slot, delta)
+    weaponPower: (slot, delta) => consoleInput?.weaponPower?.(slot, delta),
+    select: (slot) => consoleInput?.select?.(slot),   // W-4 spec §10: a card click selects
+    mode: (slot) => consoleInput?.mode?.(slot)   // W-4 amendment §2.5: a tag click
   };
   // Engineering spike §6: the ship view's HUD clicks, through the same console slot (the duel keyboard queues them).
   const send = (command: ShipCommand): void => consoleInput?.ship?.(command);

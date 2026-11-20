@@ -5,6 +5,7 @@ import { createCamera, worldToScreen } from '../src/renderer/src/render/tactical
 import { pickRock, ROCK_PICK_MIN_PX, tacticalModel, type TacticalModelInput } from '../src/renderer/src/render/tactical/tacticalModel';
 import { createContactController, type ContactSync } from '../src/renderer/src/app/duel/contactController';
 import { NO_AXES } from '../src/renderer/src/sim/tactical/state';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { arena, mover } from './helpers/rockArena';
 
 const vp = { w: 1280, h: 720 };
@@ -25,7 +26,7 @@ describe('pickRock (spec §6.5)', () => {
 
 describe('the rock brackets (spec §6.5)', () => {
   it('a targeted rock wears its weapon\'s mark (the torpedo\'s while it flies too); a hover mark under the pointer; none outside the duel', () => {
-    const st = arena(), camera = createCamera(0, 2000, 1);
+    const st = arena(5, ShipClass.ValkyrnLaser), camera = createCamera(0, 2000, 1);   // W-4 spec §14.1: the beam's rule, on the laser fit
     mover(st, 10, 0, 2000, 0, 0, 30); mover(st, 11, 100, 2000, 0, 0, 30); mover(st, 12, -100, 2000, 0, 0, 30);
     st.systems[0].laserRock = 10; st.systems[0].torpRockFlying = 11;
     const input: TacticalModelInput = { state: st, prev: st.ships.map((s) => ({ x: s.x, y: s.y, h: s.heading })), alpha: 1, camera, viewport: vp, console: 'weapons', axes: NO_AXES,

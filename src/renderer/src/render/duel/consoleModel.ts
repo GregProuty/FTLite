@@ -3,8 +3,11 @@
 import { consoleInReach, crewHelmSeat, flightSeat, repairInReach, seatOf, type Seat } from '../../app/duel/controls';
 import { NO_HELD_FLAGS, type HeldFlags, type KeyAction } from '../../app/duel/input';
 import type { DuelState } from '../../sim/duel/state';
-import { pewThird } from '../../sim/tactical/defs';
-import { classOf, Contact, missileOf, Room, type TacticalState } from '../../sim/tactical/state';
+import { hasTurret, pewThird } from '../../sim/tactical/defs';
+import { gunInterval } from '../../sim/tactical/gun';
+import { autocannonRateText } from '../../app/duel/weaponsSeat';
+import { classOf, Contact, handControl, missileOf, Room, type TacticalState } from '../../sim/tactical/state';
+import { enemyHostile } from '../../sim/tactical/science';
 import { HEADING_COUNT, MAGAZINE } from '../../sim/tactical/tuning';
 import { beamShots, canLaunch, torpedoInRange } from '../../sim/tactical/weapons';
 import type { MapOverlayView } from '../../ui/views';
@@ -57,7 +60,7 @@ export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: stri
   laserManual?: boolean;
   /** W-3 (pew pew spec §3): the torpedo's mode for the TORPEDO card's AUTO / MAN tag (true MANUAL; absent draws no tag);
    *  `torpSteer`: the crew's torpedo in flight is a MANUAL one that can turn now (past its boost, fuel left: the card says
-   *  STEER A/D); `torpCoast`: it is a MANUAL one whose fuel is spent (COASTING). Both false during its boost (FLYING). */
+   *  STEER LMB, W-4 spec §10); `torpCoast`: it is a MANUAL one whose fuel is spent (COASTING). Both false during its boost (FLYING). */
   torpManual?: boolean; torpSteer?: boolean; torpCoast?: boolean;
   /** Spike ii §7 item 9: the rocks the crew broke this round. */
   rocks?: number;
@@ -65,7 +68,15 @@ export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: stri
    *  bars not yet spent. Optional, so a hand-built panel may leave them out (the probe's fixture). */
   weaponBars?: number[]; weaponFree?: number;
   /** W-1 (pew pew spec 1): each third's fill 0..1 (the PEW card's pips); absent or null without the pew. */
-  pew?: readonly number[] | null }
+  pew?: readonly number[] | null;
+  /** W-4 spec §10: the Hound's AUTOCANNON card (absent or null on a laser class): heat 0..1, locked, Weapons offline, and
+   *  its rate text at the current bars (`6/S`, `OFF`); `selected` the selected card (0..2). */
+  autocannon?: { heat: number; locked: boolean; offline: boolean; rate: string } | null; selected?: number;
+  /** W-4 spec §10 (W-4b), amendment §2.5: each gun's own switch (its tag is lit while it is set to MAN); the gun slot in the
+   *  gunner's hands (0 or 1, −1 none: handControl, owner 2026-11-19), whose tag reads MAN while every other gun's reads AUTO,
+   *  a MAN one that is not selected too; and whether the 30 s hold keeps the AUTO-driven guns quiet (their tags then read
+   *  HOLD instead of AUTO). */
+  pewManual?: boolean; gunManual?: boolean; gunsHand?: number; gunsHold?: boolean }
 /** Valkyrn spec §8: the GUN card: OFFLINE (Weapons at 2), OVERHEAT (locked) or READY; heat 0..1. */
 export interface GunPanel { state: 'READY' | 'OVERHEAT' | 'OFFLINE'; heat: number; locked: boolean }
 /** Valkyrn spec §5: the Flight seat's weapons: the GUN card (null with the laser fit) and the Weapons panel its cards and the
@@ -103,6 +114,8 @@ export interface ConsoleModelInput {
   refused?: RefusedView | null;
   /** Valkyrn spec §4.4: Tab's ship view while seated (n = 1): the console shows SHIP. */
   shipView?: boolean;
+  /** W-4 spec §10: the Hound's selected weapon. */
+  weaponSel?: number;
 }
 
 /** The tab rule of spec §6.3 on its inputs alone: `reach` is the console `consoleInReach` gives while standing (null
@@ -153,15 +166,18 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
     : null;
   const flightM = missileOf(t, 0), flying = flightM !== null, sys = t.systems[0], torpDef = classOf(t, 0).slots.missile;   // W-3: the crew's torpedo in flight and its def, for the card's words
   const weaponsPanel = (): WeaponsPanel => {
-    const reason = laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), weaponsOffline(t)), w = trimmedWeaponPower(sys);   // Engineering spike §10.3: the bars each weapon stands on now
+    const reason = laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), weaponsOffline(t)), w = trimmedWeaponPower(sys), sel = i.weaponSel ?? 0;   // Engineering spike §10.3: the bars each weapon stands on now
     return { lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null,
       laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock, burst: classOf(t, 0).slots.laser ? beamShots(t, 0) : 0,   // spec §10.3: the beam's shots by its bars
       weaponBars: w, weaponFree: weaponBarsUsable(sys) - (w[0]! + w[1]! + w[2]!),
       laserRock: sys.laserRock >= 0, torpRock: sys.torpRock >= 0, torpRockFlying: sys.torpRockFlying >= 0, rocks: sys.rocksBroken,   // spike ii §6.5, §7 item 9
       // W-2 (pew pew spec §2): the mode for the tag; in MANUAL the laser never fires by itself, so no FIRING and no goal glow.
-      laserReason: sys.laserManual ? manualCardReason(reason) : reason, goal: (i.goal ?? false) && !sys.laserTargeted && !sys.laserManual, laserManual: sys.laserManual,
+      laserReason: sys.laserManual ? manualCardReason(reason) : reason, goal: (i.goal ?? false) && classOf(t, 0).slots.laser !== null && !sys.laserTargeted && !sys.laserManual,   /* W-4 spec §2.1: the FTL opener's glow is the laser's */ laserManual: sys.laserManual,
       torpManual: sys.torpManual, torpSteer: flightM?.manual === true && flightM.age > torpDef.boostTicks && flightM.age <= torpDef.fuelTicks, torpCoast: flightM?.manual === true && flightM.age > torpDef.fuelTicks,   // W-3 (pew pew spec §3): canLaunch above reads the mode (no range in MANUAL); the words follow flyMissile's steering window
-      refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, pew: pewPips(t) };
+      refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, pew: pewPips(t),
+      ...(hasTurret(classOf(t, 0)) && classOf(t, 0).slots.gun ? { autocannon: { heat: Math.max(0, Math.min(1, sys.gunHeat / classOf(t, 0).slots.gun!.heatMax)), locked: sys.gunLocked === true,
+        offline: sys.rooms[Room.Weapons] >= 2, rate: autocannonRateText(gunInterval(t, 0, handControl(t, 0, sel, 1))) }, selected: sel,   // W-4 spec §10; the rate is MAN's only in hand
+        pewManual: sys.pewManual, gunManual: sys.gunManual, gunsHand: [0, 1].find((g) => handControl(t, 0, sel, g)) ?? -1, gunsHold: !enemyHostile(t) } : {}) };   // W-4 amendment §2.5
   };
   const weapons: WeaponsPanel | null = station === 'weapons' ? weaponsPanel() : null;
   const gunDef = classOf(t, 0).slots.gun;   // Valkyrn spec §5, §8: the Flight seat's GUN card (null with the laser fit) and its weapons

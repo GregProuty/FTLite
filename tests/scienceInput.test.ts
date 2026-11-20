@@ -34,14 +34,25 @@ const key = (code: string, repeat = false) => ({ code, repeat, preventDefault() 
 describe('the frequency keys and buttons (spec §7.4)', () => {
   it('3, 4 and 5 ask for A, B and C once per sample (1 and 2 pick up weapons, FTL targeting spec §1); repeats do not; the console button asks too; clear and clearUi drop it', () => {
     const t = fakeTarget(), kb = createDuelKeyboard(t as unknown as EventSource);
+    // W-4 spec §9: the keys write freqKeyTo (the laser fit's 3/4/5); freqTo is the console buttons' field
     t.fire('keydown', key('Digit4'));
-    expect(kb.sample().freqTo).toBe(1); expect(kb.sample().freqTo).toBeNull();
-    t.fire('keydown', key('Digit5', true)); expect(kb.sample().freqTo).toBeNull();
-    t.fire('keydown', key('Digit3')); t.fire('keydown', key('Digit5')); expect(kb.sample().freqTo).toBe(2);
-    t.fire('keydown', key('Digit1')); t.fire('keydown', key('Digit2')); expect(kb.sample().freqTo).toBeNull();
+    expect(kb.sample().freqKeyTo).toBe(1); expect(kb.sample().freqKeyTo).toBeNull();
+    t.fire('keydown', key('Digit5', true)); expect(kb.sample().freqKeyTo).toBeNull();
+    t.fire('keydown', key('Digit3')); t.fire('keydown', key('Digit5')); expect(kb.sample().freqKeyTo).toBe(2);
+    t.fire('keydown', key('Digit1')); t.fire('keydown', key('Digit2')); expect(kb.sample().freqKeyTo).toBeNull();
     kb.ui.frequency(0); expect(kb.sample().freqTo).toBe(0);
     kb.ui.frequency(1); kb.clearUi(); expect(kb.sample().freqTo).toBeNull();
-    t.fire('keydown', key('Digit3')); kb.clear(); expect(kb.sample().freqTo).toBeNull();
+    t.fire('keydown', key('Digit3')); kb.clear(); expect(kb.sample().freqKeyTo).toBeNull();
+    // W-4 spec §9: 4, 5, 6 tune the Hound's guns (gunFreqKeyTo); 1, 2, 3 and Num 1-3 select (selectTo)
+    t.fire('keydown', key('Digit6')); expect(kb.sample().gunFreqKeyTo).toBe(2);
+    t.fire('keydown', key('Digit4')); expect(kb.sample().gunFreqKeyTo).toBe(0);
+    t.fire('keydown', key('Digit5', true)); expect(kb.sample().gunFreqKeyTo).toBeNull();
+    t.fire('keydown', key('Digit5')); kb.clear(); expect(kb.sample().gunFreqKeyTo).toBeNull();
+    t.fire('keydown', key('Digit1')); expect(kb.sample().selectTo).toBe(0);
+    t.fire('keydown', key('Numpad3')); expect(kb.sample().selectTo).toBe(2);
+    t.fire('keydown', key('Digit2', true)); expect(kb.sample().selectTo).toBeNull();
+    t.fire('keydown', key('Digit2')); kb.clearUi(); expect(kb.sample().selectTo).toBeNull();
+    t.fire('keydown', key('Digit2')); kb.clear(); expect(kb.sample().selectTo).toBeNull();
     kb.destroy();
   });
   it('frequencyRequest: a whole 0..2 that differs from the base, else null', () => {

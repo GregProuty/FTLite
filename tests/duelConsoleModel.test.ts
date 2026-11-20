@@ -16,6 +16,7 @@ import { consoleInReach, repairInReach } from '../src/renderer/src/app/duel/cont
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
 import { readoutHelp, readoutRows } from '../src/renderer/src/render/duel/readoutModel';
 import { LINE, PAD } from '../src/renderer/src/render/theme';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const layout = parseShip(cutter);
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
@@ -68,7 +69,7 @@ describe('console layout (spec §2)', () => {
 
 describe('readout rows on a console (spec §2)', () => {
   it('drop the view heading and, on Weapons, the LASER block; unchanged without the flag', () => {
-    const d = createSeatedDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's readout, on the laser fit
     const w = readoutRows({ duel: d, mode: 'weapons', active: 1, console: true }).map((r) => r.label);
     expect(w[0]).toBe('CUTTER');
     for (const gone of ['LASER', 'LOCK', 'CHARGE', 'MAG']) expect(w).not.toContain(gone);
@@ -111,7 +112,7 @@ describe('tabs (spec §6.3)', () => {
 
 describe('station panels', () => {
   it('Weapons: lock, charge, magazine, launch and the missile', () => {
-    const d = createSeatedDuel(layout, 5);
+    const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's charge row, on the laser fit
     const w = model(d, { me: 1 })!.weapons!;
     expect(w.lock).toBe(d.tactical.systems[0].lock); expect(w.canLaunch).toBe(canLaunch(d.tactical, 0)); expect(w.missileFlying).toBe(false);
     expect(w.magazine).toMatch(/^\d+\/\d+$/);

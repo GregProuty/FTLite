@@ -39,7 +39,7 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning?: FlightT
     for (let i = 0; i < n; i++) if (state.ships[i]!.active) {   // homing torpedo spec: an AUTO one steers itself, attended or not
       // W-3 (pew pew spec §3): a MANUAL one turns by its ship's Weapons input, and only while that console is attended.
       const m = missileOf(state, i), input = inputs[i]!;
-      flyMissile(state, i, m && m.manual && input.weapons ? manualTorpTurn(m, input.torpTurn, input.torpHeading) : 0);
+      flyMissile(state, i, m && m.manual && input.weapons ? manualTorpTurn(m, input.torpHeading) : 0);
     }
     stepRocks(state);   // asteroids-iii §3.4, §5.4: the free rocks fly true gravity paths and meet the planet and the other rocks
     resolveContacts(state, true);   // spike ii §5.1: rocks are bodies in the duel

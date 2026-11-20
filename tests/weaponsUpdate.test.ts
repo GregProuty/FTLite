@@ -3,7 +3,7 @@
 // torpedo's launch range from any bearing, and the online view deriving two beams from two shots in one gap.
 import { describe, expect, it } from 'vitest';
 import { duelCounters, gapEvents } from '../src/renderer/src/app/duel/onlineSource';
-import { CUTTER_CLASS, HUNTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
+import { HUNTER_CLASS, ShipClass, VALKYRN_LASER_CLASS } from '../src/renderer/src/sim/tactical/defs';
 import { hunterThink } from '../src/renderer/src/sim/tactical/hunter';
 import { createTacticalState, missileOf, Room, type DuelEvent, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { HUNTER_MISSILE_COOLDOWN_TICKS, LASER_BURST_GAP_TICKS, LASER_CHARGE_UNITS, LASER_HULL, MISSILE_RANGE } from '../src/renderer/src/sim/tactical/tuning';
@@ -12,8 +12,8 @@ import { makeHostile } from './helpers/hostile';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 /** The crew at (−600, −300) facing east at the enemy 300 units away (the enemy facing west at it): in arc and range. */
-function facing(): TacticalState {
-  const st = todaysCrewWeapons(makeHostile(createTacticalState(5)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
+function facing(cls: number = ShipClass.Cutter): TacticalState {
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 2, cls)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   st.map = { ...st.map, asteroids: [] };
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
@@ -43,11 +43,11 @@ function shotTicks(st: TacticalState, i: number, n: number, input: ShipInput = I
 
 describe('the double laser (weapons update spec §1)', () => {
   it('the classes: the Cutter fires 2 shots, the Hunter 1', () => {
-    expect([CUTTER_CLASS.slots.laser!.shots, HUNTER_CLASS.slots.laser!.shots]).toEqual([2, 1]);
-    expect(CUTTER_CLASS.slots.laser!.burstGapTicks).toBe(12);
+    expect([VALKYRN_LASER_CLASS.slots.laser!.shots, HUNTER_CLASS.slots.laser!.shots]).toEqual([2, 1]);   // W-4 spec §14.1: the beam's def, read from the laser fit
+    expect(VALKYRN_LASER_CLASS.slots.laser!.burstGapTicks).toBe(12);   // W-4 spec §14.1: the beam's def, read from the laser fit
   });
   it('a crew release fires two laser events, LASER_BURST_GAP_TICKS apart, both hits, both counted', () => {
-    const st = facing(), s = st.systems[0];
+    const st = facing(ShipClass.ValkyrnLaser), s = st.systems[0];
     st.systems[1].shields = 0;
     const first = fire(st, 0);
     expect(first.map((e) => [e.hit, e.room])).toEqual([[true, Room.Shields]]);
@@ -57,7 +57,7 @@ describe('the double laser (weapons update spec §1)', () => {
     expect(st.systems[1].hull).toBe(HUNTER_CLASS.hull - 2 * LASER_HULL);
   });
   it('the second shot re-checks eligibility: a target that leaves the arc in the gap dodges it', () => {
-    const st = facing();
+    const st = facing(ShipClass.ValkyrnLaser);
     expect(fire(st, 0)[0]!.hit).toBe(true);
     st.ships[1].y = 100;                                              // now south of the crew, 90° off its nose
     st.events = [];
@@ -67,11 +67,11 @@ describe('the double laser (weapons update spec §1)', () => {
     expect([st.systems[0].shots, st.systems[0].laserHits]).toEqual([2, 1]);
   });
   it('two shots strip a 2-layer shield; on one layer the second strikes the lock room it reads at its own tick', () => {
-    const st = facing(), e = st.systems[1];
+    const st = facing(ShipClass.ValkyrnLaser), e = st.systems[1];
     expect(e.shields).toBe(2);
     fire(st, 0); shotTicks(st, 0, LASER_BURST_GAP_TICKS);
     expect([e.shields, e.hull, st.systems[0].layersStripped]).toEqual([0, HUNTER_CLASS.hull, 2]);
-    const st2 = facing(), e2 = st2.systems[1];
+    const st2 = facing(ShipClass.ValkyrnLaser), e2 = st2.systems[1];
     e2.shields = 1;
     fire(st2, 0);
     st2.systems[0].lock = Room.Engines;                                 // relocked in the gap
@@ -79,41 +79,41 @@ describe('the double laser (weapons update spec §1)', () => {
     expect([e2.shields, e2.rooms[Room.Engines], e2.rooms[Room.Shields], e2.hull]).toEqual([0, 1, 0, HUNTER_CLASS.hull - LASER_HULL]);
   });
   it('Weapons reaching level 2 in the gap drops the pending shot', () => {
-    const st = facing();
+    const st = facing(ShipClass.ValkyrnLaser);
     fire(st, 0);
     st.systems[0].rooms[Room.Weapons] = 2;
     expect(shotTicks(st, 0, 40)).toEqual([]);
     expect([st.systems[0].shots, st.systems[0].laserBurst]).toEqual([1, 0]);
   });
   it('nothing else cancels it: a torpedo launched in the gap, or the Weapons console left, still lets the second shot go', () => {
-    const st = facing();
+    const st = facing(ShipClass.ValkyrnLaser);
     fire(st, 0);
     expect(tick(st, 0, { ...IDLE_INPUT, missileLaunch: true })).toEqual([]);
     expect(missileOf(st, 0)).not.toBeNull();
     expect(shotTicks(st, 0, 40, { ...IDLE_INPUT, weapons: false })).toEqual([LASER_BURST_GAP_TICKS - 1]);
   });
   it('the laser does not charge while a shot is pending, then charges again', () => {
-    const st = facing();
+    const st = facing(ShipClass.ValkyrnLaser);
     fire(st, 0);
     tick(st, 0, press);
     for (let k = 2; k < LASER_BURST_GAP_TICKS; k++) { tick(st, 0); expect(st.systems[0].laserCharge, `tick ${k}`).toBe(0); }
     expect(tick(st, 0)).toHaveLength(1);                                // the second shot, then that tick's clock charges
-    expect(st.systems[0].laserCharge).toBe(CUTTER_CLASS.slots.laser!.chargeRate[0]);
+    expect(st.systems[0].laserCharge).toBe(VALKYRN_LASER_CLASS.slots.laser!.chargeRate[0]);   // W-4 spec §14.1: the beam's def, read from the laser fit
   });
   it('the Hunter fires one shot a release', () => {
-    const st = facing();
+    const st = facing(ShipClass.ValkyrnLaser);
     expect(fire(st, 1)).toHaveLength(1);
     expect([st.systems[1].laserBurst, st.systems[1].laserBurstClock]).toEqual([0, 0]);
     expect(shotTicks(st, 1, 40)).toEqual([]);
   });
   it('online: two shots between two snapshots derive two beams', () => {
-    const st = facing(), before = [duelCounters(st, 0), duelCounters(st, 1)];
+    const st = facing(ShipClass.ValkyrnLaser), before = [duelCounters(st, 0), duelCounters(st, 1)];
     fire(st, 0); shotTicks(st, 0, LASER_BURST_GAP_TICKS);
     const beams = gapEvents(before, [null, null], st).filter((e) => e.kind === 'laser' && e.ship === 0);
     expect(beams.map((e) => e.kind === 'laser' && [e.hit, e.stripped])).toEqual([[true, true], [true, true]]);
   });
   it("online: a weak-frequency burst strips both layers with shot 1 and shot 2 strikes the lock room", () => {
-    const st = facing();
+    const st = facing(ShipClass.ValkyrnLaser);
     st.weakFreq = st.systems[0]!.freq; st.systems[0]!.lock = Room.Engines;
     const before = [duelCounters(st, 0), duelCounters(st, 1)];
     fire(st, 0); shotTicks(st, 0, LASER_BURST_GAP_TICKS);
@@ -122,7 +122,7 @@ describe('the double laser (weapons update spec §1)', () => {
     expect(beams.map((e) => e.kind === 'laser' && [e.hit, e.stripped, e.room])).toEqual([[true, true, -1], [true, false, Room.Engines]]);
   });
   it("shot 2 strikes the lock commanded on its own tick", () => {
-    const st = facing();
+    const st = facing(ShipClass.ValkyrnLaser);
     st.systems[0]!.lock = Room.Shields;
     fire(st, 0);
     st.systems[1]!.shields = 0;

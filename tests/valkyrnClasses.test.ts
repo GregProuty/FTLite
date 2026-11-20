@@ -8,7 +8,7 @@ import { hashDuel } from '../src/renderer/src/sim/duel/hash';
 import { DUEL_LAYOUT } from '../src/renderer/src/sim/duel/layout';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
-import { classIndexById, CUTTER_CLASS, GUN, HUNTER_CLASS, LASER, MISSILE, SHIP_CLASSES, ShipClass, VALKYRN_CLASS, VALKYRN_LASER_CLASS } from '../src/renderer/src/sim/tactical/defs';
+import { AUTOCANNON, classIndexById, CUTTER_CLASS, GUN, HUNTER_CLASS, LASER, MISSILE, SHIP_CLASSES, ShipClass, VALKYRN_CLASS, VALKYRN_LASER_CLASS } from '../src/renderer/src/sim/tactical/defs';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { flattenTactical, validateTacticalValues } from '../src/renderer/src/sim/tactical/hash';
 import { createTacticalState, Outcome, type TacticalState } from '../src/renderer/src/sim/tactical/state';
@@ -44,13 +44,14 @@ describe('the Valkyrn classes (spec §6.1)', () => {
     expect(VALKYRN_CLASS.slots).toEqual({ laser: null, gun: GUN, pew: null, missile: MISSILE });
     expect(VALKYRN_LASER_CLASS).toMatchObject({ id: 'valkyrnLaser', ai: 'crew', hull: 53, thrust: 160, turnStepsPerTick: VALKYRN_CLASS.turnStepsPerTick });
     expect(VALKYRN_LASER_CLASS.slots).toEqual({ laser: LASER, gun: null, pew: null, missile: MISSILE });
-    expect([CUTTER_CLASS.slots.gun, HUNTER_CLASS.slots.gun]).toEqual([null, null]);
+    expect([CUTTER_CLASS.slots.gun, HUNTER_CLASS.slots.gun]).toEqual([AUTOCANNON, null]);   // W-4 spec §2: the Hound carries the autocannon (was null)
     expect(VALKYRN_CLASS.shields).toEqual(CUTTER_CLASS.shields);
     for (const c of SHIP_CLASSES) expect(c.turnStepsPerTick, c.id).toBeLessThan(3);   // spec §6.2: the aim band is three indices
   });
   it('the gun\'s numbers are the tuning constants', () => {
     expect(GUN).toEqual({ kind: 'gun', intervalTicks: 6, speed: 700, lifeTicks: 52, muzzleForward: SHIP_RADIUS + 1, muzzleLateral: 12,
-      heatPerShot: 50, cool: 4, coolLocked: 8, heatMax: 1000, hitsPerLayer: 8, hitsPerHull: 12, hitsPerLevel: 6 });   // hitsPerHull 3 → 12 by the Valkyrn gate (spec §12)
+      heatPerShot: 50, cool: 4, coolLocked: 8, heatMax: 1000, hitsPerLayer: 8, hitsPerHull: 12, hitsPerLevel: 6,   // hitsPerHull 3 → 12 by the Valkyrn gate (spec §12)
+      turret: null, intervalByBars: null, rock: null, weakHitsPerLayer: null });   // W-4 spec §2, §13.4: the Valkyrn's gun takes none of the autocannon's rules
     expect(GUN_POOL).toBe(64);
   });
 });

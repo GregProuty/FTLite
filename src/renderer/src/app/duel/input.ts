@@ -8,19 +8,26 @@ import type { ShipCommand } from '../../render/duel/shipControls';
 
 /** Press-edge actions (spec §5 table). H-1a uses pause, camera and the zoom keys; H-1b adds the duel ones; Artemis-ii
  *  adds the Helm's throttle notches on W and S (spec 2026-11-17-artemis-consoles §5.4); W-2 adds Z, the laser's AUTO / MANUAL toggle at Weapons (pew pew spec §2);
- *  W-3 adds V, the torpedo's (pew pew spec §3: the spec's X is Stand and C the camera, so V). */
-export type KeyAction = 'interact' | 'prevLock' | 'fireDown' | 'fireUp' | 'launch' | 'laserMode' | 'torpMode' | 'stand' | 'switch' | 'pause' | 'camera' | 'zoomIn' | 'zoomOut' | 'confirm' | 'menu' | 'throttleUp' | 'throttleDown';
+ *  W-3 adds V, the torpedo's (pew pew spec §3: the spec's X is Stand and C the camera, so V).
+ *  W-4 spec §9: A and D select the previous / next weapon at the Hound's Weapons seat (press edges; they stay held keys for walking, the crew Helm's thrusters and W-3's MANUAL torpedo).
+ *  W-4 amendment §2.4: R flips the selected weapon's AUTO / MAN at the Hound's Weapons seat (`weaponMode`), and with Shift held it sets both guns together (`weaponModeAll`, which has no code of its own); Z and V stay the laser fit's. */
+export type KeyAction = 'interact' | 'prevLock' | 'fireDown' | 'fireUp' | 'launch' | 'laserMode' | 'torpMode' | 'weaponMode' | 'weaponModeAll' | 'stand' | 'switch' | 'pause' | 'camera' | 'zoomIn' | 'zoomOut' | 'confirm' | 'menu' | 'throttleUp' | 'throttleDown' | 'selectPrev' | 'selectNext';
 
 export const PRESS_CODES: Readonly<Record<string, KeyAction>> = {
-  KeyE: 'interact', KeyQ: 'prevLock', Space: 'fireDown', KeyF: 'launch', KeyZ: 'laserMode', KeyV: 'torpMode', KeyX: 'stand', Tab: 'switch', Escape: 'pause', KeyC: 'camera',
+  KeyE: 'interact', KeyQ: 'prevLock', Space: 'fireDown', KeyF: 'launch', KeyZ: 'laserMode', KeyV: 'torpMode', KeyR: 'weaponMode', KeyX: 'stand', Tab: 'switch', Escape: 'pause', KeyC: 'camera',
   Equal: 'zoomIn', NumpadAdd: 'zoomIn', Minus: 'zoomOut', NumpadSubtract: 'zoomOut', Enter: 'confirm', NumpadEnter: 'confirm', KeyM: 'menu',
-  KeyW: 'throttleUp', KeyS: 'throttleDown'
+  KeyW: 'throttleUp', KeyS: 'throttleDown', KeyA: 'selectPrev', KeyD: 'selectNext'
 };
 /** Sci-1 spec §7.4: keys tune the laser to A, B and C (the duel modes read them at Weapons only). 3, 4 and 5 since the
  *  FTL targeting update, whose 1 and 2 pick up the laser and the torpedo (WEAPON_CODES). */
 export const FREQ_CODES: Readonly<Record<string, number>> = { Digit3: 0, Digit4: 1, Digit5: 2 };
 /** FTL targeting spec §1: 1 and 2 pick up the laser and the torpedo at Weapons (the contact controller's intercept takes them). */
 export const WEAPON_CODES: Readonly<Record<string, 'laser' | 'torpedo'>> = { Digit1: 'laser', Digit2: 'torpedo' };
+/** W-4 spec §9: at the Hound's Weapons seat 1, 2, 3 (and Num 1-3) select pew pew, the autocannon, the torpedo. */
+export const WEAPON_SELECT_CODES: Readonly<Record<string, number>> = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 };
+/** W-4 spec §5.2, §9: at the Hound's Weapons seat 4, 5, 6 tune the guns' shield frequency A, B, C. FREQ_CODES (3, 4, 5)
+ *  stays the laser fit's. */
+export const GUN_FREQ_CODES: Readonly<Record<string, number>> = { Digit4: 0, Digit5: 1, Digit6: 2 };
 /** The held keys: WASD movement (walk, the Helm's turn, the flight view's thrust and turn, steer), E held to repair,
  *  Space (its press fires a full laser, FTL targeting spec §2). W and S are also the throttle's press edges (PRESS_CODES). */
 export const MOVE_CODES = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD' } as const;
@@ -42,6 +49,11 @@ export type HoldCode = 'Space' | 'KeyA' | 'KeyD' | 'KeyW' | 'KeyS' | 'ArrowLeft'
  *  frequency (Sci-1 spec §7.4). FTL targeting spec §1: `lock` sets the laser's target room (−1 clears it) and `torpLock`
  *  the torpedo's. */
 export interface ConsoleInput { press(action: KeyAction): void; hold(code: HoldCode, on: boolean): void; lock(room: number): void; torpLock(room: number): void; throttle(level: number): void; frequency(freq: number): void;
+  /** W-4 spec §10: a card click selects that weapon (0..2); optional, as ship. */
+  select?(slot: 0 | 1 | 2): void;
+  /** W-4 amendment §2.5: a click on a card's AUTO / MAN tag on the Hound's block (0 pew pew, 1 the autocannon, 2 the
+   *  torpedo): each tag is its own switch. Optional, as select. */
+  mode?(slot: 0 | 1 | 2): void;
   /** Spike ii §6.5: a weapon card's right-click clear of a rock target (rock −1); optional so older fakes still fit. */
   rockLock?(weapon: 'laser' | 'torpedo', rock: number): void;
   /** Engineering spike §6, §7: a ship-view click (a power column, a coolant counter, a door or an airlock). Optional, so
@@ -70,8 +82,15 @@ export interface KeySample {
   rockTo?: { weapon: 'laser' | 'torpedo'; rock: number } | null;
   /** The last console throttle request since the previous sample, or null (Artemis spec §6.2). */
   throttleTo?: number | null;
-  /** The last laser frequency asked for since the previous sample (Digit3..5, or a console button), or null (Sci-1 spec §7.4). */
+  /** The last frequency a console button asked for since the previous sample, or null (Sci-1 spec §7.4; W-4 spec §9: buttons only). */
   freqTo?: number | null;
+  /** W-4 spec §9: the last keydown since the previous sample, each read by class: FREQ_CODES (3, 4, 5 → 0..2; the laser
+   *  fit tunes, the gun fit's Flight seat says NO LASER), GUN_FREQ_CODES (4, 5, 6 → 0..2; the Hound's Weapons seat) and
+   *  WEAPON_SELECT_CODES or a card click (the Hound's selection 0..2). null for none. */
+  freqKeyTo?: number | null; gunFreqKeyTo?: number | null; selectTo?: number | null;
+  /** W-4 amendment §2.5: the tag clicks since the previous sample, per weapon [pew pew, the autocannon, the torpedo];
+   *  absent means none. createDuelKeyboard always sets it. Read only at the Hound's Weapons seat. */
+  modeTaps?: readonly number[];
   /** Playtest2feedback §3, §4: the crew Helm's held throttle (1 W, −1 S, 0 both or neither) and thrusters (rcsX −1 port,
    *  1 starboard; rcsY −1 aft, 1 forward; opposite keys cancel). createDuelKeyboard always sets them. */
   throttleHeld?: number; rcsX?: number; rcsY?: number;
@@ -80,7 +99,7 @@ export interface KeySample {
 }
 
 export function emptyPresses(): Record<KeyAction, number> {
-  return { interact: 0, prevLock: 0, fireDown: 0, fireUp: 0, launch: 0, laserMode: 0, torpMode: 0, stand: 0, switch: 0, pause: 0, camera: 0, zoomIn: 0, zoomOut: 0, confirm: 0, menu: 0, throttleUp: 0, throttleDown: 0 };
+  return { interact: 0, prevLock: 0, fireDown: 0, fireUp: 0, launch: 0, laserMode: 0, torpMode: 0, weaponMode: 0, weaponModeAll: 0, stand: 0, switch: 0, pause: 0, camera: 0, zoomIn: 0, zoomOut: 0, confirm: 0, menu: 0, throttleUp: 0, throttleDown: 0, selectPrev: 0, selectNext: 0 };
 }
 
 /** The flight dev view's held axes from a key sample: A/D turn (D clockwise), W thrusts forward, S reverses (W gives moveY −1). The duel's Helm thrusts by its throttle instead (Artemis spec §5.3). */
@@ -119,7 +138,7 @@ export interface EventSource {
   addEventListener(type: string, fn: (e: never) => void, opts?: unknown): void;
   removeEventListener(type: string, fn: (e: never) => void, opts?: unknown): void;
 }
-interface KeyEventLike { code: string; repeat: boolean; shiftKey?: boolean; preventDefault(): void }
+interface KeyEventLike { code: string; repeat: boolean; shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean; preventDefault(): void }
 
 export interface DuelKeyboard { sample(): KeySample; clear(): void; clearUi(): void; destroy(): void; readonly ui: ConsoleInput;
   /** Playtest2feedback (final review I1): every key held now stops counting for the crew Helm's held fields (throttleHeld,
@@ -137,6 +156,8 @@ export interface DuelKeyboardOptions { intercept?: (code: string) => boolean }
 export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOptions = {}): DuelKeyboard {
   const keys = new Set<string>(), ui = new Set<string>(), taken = new Set<string>(), stale = new Set<string>();
   let presses = emptyPresses(), lockTo: number | null = null, torpTo: number | null = null, rockTo: { weapon: 'laser' | 'torpedo'; rock: number } | null = null, throttleTo: number | null = null, freqTo: number | null = null;
+  let freqKeyTo: number | null = null, gunFreqKeyTo: number | null = null, selectTo: number | null = null;
+  let modeTaps = [0, 0, 0];   // W-4 amendment §2.5: the tags' clicks per weapon
   let ship: ShipCommand[] = [];   // Engineering spike §7: kept by clearUi, dropped by clear
   const has = (code: string): boolean => keys.has(code) || ui.has(code);
   /** I1: held for the crew Helm's fields: a console button's hold, or a key pressed since it went stale. */
@@ -146,9 +167,12 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     if (!e.repeat) stale.delete(e.code);   // I1: a fresh press counts again (its keyup may have been lost); a repeat stays stale
     if (e.repeat) { if (taken.has(e.code)) return; }   // an OS repeat of a taken key stays taken
     else if (opts.intercept?.(e.code)) { taken.add(e.code); return; }   // taken (the contact window's Esc and T): no edge, not held
-    if (!e.repeat && FREQ_CODES[e.code] !== undefined) freqTo = FREQ_CODES[e.code]!;
+    if (!e.repeat && FREQ_CODES[e.code] !== undefined) freqKeyTo = FREQ_CODES[e.code]!;   // W-4 spec §9: by class, in the runtime
+    if (!e.repeat && GUN_FREQ_CODES[e.code] !== undefined) gunFreqKeyTo = GUN_FREQ_CODES[e.code]!;
+    if (!e.repeat && WEAPON_SELECT_CODES[e.code] !== undefined) selectTo = WEAPON_SELECT_CODES[e.code]!;
     if (e.code === FIRE_HELD) { if (!e.repeat && !has(FIRE_HELD)) presses.fireDown++; }
     else if (e.code === MOVE_CODES.up && e.shiftKey === true) { if (!e.repeat) throttleTo = THROTTLE_MAX; }   // Feel-ii §1.4: Shift+W is full burn
+    else if (PRESS_CODES[e.code] === 'weaponMode') { if (!e.repeat && e.ctrlKey !== true && e.metaKey !== true) presses[e.shiftKey === true ? 'weaponModeAll' : 'weaponMode']++; }   // W-4 amendment §2.4: R, and Shift+R for both guns; Ctrl+R and Meta+R are the browser's, so they count nothing
     else { const action = PRESS_CODES[e.code]; if (action && !e.repeat) presses[action]++; }
     keys.add(e.code);
   };
@@ -160,8 +184,8 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     stale.delete(e.code);
     if (e.code === FIRE_HELD && was && !has(FIRE_HELD)) presses.fireUp++;
   };
-  const clearUi = (): void => { ui.clear(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; };
-  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); stale.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; ship = []; };
+  const clearUi = (): void => { ui.clear(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; freqKeyTo = null; gunFreqKeyTo = null; selectTo = null; modeTaps = [0, 0, 0]; };
+  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); stale.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; freqKeyTo = null; gunFreqKeyTo = null; selectTo = null; modeTaps = [0, 0, 0]; ship = []; };
   target.addEventListener('keydown', down as (e: never) => void);
   target.addEventListener('keyup', up as (e: never) => void);
   target.addEventListener('blur', clear as (e: never) => void);
@@ -177,6 +201,8 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     rockLock(weapon, rock) { rockTo = { weapon, rock }; },
     throttle(level) { throttleTo = level; },
     frequency(freq) { freqTo = freq; },
+    select(slot) { selectTo = slot; },
+    mode(slot) { modeTaps[slot] = (modeTaps[slot] ?? 0) + 1; },
     ship(command) { ship.push(command); if (ship.length > SHIP_QUEUE_MAX) ship.shift(); },
     weaponPower(slot, delta) { ship.push({ kind: 'weaponPower', slot, delta }); if (ship.length > SHIP_QUEUE_MAX) ship.shift(); }
   };
@@ -192,8 +218,8 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
       const any = (codes: readonly string[]): number => (codes.some(live) ? 1 : 0);
       const rcsX = any(RCS_CODES.starboard) - any(RCS_CODES.port), rcsY = any(RCS_CODES.fore) - any(RCS_CODES.aft);
       const throttleHeld = (live(MOVE_CODES.up) ? 1 : 0) - (live(MOVE_CODES.down) ? 1 : 0);
-      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, torpTo, rockTo, throttleTo, freqTo, throttleHeld, rcsX, rcsY, ...(ship.length > 0 ? { ship } : {}) };
-      presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; ship = [];
+      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, torpTo, rockTo, throttleTo, freqTo, freqKeyTo, gunFreqKeyTo, selectTo, modeTaps, throttleHeld, rcsX, rcsY, ...(ship.length > 0 ? { ship } : {}) };
+      presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; freqKeyTo = null; gunFreqKeyTo = null; selectTo = null; modeTaps = [0, 0, 0]; ship = [];
       return out;
     },
     clear,

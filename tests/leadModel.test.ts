@@ -32,11 +32,11 @@ describe('leadPip (pure)', () => {
     expect(leadPip(0, 0, 0, 0, 100, 0, 800, 0, 700)).toBeNull();
     expect(leadPip(0, 0, 0, 0, 0, 0, 10, 0, 700)).toBeNull();
   });
-  it('leadPipFor reads ship i and its target from the state: the nine-number pip on the gun class, null without a gun', () => {
+  it('leadPipFor reads ship i and its target from the state: the nine-number pip on a gun class, null without a gun', () => {
     const st = createTacticalState(7, 2, ShipClass.Valkyrn), s = st.ships[0]!, t = st.ships[1]!;
     s.x = 100; s.y = -40; s.vx = 20; s.vy = 0; t.x = 400; t.y = 60; t.vx = -30; t.vy = 50;
     expect(leadPipFor(st, 0)).toEqual(leadPip(100, -40, 20, 0, 400, 60, -30, 50, GUN.speed));
-    expect(leadPipFor(createTacticalState(7, 2), 0)).toBeNull();   // the Cutter has no gun
+    expect(leadPipFor(createTacticalState(7, 2, ShipClass.ValkyrnLaser), 0)).toBeNull();   // W-4 spec §2: the laser fit has no gun (the Hound has the autocannon now; was the Cutter)
   });
   it('onTarget: forward along the heading only, within the radius', () => {
     expect(onTarget(0, 0, 64, 300, 15, 20)).toBe(true);     // heading 64 points +x (east)

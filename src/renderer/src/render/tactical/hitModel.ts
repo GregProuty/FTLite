@@ -44,8 +44,9 @@ function roomCallout(state: TacticalState, room: number, prefix: string): Callou
 }
 
 /** §B: the callouts for one frame's events, in event order: every crew laser release (ship 0) but one a rock stopped,
- *  every crew missile that lands on the enemy on a room, and every crew gun round that raises an enemy Room's level. The
- *  room's level is read from the state the events arrived with. */
+ *  every crew missile that lands on the enemy on a room, and every crew gun round that raises an enemy Room's level, and
+ *  (W-4 amendment §3.4) every crew pew pew round fired by hand that raises a Room's level. The room's level is read from
+ *  the state the events arrived with. */
 export function hitCallouts(events: readonly ViewEvent[], state: TacticalState): Callout[] {
   const out: Callout[] = [];
   for (const e of events) {
@@ -55,6 +56,7 @@ export function hitCallouts(events: readonly ViewEvent[], state: TacticalState):
       else if (e.room >= 0) out.push(roomCallout(state, e.room, ''));
     } else if (e.kind === 'missileEnd' && e.ship === CREW_SLOT && e.target === ENEMY_SLOT && e.room >= 0) out.push(roomCallout(state, e.room, 'TORPEDO: '));
     else if (e.kind === 'gunHit' && e.ship === ENEMY_SLOT && e.room >= 0 && e.level) out.push(roomCallout(state, e.room, 'GUN: '));   // Valkyrn spec §7.4: only a level change
+    else if (e.kind === 'pewHit' && e.ship === ENEMY_SLOT && e.room >= 0 && e.level) out.push(roomCallout(state, e.room, 'PEW: '));   // W-4 amendment §3.4: a room pew pew took down a level by hand, as the gun's
   }
   return out;
 }
@@ -65,7 +67,8 @@ export interface CalloutItem extends Callout { age: number; stack: number }
 export interface StruckItem { ship: number; room: number; age: number }
 
 /** §B: queue one frame's hits: the callouts (stacked in event order, the oldest dropped past CALLOUT_MAX) and each
- *  struck room (a crew laser hit on its target, a crew missile or gun round on any other ship, room ≥ 0) restarting its flash. */
+ *  struck room (a crew laser hit on its target, a crew missile or gun round on any other ship, and (W-4 amendment §3.4) a crew
+ *  pew pew round on a room, room ≥ 0) restarting its flash. */
 export function pushHits(fx: FxState, events: readonly ViewEvent[], state: TacticalState): void {
   hitCallouts(events, state).forEach((c, stack) => fx.callouts.push({ ...c, age: 0, stack }));
   if (fx.callouts.length > CALLOUT_MAX) fx.callouts.splice(0, fx.callouts.length - CALLOUT_MAX);
@@ -74,6 +77,7 @@ export function pushHits(fx: FxState, events: readonly ViewEvent[], state: Tacti
     if (e.kind === 'laser' && e.ship === CREW_SLOT && e.hit && !e.stripped) { ship = targetOf(state, CREW_SLOT); room = e.room; }
     else if (e.kind === 'missileEnd' && e.ship === CREW_SLOT && e.target >= 0 && e.target !== CREW_SLOT) { ship = e.target; room = e.room; }
     else if (e.kind === 'gunHit' && e.ship !== CREW_SLOT) { ship = e.ship; room = e.room; }   // Valkyrn spec §7.4: the crew gun's round on a Room (only the crew has a gun)
+    else if (e.kind === 'pewHit' && e.ship !== CREW_SLOT) { ship = e.ship; room = e.room; }   // W-4 amendment §3.4: the crew's pew pew on a room (room −1, an untagged or shield hit, flashes none)
     if (ship < 0 || room < 0) continue;
     const at = fx.struck.findIndex((s) => s.ship === ship && s.room === room);
     if (at >= 0) fx.struck[at]!.age = 0;

@@ -15,17 +15,17 @@ export const PEW_ROW_H = 40;
 /** Engineering spike §10.3: the bar pips' row under each card's clickable part, above its FIRE / LAUNCH button. */
 export const CARD_PIPS_H = 12;
 /** FTL targeting spec §1: the Weapons block's two weapon cards, BEAM (the laser) then TORPEDO, side by side under the PEW
- *  row; `hit` is the card's clickable part above its bar pips (`pipsY`, Engineering spike §10.3) and its FIRE / LAUNCH
+ *  row (W-4 spec §10: on the Hound the first is the AUTOCANNON, in the beam's rectangle); `hit` is the card's clickable part above its bar pips (`pipsY`, Engineering spike §10.3) and its FIRE / LAUNCH
  *  button, and the targeting line starts at `anchor` (the card's right edge mid-height of `hit`). */
-export function weaponCard(weapon: 'laser' | 'torpedo'): { x: number; y: number; w: number; h: number; hitH: number; pipsY: number; anchor: { x: number; y: number } } {
-  const x0 = STATION.x + 8, y = stationTop('weapons') + 6 + PEW_ROW_H, w = 138, h = 104 + CARD_PIPS_H, hitH = 72, x = weapon === 'laser' ? x0 : x0 + w + 8;
+export function weaponCard(weapon: 'laser' | 'autocannon' | 'torpedo'): { x: number; y: number; w: number; h: number; hitH: number; pipsY: number; anchor: { x: number; y: number } } {
+  const x0 = STATION.x + 8, y = stationTop('weapons') + 6 + PEW_ROW_H, w = 138, h = 104 + CARD_PIPS_H, hitH = 72, x = weapon === 'torpedo' ? x0 + w + 8 : x0;   // W-4 spec §10: the autocannon takes the beam's card
   return { x, y, w, h, hitH, pipsY: y + hitH + 2, anchor: { x: x + w, y: y + hitH / 2 } };
 }
 /** Engineering spike §10.3, §11: where a weapon slot's bar pips start: pew pew's (slot 0) on the PEW row under its charge
- *  pips, the beam's (1) and the torpedo's (2) under their cards' clickable parts. */
+ *  pips, the beam's or autocannon's (1, one rectangle) and the torpedo's (2) under their cards' clickable parts. */
 export function weaponPips(slot: 0 | 1 | 2): { x: number; y: number } {
   if (slot === 0) return { x: STATION.x + 8 + 44, y: stationTop('weapons') + 24 };
-  const c = weaponCard(slot === 1 ? 'laser' : 'torpedo');
+  const c = weaponCard(slot === 1 ? 'autocannon' : 'torpedo');   // W-4 spec §10: the same rectangle as the beam's
   return { x: c.x + 6, y: c.pipsY };
 }
 /** Valkyrn spec §5: the Flight seat's weapon block, beside the Helm block at the bottom: two cards (GUN or the laser fit's

@@ -9,7 +9,8 @@ import type { HeldInput, Scheduler } from '../../net/contracts';
 import { Position } from '../../sim/components';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope, type DuelResult } from '../../sim/duel/commands';
 import { rockAlive } from '../../sim/tactical/rocks';
-import { throttleCap } from '../../sim/tactical/bars';
+import { throttleCap, WeaponSlot } from '../../sim/tactical/bars';
+import { weaponPowerRefusal } from '../../sim/duel/weaponSlots';
 import { canCharge, canLaunch, validRockLock, validTarget } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, DUEL_CREW_MIN, type DuelState } from '../../sim/duel/state';
 import { crewAxes, helmTurn, stepDuelTick } from '../../sim/duel/step';
@@ -28,7 +29,8 @@ import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxMod
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 import { createTorpedoFollow, trackManualTorpedo } from './torpedoCamera';
-import { consoleInReach, crewHelmSeat, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
+import { consoleInReach, crewHelmSeat, cycleLock, houndWeaponsSeat, repairInReach, seatOf, stepTorpRoom } from './controls';
+import { flightFrame, gunFreqRequest, laserFreqKey, modeRequests, nextWeaponSel, NO_FLIGHT, powerDelta, weaponsSeatHeld, type FlightLatch } from './weaponsSeat';
 import type { ContactRequests } from './contactController';
 import type { Refusal } from './scene';
 import { lockRefusal, NO_LASER, refusal } from '../../render/duel/situationModel';
@@ -193,12 +195,14 @@ export interface DuelRuntimeDeps extends FlightRuntimeDeps {
   takeHeading?(): number | null;
   /** W-1 (pew pew spec §1): the Weapons map's pew aim since the last frame (mapRequests.ts), a fine heading, or null. */
   takePew?(): number | null;
-  /** W-2 (pew pew spec §2): the MANUAL laser's aim (mapRequests.ts laserAim, kept, not drained): the latest fine heading the
-   *  pointer gave on the open Weapons map, or null before any (the laser then fires along the nose). */
-  laserAim?(): number | null;
+  /** W-2, W-4: the reticle (mapRequests reticleAim, kept, not drained): the latest fine heading the pointer gave on the open
+   *  Weapons map, or null before any (the MANUAL laser then fires along the nose; the Hound's MAN turret holds). */
+  reticleAim?(): number | null;
   /** W-3 (pew pew spec §3): the Weapons map's right button since the last frame while the crew's MANUAL torpedo flies
    *  (mapRequests.ts takeTorpHeading, drained): a heading index to hold, −1 to clear, or null. */
   takeTorpHeading?(): number | null;
+  /** W-4 spec §8, §9: the held left button over the open Weapons map at the Hound's seat (mapRequests.ts triggerHeld). */
+  triggerHeld?(): boolean;
 }
 
 export interface DuelRuntime {
@@ -248,12 +252,16 @@ export interface DuelRuntime {
   throttle(): number;
   /** Playtest2feedback §3, §6: the crew Helm's thrMille the console shows (the sim's: Single player steps it locally). */
   thrMille(): number;
+  /** W-4 spec §10: the Hound's selected weapon (0..2). */
+  weaponSel(): number;
+  /** W-4 spec §11: gun slot's turret offset (the sim's; no lag locally). */
+  turret(slot: 0 | 1): number;
   /** Feel-ii §2.8: the console controls refused since the last take (the scene flashes them). */
   takeRefusals(): Refusal[];
   dispose(): void;
 }
 
-const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserMode' || c.kind === 'torpMode' || c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'rockLock' || c.kind === 'laserCharge' || c.kind === 'laserFire' || c.kind === 'missileLaunch' || c.kind === 'pewFire';
+const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserMode' || c.kind === 'torpMode' || c.kind === 'gunMode' || c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'rockLock' || c.kind === 'laserCharge' || c.kind === 'laserFire' || c.kind === 'missileLaunch' || c.kind === 'pewFire';
 /** The commands only a seated console's player sends (Weapons, the Helm's throttle, Sci-1's three): a Tab or a stand drops them. */
 const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'heading' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';
 const NO_REQUESTS: ContactRequests = { designate: null, scan: null };
@@ -272,6 +280,8 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   const idleHeld = (): HeldInput[] => Array.from({ length: crew }, () => NEUTRAL);
   // Valkyrn spec §4.4, §5.1: Tab's ship view while seated (n = 1), the Flight seat's held bearing, and the gun's last frame.
   let shipView = false, steer = -1, gunPrev = false, torpHold = -1;   // W-3: the MANUAL torpedo's held heading (−1 none), re-sent every frame
+  // W-4 spec §9: the Hound's Weapons selection (client state, the pew at a sit), the last gun selected (W-4c) and the trigger's last frame.
+  let weaponSel = 0, lastGunSel = 0, triggerPrev = false, flight: FlightLatch = NO_FLIGHT, triggerLive = false;   // W-4 spec §7: the seat's flight latch and this frame's gated trigger
   // Playtest2feedback §4a: whether this left-button hold has steered yet (the refusal's press edge), and whether the active
   // character flew the crew Helm on the last frame (final review I1).
   let steerPrev = false, crewHelmPrev = false;
@@ -388,12 +398,19 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   const laserModeBase = (): boolean => { const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'laserMode')?.command; return c && c.kind === 'laserMode' ? c.manual : d.tactical.systems[0].laserManual; };
   /** W-3 (pew pew spec §3): the active player's latest queued torpedo mode, else the sim's (as laserModeBase). */
   const torpModeBase = (): boolean => { const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'torpMode')?.command; return c && c.kind === 'torpMode' ? c.manual : d.tactical.systems[0].torpManual; };
+  /** W-4 amendment §2.4: the active player's latest queued gunMode for gun `slot` (0 pew pew, 1 the autocannon), else the
+   *  sim's flag (as torpModeBase). */
+  const gunModeBase = (slot: 0 | 1): boolean => {
+    const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'gunMode' && x.command.slot === slot)?.command;
+    return c && c.kind === 'gunMode' ? c.manual : slot === 0 ? d.tactical.systems[0].pewManual : d.tactical.systems[0].gunManual;
+  };
 
   /** A new round (H-2 spec §7): its seed and presence came with the rematch; the view's state starts again. */
   function newRound(): void {
     round = d.round; pending = []; switching = false; deferred = [];
     activeHeld = NEUTRAL; sentHeld = idleHeld(); sentAxes = NO_AXES;
     shipView = false; steer = -1; gunPrev = false; torpHold = -1; steerPrev = false; crewHelmPrev = false;
+    weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false;
     events = []; counts = hitCounts(d);
     capture(); freshCameras(); cameraInput.reset(); resetInteriorCamera(interiorCamera);
     deps.clearKeys?.();
@@ -423,6 +440,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       return IDLE_KEYS();
     }
     const seat = seatOf(d, active), p = k.presses;
+    if (!houndWeaponsSeat(d, active)) { weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; }   // W-4 spec §9: a sit starts on pew pew
     if (seat !== 'flight') gunPrev = false;
     if (seat === 'standing') {
       if (p.interact > 0 && repairInReach(d, active) < 0) { const c = consoleInReach(d, active); if (c >= 0) queue({ kind: 'sit', station: c }); }
@@ -448,9 +466,9 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       for (const rl of [requests.rockLock, k.rockTo]) if (rl && (rl.weapon === 'torpedo' || hasLaser())) queue({ kind: 'rockLock', weapon: rl.weapon, rock: rl.rock });
       if (hasLaser()) {   // §8, the laser fit: the LASER card's room and 3/4/5
         if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });
-        const freq = frequencyRequest(freqBase(), k.freqTo);
+        const freq = frequencyRequest(freqBase(), laserFreqKey(k));   // W-4 spec §9: 3/4/5 is the key field
         if (freq !== null) queue({ kind: 'laserFrequency', freq });
-      } else if (requests.noLaser || (k.freqTo !== undefined && k.freqTo !== null) || (k.lockTo !== undefined && k.lockTo !== null)) refuse('laser', NO_LASER);   // §6.1: 1 or 3/4/5 on the gun fit
+      } else if (requests.noLaser || (laserFreqKey(k) ?? null) !== null || (k.lockTo !== undefined && k.lockTo !== null)) refuse('laser', NO_LASER);   // §6.1: 1 or 3/4/5 on the gun fit
       if (p.launch + launches > 0) { queue({ kind: 'missileLaunch' }); const why = refusal(d, 'launch'); if (why) refuse('launch', why); }   // F or the right button
       const gun = !shipView && hasGun() && (deps.gunHeld?.() ?? false);
       if (gun && !gunPrev) { const why = refusal(d, 'fire'); if (why) refuse('fire', why); }   // a dead trigger says why (Feel-ii §2.8)
@@ -496,6 +514,57 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       if (p.camera > 0) snapBack(cameras.science);
       return k;
     }
+    if (houndWeaponsSeat(d, active)) {   // W-4 spec §9 (W-4a): the Hound's Weapons seat
+      // W-4 spec §7: around a MANUAL flight: the latch first (a torpedo selection returns to the last gun when it ends), then this
+      // frame's keys (A/D select during a flight too); LMB clicks and the trigger are dropped while it flies.
+      const ff = flightFrame(flight, manualTorpedoFlying(d.tactical), weaponSel, lastGunSel, deps.triggerHeld?.() ?? false, deps.gunHeld?.() ?? false);   // gunHeld: the raw left button (duelMode's pointer.leftHeld(); the Flight seat's trigger elsewhere)
+      flight = ff.latch; triggerLive = ff.trigger;
+      weaponSel = nextWeaponSel(ff.sel, k);
+      if (weaponSel !== WeaponSlot.Torpedo) lastGunSel = weaponSel;
+      const click = ff.clicks ? pew : null;   // the map's left click this frame, unless it is the start of a steer
+      const dw = powerDelta(p);   // W / S: a bar on or off the selected weapon (at Weapons they are not the throttle)
+      if (dw !== 0) {
+        for (let n = 0; n < Math.abs(dw); n++) queue({ kind: 'weaponPower', slot: weaponSel, delta: Math.sign(dw) });
+        const why = weaponPowerRefusal(d, weaponSel, Math.sign(dw)); if (why) refuse('power', why);
+      }
+      // W-4 amendment §3.6: E / Q step the target room (Weapons → Shields → Engines, wrapping), judged from the latest queued
+      // laserLock, else the sim's lock; a plain room click in the enemy window (the console's lock request) sets it. Neither
+      // makes a torpedo lock (that is only the pick-up click, k.torpTo below), and requests.torpStep is not read here.
+      const steps = p.interact - p.prevLock;
+      if (steps !== 0) {
+        const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'laserLock')?.command;
+        let room = last && last.kind === 'laserLock' && last.room >= 0 ? last.room : d.tactical.systems[0].lock;
+        for (let n = 0; n < Math.abs(steps); n++) room = cycleLock(room, steps > 0 ? 1 : -1);
+        queue({ kind: 'laserLock', room });
+        const why = lockRefusal(d); if (why) refuse('laser', why);   // NO CONTACT: the sim refuses a room on an unseen enemy
+      }
+      if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= 0 && k.lockTo <= 2) {   // a clear (−1) is never sent: the target room has no "none"
+        queue({ kind: 'laserLock', room: k.lockTo });
+        const why = lockRefusal(d); if (why) refuse('laser', why);
+      }
+      if (k.torpTo !== undefined && k.torpTo !== null && k.torpTo >= -1 && k.torpTo <= 2) queue({ kind: 'torpLock', room: k.torpTo });
+      for (const rl of [requests.rockLock, k.rockTo]) if (rl && rl.weapon === 'torpedo') queue({ kind: 'rockLock', weapon: 'torpedo', rock: rl.rock });
+      const freq = gunFreqRequest(freqBase(), k);   // 4 / 5 / 6 or the row's buttons (§5.2); 3 selects
+      if (freq !== null) queue({ kind: 'laserFrequency', freq });
+      // W-4 amendment §2.4, §2.5: R flips the selected weapon's switch (a gun's gunMode; the torpedo's torpMode when it is
+      // selected), Shift+R sets both guns together, and a tag click flips its own weapon; each judged from the latest queued
+      // mode, else the sim's. Z and V (p.laserMode, p.torpMode) are not read at this seat.
+      const mode = modeRequests([gunModeBase(0), gunModeBase(1), torpModeBase()], weaponSel, p, k.modeTaps);
+      for (const slot of [0, 1] as const) if (mode.changed[slot]) queue({ kind: 'gunMode', slot, manual: mode.modes[slot] });
+      if (mode.changed[2]) queue({ kind: 'torpMode', manual: mode.modes[2] });
+      const pewManual = mode.modes[0], gunManual = mode.modes[1], torpManual = mode.modes[2];
+      const lmbLaunch = click !== null && weaponSel === WeaponSlot.Torpedo;   // LMB on the map with the torpedo selected launches it, as F
+      if (p.launch > 0 || lmbLaunch) { queue({ kind: 'missileLaunch' }); const why = refusal(d, 'launch', torpManual); if (why) refuse('launch', why); }
+      if (click !== null && weaponSel === WeaponSlot.Pew && pewManual) {   // W-4 spec §4.3: on AUTO the click does nothing; on MAN, LMB with pew pew selected: one round along its turret
+        const why = refusal(d, 'pew');
+        if (why) refuse('pew', why); else queue({ kind: 'pewFire' });
+      }
+      const trig = triggerLive;   // W-4 spec §7: the gated trigger; the autocannon fires while held (the held frame's gunHeld); a dead trigger says why
+      if (trig && !triggerPrev && weaponSel === WeaponSlot.Autocannon && gunManual) { const why = refusal(d, 'autocannon'); if (why) refuse('autocannon', why); }
+      triggerPrev = trig;
+      if (p.camera > 0) { const cam = cameras.weapons; snapBack(cam, missileOf(d.tactical, 0) && cam.follow !== 'missile' ? 'missile' : 'ship'); }
+      return k;   // Space, Z and V do nothing here (W-4 amendment §2.4)
+    }
     // E and Q step the laser's target room (FTL targeting spec §1: a target, so it auto-fires), from the latest queued one.
     const steps = p.interact - p.prevLock;
     if (p.interact + p.prevLock > 0) {
@@ -518,7 +587,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       queue({ kind: 'torpLock', room: stepTorpRoom(from, requests.torpStep) });
       const why = lockRefusal(d); if (why) refuse('launch', why);   // spec §10.4: as the laser's E/Q
     }
-    const freq = frequencyRequest(freqBase(), k.freqTo);   // 3/4/5 or a console button (Sci-1 spec §7.4)
+    const freq = frequencyRequest(freqBase(), laserFreqKey(k));   // 3/4/5 or a console button (Sci-1 spec §7.4; W-4 spec §9: the key field)
     if (freq !== null) queue({ kind: 'laserFrequency', freq });
     // W-2 (pew pew spec §2): Z or the LASER card's AUTO / MAN tag toggles the laser's mode, from the latest queued one (an odd
     // number of presses this frame toggles it).
@@ -530,7 +599,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       if (p.fireDown > 0) {
         const why = refusal(d, 'fire', true);
         if (why) refuse('fire', why);
-        else { const aim = deps.laserAim?.() ?? d.tactical.ships[0].heading * HEADING_COUNT; queue({ kind: 'laserFire', aim: Math.floor(aim / HEADING_COUNT), aimAcc: aim % HEADING_COUNT }); }
+        else { const aim = deps.reticleAim?.() ?? d.tactical.ships[0].heading * HEADING_COUNT; queue({ kind: 'laserFire', aim: Math.floor(aim / HEADING_COUNT), aimAcc: aim % HEADING_COUNT }); }
       }
     } else if (p.fireDown > 0) queue({ kind: 'laserCharge', held: true });   // FTL targeting spec §2: one press fires a full laser
     // W-3 (pew pew spec §3): V or the TORPEDO card's AUTO / MAN tag toggles the torpedo's mode, from the latest queued one (an
@@ -542,12 +611,12 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     const fireWhy = p.fireDown > 0 && !manual ? refusal(d, 'fire', false) : null, launchWhy = p.launch > 0 ? refusal(d, 'launch', torpManual) : null;
     if (fireWhy) refuse('fire', fireWhy);
     if (launchWhy) refuse('launch', launchWhy);
-    // W-1 (pew pew spec §1): a left click on the Weapons map fires the pew along its aim; with less than a third stored it
-    // says NO CHARGE and nothing is queued.
+    // W-1 (pew pew spec §1): a left click on the Weapons map fires the pew (no aim since W-4 spec §6); on a class with no
+    // pew, or with less than a third stored, it says why (NO PEW, NO CHARGE) and nothing is queued.
     if (pew !== null) {
       const why = refusal(d, 'pew');
       if (why) refuse('pew', why);
-      else queue({ kind: 'pewFire', aim: Math.floor(pew / HEADING_COUNT), aimAcc: pew % HEADING_COUNT });
+      else queue({ kind: 'pewFire' });
     }
     if (p.camera > 0) {
       const cam = cameras.weapons;
@@ -601,20 +670,21 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       else if (seatNow !== 'flight') steer = -1; else if (steerNow !== null && !shipView) steer = steerNow;   // the last bearing holds over the side tools
       const gunNow = seatNow === 'flight' && !shipView && hasGun() && (deps.gunHeld?.() ?? false);
       const look = seatNow === 'flight' && shipView;   // Decision 11: the ship view keeps the course (no turn keys, no face)
-      // W-3 (pew pew spec §3): at Weapons, while the crew's MANUAL torpedo flies, A/D turn it (torpTurn) and the map's right
-      // button gives it a heading to hold (torpHold, re-sent every frame) until A or D, a right click on it or the flight's end clears it.
-      const torpSteering = seatNow === 'weapons' && !ended() && manualTorpedoFlying(d.tactical), torpTurn = torpSteering ? Math.sign(k.moveX) || 0 : 0;
-      if (!torpSteering || torpTurn !== 0) torpHold = -1; else if (torpNow !== null) torpHold = torpNow;
+      // W-3 (pew pew spec §3), W-4 spec §7: at Weapons, while the crew's MANUAL torpedo flies, the map's LMB steer gives it a heading
+      // to hold (torpHold, re-sent every frame; letting go keeps the last one) until the flight ends. A/D no longer steer it.
+      const torpSteering = seatNow === 'weapons' && !ended() && manualTorpedoFlying(d.tactical);
+      if (!torpSteering) torpHold = -1; else if (torpNow !== null && torpNow >= 0) torpHold = torpNow;
       activeHeld = ended() ? NEUTRAL : { moveX: look ? 0 : Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld,   // owner 2026-11-19: A/D turn at the crew Helm too
         ...(crewHelmNow ? crewHelmHeld(k, -1) : {}),
         ...(k.fireHeld && !look && (seatNow === 'helm' || seatNow === 'flight') ? { face: true } : {}),
         ...(steer >= 0 ? { aim: steer } : {}), ...(gunNow ? { gunHeld: true } : {}),   // Valkyrn spec §5.1
-        ...(torpTurn !== 0 ? { torpTurn } : {}), ...(torpHold >= 0 ? { torpHeading: torpHold } : {}) };   // W-3
+        ...(torpHold >= 0 ? { torpHeading: torpHold } : {}) };   // W-3, W-4 spec §7
+      if (!ended() && houndWeaponsSeat(d, active)) activeHeld = { ...activeHeld, ...weaponsSeatHeld(weaponSel, triggerLive && gunModeBase(1), deps.reticleAim?.() ?? -1) };   // W-4 spec §7, §8: the gated trigger, only while the autocannon's own switch is MAN
       pacer.sync();   // an Escape this frame pauses before any due tick runs
       pacer.pump();
       frameAlpha = alphaAt(deps.now(), lastTickTime);
       const shown = viewOf(), cam = shown === 'interior' ? null : cameras[viewCamera(shown)];
-      if (cam) cameraInput.apply(cam, k, pointer, shown === 'helm' || shown === 'flight' || (shown === 'weapons' && manualTorpedoFlying(d.tactical)));   // the Flight seat's right button is the torpedo, not a pan; W-3: at Weapons, a MANUAL torpedo's held heading
+      if (cam) cameraInput.apply(cam, k, pointer, shown === 'helm' || shown === 'flight');   // the Flight seat's right button is the torpedo, not a pan; W-4 spec §7: at Weapons it pans again
       else cameraInput.applyInterior(interiorCamera, k, pointer);
       trackManualTorpedo(cameras.weapons, torpFollow, manualTorpedoFlying(d.tactical));   // W-3 (pew pew spec §3): follow a MANUAL torpedo, then go back
       for (const c of [cameras.helm, cameras.weapons, cameras.science]) {
@@ -637,6 +707,8 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     running: () => pacer.reasons.size === 0 && !ended(),
     throttle: throttleBase,
     thrMille: () => d.thrMille,
+    weaponSel: () => weaponSel,   // W-4 spec §10: the selected card
+    turret: (slot: 0 | 1) => (slot === 0 ? d.tactical.systems[0].pewTurret : d.tactical.systems[0].gunTurret),   // W-4 spec §11: no lag locally
     takeRefusals() { const out = refusals; refusals = []; return out; },
     dispose() { pacer.dispose(); disposeDuel(d); }
   };

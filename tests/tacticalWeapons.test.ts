@@ -3,14 +3,14 @@ import { createTacticalState, Room, type TacticalState } from '../src/renderer/s
 import { applyWeaponsInput, canCharge, canLaunch, IDLE_INPUT, laserEligible, tickWeapons, validLock, type ShipInput } from '../src/renderer/src/sim/tactical/weapons';
 import { inArc, lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
 import { LASER_ARC_COS, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, LASER_RANGE, MAGAZINE, MAGAZINE_REGEN_TICKS, SHIELD_RATE, SHIELD_RECHARGE_UNITS, SHIP_HULL, LASER_BURST_GAP_TICKS } from '../src/renderer/src/sim/tactical/tuning';
-import { HUNTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
+import { HUNTER_CLASS, ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { rockAlive, rockAt, rockSlots, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { makeHostile } from './helpers/hostile';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
 
 /** Crew at (−600, −300) heading east, enemy 300 units east of it: inside the belt, clear of the planet, in arc and range. */
-function duel(): TacticalState {
-  const st = todaysCrewWeapons(makeHostile(createTacticalState(5)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
+function duel(cls: number = ShipClass.Cutter): TacticalState {
+  const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 2, cls)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
   return st;
@@ -32,7 +32,7 @@ const press = (over: Partial<ShipInput> = {}): ShipInput => input({ laserCharge:
 
 describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2 for the crew)', () => {
   it('the crew laser starts the round full, and charges to full by itself in exactly 240 ticks (4 s) with no press', () => {
-    const st = duel(), s = st.systems[0];
+    const st = duel(ShipClass.ValkyrnLaser), s = st.systems[0];
     expect(s.laserCharge).toBe(LASER_CHARGE_UNITS);
     expect(st.systems[1].laserCharge).toBe(0);   // the hunter's is unchanged: it charges by holding Fire
     charge(st, 239);
@@ -42,7 +42,7 @@ describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2
     expect(s.fireHeld).toBe(false);
   });
   it('a press at full in arc strips a shield layer', () => {
-    const st = duel(), [a, b] = st.systems;
+    const st = duel(ShipClass.ValkyrnLaser), [a, b] = st.systems;
     tick(st, press());
     expect([a.shots, a.laserHits, a.layersStripped]).toEqual([1, 1, 1]);
     expect(b.shields).toBe(1);
@@ -51,7 +51,7 @@ describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2
     expect(st.events).toContainEqual({ kind: 'laser', ship: 0, hit: true, stripped: true, room: -1, x1: -600, y1: -300, x2: -300, y2: -300 });
   });
   it('a press or a release below full does nothing: the charge carries on', () => {
-    const st = duel(), a = st.systems[0];
+    const st = duel(ShipClass.ValkyrnLaser), a = st.systems[0];
     charge(st, 100);
     const part = a.laserCharge;
     tick(st, press());
@@ -60,7 +60,7 @@ describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2
     expect(a.laserCharge).toBeGreaterThan(part);
   });
   it('with shields down, damages the locked room and costs 2 hull; a room at level 2 takes no more room damage', () => {
-    const st = duel(), b = st.systems[1];
+    const st = duel(ShipClass.ValkyrnLaser), b = st.systems[1];
     b.shields = 0;
     tick(st, input({ laserLock: Room.Engines, torpLock: null }));
     tick(st, input({ laserLock: -1 }));   // no auto-fire: the presses below fire
@@ -76,7 +76,7 @@ describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2
     expect(st.events.at(-1)).toMatchObject({ kind: 'laser', hit: true, stripped: false, room: Room.Engines });
   });
   it('misses outside the arc, out of range or without line of sight', () => {
-    const st = duel(), a = st.systems[0];
+    const st = duel(ShipClass.ValkyrnLaser), a = st.systems[0];
     st.ships[1].x = -900;                                   // behind the crew
     expect(laserEligible(st, 0, 1)).toBe(false);
     tick(st, press());
@@ -106,7 +106,7 @@ describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2
       ['asteroid', (st) => { const a = rockAt(st, loneRock(st)); return [a.x, a.y]; }]
     ];
     for (const [name, centre] of blockers) {
-      const st = duel(), [a, b] = st.ships, [cx, cy] = centre(st), k = loneRock(st);
+      const st = duel(ShipClass.ValkyrnLaser), [a, b] = st.ships, [cx, cy] = centre(st), k = loneRock(st);
       Object.assign(a, { x: cx - 200, y: cy, heading: 64 });           // 400 apart along the x axis, blocker in the middle
       Object.assign(b, { x: cx + 200, y: cy });
       expect(lineOfSight(st, a.x, a.y, b.x, b.y), name).toBe(false);
@@ -122,13 +122,13 @@ describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2
     }
   });
   it('a full crew charge never vents (LASER_HOLD_TICKS is the hunter laser only)', () => {
-    const st = duel(), a = st.systems[0];
+    const st = duel(ShipClass.ValkyrnLaser), a = st.systems[0];
     a.laserTargeted = false;   // Feel-i's SHIELDS opener would auto-fire it: untargeted, a full laser just waits
     for (let t = 0; t < 3 * LASER_HOLD_TICKS; t++) tick(st, input());
     expect([a.laserCharge, a.laserHold, a.shots]).toEqual([LASER_CHARGE_UNITS, 0, 0]);
   });
   it('the hunter laser full charge held 3 s still vents and starts charging again', () => {
-    const st = duel(), b = st.systems[1];
+    const st = duel(ShipClass.ValkyrnLaser), b = st.systems[1];
     tick(st, input(), input({ laserCharge: true }));
     for (let t = 1; t < 240 + LASER_HOLD_TICKS - 1; t++) tick(st, input());
     expect(b.laserCharge).toBe(LASER_CHARGE_UNITS);
@@ -138,19 +138,19 @@ describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2
     expect(b.laserCharge).toBeGreaterThan(0);
   });
   it('Weapons damage 1 leaves the beam its bars and its 4 s charge (Engineering spike spec §10.3); level 2 is off and never charges (owner 2026-11-17)', () => {
-    const st = duel(), a = st.systems[0];
+    const st = duel(ShipClass.ValkyrnLaser), a = st.systems[0];
     a.rooms[Room.Weapons] = 1;
     charge(st, 239);   // Engineering spike spec §10.3: Weapons at level 1 holds 5 bars, so the beam's 2 still charge 40 a tick (was 383, the level-1 rate)
     expect(a.laserCharge).toBeLessThan(LASER_CHARGE_UNITS);
     tick(st, input());
     expect(a.laserCharge).toBe(LASER_CHARGE_UNITS);
-    const off = duel(), b = off.systems[0];
+    const off = duel(ShipClass.ValkyrnLaser), b = off.systems[0];
     b.rooms[Room.Weapons] = 2;
     charge(off, 900);
     expect(b.laserCharge).toBe(0);
   });
   it('an empty Weapons console freezes the charge, and the laser charges again once attended', () => {
-    const st = duel(), a = st.systems[0];
+    const st = duel(ShipClass.ValkyrnLaser), a = st.systems[0];
     charge(st, 120);
     const part = a.laserCharge;
     tick(st, input({ weapons: false, laserCharge: true }));
@@ -164,7 +164,7 @@ describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2
 
 describe('weapon admission (used by the duel step for reject reasons)', () => {
   it('canCharge, canLaunch and validLock agree with what applyWeaponsInput accepts', () => {
-    const st = duel(), s = st.systems[0];
+    const st = duel(ShipClass.ValkyrnLaser), s = st.systems[0];
     expect([canCharge(st, 0), canLaunch(st, 0)]).toEqual([true, true]);
     s.rooms[Room.Weapons] = 2;
     expect(canLaunch(st, 0)).toBe(false);
@@ -212,7 +212,7 @@ describe('shields (spec §5)', () => {
     expect([b.shields, b.shieldClock]).toEqual([2, 0]);
   });
   it('a stripping hit resets the recharge clock', () => {
-    const st = duel(), b = st.systems[1];
+    const st = duel(ShipClass.ValkyrnLaser), b = st.systems[1];   // W-4 spec §14.1: the beam's hit, on the laser fit
     b.shields = 1; b.shieldClock = 0;
     charge(st, 240);
     expect(b.shieldClock).toBe(240 * SHIELD_RATE[0]!);

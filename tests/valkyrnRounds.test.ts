@@ -54,7 +54,7 @@ describe('rounds (spec §7.2)', () => {
     for (let k = 1; k < GUN_LIFE_TICKS - 1; k++) stepRounds(st);
     expect([r.active, r.age]).toEqual([true, GUN_LIFE_TICKS - 1]);
     stepRounds(st);
-    expect(r).toEqual({ x: 0, y: 0, vx: 0, vy: 0, age: 0, owner: 0, active: false });
+    expect(r).toEqual({ x: 0, y: 0, vx: 0, vy: 0, age: 0, owner: 0, active: false, room: 0 });   // W-4 amendment §3.3: a free entry holds zeros, its room included
   });
   it('a round ends on the enemy, an asteroid or the planet; it never hits its own ship', () => {
     const st = range();

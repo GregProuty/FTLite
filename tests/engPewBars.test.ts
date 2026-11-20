@@ -81,7 +81,7 @@ describe('0 pew pew bars through the duel step and the console', () => {
       sys.weaponPower = [0, 1, 1];
       expect(refusal(d, 'pew')).toBe('PEW UNPOWERED');
       expect(weaponsOffline(d.tactical)).toBe(false);
-      const r = stepDuelTick(d, { held: [{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }], commands: [cmd(d, { kind: 'pewFire', aim: d.tactical.ships[0].heading, aimAcc: 0 })] });
+      const r = stepDuelTick(d, { held: [{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }], commands: [cmd(d, { kind: 'pewFire' })] });
       expect(r.map((x) => x.reason ?? x.status)).toEqual(['unavailable']);
       expect(sys.pewShots).toBe(0);
       sys.weaponPower = [0, 0, 0];

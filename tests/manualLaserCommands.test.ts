@@ -16,6 +16,7 @@ import { sitDown } from '../src/renderer/src/sim/stations';
 import { placeMissile } from '../src/renderer/src/sim/tactical/state';
 import { CUTTER } from './helpers/scriptedDuel';
 import { createSeatedValkyrn } from './helpers/valkyrnDuel';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const NONE: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 let seq = 0;
@@ -23,7 +24,7 @@ const cmd = (d: DuelState, player: number, command: DuelCommand, requestedTick =
 const step = (d: DuelState, commands: DuelEnvelope[] = []) => stepDuelTick(d, { held: Array.from({ length: d.interior.playerCount }, () => NONE), commands });
 const why = (r: ReturnType<typeof step>) => r.map((x) => x.reason ?? x.status);
 /** A Cutter duel with player 0 standing and player 1 at Weapons. */
-function gunnerAtWeapons(): DuelState { const d = createDuel(CUTTER, 5); todaysCrewWeapons(d.tactical); sitDown(d.interior, 1, d.weapons); return d; }
+function gunnerAtWeapons(): DuelState { const d = createDuel(CUTTER, 5, 0, 2, ShipClass.ValkyrnLaser); todaysCrewWeapons(d.tactical); sitDown(d.interior, 1, d.weapons); return d; }   // W-4 spec §14.1: the beam's rule, on the laser fit
 const mode = (manual: boolean): DuelCommand => ({ kind: 'laserMode', manual });
 const fire = (aim: number, aimAcc = 0): DuelCommand => ({ kind: 'laserFire', aim, aimAcc });
 

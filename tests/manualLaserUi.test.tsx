@@ -21,6 +21,7 @@ import type { TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
 import { makeUi } from './helpers/uiStore';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 afterEach(() => { cleanup(); });
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((c) => c.dataset.text!);
@@ -74,7 +75,7 @@ describe('the Weapons panel in MANUAL (spec §2)', () => {
       .toEqual(['MANUAL: SPACE FIRES', 'MANUAL: SPACE FIRES', 'OUT OF ARC: HELM TURN RIGHT', null]);
   });
   it('carries the mode; a lined-up MANUAL laser never says FIRING and has no goal glow', () => {
-    const d = createSeatedDuel(CUTTER, 5); todaysCrewWeapons(d.tactical);
+    const d = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.ValkyrnLaser); todaysCrewWeapons(d.tactical);   // W-4 spec §14.1: the beam's rule, on the laser fit
     try {
       place(d.tactical, 300, 10);   // lined up, full and targeted: AUTO says FIRING
       const panel = () => consoleModel({ duel: d, me: 1, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null, goal: true })!.weapons!;

@@ -16,7 +16,8 @@ import { createCamera, followBody, updateCamera, type Camera, type Viewport } fr
 import { createInteriorCamera, resetInteriorCamera } from '../../render/duel/interiorCamera';
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
-import { crewHelmSeat, seatOf } from './controls';
+import { crewHelmSeat, houndWeaponsSeat, seatOf } from './controls';
+import { predictTurret } from './weaponsSeat';
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 import { createTorpedoFollow, trackManualTorpedo } from './torpedoCamera';
 import { NO_HELD_FLAGS, type HeldFlags, type KeySample, type PointerSample } from './input';
@@ -88,9 +89,10 @@ export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: r
     // a strip, so the event names none (−1, not stripped), at the target's position.
     if (tgt) for (let k = 0; k < now.gunHits - was.gunHits; k++) out.push({ kind: 'gunHit', ship: target, room: -1, stripped: false, hull: false, level: false, x: tgt.x, y: tgt.y } satisfies DuelEvent);
     // W-1 (pew pew spec §1): each pewShots increment is a round fired at the ship, each pewHits increment a round that hit the
-    // target (the snapshot carries neither the strip nor the hull, so the event names neither).
+    // target (the snapshot carries neither the strip nor the hull, so the event names neither), nor the room (W-4 amendment
+    // §3.4: online a room hit by a gun shows no callout, as the gun's).
     for (let k = 0; k < now.pewShots - was.pewShots; k++) out.push({ kind: 'pewFire', ship: i, x: ship.x, y: ship.y } satisfies DuelEvent);
-    if (tgt) for (let k = 0; k < now.pewHits - was.pewHits; k++) out.push({ kind: 'pewHit', ship: target, owner: i, stripped: false, hull: false, x: tgt.x, y: tgt.y } satisfies DuelEvent);
+    if (tgt) for (let k = 0; k < now.pewHits - was.pewHits; k++) out.push({ kind: 'pewHit', ship: target, owner: i, stripped: false, hull: false, room: -1, level: false, x: tgt.x, y: tgt.y } satisfies DuelEvent);
     (['planet', 'asteroid', 'ship'] as const).forEach((kind, k) => {
       for (let n = 0; n < now.contacts[k]! - was.contacts[k]!; n++) out.push({ kind: 'contact', ship: i, body: kind, x: ship.x, y: ship.y });
     });
@@ -107,6 +109,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   let events: ViewEvent[] = [], sentHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
   let cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() }, torpFollow = createTorpedoFollow();
   let uiHeld: HeldFlags = NO_HELD_FLAGS, shownThrottle: number | null = null, refusals: Refusal[] = [];
+  let gunModeShown: [boolean | null, boolean | null] = [null, null];   // W-4 amendment §2.6: each gun's mode in flight, [pew pew, the autocannon]
   let unackedFrames = 0;   // playtest2feedback Decision 14: this seat's held frames the replica has not taken yet
   /** Playtest2feedback §3: this seat flies the crew Helm (a newtonianHelm class) in a running round. */
   const crewHelm = (d: DuelState): boolean => crewHelmSeat(d, seat) && d.tactical.outcome === Outcome.Running;
@@ -140,8 +143,9 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   const duel = (): DuelState => client.state()!;
   const source: DuelViewSource & {
     observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: HeldInput): void; heldFlags(flags: HeldFlags): void;
-    thrMille(): number; helmVent(): HelmVent; unacked(n: number): void;
+    thrMille(): number; helmVent(): HelmVent; unacked(n: number): void; weaponSel(): number;
     throttleBase(level: number | null): void;
+    turret(slot: 0 | 1): number; gunModeBase(slot: 0 | 1, manual: boolean | null): void;
     refuse(control: Refusal['control'], reason: string): void;
     arrivals(): readonly number[]; takeArrivals(): number[]; ready(): boolean;
   } = {
@@ -168,6 +172,18 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const e = engineBars(d);
       return rampTicks(d.thrMille, heldAxis(sentHeld.throttleHeld), throttleFloor(e), throttleCap(e), unackedFrames);
     },
+    /** W-4 spec §11: gun slot's turret: at the Hound's Weapons seat the own selected one predicted over the unacknowledged
+     *  frames (predictTurret, the mode in flight first), else the replica's. */
+    turret: (slot: 0 | 1): number => {
+      const d = duel();
+      if (!houndWeaponsSeat(d, seat)) return slot === 0 ? d.tactical.systems[0].pewTurret : d.tactical.systems[0].gunTurret;
+      const sys = d.tactical.systems[0];
+      return predictTurret(d.tactical, slot, sentHeld, gunModeShown[slot] ?? (slot === 0 ? sys.pewManual : sys.gunManual),   // W-4 amendment §2.6: that gun's own mode
+        manualTorpedoFlying(d.tactical) ? 0 : unackedFrames);   // W-4 spec §11: (from W-4c) no MANUAL torpedo flies
+    },
+    /** Gun `slot`'s mode in flight (onlineDuel's gunModeSent for it), or null: the replica's flag is the base. */
+    gunModeBase(slot, manual) { gunModeShown[slot] = manual; },
+    weaponSel: (): number => sentHeld.weaponSel ?? 0,   // W-4 spec §10: the selection this seat last sent
     /** Playtest2feedback Decision 11: the puffs and the hiss online: this seat's own predicted vent at the crew Helm, else none. */
     helmVent: (): HelmVent => { const d = duel(); return crewHelm(d) ? ventOf(crewAxes(d, sentHeld)) : noVent(); },
     unacked(n) { unackedFrames = Math.max(0, n); },
@@ -196,7 +212,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const d = client.state(); if (!d) return;
       frameAlpha = Math.max(0, Math.min(1, (deps.now() - receivedAt) * TICK_HZ / (1000 * gap)));
       const view = seatOf(d, seat), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : view === 'science' ? cameras.science : null;
-      if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer, view === 'helm' || (view === 'weapons' && manualTorpedoFlying(d.tactical))); else cameraInput.applyInterior(interiorCamera, keys, pointer); }   // W-3: at Weapons the right button steers a MANUAL torpedo
+      if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer, view === 'helm'); else cameraInput.applyInterior(interiorCamera, keys, pointer); }   // W-4 spec §7: at Weapons the right button pans again
       trackManualTorpedo(cameras.weapons, torpFollow, manualTorpedoFlying(d.tactical));   // W-3 (pew pew spec §3): follow a MANUAL torpedo, then go back
       for (const c of [cameras.helm, cameras.weapons, cameras.science]) {
         if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');

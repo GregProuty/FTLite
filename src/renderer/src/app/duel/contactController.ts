@@ -21,6 +21,9 @@ export interface ContactSync {
   shown: boolean; station: ConsoleStation | null; target: number; active: (slot: number) => boolean; epoch: number; enemyKnown?: number; designated?: number;
   /** Valkyrn spec §5.1: the crew class has a laser (absent: true); the Flight seat picks it up only then. */
   laser?: boolean;
+  /** W-4 amendment §3.6: the crew class has a turret gun (the Hound; absent: false). At its Weapons seat E and Q are never
+   *  taken, torpedo picked up or not: they step the target room. */
+  turret?: boolean;
 }
 /** What the clicks and keys asked the duel mode to send since the last take: a designation (−1, 0 or 1) and a scan.
  *  `torpStep` (present only when non-zero, FTL targeting spec §1): E and Q while the torpedo is picked up step its own
@@ -65,9 +68,10 @@ export interface ContactController {
    *  window stays open. */
   pick(room: number, lock: (room: number, weapon: Weapon) => void): void;
   /** The keyboard's intercept: true takes the key. Escape while shown with a contact; KeyT while shown on Helm, Weapons
-   *  or Science; KeyS while shown on Science; Digit1 / Digit2 while shown on Weapons (pick up the laser / torpedo); KeyE
+   *  or Science; KeyS while shown on Science; Digit1 / Digit2 while shown on Weapons with a laser (pick up the laser / torpedo; W-4 spec §9: the Hound's seat selects instead); KeyE
    *  and KeyQ while the torpedo is picked up (a torpStep request, the pick-up stays; the laser's pick-up drops and lets
-   *  them through to the lock cycle); everything else false. */
+   *  them through to the lock cycle); everything else false. W-4 amendment §3.6: never KeyE or KeyQ at a turret class's
+   *  Weapons seat. */
   intercept(code: string): boolean;
   /** The requests since the last take, then cleared. */
   takeRequests(): ContactRequests;
@@ -78,7 +82,7 @@ export type ContactActions = Pick<ContactController, 'close' | 'arm' | 'cancelAi
 export function createContactController(): ContactController {
   let st: ContactState | null = null, designate: number | null = null, scanned: ContactId | null = null, weapon: Weapon = 'laser', torpStep = 0, rockLock: { weapon: Weapon; rock: number } | null = null, noLaser = false;
   // What the last sync recorded (the last drawn frame).
-  let allowed = false, station: ConsoleStation | null = null, epoch: number | null = null, enemyKnown = 2, laserFit = true;
+  let allowed = false, station: ConsoleStation | null = null, epoch: number | null = null, enemyKnown = 2, laserFit = true, turretFit = false;
   const science = (): boolean => station === 'science';
   const select = (next: ContactId | null): void => { st = next === null ? null : { contact: next, aim: false }; designate = next ?? -1; };
   const c: ContactController = {
@@ -114,6 +118,7 @@ export function createContactController(): ContactController {
       if (epoch !== null && s.epoch !== epoch) st = null;                        // a new round
       enemyKnown = s.enemyKnown ?? 2;
       laserFit = s.laser ?? true;
+      turretFit = s.turret ?? false;
       if (st && s.shown && s.station === 'science' && st.contact === 0 && !s.active(s.target)) { st = null; designate = -1; }   // Science's enemy is gone: undesignate it
       if (st && (!s.shown || (st.contact === 0 && !s.active(s.target)))) st = null;   // hidden, SHIP, paused, decided, or the enemy is gone
       if (st && s.station === 'science' && station !== 'science') designate = st.contact;   // a contact carried to Science is its selection: designate it
@@ -138,9 +143,10 @@ export function createContactController(): ContactController {
       if (code === 'KeyT' && (station === 'helm' || station === 'weapons' || station === 'science' || station === 'flight')) { c.toggle(); return true; }
       if (code === 'KeyS' && science()) { c.scan(); return true; }
       const w = WEAPON_CODES[code];
-      if (w && (station === 'weapons' || (station === 'flight' && (w === 'torpedo' || laserFit)))) { c.pickUp(w); return true; }   // Valkyrn spec §5.1: 1 only with the laser fit
+      if (w && ((station === 'weapons' && laserFit) || (station === 'flight' && (w === 'torpedo' || laserFit)))) { c.pickUp(w); return true; }   // Valkyrn spec §5.1: 1 only with the laser fit; W-4 spec §9: at the Hound's Weapons seat 1 / 2 select (the keyboard's selectTo)
       if (w === 'laser' && station === 'flight') { noLaser = true; return true; }   // §6.1: without it, the refusal flash reads NO LASER
       if ((code === 'KeyE' || code === 'KeyQ') && st?.aim && (station === 'weapons' || station === 'flight')) {
+        if (station === 'weapons' && turretFit) return false;   // W-4 amendment §3.6: the Hound's Weapons seat: the keys step the target room, and the pick-up stays
         if (weapon === 'torpedo') { torpStep += code === 'KeyE' ? 1 : -1; return true; }   // the torpedo stays picked up
         st = { ...st, aim: false };   // the laser's pick-up drops; the key steps the laser's target
         return false;

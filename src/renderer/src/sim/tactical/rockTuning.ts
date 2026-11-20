@@ -23,6 +23,10 @@ export const ROCK_CRUSH_STEP = 40;
 /** §4.1: a laser shot that meets a rock: damage, and the push J along the shot line (Δv = J / m). */
 export const LASER_ROCK_DAMAGE = 2;
 export const LASER_ROCK_PUSH = 4000;
+/** W-4 spec §5.1: an autocannon round wears a rock 1 / AUTOCANNON_ROUNDS_PER_ROCK_HP hp (exact in binary) and pushes it
+ *  AUTOCANNON_ROCK_PUSH / m along the round: four rounds push as hard per hp as the laser did (4000 / 2). */
+export const AUTOCANNON_ROUNDS_PER_ROCK_HP = 4;
+export const AUTOCANNON_ROCK_PUSH = 500;
 /** §6.3: the crew laser never fires on its own because a rock is in the way; digging is a rock target. */
 export const AUTO_DIG = false;
 

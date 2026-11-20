@@ -27,6 +27,7 @@ import { seatDuelCrew } from './helpers/duelSeat';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { Room } from '../src/renderer/src/sim/tactical/state';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { readoutRows } from '../src/renderer/src/render/duel/readoutModel';
 import { evadeDir, flightAlert } from '../src/renderer/src/render/duel/situationModel';
 import { fogEvents, fogPan, pushMapEffects, rockHoverAt, torpedoTone } from '../src/renderer/src/app/duel/scene';
@@ -115,7 +116,7 @@ describe('no fog leaks (spec §10.4)', () => {
     expect(pickContact({ ...dc, fog: fog(false, false) }, { x: vp.w / 2, y: vp.h / 2 })).toBeNull();
   });
   it('the laser\'s words say nothing of an unseen enemy (no OUT OF RANGE n/450)', () => {
-    const t = createTacticalState(5), sys = t.systems[0], me = t.ships[0]!, e = t.ships[1]!;
+    const t = createTacticalState(5, 2, ShipClass.ValkyrnLaser), sys = t.systems[0], me = t.ships[0]!, e = t.ships[1]!;   // W-4 spec §14.1: the beam's rule, on the laser fit
     t.map = { ...t.map, asteroids: [] }; t.rocks = initRocks(t.map);   // a clear line
     sys.bars[1] = 4; sys.weaponPower.splice(0, 3, 0, 2, 2);   // the beam powered
     e.x = me.x + hx(me.heading) * 1200; e.y = me.y + hy(me.heading) * 1200; e.active = true;   // ahead, beyond the 900 start range
@@ -272,8 +273,8 @@ describe('the fog on pew rounds and the MANUAL weapons (merge decision 1d)', () 
       const t = createTacticalState(5), own = t.ships[0]!, e = t.ships[1]!, r = sensorRange(t.systems[0]!);
       Object.assign(e, { x: own.x + (seen ? r / 2 : r * 2), y: own.y, active: true });
       const enemyFire: ViewEvent = { kind: 'pewFire', ship: 1, x: e.x, y: e.y }, crewFire: ViewEvent = { kind: 'pewFire', ship: 0, x: own.x, y: own.y };
-      const crewHitsEnemy: ViewEvent = { kind: 'pewHit', ship: 1, owner: 0, stripped: false, hull: true, x: e.x, y: e.y };
-      const enemyHitsCrew: ViewEvent = { kind: 'pewHit', ship: 0, owner: 1, stripped: true, hull: false, x: own.x, y: own.y };
+      const crewHitsEnemy: ViewEvent = { kind: 'pewHit', ship: 1, owner: 0, stripped: false, hull: true, room: -1, level: false, x: e.x, y: e.y };
+      const enemyHitsCrew: ViewEvent = { kind: 'pewHit', ship: 0, owner: 1, stripped: true, hull: false, room: -1, level: false, x: own.x, y: own.y };
       expect(fogEvents(t, [enemyFire, crewFire, crewHitsEnemy, enemyHitsCrew])).toEqual(seen ? [enemyFire, crewFire, crewHitsEnemy, enemyHitsCrew] : [crewFire, crewHitsEnemy, enemyHitsCrew]);
     }
   });

@@ -19,6 +19,7 @@ import { createMapRequests } from '../src/renderer/src/app/duel/mapRequests';
 import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import { createUiStore } from '../src/renderer/src/ui/store';
 import { STATION, stationTop } from '../src/renderer/src/render/duel/consoleLayout';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const layout = parseShip(cutter);
 const assets: GameAssets = {
@@ -36,7 +37,7 @@ function rig() {
   let now = 0, keys: KeySample = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() }, pointerAt: { x: number; y: number } | null = null;
   const tasks: { at: number; cb: () => void }[] = [];
   const rt = createDuelRuntime({
-    now: () => now, seed: 5, viewport: vp, layout,
+    now: () => now, seed: 5, viewport: vp, layout, cls: ShipClass.ValkyrnLaser,   // W-4 spec §14.1: the beam's rule, on the laser fit
     scheduler: { schedule(delay, cb) { const t = { at: now + delay, cb }; tasks.push(t); return () => { const i = tasks.indexOf(t); if (i >= 0) tasks.splice(i, 1); }; } },
     sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses() }; return k; },
     samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }),
@@ -60,11 +61,11 @@ function rig() {
 describe('the map requests (spec §2)', () => {
   it('keep the latest laser aim, peeked and not drained, until reset', () => {
     const r = createMapRequests();
-    expect(r.laserAim()).toBeNull();
-    r.aimLaser(100); r.aimLaser(200);
-    expect([r.laserAim(), r.laserAim()]).toEqual([200, 200]);
-    r.resetLaserAim();
-    expect(r.laserAim()).toBeNull();
+    expect(r.reticleAim()).toBeNull();
+    r.reticle(100); r.reticle(200);   // W-4 spec §9: the laser's aim is the reticle (kind (a) rename of aimLaser / laserAim / resetLaserAim)
+    expect([r.reticleAim(), r.reticleAim()]).toEqual([200, 200]);
+    r.resetReticle();
+    expect(r.reticleAim()).toBeNull();
   });
 });
 
@@ -74,16 +75,16 @@ describe('the scene keeps the laser\'s aim (spec §2)', () => {
     try {
       expect(r.rt.view()).toBe('weapons');
       r.point(null);   // a first frame: the sit framing settles
-      expect(r.requests.laserAim()).toBeNull();
+      expect(r.requests.reticleAim()).toBeNull();
       const m = r.marker();
       r.point({ x: m.x + 100, y: m.y });
-      expect(r.requests.laserAim()).toBe(16384);   // east: a quarter turn of 65536
+      expect(r.requests.reticleAim()).toBe(16384);   // east: a quarter turn of 65536
       r.point({ x: STATION.x + 20, y: stationTop('weapons') + 10 });   // over the Weapons block: not the map
-      expect(r.requests.laserAim()).toBe(16384);
+      expect(r.requests.reticleAim()).toBe(16384);
       r.point(null);
-      expect(r.requests.laserAim()).toBe(16384);
+      expect(r.requests.reticleAim()).toBe(16384);
       r.point({ x: m.x, y: m.y - 100 });
-      expect(r.requests.laserAim()).toBe(0);   // north
+      expect(r.requests.reticleAim()).toBe(0);   // north
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
 });
@@ -95,10 +96,10 @@ describe('a new round clears the aim (spec §2, plan Decision 10)', () => {
       r.point(null);
       const m = r.marker();
       r.point({ x: m.x + 100, y: m.y });
-      expect(r.requests.laserAim()).toBe(16384);
+      expect(r.requests.reticleAim()).toBe(16384);
       r.newRound();
       r.point(null);   // the draw that sees the new epoch; no pointer to give a fresh aim
-      expect(r.requests.laserAim()).toBeNull();
+      expect(r.requests.reticleAim()).toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
 });

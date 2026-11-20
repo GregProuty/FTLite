@@ -60,9 +60,8 @@ describe('the online duel view source (spec §3)', () => {
     } finally { disposeDuel(d); c.dispose(); }
   });
   it('derives every beam and missile ending exactly once from the counters, with every third tick published and one in five dropped', () => {
-    // Asteroids-iii (SIM_VERSION 60): seed 7 -> 1; seed 7's duel is now a crew win at tick 4174 with no beam at all, seed 1's
-    // fires 18 beams and ends 4 missiles (the lowest seed over both floors below).
-    const d = createSeatedDuel(CUTTER, 1), pair = createScriptedPair(1), c = confirmed(), local: ViewEvent[] = [], online: ViewEvent[] = [];
+    const d = createSeatedDuel(CUTTER, 7, 0, 2, ShipClass.ValkyrnLaser), pair = createScriptedPair(7),   // W-4 spec §14.1: the beam's endings, on the laser fit
+      c = confirmed(), local: ViewEvent[] = [], online: ViewEvent[] = [];
     let now = 0, published = 0;
     const source = createOnlineDuelSource({ client: c.client, seat: 1, now: () => now, viewport: { w: 1280, h: 720 } });
     try {

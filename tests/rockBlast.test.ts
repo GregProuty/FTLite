@@ -3,6 +3,7 @@
 // pieces (a reused slot is not hit), and a rock-targeted torpedo launches on the rock's range, homes on the moving rock
 // and hits it; −2 flies unguided.
 import { describe, expect, it } from 'vitest';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { homingTurn } from '../src/renderer/src/sim/tactical/missiles';
 import { placeMissile } from '../src/renderer/src/sim/tactical/state';
@@ -109,7 +110,7 @@ describe('a torpedo with a rock target (spec §6.4)', () => {
     expect([s.torpRock, s.torpRockFlying]).toEqual([-1, 100]);
   });
   it('a launch on a rock that a laser shot in the same call breaks does not retarget the enemy: nothing launches (R1-F3)', () => {
-    const st = arena(), s = st.systems[0];
+    const st = arena(5, ShipClass.ValkyrnLaser), s = st.systems[0];   // W-4 spec §14.1: the beam's shot, on the laser fit
     st.ships[0].heading = 64;   // east, at (0, −2500): the laser is full and targeted
     st.ships[1].active = true; Object.assign(st.ships[1], { x: 0, y: -2200 });
     mover(st, 100, 200, -2500, 0, 0, 12, 2);   // r 12, hp 2: the laser's 2 damage turns it to dust

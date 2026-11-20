@@ -17,6 +17,7 @@ import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { duelEndSummary, duelRoundRecord } from '../src/renderer/src/sim/duel/summary';
 import { createTelemetry, recordTick } from '../src/renderer/src/sim/duel/telemetry';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { SCAN_RATE_SCIENCE } from '../src/renderer/src/sim/tactical/tuning';
 import { standAtStation } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -71,7 +72,7 @@ describe('presence and seats at n (spec §4.1, §7)', () => {
     } finally { disposeDuel(d); disposeDuel(two); disposeDuel(three); }
   });
   it('a third player sits at Science and scans at the Science rate; a fourth takes the free Weapons console and tunes', () => {
-    const d = createDuel(HOUND, 5, 0, 4);
+    const d = createDuel(HOUND, 5, 0, 4, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's frequency rule, on the laser fit
     try {
       standAtStation(d, 0, d.nav); standAtStation(d, 2, d.science); standAtStation(d, 3, d.weapons);
       expect(step(d, [cmd(d, 0, { kind: 'sit', station: d.nav }), cmd(d, 2, { kind: 'sit', station: d.science }), cmd(d, 3, { kind: 'sit', station: d.weapons })]).map((r) => r.status))

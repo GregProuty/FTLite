@@ -31,13 +31,16 @@ export interface Session {
 }
 /** `face` (Feel-i, console feel spec §2): the Helm's auto-face, Space held at the Helm; absent means false. `aim`
  *  (Valkyrn spec §6.2): the Flight seat's mouse aim, a heading index 0..255, −1 or absent for none (the sim counts any
- *  other value as none). `gunHeld` (Valkyrn spec §7.1): the gun's trigger; absent means false. W-3 (pew pew spec §3):
- *  `torpTurn` the MANUAL torpedo's A/D (−1, 0 or 1; absent 0) and `torpHeading` the heading it holds (0..255; −1 or
- *  absent none). Only the duel reads them: `face` and `aim` from the Helm's attendant (A/D, moveX, overrides both),
- *  `gunHeld`, `torpTurn` and `torpHeading` from Weapons'. Playtest2feedback §7: `throttleHeld` (1 W, −1 S), `rcsX`
+ *  other value as none). `gunHeld` (Valkyrn spec §7.1): the gun's trigger; absent means false. W-3 (pew pew spec §3),
+ *  W-4 spec §7: `torpHeading` the heading the MANUAL torpedo holds (0..255; −1 or absent none), from the Weapons seat's
+ *  LMB steer. Only the duel reads them: `face` and `aim` from the Helm's attendant (A/D, moveX, overrides both),
+ *  `gunHeld` and `torpHeading` from Weapons'. Playtest2feedback §7: `throttleHeld` (1 W, −1 S), `rcsX`
  *  (−1 port, 1 starboard) and `rcsY` (−1 aft, 1 forward) are the crew Helm's held throttle and thrusters, each an
- *  integer −1..1; absent means 0. */
-export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean; aim?: number; gunHeld?: boolean; torpTurn?: number; torpHeading?: number; throttleHeld?: number; rcsX?: number; rcsY?: number }
+ *  integer −1..1; absent means 0. W-4 spec §8: `weaponSel` the Weapons seat's selected slot (0 pew pew, 1 the autocannon,
+ *  2 the torpedo; absent none), read from the Weapons attendant; on a turret class `gunHeld` fires the autocannon only with it 1.
+ *  W-4 spec §8: `turretAim` the reticle's world bearing from the own ship, a fine aim 0..65535 (−1 or absent none), read from
+ *  the Weapons attendant; the selected MAN gun's turret slews toward it. */
+export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean; aim?: number; gunHeld?: boolean; torpHeading?: number; weaponSel?: number; turretAim?: number; throttleHeld?: number; rcsX?: number; rcsY?: number }
 export interface HeldFrame { runId: RunId; player: PlayerId; tick: number; sequence: number; held: HeldInput }
 export interface LifecyclePause { paused: boolean; reason: string }
 export interface CommandId { player: PlayerId; sequence: number }
@@ -99,9 +102,8 @@ export type DuelCommand =
   | { kind: 'designate'; contact: number }
   /** Weapons tunes the crew laser to frequency 0..2 (A..C). */
   | { kind: 'laserFrequency'; freq: number }
-  /** W-1 (pew pew spec §1, §4): Weapons fires the pew along heading index `aim` 0..255 plus `aimAcc` 0..255 256ths of a
-   *  step, clamped into the cone by the sim. Any integers pass the codec; the sim answers an out-of-range one malformed. */
-  | { kind: 'pewFire'; aim: number; aimAcc: number }
+  /** W-4 spec §6: Weapons fires pew pew along its turret (W-4a: the nose). No aim: the round goes where the turret points. */
+  | { kind: 'pewFire' }
   /** W-2 (pew pew spec §2, §4): Weapons sets the crew laser's mode: true MANUAL (it fires only on laserFire, along an aim),
    *  false AUTO (it fires at its target by itself, as before). */
   | { kind: 'laserMode'; manual: boolean }
@@ -109,9 +111,14 @@ export type DuelCommand =
    *  aim), clamped into the laser's ±60° by the sim. Any integers pass the codec; the sim answers an out-of-range one malformed. */
   | { kind: 'laserFire'; aim: number; aimAcc: number }
   /** W-3 (pew pew spec §3): Weapons sets the crew torpedo's mode: true MANUAL (launched by missileLaunch alone, no lock or
-   *  range, and flown by the Weapons seat's held torpTurn and torpHeading), false AUTO (as before). A torpedo in flight
+   *  range, and flown by the Weapons seat's held torpHeading, W-4 spec §7: the LMB steer), false AUTO (as before). A torpedo in flight
    *  keeps the mode it launched with. */
   | { kind: 'torpMode'; manual: boolean }
+  /** W-4 spec §4.1, amendment §2.2: Weapons sets one of the Hound's guns' mode, `slot` 0 pew pew or 1 the autocannon: true
+   *  MAN (while it is the selected weapon it follows the reticle and fires on LMB), false AUTO (it aims with lead and fires
+   *  by itself at a seen, hostile enemy ship). Any integer slot passes the codec; the sim answers another one malformed,
+   *  and a slot whose weapon has no turret unavailable. */
+  | { kind: 'gunMode'; slot: 0 | 1; manual: boolean }
   /** On a decided round's end card: start the next round (H-2 spec §7). */
   | { kind: 'rematch' }
   /** Engineering spike spec §7 (any present, conscious player; the sim checks ranges): move one reactor bar into (+1) or

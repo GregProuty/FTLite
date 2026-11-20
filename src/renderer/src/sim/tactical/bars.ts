@@ -61,8 +61,10 @@ export function levelWithinCap(sys: Pick<ShipSystems, 'rooms' | 'bars'>, level: 
 }
 
 // ---- Weapons, the allocation (Task 9a; Engineering spike spec §10.3, Amendment 2; isolated) ----
-/** Spec §10.3, §11: the three crew weapons in slot order: pew pew (W-1's weapon; its bars set its recharge, spec §11), the beam (today's laser), the torpedo. */
-export const WeaponSlot = { Pew: 0, Beam: 1, Torpedo: 2 } as const;
+/** Spec §10.3, §11: the three crew weapons in slot order: pew pew (W-1's weapon; its bars set its recharge, spec §11), slot 1,
+ *  the torpedo. W-4 spec §2: on the Hound slot 1 is the autocannon. `Beam` is slot 1's name on the laser fit, an alias its
+ *  readers (beamShots, tickWeapons) keep. */
+export const WeaponSlot = { Pew: 0, Autocannon: 1, Torpedo: 2, Beam: 1 } as const;
 export const WEAPON_SLOTS = 3;
 /** A weapon's bars without the overdrive bar; the overdrive bar can be one weapon's 4th (spec §10.3). */
 export const WEAPON_BAR_MAX = 3;
@@ -95,6 +97,13 @@ export const TORPEDO_RELOAD_BY_BARS: readonly number[] = [0, 4, 6, 8, 10];
 export const TORPEDO_LEVELS_BY_BARS: readonly number[] = [1, 1, 1, 2, 2];
 /** The crew magazine's units clock: at 4 a tick (1 bar) a missile takes 2700 ticks, today's MAGAZINE_REGEN_TICKS. */
 export const MAGAZINE_REGEN_UNITS = 10800;
+/** W-4 spec §2, §4.4: the autocannon's fire interval in ticks by its bars 0..4 (0: off), AUTO then MAN (+14..25 %). */
+export const AUTOCANNON_INTERVAL_BY_BARS: readonly number[] = [0, 10, 8, 6, 5];
+export const AUTOCANNON_MAN_INTERVAL_BY_BARS: readonly number[] = [0, 8, 7, 5, 4];
+/** W-4 spec §4.4: the crew pew's charge units a tick in MAN by its bars (AUTO keeps PEW_TICKS_BY_BARS). Read from W-4b. */
+export const PEW_MAN_GAIN_BY_BARS: readonly number[] = [0, 7, 10, 14, 18];
+/** W-4 spec §5.2: the autocannon's hits a shield layer on the weak frequency (8 off it). */
+export const AUTOCANNON_WEAK_HITS_PER_LAYER = 4;
 
 // ---- Sensors (Task 10; Engineering spike spec §10.4, Amendment 2; isolated) ----
 /** Spec §10.4: scan progress per tick by effective Sensors bars 0..4, for a Science scan and a Helm/Weapons scan. */

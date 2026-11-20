@@ -39,7 +39,7 @@ function producer(seat: Seat, seed: number) {
 }
 
 describe('two clients over the loopback, one per seat (spec §10)', () => {
-  let seedsFlown = 0, crewLaserReleases = 0;   // summed over the seeds, checked after them
+  let seedsFlown = 0, crewLaunches = 0;   // summed over the seeds, checked after them
   it.each(GATE_SEEDS.map((seed) => [seed]))('seed %i: the scripted pair through the clients reaches an outcome; replicas, journal and round record agree; nothing is stale-tick', async (seed) => {
     // Each seed is seconds of synchronous CPU; yield a macrotask first so vitest's worker RPC is answered between seeds
     // (ten seeds back to back otherwise block the worker past its 60 s RPC timeout).
@@ -88,11 +88,11 @@ describe('two clients over the loopback, one per seat (spec §10)', () => {
       expect(record).toEqual(authorityRecord);
       expect(cp.modeMemory.telemetry.ticks).toBe(record.ticks);
     }
-    seedsFlown++; crewLaserReleases += authorityRecord.laserReleases[0];
+    seedsFlown++; crewLaunches += authorityRecord.missilesLaunched[0];   // W-4 spec §2.1 (kind a): the Hound has no beam; the record carries no gun counters
   }, 300_000);
-  it('across the ten seeds the crew ship released its laser: a passive crew cannot pass the seeds', () => {
+  it('across the ten seeds the crew ship launched a torpedo: a passive crew cannot pass the seeds (W-4 spec §2.1)', () => {
     expect(seedsFlown).toBe(GATE_SEEDS.length);
-    expect(crewLaserReleases).toBeGreaterThan(0);
+    expect(crewLaunches).toBeGreaterThan(0);
   });
   it('a rematch through a client replaces the replica: a new round seed, baseTick the tick after the rematch, monotone ticks and sequences', () => {
     const rig = onlineDuel(3), a = rig.connect(0), b = rig.connect(1);

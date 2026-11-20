@@ -193,9 +193,14 @@ export const GUN_HITS_PER_LAYER = 8;
  *  (tests/duelGates.test.ts): median 229.8 s, 9 crew wins, 1 Hunter win over seeds 1 to 10. At 3 the median was 100.2 s
  *  with 10 crew wins; 9 gave 186.5 s and 11 gave 217.5 s, both with no Hunter win. */
 export const GUN_HITS_PER_HULL = 12;
+/** W-4 spec §12: the autocannon's own copy of the hits a hull point (the tuning ladder's rung 1; GUN keeps GUN_HITS_PER_HULL). */
+export const AUTOCANNON_HITS_PER_HULL = 12;
 /** Valkyrn spec §7.2, §12: gun hits on a Room per damage level. 6, kept at the start value; the Valkyrn gate
  *  (tests/duelGates.test.ts): median 229.8 s, 9 crew wins, 1 Hunter win over seeds 1 to 10. */
 export const GUN_HITS_PER_LEVEL = 6;
+/** W-4 amendment §3.4: the wear a pew pew hit by hand adds to its target room's gunRoomWear (the autocannon's counter, a
+ *  level at the owner's gun's hitsPerLevel, 6): two hits a level. */
+export const PEW_ROOM_WEAR = 3;
 
 // Playtest2feedback (spec 2026-11-18-playtest2feedback-design §2, §4, §4a): the crew Helm's Newtonian flight, on a class
 // whose `newtonianHelm` is true (the Cutter). Start values, tuned in playtest.
@@ -231,6 +236,22 @@ export const PEW_HULL = 1;
 /** The aim cone's half-angle in degrees about the heading, and the same in fine heading units (rounded down). */
 export const PEW_ARC = 60;
 export const PEW_ARC_STEPS = Math.floor((PEW_ARC / 360) * AIM_STEPS);   // 10922
+/** W-4 spec §3.3: the autocannon's arc, ±30° in fine heading steps (5461). */
+export const AUTOCANNON_ARC_STEPS = Math.floor((30 / 360) * AIM_STEPS);
+/** W-4 spec §3.3: each turret's traverse in fine steps a tick, [AUTO, MAN] (MAN +25 %, rounded): pew 120 / 150 °/s,
+ *  the autocannon 90 / 112.4 °/s. */
+export const PEW_TURRET_TRAVERSE: readonly [number, number] = [364, 455];
+export const AUTOCANNON_TURRET_TRAVERSE: readonly [number, number] = [273, 341];
+/** W-4 spec §4.2: the autocannon's AUTO range (a round reaches about 607 u at rest). */
+export const AUTOCANNON_AUTO_RANGE = 600;
+/** W-4 spec §12: cos 30°, the autocannon's ±30° arc as inArc's cosine: the scripted Helm lines the guns up outside it. */
+export const AUTOCANNON_ARC_COS = 0.8660254037844386;
+/** W-4 spec §4.3: AUTO stops the autocannon at 80 % heat, so it never locks. */
+export const GUN_AUTO_HEAT_STOP = 800;
+/** W-4 spec §4.2 (owner 2026-11-19): AUTO is on solution when its turret ends the tick within this many fine steps (1.0°)
+ *  of the lead. With the lead's half step the worst aim error is 310 steps, 17.8 u at the autocannon's 600 u (the Hunter's
+ *  radius is 20); 182 is also the autocannon's per-tick lag in a 150°/s turn (455 − 273), so a trailing gun still fires. */
+export const AUTO_FIRE_TOLERANCE = 182;
 /** cos 60°, for the Hunter's "inside the cone" test by dot product (geometry.ts inArc). */
 export const PEW_ARC_COS = 0.5;
 /** A round's reach: PEW_SPEED · PEW_LIFE · DT (450). The Hunter attacks inside it. */

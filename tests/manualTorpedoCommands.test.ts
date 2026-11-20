@@ -1,9 +1,10 @@
-// W-3 manual torpedo (spec 2026-11-18-pew-pew-weapons-design §3, §4, §5): torpMode and the held steering on the wire and
+// W-3 manual torpedo (spec 2026-11-18-pew-pew-weapons-design §3, §4, §5): torpMode and the held heading on the wire and
 // through the duel step and the authority.
-// - The codec round-trips torpMode and the held torpTurn and torpHeading, and refuses anything else.
+// - The codec round-trips torpMode and the held torpHeading, and refuses anything else (W-4 spec §7: a frame carrying
+//   torpTurn is malformed).
 // - The step admits torpMode from the Weapons attendant only and sets the mode before a same-tick missileLaunch, which
 //   in MANUAL needs no range.
-// - The Weapons attendant's held torpTurn and torpHeading fly a MANUAL torpedo; anyone else's do not.
+// - The Weapons attendant's held torpHeading flies a MANUAL torpedo; anyone else's does not.
 // - The authority carries them into its checkpoint and replay, and a pause or an expired frame clears them.
 import { describe, expect, it } from 'vitest';
 import { validateDuelCheckpoint, type DuelCheckpoint } from '../src/renderer/src/authority/duelCheckpoint';
@@ -14,7 +15,7 @@ import { duelCodec } from '../src/renderer/src/net/codec';
 import { REMOTE_HELD_TIMEOUT_MS } from '../src/renderer/src/net/receivePolicy';
 import type { DuelCommand, DuelEnvelope } from '../src/renderer/src/sim/duel/commands';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
-import { heldTorpSteer, stepDuelTick } from '../src/renderer/src/sim/duel/step';
+import { heldTorpHeading, stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { classOf, missileOf, placeMissile, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { RockKind, rockSlots, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
@@ -48,10 +49,10 @@ describe('torpMode and the held steering on the wire (spec §4)', () => {
     for (const good of [env({ kind: 'torpMode', manual: true }), env({ kind: 'torpMode', manual: false })]) expect(codec.decodeMessage(codec.encodeMessage(good))).toEqual(good);
     for (const bad of [{ kind: 'torpMode', manual: 1 }, { kind: 'torpMode' }, { kind: 'torpMode', manual: true, extra: 1 }]) expect(() => codec.encodeMessage(env(bad))).toThrow();
   });
-  it('the held frame carries torpTurn −1..1 and torpHeading −1..255, integers only', () => {
+  it('the held frame carries torpHeading −1..255, integers only; a frame carrying torpTurn is malformed (W-4 spec §7)', () => {
     const codec = duelCodec(2), frame = (held: Record<string, unknown>) => ({ kind: 'held', frame: { runId: 'r', player: 1, tick: 0, sequence: 1, held: { ...NONE, ...held } } });
-    for (const good of [{ torpTurn: 1, torpHeading: 40 }, { torpTurn: -1 }, { torpHeading: -1 }, { torpHeading: 255 }]) expect(codec.decodeMessage(raw(frame(good)))).toEqual(frame(good));
-    for (const bad of [{ torpTurn: 2 }, { torpTurn: -2 }, { torpTurn: 0.5 }, { torpHeading: 256 }, { torpHeading: -2 }, { torpHeading: 2.5 }, { torpTurn: true }])
+    for (const good of [{ torpHeading: 40 }, { torpHeading: -1 }, { torpHeading: 255 }]) expect(codec.decodeMessage(raw(frame(good)))).toEqual(frame(good));
+    for (const bad of [{ torpTurn: 1 }, { torpTurn: 0 }, { torpTurn: 1, torpHeading: 40 }, { torpHeading: 256 }, { torpHeading: -2 }, { torpHeading: 2.5 }])
       expect(() => codec.decodeMessage(raw(frame(bad))), JSON.stringify(bad)).toThrow();
   });
 });
@@ -97,13 +98,12 @@ describe('torpMode through the duel step (spec §3)', () => {
 });
 
 describe('the held steering through the duel step (spec §3)', () => {
-  it('heldTorpSteer: the sign of torpTurn, a whole heading index or none', () => {
-    expect(heldTorpSteer(NONE)).toEqual({ turn: 0, heading: -1 });
-    expect(heldTorpSteer({ ...NONE, torpTurn: 1, torpHeading: 40 })).toEqual({ turn: 1, heading: 40 });
-    expect(heldTorpSteer({ ...NONE, torpTurn: -1, torpHeading: 0 })).toEqual({ turn: -1, heading: 0 });
-    for (const bad of [{ torpTurn: Number.NaN, torpHeading: 256 }, { torpTurn: 0, torpHeading: -1 }, { torpHeading: 1.5 }]) expect(heldTorpSteer({ ...NONE, ...bad })).toEqual({ turn: 0, heading: -1 });
+  it('heldTorpHeading: a whole heading index or none (W-4 spec §7)', () => {
+    expect(heldTorpHeading(NONE)).toBe(-1);
+    expect([heldTorpHeading({ ...NONE, torpHeading: 40 }), heldTorpHeading({ ...NONE, torpHeading: 0 })]).toEqual([40, 0]);
+    for (const bad of [256, -1, 1.5, Number.NaN]) expect(heldTorpHeading({ ...NONE, torpHeading: bad })).toBe(-1);
   });
-  it('the gunner\'s torpTurn turns the MANUAL torpedo; the standing player\'s does not', () => {
+  it('the gunner\'s torpHeading turns the MANUAL torpedo; the standing player\'s does not', () => {
     const d = gunnerAtWeapons(), turn = classOf(d.tactical, 0).slots.missile.turnStepsPerTick;
     try {
       apart(d.tactical);
@@ -111,9 +111,9 @@ describe('the held steering through the duel step (spec §3)', () => {
       // torpedo; no rock is in the way, so the test measures only the steering.
       for (let k = 0; k < rockSlots(d.tactical); k++) d.tactical.rocks[k * ROCK_STRIDE] = RockKind.Gone;
       const m = flying(d.tactical);
-      for (let k = 0; k < 10; k++) step(d, [], NONE, { ...NONE, torpTurn: 1 });   // player 0 stands: not Weapons
+      for (let k = 0; k < 10; k++) step(d, [], NONE, { ...NONE, torpHeading: 64 });   // player 0 stands: not Weapons
       expect(m.heading).toBe(0);
-      for (let k = 0; k < 10; k++) step(d, [], { ...NONE, torpTurn: 1 });
+      for (let k = 0; k < 10; k++) step(d, [], { ...NONE, torpHeading: 64 });   // W-4 spec §7: the held heading steers
       expect(m.heading).toBe(Math.floor(10 * turn));
     } finally { disposeDuel(d); }
   });
@@ -128,28 +128,28 @@ describe('the authority carries the held steering (spec §4)', () => {
     flying(s.duel.tactical);
   });
   const heldOf = (l: ReturnType<typeof torpDuel>) => (JSON.parse(JSON.stringify(l.core.captureCheckpoint())) as DuelCheckpoint).held[1]!;
-  it('a held torpTurn from the gunner flies the torpedo, and rides into the checkpoint and the replay', () => {
+  it('a held torpHeading from the gunner flies the torpedo, and rides into the checkpoint and the replay', () => {
     const l = torpDuel('torp-wire');
-    for (let k = 0; k < 6; k++) { l.held(1, { ...NONE, torpTurn: 1, torpHeading: 40 }); l.tick(); }
+    for (let k = 0; k < 6; k++) { l.held(1, { ...NONE, torpHeading: 40 }); l.tick(); }
     expect(missileOf(l.state.duel.tactical, 0)!.heading).toBeGreaterThan(0);
     const cp = JSON.parse(JSON.stringify(l.core.captureCheckpoint())) as DuelCheckpoint;
-    expect(cp.held[1]).toEqual({ ...NONE, torpTurn: 1, torpHeading: 40 });
+    expect(cp.held[1]).toEqual({ ...NONE, torpHeading: 40 });
     expect(() => validateDuelCheckpoint(cp, DIGEST, resolveCutter)).not.toThrow();
-    expect(() => validateDuelCheckpoint({ ...cp, held: [cp.held[0]!, { ...NONE, torpTurn: 2 }] }, DIGEST, resolveCutter)).toThrow();
+    expect(() => validateDuelCheckpoint({ ...cp, held: [cp.held[0]!, { ...NONE, torpTurn: 1 } as HeldInput] }, DIGEST, resolveCutter)).toThrow();   // W-4 spec §7: an unknown key now
     const replay = JSON.parse(JSON.stringify(l.core.replay())) as unknown;
     expect(() => parseEncounterReplay(duelRules, replay, DIGEST, resolveCutter)).not.toThrow();
     expect(JSON.stringify(replay)).toContain('"torpHeading":40');
   });
   it('a pause deletes them, and an expired held frame is neutralised', () => {
     const l = torpDuel('torp-pause');
-    l.held(1, { ...NONE, torpTurn: 1, torpHeading: 40 }); l.tick();
-    expect(heldOf(l)).toMatchObject({ torpTurn: 1, torpHeading: 40 });
+    l.held(1, { ...NONE, torpHeading: 40 }); l.tick();
+    expect(heldOf(l)).toMatchObject({ torpHeading: 40 });
     l.command(0, { kind: 'setPaused', paused: true }); l.tick();
-    expect(['torpTurn' in heldOf(l), 'torpHeading' in heldOf(l)]).toEqual([false, false]);
+    expect('torpHeading' in heldOf(l)).toBe(false);
     const e = torpDuel('torp-expire');
     e.held(1, { ...NONE, torpHeading: 40 }); e.tick();
     expect(heldOf(e)).toMatchObject({ torpHeading: 40 });
     e.tick(Math.ceil(REMOTE_HELD_TIMEOUT_MS / (1000 / 60)) + 2);
-    expect([heldOf(e).torpTurn, heldOf(e).torpHeading]).toEqual([undefined, undefined]);
+    expect(heldOf(e).torpHeading).toBeUndefined();
   });
 });

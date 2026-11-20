@@ -14,9 +14,9 @@ const peer = (seat:number) => ({role:seat===0?'host':'guest',seat,runId,hostGene
   routes:[{state:'connected',selected:true,localType:'relay',remoteType:'relay',policy:'relay',sent:10,received:10}],
   cleanup:{pid:100+seat,exited:true,exitCode:0,workers:seat?0:1,workerExits:seat?0:1,workerIds:seat?[]:[0],windows:0,ports:0,listeners:0,peers:0,nativePeersObserved:1,nativePeerCloses:1,nativePeersEndedWithPage:0,observedPagePorts:4}});
 const duelCleanup = (pid:number,host:boolean) => ({pid,exited:true,exitCode:0,workers:host?1:0,workerExits:host?1:0,workerIds:host?[0]:[],windows:0,ports:0,listeners:0,peers:0,nativePeersObserved:1,nativePeerCloses:1,nativePeersEndedWithPage:0,observedPagePorts:3});
-const duel = () => ({seed:2277,decidedTick:1471,thrust:{before:0,host:12.5,guest:12.5},beam:{before:0,host:1,guest:1},agreement:{tick:1800,sequence:600,hash:'abcdef01'},
+const duel = () => ({seed:2277,decidedTick:1471,thrust:{before:0,host:12.5,guest:12.5},launch:{before:0,host:1,guest:1},agreement:{tick:1800,sequence:600,hash:'abcdef01'},
   records:[{role:'host',round:0,transport:'loopback',rttMs:1,held:2,command:2},{role:'guest',round:0,transport:'internet',rttMs:38,held:2,command:2}],cleanup:[duelCleanup(200,true),duelCleanup(201,false)]});
-const deviceDuel = (seat:number) => ({seed:2277,decidedTick:1471,thrust:{before:0,peak:12.5},beam:{before:0,after:1},
+const deviceDuel = (seat:number) => ({seed:2277,decidedTick:1471,thrust:{before:0,peak:12.5},launch:{before:0,after:1},
   record:seat?{role:'guest',round:0,transport:'internet',rttMs:38,held:2,command:2}:{role:'host',round:0,transport:'loopback',rttMs:1,held:2,command:2},cleanup:duelCleanup(300+seat,!seat)});
 const run = (role?:number):any => ({version:1,identity:identity(),serviceOrigin:'https://service.example',forceRelay:true,mode:role===undefined?'local-pair':'single-device',machineLabel:role===undefined?'local':`device-${role}`,networkLabel:role===undefined?'local':`network-${role}`,failure:null,cleanupFailed:false,temporaryRemoved:true,directoryCleanupAttempted:true,elapsedMs:1000,budgetMs:90000,processes:[{pid:10,exited:true,exitCode:0,kind:'preparation'}],peers:role===undefined?[peer(0),peer(1)]:[peer(role)],...(role===undefined?{duel:duel()}:{deviceDuel:deviceDuel(role)})});
 const fixture = ():any => ({version:1,identity:identity(),internetReady:true,localRecovery:{status:'PASS',evidence:[ref()],report:structuredClone(recovery),runtimeProvenance:{reportRevision:recovery.source.revision,candidateRevision:'c'.repeat(40),executableArtifacts:identity().artifacts}},deployedService:{status:'PASS',evidence:[ref()],report:run(),deployment:{workerName:'ftlite-signalling-dev',serviceOrigin:'https://service.example',versionId:'deployment-1',bundleSha256:sha,configSha256:sha,operatorConfirmedArtifact:true}},forcedRelayGameplay:{status:'PASS',evidence:[ref()],report:run()},twoMachineGameplay:{status:'PASS',evidence:[ref(),ref()],reports:[run(0),run(1)],attestation:{physicallySeparate:true,differentNetworks:true,operatorLabels:['operator-a','operator-b']}},actualOsSuspend:{status:'NOT_RUN',evidence:[]}});
@@ -52,7 +52,7 @@ it.each([
   ['a direct duel guest under forced relay',(r:any)=>r.forcedRelayGameplay.report.duel.records[1].transport='lan'],
   ['a duel guest record without an RTT',(r:any)=>r.deployedService.report.duel.records[1].rttMs=null],
   ['a duel host record off loopback',(r:any)=>r.deployedService.report.duel.records[0].transport='lan'],
-  ['no beam in the duel',(r:any)=>{const b=r.deployedService.report.duel.beam;b.before=1;b.host=2;b.guest=1;}],
+  ['no torpedo launch in the duel',(r:any)=>{const b=r.deployedService.report.duel.launch;b.before=1;b.host=2;b.guest=1;}],
   ['no thrust rise on the duel guest',(r:any)=>{const t=r.deployedService.report.duel.thrust;t.guest=t.before+1;}],
   ['unbalanced duel cleanup',(r:any)=>r.deployedService.report.duel.cleanup[0].workerExits=0],
   ['a duel pid reused',(r:any)=>r.deployedService.report.duel.cleanup[1].pid=100],
@@ -63,7 +63,7 @@ it.each([
   ['a device duel record from the other seat',(r:any)=>{ r.twoMachineGameplay.reports[0].deviceDuel.record={role:'guest',round:0,transport:'internet',rttMs:38,held:2,command:2}; }],
   ['a direct device duel guest under forced relay',(r:any)=>r.twoMachineGameplay.reports[1].deviceDuel.record.transport='lan'],
   ['no thrust peak on a device',(r:any)=>r.twoMachineGameplay.reports[0].deviceDuel.thrust.peak=0.5],
-  ['no beam on a device',(r:any)=>{const b=r.twoMachineGameplay.reports[1].deviceDuel.beam;b.before=1;b.after=1;}],
+  ['no torpedo launch on a device',(r:any)=>{const b=r.twoMachineGameplay.reports[1].deviceDuel.launch;b.before=1;b.after=1;}],
   ['two-machine duel seeds differ',(r:any)=>r.twoMachineGameplay.reports[1].deviceDuel.seed=1],
 ])('rejects %s',(_name,mutate)=>{const r=fixture();mutate(r);expect(()=>validateInternetAppReport(r)).toThrow('internet-evidence-invalid');});
 it('admits a single device only as an independent local result',()=>expect(()=>validateInternetRun(run(1))).not.toThrow());

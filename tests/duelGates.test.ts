@@ -9,22 +9,14 @@ import { CAP_TICKS, gateSummary, GATE_SEEDS, median, PLANET_END_MIN_TICKS, runDu
 import { runValkyrnDuel, valkyrnGate, valkyrnLine, type ValkyrnRun } from './helpers/valkyrnGate';
 
 const runs = new Map<number, DuelRun>();
-/** Asteroids-iii (owner 2026-11-19): a documented known exception to the H-0 crew-laser check, the scripted pair at seed 2
- *  only; every other assertion holds for it and every other seed is gated as before. Seed 2's scripted crew loses (all
- *  downed, 123.8 s) with 0 laser releases: the crew laser was full and would hit on 355 ticks, but nobody sat at Weapons on
- *  314 of them (the gunner leaves Weapons for the fire the Hunter's first hit starts, tick 2643) and the crew torpedo
- *  froze it on the other 41; rocks blocked line of sight on only 17 of 862 in-arc, in-range ticks and the crew touched no
- *  rock. The gate was already marginal on master ab6b0ef2 (7 of 10 seeds at exactly 1 release, seed 2 among them); this
- *  branch has 43 crew releases over the ten seeds against master's 29. SHIP_HULL 77, 85 and 94 end the same tick. */
-const LASER_EXEMPT: ReadonlySet<string> = new Set(['h0:2']);
 
 describe('the H-0 telemetry gates: scripted pair against the hunter, seeds 1 to 10', () => {
-  for (const seed of GATE_SEEDS) it(`seed ${seed}: ends before the cap, the crew uses both weapons${LASER_EXEMPT.has(`h0:${seed}`) ? ' (laser use exempt: owner 2026-11-19)' : ''}, no planet-contact end under 30 s`, () => {
+  for (const seed of GATE_SEEDS) it(`seed ${seed}: ends before the cap, the crew fires a pew or gun round and launches a missile, no planet-contact end under 30 s`, () => {
     const r = runDuel(seed, 'scripted'), t = r.telemetry;
     runs.set(seed, r);
     expect(t.outcome, telemetryLine(r)).not.toBe(Outcome.Running);
     expect(t.ticks).toBeLessThan(CAP_TICKS);
-    if (!LASER_EXEMPT.has(`h0:${seed}`)) expect(t.ships[0].laserReleases, telemetryLine(r)).toBeGreaterThanOrEqual(1);
+    expect(r.pewShots + r.gunShots, telemetryLine(r)).toBeGreaterThanOrEqual(1);   // W-4 spec §14 (kind a): the Hound's guns, not the beam
     expect(t.ships[0].missilesLaunched, telemetryLine(r)).toBeGreaterThanOrEqual(1);
     expect(endedFromPlanet(t) && t.ticks < PLANET_END_MIN_TICKS, telemetryLine(r)).toBe(false);
   }, 60_000);

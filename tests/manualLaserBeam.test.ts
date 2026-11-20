@@ -16,6 +16,7 @@ import { cloneTactical, createTacticalState, missileOf, placeMissile, Room, type
 import { AIM_STEPS, HEADING_COUNT, LASER_ARC_STEPS, LASER_BURST_GAP_TICKS, LASER_CHARGE_UNITS, LASER_HULL, LASER_RANGE, PLANET_RADIUS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
 import { applyWeaponsInput, IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { mover } from './helpers/rockArena';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 /** The first pool slot past the seeded asteroids, where open() writes its rocks. */
 const ROCK0 = 100;
@@ -23,7 +24,7 @@ type LaserEvent = Extract<DuelEvent, { kind: 'laser' }>;
 /** A MANUAL crew at (0, crewY) nose north and still, full; no rocks but the ones given (resting moving rocks from slot
  *  ROCK0 on); the Hunter far off and still; a fresh tick's rock masks; no events. */
 function open(rocks: { x: number; y: number; r: number }[] = [], crewY = 1500): TacticalState {
-  const st = todaysCrewWeapons(createTacticalState(5));
+  const st = todaysCrewWeapons(createTacticalState(5, 2, ShipClass.ValkyrnLaser));   // W-4 spec §14.1: the beam's rule, on the laser fit
   st.rocks.fill(0);   // every seeded rock gone (the seeded grid ignores empty slots)
   rocks.forEach((a, k) => mover(st, ROCK0 + k, a.x, a.y, 0, 0, a.r));
   beginRockTick(st);

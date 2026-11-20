@@ -1045,3 +1045,65 @@ Spec `docs/superpowers/specs/2026-11-18-pew-pew-weapons-design.md` §3; plan `do
   5. Esc pauses the music; back to the menu returns to calm.
 
   Is each track good, does it fit its mood, and are the five at a comfortable level against each other and the effects? To swap a track or tune one, see `MUSIC` in `src/renderer/src/audio/soundBank.ts` (file, start, loop points, level). The other candidates are in `C:\Users\djuar\FTLite-assets\music-spike\audition.html`.
+
+## W-4a: the Hound's guns (2026-11-19)
+
+Spec `docs/superpowers/specs/2026-11-19-w4-weapons-controls-design.md` §2, §5, §6, §9, §10, §12, §19; plan `docs/superpowers/plans/2026-11-19-w4a-loadout.md`.
+
+- [x] Automated (W-4a): `npx vitest run` passes (492 files, 5896 tests). This includes the loadout (pew pew, the autocannon, the torpedo; no beam; start 1 / 0 / 1), the autocannon's interval by bars and its heat and lock, its rounds wearing and breaking rocks (the Valkyrn's still absorbed), the weak frequency's 2-layer pew strip and 4-hit autocannon layer, `pewFire` without an aim, `weaponSel` in every held schema, the trigger only with the autocannon selected, the keys (1 / 2 / 3, A / D, W / S, 4 / 5 / 6), the cards, the scripted gunner's bar move and the gates on pew and gun rounds (`tests/w4*.test.ts`). `npx tsc -b` is clean; SIM_VERSION 60, goldens blessed at 60; `tests/valkyrnIdentity.test.ts` and `tests/w4HunterIdentity.test.ts` unchanged; determinism passes on Node, Electron and Firefox.
+- [ ] Manual (owner): play a Single player duel at the Hound's Weapons seat.
+  1. The block shows PEW PEW, AUTOCANNON and TORPEDO, with the selected one framed. 1 / 2 / 3 and A / D move the frame.
+  2. W / S add and remove bars on the selected weapon; at an end the pips flash and the row says why.
+  3. Select the autocannon, give it a bar, and hold the left button on the map: it fires, the heat bar rises, and held long enough it reads OVERHEAT and stops.
+  4. Hold it on a rock: the rock chips and breaks.
+  5. After a Level 2 scan, tune with 4 / 5 / 6 to the weak frequency (the diamond): a pew pew round takes 2 shield layers.
+
+  Screenshots for the look gate:
+  1. The three cards.
+  2. The autocannon firing, with its heat bar.
+  3. A rock breaking under autocannon fire.
+
+  Do the cards read on the amber CRT, and does holding the autocannon feel like the Valkyrn's gun?
+
+## W-4b: turrets and AUTO/MAN (2026-11-19)
+
+Spec `docs/superpowers/specs/2026-11-19-w4-weapons-controls-design.md` §3, §4, §6, §8-§12, §13.1, §13.4, §19, as amended by `docs/superpowers/specs/2026-11-19-w4-amendment-modes-rooms-design.md` §2 to §6; plan `docs/superpowers/plans/2026-11-19-w4b-turrets-auto.md`.
+
+- [x] Automated (W-4b): `npx vitest run` passes (498 files, 6010 tests). This includes the turret state (hashed, bounded per class), the slew law (rate, arc, wrap, integers), MAN slewing only the gun in hand at 455 / 341 while the other fights on AUTO, AUTO at 364 / 273 and on solution within 182 fine steps (firing through a sustained Helm turn), AUTO's solutions (seen, range, line of sight, arc, ship only) and firing (the pew per third, the autocannon to 80 % heat and never locking, nothing in the 30 s hold), the scripted Helm lining the guns up, MAN's fire-rate tables, `gunMode {slot, manual}` (a mode per gun) and `pewFire`'s AUTO refusal on pew pew's own switch, `turretAim` in every held schema, R and Shift+R (Z and V unread at the Hound's seat) and a switch on each card, the target room (`laserLock` on the Hound, E / Q and the plain room click, never `torpLock`; rounds fired by hand tagged with it; six autocannon hits or two pew pew hits by hand a room level, AUTO hits the hull only; the enemy window's bracket; online `lockSent`), the map's arc, muzzle lines, reticle and bracket, the online turret prediction equal to the stepped turret, and the scripted gunner on AUTO guns (`tests/w4*.test.ts`). `npx tsc -b` is clean; SIM_VERSION 60, goldens blessed at 60, no bump; `tests/valkyrnIdentity.test.ts`'s digests and `tests/w4HunterIdentity.test.ts` unchanged; determinism passes on Node, Electron and Firefox. Tuning ladder: base numbers (no rung met the target of a crew win with every per-seed gate passing; the sweep is in `docs/superpowers/research/2026-11-19-w4-report.md`, W-4b Task 13; the owner decides).
+- [ ] Manual (owner): play a Single player duel at the Hound's Weapons seat.
+  1. Move the mouse over the map: the reticle follows; with the selected gun on MAN (R) its muzzle line trails the reticle and stops at the arc's edge.
+  2. R flips the selected weapon's tag (the torpedo's when it is selected), Shift+R both guns' together; a click on a tag flips that weapon alone. Z and V do nothing here.
+  3. In the first 30 s, on AUTO, the guns track the enemy and the tags read HOLD; nothing fires.
+  4. Once hostile, on AUTO, both guns track and fire at the ship with no input; the bracket lights on the enemy.
+  5. With both guns on MAN and pew pew selected, its tag reads MAN and the autocannon's AUTO (lit), and the autocannon keeps firing on its own while you aim the pew.
+  6. MAN feels quicker to traverse and fire than AUTO.
+  7. Q / E moves the bracket in the enemy window (Weapons, Shields, Engines), and the second hint row names the room; a click on a room there, with nothing picked up, sets it too.
+  8. Six autocannon hits or two pew pew hits by hand take the bracketed room down a level; on AUTO the same hits only wear the hull.
+  9. With the torpedo picked up (its card), Q / E still move the guns' room, and a room click sets the torpedo's own target.
+
+  Screenshots for the look gate:
+  1. The map in MAN, with the reticle, the selected arc and two muzzle lines.
+  2. AUTO on solution with the bracket.
+  3. The Weapons block with one gun on MAN and one on AUTO, and the enemy window with the target room bracketed.
+
+  Does the slewing read as "slowly follows"?
+
+## W-4c: flying the torpedo (2026-11-19)
+
+Spec `docs/superpowers/specs/2026-11-19-w4-weapons-controls-design.md` §7, §9, §10, §11, §19; plan `docs/superpowers/plans/2026-11-19-w4c-manual-torpedo.md`.
+
+- [x] Automated (W-4c): `npx vitest run` passes (500 files, 6033 tests, 2 skipped). This includes the held heading as the only MANUAL steer (`torpTurn` gone from every schema; a frame carrying it is malformed), the left button's bearing from the torpedo's marker, a pick-up from before the launch dropped so the button steers at once, a click-launch held down steering at once, the right button panning at Weapons, no gun in hand while it flies (nothing follows the reticle, the trigger fires nothing, `pewFire` refused `missile-in-flight`) with every gun, MAN ones included, firing on AUTO, the fresh press after the flight (a button held off the map and dragged on included) and the selection's return, and no turret prediction while it flies (`tests/w4Flight.test.ts`, `tests/w4TorpedoSeat.test.ts`, `tests/manualTorpedo*.test.ts`). The duel oracle proves every scripted and passive run unchanged per tick at SIM_VERSION 60. `npx tsc -b` is clean. Determinism passes on Node, Electron and Firefox.
+  SIM_VERSION 60 → 61 alone (canonical trace and duel oracle per tick), blessed (8ddb2129); the merge to master bumps once more (master is already at 61); the duel app smoke's `DUEL_TEST_SEED` stays 6626 (the smoke passes at 61, no re-pick).
+- [x] Automated (W-4 final, whole branch 5d4bfb08..HEAD, after the final review's cleanup wave): `npx tsc -b` clean; `npx electron-vite build` succeeds; `npx vitest run --maxWorkers=4` 500 files, 6033 tests passed, 2 skipped; `npm run test:duel-app-runtime` ACTUAL TWO-PROCESS DUEL APPLICATION PASS (163798 ms); determinism PASS on Node v24.18.0, Electron 37.10.3 and Firefox 160.0 (1800 samples each); the cleanup's sim edits proven unchanged per tick (canonical trace and duel oracle, 21 runs / 181043 ticks / 734 fields) and blessed at 61 (only `basic.json`'s content digest moved). Duel gate (`npx tsx scripts/duel-telemetry.ts`): median 131.7 s (gate 180 to 300, not met), crew 0 wins / 10 losses, every duel with a crew pew or gun round and a missile launch, 0 planet-contact ends under 30 s, passive median 145.9 s; the balance is the owner's open tuning decision (W-4b Task 13 ladder). Valkyrn (`npx tsx scripts/valkyrn-telemetry.ts`): median 168.0 s, 1 win / 9 losses, gun 3853 shots 87.1 % hits, the same as at the branch base (the Valkyrn is bit-identical; its median < 180 is pre-existing). SIM_VERSION 61 on the branch; master is also at 61, so the merge bumps to 62 with its own bless.
+- [ ] Manual (owner): play a Single player duel at the Hound's Weapons seat.
+  1. Select the torpedo (3) and press R (or click its tag) to set it MANUAL, then F (or click the map). V does nothing here.
+  2. Hold the left button on the map: the torpedo swings toward the cursor, and the card reads STEER LMB. Let go: it holds that heading.
+  3. While it flies, the muzzle lines do not follow the reticle and the left button fires nothing. Once the enemy is hostile the guns, on MAN or AUTO, track it and fire on their own (owner 2026-11-19: no gun is in your hands during the flight); a gun set to MAN reads AUTO (or HOLD), still lit, until it ends.
+  4. A / D and 1 / 2 / 3 still move the selection during the flight, and R and Shift+R still flip each tag's light (its switch); the words stay AUTO or HOLD until the flight ends. The right drag pans the map.
+  5. When it ends, the selection is the gun you had before. A held left button fires nothing until you let go and press again, even if it was held over the console and dragged onto the map.
+  6. Select the torpedo (3), R to MANUAL, and click the map: it launches. Keep the button down and it turns toward the pointer once its boost ends; a quick click leaves it flying straight on the nose's heading. A torpedo picked up by its card before the launch is dropped, so holding the button steers at once.
+
+  Screenshots for the look gate:
+  1. A MANUAL torpedo under the left-button steer, with the STEER LMB card.
+
+  Does it feel like the Helm's steer?

@@ -89,8 +89,8 @@ async function main() {
   }
   /** The duel run (H-2 spec §10, H-2b): through the real menu, round 1 is the test seed's forced end (each player only
    *  stands up and sits down again, X then E, so both records carry command samples; nobody flies or fires), and Enter
-   *  starts round 2 on both; the Helm (the host) thrusts and the speed rises on both; Weapons (the guest) fires and a
-   *  beam shows on both; both agree on a hash; both machines write round 1's playtest record, copied beside the report;
+   *  starts round 2 on both; the Helm (the host) thrusts and the speed rises on both; Weapons (the guest) launches a MANUAL torpedo, seen on
+   *  both; both agree on a hash; both machines write round 1's playtest record, copied beside the report;
    *  then both apps shut down. Returns the duel evidence the report validates. */
   const latest=(v:any)=>(v.observations.at(-1)?.publications as any[]|undefined)?.reduce((a:any,p:any)=>(a&&a.sequence>=p.sequence?a:p),undefined);   // newest by sequence: state packets can arrive out of order
   const hold=async(p:Owned,key:string,ms:number)=>{await p.request!('key',{key,down:true});await pause(ms);await p.request!('key',{key,down:false});};
@@ -117,16 +117,16 @@ async function main() {
     const before=latest(await host.request!('status')).speed;
     await hold(host,'W',2000);
     const fast=await until(both,([a,b])=>a?.speed>before+1&&b?.speed>before+1);
-    const shots=latest(await host.request!('status')).shots;
-    await hold(guest,'Space',4500);   // a full charge takes 4 s
-    const fired=await until(both,([a,b])=>a?.shots>shots&&b?.shots>shots);
+    const launches=latest(await host.request!('status')).launches;
+    await hold(guest,'3',120);await pause(300);await hold(guest,'R',120);await pause(300);await hold(guest,'F',120);   // W-4 spec §2, §9: the Hound has no beam; a MANUAL torpedo (select it, R, F: amendment §2.4) launches with no lock or range
+    const fired=await until(both,([a,b])=>a?.launches>launches&&b?.launches>launches);
     const agreement=await until(async()=>{const [a,b]=[await host.request!('status'),await guest.request!('status')];const hp=a.observations.at(-1)?.publications??[];
       return (b.observations.at(-1)?.publications??[]).findLast((p:any)=>hp.some((q:any)=>q.sequence===p.sequence&&q.hash===p.hash&&q.tick===p.tick));},v=>!!v);
     const records=await until(async()=>[duelLines(dir,'host'),duelLines(dir,'guest')],([h,g])=>h.some(sampled)&&g.some(sampled));
     rmSync(copies,{recursive:true,force:true});
     for(const role of ['host','guest']){mkdirSync(join(copies,role),{recursive:true});for(const f of duelFiles(dir,role))copyFileSync(f,join(copies,role,basename(f)));}
     await Promise.all([host,guest].map(async p=>{p.cleanup=await p.request!('shutdown');await deadline.wait(p.done,'cleanup-timeout',7000);}));
-    return {seed:decided[0].seed,decidedTick:decided[0].tick,thrust:{before,host:fast[0].speed,guest:fast[1].speed},beam:{before:shots,host:fired[0].shots,guest:fired[1].shots},
+    return {seed:decided[0].seed,decidedTick:decided[0].tick,thrust:{before,host:fast[0].speed,guest:fast[1].speed},launch:{before:launches,host:fired[0].launches,guest:fired[1].launches},
       agreement:{tick:agreement.tick,sequence:agreement.sequence,hash:agreement.hash},records:[record(records[0].find(sampled)),record(records[1].find(sampled))],
       cleanup:[host,guest].map(p=>({pid:p.pid,exited:p.exited,exitCode:p.exitCode,...p.cleanup}))};
   }
@@ -138,7 +138,7 @@ async function main() {
   }
   /** One machine of the two-machine duel, the same steps as duelRun on this machine only: the host's lobby shows the
    *  room code on screen, and the guest joins with the code from its file. Round 1 is the forced end (X, then E); the
-   *  host presses Enter; in round 2 the host (the Helm) thrusts and the guest (Weapons) fires, and each screen shows
+   *  host presses Enter; in round 2 the host (the Helm) thrusts and the guest (Weapons) launches a torpedo, and each screen shows
    *  both. This machine's round-1 record is copied beside the report, then the app shuts down. */
   async function deviceDuelRun(kind:'host'|'guest') {
     const dir=join(directory,'duel'),seat=kind==='host'?0:1;mkdirSync(dir);
@@ -154,14 +154,14 @@ async function main() {
     const decided=await until(now,p=>p?.outcome>0,90000);
     if(kind==='host')await hold(app,'Return',120);
     await until(now,p=>p?.round===1&&p.outcome===0,30000);
-    const start=await now(),before=start.speed,shots=start.shots;
-    if(kind==='host'){await pause(1500);await hold(app,'W',2000);}else await hold(app,'Space',4500);   // a full charge takes 4 s
-    const seen=await until(()=>app.request!('status'),v=>{const ps=(v.observations.at(-1)?.publications??[]).filter((p:any)=>p.round===1);return ps.some((p:any)=>p.speed>before+1)&&ps.at(-1)?.shots>shots;},20000);
+    const start=await now(),before=start.speed,launches=start.launches;
+    if(kind==='host'){await pause(1500);await hold(app,'W',2000);}else {await hold(app,'3',120);await pause(300);await hold(app,'R',120);await pause(300);await hold(app,'F',120);}   // W-4: a MANUAL torpedo
+    const seen=await until(()=>app.request!('status'),v=>{const ps=(v.observations.at(-1)?.publications??[]).filter((p:any)=>p.round===1);return ps.some((p:any)=>p.speed>before+1)&&ps.at(-1)?.launches>launches;},20000);
     const round2=seen.observations.at(-1).publications.filter((p:any)=>p.round===1);
     const records=await until(async()=>duelLines(dir,kind),list=>list.some(sampled));
     rmSync(copies,{recursive:true,force:true});mkdirSync(join(copies,kind),{recursive:true});for(const f of duelFiles(dir,kind))copyFileSync(f,join(copies,kind,basename(f)));
     app.cleanup=await app.request!('shutdown');await deadline.wait(app.done,'cleanup-timeout',7000);
-    return {seed:decided.seed,decidedTick:decided.tick,thrust:{before,peak:Math.max(...round2.map((p:any)=>p.speed))},beam:{before:shots,after:round2.at(-1).shots},
+    return {seed:decided.seed,decidedTick:decided.tick,thrust:{before,peak:Math.max(...round2.map((p:any)=>p.speed))},launch:{before:launches,after:round2.at(-1).launches},
       record:record(records.find(sampled)),cleanup:{pid:app.pid,exited:app.exited,exitCode:app.exitCode,...app.cleanup}};
   }
   let duel:Awaited<ReturnType<typeof duelRun>>|undefined,deviceDuel:Awaited<ReturnType<typeof deviceDuelRun>>|undefined;

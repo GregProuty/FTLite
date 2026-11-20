@@ -12,3 +12,11 @@ export function todaysCrewWeapons(st: TacticalState): TacticalState {
   sys.bars[DuelSystem.Weapons] = 3; sys.weaponPower = power;
   return st;
 }
+
+/** W-4 spec §14.1: `todaysCrewWeapons` keeps its meaning for the laser fit (the beam on 2 bars). The Hound's own bars:
+ *  pew pew, the autocannon and the torpedo, from as many Weapons bars as they spend (at least the start's 2). */
+export function houndWeapons(st: TacticalState, bars: readonly [number, number, number]): TacticalState {
+  const sys = st.systems[0]!;
+  sys.bars[DuelSystem.Weapons] = Math.max(2, bars[0] + bars[1] + bars[2]); sys.weaponPower = [...bars];
+  return st;
+}

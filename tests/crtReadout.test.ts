@@ -9,6 +9,7 @@ import { LASER_CHARGE_UNITS, SHIP_HULL } from '../src/renderer/src/sim/tactical/
 import { readoutRows, type ReadoutRow } from '../src/renderer/src/render/duel/readoutModel';
 import { CRT } from '../src/renderer/src/render/tactical/crtTheme';
 import { crtRowLook } from '../src/renderer/src/ui/duel/ReadoutPanel';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const layout = parseShip(hound);
 const marks = (rows: readonly ReadoutRow[]) => rows.map((r) => [r.label || r.value, r.emphasis ?? '-']);
@@ -36,7 +37,7 @@ describe('readoutRows emphasis (CRT map spec section 2)', () => {
     disposeDuel(d);
   });
   it('weapons: LASER heading plain, LOCK enemy, CHARGE good only when full and no missile flies, MAG plain', () => {
-    const d = createDuel(layout, 5), s = d.tactical.systems[0];
+    const d = createDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser), s = d.tactical.systems[0];   // W-4 spec §14.1: the beam's rule, on the laser fit
     s.laserCharge = 0;   // the crew laser starts each round full (FTL targeting spec §2)
     const tail = (): (string | undefined)[][] => marks(readoutRows({ duel: d, mode: 'weapons', active: 1 })).slice(11, 15);
     expect(tail()).toEqual([['LASER', '-'], ['LOCK', 'enemy'], ['CHARGE', '-'], ['MAG', '-']]);

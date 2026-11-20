@@ -8,6 +8,7 @@ import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
 import { contactModel, type ContactView } from '../src/renderer/src/render/duel/contactModel';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { TEXT } from '../src/renderer/src/render/theme';
 import { CRT } from '../src/renderer/src/render/tactical/crtTheme';
 import { hex } from '../src/renderer/src/ui/stage/color';
@@ -16,7 +17,7 @@ import { makeUi } from './helpers/uiStore';
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
 const contactOf = (station: 'helm' | 'weapons', aim: boolean, targets: { laser?: number; torp?: number } = {}): ContactView => {
-  const st = createTacticalState(4); st.known[0] = 2;   // Sci-1: the full window is Level 2
+  const st = createTacticalState(4, 2, ShipClass.ValkyrnLaser); st.known[0] = 2;   // W-4 spec §14.1: the beam's window, on the laser fit. Sci-1: the full window is Level 2
   st.systems[0].laserTargeted = false;   // no target unless asked (a round starts at the Feel-i SHIELDS opener)
   if (targets.laser !== undefined) { st.systems[0].lock = targets.laser; st.systems[0].laserTargeted = true; }
   if (targets.torp !== undefined) st.systems[0].torpLock = targets.torp;
@@ -40,7 +41,7 @@ describe('the contact window (spec §4.2, §5)', () => {
   it('draws the title, the room labels and, at Weapons, LASER and TORPEDO, with nothing to steer (homing torpedo spec §3)', () => {
     mount(contactOf('weapons', false));
     for (const t of ['ENEMY SHIP', 'WEAP', 'SHLD', 'ENG', 'TORPEDO', 'CHARGE', '40%']) expect(texts(), t).toContain(t);
-    for (const t of ['MISSILE', 'STEER A/D']) expect(texts(), t).not.toContain(t);
+    for (const t of ['MISSILE', 'STEER LMB']) expect(texts(), t).not.toContain(t);
     expect(btn('contact-laser')).not.toBeNull(); expect(btn('contact-torpedo')).not.toBeNull();
     expect(document.querySelector('[data-ui-contact-lock]')).toBeNull();   // FTL targeting spec §1: no target yet, no mark
     expect(document.querySelector('[data-ui-contact-torp]')).toBeNull();

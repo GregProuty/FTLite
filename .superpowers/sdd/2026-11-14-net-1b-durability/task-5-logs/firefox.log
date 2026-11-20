@@ -9,4 +9,4 @@ Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:160.0) Gecko/20100101 Firefox/160.0
 [ERROR shell_windows::taskbar::shortcut] Error matching shortcut: Error { code: HRESULT(0x80004005), message: "Unspecified error" }
 [ERROR shell_windows::taskbar::shortcut] Error matching shortcut: Error { code: HRESULT(0x80004005), message: "Unspecified error" }
 
-1800 samples; 404 boundaries; first difference: none
+1800 samples; 330 boundaries; first difference: none

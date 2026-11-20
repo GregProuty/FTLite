@@ -77,7 +77,7 @@ describe('the pew\'s sound (spec §1)', () => {
     expect(SFX.laserSmall.numbers).toEqual([0, 1, 2]);
     const pan = () => 0.25;
     expect(duelEventSounds([{ kind: 'pewFire', ship: 0, x: 0, y: 0 }], pan).sounds).toEqual([{ key: 'pew', gain: 0.55, rate: 1.5, dur: 0.18, pan: 0.25 }]);
-    expect(duelEventSounds([{ kind: 'pewHit', ship: 1, owner: 0, stripped: true, hull: false, x: 0, y: 0 }], pan).sounds.map((s) => s.key)).toEqual(['forceField']);
-    expect(duelEventSounds([{ kind: 'pewHit', ship: 1, owner: 0, stripped: false, hull: true, x: 0, y: 0 }], pan).sounds.map((s) => s.key)).toEqual(['impactMetal']);
+    expect(duelEventSounds([{ kind: 'pewHit', ship: 1, owner: 0, stripped: true, hull: false, room: -1, level: false, x: 0, y: 0 }], pan).sounds.map((s) => s.key)).toEqual(['forceField']);
+    expect(duelEventSounds([{ kind: 'pewHit', ship: 1, owner: 0, stripped: false, hull: true, room: -1, level: false, x: 0, y: 0 }], pan).sounds.map((s) => s.key)).toEqual(['impactMetal']);
   });
 });

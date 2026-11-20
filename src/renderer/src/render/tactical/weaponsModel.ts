@@ -3,12 +3,15 @@
 // circle (both consoles, weapons update spec §2), the Weapons layer (bearing ring, both laser arcs, the enemy's bearing
 // and range) and the event effects. Pure, like tacticalModel, which it
 // sits beside: the layer draws TacticalDraw and CombatDraw together.
-import { classOf, Contact, missileOf, Outcome, targetOf } from '../../sim/tactical/state';
+import { classOf, Contact, handControl, missileOf, Outcome, targetOf } from '../../sim/tactical/state';
+import { hasTurret } from '../../sim/tactical/defs';
+import { autoSolution, onSolution, slewTurret, turretWorldAim } from '../../sim/tactical/turret';
+import { weaponBars, WeaponSlot } from '../../sim/tactical/bars';
 import { predictMissile } from '../../sim/tactical/predict';
 import { laserEligible, manualLaserReady, torpedoInRange } from '../../sim/tactical/weapons';
 import { clampAim } from '../../sim/tactical/pew';
-import { pointSeen } from '../../sim/tactical/science';
-import { AIM_STEPS, HEADING_COUNT, LASER_ARC_COS, LASER_ARC_STEPS, LASER_RANGE, MISSILE_RADIUS, MISSILE_RANGE, PEW_ARC, PEW_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
+import { enemyHostile, pointSeen } from '../../sim/tactical/science';
+import { AIM_STEPS, AUTOCANNON_AUTO_RANGE, HEADING_COUNT, LASER_ARC_COS, LASER_ARC_STEPS, LASER_RANGE, MISSILE_RADIUS, MISSILE_RANGE, PEW_ARC, PEW_RANGE, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { ROOM_NAMES } from '../duel/interiorModel';
 import { alertSentence, evadeDir, gunReason, gunSentence, laserSituation, linedUp, type FlightAlert } from '../duel/situationModel';
 import { gunSightDraw, roundDraws, type GunSightDraw } from '../duel/leadModel';
@@ -19,7 +22,7 @@ import { worldToScreen, type Point } from './camera';
 import { rockEffectDraw } from './rockFx';
 import { CORE_S, FLOAT_RISE_PX, FLOAT_S, FLOAT_STEP_PX, interpolatedMissile, KILL_S, type FxState } from './fxModel';
 import {
-  BEARING_RING_ZOOM, fineHeadingOf, headingAngle, interpolatedShip, drawnScale, ringDraw, SHIP_CHEVRON_PX, type Label, type PrevBody, type RingDraw,
+  BEARING_RING_ZOOM, headingAngle, interpolatedShip, drawnScale, ringDraw, SHIP_CHEVRON_PX, type Label, type PrevBody, type RingDraw,
   type TacticalModelInput
 } from './tacticalModel';
 import { HULLS, hullFor, roomCentre } from './hullModel';
@@ -32,6 +35,10 @@ export const PEW_HALF = (PEW_ARC * Math.PI) / 180;
 export const PEW_STREAK_S = 0.03;
 /** A screen-space line segment. */
 export interface Segment { x1: number; y1: number; x2: number; y2: number }
+/** W-4 spec §10: a gun's muzzle line along its turret; `selected` draws it mid (the selected gun on the Weapons map), else dim. */
+export interface MuzzleDraw extends Segment { selected: boolean }
+/** W-4 spec §10: AUTO's bracket on the enemy's drawn marker while a gun is on solution; `live` hot (hostile), else dim (the hold). */
+export interface BracketDraw { x: number; y: number; r: number; live: boolean }
 
 /** `bright` (Feel-i, console feel spec §2): the enemy is inside the arc and the laser is ready, so the wedge lights up. */
 export interface ArcDraw { x: number; y: number; r: number; /** Radians clockwise from north. */ angle: number; half: number; bright?: boolean }
@@ -77,11 +84,12 @@ export interface CombatDraw {
   torpedoPath?: Point[]; evade?: EvadeDraw | null; pings?: PingDraw[];
   /** Valkyrn spec §7.4: the gun sight on the Flight map, and the rounds in flight as tracers (a gun class only). */
   gunSight?: GunSightDraw | null; rounds?: { x1: number; y1: number; x2: number; y2: number }[];
-  /** W-1 (pew pew spec §1): on the Weapons map the pew cone (its edges drawn dim) and the aim line toward the pointer,
-   *  clamped into the cone (mid); on every console map each pew round as a short streak (hot). */
-  pewCone?: ArcDraw | null; pewAim?: Segment | null; pewRounds?: Segment[];
+  /** W-1 (pew pew spec §1): on every console map each pew round as a short streak (hot). */
+  pewRounds?: Segment[];
   /** W-2 (pew pew spec §2): on the Weapons map in MANUAL, while Space would fire, the laser's aim line (drawn dashed main). */
   laserAim?: Segment | null;
+  /** W-4 spec §10: the Hound's turrets: the selected gun's arc (Weapons), each gun's muzzle line, the reticle (Weapons) and AUTO's bracket (Weapons). */
+  turretArc?: ArcDraw | null; muzzles?: MuzzleDraw[]; reticle?: Point | null; bracket?: BracketDraw | null;
 }
 /** Feel-ii §1.6: the EVADE arrow beside the own ship (its tip, the way it points in radians clockwise from north) and its word. */
 export interface EvadeDraw { x: number; y: number; angle: number; label: Label }
@@ -116,10 +124,14 @@ export interface CombatModelInput extends TacticalModelInput {
   pings?: readonly Ping[];
   /** Valkyrn spec §5: the Flight seat's map (the Helm map with the Weapons side tools): the gun sight, the torpedo circle lit. */
   flight?: boolean;
-  /** W-1: the pointer on the Weapons map (screen px), for the pew's aim line; absent or null draws none. */
-  pewPointer?: Point | null;
   /** W-2: the MANUAL laser's aim on the Weapons map (a fine heading, MapRequests.laserAim); null or absent aims along the nose. */
   laserAim?: number | null;
+  /** W-4 spec §10, §11: the turret offsets to draw (online the own seat's predicted selected turret); absent: the state's. */
+  turrets?: { pew: number; gun: number } | null;
+  /** W-4 spec §10: the Hound's selected weapon (0..2); absent 0. */
+  weaponSel?: number;
+  /** W-4 spec §10: the reticle (the pointer on the open Weapons map, screen px), or null. */
+  reticle?: Point | null;
 }
 
 /** Bearing in whole degrees, 0 to 359, north 0, clockwise. */
@@ -274,18 +286,31 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   // Feel-ii §2.7: the pings, target pings riding on the enemy's drawn marker while it is shown.
   const pings = pingDraws(input.pings ?? [], toS, enemyShown ? enemyS : null);
   const gun = cls.slots.gun ? { gunSight: input.flight ? gunSightDraw({ state, prev, alpha, camera: cam, viewport: vp, t: input.t ?? 0 }) : null, rounds: roundDraws(state, toS) } : {};   // Valkyrn spec §7.4
-  // W-1 (pew pew spec §1): the pew cone about the nose (the sim's integer heading, which it clamps about), the aim line toward
-  // the pointer clamped as the sim will clamp it, and every round as a streak ending at the round.
-  const pewDef = cls.slots.pew;
-  let pewCone: ArcDraw | null = null, pewAim: Segment | null = null;
-  if (input.console === 'weapons' && pewDef && input.ships.includes(0)) {
-    const heading = state.ships[0].heading, r = PEW_RANGE * z;
-    pewCone = { x: ownS.x, y: ownS.y, r, angle: headingAngle(heading), half: (pewDef.arcSteps / AIM_STEPS) * 2 * Math.PI };
-    const p = input.pewPointer ?? null;
-    if (p && Math.hypot(p.x - ownS.x, p.y - ownS.y) > 1) {
-      const a = (clampAim(heading, fineHeadingOf(p.x - ownS.x, p.y - ownS.y), pewDef.arcSteps) / AIM_STEPS) * 2 * Math.PI;
-      pewAim = { x1: ownS.x, y1: ownS.y, x2: ownS.x + Math.sin(a) * r, y2: ownS.y - Math.cos(a) * r };
+  // W-4 spec §10: on a turret class (the Hound) the selected gun's arc about the drawn nose (dim), each gun's muzzle line
+  // along its turret offset about the drawn nose (Decision 5: the hull carries the turret; the selected one mid on the
+  // Weapons map, dim elsewhere), the reticle at the pointer, and a bracket on the enemy while an AUTO-driven gun (not in
+  // hand: AUTO, or the other gun in MAN) is on its solution: the sim's test one tick ahead, from the replica's turret and
+  // heading (Decision 10), so a drifting lead does not flicker it; hot once hostile, dim in the hold.
+  let turretArc: ArcDraw | null = null, reticle: Point | null = null, bracket: BracketDraw | null = null;
+  const muzzles: MuzzleDraw[] = [];
+  if (hasTurret(cls) && input.ships.includes(0)) {
+    const sys = state.systems[0]!, base = headingAngle(own.h), sel = input.weaponSel ?? 0, onWeapons = input.console === 'weapons';
+    const turrets = input.turrets ?? { pew: sys.pewTurret, gun: sys.gunTurret };
+    for (const [slot, def, range, off] of [[0, cls.slots.pew, PEW_RANGE, turrets.pew], [1, cls.slots.gun, AUTOCANNON_AUTO_RANGE, turrets.gun]] as const) {
+      const t = def?.turret ?? null;
+      if (!t) continue;
+      const a = base + (off / AIM_STEPS) * 2 * Math.PI, r = range * z, chosen = onWeapons && slot === sel;
+      muzzles.push({ x1: ownS.x, y1: ownS.y, x2: ownS.x + Math.sin(a) * r, y2: ownS.y - Math.cos(a) * r, selected: chosen });
+      if (chosen) turretArc = { x: ownS.x, y: ownS.y, r, angle: base, half: (t.arcSteps / AIM_STEPS) * 2 * Math.PI };
     }
+    if (onWeapons) reticle = input.reticle ?? null;
+    const on = (gun: 'pew' | 'gun'): boolean => {
+      const slot = gun === 'pew' ? WeaponSlot.Pew : WeaponSlot.Autocannon, t = (gun === 'pew' ? cls.slots.pew : cls.slots.gun)?.turret ?? null;
+      if (!t || weaponBars(sys, slot) < 1 || handControl(state, 0, sel, slot)) return false;   // the gun in hand gets no bracket
+      const s = autoSolution(state, 0, gun), h = state.ships[0]!.heading, now = gun === 'pew' ? sys.pewTurret : sys.gunTurret;
+      return s !== null && onSolution(slewTurret(now, h, turretWorldAim(h, s), t.traverse[0], t.arcSteps), s);   // the next AUTO slew lands within the tolerance
+    };
+    if (onWeapons && enemyShown && (on('pew') || on('gun'))) bracket = { x: enemyS.x, y: enemyS.y, r: SHIP_RADIUS * drawnScale(z) + 6, live: enemyHostile(state) };
   }
   // W-2 (pew pew spec §2): in MANUAL, while Space would fire (charged, no burst pending, Weapons online, no own torpedo in
   // flight), the laser's aim line: from the own ship's drawn marker along the aim clamped as the sim clamps it, to its reach.
@@ -301,5 +326,5 @@ export function combatModel(input: CombatModelInput): CombatDraw {
     const a = toS(q.x - q.vx * PEW_STREAK_S, q.y - q.vy * PEW_STREAK_S), b = toS(q.x, q.y);
     return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
   });
-  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange, status, helmArc, solution, goal, floats, torpedoPath, evade, pings, pewCone, pewAim, pewRounds, laserAim, ...gun };
+  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange, status, helmArc, solution, goal, floats, torpedoPath, evade, pings, pewRounds, laserAim, turretArc, muzzles, reticle, bracket, ...gun };
 }

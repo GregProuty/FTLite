@@ -12,6 +12,7 @@ import { StationKind } from '../src/renderer/src/sim/stationKinds';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { scanCommand } from '../src/renderer/src/sim/tactical/science';
 import { createTacticalState, Outcome } from '../src/renderer/src/sim/tactical/state';
+import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../src/renderer/src/sim/tactical/tuning';
 import { CUTTER } from './helpers/scriptedDuel';
 import { holdInSight } from './helpers/sensorSight';
@@ -23,8 +24,8 @@ const cmd = (d: DuelState, player: number, command: DuelCommand, requestedTick =
 const step = (d: DuelState, commands: DuelEnvelope[] = []) => stepDuelTick(d, { held: [NONE, NONE], commands });
 const reasons = (r: ReturnType<typeof step>) => r.map((x) => [x.id.player, x.reason ?? x.status]);
 /** A fresh duel (both standing) with each player seated where `seats` says (a station index, or −1 to stay standing). */
-function seated(seats: [number | 'nav' | 'weapons' | 'science' | -1, number | 'nav' | 'weapons' | 'science' | -1]): DuelState {
-  const d = createDuel(CUTTER, 5);
+function seated(seats: [number | 'nav' | 'weapons' | 'science' | -1, number | 'nav' | 'weapons' | 'science' | -1], cls?: number): DuelState {
+  const d = createDuel(CUTTER, 5, 0, 2, cls);
   seats.forEach((s, pid) => { if (s !== -1) sitDown(d.interior, pid, typeof s === 'number' ? s : d[s]); });
   return d;
 }
@@ -53,7 +54,7 @@ describe('the Science seat (spec §6.1)', () => {
 
 describe('laserFrequency (spec §5)', () => {
   it('stale-tick, then not-at-weapons, then malformed, then noop; the last applied wins', () => {
-    const d = seated(['nav', 'weapons']);
+    const d = seated(['nav', 'weapons'], ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's frequency rule, on the laser fit
     try {
       const r = step(d, [
         cmd(d, 1, { kind: 'laserFrequency', freq: 1 }, d.interior.tick + 1),
