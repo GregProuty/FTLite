@@ -6,7 +6,8 @@ import type { DuelState } from '../../sim/duel/state';
 import { hasTurret, pewThird } from '../../sim/tactical/defs';
 import { gunInterval } from '../../sim/tactical/gun';
 import { autocannonRateText } from '../../app/duel/weaponsSeat';
-import { classOf, Contact, missileOf, Room, type TacticalState } from '../../sim/tactical/state';
+import { classOf, Contact, handControl, missileOf, Room, type TacticalState } from '../../sim/tactical/state';
+import { enemyHostile } from '../../sim/tactical/science';
 import { HEADING_COUNT, MAGAZINE } from '../../sim/tactical/tuning';
 import { beamShots, canLaunch, torpedoInRange } from '../../sim/tactical/weapons';
 import type { MapOverlayView } from '../../ui/views';
@@ -70,7 +71,12 @@ export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: stri
   pew?: readonly number[] | null;
   /** W-4 spec §10: the Hound's AUTOCANNON card (absent or null on a laser class): heat 0..1, locked, Weapons offline, and
    *  its rate text at the current bars (`6/S`, `OFF`); `selected` the selected card (0..2). */
-  autocannon?: { heat: number; locked: boolean; offline: boolean; rate: string } | null; selected?: number }
+  autocannon?: { heat: number; locked: boolean; offline: boolean; rate: string } | null; selected?: number;
+  /** W-4 spec §10 (W-4b), amendment §2.5: each gun's own switch (its tag is lit while it is set to MAN); the gun slot in the
+   *  gunner's hands (0 or 1, −1 none: handControl, owner 2026-11-19), whose tag reads MAN while every other gun's reads AUTO,
+   *  a MAN one that is not selected too; and whether the 30 s hold keeps the AUTO-driven guns quiet (their tags then read
+   *  HOLD instead of AUTO). */
+  pewManual?: boolean; gunManual?: boolean; gunsHand?: number; gunsHold?: boolean }
 /** Valkyrn spec §8: the GUN card: OFFLINE (Weapons at 2), OVERHEAT (locked) or READY; heat 0..1. */
 export interface GunPanel { state: 'READY' | 'OVERHEAT' | 'OFFLINE'; heat: number; locked: boolean }
 /** Valkyrn spec §5: the Flight seat's weapons: the GUN card (null with the laser fit) and the Weapons panel its cards and the
@@ -170,7 +176,8 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
       torpManual: sys.torpManual, torpSteer: flightM?.manual === true && flightM.age > torpDef.boostTicks && flightM.age <= torpDef.fuelTicks, torpCoast: flightM?.manual === true && flightM.age > torpDef.fuelTicks,   // W-3 (pew pew spec §3): canLaunch above reads the mode (no range in MANUAL); the words follow flyMissile's steering window
       refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, pew: pewPips(t),
       ...(hasTurret(classOf(t, 0)) && classOf(t, 0).slots.gun ? { autocannon: { heat: Math.max(0, Math.min(1, sys.gunHeat / classOf(t, 0).slots.gun!.heatMax)), locked: sys.gunLocked === true,
-        offline: sys.rooms[Room.Weapons] >= 2, rate: autocannonRateText(gunInterval(t, 0)) }, selected: i.weaponSel ?? 0 } : {}) };   // W-4 spec §10
+        offline: sys.rooms[Room.Weapons] >= 2, rate: autocannonRateText(gunInterval(t, 0, handControl(t, 0, i.weaponSel ?? 0, 1))) }, selected: i.weaponSel ?? 0,   // W-4 spec §10; the rate is MAN's only in hand
+        pewManual: sys.pewManual, gunManual: sys.gunManual, gunsHand: [0, 1].find((g) => handControl(t, 0, i.weaponSel ?? 0, g)) ?? -1, gunsHold: !enemyHostile(t) } : {}) };   // W-4 amendment §2.5
   };
   const weapons: WeaponsPanel | null = station === 'weapons' ? weaponsPanel() : null;
   const gunDef = classOf(t, 0).slots.gun;   // Valkyrn spec §5, §8: the Flight seat's GUN card (null with the laser fit) and its weapons

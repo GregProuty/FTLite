@@ -9,13 +9,17 @@ import { UiContext } from '../src/renderer/src/ui/context';
 import { UiRoot } from '../src/renderer/src/ui/UiRoot';
 import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
-import type { ConsoleView } from '../src/renderer/src/render/duel/consoleModel';
+import { consoleModel, type ConsoleView } from '../src/renderer/src/render/duel/consoleModel';
+import cutter from '../src/renderer/src/sim/ship/cutter.json';
+import { parseShip } from '../src/renderer/src/sim/ship/schema';
+import { disposeDuel } from '../src/renderer/src/sim/duel/state';
+import { createSeatedDuel } from './helpers/duelSeat';
 import { NO_HELD_FLAGS, type ConsoleInput } from '../src/renderer/src/app/duel/input';
 import { TEXT, textPx } from '../src/renderer/src/render/theme';
 import { STATION } from '../src/renderer/src/render/duel/consoleLayout';
 import { controlSections } from '../src/renderer/src/app/controlsList';
 import { autocannonRateText } from '../src/renderer/src/app/duel/weaponsSeat';
-import { freeText, HOUND_PEW_PIPS_X } from '../src/renderer/src/ui/duel/WeaponsStation';
+import { freeText, HOUND_PEW_PIPS_X, houndRoomHint } from '../src/renderer/src/ui/duel/WeaponsStation';
 import { makeUi } from './helpers/uiStore';
 
 afterEach(() => { cleanup(); });
@@ -84,7 +88,7 @@ describe("the Hound's Weapons station (W-4 spec §10)", () => {
     expect(x0 + textPx('PEW PEW', 1) + 8).toBeLessThanOrEqual(x0 + HOUND_PEW_PIPS_X);   // the longer label clears the moved charge pips
     for (const t of ['LMB FIRE · A/D SELECT · W/S POWER', 'PEW: NO CHARGE', 'PEW: WEAPONS OFFLINE', 'AUTOCANNON: NO POWER', 'AUTOCANNON: OVERHEAT', 'AUTOCANNON: WEAPONS OFFLINE', 'AUTOCANNON: NO GUNNER', 'TORPEDO: TORPEDO UNPOWERED', 'TORPEDO: OUT OF RANGE', 'POWER: NO FREE BAR'])
       expect(x0 + textPx(t, 1) + 8, t).toBeLessThanOrEqual(right - textPx(freeText(9), 1));
-    expect(x0 + textPx('RIGHT-CLICK TORPEDO: CLEAR', 1) + 8).toBeLessThanOrEqual(right - textPx('ROCKS 99', 1));
+    expect(x0 + textPx(houndRoomHint(0, true), 1) + 8).toBeLessThanOrEqual(right - textPx('ROCKS 99', 1));
   });
   it("the laser fit's Weapons station still shows BEAM with its FIRE button", () => {
     const { duel } = mount();
@@ -130,5 +134,95 @@ describe("the Hound block's TORPEDO tag and the mode keys' rows (amendment §2.4
     expect(rows.find((r) => r.keys === 'V')?.action).toMatch(/^With the laser fit at Weapons/);
     expect(rows.some((r) => r.keys === '')).toBe(false);   // weaponModeAll has no code of its own: no row without keys
     expect(rows).toContainEqual({ keys: 'Mouse', action: "At Weapons, the reticle: the selected gun's turret follows it, inside its arc (MAN)" });
+  });
+});
+
+/** An element's rectangle from its inline style (jsdom does no layout), as tests/engineeringWeaponsUi.test.tsx reads it. */
+const rect = (e: HTMLElement): [number, number, number, number] => { const l = parseFloat(e.style.left), t = parseFloat(e.style.top); return [l, t, l + parseFloat(e.style.width), t + parseFloat(e.style.height)]; };
+const overlap = (a: [number, number, number, number], b: [number, number, number, number]): boolean => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+
+describe('a switch on each card: the AUTO / MAN / HOLD tags (W-4 spec §4.3, §10; amendment §2.5)', () => {
+  const tags = () => ['pew', 'autocannon'].map((w) => q(`[data-testid="console-gun-mode-${w}"]`)!);
+  const lit = (): boolean[] => tags().map((t) => t.dataset.uiButton === 'lit');
+  const words = (): string[] => texts().filter((t) => t === 'AUTO' || t === 'HOLD' || t === 'MAN');
+  /** The Hound's panel with these switches, this gun in hand, this selection and the hold. The torpedo's own tag is left out
+   *  (`torpManual` absent), so `words` are the two guns'. */
+  const panel = (pewManual: boolean, gunManual: boolean, gunsHand: number, selected = 0, gunsHold = false) => view(weapons({ autocannon: AC, selected, pewManual, gunManual, gunsHand, gunsHold }));
+  it("the word is what the gun does and the light is its own switch, in every row of the amendment's table", () => {
+    const { duel } = mount();
+    const row = (pewManual: boolean, gunManual: boolean, selected: number, gunsHand: number): { lit: boolean[]; words: string[] } => { act(() => duel.frame(panel(pewManual, gunManual, gunsHand, selected))); return { lit: lit(), words: words().sort() }; };
+    expect(row(false, false, 0, -1)).toEqual({ lit: [false, false], words: ['AUTO', 'AUTO'] });
+    expect(row(true, false, 0, 0)).toEqual({ lit: [true, false], words: ['AUTO', 'MAN'] });     // pew pew in hand
+    expect(row(true, false, 1, -1)).toEqual({ lit: [true, false], words: ['AUTO', 'AUTO'] });   // a MAN gun that is not selected reads AUTO, lit
+    expect(row(false, true, 1, 1)).toEqual({ lit: [false, true], words: ['AUTO', 'MAN'] });     // the autocannon in hand
+    expect(row(true, true, 0, 0)).toEqual({ lit: [true, true], words: ['AUTO', 'MAN'] });
+    expect(row(true, true, 1, 1)).toEqual({ lit: [true, true], words: ['AUTO', 'MAN'] });
+    expect(row(true, true, 2, -1)).toEqual({ lit: [true, true], words: ['AUTO', 'AUTO'] });     // the torpedo selected: both AUTO-driven
+    act(() => duel.frame(panel(true, true, -1, 2, true)));
+    expect([lit(), words()]).toEqual([[true, true], ['HOLD', 'HOLD']]);   // the 30 s hold: an AUTO-driven gun reads HOLD
+    act(() => duel.frame(panel(true, false, 0, 0, true)));
+    expect(words().sort()).toEqual(['HOLD', 'MAN']);   // the gun in hand still reads MAN in the hold
+  });
+  it('the panel carries each switch, the gun in hand and the hold from the state (consoleModel)', () => {
+    const d = createSeatedDuel(parseShip(cutter), 5), g = 1 - d.helmPlayer, s = d.tactical.systems[0];
+    try {
+      const w = (weaponSel: number) => consoleModel({ duel: d, me: g, mode: 'online', hidden: false, held: NO_HELD_FLAGS, overlay: null, weaponSel })!.weapons!;
+      expect(w(0)).toMatchObject({ pewManual: false, gunManual: false, gunsHand: -1, gunsHold: true });   // a round starts on AUTO, in the hold
+      s.pewManual = true;
+      expect([w(0).gunsHand, w(1).gunsHand, w(1).pewManual, w(1).gunManual]).toEqual([0, -1, true, false]);   // in hand only while selected
+      s.gunManual = true; d.tactical.hostileAt = 0;
+      expect([w(1).gunsHand, w(2).gunsHand, w(1).gunsHold]).toEqual([1, -1, false]);
+    } finally { disposeDuel(d); }
+  });
+  it('each tag is its own switch: a click on a gun tag flips that gun through the mode channel', () => {
+    const { ui, duel } = mount(), i = { ...input(), mode: vi.fn() };
+    ui.actions.setConsole(i);
+    act(() => duel.frame(panel(false, false, -1)));
+    fireEvent.pointerDown(tags()[0]!, { button: 0 });
+    expect(i.mode.mock.calls).toEqual([[0]]);
+    fireEvent.pointerDown(tags()[1]!, { button: 0 });
+    expect(i.mode.mock.calls).toEqual([[0], [1]]);
+    expect(i.press).not.toHaveBeenCalled();
+    // the PEW PEW tag comes after the row's select overlay in the DOM, so a real click reaches the tag, not the overlay
+    const overlay = document.querySelector('[data-testid="console-card-pew"]')!;
+    expect(overlay.compareDocumentPosition(tags()[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+  it('the tags clear the PEW PEW label, the charge pips, the bar pips, the AUTOCANNON title and each other (8 px from the text)', () => {
+    const { duel } = mount();
+    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, pewManual: false, gunManual: false, gunsHand: -1, gunsHold: false, weaponBars: [1, 1, 1], weaponFree: 0 }))));
+    const [pew, gun] = tags().map(rect) as [[number, number, number, number], [number, number, number, number]], x0 = STATION.x + 8;
+    expect(pew[0]).toBeGreaterThanOrEqual(x0 + textPx('PEW PEW', 1) + 8);
+    expect(pew[2] + 8).toBeLessThanOrEqual(x0 + HOUND_PEW_PIPS_X);
+    expect(gun[0]).toBeGreaterThanOrEqual(STATION.x + 8 + 6 + textPx('AUTOCANNON', 1) + 8);   // the card's text x (lx) plus the title
+    const others = Array.from(document.querySelectorAll<HTMLElement>('[data-ui-pew-pip], [data-ui-weapon-pip]')).map(rect);
+    expect(others.length).toBeGreaterThan(0);
+    for (const o of others) for (const t of [pew, gun]) expect(overlap(t, o), `${t} vs ${o}`).toBe(false);
+    expect(overlap(pew, gun)).toBe(false);
+  });
+  it('the hint rows: LMB FIRE · A/D SELECT · W/S POWER, then R AUTO/MAN · Q/E ROOM: <NAME>, or Q/E ROOM: <NAME> · RMB TORPEDO: CLEAR while the torpedo has a target; each clear of FREE / ROCKS by 8 px', () => {
+    const { duel } = mount(), names = ['WEAPONS', 'SHIELDS', 'ENGINES'];
+    names.forEach((name, lock) => {
+      act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, lock, torpTarget: -1 }))));
+      expect(texts()).toContain('LMB FIRE · A/D SELECT · W/S POWER');
+      expect(texts()).toContain(`R AUTO/MAN · Q/E ROOM: ${name}`);
+      act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, lock, torpTarget: 2 }))));
+      expect(texts()).toContain(`Q/E ROOM: ${name} · RMB TORPEDO: CLEAR`);   // something to clear: the clear hint shows, and the room name never leaves
+      expect(texts()).not.toContain(`R AUTO/MAN · Q/E ROOM: ${name}`);
+      act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, lock, torpTarget: -1, torpRock: true }))));
+      expect(texts()).toContain(`Q/E ROOM: ${name} · RMB TORPEDO: CLEAR`);   // a rock target is a target to clear too
+    });
+    expect(texts()).not.toContain('RIGHT-CLICK TORPEDO: CLEAR');
+    const x0 = STATION.x + 8, right = STATION.x + STATION.w - 8;
+    expect(x0 + textPx('LMB FIRE · A/D SELECT · W/S POWER', 1) + 8).toBeLessThanOrEqual(right - textPx(freeText(9), 1));
+    for (const lock of [0, 1, 2]) for (const t of [houndRoomHint(lock, false), houndRoomHint(lock, true)])
+      expect(x0 + textPx(t, 1) + 8, t).toBeLessThanOrEqual(right - textPx('ROCKS 99', 1));
+    expect([textPx(houndRoomHint(0, false), 1), textPx(houndRoomHint(0, true), 1)]).toEqual([173, 218]);   // the widest name (WEAPONS); 229 px is the room left of ROCKS 99 and its 8 px
+  });
+  it("the laser fit's BEAM tag still presses laserMode", () => {
+    const { ui, duel } = mount(), i = input();
+    ui.actions.setConsole(i);
+    act(() => duel.frame(view(weapons({ laserTarget: 1, burst: 2, laserManual: false }))));
+    fireEvent.pointerDown(q('[data-testid="console-laser-mode"]')!, { button: 0 });
+    expect(i.press).toHaveBeenCalledWith('laserMode');
   });
 });

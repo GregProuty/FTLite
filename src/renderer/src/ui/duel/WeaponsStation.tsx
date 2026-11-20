@@ -19,11 +19,15 @@
 // no BEAM and no FIRE, and the frequency row's key hint 4/5/6; a laser class keeps the BEAM block below.
 // W-4 amendment §2.5: on the Hound's block the TORPEDO tag flips the torpedo through the console's mode channel (R with the
 // torpedo selected does the same).
+// W-4 spec §10 (W-4b), amendment §2.5: each gun card has its own AUTO / MAN tag and each tag is its own switch (R flips the
+// selected weapon's, Shift+R both guns'): lit while that gun is set to MAN; its word is what the gun does now: MAN for the gun
+// in hand, else AUTO, or HOLD while the hold keeps AUTO quiet. The second hint row names the target room.
 import { memo, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from 'react';
 import type { WeaponsPanel } from '../../render/duel/consoleModel';
 import { CARD_PIPS_H, PEW_ROW_H, STATION, stationTop, weaponCard, weaponPips } from '../../render/duel/consoleLayout';
 import { FREQ_NAMES } from '../../render/duel/scienceModel';
-import { AMBER, BAR_OFF, DIM, FONT_NATIVE, FONT_SIZE, TEXT } from '../../render/theme';
+import { ROOM_NAMES } from '../../render/duel/interiorModel';
+import { AMBER, BAR_OFF, DIM, FONT_NATIVE, FONT_SIZE, TEXT, textPx } from '../../render/theme';
 import { CRT } from '../../render/tactical/crtTheme';
 import { useActions } from '../context';
 import { Bar } from '../stage/Bar';
@@ -107,6 +111,14 @@ export const freeText = (n: number): string => `FREE ${n}`;
 export const HOUND_PEW_PIPS_X = 100;
 const PEW_ROW_HINT_Y = 10;
 
+/** W-4 amendment §2.5: the Hound block's second hint row. It names the mode key and the target room (WEAPONS, SHIELDS or
+ *  ENGINES); while the torpedo has a target (a room or a rock) it names the room and the torpedo's clear instead, since only
+ *  two rows fit above the divider. */
+export const houndRoomHint = (lock: number, torpTarget: boolean): string => {
+  const name = ROOM_NAMES[lock] ?? ROOM_NAMES[1]!;
+  return torpTarget ? `Q/E ROOM: ${name} · RMB TORPEDO: CLEAR` : `R AUTO/MAN · Q/E ROOM: ${name}`;
+};
+
 /** W-4 spec §10 (W-4a): the Hound's block: PEW PEW (the PEW row as a card), AUTOCANNON (in the beam's rectangle) and TORPEDO,
  *  the selected card's frame hot, bar pips under each, the reason row, the second row and the frequency row (4/5/6). */
 function HoundWeapons({ weapons, aim }: { weapons: WeaponsPanel; aim: Weapon | null }) {
@@ -121,6 +133,7 @@ function HoundWeapons({ weapons, aim }: { weapons: WeaponsPanel; aim: Weapon | n
   const blinkOn = Math.floor(now * 2 * FIRING_FLASH_HZ) % 2 === 0;
   const pewHot = selected === 0, edge = pewHot ? hot : crt ? CRT.mid : DIM;
   const select = (slot: 0 | 1 | 2) => (): void => actions.console.select?.(slot);
+  const gunTag = (slot: 0 | 1): string => (weapons.gunsHand === slot ? 'MAN' : weapons.gunsHold ? 'HOLD' : 'AUTO');   // amendment §2.5: what the gun does now
   const who = (c: string): string => (c === 'launch' ? 'TORPEDO' : c === 'pew' ? 'PEW' : c === 'autocannon' ? 'AUTOCANNON' : c === 'power' ? 'POWER' : c === 'laser' ? 'BEAM' : 'FIRE');
   return (
     <>
@@ -135,8 +148,10 @@ function HoundWeapons({ weapons, aim }: { weapons: WeaponsPanel; aim: Weapon | n
       <div data-testid="console-card-pew" data-ui-card={pewHot ? 'lit' : 'idle'} role="button" onPointerDown={(e) => { e.preventDefault(); if (e.button === 0) select(0)(); }} onContextMenu={stop} onMouseDown={stop} onAuxClick={stop}>
         <Box x={x0} y={top + 6} w={right - x0} h={16} style={{ pointerEvents: 'auto', cursor: 'pointer' }} />
       </div>
+      <Button name="gun-mode-pew" label={gunTag(0)} x={x0 + textPx('PEW PEW', 1) + 8} y={top + 4} w={36} h={18} lit={weapons.pewManual === true} onPress={() => actions.console.mode?.(0)} />
       <Card weapon="autocannon" lit={false} selected={selected === 1} onSelect={select(1)} crt={crt} />
       <PixelText text="AUTOCANNON" x={ax} y={A.y + 6} size={FONT_NATIVE} tint={selected === 1 ? hot : dim} />
+      <Button name="gun-mode-autocannon" label={gunTag(1)} x={ax + textPx('AUTOCANNON', 1) + 8} y={A.y + 2} w={36} h={18} lit={weapons.gunManual === true} onPress={() => actions.console.mode?.(1)} />
       <PixelText text="2" x={A.x + A.w - 6} y={A.y + 6} size={FONT_NATIVE} tint={dim} anchorX={1} />
       <PixelText text={gun.rate} x={ax} y={A.y + 20} size={FONT_SIZE} tint={gun.rate === 'OFF' ? dim : main} />
       {gun.offline
@@ -161,7 +176,7 @@ function HoundWeapons({ weapons, aim }: { weapons: WeaponsPanel; aim: Weapon | n
       {bars && ([0, 1, 2] as const).map((slot) => <Pips key={slot} slot={slot} bars={bars[slot] ?? 0} crt={crt} flash={powerFlash(slot)} />)}
       <PixelText text={refused !== null ? `${who(refused.control)}: ${refused.reason}` : 'LMB FIRE · A/D SELECT · W/S POWER'} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={refused !== null ? hot : dim} />
       {bars && <PixelText text={freeText(weapons.weaponFree ?? 0)} x={right} y={y0 + 116} size={FONT_NATIVE} tint={(weapons.weaponFree ?? 0) > 0 ? hot : dim} anchorX={1} />}
-      <PixelText text="RIGHT-CLICK TORPEDO: CLEAR" x={x0} y={y0 + 134} size={FONT_NATIVE} tint={dim} />
+      <PixelText text={houndRoomHint(weapons.lock, weapons.torpTarget >= 0 || weapons.torpRock === true)} x={x0} y={y0 + 134} size={FONT_NATIVE} tint={dim} />
       <PixelText text={`ROCKS ${weapons.rocks ?? 0}`} x={right} y={y0 + 134} size={FONT_NATIVE} tint={(weapons.rocks ?? 0) > 0 ? main : dim} anchorX={1} />
       <Box x={x0} y={y0 + 156} w={right - x0} h={1} style={{ background: hex(crt ? CRT.dim : BAR_OFF) }} />
       <PixelText text="FREQ" x={x0} y={y0 + 174} size={FONT_NATIVE} tint={main} />
