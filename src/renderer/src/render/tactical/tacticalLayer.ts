@@ -340,6 +340,7 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         }
         line.length = 0; line.push(hd.origin.x, hd.origin.y, hd.velocity.x, hd.velocity.y);
         segments(helm, dashLine(line, DASH, GAP, seg), 2, CRT.main, 0.9);
+        if (hd.velocityRing) helm.circle(hd.velocityRing.x, hd.velocityRing.y, hd.velocityRing.r).stroke({ width: 1, color: CRT.mid, alpha: 0.9 });   // helm round 2 §6.2: the velocity marker
         helm.moveTo(hd.headingFrom.x, hd.headingFrom.y).lineTo(hd.headingTo.x, hd.headingTo.y).stroke({ width: 1, color: CRT.main, alpha: 0.9 });
         // Thrust: a flame behind the stern (forward) or ahead of the nose (reverse). Turn: a pip on the side it turns to.
         const fx = (hd.headingTo.x - hd.headingFrom.x) / 40, fy = (hd.headingTo.y - hd.headingFrom.y) / 40, rx = -fy, ry = fx;

@@ -90,7 +90,12 @@ export interface HoldDraw { chevron: number[]; from: Point; to: Point; preview: 
 export interface HelmDraw { path: Point[]; origin: Point; velocity: Point; headingFrom: Point; headingTo: Point; thrust: number; turn: number; ring: RingDraw | null;
   collision?: CollisionDraw | null; hold?: HoldDraw | null; slingshot?: Label | null;
   /** Playtest2feedback §6: the steering marker while the left button steers: from the ship to the cursor. */
-  steer?: { from: Point; to: Point } | null }
+  steer?: { from: Point; to: Point } | null;
+  /** Helm round 2 §6.2: a small ring at the velocity line's far end (where the ship will be in 1 s), so it reads as a marker
+   *  apart from the nose line; a newtonianHelm crew class only (plan Decision 13). */
+  velocityRing?: CircleDraw | null }
+/** Helm round 2 §6.2: the velocity marker's ring radius in screen px. */
+export const VELOCITY_RING_PX = 4;
 /** Playtest2feedback §6: one cold gas puff, at a screen point on the crew ship's hull edge, venting along (dx, dy) (unit). */
 export interface PuffDraw { x: number; y: number; dx: number; dy: number }
 /** Feel-ii §1.3: a gravity ring about the planet (where its pull is `g` of the crew ship's full thrust) and its label. */
@@ -572,6 +577,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
       collision, hold, slingshot,
       path, origin: ownS,
       velocity: { x: ownS.x + s.vx * z, y: ownS.y + s.vy * z },   // where the ship would be in 1 s at this speed
+      velocityRing: classOf(state, 0).newtonianHelm ? { x: ownS.x + s.vx * z, y: ownS.y + s.vy * z, r: VELOCITY_RING_PX } : null,   // helm round 2 §6.2
       headingFrom: { x: ownS.x + hxs * nose, y: ownS.y + hys * nose }, headingTo: { x: ownS.x + hxs * (nose + 40), y: ownS.y + hys * (nose + 40) },
       thrust: Number.isFinite(input.axes.thrust) ? Math.max(-1, Math.min(1, input.axes.thrust)) : 0, turn: Math.sign(input.axes.turn) || 0,
       ring: z >= BEARING_RING_ZOOM ? ringDraw(ownS.x, ownS.y) : null,
