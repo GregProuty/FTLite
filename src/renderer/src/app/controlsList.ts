@@ -49,7 +49,10 @@ export function controlSections(): ControlSection[] {
   // The mouse rows are written here by hand (createPointerSource in duel/input.ts: wheel zooms, right or middle drag pans).
   const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, W/S hold the throttle and A/D fire the side thrusters; at Weapons, A/D select a weapon' }];   // playtest2feedback §6
   for (const action of Object.keys(DUEL_ACTION) as (keyof typeof DUEL_ACTION)[]) {
-    if (action === 'throttleUp' || action === 'throttleDown' || action === 'selectPrev' || action === 'selectNext' || action === 'weaponModeAll') continue;   // playtest2feedback §6: the Valkyrn's notches are in its own section and the crew Helm holds W/S; W-4 spec §9: selection is in its own merged row below; W-4 amendment §2.4: Shift+R has no code of its own (written with R's row)
+    // Rows written elsewhere: the Valkyrn's notches are in its own section and the crew Helm holds W/S (playtest2feedback §6);
+    // selection is its own merged row below (W-4 spec §9); Shift+R has no code of its own, so it is written with R's row
+    // (W-4 amendment §2.4).
+    if (action === 'throttleUp' || action === 'throttleDown' || action === 'selectPrev' || action === 'selectNext' || action === 'weaponModeAll') continue;
     const keys = codesFor(action).map(keyLabel).join(' / ');
     duel.push({ keys, action: DUEL_ACTION[action] });
     if (action === 'weaponMode') duel.push({ keys: `Shift+${keys}`, action: DUEL_ACTION.weaponModeAll });   // W-4 amendment §2.4: written from R's own code

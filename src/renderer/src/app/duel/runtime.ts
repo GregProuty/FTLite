@@ -468,7 +468,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
         if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });
         const freq = frequencyRequest(freqBase(), laserFreqKey(k));   // W-4 spec §9: 3/4/5 is the key field
         if (freq !== null) queue({ kind: 'laserFrequency', freq });
-      } else if (requests.noLaser || (laserFreqKey(k) !== undefined && laserFreqKey(k) !== null) || (k.lockTo !== undefined && k.lockTo !== null)) refuse('laser', NO_LASER);   // §6.1: 1 or 3/4/5 on the gun fit
+      } else if (requests.noLaser || (laserFreqKey(k) ?? null) !== null || (k.lockTo !== undefined && k.lockTo !== null)) refuse('laser', NO_LASER);   // §6.1: 1 or 3/4/5 on the gun fit
       if (p.launch + launches > 0) { queue({ kind: 'missileLaunch' }); const why = refusal(d, 'launch'); if (why) refuse('launch', why); }   // F or the right button
       const gun = !shipView && hasGun() && (deps.gunHeld?.() ?? false);
       if (gun && !gunPrev) { const why = refusal(d, 'fire'); if (why) refuse('fire', why); }   // a dead trigger says why (Feel-ii §2.8)

@@ -21,7 +21,7 @@ const step = (d: DuelState, commands: DuelEnvelope[] = []) => stepDuelTick(d, { 
 const why = (r: ReturnType<typeof step>) => r.map((x) => x.reason ?? x.status);
 /** A Cutter duel with player 0 standing and player 1 at Weapons. */
 function gunnerAtWeapons(): DuelState { const d = createDuel(CUTTER, 5); sitDown(d.interior, 1, d.weapons); return d; }
-const ahead = (_d: DuelState) => ({ kind: 'pewFire' as const });   // W-4 spec §6: no aim
+const ahead = () => ({ kind: 'pewFire' as const });   // W-4 spec §6: no aim
 
 describe('pewFire on the wire (spec §4)', () => {
   it('round-trips through the duel codec; any aim or extra field is malformed (W-4 spec §6)', () => {
@@ -37,7 +37,7 @@ describe('pewFire through the duel step (spec §1, §4, §5)', () => {
     const d = gunnerAtWeapons();
     d.tactical.systems[0].pewManual = true;   // W-4 spec §4.3, §6 (W-4b): pewFire needs pew pew on MAN
     try {
-      expect(why(step(d, [cmd(d, 1, ahead(d))]))).toEqual(['applied']);
+      expect(why(step(d, [cmd(d, 1, ahead())]))).toEqual(['applied']);
       expect(d.tactical.systems[0].pewShots).toBe(1);
       expect(d.tactical.pew.filter((r) => r.active)).toHaveLength(1);
     } finally { disposeDuel(d); }
@@ -46,14 +46,14 @@ describe('pewFire through the duel step (spec §1, §4, §5)', () => {
     const d = gunnerAtWeapons();
     d.tactical.systems[0].pewManual = true;   // W-4 spec §4.3, §6 (W-4b): pewFire needs pew pew on MAN
     try {
-      expect(why(step(d, [cmd(d, 1, ahead(d)), cmd(d, 1, ahead(d)), cmd(d, 1, ahead(d))]))).toEqual(['applied', 'noop', 'noop']);
+      expect(why(step(d, [cmd(d, 1, ahead()), cmd(d, 1, ahead()), cmd(d, 1, ahead())]))).toEqual(['applied', 'noop', 'noop']);
       expect(d.tactical.systems[0].pewShots).toBe(1);
     } finally { disposeDuel(d); }
   });
   it('rejects a stale tick and a sender away from Weapons (W-4 spec §6: the malformed aim is gone, the codec refuses it)', () => {
     const d = gunnerAtWeapons();
     try {
-      const r = step(d, [cmd(d, 1, ahead(d), d.interior.tick + 1), cmd(d, 0, ahead(d))]);
+      const r = step(d, [cmd(d, 1, ahead(), d.interior.tick + 1), cmd(d, 0, ahead())]);
       expect(why(r)).toEqual(['not-at-weapons', 'stale-tick']);   // sorted by player, then sequence
       expect(d.tactical.systems[0].pewShots).toBe(0);
     } finally { disposeDuel(d); }
@@ -61,7 +61,7 @@ describe('pewFire through the duel step (spec §1, §4, §5)', () => {
   it('an unattended Weapons seat fires nothing (no gunner: not-at-weapons, pewAim stays -1)', () => {
     const d = createDuel(CUTTER, 5);
     try {
-      expect(why(step(d, [cmd(d, 0, ahead(d)), cmd(d, 1, ahead(d))]))).toEqual(['not-at-weapons', 'not-at-weapons']);
+      expect(why(step(d, [cmd(d, 0, ahead()), cmd(d, 1, ahead())]))).toEqual(['not-at-weapons', 'not-at-weapons']);
       expect(d.tactical.systems[0].pewShots).toBe(0);
       expect(d.tactical.pew.every((r) => !r.active)).toBe(true);
     } finally { disposeDuel(d); }
@@ -70,7 +70,7 @@ describe('pewFire through the duel step (spec §1, §4, §5)', () => {
     const d = gunnerAtWeapons();
     try {
       d.tactical.systems[0].pewCharge = 59;
-      expect(why(step(d, [cmd(d, 1, ahead(d))]))).toEqual(['unavailable']);
+      expect(why(step(d, [cmd(d, 1, ahead())]))).toEqual(['unavailable']);
       expect(d.tactical.pew.every((r) => !r.active)).toBe(true);
     } finally { disposeDuel(d); }
   });

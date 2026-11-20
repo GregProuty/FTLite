@@ -91,7 +91,8 @@ describe("the Hound's Weapons station (W-4 spec §10)", () => {
     expect(x0 + textPx('PEW PEW', 1) + 8).toBeLessThanOrEqual(x0 + HOUND_PEW_PIPS_X);   // the longer label clears the moved charge pips
     for (const t of ['LMB FIRE · A/D SELECT · W/S POWER', 'PEW: NO CHARGE', 'PEW: WEAPONS OFFLINE', 'AUTOCANNON: NO POWER', 'AUTOCANNON: OVERHEAT', 'AUTOCANNON: WEAPONS OFFLINE', 'AUTOCANNON: NO GUNNER', 'TORPEDO: TORPEDO UNPOWERED', 'TORPEDO: OUT OF RANGE', 'POWER: NO FREE BAR'])
       expect(x0 + textPx(t, 1) + 8, t).toBeLessThanOrEqual(right - textPx(freeText(9), 1));
-    expect(x0 + textPx(houndRoomHint(0, true), 1) + 8).toBeLessThanOrEqual(right - textPx('ROCKS 99', 1));
+    for (const lock of [0, 1, 2]) for (const t of [houndRoomHint(lock, false), houndRoomHint(lock, true)])   // the second row as rendered, every room and both forms
+      expect(x0 + textPx(t, 1) + 8, t).toBeLessThanOrEqual(right - textPx('ROCKS 99', 1));
   });
   it('TORPEDO in MAN while it flies and can turn reads STEER LMB (W-4 spec §10)', () => {
     const { duel } = mount();

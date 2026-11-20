@@ -166,7 +166,7 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
     : null;
   const flightM = missileOf(t, 0), flying = flightM !== null, sys = t.systems[0], torpDef = classOf(t, 0).slots.missile;   // W-3: the crew's torpedo in flight and its def, for the card's words
   const weaponsPanel = (): WeaponsPanel => {
-    const reason = laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), weaponsOffline(t)), w = trimmedWeaponPower(sys);   // Engineering spike §10.3: the bars each weapon stands on now
+    const reason = laserCardReason(laserSituation(t, i.sinceShot ?? Infinity, gunnerPresent(d)), weaponsOffline(t)), w = trimmedWeaponPower(sys), sel = i.weaponSel ?? 0;   // Engineering spike §10.3: the bars each weapon stands on now
     return { lock: sys.lock, charge: chargeRow(d), magazine: `${sys.magazine}/${MAGAZINE}`, canLaunch: canLaunch(t, 0), torpedoInRange: torpedoInRange(t, 0), missileFlying: flying, fireHeld: held.fire, held, freq: sys.freq, weakFreq: t.known[Contact.Enemy] >= 2 ? t.weakFreq : null,
       laserTarget: sys.laserTargeted ? sys.lock : -1, torpTarget: sys.torpLock, burst: classOf(t, 0).slots.laser ? beamShots(t, 0) : 0,   // spec §10.3: the beam's shots by its bars
       weaponBars: w, weaponFree: weaponBarsUsable(sys) - (w[0]! + w[1]! + w[2]!),
@@ -176,8 +176,8 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
       torpManual: sys.torpManual, torpSteer: flightM?.manual === true && flightM.age > torpDef.boostTicks && flightM.age <= torpDef.fuelTicks, torpCoast: flightM?.manual === true && flightM.age > torpDef.fuelTicks,   // W-3 (pew pew spec §3): canLaunch above reads the mode (no range in MANUAL); the words follow flyMissile's steering window
       refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, pew: pewPips(t),
       ...(hasTurret(classOf(t, 0)) && classOf(t, 0).slots.gun ? { autocannon: { heat: Math.max(0, Math.min(1, sys.gunHeat / classOf(t, 0).slots.gun!.heatMax)), locked: sys.gunLocked === true,
-        offline: sys.rooms[Room.Weapons] >= 2, rate: autocannonRateText(gunInterval(t, 0, handControl(t, 0, i.weaponSel ?? 0, 1))) }, selected: i.weaponSel ?? 0,   // W-4 spec §10; the rate is MAN's only in hand
-        pewManual: sys.pewManual, gunManual: sys.gunManual, gunsHand: [0, 1].find((g) => handControl(t, 0, i.weaponSel ?? 0, g)) ?? -1, gunsHold: !enemyHostile(t) } : {}) };   // W-4 amendment §2.5
+        offline: sys.rooms[Room.Weapons] >= 2, rate: autocannonRateText(gunInterval(t, 0, handControl(t, 0, sel, 1))) }, selected: sel,   // W-4 spec §10; the rate is MAN's only in hand
+        pewManual: sys.pewManual, gunManual: sys.gunManual, gunsHand: [0, 1].find((g) => handControl(t, 0, sel, g)) ?? -1, gunsHold: !enemyHostile(t) } : {}) };   // W-4 amendment §2.5
   };
   const weapons: WeaponsPanel | null = station === 'weapons' ? weaponsPanel() : null;
   const gunDef = classOf(t, 0).slots.gun;   // Valkyrn spec §5, §8: the Flight seat's GUN card (null with the laser fit) and its weapons

@@ -74,7 +74,7 @@ describe('weaponSel and the trigger (W-4 spec §8)', () => {
     try {
       const s = d.tactical.systems[0]!; s.bars[1] = 3; s.weaponPower = [1, 1, 1];
       s.gunManual = true;   // W-4 spec §4.3 (W-4b): a held trigger fires only the autocannon in hand (MAN and selected)
-      const held =(weaponSel: number) => { const h = [{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }]; h[g] = { moveX: 0, moveY: 0, interactHeld: false, gunHeld: true, weaponSel } as never; return h; };
+      const held = (weaponSel: number) => { const h = [{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }]; h[g] = { moveX: 0, moveY: 0, interactHeld: false, gunHeld: true, weaponSel } as never; return h; };
       for (let k = 0; k < 20; k++) stepDuelTick(d, { held: held(0), commands: [] });
       expect(s.gunShots).toBe(0);
       for (let k = 0; k < 20; k++) stepDuelTick(d, { held: held(1), commands: [] });

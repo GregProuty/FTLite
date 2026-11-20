@@ -182,7 +182,7 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     if (e.code === FIRE_HELD && was && !has(FIRE_HELD)) presses.fireUp++;
   };
   const clearUi = (): void => { ui.clear(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; freqKeyTo = null; gunFreqKeyTo = null; selectTo = null; modeTaps = [0, 0, 0]; };
-  const clear =(): void => { keys.clear(); taken.clear(); ui.clear(); stale.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; freqKeyTo = null; gunFreqKeyTo = null; selectTo = null; modeTaps = [0, 0, 0]; ship = []; };
+  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); stale.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; freqKeyTo = null; gunFreqKeyTo = null; selectTo = null; modeTaps = [0, 0, 0]; ship = []; };
   target.addEventListener('keydown', down as (e: never) => void);
   target.addEventListener('keyup', up as (e: never) => void);
   target.addEventListener('blur', clear as (e: never) => void);

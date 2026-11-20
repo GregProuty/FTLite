@@ -11,7 +11,7 @@ import { runValkyrnDuel, valkyrnGate, valkyrnLine, type ValkyrnRun } from './hel
 const runs = new Map<number, DuelRun>();
 
 describe('the H-0 telemetry gates: scripted pair against the hunter, seeds 1 to 10', () => {
-  for (const seed of GATE_SEEDS) it(`seed ${seed}: ends before the cap, the crew uses both weapons, no planet-contact end under 30 s`, () => {
+  for (const seed of GATE_SEEDS) it(`seed ${seed}: ends before the cap, the crew fires a pew or gun round and launches a missile, no planet-contact end under 30 s`, () => {
     const r = runDuel(seed, 'scripted'), t = r.telemetry;
     runs.set(seed, r);
     expect(t.outcome, telemetryLine(r)).not.toBe(Outcome.Running);

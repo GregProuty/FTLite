@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { createDuelKeyboard, GUN_FREQ_CODES, PRESS_CODES, WEAPON_SELECT_CODES } from '../src/renderer/src/app/duel/input';
+import { createDuelKeyboard, emptyPresses, GUN_FREQ_CODES, PRESS_CODES, WEAPON_SELECT_CODES } from '../src/renderer/src/app/duel/input';
 import { createContactController } from '../src/renderer/src/app/duel/contactController';
 import { GUARDED_CODES } from '../src/renderer/src/app/web/pageGuards';
 import { houndWeaponsSeat } from '../src/renderer/src/app/duel/controls';
@@ -14,7 +14,6 @@ import { weaponPowerRefusal } from '../src/renderer/src/sim/duel/weaponSlots';
 import { refusal } from '../src/renderer/src/render/duel/situationModel';
 import { disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
-import { emptyPresses } from '../src/renderer/src/app/duel/input';
 import { createSeatedDuel } from './helpers/duelSeat';
 
 const CUTTER = parseShip(cutter);
