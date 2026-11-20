@@ -254,6 +254,8 @@ export interface DuelRuntime {
   thrMille(): number;
   /** W-4 spec §10: the Hound's selected weapon (0..2). */
   weaponSel(): number;
+  /** W-4 spec §11: gun slot's turret offset (the sim's; no lag locally). */
+  turret(slot: 0 | 1): number;
   /** Feel-ii §2.8: the console controls refused since the last take (the scene flashes them). */
   takeRefusals(): Refusal[];
   dispose(): void;
@@ -694,6 +696,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     throttle: throttleBase,
     thrMille: () => d.thrMille,
     weaponSel: () => weaponSel,   // W-4 spec §10: the selected card
+    turret: (slot: 0 | 1) => (slot === 0 ? d.tactical.systems[0].pewTurret : d.tactical.systems[0].gunTurret),   // W-4 spec §11: no lag locally
     takeRefusals() { const out = refusals; refusals = []; return out; },
     dispose() { pacer.dispose(); disposeDuel(d); }
   };

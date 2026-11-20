@@ -96,6 +96,8 @@ export interface DuelViewSource {
   takeRefusals?(): Refusal[];
   /** W-4 spec §10: the Hound's selected weapon (0..2) to frame; absent: 0. */
   weaponSel?(): number;
+  /** W-4 spec §10, §11: gun slot's turret offset to draw (0 pew pew, 1 the autocannon): online the own seat's prediction, else the sim's. Absent: the sim's. */
+  turret?(slot: 0 | 1): number;
 }
 /** Feel-ii §2.8: a refused console control and the reason the sim would give. */
 export interface Refusal { control: RefusedControl; reason: string }

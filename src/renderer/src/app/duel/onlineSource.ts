@@ -16,7 +16,8 @@ import { createCamera, followBody, updateCamera, type Camera, type Viewport } fr
 import { createInteriorCamera, resetInteriorCamera } from '../../render/duel/interiorCamera';
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
-import { crewHelmSeat, seatOf } from './controls';
+import { crewHelmSeat, houndWeaponsSeat, seatOf } from './controls';
+import { predictTurret } from './weaponsSeat';
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 import { createTorpedoFollow, trackManualTorpedo } from './torpedoCamera';
 import { NO_HELD_FLAGS, type HeldFlags, type KeySample, type PointerSample } from './input';
@@ -108,6 +109,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   let events: ViewEvent[] = [], sentHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
   let cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() }, torpFollow = createTorpedoFollow();
   let uiHeld: HeldFlags = NO_HELD_FLAGS, shownThrottle: number | null = null, refusals: Refusal[] = [];
+  let gunModeShown: [boolean | null, boolean | null] = [null, null];   // W-4 amendment §2.6: each gun's mode in flight, [pew pew, the autocannon]
   let unackedFrames = 0;   // playtest2feedback Decision 14: this seat's held frames the replica has not taken yet
   /** Playtest2feedback §3: this seat flies the crew Helm (a newtonianHelm class) in a running round. */
   const crewHelm = (d: DuelState): boolean => crewHelmSeat(d, seat) && d.tactical.outcome === Outcome.Running;
@@ -143,6 +145,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: HeldInput): void; heldFlags(flags: HeldFlags): void;
     thrMille(): number; helmVent(): HelmVent; unacked(n: number): void; weaponSel(): number;
     throttleBase(level: number | null): void;
+    turret(slot: 0 | 1): number; gunModeBase(slot: 0 | 1, manual: boolean | null): void;
     refuse(control: Refusal['control'], reason: string): void;
     arrivals(): readonly number[]; takeArrivals(): number[]; ready(): boolean;
   } = {
@@ -169,6 +172,16 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const e = engineBars(d);
       return rampTicks(d.thrMille, heldAxis(sentHeld.throttleHeld), throttleFloor(e), throttleCap(e), unackedFrames);
     },
+    /** W-4 spec §11: gun slot's turret: at the Hound's Weapons seat the own selected one predicted over the unacknowledged
+     *  frames (predictTurret, the mode in flight first), else the replica's. */
+    turret: (slot: 0 | 1): number => {
+      const d = duel();
+      if (!houndWeaponsSeat(d, seat)) return slot === 0 ? d.tactical.systems[0].pewTurret : d.tactical.systems[0].gunTurret;
+      const sys = d.tactical.systems[0];
+      return predictTurret(d.tactical, slot, sentHeld, gunModeShown[slot] ?? (slot === 0 ? sys.pewManual : sys.gunManual), unackedFrames);   // W-4 amendment §2.6: that gun's own mode
+    },
+    /** Gun `slot`'s mode in flight (onlineDuel's gunModeSent for it), or null: the replica's flag is the base. */
+    gunModeBase(slot, manual) { gunModeShown[slot] = manual; },
     weaponSel: (): number => sentHeld.weaponSel ?? 0,   // W-4 spec §10: the selection this seat last sent
     /** Playtest2feedback Decision 11: the puffs and the hiss online: this seat's own predicted vent at the crew Helm, else none. */
     helmVent: (): HelmVent => { const d = duel(); return crewHelm(d) ? ventOf(crewAxes(d, sentHeld)) : noVent(); },

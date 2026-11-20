@@ -299,6 +299,37 @@ describe('the online Hound Weapons seat (W-4 spec §11)', () => {
     expect(c.helds().at(-1)).toMatchObject({ turretAim: 5000 });
     r.dispose();
   });
+  it("the source's turret(0) follows the reticle at MAN traverse while gunMode is in flight, then the replica's again", () => {
+    const r = rig(1), c = r.attach(); r.session.frame();
+    const src = () => h.sources.at(-1) as unknown as { turret(slot: 0 | 1): number };
+    // turretAim is a world fine aim and the spawn heading depends on the seed (map.ts spawnAt): aim 2000 steps right of the
+    // replica's nose, inside the pew's ±10922 arc.
+    const h0 = c.state()!.tactical.ships[0].heading, want = (h0 * 256 + 2000) % 65536;
+    h.sceneOpts[0]!.requests!.reticle(want); r.pump(); r.session.frame();
+    expect(src().turret(0)).toBe(0);   // AUTO: the replica's
+    r.key('keydown', 'KeyR'); r.key('keyup', 'KeyR'); r.pump(); r.pump(); r.session.frame();   // R with pew pew selected: its gunMode {slot: 0} is in flight
+    const p = src().turret(0);
+    expect(p > 0 && p <= 2000 && (p % 455 === 0 || p === 2000)).toBe(true);   // k unacknowledged frames of MAN's 455 a frame toward +2000
+    const id = c.ids[c.commands().map((x) => x.kind).lastIndexOf('gunMode')]!;
+    c.results.push({ id, tick: 3, status: 'applied' }); r.pump(); r.session.frame();
+    expect(src().turret(0)).toBe(0);   // gunModeSent[0] cleared: the replica's mode (AUTO) is the base again
+    r.dispose();
+  });
+  it("the prediction reads the selected gun's own mode: pew pew's MAN in flight does not move the autocannon's turret (amendment §2.6)", () => {
+    const r = rig(1), sys = r.d.tactical.systems[0]!;
+    sys.bars[1] = 3; sys.weaponPower = [1, 1, 1];   // the autocannon powered on the replica (an unpowered gun is never predicted)
+    const c = r.attach(); r.session.frame();
+    const src = () => h.sources.at(-1) as unknown as { turret(slot: 0 | 1): number };
+    const h0 = c.state()!.tactical.ships[0].heading, want = (h0 * 256 + 2000) % 65536;
+    h.sceneOpts[0]!.requests!.reticle(want);
+    tapKey(r, 'KeyR'); r.pump();   // pew pew, the selected weapon, to MAN (in flight)
+    tapKey(r, 'Digit2'); r.pump(); r.pump(); r.session.frame();
+    expect(src().turret(1)).toBe(0);   // the autocannon is selected and its own switch is AUTO: the replica's turret
+    tapKey(r, 'KeyR'); r.pump(); r.pump(); r.session.frame();
+    const p = src().turret(1);
+    expect(p > 0 && p <= 2000 && (p % 341 === 0 || p === 2000)).toBe(true);   // its own gunMode in flight: MAN's 341 a frame
+    r.dispose();
+  });
 });
 
 describe('the online manual laser (W-2)', () => {

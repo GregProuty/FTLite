@@ -431,6 +431,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (d && d.round !== selRound) { selRound = d.round; weaponSel = 0; lastGunSel = 0; triggerPrev = false; }   // W-4 spec §9: every round starts on pew pew
     if (headingSent && d && (d.round !== headingSent.round || (headingSent.sequence === null && d.holdHeading === -1))) headingSent = null;   // a new round holds none; the replica caught up with the local clear
     source?.throttleBase(throttleSent ? throttleSent.level : null);
+    for (const slot of [0, 1] as const) source?.gunModeBase(slot, gunModeSent[slot] ? gunModeSent[slot]!.manual : null);   // W-4 spec §11, amendment §2.6
     if (!client || linkClosed || !d || !p || !descriptor || !synced || !focused || blocked) { if (producing) stopInput(); return; }
     const me = descriptor.seatId, decided = d.tactical.outcome !== Outcome.Running;
     // Final review I1: on the pump this seat becomes the crew Helm (the sit's publication arrived), the keys held now are
@@ -465,6 +466,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     }
     if (!decided) { lastHeld = held; source?.sent(held); }
     source?.throttleBase(throttleSent ? throttleSent.level : null);   // a press this pump shows this pump
+    for (const slot of [0, 1] as const) source?.gunModeBase(slot, gunModeSent[slot] ? gunModeSent[slot]!.manual : null);   // W-4 spec §11, amendment §2.6
     producing = true;
   }
   function schedule(): void { cancel = deps.scheduler.schedule(1000 / 60, () => { pump(); if (!disposed) schedule(); }); }
