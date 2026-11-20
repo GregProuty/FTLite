@@ -164,8 +164,9 @@ export type DuelEvent =
    *  hit), turned to dust (`rock` −1: a piece that found no slot), blasted (x, y the blast point, r its radius) or bumped
    *  in a damaging contact (`bump`: x, y the contact point; `other` the second rock of a rock-rock contact). Asteroids-iii
    *  §5.4: `touch`, two rocks of different clocks met closing above TOUCH_MIN (`other`, the contact point, `speed` the
-   *  closing speed); §13.2: `rejoin`, a free rock went back on a rail (`how`: a lane capture, a rigid group or its own orbit;
-   *  by 'settle'). `ship`: the ship whose weapon, ram or break caused it (absent for collisions, eviction and lost pieces). */
+   *  closing speed); §13.2: `rejoin`, a free rock went back on a rail (`how`: a lane capture, a rigid group, its own orbit or,
+   *  §14 D14, a cluster, with `join` 'tumble' (a member of the cluster's tumbling group, centre the cluster's) or 'ring' (a
+   *  plain Rail on the cluster's rotation, far round its ring); by 'settle'). `ship`: the ship whose weapon, ram or break caused it (absent for collisions, eviction and lost pieces). */
   | { kind: 'rock'; what: 'hit' | 'split' | 'dust' | 'blast' | 'bump' | 'touch' | 'rejoin'; by: RockCause; rock: number; x: number; y: number; r: number; vx: number; vy: number; ship?: number; pieces?: number[]; other?: number; evicted?: true; burst?: true; speed?: number; how?: 'lane' | 'group' | 'own' | 'cluster'; join?: 'tumble' | 'ring' };
 
 /** Spike ii §8: what caused a rock event. */

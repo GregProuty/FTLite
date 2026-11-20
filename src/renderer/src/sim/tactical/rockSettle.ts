@@ -9,10 +9,18 @@
 // Free); (3) otherwise its own ρ. Plan deviation 3: it also stays Free when a live rail of another ω sweeps across its
 // padded annulus, so rail-rail pairs stay impossible. It becomes a Rail with centre p · (ρω / ρ) and offset p − centre,
 // t = T + 1, and a `rejoin` event (by 'settle', `how`) tells the views and the measure script.
-// §14 D14: a rock that passes every other check and is refused only by one cluster's sweep joins that cluster's group
-// when |v − V_group(p)| < CLUSTER_JOIN_SNAP: the cluster's kind (a Tumble, or a Rail with the clusterTumble switch off),
-// centre the cluster's centre at T + 1 (read from its lowest live slot), offset p − centre (at most RAIL_OFFSET_MAX), so its
-// position is unchanged; refused when two clusters sweep it, or when its own sweep as a member would cross another rail's.
+// §14 D14: a rock that passes every other check and is refused only by one cluster C's sweep joins C (how 'cluster'); two
+// clusters sweeping it refuse it. D is its distance from C's centre at T + 1 (read from C's lowest live Tumble, or its
+// lowest live rail with the clusterTumble switch off). Its position is unchanged either way.
+//   - The tumble join (join 'tumble'), D ≤ RAIL_OFFSET_MAX: C's kind, centre C's centre, offset p − centre, when
+//     |v − V_group(p)| < CLUSTER_JOIN_SNAP (V_group = ω·perp(centre) + ω_s·perp(offset), ω_s = ω + SPIN_RATE for a Tumble,
+//     ω for a Rail), its member sweep |centre| ± (D + r) crosses no rail outside C, and its member circle stays inside the
+//     distance of every C ring rock.
+//   - The ring join (join 'ring'), D > ρo_max + r_max + r + ASTEROID_GAP over C's tumbling members: a plain Rail on C's
+//     rotation, ρω = |C's centre|, centre p · ρω / ρ, its stored offset at most RAIL_OFFSET_MAX, when
+//     |v − ω(ρω)·perp(p)| < CLUSTER_JOIN_SNAP and its annulus crosses no rail outside C; it keeps the distance D from C's
+//     centre, so it never meets a member.
+//   - Between the two (neither joins), it stays Free, refused as 'sweepCluster'.
 import { laneZone, orbitRate, railPos, SPIN_RATE, targetVelocity, type RailOut } from './rails';
 import { CLUSTER_JOIN_SNAP, LANE_CAPTURE_DR, RAIL_OFFSET_MAX, REJOIN_EDGE_CLEAR, REJOIN_RECHECK_TICKS, REJOIN_MIN_TICKS, REJOIN_PLANET_CLEAR, REJOIN_SNAP_FACTOR, REJOIN_SNAP_MAX, REJOIN_SPEED } from './rockTuning';
 import { isRail, railCentreRadius, railRowChanged, rockPhase, RockKind, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
@@ -144,8 +152,8 @@ function clusterJoin(s: TacticalState, k: number, group: number): RejoinChoice |
     if (ok) return { rhoW: Math.sqrt(cx * cx + cy * cy), how: 'cluster', join: 'tumble', kind, cx, cy };
   }
   if (D > roMax + rMax + r + ASTEROID_GAP) {   // far: the cluster's rotation as a plain Rail
-    const rho = Math.sqrt(x * x + y * y);
-    if (Math.abs(rho - rho_c) > RAIL_OFFSET_MAX) return null;
+    const rho = Math.sqrt(x * x + y * y), f = rho_c / rho, rx = x - x * f, ry = y - y * f;   // the offset as settleRocks stores it
+    if (Math.sqrt(rx * rx + ry * ry) > RAIL_OFFSET_MAX) return null;                         // so restore never refuses it
     const dvx = v[b + 3]! - -w * y, dvy = v[b + 4]! - w * x;
     if (dvx * dvx + dvy * dvy >= CLUSTER_JOIN_SNAP * CLUSTER_JOIN_SNAP) return null;
     if (crossesOutside(s, k, group, rho - r - ASTEROID_GAP, rho + r + ASTEROID_GAP)) return null;

@@ -10,7 +10,7 @@ import { rejoinChoice, settleRocks } from '../src/renderer/src/sim/tactical/rock
 import { rockAt, RockKind, ROCK_STRIDE, rockX, rockY, writeRock } from '../src/renderer/src/sim/tactical/rocks';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
-import { arena, mover, rail, rockEvents } from './helpers/rockArena';
+import { arena, mover, rail, rockEvents, withSwitches } from './helpers/rockArena';
 import { stressInput, switchOff } from './helpers/rockStress';
 
 /** A free rock in slot k at (x, y) moving at V_c plus (dvx, dvy), its clock at t. */
@@ -244,5 +244,80 @@ describe('joining a tumbling cluster\'s rotation from far round its ring (spec �
     settled(st, 100, 0, 2110, 0);                     // D = 210
     const why: { reason: string | null } = { reason: null };
     expect(rejoinChoice(st, 100, why as never)).toBeNull(); expect(why.reason).toBe('sweepCluster');
+  });
+});
+
+describe('the D14 safety branches and the restore bound (spec §14, Task 13 review)', () => {
+  /** The tumbling cluster at centre (0, 1900), tick 500: slots 7 and 8 at offsets (±60, 0), r 15 (far is D > 95 for r 10). */
+  function pair(st: ReturnType<typeof arena>): void {
+    writeRock(st, 7, RockKind.Tumble, 0, 1900, 60, 0, 15, 5, 500);
+    writeRock(st, 8, RockKind.Tumble, 0, 1900, -60, 0, 15, 5, 500);
+  }
+  it('(a) a tumble join whose member sweep would cross another rail stays Free', () => {
+    const st = arena(); st.tick = 500;
+    pair(st);
+    rail(st, 9, 0, -1850, 5);                         // a rail sweeping [1845, 1855]: clear of the rock's padded annulus [1920, 1960], inside its member sweep [1840, 1960]
+    settled(st, 100, 0, 1940, 0);                     // D 40: near, every other check passes
+    const why: { reason: string | null } = { reason: null };
+    expect(rejoinChoice(st, 100, why as never)).toBeNull(); expect(why.reason).toBe('sweepCluster');
+    st.rocks.fill(0, 9 * ROCK_STRIDE, 10 * ROCK_STRIDE);
+    expect(rejoinChoice(st, 100)).toMatchObject({ how: 'cluster', join: 'tumble' });   // the rail alone refused it
+  });
+  it('(b) a near join whose member circle would reach one of the cluster\'s ring rocks stays Free', () => {
+    const st = arena(); st.tick = 500;
+    pair(st);
+    writeRock(st, 9, RockKind.Rail, 0, 1900, 0, 120, 10, 5, 500);   // a ring rock of the cluster: 120 u from its centre
+    settled(st, 100, -92, 1900, 0);                   // D 92 (not far: 95), its circle 92 + 10 + 10 reaches 120 − 10
+    const why: { reason: string | null } = { reason: null };
+    expect(rejoinChoice(st, 100, why as never)).toBeNull(); expect(why.reason).toBe('sweepCluster');
+    st.rocks.fill(0, 9 * ROCK_STRIDE, 10 * ROCK_STRIDE);
+    expect(rejoinChoice(st, 100)).toMatchObject({ how: 'cluster', join: 'tumble' });   // the ring rock alone refused it
+  });
+  it('(c) a ring join whose annulus crosses a rail outside the cluster (its group rail, skipped as the same ω) stays Free', () => {
+    const st = arena(); st.tick = 500;
+    pair(st);                                         // sweeps [1825, 1975]
+    rail(st, 9, 0, -1950, 10);                        // a rejoined rail sweeping [1940, 1960]: the rock's group choice (snap 1.5 · ω · 15 ≈ 0.4)
+    settled(st, 100, 1965 * Math.sin(0.05), -1965 * Math.cos(0.05), 0);   // 98 u along from it, far from the cluster
+    const why: { reason: string | null } = { reason: null };
+    expect(rejoinChoice(st, 100, why as never)).toBeNull(); expect(why.reason).toBe('sweepCluster');
+    st.rocks.fill(0, 9 * ROCK_STRIDE, 10 * ROCK_STRIDE);
+    expect(rejoinChoice(st, 100)).toMatchObject({ how: 'cluster', join: 'ring' });   // the rail alone refused it
+  });
+  it('(d) with clusterTumble off the cluster is Rails: a near join is a Rail (ω_s = ω) and co-rotates with a member at an unchanged distance', () => {
+    withSwitches({ clusterTumble: false }, () => {
+      const st = arena(); st.tick = 500;
+      const rc = st.map.clusterRho[0]!;
+      writeRock(st, 7, RockKind.Rail, 0, rc, 60, 0, 15, 5, 500);
+      writeRock(st, 8, RockKind.Rail, 0, rc, -60, 0, 15, 5, 500);
+      settled(st, 100, 0, rc + 25, 0);                 // inside the Rails' sweep [ρc − 14, ρc + 16] (padded annulus [ρc + 5, ρc + 45])
+      expect(rejoinChoice(st, 100)).toMatchObject({ how: 'cluster', join: 'tumble', kind: RockKind.Rail });
+      settleRocks(st);
+      expect(st.rocks[100 * ROCK_STRIDE]).toBe(RockKind.Rail);
+      const a = rockAt(st, 100), w = orbitRate(rc);
+      expect(Math.hypot(a.vx - -w * a.y, a.vy - w * a.x)).toBeLessThan(1e-9);   // a Rail turns rigidly at ω(ρc)
+      const d0 = Math.hypot(rockX(st, 100) - rockX(st, 7), rockY(st, 100) - rockY(st, 7));
+      let worst = 0;
+      for (let n = 0; n < 30 * 60; n++) { st.tick += 60; worst = Math.max(worst, Math.abs(Math.hypot(rockX(st, 100) - rockX(st, 7), rockY(st, 100) - rockY(st, 7)) - d0)); }
+      expect(worst).toBeLessThan(1e-6);
+    });
+  });
+  it('a ring join right at the offset limit never stores an offset restore would refuse (|offset| ≤ RAIL_OFFSET_MAX)', () => {
+    let joined = 0;
+    const bad: string[] = [];
+    for (let deg = 120; deg <= 240; deg += 0.5) {
+      for (const rho of [2100, 2100 - 1e-12, 2100 + 1e-12, 2099.9999999999]) {
+        const st = arena(); st.tick = 500;
+        writeRock(st, 7, RockKind.Tumble, 0, 1900, 190, 0, 15, 5, 500);   // sweeps [1695, 2105]; ρc 1900, so |ρ − ρc| is about 200
+        const a = (deg * Math.PI) / 180;
+        settled(st, 100, rho * Math.sin(a), rho * Math.cos(a), 0);
+        if (!rejoinChoice(st, 100)) continue;
+        settleRocks(st);
+        const v = slot(st, 100), ro = Math.sqrt(v[3]! * v[3]! + v[4]! * v[4]!);
+        joined++;
+        if (ro > 200) bad.push(`${deg}° ρ ${rho}: |offset| ${ro}`);
+      }
+    }
+    expect(bad).toEqual([]);
+    expect(joined).toBeGreaterThan(0);
   });
 });

@@ -9,8 +9,9 @@
 //        breaks and their pieces, rejoins by how, refused rejoins by reason every 60 ticks (plan deviation 3), the grid
 //        against a brute-force scan every 60 ticks (plan deviation 18), the free count every 10 s, stepDuel's p99.
 // cost   §8.3: seeds 1-3, every empty slot filled with a free rock (about 240 live), 2,000 ticks of the stress driver:
-//        stepDuel's p99 under 0.5 ms; once with the fill flying and once settled and over 60 s old (every rock a rejoin
-//        candidate each tick, so the refused-rejoin loops run).
+//        stepDuel's p99 under 0.5 ms; once with the fill flying; once settled and over 60 s old (every rock a rejoin
+//        candidate, so the refused-rejoin loops run, on the §14 staggered path: each re-checked every 30th tick); and
+//        (reported, not gated) settled with every fill rock kept 120-149 ticks old, so each is re-checked every tick.
 // idle   §8.3: seeds 1-20, 600 s with no player action (the quiet scene, crew at IDLE_ORBIT_R, Hunter off): 0 rocks ever
 //        freed; and seeds 1-3's 20 Hz deltas at 60, 300 and 600 s, each window's median at most master's (Task 1's JSON)
 //        plus 64 bytes.
@@ -160,14 +161,17 @@ function fillFree(st: TacticalState, settled = false): void {
     j++;
   }
 }
-function costRun(settled: boolean) {
-  const times: number[] = [], live: number[] = [];
+/** The cost run: 'flying'; 'settled' (over 60 s old, so §14's staggered re-check: every 30th tick per rock); 'young'
+ *  (settled, every Free rock's clock set back before each step to 120-149 ticks old by slot, so it is checked every tick). */
+function costRun(variant: 'flying' | 'settled' | 'young') {
+  const times: number[] = [], live: number[] = [], settled = variant !== 'flying';
   for (const seed of [1, 2, 3]) {
     const st = createTacticalState(seed);
     switchOff(st, 1);
-    if (settled) st.tick = 3700;   // the fill's clocks (t = 0) are then over 60 s old: full drag, rejoin candidates every tick
+    if (settled) st.tick = 3700;   // the fill's clocks (t = 0) are then over 60 s old: full drag, rejoin candidates (staggered)
     fillFree(st, settled);
     for (let k = 0; k < 2000; k++) {
+      if (variant === 'young') for (let j = 0; j < rockSlots(st); j++) if (st.rocks[j * ROCK_STRIDE] === RockKind.Free) st.rocks[j * ROCK_STRIDE + 7] = st.tick + 1 - 120 - (j % 30);
       const input = stressInput(st), t0 = performance.now();
       stepDuel(st, input); times.push(performance.now() - t0);
       if (k % 100 === 0) live.push(rockSlots(st) - count(st, RockKind.Gone));
@@ -176,7 +180,7 @@ function costRun(settled: boolean) {
   const p99 = quantile(times, 0.99);
   return { seeds: [1, 2, 3], ticks: 2000, liveMedian: median(live), liveMin: Math.min(...live), stepDuelMs: { median: round(median(times)), p99: round(p99) }, p99GateMs: 0.5, p99Pass: p99 < 0.5 };
 }
-const cost = want('cost') ? (() => { const flying = costRun(false), settled = costRun(true); return { flying, settled, p99Pass: flying.p99Pass && settled.p99Pass }; })() : null;
+const cost = want('cost') ? (() => { const flying = costRun('flying'), settled = costRun('settled'), young = costRun('young'); return { flying, settled, young, p99Pass: flying.p99Pass && settled.p99Pass }; })() : null;
 
 const idle = want('idle') ? (() => {
   let freed = 0;
