@@ -1121,3 +1121,27 @@ Spec `docs/superpowers/specs/2026-11-19-sensors-blip-design.md`; plan `docs/supe
   5. At Weapons, click the blip and press T: nothing is picked, and a lock still reads NO CONTACT.
 
   Does the blip read as a rough fix on the amber CRT, is the 2 s ping comfortable to watch, and is the circle the right size near and far? The numbers are starting values: `BLIP_R_MIN`, `BLIP_GROW`, `BLIP_R_MAX` and `BLIP_PING_TICKS` in `src/renderer/src/render/tactical/fogModel.ts`.
+
+## Helm round 2: a throttle that stays, a tap to cut, drag, and a gas charge (2026-11-20)
+
+Spec `docs/superpowers/specs/2026-11-19-helm-round2-design.md`; plan `docs/superpowers/plans/2026-11-20-helm-round2.md`; report `docs/superpowers/research/2026-11-20-helm-round2-report.md`.
+
+- [x] Automated: `npx vitest run` passes (522 files, 6258 tests, 2 skipped). This includes the throttle that stays (−500..1000, 17 a tick, held through an empty Helm, clamped by a lost bar and not raised when it returns), reverse at 50 % on the Hound (48 u/s² on the Hunter), `throttleCut` and its latch (a late S frame leaves the throttle at 0), the keyboard's tap on a fake clock (150 / 200 / 250 / 300 ms, read live), both runtimes judging the tap against the throttle at keydown, the online prediction (0 while a cut is in flight; the latch predicted), drag and a stabilise that acts under thrust, the fixed 150°/s turn, the gas charge (90 ticks of one thruster, the 30-tick wait, 240 refill ticks; NO GAS once a press), the 1-bar climb at 300 u, the scripted Helm's cuts (it never stands with the throttle set), the console's THR, GAS bar and hints, the velocity ring, the Settings row and the sit card (`tests/helm*.test.ts` and the files the plan names). Same-version bless at SIM 63 (7ad1c7d1), then SIM_VERSION 63 → 64 alone (42c5e5a9; canonical trace and duel oracle per tick: 21 runs, 175320 ticks, 740 fields, identical). `tests/valkyrnIdentity.test.ts` and `tests/w4HunterIdentity.test.ts` unchanged; the Valkyrn gate unchanged. `npx tsc -b` is clean; `npm run build` succeeds; determinism passes on Node, Electron and Firefox. Scripted Helm tuning: none (the per-seed gates pass with no scripted knob moved; the aggregate duel median is 136.7 s, 147.0 s at the base, already outside 180-300 at the base and owner tuning). `DUEL_TEST_SEED`: moved 423 → 1921 (a seated search; the only seed in 1..4000; tick 4276).
+- [ ] Manual (owner): play a Single player duel at the Hound's Helm.
+  1. Hold W to about half and let go: the throttle bar and THR stay there, and the ship keeps thrusting. Stand up: it still thrusts (the OUTSIDE row reads THRUST n%).
+  2. Tap S: the throttle drops to 0 at once. Hold S: it ramps into reverse (to REV, −50). Tap W from reverse: 0 again. A tap from 0 only nudges it.
+  3. Brake from speed both ways: tap S then flip the nose and burn, and hold S in reverse.
+  4. Hold Q or E: the ship sidesteps while the GAS bar empties (about 1.5 s on one thruster), then nothing; let go and it refills after half a second (about 4 s to full). Pressing on an empty bar says NO GAS and flashes it.
+  5. Turn with A / D or the left button, then stop turning with the throttle set: the sideways slide dies away and the ship flies where the nose points.
+  6. The small ring at the end of the dashed velocity line shows where the ship will be in 1 s.
+  7. The right drag pans the Helm map. Space does nothing at the Helm, and there is no AUTO-FACE button.
+  8. Settings: change Throttle tap (150 to 300 ms) and feel the tap get easier or stricter, without leaving the duel.
+  9. Online: hold W again just after a cut lands. The predicted throttle can stall for a publication or two while the replica still shows the latch (known, plan-mandated by spec §7); say whether it is noticeable.
+
+  The owner's judgement calls to confirm (spec §11): an unattended Helm keeps its throttle; a tap is judged from the throttle when the key went down; after a cut the key must come up before the throttle moves; drag 0.15 and stabilise 80 (top speed about 800 u/s); stabilise under thrust; the gas numbers (1.5 s push, 0.5 s wait, 4 s refill, 70 u/s²); the AUTO-FACE button goes with Space; the bots keep auto-face; built on top of W-4.
+
+  Screenshots for the look gate:
+  1. The Helm console with THR, the GAS bar half empty and the two hint lines.
+  2. The map with the velocity line and its ring.
+
+  Does the throttle feel like a lever, and does the tap feel quick enough?

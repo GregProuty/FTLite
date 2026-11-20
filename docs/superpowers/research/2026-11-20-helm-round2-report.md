@@ -125,3 +125,16 @@ blessed tests/golden/duel-rematch.json: 27 checkpoints, rematch on tick 8621, ro
 - Gates unchanged since Task 6 (the duel telemetry's summary and passive median, `diff` empty; median 136.7 s, still outside 180 to 300 as at the base); Valkyrn gate unchanged since `HR2_BASE` (all 25 lines, `diff` empty). The fences: no diff since e65d84fe; 5 files, 21 tests pass.
 - Full verification: typecheck clean; electron-vite build ok; full suite 522 files passed, 6258 tests passed, 2 skipped, no timeouts; `npm run test:determinism`: Node, Electron and Firefox 1800 samples PASS (logs checked out after); the removed-names grep prints nothing.
 - `DUEL_TEST_SEED` moved, 423 -> 1921 (both smoke scripts). The smoke's step 3 timed out on 423. The brief's search (no input, the crew standing) found seed 84 at tick 4946, but the smoke seats both players, and seated seed 84 decides on tick 7609 (423 on 9286), past the 90 s step; the smoke with 84 failed step 3 too. A search with both crew seated from tick 0 over seeds 1 to 4000 before tick 5000 found only seed 1921, decided on tick 4276, a crew win. With 1921 the smoke passes and prints the `ACTUAL DUEL APP` line.
+
+
+## Task 15 and Task 16
+
+- Task 15: SIM_VERSION 63 -> 64 alone, commit 42c5e5a9, blessed. The canonical trace and the duel oracle prove every run unchanged per tick: 21 runs, 175320 ticks, 740 fields, identical. Bless lines: basic 89001cdd; duel-1 ef2ed5ff; rematch 19deaf2a.
+- Task 16, final checks: `npm run typecheck` clean; `npx electron-vite build` ok; `npx vitest run --maxWorkers=4`: 522 files passed, 6258 tests passed, 2 skipped, no timeouts; `npm run build` ok; `npm run test:determinism`: Node 1800 canonical samples and 330 result/event boundaries PASS, Electron 1800 samples PASS, Firefox 1800 samples PASS (the durability logs restored with `git checkout`).
+- `SIM_VERSION = 64` at `src/renderer/src/sim/tuning.ts:7`.
+- The fence: `git diff --stat 2c4f7c5d` over `valkyrnIdentity`, `w4HunterIdentity`, `valkyrnRoundsRocks`, `pewHunter` and `torpedoGuidance` tests: no output. (There is no `HR2_BASE` ref in this worktree; 2c4f7c5d is the base the plan names.) The removed-names grep over `src` (`helmBoost`, `turnBoost`, `RCS_TURN_BOOST`, `BOOST_FAR`, `BOOST_FACE_SIN`, `THR_RETURN`, `boosted`, `RMB HDG`, `A/D  THRUSTERS`): no output.
+- Gates: the per-seed gates pass with no scripted knob moved. The aggregate duel median is 136.7 s (147.0 s at the base), outside 180 to 300 at the base already; owner tuning. The Valkyrn lines are identical to the base.
+- Owner note for the playtest (Task 9's review, plan-mandated by spec §7): online, when a cut's result lands while the replica still shows the latch and W is held again, the predicted throttle can stall for a publication or two.
+- The gate entry is appended to `docs/gates.md`.
+
+Helm round 2 complete on `helm-round2` at SIM_VERSION 64; the merge to master is the controller's.
