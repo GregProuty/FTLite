@@ -45,6 +45,16 @@ describe('the ship picker (Valkyrn spec §9)', () => {
     expect(setMapGrid).toHaveBeenCalledWith('square');
     expect(store.getState().settings.mapGrid).toBe('square');
   });
+  it('helm round 2 §6.3: the Settings throttle tap starts at 200 ms, offers 150 / 200 / 250 / 300, and saves a change', () => {
+    const setThrottleTap = vi.fn(), { store } = renderUi({ deps: { setThrottleTap } });
+    click('settings');
+    const pick = screen.getByTestId('throttle-tap') as HTMLSelectElement;
+    expect(pick.value).toBe('200');
+    expect(Array.from(pick.options).map((o) => o.textContent)).toEqual(['150 ms', '200 ms', '250 ms', '300 ms']);
+    act(() => { fireEvent.change(pick, { target: { value: '300' } }); });
+    expect(setThrottleTap).toHaveBeenCalledWith(300);
+    expect(store.getState().settings.throttleTapMs).toBe(300);
+  });
 });
 
 describe('the settings record (Valkyrn spec §9)', () => {
@@ -55,5 +65,10 @@ describe('the settings record (Valkyrn spec §9)', () => {
     expect(loadSettings(storage)).toMatchObject({ soloShip: 'valkyrn', valkyrnLaserFit: true });
     map.set(SETTINGS_KEY, '{"version":2,"master":1,"music":1,"effects":1,"shake":"full","soloShip":"cutter","valkyrnLaserFit":"yes"}');
     expect(loadSettings(storage)).toMatchObject({ soloShip: 'hound', valkyrnLaserFit: false });
+  });
+  it('helm round 2 §6.3: throttleTapMs round-trips and stays a version 2 record', () => {
+    saveSettings(storage, { ...DEFAULT_SETTINGS, throttleTapMs: 150 });
+    expect(loadSettings(storage)).toMatchObject({ version: 2, throttleTapMs: 150 });
+    expect(DEFAULT_SETTINGS.throttleTapMs).toBe(200);
   });
 });

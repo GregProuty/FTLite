@@ -27,6 +27,8 @@ export interface UiActionDeps {
   setShake?(shake: import('../render/shake').ShakeSetting): void;
   /** The map grid setting changed (main saves it and hands it to the renderer). */
   setMapGrid?(grid: import('../render/tactical/mapGrid').MapGridSetting): void;
+  /** Helm round 2 §6.3: the throttle tap time changed (main saves it; the keyboards read it live). */
+  setThrottleTap?(ms: number): void;
   fullscreen?: { get(): Promise<boolean>; set(on: boolean): Promise<boolean> };
   /** performance.now(), injectable for tests. */
   perfNow?(): number;
@@ -171,6 +173,7 @@ export function createUiActions(deps: UiActionDeps) {
     setVolume(channel: VolumeChannel, volume: number): void { store.setState((s) => ({ settings: { ...s.settings, [channel]: volume } })); deps.setVolume?.(channel, volume); },
     setShake(shake: import('../render/shake').ShakeSetting): void { store.setState((s) => ({ settings: { ...s.settings, shake } })); deps.setShake?.(shake); },
     setMapGrid(mapGrid: import('../render/tactical/mapGrid').MapGridSetting): void { store.setState((s) => ({ settings: { ...s.settings, mapGrid } })); deps.setMapGrid?.(mapGrid); },
+    setThrottleTap(throttleTapMs: number): void { store.setState((s) => ({ settings: { ...s.settings, throttleTapMs } })); deps.setThrottleTap?.(throttleTapMs); },   // helm round 2 §6.3
     toggleFullscreen(): void {
       const on = menu().fullscreen;
       if (!deps.fullscreen || on === null) return;

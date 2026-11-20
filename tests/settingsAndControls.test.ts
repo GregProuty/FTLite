@@ -11,22 +11,25 @@ describe('settings store (Audio-i spec section 6)', () => {
   it('persists the three volumes and falls back to the default on missing, malformed or unknown data', () => {
     const { map, storage } = memory();
     expect(loadSettings(storage)).toEqual(DEFAULT_SETTINGS);
-    expect(DEFAULT_SETTINGS).toEqual({ version: 2, master: 1, music: 0.5, effects: 1, shake: 'full', soloShip: 'hound', valkyrnLaserFit: false, mapGrid: 'gravity' });   // music at half (owner 2026-11-17); Feel-i: full shake
-    saveSettings(storage, { version: 2, master: 0.25, music: 0.5, effects: 0, shake: 'low', soloShip: 'hound', valkyrnLaserFit: false, mapGrid: 'gravity' }); expect(loadSettings(storage)).toEqual({ version: 2, master: 0.25, music: 0.5, effects: 0, shake: 'low', soloShip: 'hound', valkyrnLaserFit: false, mapGrid: 'gravity' });
+    expect(DEFAULT_SETTINGS).toEqual({ version: 2, master: 1, music: 0.5, effects: 1, shake: 'full', soloShip: 'hound', valkyrnLaserFit: false, mapGrid: 'gravity', throttleTapMs: 200 });   // music at half (owner 2026-11-17); Feel-i: full shake
+    saveSettings(storage, { version: 2, master: 0.25, music: 0.5, effects: 0, shake: 'low', soloShip: 'hound', valkyrnLaserFit: false, mapGrid: 'gravity', throttleTapMs: 200 }); expect(loadSettings(storage)).toEqual({ version: 2, master: 0.25, music: 0.5, effects: 0, shake: 'low', soloShip: 'hound', valkyrnLaserFit: false, mapGrid: 'gravity', throttleTapMs: 200 });
     for (const bad of ['{', '[]', 'null', '{"version":3,"master":0}', '{"version":"2"}']) { map.set(SETTINGS_KEY, bad); expect(loadSettings(storage)).toEqual(DEFAULT_SETTINGS); }
     map.set(SETTINGS_KEY, '{"version":2,"master":0.3,"music":"1","effects":0.75}');
-    expect(loadSettings(storage)).toEqual({ version: 2, master: 1, music: 0.5, effects: 0.75, shake: 'full', soloShip: 'hound', valkyrnLaserFit: false, mapGrid: 'gravity' });   // field by field (no shake: full)
+    expect(loadSettings(storage)).toEqual({ version: 2, master: 1, music: 0.5, effects: 0.75, shake: 'full', soloShip: 'hound', valkyrnLaserFit: false, mapGrid: 'gravity', throttleTapMs: 200 });   // field by field (no shake: full)
     map.set(SETTINGS_KEY, '{"version":2,"master":1,"music":1,"effects":1,"shake":"wild"}'); expect(loadSettings(storage).shake).toBe('full');
     map.set(SETTINGS_KEY, '{"version":2,"master":1,"music":1,"effects":1,"shake":"off"}'); expect(loadSettings(storage).shake).toBe('off');
     map.set(SETTINGS_KEY, '{"version":2,"master":1,"music":1,"effects":1,"mapGrid":"round"}'); expect(loadSettings(storage).mapGrid).toBe('gravity');   // the gravity grid is the default
     map.set(SETTINGS_KEY, '{"version":2,"master":1,"music":1,"effects":1,"mapGrid":"square"}'); expect(loadSettings(storage).mapGrid).toBe('square');
+    map.set(SETTINGS_KEY, '{"version":2,"master":1,"music":1,"effects":1,"throttleTapMs":250}'); expect(loadSettings(storage).throttleTapMs).toBe(250);   // helm round 2 §6.3
+    for (const bad of ['175', '"200"', 'null', '0', '1000']) { map.set(SETTINGS_KEY, `{"version":2,"master":1,"music":1,"effects":1,"throttleTapMs":${bad}}`); expect(loadSettings(storage).throttleTapMs, bad).toBe(200); }
+    map.set(SETTINGS_KEY, '{"version":2,"master":1,"music":1,"effects":1}'); expect(loadSettings(storage).throttleTapMs).toBe(200);   // a record without it
     const throwing = { getItem: () => { throw Error('denied'); }, setItem: () => { throw Error('denied'); } };
     expect(loadSettings(throwing)).toEqual(DEFAULT_SETTINGS); expect(() => saveSettings(throwing, DEFAULT_SETTINGS)).not.toThrow();
     for (const ch of VOLUME_CHANNELS) expect(VOLUME_STEPS).toContain(DEFAULT_SETTINGS[ch]);
   });
   it('migrates a version 1 record: its volume becomes Master, and Music starts at its default half and Effects full', () => {
     const { map, storage } = memory();
-    map.set(SETTINGS_KEY, '{"version":1,"volume":0.25}'); expect(loadSettings(storage)).toEqual({ version: 2, master: 0.25, music: 0.5, effects: 1, shake: 'full', soloShip: 'hound', valkyrnLaserFit: false, mapGrid: 'gravity' });
+    map.set(SETTINGS_KEY, '{"version":1,"volume":0.25}'); expect(loadSettings(storage)).toEqual({ version: 2, master: 0.25, music: 0.5, effects: 1, shake: 'full', soloShip: 'hound', valkyrnLaserFit: false, mapGrid: 'gravity', throttleTapMs: 200 });
     map.set(SETTINGS_KEY, '{"version":1,"volume":0}'); expect(loadSettings(storage).master).toBe(0);
     for (const bad of ['{"version":1,"volume":0.3}', '{"version":1,"volume":"1"}', '{"version":1}']) { map.set(SETTINGS_KEY, bad); expect(loadSettings(storage)).toEqual(DEFAULT_SETTINGS); }
   });

@@ -41,6 +41,8 @@ export interface DuelModeDeps {
   setConsole?(input: ConsoleInput | null): void;
   /** The contact window's click slot (enemy ship window spec §6.1, §6.6): filled with this duel's controller, emptied on dispose. */
   setContact?(contact: ContactActions | null): void;
+  /** Helm round 2 §2.3, §6.3: the Settings tap time in ms, read live by the keyboard; absent (`?mode=duel`), its default. */
+  throttleTapMs?(): number;
 }
 
 export function startDuelMode(deps: DuelModeDeps): () => void {
@@ -54,7 +56,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
   const scene = createDuelScene(renderer, { seed: deps.seed, pauseText, ui: deps.ui, audio: deps.audio, contact, takeClick: () => pointer.takeClick(), pointer: () => pointer.position(),
     takeAim: () => pointer.takeAim(), requests, takePingAt, leftHeld: () => pointer.leftHeld(), shipCommand: (c) => keyboard.ui.ship?.(c) });   // Engineering spike §5; playtest2feedback §4a
   const canvas = renderer.app.canvas;
-  const keyboard = createDuelKeyboard(window as unknown as EventSource, { intercept: (code) => contact.intercept(code) || (code === PING_CODE && (pingKey = true)) });
+  const keyboard = createDuelKeyboard(window as unknown as EventSource, { intercept: (code) => contact.intercept(code) || (code === PING_CODE && (pingKey = true)), tapMs: deps.throttleTapMs });   // helm round 2 §6.3
   deps.setConsole?.(keyboard.ui);
   deps.setContact?.(contact);
   const trackConsole = consoleChange(() => keyboard.clearUi());   // Artemis spec §6.2: a console change drops its holds

@@ -73,6 +73,8 @@ FAIL: median 140.1 s < 180
 
 - Task 10 (the console shows the new rules): `src/renderer/src/app/uiProbe.ts` (the probe's crew literal gains the four gas fields, floor -500; a source fix for the typecheck, not a test). `tests/crewHelmUi.test.tsx` (the `crew` literal and the model's `toEqual` gain the gas fields; the AUTO-FACE and old-hint rules are replaced). No test deleted. No kind (b) failures in the Task 10 run.
 
+- Task 12 (the Settings record gains a field, helm round 2 §6.3): `tests/settingsAndControls.test.ts` (the full `Settings` literals gain `throttleTapMs: 200`), `tests/uiMenuState.test.ts` (the two `settings` slice expectations gain `throttleTapMs: 200`). No test deleted. No kind (b) failures in the Task 12 targeted run.
+
 ## Scripted Helm tuning (spec §5's gate rule)
 
 - Task 6: none. Every per-seed gate in `tests/duelGates.test.ts` passed with no constant moved (21 passed, the 2 aggregate bands skipped); no crew twin added.
