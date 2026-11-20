@@ -2,7 +2,8 @@
 // (or of W from a reverse one) sends throttleCut, judged against the throttle when the key went down; a queued cut is a
 // console command a stand drops; a thruster press on an empty charge says NO GAS once; at the crew Helm Space sends no face,
 // the right button's heading is not sent and the right drag pans. The Valkyrn class's Helm keeps all three.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as duelStep from '../src/renderer/src/sim/duel/step';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuelKeyboard, emptyPresses, NO_HELD_FLAGS, type EventSource, type KeySample, type PointerSample } from '../src/renderer/src/app/duel/input';
@@ -75,6 +76,18 @@ describe('the tap in Single player (spec §2.3)', () => {
       a.rt.duel.thrMille = -300; a.tap(1); expect(a.rt.duel.thrMille).toBe(0);
       b.rt.duel.thrMille = 400; b.tap(1); expect(b.rt.duel.thrMille).toBeGreaterThan(400);
     } finally { a.rt.dispose(); b.rt.dispose(); }
+  });
+  it('a press shorter than one frame (keydown and keyup in one sample) cuts a throttle above 0; at 0 it sends no cut (recorded first, then judged)', () => {
+    for (const [start, cuts] of [[400, 1], [0, 0]] as const) {
+      const r = rig(), step = vi.spyOn(duelStep, 'stepDuelTick');
+      try {
+        r.rt.duel.thrMille = start;
+        r.set({ throttleDown: -1, throttleTap: -1 }); r.tick(); r.tick();   // one sample carries both; throttleHeld stays 0
+        const sent = step.mock.calls.flatMap(([, input]) => input.commands.filter((e) => e.command.kind === 'throttleCut'));
+        expect(sent, `from ${start}`).toHaveLength(cuts);
+        expect(r.rt.duel.thrMille, `from ${start}`).toBe(0);
+      } finally { step.mockRestore(); r.rt.dispose(); }
+    }
   });
   it('a queued cut is a console command: a stand before its tick drops it, and the throttle stays set', () => {
     const r = rig();

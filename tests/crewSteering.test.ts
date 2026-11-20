@@ -1,8 +1,7 @@
 // Playtest2feedback (spec 2026-11-18-playtest2feedback-design §4a, §7, §8): mouse steering by the held aim, the aim
-// becoming the held heading, moveX ignored on a newtonianHelm class, the gas boost (far only, 2× the step), settling
-// without chatter on an aim, a held heading and auto-face, the Valkyrn unchanged, and the scripted crew's aim. Owner
-// 2026-11-19 (replaced rule, kind a): the boost is free (no tank, no gas spent); it needs a far turn and Engineering's
-// engine factor above 0.
+// becoming the held heading, moveX ignored on a newtonianHelm class, the fixed turn rate (helm round 2 §3.2: no boost;
+// TURN_DEG_PER_S scaled only by Engineering's engine factor), settling without chatter on an aim, a held heading and
+// auto-face, the Valkyrn unchanged, and the scripted crew's aim.
 import { describe, expect, it } from 'vitest';
 import type { HeldInput } from '../src/renderer/src/net/contracts';
 import { Seated } from '../src/renderer/src/sim/components';

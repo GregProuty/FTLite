@@ -42,7 +42,7 @@ describe('the online source\'s prediction (spec §3, §6)', () => {
       s.unacked(5);
       expect(s.axes()).toEqual(crewAxes(d, { ...NONE, throttleHeld: 1 }, 185));
       s.sent({ ...NONE, rcsX: 1 }); s.unacked(0);
-      expect([s.thrMille(), s.helmVent()]).toEqual([100, { x: 1, y: 0 }]);   // owner 2026-11-19: free cold gas, so it always vents
+      expect([s.thrMille(), s.helmVent()]).toEqual([100, { x: 1, y: 0 }]);   // helm round 2 §3.3: the charge is full here, so it vents (it vents while the charge lasts)
     } finally { disposeDuel(d); }
   });
   it('away from the Helm it shows the replica\'s thrMille and no vent', () => {

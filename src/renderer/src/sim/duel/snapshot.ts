@@ -178,7 +178,7 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   // Feel-ii (spec §1.1): the held heading, −1 or a heading index 0..255.
   const holdHeading = values[helmAt + 1]!;
   if (!validHoldHeading(holdHeading)) throw new Error(`duel snapshot held heading ${holdHeading} is invalid`);
-  // Playtest2feedback §7: the crew Helm's held throttle −250..1000, an integer (owner 2026-11-19: no tank).
+  // Playtest2feedback §7: the crew Helm's held throttle −500..1000 (helm round 2 §2.1), an integer (owner 2026-11-19: no tank).
   const whole = (v: number, lo: number, hi: number): boolean => Number.isInteger(v) && v >= lo && v <= hi;
   const thrMille = values[helmAt + 2]!;
   if (!whole(thrMille, THR_MIN, THR_MAX)) throw new Error(`duel snapshot thrMille ${thrMille} is invalid`);

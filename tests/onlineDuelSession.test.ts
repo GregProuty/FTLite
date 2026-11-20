@@ -818,6 +818,58 @@ describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () =>
     expect(cb.commands().filter((x) => x.kind === 'throttleCut')).toEqual([]);
     b.dispose();
   });
+  it('helm round 2 §2.3, §7: a tap of W with the predicted throttle below 0 sends one throttleCut', () => {
+    const r = rig(0), c = r.attach();
+    r.d.thrMille = -300; c.publish(r.d); r.pump();
+    r.key('keydown', 'KeyW'); r.pump(); r.advance(80); r.key('keyup', 'KeyW'); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'throttleCut')).toEqual([{ kind: 'throttleCut' }]);
+    r.session.frame();
+    expect(h.source!.thrMille()).toBe(0);   // the cut in flight
+    r.dispose();
+  });
+  it('helm round 2 §3.3: a PORT / STBD button press on the replica\'s empty charge says NO GAS once a press', () => {
+    let input: ConsoleInput | null = null;
+    const r = rig(0, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }), c = r.attach();
+    const gas = () => h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'gas');
+    r.d.gas = 0; c.publish(r.d); r.pump(); r.session.frame(); gas();
+    input!.hold('ArrowLeft', true); r.pump(); r.pump(); r.pump(); r.session.frame();
+    expect(gas()).toEqual([{ control: 'gas', reason: 'NO GAS' }]);   // once, for the held press
+    input!.hold('ArrowLeft', false); r.pump(); input!.hold('ArrowRight', true); r.pump(); r.session.frame();
+    expect(gas()).toEqual([{ control: 'gas', reason: 'NO GAS' }]);   // a new press
+    r.dispose();
+  });
+  it('helm round 2 §7: a new round, a stand, a sit and a re-attach each clear the cut in flight (the prediction no longer reads 0 from it)', () => {
+    const r = rig(0);
+    let c = r.attach();
+    const stepOne = (command: DuelCommand, sequence: number): void => {
+      stepDuelTick(r.d, { held: [], commands: [{ runId: 'duel', id: { player: 0, sequence }, requestedTick: r.d.interior.tick, command }] });
+    };
+    /** A tap of S at 400 with no result: the cut is in flight and the prediction reads 0. */
+    const cutInFlight = (why: string): void => {
+      r.d.thrMille = 400; c.publish(r.d); r.pump();
+      const before = c.commands().filter((x) => x.kind === 'throttleCut').length;
+      r.key('keydown', 'KeyS'); r.pump(); r.advance(80); r.key('keyup', 'KeyS'); r.pump();
+      expect(c.commands().filter((x) => x.kind === 'throttleCut').length, why).toBe(before + 1);
+      r.session.frame(); expect(h.source!.thrMille(), `${why}: in flight`).toBe(0);
+    };
+    const replica = (why: string): void => { r.session.frame(); expect(h.source!.thrMille(), `${why}: cleared`).toBe(400); };
+    cutInFlight('new round');
+    nextRound(r.d); r.d.thrMille = 400; c.publish(r.d); r.pump();
+    replica('new round');
+    cutInFlight('stand');
+    r.key('keydown', 'KeyX'); r.key('keyup', 'KeyX'); r.pump();   // this seat's stand (the replica still shows the seat)
+    replica('stand');
+    cutInFlight('sit');
+    stepOne({ kind: 'stand' }, 1); c.publish(r.d); r.pump();
+    r.key('keydown', 'KeyE'); r.key('keyup', 'KeyE'); r.pump();   // this seat's sit
+    expect(c.commands().at(-1)).toEqual({ kind: 'sit', station: r.d.nav });
+    stepOne({ kind: 'sit', station: r.d.nav }, 2); c.publish(r.d); r.pump();
+    replica('sit');
+    cutInFlight('re-attach');
+    c = r.attach();
+    replica('re-attach');
+    r.dispose();
+  });
   it('helm round 2 §3.3: a thruster press on the replica\'s empty charge says NO GAS once a press', () => {
     const r = rig(0), c = r.attach();
     r.d.gas = 0; c.publish(r.d); r.pump();

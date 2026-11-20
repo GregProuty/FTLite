@@ -215,7 +215,7 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     hold(code, on) {
       const was = has(FIRE_HELD);
       if (on) ui.add(code); else ui.delete(code);
-      if (code === FIRE_HELD) { const now = has(FIRE_HELD); if (!was && now) presses.fireDown++; else if (was && !now) presses.fireUp++; }
+      if (code === FIRE_HELD) { const on = has(FIRE_HELD); if (!was && on) presses.fireDown++; else if (was && !on) presses.fireUp++; }
     },
     lock(room) { lockTo = room; },
     torpLock(room) { torpTo = room; },

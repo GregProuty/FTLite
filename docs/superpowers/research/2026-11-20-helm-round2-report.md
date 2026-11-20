@@ -138,3 +138,10 @@ blessed tests/golden/duel-rematch.json: 27 checkpoints, rematch on tick 8621, ro
 - The gate entry is appended to `docs/gates.md`.
 
 Helm round 2 complete on `helm-round2` at SIM_VERSION 64; the merge to master is the controller's.
+
+## Final review
+
+- The bait telemetry's meaning moved. `sim/duel/telemetry.ts:138` (the `manoeuvre` test) includes `d.thrMille !== 0`. The throttle now stays set, so cruising near the enemy with the throttle set counts as a manoeuvre for `baits`. Left as is for the owner's tuning.
+- The T9 latch reset is kept as built. The reviewer showed that the suggested change would let the prediction ramp while the authority holds 0.
+- The tap and NO GAS logic is mirrored in `app/duel/runtime.ts` and `app/duel/onlineDuel.ts`. A shared helper is a later tidy.
+- The fix wave (no sim behaviour change): the snapshot fixture's two unasserted properties are now preconditions, comment and copy tidy-ups, the gate entry's steps 8 and 9 reworded, and tests for a sub-frame tap, the online reverse tap, the online NO GAS from the buttons and the `cutSent` clears. See `.superpowers/sdd/final-fix-report.md`.

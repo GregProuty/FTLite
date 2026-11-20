@@ -1,6 +1,6 @@
 // Playtest2feedback (spec 2026-11-18-playtest2feedback-design §1, §2, §3, §4, §4a): the newtonianHelm flag, flightFor's
 // per-slot tuning, the drag-0 speed cap, unquantised thrust with proportional reverse, the ship-relative thruster push,
-// the turn boost, and the bit-identical flight of every ship that flies with drag.
+// the fixed turn rate (helm round 2 §3.2: no boost), and the bit-identical flight of every ship that flies with drag.
 import { describe, expect, it } from 'vitest';
 import { CUTTER_CLASS, HUNTER_CLASS, SHIP_CLASSES, ShipClass, VALKYRN_CLASS, VALKYRN_LASER_CLASS, type ShipClassDef } from '../src/renderer/src/sim/tactical/defs';
 import { hx, hy, wrapHeading } from '../src/renderer/src/sim/tactical/direction';

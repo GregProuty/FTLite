@@ -13,6 +13,7 @@ import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import { TACTICAL_MODULES } from '../src/renderer/src/sim/tactical/hash';
 import { CUTTER } from './helpers/scriptedDuel';
+import { CUTTER_CLASS, pewFullCharge } from '../src/renderer/src/sim/tactical/defs';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 function scriptedDuel(seed: number, ticks: number) {
@@ -75,6 +76,9 @@ describe('the duel snapshot (spec §6)', () => {
       expect(d.tactical.missiles[1 - flying]!.active, 'only one missile in flight at seed 2 tick 6134').toBe(false);
       expect(d.tactical.systems[0].rooms.some((r) => r > 0), 'a damaged crew room at seed 2 tick 6134').toBe(true);
       expect(d.repair.some((r) => r > 0), 'a repair in progress at seed 2 tick 6134').toBe(true);
+      // Helm round 2 (final review): the two properties the systems.0.cls and systems.1.cls cases below need.
+      expect(d.tactical.systems[0].pewTurret, 'the crew pew turret is slewed (non-zero) at seed 2 tick 6134').not.toBe(0);
+      expect(d.tactical.systems[1].pewCharge, "the Hunter's pew charge is above the Cutter's full pew charge at seed 2 tick 6134").toBeGreaterThan(pewFullCharge(CUTTER_CLASS.slots.pew!));
       const good = saveDuelSnapshot(d, DIGEST), names = new Map<string, number>();
       let at = 1;
       for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) { names.set(f.name, at); at += f.count; }
@@ -93,7 +97,7 @@ describe('the duel snapshot (spec §6)', () => {
         ['ships.0.headingAcc', 0, 1e300, /ships\.0\.headingAcc/], ['ships.1.headingAcc', 0, -1, /ships\.1\.headingAcc/],
         ['ships.1.skidBudget', 0, -0.5, /ships\.1\.skidBudget/], ['ships.0.graceUntil', 0, 2147483648, /ships\.0\.graceUntil/],
         ['systems.0.cls', 0, 1, /systems\.0\.pewTurret: out of range/],   // W-4 spec §13.1: the crew's slewed pew turret (-3476 here; helm round 2 (SIM 63): was 5288) is bounded by the claimed class first, and the Hunter has no turret; the identity case alone is below
-        ['systems.1.cls', 0, 0, /systems\.1\.pewCharge: out of range/],   // Task 6 review: the Hunter's charge (above the Cutter's full 180) is now bounded by the claimed class first; the identity case alone is below
+        ['systems.1.cls', 0, 0, /systems\.1\.pewCharge: out of range/],   // Task 6 review: the Hunter's charge (above the Cutter's full 1080; helm round 2: the comment said 180) is now bounded by the claimed class first; the identity case alone is below
         ['systems.1.laserManual', 0, 1, /systems\.1\.laserManual: only the crew laser has a manual mode/],   // W-2: the Hunter is always AUTO
         ['systems.0.laserAim', 0, 65536, /systems\.0\.laserAim: out of range/],   // W-2: a fine aim 0..65535, or −1
         ['systems.1.torpManual', 0, 1, /systems\.1\.torpManual: only the crew torpedo has a manual mode/],   // W-3: the Hunter is always AUTO

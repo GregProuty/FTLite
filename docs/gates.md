@@ -1135,8 +1135,8 @@ Spec `docs/superpowers/specs/2026-11-19-helm-round2-design.md`; plan `docs/super
   5. Turn with A / D or the left button, then stop turning with the throttle set: the sideways slide dies away and the ship flies where the nose points.
   6. The small ring at the end of the dashed velocity line shows where the ship will be in 1 s.
   7. The right drag pans the Helm map. Space does nothing at the Helm, and there is no AUTO-FACE button.
-  8. Settings: change Throttle tap (150 to 300 ms) and feel the tap get easier or stricter, without leaving the duel.
-  9. Online: hold W again just after a cut lands. The predicted throttle can stall for a publication or two while the replica still shows the latch (known, plan-mandated by spec §7); say whether it is noticeable.
+  8. Set Throttle tap (150 to 300 ms) in Settings, then start a duel, and feel the tap get easier or stricter.
+  9. Online: hold W again just after a cut lands. Two things can happen, both known: the predicted throttle can stall for a publication or two while the replica still shows the latch (plan-mandated by spec §7), and a W pressed very soon after an S tap may need pressing again, because the authority keeps the latch until W comes up (spec §2.3, the latch; owner judgement call 3). Say whether either is noticeable.
 
   The owner's judgement calls to confirm (spec §11): an unattended Helm keeps its throttle; a tap is judged from the throttle when the key went down; after a cut the key must come up before the throttle moves; drag 0.15 and stabilise 80 (top speed about 800 u/s); stabilise under thrust; the gas numbers (1.5 s push, 0.5 s wait, 4 s refill, 70 u/s²); the AUTO-FACE button goes with Space; the bots keep auto-face; built on top of W-4.
 

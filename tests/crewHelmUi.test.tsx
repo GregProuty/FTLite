@@ -37,7 +37,7 @@ function mount() {
 }
 
 describe('the console model (spec §5, §6)', () => {
-  it('gives the crew Helm its readings: the shown thrMille, the cap and floor from the Engines bars, the tank % and the bars (owner 2026-11-19)', () => {
+  it('gives the crew Helm its readings: the shown thrMille, the cap and floor from the Engines bars, the bars, and the gas charge with its low and venting flags (helm round 2 §6.1)', () => {
     const d = createSeatedDuel(CUTTER, 5), v = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.Valkyrn);
     try {
       const m = consoleModel({ duel: d, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null, thrMille: 120 });

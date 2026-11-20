@@ -188,7 +188,7 @@ export interface TacticalModelInput {
   t?: number;
   /** Valkyrn spec §4.5: the crew ship's silhouette (hullFor(true, layout.hull)); absent: the Hound's. */
   crewHull?: HullId;
-  /** Playtest2feedback §6: the crew ship's vented thruster axes and boost this tick (the puffs), and the cursor the held left
+  /** Playtest2feedback §6: the crew ship's vented thruster axes this tick (the puffs), and the cursor the held left
    *  button steers to (the steering marker), in screen px; absent: none. */
   vent?: HelmVent | null; steerTo?: Point | null;
   /** Engineering spike §10.4: the fog this frame (the scene's stepFog). The scene leaves the enemy out of `ships` while it
