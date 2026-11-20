@@ -718,12 +718,15 @@ describe('the Artemis console clicks online (Artemis spec §4.1, §6.2)', () => 
 describe('the online Helm throttle reads the prediction (Artemis spec §5.4, Net-4a §3.9)', () => {
   const tap = (r: ReturnType<typeof rig>, code: string): void => { r.key('keydown', code); r.key('keyup', code); r.pump(); };
   const throttles = (c: Stub) => c.commands().filter((x) => x.kind === 'throttle');
-  it('two W presses inside one round trip move two notches (P holds the first); S steps down from P', () => {
-    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();
+  it('two W presses inside one round trip move two notches (P holds the first); S steps down from P; a notch click asks for its level', () => {
+    let input: ConsoleInput | null = null;
+    const r = rig(0, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }, ShipClass.Valkyrn), c = r.attach();
     tap(r, 'KeyW'); tap(r, 'KeyW');
     expect(throttles(c)).toEqual([{ kind: 'throttle', level: 1 }, { kind: 'throttle', level: 2 }]);
     tap(r, 'KeyS');
     expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 1 });
+    input!.throttle(-1); r.pump();   // Artemis spec §6.2: the console's reverse notch
+    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: -1 });
     r.dispose();
   });
   it('a throttle the authority ran and refused (the watermark passed it, the state without it) falls back to the replica level', () => {
