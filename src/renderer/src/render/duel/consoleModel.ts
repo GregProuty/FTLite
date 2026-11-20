@@ -3,7 +3,9 @@
 import { consoleInReach, crewHelmSeat, flightSeat, repairInReach, seatOf, type Seat } from '../../app/duel/controls';
 import { NO_HELD_FLAGS, type HeldFlags, type KeyAction } from '../../app/duel/input';
 import type { DuelState } from '../../sim/duel/state';
-import { pewThird } from '../../sim/tactical/defs';
+import { hasTurret, pewThird } from '../../sim/tactical/defs';
+import { gunInterval } from '../../sim/tactical/gun';
+import { autocannonRateText } from '../../app/duel/weaponsSeat';
 import { classOf, Contact, missileOf, Room, type TacticalState } from '../../sim/tactical/state';
 import { HEADING_COUNT, MAGAZINE } from '../../sim/tactical/tuning';
 import { beamShots, canLaunch, torpedoInRange } from '../../sim/tactical/weapons';
@@ -65,7 +67,10 @@ export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: stri
    *  bars not yet spent. Optional, so a hand-built panel may leave them out (the probe's fixture). */
   weaponBars?: number[]; weaponFree?: number;
   /** W-1 (pew pew spec 1): each third's fill 0..1 (the PEW card's pips); absent or null without the pew. */
-  pew?: readonly number[] | null }
+  pew?: readonly number[] | null;
+  /** W-4 spec §10: the Hound's AUTOCANNON card (absent or null on a laser class): heat 0..1, locked, Weapons offline, and
+   *  its rate text at the current bars (`6/S`, `OFF`); `selected` the selected card (0..2). */
+  autocannon?: { heat: number; locked: boolean; offline: boolean; rate: string } | null; selected?: number }
 /** Valkyrn spec §8: the GUN card: OFFLINE (Weapons at 2), OVERHEAT (locked) or READY; heat 0..1. */
 export interface GunPanel { state: 'READY' | 'OVERHEAT' | 'OFFLINE'; heat: number; locked: boolean }
 /** Valkyrn spec §5: the Flight seat's weapons: the GUN card (null with the laser fit) and the Weapons panel its cards and the
@@ -163,7 +168,9 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
       // W-2 (pew pew spec §2): the mode for the tag; in MANUAL the laser never fires by itself, so no FIRING and no goal glow.
       laserReason: sys.laserManual ? manualCardReason(reason) : reason, goal: (i.goal ?? false) && classOf(t, 0).slots.laser !== null && !sys.laserTargeted && !sys.laserManual,   /* W-4 spec §2.1: the FTL opener's glow is the laser's */ laserManual: sys.laserManual,
       torpManual: sys.torpManual, torpSteer: flightM?.manual === true && flightM.age > torpDef.boostTicks && flightM.age <= torpDef.fuelTicks, torpCoast: flightM?.manual === true && flightM.age > torpDef.fuelTicks,   // W-3 (pew pew spec §3): canLaunch above reads the mode (no range in MANUAL); the words follow flyMissile's steering window
-      refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, pew: pewPips(t) };
+      refused: i.refused && !HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, pew: pewPips(t),
+      ...(hasTurret(classOf(t, 0)) && classOf(t, 0).slots.gun ? { autocannon: { heat: Math.max(0, Math.min(1, sys.gunHeat / classOf(t, 0).slots.gun!.heatMax)), locked: sys.gunLocked === true,
+        offline: sys.rooms[Room.Weapons] >= 2, rate: autocannonRateText(gunInterval(t, 0)) }, selected: i.weaponSel ?? 0 } : {}) };   // W-4 spec §10
   };
   const weapons: WeaponsPanel | null = station === 'weapons' ? weaponsPanel() : null;
   const gunDef = classOf(t, 0).slots.gun;   // Valkyrn spec §5, §8: the Flight seat's GUN card (null with the laser fit) and its weapons
