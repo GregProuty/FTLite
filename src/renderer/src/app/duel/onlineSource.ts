@@ -111,6 +111,11 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   let uiHeld: HeldFlags = NO_HELD_FLAGS, shownThrottle: number | null = null, refusals: Refusal[] = [];
   let gunModeShown: [boolean | null, boolean | null] = [null, null];   // W-4 amendment §2.6: each gun's mode in flight, [pew pew, the autocannon]
   let unackedFrames = 0;   // playtest2feedback Decision 14: this seat's held frames the replica has not taken yet
+  // Helm round 2 §7 (plan Decision 7): this seat's cut in flight (onlineDuel's cutSent, handed over by cutBase), whether its
+  // sent throttleHeld has been 0 since the latch began (then the ramp is free again), and the replica's latch last seen.
+  let cutInFlight = false, cutReleased = false, replicaCut = false;
+  /** The latch this seat predicts: the replica's or a cut in flight, until throttleHeld has been 0 on a sent frame since. */
+  const latched = (d: DuelState): boolean => (cutInFlight || d.thrCut) && !cutReleased;
   /** Playtest2feedback §3: this seat flies the crew Helm (a newtonianHelm class) in a running round. */
   const crewHelm = (d: DuelState): boolean => crewHelmSeat(d, seat) && d.tactical.outcome === Outcome.Running;
   const cameraInput = createCameraInput(deps.now, deps.viewport), interiorCamera = createInteriorCamera();
@@ -121,6 +126,8 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     if (!p || !d || p.publicationSequence === seen) return false;
     seen = p.publicationSequence;
     const t = d.tactical, now = deps.now();
+    if (d.thrCut && !replicaCut && !cutInFlight) cutReleased = false;   // helm round 2 §7: the replica's latch first seen set, with no cut in flight
+    replicaCut = d.thrCut;
     if (d.round !== round) {   // the first publication or a new round: no interpolation across it, fresh cameras
       round = d.round; latest = null; lastTick = -1;
       const s = t.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y), science: createCamera(s.x, s.y) }; torpFollow = createTorpedoFollow(); cameraInput.reset(); resetInteriorCamera(interiorCamera);
@@ -145,6 +152,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: HeldInput): void; heldFlags(flags: HeldFlags): void;
     thrMille(): number; helmVent(): HelmVent; unacked(n: number): void; weaponSel(): number;
     throttleBase(level: number | null): void;
+    cutBase(inFlight: boolean): void;
     turret(slot: 0 | 1): number; gunModeBase(slot: 0 | 1, manual: boolean | null): void;
     refuse(control: Refusal['control'], reason: string): void;
     arrivals(): readonly number[]; takeArrivals(): number[]; ready(): boolean;
@@ -161,17 +169,20 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     view: (): DuelView => { const s = seatOf(duel(), seat); return s === 'standing' ? 'interior' : s; },
     axes: (): Axes => {   // Artemis spec §5.3: the held turn and the replica's throttle, while this seat flies a running round
       const d = duel();
-      if (crewHelm(d)) return crewAxes(d, sentHeld, source.thrMille());   // playtest2feedback §3, §6: the local prediction
+      if (crewHelm(d)) return crewAxes(d, sentHeld, source.thrMille(), latched(d));   // playtest2feedback §3, §6: the local prediction; helm round 2 §7: with the predicted latch
       return seatOf(d, seat) === 'helm' && d.tactical.outcome === Outcome.Running ? { turn: heldTurn(d, sentHeld), thrust: throttleThrust(d.throttle) } : NO_AXES;
     },
     /** Playtest2feedback §3: the crew Helm's thrMille: the replica's plus the ramp this seat's held W/S adds over its
-     *  unacknowledged frames (the sim's rule); away from the Helm, the replica's. */
+     *  unacknowledged frames (the sim's rule); away from the Helm, the replica's. Helm round 2 §7: 0 is the base while this
+     *  seat's cut is in flight, and no ramp while the latch is predicted. */
     thrMille: (): number => {
       const d = duel();
       if (!crewHelm(d)) return d.thrMille;
       const e = engineBars(d);
-      return rampTicks(d.thrMille, heldAxis(sentHeld.throttleHeld), throttleFloor(e), throttleCap(e), unackedFrames);
+      return rampTicks(cutInFlight ? 0 : d.thrMille, latched(d) ? 0 : heldAxis(sentHeld.throttleHeld), throttleFloor(e), throttleCap(e), unackedFrames);
     },
+    /** Helm round 2 §7: whether this seat's throttleCut is in flight (onlineDuel's cutSent). A change starts the latch's record again. */
+    cutBase(inFlight) { if (inFlight !== cutInFlight) { cutInFlight = inFlight; cutReleased = false; } },
     /** W-4 spec §11: gun slot's turret: at the Hound's Weapons seat the own selected one predicted over the unacknowledged
      *  frames (predictTurret, the mode in flight first), else the replica's. */
     turret: (slot: 0 | 1): number => {
@@ -212,7 +223,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const d = client.state(); if (!d) return;
       frameAlpha = Math.max(0, Math.min(1, (deps.now() - receivedAt) * TICK_HZ / (1000 * gap)));
       const view = seatOf(d, seat), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : view === 'science' ? cameras.science : null;
-      if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer, view === 'helm'); else cameraInput.applyInterior(interiorCamera, keys, pointer); }   // W-4 spec §7: at Weapons the right button pans again
+      if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer, view === 'helm' && !crewHelmSeat(d, seat)); else cameraInput.applyInterior(interiorCamera, keys, pointer); }   // W-4 spec §7: at Weapons the right button pans again; helm round 2 §4: so does the crew Helm's
       trackManualTorpedo(cameras.weapons, torpFollow, manualTorpedoFlying(d.tactical));   // W-3 (pew pew spec §3): follow a MANUAL torpedo, then go back
       for (const c of [cameras.helm, cameras.weapons, cameras.science]) {
         if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');
@@ -221,7 +232,11 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       }
     },
     /** The held axes this seat last sent (its own console's predicted path). */
-    sent(held) { sentHeld = { ...held, interactHeld: false }; },   // playtest2feedback: the crew Helm's fields and aim too
+    sent(held) {
+      sentHeld = { ...held, interactHeld: false };   // playtest2feedback: the crew Helm's fields and aim too
+      const d = client.state();
+      if (d && (cutInFlight || d.thrCut) && heldAxis(held.throttleHeld) === 0) cutReleased = true;   // helm round 2 §7: the key came up since the latch began
+    },
     /** The last pump's merged held keys and console holds (Artemis spec §6.1). */
     heldFlags(flags) { uiHeld = flags; },
     /** Publication inter-arrival gaps in milliseconds, for the record's jitter. */

@@ -69,6 +69,8 @@ FAIL: median 140.1 s < 180
 
 - Task 8 (the free cold gas's "never refused" at the crew Helm is replaced by NO GAS): `tests/crewHelmClient.test.ts` (the test 'a thruster press is never refused …' is retitled 'a thruster press on a charge is not refused (helm round 2 §3.3: only an empty one says NO GAS) …'; its body, at a full charge, is unchanged). The Step 7 grep's other hits (`crewSteering`, `crewTelemetry`, `crewThrottle`, `duelThrottle`, `duelCheckpoint`) pin the sim's `heading` command and `face` input, which the sim keeps (§4), so none is kind (a). No test deleted. No kind (b) failures in the Task 8 targeted run.
 
+- Task 9 (Space, the right-button heading and its pan exemption leave the crew Helm online, §4): `tests/onlineDuelSession.test.ts` 'Feel-i: Space held at the Helm rides the held frame as face …' and 'a clear asked for while a heading is in flight is sent …' move to the Valkyrn class's Helm (bodies unchanged); 'A is a thruster here: it does not clear the held heading, so the same heading asked again is deduped' is replaced by 'helm round 2 §4: the map's heading request sends nothing at the crew Helm, whatever the replica holds' (no class sends a heading from the crew Helm; the Valkyrn's dedupe stays in 'A held at the Helm clears the base …'). `tests/crewHelmOnline.test.ts` 'at the crew Helm: the A/D moveX, the three fields and the steer …': the crew Helm's frame drops `face: true` (the Valkyrn's line keeps it). No kind (b) failures in the Task 9 targeted run.
+
 ## Scripted Helm tuning (spec §5's gate rule)
 
 - Task 6: none. Every per-seed gate in `tests/duelGates.test.ts` passed with no constant moved (21 passed, the 2 aggregate bands skipped); no crew twin added.

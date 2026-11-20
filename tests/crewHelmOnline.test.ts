@@ -20,7 +20,7 @@ describe('the online held frame (spec §3, §4, §4a)', () => {
     const d = createSeatedDuel(CUTTER, 5), v = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.Valkyrn);
     try {
       const k = keys({ moveX: 1, moveY: -1, throttleHeld: 1, rcsX: 1, rcsY: -1, fireHeld: true });
-      expect(sessionHeld(k, d, 0, 64)).toEqual({ moveX: 1, moveY: -1, interactHeld: false, face: true, throttleHeld: 1, rcsX: 1, rcsY: -1, aim: 64 });
+      expect(sessionHeld(k, d, 0, 64)).toEqual({ moveX: 1, moveY: -1, interactHeld: false, throttleHeld: 1, rcsX: 1, rcsY: -1, aim: 64 });   // helm round 2 §4: Space rides no face at the crew Helm
       expect(sessionHeld(k, d, 0, -1)).not.toHaveProperty('aim');
       expect(sessionHeld(k, d, 1, 64)).toEqual({ moveX: 1, moveY: -1, interactHeld: false });   // Weapons
       expect(sessionHeld(k, v, 0, 64)).toEqual({ moveX: 1, moveY: -1, interactHeld: false, face: true });   // the Valkyrn's Helm
