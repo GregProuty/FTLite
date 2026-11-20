@@ -27,7 +27,7 @@ const crew = { thrMille: 300, cap: 750, floor: -500, bars: 3, gas: 720, gasMax: 
 const helmView = (over: Partial<NonNullable<ConsoleView['helm']>> = {}): ConsoleView => ({
   station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
   helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 0, crew, ...over }, weapons: null, science: null });
-const view = (console: ConsoleView): DuelUiView => ({ end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console });
+const view = (console: ConsoleView): DuelUiView => ({ end: null, banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, console });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store);
   const input = { press: vi.fn(), hold: vi.fn(), lock: vi.fn(), torpLock: vi.fn(), throttle: vi.fn(), frequency: vi.fn() };

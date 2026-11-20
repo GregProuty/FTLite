@@ -19,7 +19,7 @@ const btn = (name: string) => document.querySelector(`[data-testid="console-${na
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((e) => e.dataset.text);
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
 const frame = (console: ConsoleView | null, contact: ContactView | null): DuelUiView => ({ end: null,
-  banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console, contact });
+  banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, console, contact });
 function mount(view: DuelUiView) {
   const ui = makeUi(), duel = createDuelSink(ui.store);
   const c = { close: vi.fn(), arm: vi.fn(), cancelAim: vi.fn(), pick: vi.fn(), scan: vi.fn(), pickUp: vi.fn() };

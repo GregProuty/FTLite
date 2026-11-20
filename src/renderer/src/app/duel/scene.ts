@@ -21,7 +21,7 @@ import { createInteriorView, type InteriorView } from '../../render/duel/interio
 import { shipCommandOf, shipControlAt, type ShipCommand } from '../../render/duel/shipControls';
 import type { Placement } from '../../render/duel/interiorCamera';
 import { createFx, fxDt, hitsCrew, interpolatedMissile, pushEvents, pushGunHits, pushKill, pushPewHits, recordTrails, resetFx, SHAKE_PX, SHAKE_S, shakeOffset, startShake, stepFx, trackSolution, type FxState, type ViewEvent } from '../../render/tactical/fxModel';
-import { gunnerPresent, laserSituation, linedUp } from '../../render/duel/situationModel';
+import { gunnerPresent, laserSituation, linedUp, torpedoInbound } from '../../render/duel/situationModel';
 import { countSit, createSitTracker, frameZoom, sitCard, trackSit, type SitSeat } from '../../render/duel/sitModel';
 import { shakeScale } from '../../render/shake';
 import { DEFAULT_MAP_GRID } from '../../render/tactical/mapGrid';
@@ -122,12 +122,13 @@ export function consoleHidden(d: DuelState, _overlay: SceneOverlay, _running: bo
 }
 
 /** The banners and the map overlay the scene hands the UI (deviation 1: the tactical banner shows only on a map view) (UI round §1.5: Banners draws either at the one pause line). */
-export function sceneUi(view: DuelView, overlay: SceneOverlay, pauseText: string, overlayView: MapOverlayView | null): { banners: Banners; overlay: MapOverlayView | null } {
+export function sceneUi(view: DuelView, overlay: SceneOverlay, pauseText: string, overlayView: MapOverlayView | null, inbound = false): { banners: Banners; overlay: MapOverlayView | null } {
   return {
     banners: {
       interior: overlay.banner !== null && (view === 'interior' || !overlay.layerPaused) ? overlay.banner : null,
       tactical: overlay.layerPaused && view !== 'interior' ? pauseText : null,
-      notice: overlay.notice || null
+      notice: overlay.notice || null,
+      alert: view === 'interior' && inbound ? 'TORPEDO INBOUND' : null
     },
     overlay: view === 'interior' ? null : overlayView
   };
@@ -460,7 +461,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         end: overlay.end,
         console: consoleView,
         crt: crtActive(view),
-        ...sceneUi(view, overlay, options.pauseText, overlayView),
+        ...sceneUi(view, overlay, options.pauseText, overlayView, torpedoInbound(d.tactical)),
         hud: shipHud(d, source.active()),   // UI round §2.4: the HUD on every view
         ...(contact ? { contact: contactView } : {}),
         ownShip: onMap ? ownShipModel(d, OWN_SHIP_BOX, t, flashUntil) : null,   // own ship window spec §4: the console map views only

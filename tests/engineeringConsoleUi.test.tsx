@@ -19,7 +19,7 @@ const all = (attr: string, v?: string) => Array.from(document.querySelectorAll<H
 const helm: ConsoleView = { station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
   helm: { heading: 0, speed: 0, held: NO_HELD_FLAGS, throttle: 2, cap: 2 }, weapons: null, science: null };
 const view = (console: ConsoleView): DuelUiView => ({ end: null,
-  banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console });
+  banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, console });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store), throttle = vi.fn();
   ui.actions.setConsole({ press: vi.fn(), hold: vi.fn(), lock: vi.fn(), torpLock: vi.fn(), throttle, frequency: vi.fn() });

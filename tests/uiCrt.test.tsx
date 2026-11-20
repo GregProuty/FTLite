@@ -12,7 +12,7 @@ import type { DuelUiView } from '../src/renderer/src/ui/views';
 import { makeUi } from './helpers/uiStore';
 
 afterEach(cleanup);
-const banners = { interior: null, tactical: 'PAUSED', notice: null };
+const banners = { interior: null, tactical: 'PAUSED', notice: null, alert: null };
 const view = (patch: Partial<DuelUiView> = {}): DuelUiView => ({
   end: null, banners, overlay: { zoomText: 'ZOOM 0.50', scaleBar: { px: 80, units: 500 }, snapHint: false }, crt: true, ...patch });
 function mount() {

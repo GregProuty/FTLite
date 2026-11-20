@@ -23,7 +23,7 @@ const contactOf = (station: 'helm' | 'weapons', aim: boolean, targets: { laser?:
   if (targets.torp !== undefined) st.systems[0].torpLock = targets.torp;
   return contactModel({ state: st, contact: 0, aim, station, t: 0, weapons: station === 'weapons' ? { charge } : null })!;
 };
-const view = (contact: ContactView): DuelUiView => ({ end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console: null, contact });
+const view = (contact: ContactView): DuelUiView => ({ end: null, banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, console: null, contact });
 function mount(contact: ContactView) {
   const ui = makeUi(), duel = createDuelSink(ui.store);
   const c = { close: vi.fn(), arm: vi.fn(), cancelAim: vi.fn(), pick: vi.fn(), scan: vi.fn(), pickUp: vi.fn() };

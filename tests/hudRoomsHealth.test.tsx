@@ -66,7 +66,7 @@ describe('the HUD draws them (spec §2.4a)', () => {
       igniteRoom(d.interior, p.room); Health.cur[eid] = 40; h = JSON.parse(JSON.stringify(shipHud(d, 0))) as ShipHudView;
     } finally { disposeDuel(d); }
     const shipConsole: ConsoleView = { station: 'ship', tabs: { helm: 'open', weapons: 'locked', science: 'locked', ship: 'current' }, tabActions: { helm: 'interact', weapons: null, science: null, ship: null }, helm: null, weapons: null, science: null };
-    const v: DuelUiView = { end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: false, console: shipConsole, hud: h };
+    const v: DuelUiView = { end: null, banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: false, console: shipConsole, hud: h };
     const ui = makeUi(), duel = createDuelSink(ui.store);
     ui.actions.setConsole({ press: vi.fn(), hold: vi.fn(), lock: vi.fn(), torpLock: vi.fn(), throttle: vi.fn(), frequency: vi.fn(), ship: vi.fn() });
     render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);

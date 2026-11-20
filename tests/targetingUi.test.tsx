@@ -52,7 +52,7 @@ function mount(known = 2) {
     controller.sync(sync());
     const open = controller.state();
     const contact = open ? contactModel({ state: st, contact: open.contact, aim: open.aim, weapon: controller.aimWeapon() ?? 'laser', station: 'weapons', t: 0, weapons: { charge } }) : null;
-    const view: DuelUiView = { end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console: weaponsConsole, contact,
+    const view: DuelUiView = { end: null, banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, console: weaponsConsole, contact,
       ...(contact?.aimWeapon ? { pointer } : {}) };
     act(() => duel.frame(view));
   };

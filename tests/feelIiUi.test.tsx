@@ -30,7 +30,7 @@ const weapons = (over: Partial<NonNullable<ConsoleView['weapons']>>): ConsoleVie
 const helm = (over: Partial<NonNullable<ConsoleView['helm']>> = {}): ConsoleView => ({ ...weapons({}), station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, weapons: null,
   helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 2, ...over } });
 const view = (console: ConsoleView, extra: Partial<DuelUiView> = {}): DuelUiView => ({ end: null,
-  banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console, ...extra });
+  banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, console, ...extra });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store);
   const input = { press: vi.fn(), hold: vi.fn(), lock: vi.fn(), torpLock: vi.fn(), throttle: vi.fn(), frequency: vi.fn() };
@@ -104,13 +104,13 @@ describe('the sit-down card under the online notice (Feel-ii §3.9; UI round §2
   it('the card sits at the top, under the pause line, and moves below YOU: HELM while it shows, whatever the model\'s top', () => {
     const { duel } = mount();
     const y = () => Number((document.querySelector('[data-ui-sit-card]') as HTMLElement).dataset.uiSitY);
-    act(() => duel.frame(view(helm(), { sitCard: sitCard('helm', 0.5, false, true, true), banners: { interior: null, tactical: null, notice: 'YOU: HELM' } })));
+    act(() => duel.frame(view(helm(), { sitCard: sitCard('helm', 0.5, false, true, true), banners: { interior: null, tactical: null, notice: 'YOU: HELM', alert: null } })));
     expect(y()).toBe(SIT_CARD_UNDER_Y);
     expect(SIT_CARD_UNDER_Y).toBeGreaterThanOrEqual(130 + 24);   // the notice: centred at 130, FONT_SIZE × 1.5 tall
     act(() => duel.frame(view(helm(), { sitCard: sitCard('helm', 0.5, false, true, false) })));
     expect(y()).toBe(SIT_CARD_TOP_Y);
     expect(SIT_CARD_TOP_Y).toBe(100); expect(SIT_CARD_TOP_Y).toBeGreaterThanOrEqual(PAUSE_Y + PAUSE_H);   // under the pause line (y 66..90)
-    act(() => duel.frame(view(helm(), { sitCard: sitCard('helm', 0.5, false, false, true), banners: { interior: null, tactical: null, notice: 'YOU: HELM' } })));
+    act(() => duel.frame(view(helm(), { sitCard: sitCard('helm', 0.5, false, false, true), banners: { interior: null, tactical: null, notice: 'YOU: HELM', alert: null } })));
     expect(y()).toBe(SIT_CARD_UNDER_Y);   // UI round §2.4a: the old bottom card (y 576) is gone: a card without top is at the top too
     act(() => duel.frame(view(helm(), { sitCard: sitCard('helm', 0.5, false, false, false) })));
     expect(y()).toBe(SIT_CARD_TOP_Y);

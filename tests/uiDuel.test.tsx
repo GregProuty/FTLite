@@ -17,7 +17,7 @@ import { makeUi } from './helpers/uiStore';
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((c) => ({ text: c.dataset.text!, x: Number(c.dataset.x), y: Number(c.dataset.y), anchor: c.dataset.anchorx }));
 const find = (t: string) => texts().find((c) => c.text === t);
-const banners = { interior: null, tactical: null, notice: null };
+const banners = { interior: null, tactical: null, notice: null, alert: null };
 const view = (patch: Partial<DuelUiView> = {}): DuelUiView => ({ end: null, banners, overlay: null, crt: false, ...patch });
 /** UI round §2.2: the readout is gone, so the notice line marks the duel region as drawn. */
 const marked = (patch: Partial<DuelUiView> = {}): DuelUiView => view({ banners: { ...banners, notice: 'YOU: HELM' }, ...patch });
@@ -61,11 +61,11 @@ describe('the end card, banners and map overlay', () => {
   });
   it('places the pause line and the notice', () => {
     // UI round §1.5: one pause line at top centre (y 66 to 90) for either pause text; the tactical one wins; the notice keeps its place
-    const { duel } = mount(); act(() => duel.frame(view({ banners: { interior: 'I', tactical: 'T', notice: 'YOU: HELM' } })));
+    const { duel } = mount(); act(() => duel.frame(view({ banners: { interior: 'I', tactical: 'T', notice: 'YOU: HELM', alert: null } })));
     expect(find('I')).toBeUndefined();
     expect(find('T')).toMatchObject({ x: INTERNAL_W / 2, y: PAUSE_Y + PAUSE_H / 2 });
     expect(find('YOU: HELM')).toMatchObject({ x: INTERNAL_W / 2, y: 130 });   // UI round §2.2: centred on the full width (no readout column)
-    act(() => duel.frame(view({ banners: { interior: 'I', tactical: null, notice: null } })));
+    act(() => duel.frame(view({ banners: { interior: 'I', tactical: null, notice: null, alert: null } })));
     expect(find('I')).toMatchObject({ x: INTERNAL_W / 2, y: PAUSE_Y + PAUSE_H / 2 });
   });
   it('draws the scale label and snap hint where the tactical layer did; no zoom text (UI round §2.3)', () => {

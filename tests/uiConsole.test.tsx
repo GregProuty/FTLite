@@ -25,7 +25,7 @@ const helmConsole: ConsoleView = { ...weaponsConsole, station: 'helm', tabs: { h
   weapons: null, helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 2 } };
 const view = (console: ConsoleView | null): DuelUiView => ({
   end: null,
-  banners: { interior: null, tactical: null, notice: null }, overlay: { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: false }, crt: true, console });
+  banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: false }, crt: true, console });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store);
   const input = { press: vi.fn(), hold: vi.fn(), lock: vi.fn(), torpLock: vi.fn(), throttle: vi.fn(), frequency: vi.fn() };
@@ -99,7 +99,7 @@ describe('the Weapons block layout', () => {
   });
   it('the online notice centres on the console map span, not the old play centre', () => {
     const { duel } = mount();
-    act(() => duel.frame({ ...view(weaponsConsole), banners: { interior: null, tactical: null, notice: 'YOU: WEAPONS' } }));
+    act(() => duel.frame({ ...view(weaponsConsole), banners: { interior: null, tactical: null, notice: 'YOU: WEAPONS', alert: null } }));
     expect(find('YOU: WEAPONS')!.x).toBe(688);   // the top band's centre (INFO_BAND 408-968, UI round §2.4a)
   });
   it('FLYING ends before the LAUNCH button starts', () => {

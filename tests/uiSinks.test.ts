@@ -5,7 +5,7 @@ import { createUiStore, setLayout } from '../src/renderer/src/ui/store';
 import { createDuelSink, createFlightSink, createLatencySink } from '../src/renderer/src/ui/sinks';
 import { mapOverlayOf, type DuelUiView, type FlightUiView } from '../src/renderer/src/ui/views';
 
-const banners = { interior: null, tactical: null, notice: null };
+const banners = { interior: null, tactical: null, notice: null, alert: null };
 const duelView = (value: string): DuelUiView => ({ end: null, banners, overlay: { zoomText: `ZOOM ${value}`, scaleBar: { px: 90, units: 100 }, snapHint: false }, crt: false });   // UI round §2.2: the overlay, not the gone readout, carries the changing value
 
 describe('the duel sink', () => {

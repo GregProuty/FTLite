@@ -16,7 +16,7 @@ import { makeUi } from './helpers/uiStore';
 
 afterEach(() => { cleanup(); });
 const view = (ownShip: OwnShipView | null | undefined): DuelUiView => ({
-  end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console: null,
+  end: null, banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, console: null,
   ...(ownShip === undefined ? {} : { ownShip })
 });
 function mount(ownShip: OwnShipView | null | undefined): void {

@@ -32,7 +32,7 @@ const hud: ShipHudView = {
 };
 const view = (h: ShipHudView | null = hud): DuelUiView => ({
   end: null,
-  banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: false, console: shipConsole, hud: h });
+  banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: false, console: shipConsole, hud: h });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store), ship = vi.fn();
   ui.actions.setConsole({ press: vi.fn(), hold: vi.fn(), lock: vi.fn(), torpLock: vi.fn(), throttle: vi.fn(), frequency: vi.fn(), ship });

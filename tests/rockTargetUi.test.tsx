@@ -26,7 +26,7 @@ function mount(over: Partial<WeaponsPanel>) {
     weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: 1, torpTarget: -1, burst: 2, ...over }
   };
   render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);
-  const view: DuelUiView = { end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console, contact: null };
+  const view: DuelUiView = { end: null, banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, console, contact: null };
   act(() => duel.frame(view));
   return { input };
 }

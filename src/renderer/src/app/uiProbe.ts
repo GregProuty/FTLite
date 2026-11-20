@@ -19,7 +19,7 @@ function consoleFixture(which: 'helm' | 'weapons'): DuelUiView {
     // playtest2feedback §6: the crew Helm
     weapons: null, helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 0, crew: { thrMille: 500, cap: 750, floor: -500, bars: 3, gas: 720, gasMax: 720, gasLow: false, venting: false } } };
   return {
-    end: null, banners: { interior: null, tactical: null, notice: null },
+    end: null, banners: { interior: null, tactical: null, notice: null, alert: null },
     overlay: { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: false }, crt: true, console: cv
   };
 }
@@ -28,7 +28,7 @@ export function duelProbeFixture(console?: 'helm' | 'weapons'): DuelUiView {
   if (console) return consoleFixture(console);
   return {
     end: { title: 'VICTORY', tint: GOOD, length: 'DUEL LENGTH 1:23', prompt: 'ENTER: REMATCH   ESC: LEAVE' },
-    banners: { interior: 'PAUSED', tactical: 'PAUSED TACTICAL', notice: 'YOU: HELM' },
+    banners: { interior: 'PAUSED', tactical: 'PAUSED TACTICAL', notice: 'YOU: HELM', alert: null },
     overlay: null,
     crt: false
   };

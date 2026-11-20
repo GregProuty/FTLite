@@ -17,6 +17,7 @@ import { createRenderMemory, type RenderMemory } from '../memory';
 import { createIconLayer, drawIcon } from '../roomIcons';
 import { INK } from '../painted/ink';
 import { AMBER, DIM, FONT_NATIVE, GOOD, TEXT, WARN } from '../theme';
+import { ALERT_BLINK_HZ, blink } from '../tactical/crtTheme';
 import { HEALTH_LOW } from './readoutModel';
 import { HEALTH_MAX } from '../../sim/tuning';
 import { createTileLayer } from '../tiles';
@@ -91,6 +92,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   // label on top with the other labels. The glyphs are drawn white once and tinted each frame.
   const badges = new Container(), badgeLabels: BitmapText[] = [];
   let badgesFor: string | null = null, badgeScale = 0;
+  let clock = 0;
   const BADGE = 32, BADGE_GLYPH = 22, LABEL_ADVANCE = 6, BADGE_TINT: Record<StationBadge['tint'], number> = { normal: TEXT, offline: WARN, faint: DIM };
   // Duel polish i spec §D: the healing motes and revive rings in one Graphics redrawn each frame, and a pooled REVIVED label
   // per character, over the crew and the other labels. The motes' x jitter is a view-side random (never the sim's).
@@ -115,6 +117,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
     container, world, memory,
     placement: () => last,
     draw(d, crewPrev, alpha, dt, events = [], presentDt = dt, zoom, hover = null, override = null) {
+      clock += presentDt;   // UI round §2.4a: the badge blink's presentation clock; frozen while paused
       const st = d.interior, stage = stageScale(), rect = fitRect(st.layout.id, st.derived.width, st.derived.height, missing), fit0 = duelFit(st.derived.width, st.derived.height, stage, rect);
       // The zoom camera places the world on whole screen pixels per art pixel; it follows the active character's drawn (interpolated) position.
       const eid = zoom ? st.crew[zoom.active] : undefined;
@@ -147,7 +150,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         }
         badgesFor = st.derived.layoutHash; badgeScale = k2;
       }
-      bs.forEach((b, k) => { const c = BADGE_TINT[b.tint]; (badges.children[k * 2 + 1] as Graphics).tint = c; badgeLabels[k]!.tint = c; });
+      bs.forEach((b, k) => { const c = b.empty && blink(clock, ALERT_BLINK_HZ) ? WARN : BADGE_TINT[b.tint]; (badges.children[k * 2 + 1] as Graphics).tint = c; badgeLabels[k]!.tint = c; });
       const o = interiorOverlay(d);
       damage.clear(); marks.clear(); air.clear();
       for (const t of airTints(d)) for (const p of t.tiles) air.rect(p.x, p.y, TILE_PX, TILE_PX).fill({ color: t.color, alpha: t.alpha });
@@ -194,7 +197,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         t.visible = c.label !== '';
         if (!t.visible) continue;
         if (t.text !== c.label) t.text = c.label;
-        t.tint = WARN; t.position.set(Math.round(x), Math.round(y + TILE_PX * 0.5));
+        t.tint = c.label === 'AWAY' ? DIM : WARN; t.position.set(Math.round(x), Math.round(y + TILE_PX * 0.5));
       }
       // Duel polish i spec §D: healing motes and the revive, on the presentation clock (held while paused).
       const life = crewLife(d);

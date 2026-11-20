@@ -7,7 +7,7 @@ import type { ShipHudView } from '../render/duel/shipHudModel';
 import type { OverlayDraw } from '../render/tactical/tacticalModel';
 
 /** The three banner lines; null hides one (spec §6 placements). */
-export interface Banners { interior: string | null; tactical: string | null; notice: string | null }
+export interface Banners { interior: string | null; tactical: string | null; notice: string | null; alert: string | null }
 export type MapOverlayView = Pick<OverlayDraw, 'zoomText' | 'scaleBar' | 'snapHint'>;
 /** `crt`: the frame is a console view, drawn as an amber CRT screen (CRT map spec section 1: crtActive(view)). */
 export interface DuelUiView { end: EndView | null; banners: Banners; overlay: MapOverlayView | null; crt: boolean;
