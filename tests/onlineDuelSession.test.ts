@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
 import type { CommandResult, DuelCommand, HeldInput } from '../src/renderer/src/net/contracts';
 import type { DuelPublication } from '../src/renderer/src/clientControl/duelClient';
-import type { DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
+import { duelRecordSchema, latencyFigure, type DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
+import { latencyOverlayLines } from '../src/renderer/src/render/duel/latencyOverlay';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { createSeatedDuel } from './helpers/duelSeat';
@@ -988,6 +989,26 @@ describe('the session predicts (Net-4a §3.3, §3.6)', () => {
     r.closeLink(); session_frame(r);
     const src = h.source as unknown as { duel: DuelState; confirmed(): DuelState };
     expect(src.duel).toBe(src.confirmed());
+    r.dispose();
+  });
+});
+describe('prediction figures (Net-4a §3.10)', () => {
+  it('F3 shows the prediction line: lead in ticks and ms, the verified share, re-simulation p99 and the last correction', () => {
+    expect(latencyOverlayLines({ transport: 'internet', held: latencyFigure([]), command: latencyFigure([]), rttMs: 80,
+      prediction: { leadTicks: 9, verifiedShare: 0.966, resimP99Ms: 0.84, correction: 0.12 } }).at(-1))
+      .toBe('PRED LEAD 9 (150 MS)  OK 97%  RESIM 0.84 MS  FIX 0.12 U');
+    expect(latencyOverlayLines({ transport: 'lan', held: latencyFigure([]), command: latencyFigure([]), rttMs: null }).some((l) => l.startsWith('PRED'))).toBe(false);
+  });
+  it("a round's record carries the prediction block, validated, version still 1", async () => {
+    const r = rig(0), c = r.attach();
+    for (let k = 0; k < 9; k++) r.pump();
+    c.publish(r.d); r.pump();
+    c.events.push(roundEvent(0)); r.pump();
+    const rec = r.records.at(-1)!;
+    expect(rec.version).toBe(1);
+    expect(rec.prediction).toBeDefined();
+    expect(rec.prediction!.lead.count).toBeGreaterThan(0);
+    expect(() => duelRecordSchema.shape.prediction.unwrap().parse(rec.prediction)).not.toThrow();   // roundEvent's summary is partial, so only the new block is validated
     r.dispose();
   });
 });

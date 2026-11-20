@@ -12,7 +12,7 @@ import { classifyStreamPacket } from '../../../../network/state/imageCodec';
 import { createDuelRemoteClient } from '../../../../network/modes/duelStream';
 import type { CommandEnvelope, CommandId, DuelCommand, HeldInput, Link, Scheduler, Cue } from '../../net/contracts';
 import { createDuelPredictor, type DuelPredictor, type LocalInput } from '../../clientControl/duelPredictor';
-import { arrivalJitter, latencyFigure, type DuelPlaytestRecord } from '../../net/duelRecord';
+import { arrivalJitter, fineFigure, latencyFigure, type DuelPlaytestRecord } from '../../net/duelRecord';
 import type { ShipLayout } from '../../sim/ship/schema';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../../sim/duel/snapshot';
 import { disposeDuel, type DuelState } from '../../sim/duel/state';
@@ -153,6 +153,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   let collected: CommandEnvelope<DuelCommand>[] | null = null, neutralSequence: number | null = null;
   const confirmSamples: number[] = [], tickSamples: number[] = [];
   const keep = (list: number[], ms: number): void => { list.push(ms); if (list.length > LIVE_SAMPLES) list.shift(); };
+  const p99 = (xs: readonly number[]): number | null => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return Math.round(s[Math.min(s.length - 1, Math.ceil(0.99 * s.length) - 1)]! * 1000) / 1000; };
+  const roundLead: number[] = [], roundCorrection: number[] = [], roundResim: number[] = [], liveResim: number[] = []; let roundVerified = 0, roundConfirms = 0;   // liveResim: F3's recent re-simulation times (R1-F12)
   const heldStamps: { sequence: number; at: number }[] = [], commandStamps = new Map<number, number>(), pewSent = new Set<number>(), heldSamples: number[] = [], commandSamples: number[] = [], roundGaps: number[] = [];
   // The link (H-2b): the route label and RTT from main, the round's RTT samples; the overlay's recent delays.
   const liveHeld: number[] = [], liveCommand: number[] = [], roundRtt: number[] = [], debug = createKeyToggle(window as unknown as KeyTarget);
@@ -212,8 +214,9 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       // The RTT is the median of the round's samples from the RTC window's stats (null when main reported none).
       summary, latency: { held: latencyFigure(heldSamples), command: latencyFigure(commandSamples), rttMs: latencyFigure(roundRtt.splice(0)).median },
       // Per round: the disconnects and pauses since the last record (the first attach is not a disconnect).
-      jitter: arrivalJitter([...roundGaps.splice(0), ...(source?.takeArrivals() ?? [])]), disconnects: Math.max(0, attaches - roundAttaches), pauses: pauses - roundPauses };
-    heldSamples.length = 0; commandSamples.length = 0; roundAttaches = Math.max(1, attaches); roundPauses = pauses; startedAtIso = new Date().toISOString();
+      jitter: arrivalJitter([...roundGaps.splice(0), ...(source?.takeArrivals() ?? [])]), disconnects: Math.max(0, attaches - roundAttaches), pauses: pauses - roundPauses,
+      ...(roundConfirms > 0 ? { prediction: { lead: latencyFigure(roundLead), verifiedShare: roundVerified / roundConfirms, correction: fineFigure(roundCorrection), resimP99Ms: p99(roundResim) } } : {}) };
+    heldSamples.length = 0; commandSamples.length = 0; roundLead.length = 0; roundCorrection.length = 0; roundResim.length = 0; roundVerified = 0; roundConfirms = 0; roundAttaches = Math.max(1, attaches); roundPauses = pauses; startedAtIso = new Date().toISOString();
     void Promise.resolve(deps.recordDuel?.(r)).catch(() => {});
   }
   function observe(): void {
@@ -222,7 +225,12 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (!p || !d) return;
     if (predictor && p.publicationSequence !== confirmedSequence) {   // Net-4a §3.4: verify, else re-simulate, else reset
       confirmedSequence = p.publicationSequence;
-      const t0 = deps.now(); predictor.confirm(p, d); keep(confirmSamples, deps.now() - t0);
+      const t0 = deps.now(), result = predictor.confirm(p, d), ms = deps.now() - t0, st = predictor.stats();
+      keep(confirmSamples, ms);
+      // §3.10: the round's figures. A reset (a pause, a new or decided round) is not a prediction.
+      const bound = (list: number[], v: number): void => { list.push(v); if (list.length > 4096) list.shift(); };
+      if (result !== 'reset') { roundConfirms++; if (result === 'verified') roundVerified++; bound(roundLead, st.lead); }
+      if (result === 'resimulated') { bound(roundResim, ms); keep(liveResim, ms); if (st.correction) bound(roundCorrection, st.correction.ship); }
     }
     if (!synced && client.commandStatus(descriptor.seatId).state === 'ready') {
       synced = true; hint('synced');
@@ -545,7 +553,9 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       const ticks = (d.decidedTick >= 0 ? d.decidedTick : d.tactical.tick) - d.baseTick;
       const station = scene.draw(source, dt, { banner: bannerText(), layerPaused: false, end: endModel(d.tactical.outcome, ticks, 'ENTER: REMATCH   ESC: LEAVE'), notice: now < noticeUntil ? notice : null });
       trackConsole(station);
-      if (debug.on()) deps.latency?.frame(latencyOverlayLines({ transport: transport(), held: latencyFigure(liveHeld), command: latencyFigure(liveCommand), rttMs }));
+      const ps = predictor?.stats(), checked = ps ? ps.verified + ps.resimulated : 0;
+      if (debug.on()) deps.latency?.frame(latencyOverlayLines({ transport: transport(), held: latencyFigure(liveHeld), command: latencyFigure(liveCommand), rttMs,
+        prediction: ps ? { leadTicks: ps.lead, verifiedShare: checked ? ps.verified / checked : null, resimP99Ms: p99(liveResim), correction: ps.correction?.ship ?? null } : null }));
       else deps.latency?.clear();
     },
     dispose(): void {

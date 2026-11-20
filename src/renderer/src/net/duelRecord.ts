@@ -26,6 +26,8 @@ export interface DuelPlaytestRecord {
   /** Publication inter-arrival: the standard deviation against the expected 50 ms, over `count` gaps. */
   jitter: { count: number; stdMs: number | null };
   disconnects: number; pauses: number;
+  /** Net-4a §3.10: the round's prediction: the lead (ticks), the verified share, the own-ship corrections (u) and the re-simulation p99. */
+  prediction?: { lead: LatencyFigure; verifiedShare: number | null; correction: LatencyFigure; resimP99Ms: number | null };
 }
 
 const uint = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), ms = z.number().finite().min(0).max(DUEL_RECORD_MAX_MS);
@@ -46,7 +48,8 @@ export const duelRecordSchema = z.object({
   seat: z.number().int().min(0).max(3), helmPlayer: z.number().int().min(0).max(3), seed: z.number().int().min(0).max(0xffffffff), round: uint,
   startedAtIso: z.string().max(32).regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/),
   summary, latency: z.object({ held: figure, command: figure, rttMs: ms.nullable() }).strict(),
-  jitter: z.object({ count: uint, stdMs: ms.nullable() }).strict(), disconnects: uint, pauses: uint
+  jitter: z.object({ count: uint, stdMs: ms.nullable() }).strict(), disconnects: uint, pauses: uint,
+  prediction: z.object({ lead: figure, verifiedShare: z.number().min(0).max(1).nullable(), correction: figure, resimP99Ms: ms.nullable() }).strict().optional()
 }).strict();
 
 /** The record, validated and within its byte cap; throws otherwise. */
@@ -55,6 +58,14 @@ export function validateDuelRecord(value: unknown): DuelPlaytestRecord {
   if (record.round !== record.summary.round || record.seed !== record.summary.seed) throw new Error('duel record round does not match its summary');
   if (new TextEncoder().encode(JSON.stringify(record)).byteLength > DUEL_RECORD_MAX_BYTES) throw new Error('duel record exceeds its size cap');
   return record;
+}
+
+/** As latencyFigure, rounded to 0.001: the corrections are fractions of a unit. */
+export function fineFigure(samples: readonly number[]): LatencyFigure {
+  const s = samples.filter((v) => v >= 0 && v <= DUEL_RECORD_MAX_MS).sort((a, b) => a - b);
+  if (!s.length) return { count: 0, median: null, p95: null, max: null };
+  const rank = (q: number) => s[Math.min(s.length - 1, Math.max(0, Math.ceil(q * s.length) - 1))]!, round = (v: number) => Math.round(v * 1000) / 1000;
+  return { count: s.length, median: round(rank(0.5)), p95: round(rank(0.95)), max: round(s[s.length - 1]!) };
 }
 
 /** count, median, p95 and max of a list of milliseconds (nearest-rank percentiles); samples outside 0 to the cap are dropped. */
