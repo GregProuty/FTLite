@@ -16,6 +16,7 @@ import { createInteriorCamera, resetInteriorCamera } from '../../render/duel/int
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import type { PredictedBodies } from '../../clientControl/duelPredictor';
+import type { BodyOffset, SmoothOffsets } from '../../render/duel/correctionSmoother';
 import type { CrewOverride } from '../../render/duel/crewOverride';
 import { crewHelmSeat, seatOf } from './controls';
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
@@ -35,7 +36,11 @@ export interface ConfirmedDuel {
 }
 /** Net-4a §3.6: the session's prediction. While active() the source draws state() blended from before() by alpha(); otherwise
  *  (no running undecided round, no predictor) it draws the confirmed replica, one gap behind, as before. */
-export interface PredictionView { active(): boolean; state(): DuelState | null; before(): PredictedBodies | null; alpha(): number }
+export interface PredictionView {
+  active(): boolean; state(): DuelState | null; before(): PredictedBodies | null; alpha(): number;
+  /** Net-4a §3.8: the correction smoother's offsets now, added to the drawn ships and missiles; absent, none. */
+  offsets?(): SmoothOffsets;
+}
 interface Counters { shots: number; laserHits: number; stripped: number; launched: number; ended: number; missileHits: number; gunHits: number; pewShots: number; pewHits: number; contacts: [number, number, number]; rooms: [number, number, number] }
 /** Ship i's cumulative counters, which the snapshot carries. `ended` is every missile that has ended: launched minus the
  *  one in flight, which also counts a self-hit (neither a hit nor a loss); never fewer than hits plus losses. */
@@ -45,6 +50,9 @@ export const duelCounters = (t: TacticalState, i: number): Counters => {
 };
 const body = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
 const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null);
+/** Net-4a §3.8: a predicted before-body with the smoother's offset attached (interpolatedShip and interpolatedMissile add it
+ *  after the blend). */
+const withOffset = (b: PrevBody, o: BodyOffset | null | undefined): PrevBody => (o ? { ...b, ox: o.x, oy: o.y, oh: o.h } : b);
 
 /**
  * The events of one publication gap (spec §3): each `shots` increment is a beam to the target (a hit when `laserHits`
@@ -103,7 +111,8 @@ export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: r
   return out;
 }
 
-/** Net-4a §3.7: each effect from the confirmed counters, drawn at the prediction's positions: a beam from the firing ship in
+/** Net-4a §3.7: each effect from the confirmed counters, drawn at the prediction's positions (§3.8: P's, without the
+ *  correction smoother's offsets; effects are brief): a beam from the firing ship in
  *  P to its target in P (a hit) or to range along its heading in P (a miss); a round fired, or a contact, at the named ship;
  *  a gun or pew hit at the target (the event's ship); a missile ending where the missile last was. */
 export function placeEvents(events: readonly ViewEvent[], t: TacticalState): ViewEvent[] {
@@ -170,8 +179,11 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   } = {
     get duel() { return duel(); },
     get seed() { return duel().tactical.seed; },
-    get prev() { return predictedBodies()?.ships ?? cPrev; },
-    get missilePrev() { return predictedBodies()?.missiles ?? cMissilePrev; },
+    // Net-4a §3.8: while predicting, the before-bodies carry the correction smoother's offsets, so every ship and missile
+    // drawn, picked or followed through interpolatedShip / interpolatedMissile is smoothed. Effects placed by placeEvents
+    // stay at P's positions, unsmoothed: they are brief.
+    get prev() { const b = predictedBodies(); if (!b) return cPrev; const o = deps.prediction!.offsets?.(); return o ? b.ships.map((s, i) => withOffset(s, o.ships[i])) : b.ships; },
+    get missilePrev() { const b = predictedBodies(); if (!b) return cMissilePrev; const o = deps.prediction!.offsets?.(); return o ? b.missiles.map((m, i) => (m ? withOffset(m, o.missiles[i]) : null)) : b.missiles; },
     get crewPrev() { return predictedBodies()?.crew ?? cCrewPrev; },
     get cameras() { return cameras; },
     interiorCamera,

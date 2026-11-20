@@ -49,7 +49,9 @@ describe('G4: small corrections (Net-4a §6)', { timeout: 300_000 }, () => {
       expect(Math.max(0, ...reseated)).toBeLessThanOrEqual(2);
       // Fable #1: the heading, after the first second (the lead being built). The seat not at the Helm sees the ship turned
       // by the partner's input, which it carries forward until the next publication, so its heading corrections are larger
-      // by design until heading smoothing (§3.8) lands (p95 43 to 71 steps measured here): printed, not asserted.
+      // by design (p95 43 to 71 steps measured here): printed, not asserted. These are the raw corrections of P; the drawn
+      // change per frame is bounded by §3.8's smoothing gate (tests/onlineDuelSession.test.ts, 'a 40-step heading correction
+      // is smoothed'). The Helm seat's p95 below stays: it bounds how often P is wrong, which smoothing does not change.
       const heading = s.results.filter((r) => r.correction && r.tick >= 60).map((r) => r.correction!.heading), seat = seats.indexOf(s), helm = seat === w.session().duel.helmPlayer;
       console.log(`G4 ${rttMs} ms seat ${seat}${helm ? ' (Helm)' : ''}: heading p95 ${p95(heading).toFixed(2)} max ${Math.max(0, ...heading).toFixed(2)} steps`);
       if (helm) expect(p95(heading)).toBeLessThanOrEqual(HELM_HEADING_P95);

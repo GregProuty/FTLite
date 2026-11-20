@@ -188,7 +188,7 @@ export function interpolatedMissile(state: TacticalState, missilePrev: readonly 
   if (!p) return { x: m.x, y: m.y, h: h1 };
   let dh = h1 - p.h;
   dh -= Math.round(dh / HEADING_COUNT) * HEADING_COUNT;
-  return { x: p.x + (m.x - p.x) * a, y: p.y + (m.y - p.y) * a, h: p.h + dh * a };
+  return { x: p.x + (m.x - p.x) * a + (p.ox ?? 0), y: p.y + (m.y - p.y) * a + (p.oy ?? 0), h: p.h + dh * a + (p.oh ?? 0) };   // Net-4a §3.8: the offset after the blend
 }
 
 /** Once per frame: append each flying missile's drawn position to its trail (when it moved), and clear ended ones. */

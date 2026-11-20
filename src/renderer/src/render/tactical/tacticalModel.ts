@@ -47,7 +47,9 @@ export const SCALE_BAR_MAX_PX = 160;
  *  at every zoom (plan decision 8). The ship at 800 u/s drifts the stars by 16 px/s. */
 export const STAR_PARALLAX = 0.02;
 
-export interface PrevBody { x: number; y: number; h: number }
+/** A body at the previous tick. Net-4a §3.8: online while predicting, `ox, oy, oh` are a correction's decaying visual
+ *  offset, added after the blend; absent (Single player, the confirmed view) the blend is unchanged. */
+export interface PrevBody { x: number; y: number; h: number; ox?: number; oy?: number; oh?: number }
 export interface Line { x1: number; y1: number; x2: number; y2: number }
 export interface Label { text: string; x: number; y: number }
 /** `curves` (the gravity grid only; `lines` is then empty): each bent line as a flat x, y, x, y… screen polyline. */
@@ -245,7 +247,7 @@ export function interpolatedShip(state: TacticalState, prev: readonly PrevBody[]
   if (!p) return { x: s.x, y: s.y, h: h1 };
   let dh = h1 - p.h;
   dh -= Math.round(dh / HEADING_COUNT) * HEADING_COUNT;
-  return { x: p.x + (s.x - p.x) * a, y: p.y + (s.y - p.y) * a, h: p.h + dh * a };
+  return { x: p.x + (s.x - p.x) * a + (p.ox ?? 0), y: p.y + (s.y - p.y) * a + (p.oy ?? 0), h: p.h + dh * a + (p.oh ?? 0) };   // Net-4a §3.8: the offset after the blend
 }
 
 /** The followed body's interpolated world position, or null when there is none (the camera then holds still). */

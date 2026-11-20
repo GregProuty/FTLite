@@ -64,7 +64,9 @@ export const heldKey = (h: HeldInput): string => HELD_KEYS.map((k) => (h[k] === 
 /** The inputs of one step by content: every player's held input and the commands' ids and bodies (not their stamped tick). */
 const inputKey = (held: readonly HeldInput[], commands: readonly Command[]): string =>
   `${held.map(heldKey).join('|')}#${commands.map((c) => `${c.id.player}:${c.id.sequence}:${JSON.stringify(c.command)}`).join(';')}`;
-function bodies(d: DuelState): PredictedBodies {
+/** P's drawn bodies: ships and missiles (by owner) as {x, y, h} with h = heading + headingAcc in steps, and the crew.
+ *  Exported for the session's correction smoothing (§3.8), which compares them across a re-simulation. */
+export function predictedBodiesOf(d: DuelState): PredictedBodies {
   const t = d.tactical;
   return { ships: t.ships.map((s) => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc })),
     missiles: t.ships.map((_, i) => { const m = missileOf(t, i); return m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null; }),
@@ -86,7 +88,7 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
   /** One step of P from its tick with `own` in this seat's slot (§3.3); requestedTick is P's tick, as the authority restamps. */
   function advance(own: HeldInput, commands: readonly Command[]): void {
     const d = p!, at = d.interior.tick, input = withOwn(own), stamped = commands.map((c) => ({ ...c, requestedTick: at }));
-    prior = bodies(d); holding = false;
+    prior = predictedBodiesOf(d); holding = false;
     step(d, { held: input, commands: stamped });
     const tick = d.interior.tick;
     steps.set(tick, { key: inputKey(input, stamped), hash: tick % PREDICT_HASH_EVERY === 0 ? hashF64(flattenDuel(d)) : null });
@@ -104,7 +106,7 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
     if (p && matches) restoreDuelSnapshot(p, publication.snapshot, options.contentDigest);
     else { if (p) disposeDuel(p); p = null; p = loadDuelSnapshot(options.resolveLayout(h.layoutId), publication.snapshot, options.contentDigest); }
     log = []; waiting = []; ackedSequence = 0; ackedLocal = -Infinity; steps.clear(); steps.set(publication.tick, { key: '', hash: publication.hash });
-    prior = bodies(p); holding = false; revision = publication.controlRevision; offset = publication.tick - local;
+    prior = predictedBodiesOf(p); holding = false; revision = publication.controlRevision; offset = publication.tick - local;
     predicting = publication.phase === 'running' && !decided;
     stats.resets++; stats.correction = null; stats.lead = 0; stats.measured = stats.standing = publication.tick;
     return 'reset';
@@ -159,7 +161,7 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
       const ship = d.tactical.ships[CREW_SLOT]!, sx = ship.x, sy = ship.y, sh = ship.heading + ship.headingAcc, eid = d.interior.crew[seat], cx = eid === undefined ? 0 : Position.x[eid]!, cy = eid === undefined ? 0 : Position.y[eid]!, seated = eid === undefined ? -1 : Seated.station[eid]!;
       restoreDuelSnapshot(d, publication.snapshot, options.contentDigest);
       steps.clear(); steps.set(T, { key: '', hash: publication.hash });
-      prior = bodies(d); holding = false;
+      prior = predictedBodiesOf(d); holding = false;
       for (let k = T + 1; k <= target; k++) { const plan = planned(k); advance(plan.own, plan.commands); }
       const after = d.tactical.ships[CREW_SLOT]!, dx = after.x - sx, dy = after.y - sy;
       const ex = eid === undefined ? 0 : Position.x[eid]! - cx, ey = eid === undefined ? 0 : Position.y[eid]! - cy;
@@ -174,7 +176,7 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
       if (log.length > PREDICT_LOG_MAX) { const old = log.shift()!; log[0]!.commands = [...old.commands, ...log[0]!.commands]; }
       if (p.interior.tick >= confirmedTick + PREDICT_MAX_TICKS) {
         // I1 (§3.5): P does not move, so the view holds at P: the blend from `prior` would otherwise replay the last step.
-        if (!holding) { prior = bodies(p); holding = true; }
+        if (!holding) { prior = predictedBodiesOf(p); holding = true; }
         return false;
       }
       advance(e.held, e.commands);

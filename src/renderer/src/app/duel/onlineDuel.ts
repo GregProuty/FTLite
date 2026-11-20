@@ -11,7 +11,8 @@ import { browserPortEndpoint } from '../../../../network/transport/bridge';
 import { classifyStreamPacket } from '../../../../network/state/imageCodec';
 import { createDuelRemoteClient } from '../../../../network/modes/duelStream';
 import type { CommandEnvelope, CommandId, DuelCommand, HeldInput, Link, Scheduler, Cue } from '../../net/contracts';
-import { createDuelPredictor, type DuelPredictor, type LocalInput, type PredictionStats } from '../../clientControl/duelPredictor';
+import { createDuelPredictor, predictedBodiesOf, type DuelPredictor, type LocalInput, type PredictionStats } from '../../clientControl/duelPredictor';
+import { createCorrectionSmoother } from '../../render/duel/correctionSmoother';
 import { arrivalJitter, fineFigure, latencyFigure, type DuelPlaytestRecord } from '../../net/duelRecord';
 import type { ShipLayout } from '../../sim/ship/schema';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../../sim/duel/snapshot';
@@ -151,6 +152,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   // clock, this tick's commands (collected by send), a neutralize's held sequence for the next entry, and the timings (§3.10).
   let predictor: DuelPredictor | null = null, confirmedSequence = 0, clockBase: number | null = null, localDone = 0, lastLocalAt = 0;
   let capped = false;   // Fable #8: the last local tick left P at the cap (it did not step), so the view holds at alpha 1
+  // Net-4a §3.8: a re-simulation's jump on screen decays over SMOOTH_MS; cleared on a reset, a dropped predictor and a release.
+  const smoother = createCorrectionSmoother();
   let collected: CommandEnvelope<DuelCommand>[] | null = null, neutralSequence: number | null = null;
   const keep = (list: number[], ms: number): void => { list.push(ms); if (list.length > LIVE_SAMPLES) list.shift(); };
   const p99 = (xs: readonly number[]): number | null => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return Math.round(s[Math.min(s.length - 1, Math.ceil(0.99 * s.length) - 1)]! * 1000) / 1000; };
@@ -196,7 +199,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   /** Fable #4: a predictor that throws is dropped for this attach; the view falls back to the confirmed replica. */
   function dropPredictor(err: unknown): void {
     console.error('[online duel] the predictor failed; drawing the confirmed replica', err);
-    predictor?.dispose(); predictor = null; confirmedSequence = 0; seenRetargets = 0;
+    predictor?.dispose(); predictor = null; confirmedSequence = 0; seenRetargets = 0; smoother.clear();
   }
   /** The authority's held frame is neutral once input stops, so this seat's drawn axes drop too. */
   function neutralSource(): void { source?.sent(neutral()); }
@@ -209,7 +212,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   }
   function release(): void {
     stopInput(); offClose(); offClose = () => {};
-    client?.dispose(); client = null; predictor?.dispose(); predictor = null; confirmedSequence = 0; neutralSequence = null; link?.close('renderer-detached'); link = null;
+    client?.dispose(); client = null; predictor?.dispose(); predictor = null; confirmedSequence = 0; neutralSequence = null; smoother.clear(); link?.close('renderer-detached'); link = null;
   }
   function freeze(): void {
     if (linkClosed) return;   // frozen at the close: the copy is final until the next attach
@@ -240,7 +243,13 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (predictor && p.publicationSequence !== confirmedSequence) {   // Net-4a §3.4: verify, else re-simulate, else reset
       confirmedSequence = p.publicationSequence;
       let done: { result: ReturnType<DuelPredictor['confirm']>; ms: number; st: PredictionStats } | null = null;
-      try { const t0 = deps.now(), result = predictor.confirm(p, d); done = { result, ms: deps.now() - t0, st: predictor.stats() }; } catch (err) { dropPredictor(err); }   // Fable #4
+      try {
+        // §3.8: P's bodies before the confirm; after a re-simulation (a correction or a retarget) the drawn world keeps
+        // showing them and decays to P over SMOOTH_MS. A reset jumps.
+        const pre = predictor.active() ? predictedBodiesOf(predictor.state()!) : null;
+        const t0 = deps.now(), result = predictor.confirm(p, d); done = { result, ms: deps.now() - t0, st: predictor.stats() };
+        if (result === 'resimulated' && pre) smoother.shift(pre, predictedBodiesOf(predictor.state()!), deps.now()); else if (result === 'reset') smoother.clear();
+      } catch (err) { dropPredictor(err); }   // Fable #4
       if (done) {
         // §3.10: the round's figures. A reset (a pause, a new or decided round) is not a prediction.
         const { result, ms, st } = done, bound = (list: number[], v: number): void => { list.push(v); if (list.length > 4096) list.shift(); };
@@ -552,12 +561,12 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
         shipCommand: (c) => { if (focused && !blocked) keyboard.ui.ship?.(c); } });   // Engineering spike §5: as the map click, only while focused
       link = createPortLink(browserPortEndpoint(port), `online:${next.seatId}`, { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });
       // Subscribe before the client, which releases its replica on close: keep the last view frozen.
-      offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; predictor?.dispose(); predictor = null; confirmedSequence = 0; });   // Net-4a §3.4: no hidden P steps on after a close
+      offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; predictor?.dispose(); predictor = null; confirmedSequence = 0; smoother.clear(); });   // Net-4a §3.4: no hidden P steps on after a close
       client = createDuelRemoteClient(link, [next.seatId], { runId: next.runId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout, clock: { nowMs: deps.now } });
-      predictor = createDuelPredictor({ seat: next.seatId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout }); seenRetargets = 0; capped = false;   // Net-4a §3.4: one per client
+      predictor = createDuelPredictor({ seat: next.seatId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout }); seenRetargets = 0; capped = false; smoother.clear();   // Net-4a §3.4: one per client
       source = createOnlineDuelSource({ client: { state, publication, live }, seat: next.seatId, now: deps.now, viewport: { w: INTERNAL_W, h: INTERNAL_H },
         prediction: { active: () => !linkClosed && (predictor?.active() ?? false), state: () => predictor?.state() ?? null, before: () => predictor?.before() ?? null,
-          alpha: () => (capped ? 1 : Math.max(0, Math.min(1, (deps.now() - lastLocalAt) / LOCAL_TICK_MS))) } });
+          alpha: () => (capped ? 1 : Math.max(0, Math.min(1, (deps.now() - lastLocalAt) / LOCAL_TICK_MS))), offsets: () => smoother.offsets(deps.now()) } });   // §3.8
     },
     setStatus(next: OnlineStatus): void {
       status = next;

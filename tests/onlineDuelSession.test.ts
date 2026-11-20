@@ -28,6 +28,8 @@ import { interpolatedShip } from '../src/renderer/src/render/tactical/tacticalMo
 import { createRockTrack, rockDrawPos, updateRockTrack } from '../src/renderer/src/render/tactical/rockTrack';
 import { isRail, rockSlots, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { createRng, nextFloat } from '../src/shared/rng';
+import { SMOOTH_MS } from '../src/renderer/src/render/duel/correctionSmoother';
+import { HEADING_COUNT } from '../src/renderer/src/sim/tactical/tuning';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 type Sent = { kind: 'held'; held: HeldInput } | { kind: 'command'; command: DuelCommand };
@@ -1124,6 +1126,50 @@ describe('smooth 60 fps online (Fable #7, #8)', () => {
       expect(back).toBe(0);
       expect(Math.max(...len)).toBeLessThanOrEqual(1.5 * median);
     }
+    r.dispose();
+  });
+  it('a 40-step heading correction is smoothed over SMOOTH_MS: the drawn heading never jumps, and it reaches P by 100 ms (§3.8)', () => {
+    // The 60 Hz rig above without the late pump. At 1.5 s the authority's crew ship is turned 40 heading steps before a
+    // publication, so the confirm re-simulates and P's heading jumps by 40. `raw` is the drawn heading without the
+    // smoother's offsets (P blended from before()); `drawn` is what interpolatedShip draws from the source's prev.
+    const r = rig(0), c = r.attach(), TICK = 1000 / 60, FORCED = 40;
+    const wrap = (d: number): number => d - Math.round(d / HEADING_COUNT) * HEADING_COUNT;
+    let now = 0, nextTick = TICK, nextFrame = 5, nextPump = TICK + 2, forced = false, forcedAt = Infinity, correctedAt = Infinity, simTurn = 0, lastAuth: number | null = null;
+    const frames: { at: number; drawn: number; raw: number }[] = [];
+    while (now < 2500) {
+      const at = Math.min(nextTick, nextFrame, nextPump);
+      r.advance(at - now); now = at;
+      if (at === nextTick) {
+        nextTick += TICK;
+        stepDuelTick(r.d, { held: [], commands: [] });
+        const s = r.d.tactical.ships[0]!, ah = s.heading + s.headingAcc;
+        if (lastAuth !== null) simTurn = Math.max(simTurn, Math.abs(wrap(ah - lastAuth)));
+        if (!forced && now >= 1500 && r.d.interior.tick % 3 === 0) { s.heading = (s.heading + FORCED) % HEADING_COUNT; forced = true; forcedAt = now; }
+        lastAuth = s.heading + s.headingAcc;
+        if (r.d.interior.tick % 3 === 0) c.publish(r.d, 'running', undefined, { held: [c.helds().length, 0] });
+      } else if (at === nextPump) {
+        nextPump += TICK;
+        r.pump(0);
+        if (correctedAt === Infinity && now > forcedAt) correctedAt = now;   // this pump's observe confirms the forced publication
+      } else {
+        nextFrame += TICK;
+        r.session.frame();
+        if (now < 1000) continue;   // warm-up: the lead is built
+        const src = h.source as unknown as { duel: DuelState; prev: { x: number; y: number; h: number; ox?: number; oy?: number; oh?: number }[]; alpha(): number };
+        const bare = src.prev.map(({ x, y, h: hh }) => ({ x, y, h: hh }));
+        frames.push({ at: now, drawn: interpolatedShip(src.duel.tactical, src.prev, src.alpha(), 0).h, raw: interpolatedShip(src.duel.tactical, bare, src.alpha(), 0).h });
+      }
+    }
+    const step = (k: number, f: 'drawn' | 'raw'): number => Math.abs(wrap(frames[k + 1]![f] - frames[k]![f]));
+    const drawnMax = Math.max(...frames.slice(1).map((_, k) => step(k, 'drawn'))), rawMax = Math.max(...frames.slice(1).map((_, k) => step(k, 'raw')));
+    const bound = simTurn + FORCED * (TICK / SMOOTH_MS) + 1;
+    console.log(`smooth heading: sim turn ${simTurn.toFixed(3)} steps/frame, raw max ${rawMax.toFixed(3)}, drawn max ${drawnMax.toFixed(3)}, bound ${bound.toFixed(3)}`);
+    expect(forced && correctedAt < Infinity).toBe(true);
+    expect(rawMax).toBeGreaterThanOrEqual(FORCED);   // the correction happened, and unsmoothed it is a 40-step jump
+    expect(drawnMax).toBeLessThanOrEqual(bound);
+    const settled = frames.filter((f) => f.at >= correctedAt + SMOOTH_MS);
+    expect(settled.length).toBeGreaterThan(0);
+    for (const f of settled) expect(Math.abs(wrap(f.drawn - f.raw))).toBeLessThan(1e-9);   // converged to P's heading by 100 ms
     r.dispose();
   });
   it('while P stands at the cap the drawn rock holds (alpha 1, one-tick gap) and so does the ship (Fable #8)', () => {
