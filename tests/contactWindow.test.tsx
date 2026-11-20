@@ -41,7 +41,7 @@ describe('the contact window (spec §4.2, §5)', () => {
   it('draws the title, the room labels and, at Weapons, LASER and TORPEDO, with nothing to steer (homing torpedo spec §3)', () => {
     mount(contactOf('weapons', false));
     for (const t of ['ENEMY SHIP', 'WEAP', 'SHLD', 'ENG', 'TORPEDO', 'CHARGE', '40%']) expect(texts(), t).toContain(t);
-    for (const t of ['MISSILE', 'STEER A/D']) expect(texts(), t).not.toContain(t);
+    for (const t of ['MISSILE', 'STEER LMB']) expect(texts(), t).not.toContain(t);
     expect(btn('contact-laser')).not.toBeNull(); expect(btn('contact-torpedo')).not.toBeNull();
     expect(document.querySelector('[data-ui-contact-lock]')).toBeNull();   // FTL targeting spec §1: no target yet, no mark
     expect(document.querySelector('[data-ui-contact-torp]')).toBeNull();

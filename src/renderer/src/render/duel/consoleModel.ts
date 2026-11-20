@@ -60,7 +60,7 @@ export interface WeaponsPanel { lock: number; charge: ReadoutRow; magazine: stri
   laserManual?: boolean;
   /** W-3 (pew pew spec §3): the torpedo's mode for the TORPEDO card's AUTO / MAN tag (true MANUAL; absent draws no tag);
    *  `torpSteer`: the crew's torpedo in flight is a MANUAL one that can turn now (past its boost, fuel left: the card says
-   *  STEER A/D); `torpCoast`: it is a MANUAL one whose fuel is spent (COASTING). Both false during its boost (FLYING). */
+   *  STEER LMB, W-4 spec §10); `torpCoast`: it is a MANUAL one whose fuel is spent (COASTING). Both false during its boost (FLYING). */
   torpManual?: boolean; torpSteer?: boolean; torpCoast?: boolean;
   /** Spike ii §7 item 9: the rocks the crew broke this round. */
   rocks?: number;

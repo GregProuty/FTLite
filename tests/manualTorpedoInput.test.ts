@@ -124,11 +124,15 @@ describe('the steering at Weapons (spec §3)', () => {
   });
 });
 
-describe('the Settings controls list (spec §5)', () => {
-  it('names V at Weapons, and the torpedo\'s A/D and right button', () => {
+describe('the Settings controls list (W-4 spec §9)', () => {
+  it("names R at Weapons for the selected weapon, the torpedo included (V is the laser fit's); the left mouse flies a MANUAL torpedo; A/D and the right button no longer do", () => {
     const rows = controlSections()[0]!.rows;
-    expect(rows.find((r) => r.keys === 'V')?.action).toMatch(/Weapons.*torpedo.*AUTO.*MANUAL/);
-    expect(rows.find((r) => r.keys === 'W A S D')?.action).toMatch(/MANUAL torpedo/);
-    expect(rows.find((r) => r.keys === 'Right click or drag')?.action).toMatch(/MANUAL torpedo/);
+    expect(rows.find((r) => r.keys === 'R')?.action).toMatch(/^At Weapons, switch the selected weapon between AUTO and MAN.*torpedo on MANUAL.*left mouse flies it/);   // W-4 amendment §2.4: R with the torpedo selected
+    expect(rows.find((r) => r.keys === 'V')?.action).toMatch(/^With the laser fit at Weapons.*torpedo.*AUTO.*MANUAL.*left mouse/);
+    expect(rows.find((r) => r.keys === 'V')?.action).not.toMatch(/A\/D|right mouse/);
+    expect(rows.filter((r) => r.keys === 'Hold left mouse').map((r) => r.action)).toContainEqual(expect.stringMatching(/^At Weapons, with a MANUAL torpedo flying: steer it/));   // the Helm's row comes first and stays
+    expect(rows.find((r) => r.keys === 'W A S D')?.action).not.toMatch(/MANUAL torpedo/);
+    expect(rows.find((r) => r.keys === 'Right click or drag')?.action).not.toMatch(/torpedo/);
+    expect(rows.find((r) => r.keys === 'Right click or drag')?.action).toMatch(/elsewhere pan/);
   });
 });

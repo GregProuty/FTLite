@@ -9,7 +9,7 @@
 // show the bars on each weapon (pew pew's on the PEW row under its charge pips, the others under their cards; the fourth is
 // the overdrive's, dashed): a left click adds a bar, a right click removes one; FREE names the bars not yet spent.
 // W-2 (pew pew spec §2): the BEAM card's AUTO / MAN tag in its header row, lit in MANUAL; a click toggles the mode, as Z does.
-// W-3 (pew pew spec §3): the TORPEDO card's AUTO / MAN tag likewise (V); in MANUAL the card says MANUAL, and a MANUAL torpedo in flight STEER A/D while it can turn (FLYING in its boost, COASTING once its fuel is spent).
+// W-3 (pew pew spec §3): the TORPEDO card's AUTO / MAN tag likewise (V); in MANUAL the card says MANUAL, and a MANUAL torpedo in flight STEER LMB while it can turn (W-4 spec §10: the left mouse flies it) (FLYING in its boost, COASTING once its fuel is spent).
 // Sci-1 spec §7.4: the frequency row, A B C with the tuned one lit and the weak one marked after a Level 2 scan (keys 3/4/5).
 // Feel-i (console feel spec §1, §3): the BEAM card flashes FIRING while the shot is lined up, says why not in words on the
 // row under the cards (`BEAM: OUT OF ARC: HELM TURN RIGHT`), and its frame pulses (the goal glow) while it has no target.
@@ -167,7 +167,7 @@ function HoundWeapons({ weapons, aim }: { weapons: WeaponsPanel; aim: Weapon | n
         : null}
       <PixelText text={`MAG ${weapons.magazine}`} x={tx} y={T.y + 20} size={FONT_SIZE} tint={main} />
       {weapons.missileFlying
-        ? <PixelText text={weapons.torpSteer === true ? 'STEER A/D' : weapons.torpCoast === true ? 'COASTING' : 'FLYING'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={hot} />
+        ? <PixelText text={weapons.torpSteer === true ? 'STEER LMB' : weapons.torpCoast === true ? 'COASTING' : 'FLYING'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={hot} />
         : weapons.torpManual === true
         ? <PixelText text="MANUAL" x={tx} y={T.y + 42} size={FONT_NATIVE} tint={main} />
         : <PixelText text={weapons.torpedoInRange ? 'IN RANGE' : 'OUT OF RANGE'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={weapons.torpedoInRange ? main : dim} />}
@@ -230,7 +230,7 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
         : null}
       <PixelText text={`MAG ${weapons.magazine}`} x={tx} y={T.y + 20} size={FONT_SIZE} tint={main} />
       {weapons.missileFlying
-        ? <PixelText text={weapons.torpSteer === true ? 'STEER A/D' : weapons.torpCoast === true ? 'COASTING' : 'FLYING'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={hot} />
+        ? <PixelText text={weapons.torpSteer === true ? 'STEER LMB' : weapons.torpCoast === true ? 'COASTING' : 'FLYING'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={hot} />
         : weapons.torpManual === true
         ? <PixelText text="MANUAL" x={tx} y={T.y + 42} size={FONT_NATIVE} tint={main} />
         : <PixelText text={weapons.torpedoInRange ? 'IN RANGE' : 'OUT OF RANGE'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={weapons.torpedoInRange ? main : dim} />}

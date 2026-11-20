@@ -22,8 +22,8 @@ const DUEL_ACTION: Readonly<Record<Exclude<KeyAction, 'fireUp'>, string>> = {
   fireDown: 'With the laser fit at Weapons, fire a full laser (in MANUAL, along the map aim); at the Helm, hold to turn the nose onto the enemy (auto-face)',   // W-4 spec §9
   launch: 'At Weapons, launch a torpedo',
   laserMode: 'With the laser fit at Weapons, switch the laser between AUTO (it fires at its target by itself) and MANUAL (Space fires it along the map aim)',
-  torpMode: 'With the laser fit at Weapons, switch the torpedo between AUTO (it homes on its target) and MANUAL (F launches it with no target; A/D and the right mouse fly it)',
-  weaponMode: 'At Weapons, switch the selected weapon between AUTO and MAN: a gun on AUTO aims and fires by itself, and on MAN it follows the reticle and fires on the left button while it is selected; the torpedo on MANUAL launches with no target',
+  torpMode: 'With the laser fit at Weapons, switch the torpedo between AUTO (it homes on its target) and MANUAL (F launches it with no target; hold the left mouse to fly it)',
+  weaponMode: 'At Weapons, switch the selected weapon between AUTO and MAN: a gun on AUTO aims and fires by itself, and on MAN it follows the reticle and fires on the left button while it is selected; the torpedo on MANUAL launches with no target (F, or a left click with it selected), and the held left mouse flies it',
   weaponModeAll: 'At Weapons, switch both guns together: both to AUTO if either is on MAN, else both to MAN (the torpedo keeps its mode)',
   stand: 'Stand up from a console',
   switch: 'Switch between the Helm and Weapons characters',
@@ -47,7 +47,7 @@ function codesFor(action: KeyAction): string[] {
 export function controlSections(): ControlSection[] {
   const move = [MOVE_CODES.up, MOVE_CODES.left, MOVE_CODES.down, MOVE_CODES.right].map(keyLabel).join(' ');
   // The mouse rows are written here by hand (createPointerSource in duel/input.ts: wheel zooms, right or middle drag pans).
-  const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, W/S hold the throttle and A/D fire the side thrusters; at Weapons, A/D select a weapon (and steer a MANUAL torpedo in flight)' }];   // playtest2feedback §6
+  const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, W/S hold the throttle and A/D fire the side thrusters; at Weapons, A/D select a weapon' }];   // playtest2feedback §6
   for (const action of Object.keys(DUEL_ACTION) as (keyof typeof DUEL_ACTION)[]) {
     if (action === 'throttleUp' || action === 'throttleDown' || action === 'selectPrev' || action === 'selectNext' || action === 'weaponModeAll') continue;   // playtest2feedback §6: the Valkyrn's notches are in its own section and the crew Helm holds W/S; W-4 spec §9: selection is in its own merged row below; W-4 amendment §2.4: Shift+R has no code of its own (written with R's row)
     const keys = codesFor(action).map(keyLabel).join(' / ');
@@ -74,7 +74,8 @@ export function controlSections(): ControlSection[] {
     { keys: '↑ ↓', action: 'At the Helm, cold gas thrusters fore and aft' });
   duel.push({ keys: 'Mouse wheel', action: 'Zoom (the maps and the ship)' },
     { keys: 'Left click', action: 'At Weapons, fire the selected weapon: pew pew one round, the autocannon while held, the torpedo launches' },
-    { keys: 'Right click or drag', action: 'At the Helm, set a heading to hold (on your ship: clear); at Weapons, the heading a MANUAL torpedo in flight holds (on it: clear); elsewhere pan' },
+    { keys: 'Hold left mouse', action: 'At Weapons, with a MANUAL torpedo flying: steer it toward the pointer; let go and it holds that heading' },   // W-4 spec §9
+    { keys: 'Right click or drag', action: 'At the Helm, set a heading to hold (on your ship: clear); elsewhere pan' },
     { keys: 'Middle drag', action: 'Pan the camera (in the ship, when zoomed in)' });
   const k = SECTOR_KEYS;
   const sector: ControlRow[] = [

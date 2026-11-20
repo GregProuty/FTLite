@@ -93,6 +93,12 @@ describe("the Hound's Weapons station (W-4 spec §10)", () => {
       expect(x0 + textPx(t, 1) + 8, t).toBeLessThanOrEqual(right - textPx(freeText(9), 1));
     expect(x0 + textPx(houndRoomHint(0, true), 1) + 8).toBeLessThanOrEqual(right - textPx('ROCKS 99', 1));
   });
+  it('TORPEDO in MAN while it flies and can turn reads STEER LMB (W-4 spec §10)', () => {
+    const { duel } = mount();
+    act(() => duel.frame(view(weapons({ autocannon: { heat: 0, locked: false, offline: false, rate: '6/S' }, selected: 2, torpManual: true, missileFlying: true, torpSteer: true, torpCoast: false }))));
+    expect(texts()).toContain('STEER LMB');
+    expect(texts()).not.toContain('STEER A/D');
+  });
   it("the laser fit's Weapons station still shows BEAM with its FIRE button", () => {
     const { duel } = mount();
     act(() => duel.frame(view(weapons({ laserTarget: 1, burst: 2, pew: undefined }))));
