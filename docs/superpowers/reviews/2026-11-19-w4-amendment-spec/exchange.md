@@ -135,3 +135,51 @@ Confirmed (`missiles.ts` L30-L32, L120). Kept as today's code, and stated: §3.1
 
 ---
 
+# Round 2 (delta, reviewing 44833397, effort medium, 50 s, 266958 in / 209262 cached / 4995 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — spec L167-L177 names both changes. The step.ts no-laser line stops catching laserLock when hasTurret, and a new branch in applyWeaponsInput's locks step writes s.lock and nothing else (crew slot, no laser, turret, input.weapons, validLock). The same-tick order is stated, and L320 tests it.
+- R1-F2: resolved — spec L192-L206 makes room its own scalar field after flight, outside ROUND_KEYS. MissingRoundKeys excludes 'room', ROUND_SLOT becomes 8 and the determinism length line follows. The back-offset follows the missile manual pattern (hash.ts L68), and the CREW_SLOT-only bound gives the reason the class is not checked. placeRound and emptyRound write it, with every caller passing it. This matches hash.ts L33-L39 and L73-L87.
+- R1-F3: resolved — spec L265-L269 fences intercept with a ContactSync flag at the Hound's Weapons seat, so E/Q fall through and the pick-up stays. The Hound branch never reads torpStep. This matches contactController.ts L143-L146. Tests at L343-L344 cover the Hound and Flight seats.
+- R1-F4: resolved — spec L272-L275: on a turret class lockRoom is crewSys.lock whenever the rooms are drawn, the unknown contact included. Other classes keep laserTargeted ? lock : null.
+- R1-F5: resolved — spec L262-L264 adds lockSent {room, sequence, round}, cleared at the same places as torpModeSent (onlineDuel.ts L231, L248, L251, L417, L475). The step starts from it, else the replica's lock. Tested at L350-L352.
+- R1-F6: resolved — spec L125-L132 keeps two rows at y0+116 and y0+134 (WeaponsStation.tsx L160-L164). The two row-2 texts count correctly at 30 and 38 characters, within the 39-character row W-4 measured. The plan measures both against ROCKS n.
+- R1-F7: resolved — The header (L4-L7) now lists §2.1, the two replaced §14 bullets and §15's row. spec L299-L307 names the replaced bullets and the three W-4a tests as kind (a) rewrites.
+- R1-F8: resolved — spec L363-L375: every gunsManual mention in the header and Tasks 3-9 follows, and the pewFire pewManual rule goes to Task 6. The §3 sim task comes after Task 6, with the reason (the stand-in pewFire).
+- R1-F9: resolved — spec L107-L112, L339 and L396 now name only the laser fit's Weapons seat. The Flight seat reads none of Z, V and R, and the Hound's V read is removed (onlineDuel.ts L318 is the read that goes).
+- R1-F10: resolved — spec L103-L106: KeyEventLike gains ctrlKey? and metaKey?, down ignores KeyR when either is set, and KeyR stays out of GUARDED_CODES. Tested with the fake event source (L338).
+- R1-F11: resolved — spec L228-L234 specifies a hitCallouts pew branch ('PEW: ', enemy, room>=0 and level) and a pushHits flash (ship not crew, room>=0), matching the gun branches at hitModel.ts L57 and L76. Online, the pewHit literal gains room:-1, level:false, as gunHit does at onlineSource.ts L89 and L93. This is recorded in §7 and §8 item 13.
+- R1-F12: resolved — spec L152-L154 states that the room is read at landing and keeps that. The L331-L332 test names the moment, L247-L249 defines the report's torpedo levels as level after minus level before, and §8 item 6 records it for the owner.
+
+## Verified
+- The hint-row placements and the divider at y0+156 match WeaponsStation.tsx L160-L164. Row 1's refusal swap is untouched. Both new row-2 texts count to 30 and 38 characters.
+- hitModel.ts L49-L82 has gun-only callout and flash branches, so the pew branch shape in spec L229-L231 is buildable as stated.
+- onlineSource.ts L89 and L93 build gunHit with room -1 and level false, and build pewHit with no room fields. The spec's addition (L233) keeps the satisfies DuelEvent literal typechecking.
+- contactController.ts L20-L24 (ContactSync.laser) and L143-L146 (the E/Q torpStep take) match the spec's description of the fence (L265-L269).
+- hash.ts L33-L39 and L55-L87: ROUND_SLOT 7, ROUND_KEYS as the flight vector, MissingRoundKeys, and the missile manual trailing bit. The spec's separate room field and the ROUND_SLOT 8 change are consistent with this layout.
+- onlineDuel.ts clears torpModeSent at L231 (result), L248 (sit), L251 (stand), L417 (round) and L475 (re-attach). This supports 'as torpModeSent is' for lockSent. L307 and L350-L351 are the Hound and contact torpStep paths that §6 and §3.6 remove at the Hound's seat.
+- No contradiction found between the touched sections and the unchanged §2.2, §2.3 table, §4 and §8 items 1-10.
+
+## Not verified
+- Did not re-read step.ts L328-L340, weapons.ts L305-L310, gun.ts placeRound or the round validator's back-offset code. R1-F1 and R1-F2's code descriptions are taken from the round-1 evidence, which the responder confirmed.
+- Did not measure the pixel width of the 38-character row against ROCKS n. The spec leaves that measurement to the plan.
+- Did not read the W-4b plan's Task 3-10 text to confirm that every gunsManual mention §6 lists exists.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the subject at `44833397`. 0 accepted, 0 rejected, 0 deferred. The reviewer confirmed all twelve round 1 fixes as resolved (R1-F1 to R1-F12) and raised nothing new; the verdict is "ready".
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
