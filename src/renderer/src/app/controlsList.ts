@@ -32,7 +32,9 @@ const DUEL_ACTION: Readonly<Record<Exclude<KeyAction, 'fireUp'>, string>> = {
   confirm: 'Start a new duel (end screen)',
   menu: 'Return to the main menu (paused or end screen)',
   throttleUp: 'At the Helm, throttle up a notch (it stays set)',
-  throttleDown: 'At the Helm, throttle down a notch (to stop, then reverse)'
+  throttleDown: 'At the Helm, throttle down a notch (to stop, then reverse)',
+  selectPrev: 'At Weapons, select the previous weapon',
+  selectNext: 'At Weapons, select the next weapon'
 };
 
 /** The codes bound to one press action, in table order. */
@@ -45,7 +47,7 @@ export function controlSections(): ControlSection[] {
   // The mouse rows are written here by hand (createPointerSource in duel/input.ts: wheel zooms, right or middle drag pans).
   const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, W/S hold the throttle and A/D fire the side thrusters; at Weapons, A/D steer a MANUAL torpedo in flight' }];   // playtest2feedback §6
   for (const action of Object.keys(DUEL_ACTION) as (keyof typeof DUEL_ACTION)[]) {
-    if (action === 'throttleUp' || action === 'throttleDown') continue;   // playtest2feedback §6: the Valkyrn's notches (its own section); the crew Helm holds W/S
+    if (action === 'throttleUp' || action === 'throttleDown' || action === 'selectPrev' || action === 'selectNext') continue;   // W-4 spec §9: selection is listed in its own merged row (Task 12);   // playtest2feedback §6: the Valkyrn's notches (its own section); the crew Helm holds W/S
     const keys = codesFor(action).map(keyLabel).join(' / ');
     duel.push({ keys, action: DUEL_ACTION[action] });
     if (action === 'interact') duel.push({ keys: `Hold ${keyLabel(INTERACT_HELD)}`, action: 'Repair the damaged system you stand at' });

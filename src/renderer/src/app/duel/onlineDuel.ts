@@ -37,6 +37,7 @@ import { createContactController, type ContactActions, type ContactRequests } fr
 import { createOnlineDuelSource, type OnlineDuelSource } from './onlineSource';
 import type { DuelSink, LatencySink } from '../../ui/sinks';
 import { createDuelScene, type DuelScene } from './scene';
+import { laserFreqKey } from './weaponsSeat';
 import type { AudioOut } from '../audio';
 
 export interface OnlineDuelDeps {
@@ -300,7 +301,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       const why = lockRefusal(d); if (why) source?.refuse('launch', why);   // spec §10.4: as the laser's E/Q
     }
     // Sci-1 spec §7.4: a one-shot edge, sent as it comes (the lagging replica is no base, a quick undo would be dropped); the sim answers noop to an unchanged value
-    if (k.freqTo !== undefined && k.freqTo !== null && Number.isInteger(k.freqTo) && k.freqTo >= 0 && k.freqTo <= 2) send({ kind: 'laserFrequency', freq: k.freqTo });
+    const lk = laserFreqKey(k);   // W-4 spec §9: 3/4/5 (the key field) or a console button
+    if (lk !== undefined && lk !== null && Number.isInteger(lk) && lk >= 0 && lk <= 2) send({ kind: 'laserFrequency', freq: lk });
     // W-2 (pew pew spec §2): Z or the LASER card's AUTO / MAN tag toggles the laser's mode, from the mode in flight, else the
     // replica's (an odd number of presses this pump toggles it).
     let manual = laserModeSent ? laserModeSent.manual : sys.laserManual;

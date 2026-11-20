@@ -7,6 +7,7 @@ import { stationOnline } from '../../sim/stations';
 import { pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
 import { classOf } from '../../sim/tactical/state';
+import { hasTurret } from '../../sim/tactical/defs';
 
 export type Seat = 'helm' | 'weapons' | 'science' | 'flight' | 'standing';
 
@@ -31,6 +32,10 @@ export function seatOf(d: DuelState, pid: number): Seat {
 export function crewHelmSeat(d: DuelState, pid: number): boolean {
   return seatOf(d, pid) === 'helm' && classOf(d.tactical, 0).newtonianHelm;
 }
+
+/** W-4 spec §9: whether pid sits at the Hound's Weapons seat (the Weapons seat of a turret class): the new keys, LMB by
+ *  selection and the held weaponSel. The laser fit at a Weapons seat keeps today's (spec §13.4). */
+export function houndWeaponsSeat(d: DuelState, pid: number): boolean { return seatOf(d, pid) === 'weapons' && hasTurret(classOf(d.tactical, 0)); }
 
 /** The tactical Room player pid would repair (or put out, duel-fire spec §1.4) by holding E now, or −1: the first damaged
  *  or burning room (in Room order, as the sim picks) whose repair room the character stands in, in reach of its repair

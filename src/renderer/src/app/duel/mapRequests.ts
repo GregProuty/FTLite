@@ -27,11 +27,17 @@ export interface MapRequests {
   torpHeading(h: number): void;
   /** W-3: the latest of those since the last take, or null. */
   takeTorpHeading(): number | null;
+  /** W-4 spec §8, §9: whether the left button is held over the open Weapons map at the Hound's seat (the trigger), set
+   *  every frame by the scene, and its latest value (peeked, not drained). */
+  trigger(held: boolean): void;
+  triggerHeld(): boolean;
 }
 
 export function createMapRequests(): MapRequests {
   let heading: number | null = null, steer: number | null = null, launches = 0, pew: number | null = null, laserAim: number | null = null, torp: number | null = null;
+  let trig = false;
   return {
+    trigger(held) { trig = held; }, triggerHeld: () => trig,
     heading(h) { heading = h; },
     takeHeading() { const out = heading; heading = null; return out; },
     steer(h) { steer = h; },

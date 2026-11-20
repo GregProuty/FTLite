@@ -65,7 +65,7 @@ export interface ContactController {
    *  window stays open. */
   pick(room: number, lock: (room: number, weapon: Weapon) => void): void;
   /** The keyboard's intercept: true takes the key. Escape while shown with a contact; KeyT while shown on Helm, Weapons
-   *  or Science; KeyS while shown on Science; Digit1 / Digit2 while shown on Weapons (pick up the laser / torpedo); KeyE
+   *  or Science; KeyS while shown on Science; Digit1 / Digit2 while shown on Weapons with a laser (pick up the laser / torpedo; W-4 spec §9: the Hound's seat selects instead); KeyE
    *  and KeyQ while the torpedo is picked up (a torpStep request, the pick-up stays; the laser's pick-up drops and lets
    *  them through to the lock cycle); everything else false. */
   intercept(code: string): boolean;
@@ -138,7 +138,7 @@ export function createContactController(): ContactController {
       if (code === 'KeyT' && (station === 'helm' || station === 'weapons' || station === 'science' || station === 'flight')) { c.toggle(); return true; }
       if (code === 'KeyS' && science()) { c.scan(); return true; }
       const w = WEAPON_CODES[code];
-      if (w && (station === 'weapons' || (station === 'flight' && (w === 'torpedo' || laserFit)))) { c.pickUp(w); return true; }   // Valkyrn spec §5.1: 1 only with the laser fit
+      if (w && ((station === 'weapons' && laserFit) || (station === 'flight' && (w === 'torpedo' || laserFit)))) { c.pickUp(w); return true; }   // Valkyrn spec §5.1: 1 only with the laser fit; W-4 spec §9: at the Hound's Weapons seat 1 / 2 select (the keyboard's selectTo)
       if (w === 'laser' && station === 'flight') { noLaser = true; return true; }   // §6.1: without it, the refusal flash reads NO LASER
       if ((code === 'KeyE' || code === 'KeyQ') && st?.aim && (station === 'weapons' || station === 'flight')) {
         if (weapon === 'torpedo') { torpStep += code === 'KeyE' ? 1 : -1; return true; }   // the torpedo stays picked up

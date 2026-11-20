@@ -206,7 +206,7 @@ export function evadeDir(t: TacticalState): { x: number; y: number } | null {
 }
 
 /** The console controls a refusal can name (the buttons, and their keys). W-1: `pew`, the Weapons map's left click. */
-export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser' | 'pew';   // owner 2026-11-19: the free cold gas is never refused
+export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser' | 'pew' | 'autocannon' | 'power';   // W-4 spec §9: the autocannon's dead trigger and W/S at a range end; owner 2026-11-19: the free cold gas is never refused
 /** Valkyrn spec §6.1: the reason a laser key (1, 3/4/5) gives on a class without a laser (the `laser` control, Flight only). */
 export const NO_LASER = 'NO LASER';
 /** Engineering spike §10.4 (final review): why the sim refuses a lock on the target ship (a laserLock or torpLock on a
@@ -224,6 +224,13 @@ export function lockRefusal(d: DuelState): string | null {
  *  manualLaserReady. W-3 (pew pew spec §3): LAUNCH in MANUAL (`manual`, default the torpedo's mode) has no range: never OUT OF RANGE. */
 export function refusal(d: DuelState, control: RefusedControl, manual?: boolean): string | null {
   const t = d.tactical, sys = t.systems[CREW_SLOT], m = manual ?? (control === 'launch' ? sys.torpManual : sys.laserManual);   // W-3: the control's own weapon's mode
+  if (control === 'autocannon') {   // W-4 spec §9: the gunner, Weapons offline, no bar, then the lock
+    if (!gunnerPresent(d)) return 'NO GUNNER';
+    if (sys.rooms[Room.Weapons] >= 2) return 'WEAPONS OFFLINE';
+    if (trimmedWeaponPower(sys)[WeaponSlot.Autocannon] === 0) return 'NO POWER';
+    return sys.gunLocked === true ? 'OVERHEAT' : null;
+  }
+  if (control === 'power') return null;   // W/S's reasons are weaponPowerRefusal's (per slot and delta)
   if (control === 'pew') {   // W-1 (pew pew spec §1): the gunner, then the class, then a third stored
     if (!gunnerPresent(d)) return 'NO GUNNER';
     if (classOf(t, CREW_SLOT).slots.pew === null) return 'NO PEW';
