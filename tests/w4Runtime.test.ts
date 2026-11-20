@@ -13,10 +13,10 @@ import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { holdInSight } from './helpers/sensorSight';
 
 const layout = parseShip(cutter), vp = { w: 1280, h: 720 };
-const ONE_FRAME = { presses: emptyPresses(), freqTo: null, freqKeyTo: null, gunFreqKeyTo: null, selectTo: null } as const;
+const ONE_FRAME = { presses: emptyPresses(), freqTo: null, freqKeyTo: null, gunFreqKeyTo: null, selectTo: null, modeTaps: [0, 0, 0] } as const;
 
 function rig(cls?: number) {
-  let now = 0, keys: KeySample = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() }, pew: number | null = null, trigger = false;
+  let now = 0, keys: KeySample = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() }, pew: number | null = null, trigger = false, reticle: number | null = null;
   const tasks: { at: number; cb: () => void }[] = [], contact = createContactController();
   const rt = createDuelRuntime({
     now: () => now, seed: 5, viewport: vp, layout, ...(cls !== undefined ? { cls } : {}),
@@ -25,7 +25,8 @@ function rig(cls?: number) {
     samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }),
     takeContactRequests: () => contact.takeRequests(),
     takePew: () => { const p = pew; pew = null; return p; },
-    triggerHeld: () => trigger
+    triggerHeld: () => trigger,
+    reticleAim: () => reticle
   });
   /** A frame, one tick of wall time, a frame: what the first frame queued is applied on exactly that tick. */
   const tick = (): void => { holdInSight(rt.duel.tactical); rt.frame(1 / 60); now += 1000 / 60; tasks.sort((a, b) => a.at - b.at); while (tasks[0] && tasks[0].at <= now) tasks.shift()!.cb(); rt.frame(1 / 60); };
@@ -33,11 +34,13 @@ function rig(cls?: number) {
   const set = (over: Partial<KeySample>): void => { keys = { ...keys, ...over }; };
   const click = (): void => { pew = 0; };   // a left click on the open map (its bearing is ignored on the Hound)
   const hold = (on: boolean): void => { trigger = on; };
+  const aim = (v: number | null): void => { reticle = v; };
+  const tap = (slot: 0 | 1 | 2): void => { const m = [...(keys.modeTaps ?? [0, 0, 0])]; m[slot] = (m[slot] ?? 0) + 1; keys = { ...keys, modeTaps: m }; };
   const statuses = (): string[] => rt.lastResults().map((r) => `${r.status}${'reason' in r && r.reason ? `:${r.reason}` : ''}`);
   tick();   // the solo start: player 1 goes away on tick 0
   const d = rt.duel;
   sitDown(d.interior, 0, d.weapons); tick();
-  return { rt, d, tick, press, set, click, hold, statuses };
+  return { rt, d, tick, press, set, click, hold, aim, tap, statuses };
 }
 
 describe("Single player at the Hound's Weapons seat (W-4 spec §9)", () => {
@@ -76,9 +79,10 @@ describe("Single player at the Hound's Weapons seat (W-4 spec §9)", () => {
     const r = rig(), sys = r.d.tactical.systems[0];
     try {
       r.press('fireDown'); r.tick(); expect(r.statuses()).toEqual([]);   // Space at the Hound's Weapons seat
+      r.press('weaponMode'); r.tick();   // R: pew pew, the selected weapon, to MAN (W-4 spec §4.3, amendment §2.4: kind (a))
       r.click(); r.tick(); expect([sys.pewShots, r.statuses()]).toEqual([1, ['applied']]);
       r.set({ selectTo: 1 }); r.tick(); r.click(); r.tick(); expect(r.statuses()).toEqual([]);   // the autocannon fires on the held trigger, not a click
-      r.set({ selectTo: 2 }); r.press('torpMode'); r.tick();   // MANUAL: no lock or range needed
+      r.set({ selectTo: 2 }); r.press('weaponMode'); r.tick();   // the torpedo selected: R is its torpMode (MANUAL: no lock or range needed)
       r.click(); r.tick(); expect(sys.missilesLaunched).toBe(1);
     } finally { r.rt.dispose(); }
   });
@@ -87,7 +91,7 @@ describe("Single player at the Hound's Weapons seat (W-4 spec §9)", () => {
     try {
       r.hold(true); r.tick();
       expect(r.rt.held()[0]!.gunHeld).toBeUndefined();   // pew pew selected
-      r.hold(false); r.set({ selectTo: 1 }); r.tick(); r.rt.takeRefusals();
+      r.hold(false); r.set({ selectTo: 1 }); r.press('weaponMode'); r.tick(); r.rt.takeRefusals();   // R: the selected autocannon to MAN (W-4 spec §4.3: kind (a))
       r.hold(true); r.tick();
       expect(r.rt.held()[0]!.gunHeld).toBe(true);
       expect(r.rt.takeRefusals()).toContainEqual({ control: 'autocannon', reason: 'NO POWER' });   // 0 autocannon bars at the start
@@ -121,6 +125,79 @@ describe("Single player at the Hound's Weapons seat (W-4 spec §9)", () => {
       r.press('laserMode'); r.tick(); expect(sys.laserManual).toBe(true);
       r.press('laserMode'); r.tick(); r.press('fireDown'); r.tick();
       expect(r.statuses()).toHaveLength(1);   // laserCharge (its status depends on the charge)
+    } finally { r.rt.dispose(); }
+  });
+});
+
+describe("the Hound's Weapons seat in W-4b (W-4 spec §4.1, §4.3, §9; amendment §2.4)", () => {
+  it('R flips the selected gun, and the torpedo when it is selected; two R presses on separate frames before a tick flip twice', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      r.press('weaponMode'); r.tick(); expect([sys.pewManual, sys.gunManual, sys.torpManual, r.statuses()]).toEqual([true, false, false, ['applied']]);
+      r.set({ selectTo: 1 }); r.press('weaponMode'); r.tick(); expect([sys.pewManual, sys.gunManual, sys.torpManual]).toEqual([true, true, false]);
+      r.set({ selectTo: 2 }); r.press('weaponMode'); r.tick(); expect([sys.pewManual, sys.gunManual, sys.torpManual]).toEqual([true, true, true]);
+      r.press('weaponMode'); r.rt.frame(1 / 60); r.press('weaponMode'); r.tick();   // the second is judged from the first's queued torpMode
+      expect([sys.torpManual, r.statuses()]).toEqual([true, ['applied', 'applied']]);
+    } finally { r.rt.dispose(); }
+  });
+  it('Shift+R sets both guns together in all four gun states, sends gunMode only for a gun that changes and never torpMode', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      r.press('weaponModeAll'); r.tick(); expect([sys.pewManual, sys.gunManual, sys.torpManual, r.statuses()]).toEqual([true, true, false, ['applied', 'applied']]);   // AUTO / AUTO: both to MAN
+      r.press('weaponModeAll'); r.tick(); expect([sys.pewManual, sys.gunManual, r.statuses()]).toEqual([false, false, ['applied', 'applied']]);   // MAN / MAN: both to AUTO
+      r.press('weaponMode'); r.tick();   // MAN / AUTO
+      r.press('weaponModeAll'); r.tick(); expect([sys.pewManual, sys.gunManual, r.statuses()]).toEqual([false, false, ['applied']]);   // either on MAN: both to AUTO, one command
+      r.set({ selectTo: 1 }); r.press('weaponMode'); r.tick();   // AUTO / MAN
+      r.press('weaponModeAll'); r.tick(); expect([sys.pewManual, sys.gunManual, sys.torpManual, r.statuses()]).toEqual([false, false, false, ['applied']]);
+    } finally { r.rt.dispose(); }
+  });
+  it("Z and V queue nothing at the Hound's Weapons seat, and still work on the laser fit's, where R does nothing", () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      r.press('laserMode'); r.press('torpMode'); r.tick();
+      expect([r.statuses(), sys.pewManual, sys.gunManual, sys.torpManual]).toEqual([[], false, false, false]);
+    } finally { r.rt.dispose(); }
+    const f = rig(ShipClass.ValkyrnLaser), fs = f.d.tactical.systems[0];
+    try {
+      f.press('laserMode'); f.press('torpMode'); f.tick(); expect([fs.laserManual, fs.torpManual]).toEqual([true, true]);
+      f.press('weaponMode'); f.press('weaponModeAll'); f.tap(2); f.tick(); expect([f.statuses(), fs.laserManual, fs.torpManual]).toEqual([[], true, true]);
+    } finally { f.rt.dispose(); }
+  });
+  it('a tag click (a mode tap) flips its own weapon, whatever is selected', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      r.tap(1); r.tick(); expect([sys.pewManual, sys.gunManual, sys.torpManual]).toEqual([false, true, false]);   // pew pew is selected; the autocannon's tag is its own switch
+      r.tap(2); r.tap(0); r.tick(); expect([sys.pewManual, sys.gunManual, sys.torpManual]).toEqual([true, true, true]);
+    } finally { r.rt.dispose(); }
+  });
+  it("a left click fires pew pew only while its own switch is MAN, whatever the autocannon's is; on AUTO it queues nothing and refuses nothing", () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      r.set({ selectTo: 1 }); r.press('weaponMode'); r.tick();   // the autocannon on MAN; pew pew still on AUTO
+      r.set({ selectTo: 0 }); r.tick(); r.rt.takeRefusals();
+      r.click(); r.tick(); expect([sys.pewShots, r.statuses(), r.rt.takeRefusals()]).toEqual([0, [], []]);
+      r.press('weaponMode'); r.tick();
+      r.click(); r.tick(); expect([sys.pewShots, r.statuses()]).toEqual([1, ['applied']]);
+    } finally { r.rt.dispose(); }
+  });
+  it("the held trigger puts gunHeld only while the autocannon's own switch is MAN; on AUTO it refuses nothing; a dead trigger on MAN refuses NO POWER", () => {
+    const r = rig();
+    try {
+      r.press('weaponMode'); r.tick();   // pew pew on MAN: not the autocannon's switch
+      r.set({ selectTo: 1 }); r.tick(); r.rt.takeRefusals();
+      r.hold(true); r.tick();
+      expect([r.rt.held()[0]!.gunHeld, r.rt.takeRefusals()]).toEqual([undefined, []]);
+      r.hold(false); r.press('weaponMode'); r.tick(); r.rt.takeRefusals();
+      r.hold(true); r.tick();
+      expect(r.rt.held()[0]!.gunHeld).toBe(true);
+      expect(r.rt.takeRefusals()).toContainEqual({ control: 'autocannon', reason: 'NO POWER' });
+    } finally { r.rt.dispose(); }
+  });
+  it('the held frame carries turretAim from deps.reticleAim, and none while it returns null', () => {
+    const r = rig();
+    try {
+      r.aim(12000); r.tick(); expect(r.rt.held()[0]!.turretAim).toBe(12000);
+      r.aim(null); r.tick(); expect(r.rt.held()[0]!.turretAim).toBeUndefined();
     } finally { r.rt.dispose(); }
   });
 });

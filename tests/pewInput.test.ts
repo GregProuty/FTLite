@@ -31,6 +31,7 @@ function rig(pews: (number | null)[]) {
   const tick = (): void => { rt.frame(1 / 60); now += 1000 / 60; tasks.sort((a, b) => a.at - b.at); while (tasks[0] && tasks[0].at <= now) tasks.shift()!.cb(); rt.frame(1 / 60); };
   seatDuelCrew(rt.duel);
   press('switch'); tick(); tick();   // Tab takes the gunner (player 1, at Weapons)
+  press('weaponMode'); tick();   // W-4 spec §4.3, amendment §2.4 (kind (a)): R puts pew pew, the selected weapon, on MAN, where the click fires
   return { rt, tick };
 }
 

@@ -17,9 +17,24 @@ export function nextWeaponSel(sel: number, k: Pick<KeySample, 'selectTo'> & { pr
 }
 /** W/S this frame as a bar delta on the selected weapon (W up, S down; at the Weapons seat they are not the throttle). */
 export function powerDelta(presses: Pick<Record<KeyAction, number>, 'throttleUp' | 'throttleDown'>): number { return presses.throttleUp - presses.throttleDown; }
-/** The seat's held fields: the selection, and the trigger as gunHeld only while the autocannon is selected. */
-export function weaponsSeatHeld(sel: number, trigger: boolean): Pick<HeldInput, 'weaponSel' | 'gunHeld'> {
-  return { weaponSel: sel, ...(trigger && sel === WeaponSlot.Autocannon ? { gunHeld: true } : {}) };
+/** The seat's held fields: the selection, the reticle as turretAim (an integer 0..65535, else none) and the trigger as
+ *  gunHeld only while the autocannon is selected (W-4b: callers pass `trigger && the autocannon's own mode is MAN`, so an
+ *  AUTO autocannon sends none). */
+export function weaponsSeatHeld(sel: number, trigger: boolean, aim = -1): Pick<HeldInput, 'weaponSel' | 'gunHeld' | 'turretAim'> {
+  return { weaponSel: sel, ...(Number.isInteger(aim) && aim >= 0 && aim < 65536 ? { turretAim: aim } : {}), ...(trigger && sel === WeaponSlot.Autocannon ? { gunHeld: true } : {}) };
+}
+/** W-4 amendment §2.4, §2.5: the mode changes one frame asks for at the Hound's Weapons seat. `base`: each weapon's mode the
+ *  app judges from, [pew pew, the autocannon, the torpedo] (the latest queued or sent for it, else the state's). In order:
+ *  each Shift+R press sets both guns together (both to AUTO if either is on MAN, else both to MAN; the torpedo is not
+ *  touched); each R press flips the selected weapon `sel`; each tag click (`taps`, per weapon) flips its own weapon.
+ *  Returns the modes after the frame and which weapons changed: a command goes only for a weapon whose mode changes. */
+export function modeRequests(base: readonly [boolean, boolean, boolean], sel: number, presses: Pick<Record<KeyAction, number>, 'weaponMode' | 'weaponModeAll'>, taps: readonly number[] = []): { modes: [boolean, boolean, boolean]; changed: [boolean, boolean, boolean] } {
+  const modes: [boolean, boolean, boolean] = [base[0], base[1], base[2]];
+  const flip = (w: number): void => { if (w === 0 || w === 1 || w === 2) modes[w] = !modes[w]; };
+  for (let n = 0; n < presses.weaponModeAll; n++) { const man = !(modes[0] || modes[1]); modes[0] = man; modes[1] = man; }
+  for (let n = 0; n < presses.weaponMode; n++) flip(sel);
+  for (let w = 0; w < WEAPON_COUNT; w++) for (let n = 0; n < (taps[w] ?? 0); n++) flip(w);
+  return { modes, changed: [modes[0] !== base[0], modes[1] !== base[1], modes[2] !== base[2]] };
 }
 /** The guns' frequency a frame asks for: 4/5/6, else a console button; null when none or unchanged (frequencyRequest). */
 export function gunFreqRequest(base: number, k: Pick<KeySample, 'gunFreqKeyTo' | 'freqTo'>): number | null { return frequencyRequest(base, k.gunFreqKeyTo ?? k.freqTo); }

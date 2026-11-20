@@ -9,7 +9,7 @@ import { createContactController } from '../src/renderer/src/app/duel/contactCon
 import { GUARDED_CODES } from '../src/renderer/src/app/web/pageGuards';
 import { houndWeaponsSeat } from '../src/renderer/src/app/duel/controls';
 import { createMapRequests } from '../src/renderer/src/app/duel/mapRequests';
-import { autocannonRateText, gunFreqRequest, laserFreqKey, nextWeaponSel, powerDelta, weaponsSeatHeld } from '../src/renderer/src/app/duel/weaponsSeat';
+import { autocannonRateText, gunFreqRequest, laserFreqKey, modeRequests, nextWeaponSel, powerDelta, weaponsSeatHeld } from '../src/renderer/src/app/duel/weaponsSeat';
 import { weaponPowerRefusal } from '../src/renderer/src/sim/duel/weaponSlots';
 import { refusal } from '../src/renderer/src/render/duel/situationModel';
 import { disposeDuel } from '../src/renderer/src/sim/duel/state';
@@ -127,5 +127,55 @@ describe("the Hound's Weapons seat and its refusals (W-4 spec §9)", () => {
     const fit = createContactController();
     fit.sync({ shown: true, station: 'weapons', target: 1, active: () => true, epoch: 0, laser: true });
     expect(fit.intercept('Digit2')).toBe(true);
+  });
+});
+
+describe('the reticle, R and Shift+R (W-4 spec §9, amendment §2.4, W-4b)', () => {
+  it('R is the weaponMode press and Shift+R weaponModeAll; Ctrl+R, Meta+R and a repeat count nothing; Z and V keep their actions', () => {
+    expect([PRESS_CODES.KeyR, PRESS_CODES.KeyZ, PRESS_CODES.KeyV]).toEqual(['weaponMode', 'laserMode', 'torpMode']);
+    const t = target(), kb = createDuelKeyboard(t);
+    const down = (mods: object = {}, repeat = false): void => t.fire('keydown', { ...key('KeyR', repeat), ...mods });
+    down(); down();
+    expect(kb.sample().presses).toMatchObject({ weaponMode: 2, weaponModeAll: 0 });
+    down({ shiftKey: true });
+    expect(kb.sample().presses).toMatchObject({ weaponMode: 0, weaponModeAll: 1 });
+    down({ ctrlKey: true }); down({ metaKey: true }); down({ shiftKey: true, ctrlKey: true }); down({ shiftKey: true, metaKey: true }); down({}, true);
+    expect(kb.sample().presses).toMatchObject({ weaponMode: 0, weaponModeAll: 0 });   // the browser's chords and an OS repeat: no press
+  });
+  it('a tag click counts a mode tap for its weapon (ConsoleInput.mode); a sample, clearUi and clear drop them', () => {
+    const t = target(), kb = createDuelKeyboard(t);
+    expect(kb.sample().modeTaps).toEqual([0, 0, 0]);
+    kb.ui.mode?.(1); kb.ui.mode?.(1); kb.ui.mode?.(2);
+    expect(kb.sample().modeTaps).toEqual([0, 2, 1]);
+    expect(kb.sample().modeTaps).toEqual([0, 0, 0]);
+    kb.ui.mode?.(0); kb.clearUi(); expect(kb.sample().modeTaps).toEqual([0, 0, 0]);
+    kb.ui.mode?.(0); kb.clear(); expect(kb.sample().modeTaps).toEqual([0, 0, 0]);
+  });
+  it('modeRequests: R flips the selected weapon (the torpedo when it is selected), a tag its own weapon, Shift+R both guns by its rule in all four gun states and never the torpedo', () => {
+    const p = (weaponMode = 0, weaponModeAll = 0) => ({ weaponMode, weaponModeAll });
+    const A = false, M = true;
+    expect(modeRequests([A, A, A], 0, p(1))).toEqual({ modes: [M, A, A], changed: [true, false, false] });
+    expect(modeRequests([A, M, A], 1, p(1))).toEqual({ modes: [A, A, A], changed: [false, true, false] });
+    expect(modeRequests([A, A, A], 2, p(1))).toEqual({ modes: [A, A, M], changed: [false, false, true] });   // the torpedo selected: its torpMode
+    expect(modeRequests([A, A, A], 0, p(2))).toEqual({ modes: [A, A, A], changed: [false, false, false] });   // two presses in one frame flip twice
+    expect(modeRequests([A, A, A], 0, p(), [0, 1, 1])).toEqual({ modes: [A, M, M], changed: [false, true, true] });   // each tag is its own switch
+    // Shift+R: if either gun is on MAN both go to AUTO, else both go to MAN; only a gun whose mode changes is sent.
+    expect(modeRequests([A, A, M], 2, p(0, 1))).toEqual({ modes: [M, M, M], changed: [true, true, false] });
+    expect(modeRequests([M, A, A], 0, p(0, 1))).toEqual({ modes: [A, A, A], changed: [true, false, false] });
+    expect(modeRequests([A, M, A], 0, p(0, 1))).toEqual({ modes: [A, A, A], changed: [false, true, false] });
+    expect(modeRequests([M, M, M], 1, p(0, 1))).toEqual({ modes: [A, A, M], changed: [true, true, false] });
+    expect(modeRequests([M, A, A], 0, p(0, 2))).toEqual({ modes: [M, M, A], changed: [false, true, false] });   // twice: both to AUTO, then both to MAN
+  });
+  it('the map requests keep the latest reticle until reset', () => {
+    const r = createMapRequests();
+    expect(r.reticleAim()).toBeNull();
+    r.reticle(100); r.reticle(16384);
+    expect([r.reticleAim(), r.reticleAim()]).toEqual([16384, 16384]);
+    r.resetReticle(); expect(r.reticleAim()).toBeNull();
+  });
+  it('the seat\'s held fields carry the reticle, and gunHeld only with the autocannon selected and the trigger live', () => {
+    expect(weaponsSeatHeld(0, false, 16384)).toEqual({ weaponSel: 0, turretAim: 16384 });
+    expect(weaponsSeatHeld(1, true, -1)).toEqual({ weaponSel: 1, gunHeld: true });
+    expect(weaponsSeatHeld(1, true, 3.5)).toEqual({ weaponSel: 1, gunHeld: true });   // not an integer: no aim
   });
 });

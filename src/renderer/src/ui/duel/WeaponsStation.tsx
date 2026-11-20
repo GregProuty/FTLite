@@ -17,6 +17,8 @@
 // W-4 spec §10 (W-4a): on the Hound (a panel with `autocannon`) the block is PEW PEW, AUTOCANNON and TORPEDO in slot order, the
 // selected card's frame hot (a card click selects; TORPEDO is also picked up), AUTOCANNON's rate and heat bar with OVERHEAT,
 // no BEAM and no FIRE, and the frequency row's key hint 4/5/6; a laser class keeps the BEAM block below.
+// W-4 amendment §2.5: on the Hound's block the TORPEDO tag flips the torpedo through the console's mode channel (R with the
+// torpedo selected does the same).
 import { memo, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from 'react';
 import type { WeaponsPanel } from '../../render/duel/consoleModel';
 import { CARD_PIPS_H, PEW_ROW_H, STATION, stationTop, weaponCard, weaponPips } from '../../render/duel/consoleLayout';
@@ -146,7 +148,7 @@ function HoundWeapons({ weapons, aim }: { weapons: WeaponsPanel; aim: Weapon | n
       <PixelText text="TORPEDO" x={tx} y={T.y + 6} size={FONT_NATIVE} tint={aim === 'torpedo' || selected === 2 ? hot : dim} />
       <PixelText text="3" x={T.x + T.w - 6} y={T.y + 6} size={FONT_NATIVE} tint={dim} anchorX={1} />
       {weapons.torpManual !== undefined
-        ? <Button name="torp-mode" label={weapons.torpManual ? 'MAN' : 'AUTO'} x={tx + 66} y={T.y + 2} w={36} h={18} lit={weapons.torpManual} onPress={() => actions.console.press('torpMode')} />
+        ? <Button name="torp-mode" label={weapons.torpManual ? 'MAN' : 'AUTO'} x={tx + 66} y={T.y + 2} w={36} h={18} lit={weapons.torpManual} onPress={() => actions.console.mode?.(2)} />
         : null}
       <PixelText text={`MAG ${weapons.magazine}`} x={tx} y={T.y + 20} size={FONT_SIZE} tint={main} />
       {weapons.missileFlying

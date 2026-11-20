@@ -104,3 +104,31 @@ describe('the controls list (W-4 spec §9)', () => {
     expect(rows.find((r) => r.keys === 'Left click')!.action).toMatch(/selected weapon/);
   });
 });
+
+describe("the Hound block's TORPEDO tag and the mode keys' rows (amendment §2.4, §2.5)", () => {
+  it('a click on the TORPEDO tag flips the torpedo through the mode channel (mode(2)), not the V press', () => {
+    const { ui, duel } = mount(), i = { ...input(), mode: vi.fn() };
+    ui.actions.setConsole(i);
+    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, torpManual: false }))));
+    fireEvent.pointerDown(q('[data-testid="console-torp-mode"]')!, { button: 0 });
+    expect(i.mode).toHaveBeenCalledWith(2);
+    expect(i.press).not.toHaveBeenCalled();
+  });
+  it("the laser block's TORPEDO tag still presses torpMode", () => {
+    const { ui, duel } = mount(), i = { ...input(), mode: vi.fn() };
+    ui.actions.setConsole(i);
+    act(() => duel.frame(view(weapons({ laserTarget: 1, burst: 2, torpManual: false, pew: undefined }))));
+    fireEvent.pointerDown(q('[data-testid="console-torp-mode"]')!, { button: 0 });
+    expect(i.press).toHaveBeenCalledWith('torpMode');
+    expect(i.mode).not.toHaveBeenCalled();
+  });
+  it('the controls list has R and Shift+R from the tables, and the Z and V rows are the laser fit\'s', () => {
+    const rows = controlSections()[0]!.rows;
+    expect(rows.find((r) => r.keys === 'R')?.action).toMatch(/^At Weapons, switch the selected weapon between AUTO and MAN/);
+    expect(rows.find((r) => r.keys === 'Shift+R')?.action).toMatch(/^At Weapons, switch both guns together/);
+    expect(rows.find((r) => r.keys === 'Z')?.action).toMatch(/^With the laser fit at Weapons/);
+    expect(rows.find((r) => r.keys === 'V')?.action).toMatch(/^With the laser fit at Weapons/);
+    expect(rows.some((r) => r.keys === '')).toBe(false);   // weaponModeAll has no code of its own: no row without keys
+    expect(rows).toContainEqual({ keys: 'Mouse', action: "At Weapons, the reticle: the selected gun's turret follows it, inside its arc (MAN)" });
+  });
+});

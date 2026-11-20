@@ -232,7 +232,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         resetFx(fx); layer.reset(); layer.reseed(source.seed); sound?.reset();   // the next round's star field; a fresh audio baseline
         lastOutcome = Outcome.Running; pings.length = 0; refused = null;
         fires = null; flashUntil = 0;
-        options.requests?.resetLaserAim();   // W-2: a new round's MANUAL laser aims along the nose until the pointer gives an aim
+        options.requests?.resetReticle();   // W-2: a new round's MANUAL laser aims along the nose until the pointer gives an aim
         interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel); scene.addChildAt(interior.container, 1);
       }
       const d = source.duel, view = source.view(), alpha = source.alpha(), contact = options.contact;
@@ -279,14 +279,14 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const triggerAt = station === 'weapons' && view === 'weapons' && d.tactical.outcome === Outcome.Running && !overlay.layerPaused && hasTurret(classOf(d.tactical, CREW_SLOT))
         && (contact?.aimWeapon() ?? null) === null && (options.leftHeld?.() ?? false) ? options.pointer?.() ?? null : null;
       options.requests?.trigger(triggerAt !== null && onWeaponsMap(triggerAt, contact?.state() != null, readoutRows({ duel: d, mode: 'weapons', active: source.active(), console: onConsole }).length));
-      // W-2 (pew pew spec §2): the MANUAL laser's aim follows the pointer while it is on the open Weapons map (its fine bearing
-      // from the own ship's drawn marker, in either mode, so it is ready when the mode changes); over a console block or the
-      // open window, off the canvas or with no pointer, the last aim stands. The left click stays the pew's.
-      const laserPointer = station === 'weapons' && view === 'weapons' && d.tactical.outcome === Outcome.Running && !overlay.layerPaused && classOf(d.tactical, CREW_SLOT).slots.laser !== null
+      // W-2, W-4 spec §9: the reticle follows the pointer on the open Weapons map, for the laser fit's MANUAL laser and the
+      // Hound's turrets (its fine bearing from the own ship's drawn marker, in either mode, so it is ready when the mode
+      // changes); over a console block or the open window, off the canvas or with no pointer, the last aim stands.
+      const reticlePointer = station === 'weapons' && view === 'weapons' && d.tactical.outcome === Outcome.Running && !overlay.layerPaused && (classOf(d.tactical, CREW_SLOT).slots.laser !== null || hasTurret(classOf(d.tactical, CREW_SLOT)))
         ? options.pointer?.() ?? null : null;
-      if (laserPointer && onWeaponsMap(laserPointer, contact?.state() != null, readoutRows({ duel: d, mode: 'weapons', active: source.active(), console: onConsole }).length)) {
-        const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), w = screenToWorld(cam!, viewport, laserPointer.x, laserPointer.y);
-        if (w.x !== b.x || w.y !== b.y) options.requests?.aimLaser(fineHeadingOf(w.x - b.x, w.y - b.y));
+      if (reticlePointer && onWeaponsMap(reticlePointer, contact?.state() != null, readoutRows({ duel: d, mode: 'weapons', active: source.active(), console: onConsole }).length)) {
+        const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), w = screenToWorld(cam!, viewport, reticlePointer.x, reticlePointer.y);
+        if (w.x !== b.x || w.y !== b.y) options.requests?.reticle(fineHeadingOf(w.x - b.x, w.y - b.y));
       }
       // Feel-ii §1.1: the Helm's right button aims the held heading. A press or a release on the map asks for the bearing from
       // the own ship's drawn marker to the pointer (on the ship itself: clear); while it is held, a preview marker follows.
@@ -405,7 +405,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
           ships: fx.kill || !fogView.seen.enemy ? [0] : [0, 1], fog: fogView, paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: { left: TABS_RIGHT, right: SIDE.x } } : { reserveRight: READOUT_COLUMN }), ...(onMap ? { avoid: OWN_SHIP } : {}), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
           holdHeading: view === 'flight' ? -1 : preview ?? d.holdHeading, holdPreview: preview !== null, crewHull: hullFor(true, d.interior.layout.hull), gravity: camKey === 'helm', flight: view === 'flight', alert, pings,   // Feel-ii; Valkyrn spec §4.5: the crew hull
           pewPointer: station === 'weapons' && view === 'weapons' ? options.pointer?.() ?? null : null,   // W-1: the pew's aim line follows the pointer on the Weapons map
-          laserAim: station === 'weapons' && view === 'weapons' ? options.requests?.laserAim() ?? null : null,   // W-2: the MANUAL laser's aim (the model aims along the nose without one)
+          laserAim: station === 'weapons' && view === 'weapons' ? options.requests?.reticleAim() ?? null : null,   // W-2: the MANUAL laser's aim (the reticle) (the model aims along the nose without one)
           rockHover: hoverRock !== null && aimed !== null ? { rock: hoverRock, weapon: aimed } : null,
           vent, steerTo   // playtest2feedback §6: the puffs and the steering marker
         } as const;

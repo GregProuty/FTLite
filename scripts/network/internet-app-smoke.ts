@@ -118,7 +118,7 @@ async function main() {
     await hold(host,'W',2000);
     const fast=await until(both,([a,b])=>a?.speed>before+1&&b?.speed>before+1);
     const launches=latest(await host.request!('status')).launches;
-    await hold(guest,'V',120);await pause(300);await hold(guest,'F',120);   // W-4 spec §2, §9: the Hound has no beam; a MANUAL torpedo launches with no lock or range
+    await hold(guest,'3',120);await pause(300);await hold(guest,'R',120);await pause(300);await hold(guest,'F',120);   // W-4 spec §2, §9: the Hound has no beam; a MANUAL torpedo (select it, R, F: amendment §2.4) launches with no lock or range
     const fired=await until(both,([a,b])=>a?.launches>launches&&b?.launches>launches);
     const agreement=await until(async()=>{const [a,b]=[await host.request!('status'),await guest.request!('status')];const hp=a.observations.at(-1)?.publications??[];
       return (b.observations.at(-1)?.publications??[]).findLast((p:any)=>hp.some((q:any)=>q.sequence===p.sequence&&q.hash===p.hash&&q.tick===p.tick));},v=>!!v);
@@ -155,7 +155,7 @@ async function main() {
     if(kind==='host')await hold(app,'Return',120);
     await until(now,p=>p?.round===1&&p.outcome===0,30000);
     const start=await now(),before=start.speed,launches=start.launches;
-    if(kind==='host'){await pause(1500);await hold(app,'W',2000);}else {await hold(app,'V',120);await pause(300);await hold(app,'F',120);}   // W-4: a MANUAL torpedo
+    if(kind==='host'){await pause(1500);await hold(app,'W',2000);}else {await hold(app,'3',120);await pause(300);await hold(app,'R',120);await pause(300);await hold(app,'F',120);}   // W-4: a MANUAL torpedo
     const seen=await until(()=>app.request!('status'),v=>{const ps=(v.observations.at(-1)?.publications??[]).filter((p:any)=>p.round===1);return ps.some((p:any)=>p.speed>before+1)&&ps.at(-1)?.launches>launches;},20000);
     const round2=seen.observations.at(-1).publications.filter((p:any)=>p.round===1);
     const records=await until(async()=>duelLines(dir,kind),list=>list.some(sampled));

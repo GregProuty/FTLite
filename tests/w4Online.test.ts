@@ -30,3 +30,20 @@ describe('the online Weapons seat (W-4 spec §11)', () => {
     } finally { disposeDuel(d); disposeDuel(fit); }
   });
 });
+
+describe('the online reticle and mode (W-4 spec §11, W-4b)', () => {
+  it('a change of the reticle alone is a held change (the latency stamp); the same reticle is not', () => {
+    expect(heldChanged({ ...N, weaponSel: 0, turretAim: 4000 }, { ...N, weaponSel: 0, turretAim: 5000 })).toBe(true);
+    expect(heldChanged({ ...N, weaponSel: 0, turretAim: 4000 }, { ...N, weaponSel: 0 })).toBe(true);
+    expect(heldChanged({ ...N, weaponSel: 0, turretAim: 4000 }, { ...N, weaponSel: 0, turretAim: 4000 })).toBe(false);
+  });
+  it('sessionHeld carries turretAim at the Hound\'s Weapons seat only', () => {
+    const d = createSeatedDuel(CUTTER, 5), fit = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.ValkyrnLaser);
+    try {
+      const g = 1 - d.helmPlayer;
+      expect(sessionHeld(K, d, g, -1, { sel: 0, trigger: false, aim: 4000 })).toMatchObject({ weaponSel: 0, turretAim: 4000 });
+      expect(sessionHeld(K, d, d.helmPlayer, -1, { sel: 0, trigger: false, aim: 4000 })).not.toHaveProperty('turretAim');
+      expect(sessionHeld(K, fit, 1 - fit.helmPlayer, -1, { sel: 0, trigger: false, aim: 4000 })).not.toHaveProperty('turretAim');
+    } finally { disposeDuel(d); disposeDuel(fit); }
+  });
+});

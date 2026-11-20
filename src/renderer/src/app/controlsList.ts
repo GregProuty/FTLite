@@ -21,8 +21,10 @@ const DUEL_ACTION: Readonly<Record<Exclude<KeyAction, 'fireUp'>, string>> = {
   prevLock: 'At Weapons, lock the previous target',
   fireDown: 'With the laser fit at Weapons, fire a full laser (in MANUAL, along the map aim); at the Helm, hold to turn the nose onto the enemy (auto-face)',   // W-4 spec §9
   launch: 'At Weapons, launch a torpedo',
-  laserMode: 'At Weapons, switch the laser between AUTO (it fires at its target by itself) and MANUAL (Space fires it along the map aim)',
-  torpMode: 'At Weapons, switch the torpedo between AUTO (it homes on its target) and MANUAL (F launches it with no target; A/D and the right mouse fly it)',
+  laserMode: 'With the laser fit at Weapons, switch the laser between AUTO (it fires at its target by itself) and MANUAL (Space fires it along the map aim)',
+  torpMode: 'With the laser fit at Weapons, switch the torpedo between AUTO (it homes on its target) and MANUAL (F launches it with no target; A/D and the right mouse fly it)',
+  weaponMode: 'At Weapons, switch the selected weapon between AUTO and MAN: a gun on AUTO aims and fires by itself, and on MAN it follows the reticle and fires on the left button while it is selected; the torpedo on MANUAL launches with no target',
+  weaponModeAll: 'At Weapons, switch both guns together: both to AUTO if either is on MAN, else both to MAN (the torpedo keeps its mode)',
   stand: 'Stand up from a console',
   switch: 'Switch between the Helm and Weapons characters',
   pause: 'Pause and resume',
@@ -47,9 +49,10 @@ export function controlSections(): ControlSection[] {
   // The mouse rows are written here by hand (createPointerSource in duel/input.ts: wheel zooms, right or middle drag pans).
   const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, W/S hold the throttle and A/D fire the side thrusters; at Weapons, A/D select a weapon (and steer a MANUAL torpedo in flight)' }];   // playtest2feedback §6
   for (const action of Object.keys(DUEL_ACTION) as (keyof typeof DUEL_ACTION)[]) {
-    if (action === 'throttleUp' || action === 'throttleDown' || action === 'selectPrev' || action === 'selectNext') continue;   // playtest2feedback §6: the Valkyrn's notches are in its own section and the crew Helm holds W/S; W-4 spec §9: selection is in its own merged row below
+    if (action === 'throttleUp' || action === 'throttleDown' || action === 'selectPrev' || action === 'selectNext' || action === 'weaponModeAll') continue;   // playtest2feedback §6: the Valkyrn's notches are in its own section and the crew Helm holds W/S; W-4 spec §9: selection is in its own merged row below; W-4 amendment §2.4: Shift+R has no code of its own (written with R's row)
     const keys = codesFor(action).map(keyLabel).join(' / ');
     duel.push({ keys, action: DUEL_ACTION[action] });
+    if (action === 'weaponMode') duel.push({ keys: `Shift+${keys}`, action: DUEL_ACTION.weaponModeAll });   // W-4 amendment §2.4: written from R's own code
     if (action === 'interact') duel.push({ keys: `Hold ${keyLabel(INTERACT_HELD)}`, action: 'Repair the damaged system you stand at' });
   }
   duel.find((r) => r.keys === keyLabel(FIRE_HELD))!.keys = `Hold ${keyLabel(FIRE_HELD)}`;
@@ -59,6 +62,7 @@ export function controlSections(): ControlSection[] {
   duel.push({ keys: `${keyLabel(MOVE_CODES.left)} / ${keyLabel(MOVE_CODES.right)}, ${selectKeys(sel.filter((c) => c.startsWith('Digit')))}, Num ${sel.filter((c) => c.startsWith('Numpad')).map((c) => c.slice(6)).join(' / ')}`, action: 'At Weapons, select a weapon' },
     { keys: `${keyLabel(MOVE_CODES.up)} / ${keyLabel(MOVE_CODES.down)}`, action: 'At Weapons, power the selected weapon (a bar on or off)' },
     { keys: selectKeys(Object.keys(GUN_FREQ_CODES)), action: "At Weapons, tune the guns' shield frequency A / B / C" });
+  duel.push({ keys: 'Mouse', action: "At Weapons, the reticle: the selected gun's turret follows it, inside its arc (MAN)" });   // W-4 spec §9
   // Feel-ii: the ping (G or a middle click), the Helm's right-click heading; W-1: the Weapons map's left click (the pew).
   duel.push({ keys: `${keyLabel(PING_CODE)} / Middle click`, action: 'Ping the map point (or the enemy) for the crew' });
   // Playtest2feedback §6: the crew Helm: W/S throttle · hold LMB steer · RMB set heading · A/D Q/E ←→↑↓ thrusters (owner

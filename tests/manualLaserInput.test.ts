@@ -29,7 +29,7 @@ function rig(aim: { at: number | null }) {
     sampleKeys: () => { const k = keys; keys = { ...k, presses: emptyPresses() }; return k; },
     samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }),
     clearKeys: () => { keys = { ...keys, presses: emptyPresses() }; },
-    laserAim: () => aim.at
+    reticleAim: () => aim.at   // W-4 spec §9: the dep is the reticle (was laserAim; kind (a) rename)
   });
   const press = (a: KeyAction): void => { keys = { ...keys, presses: { ...keys.presses, [a]: 1 } }; };
   const tick = (): void => { rt.frame(1 / 60); now += 1000 / 60; tasks.sort((a, b) => a.at - b.at); while (tasks[0] && tasks[0].at <= now) tasks.shift()!.cb(); rt.frame(1 / 60); };

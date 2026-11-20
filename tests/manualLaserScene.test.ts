@@ -61,11 +61,11 @@ function rig() {
 describe('the map requests (spec §2)', () => {
   it('keep the latest laser aim, peeked and not drained, until reset', () => {
     const r = createMapRequests();
-    expect(r.laserAim()).toBeNull();
-    r.aimLaser(100); r.aimLaser(200);
-    expect([r.laserAim(), r.laserAim()]).toEqual([200, 200]);
-    r.resetLaserAim();
-    expect(r.laserAim()).toBeNull();
+    expect(r.reticleAim()).toBeNull();
+    r.reticle(100); r.reticle(200);   // W-4 spec §9: the laser's aim is the reticle (kind (a) rename of aimLaser / laserAim / resetLaserAim)
+    expect([r.reticleAim(), r.reticleAim()]).toEqual([200, 200]);
+    r.resetReticle();
+    expect(r.reticleAim()).toBeNull();
   });
 });
 
@@ -75,16 +75,16 @@ describe('the scene keeps the laser\'s aim (spec §2)', () => {
     try {
       expect(r.rt.view()).toBe('weapons');
       r.point(null);   // a first frame: the sit framing settles
-      expect(r.requests.laserAim()).toBeNull();
+      expect(r.requests.reticleAim()).toBeNull();
       const m = r.marker();
       r.point({ x: m.x + 100, y: m.y });
-      expect(r.requests.laserAim()).toBe(16384);   // east: a quarter turn of 65536
+      expect(r.requests.reticleAim()).toBe(16384);   // east: a quarter turn of 65536
       r.point({ x: STATION.x + 20, y: stationTop('weapons') + 10 });   // over the Weapons block: not the map
-      expect(r.requests.laserAim()).toBe(16384);
+      expect(r.requests.reticleAim()).toBe(16384);
       r.point(null);
-      expect(r.requests.laserAim()).toBe(16384);
+      expect(r.requests.reticleAim()).toBe(16384);
       r.point({ x: m.x, y: m.y - 100 });
-      expect(r.requests.laserAim()).toBe(0);   // north
+      expect(r.requests.reticleAim()).toBe(0);   // north
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
 });
@@ -96,10 +96,10 @@ describe('a new round clears the aim (spec §2, plan Decision 10)', () => {
       r.point(null);
       const m = r.marker();
       r.point({ x: m.x + 100, y: m.y });
-      expect(r.requests.laserAim()).toBe(16384);
+      expect(r.requests.reticleAim()).toBe(16384);
       r.newRound();
       r.point(null);   // the draw that sees the new epoch; no pointer to give a fresh aim
-      expect(r.requests.laserAim()).toBeNull();
+      expect(r.requests.reticleAim()).toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
 });

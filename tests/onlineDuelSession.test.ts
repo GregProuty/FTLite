@@ -53,7 +53,7 @@ function stubClient() {
 type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
   clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null; notice?: string | null }[], overlay: [] as (readonly string[] | null)[],
-  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void; torpHeading(h: number): void; trigger(held: boolean): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 },
+  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; reticle(aim: number): void; torpHeading(h: number): void; trigger(held: boolean): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 },
   source: null as null | { helmVent(): { x: number; y: number; boosted: boolean }; thrMille(): number }
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
@@ -67,7 +67,7 @@ vi.mock('../src/network/portLink', () => ({
 vi.mock('../src/network/transport/bridge', () => ({ browserPortEndpoint: () => ({}) }));
 vi.mock('../src/renderer/src/app/duel/scene', () => ({
   // Mirrors the real scene: draw hands the UI a frame, dispose clears the sink (scene.ts dispose: options.ui.clear()).
-  createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void; torpHeading(h: number): void; trigger(held: boolean): void } }) => {
+  createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; reticle(aim: number): void; torpHeading(h: number): void; trigger(held: boolean): void } }) => {
     h.sceneOpts.push(opts);
     return {
       draw: (source: unknown, _dt: number, o: { banner: string | null; notice?: string | null }) => {
@@ -134,7 +134,7 @@ function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame
     },
     pump(ms = 1000 / 60) { now += ms; const cb = pending; pending = null; cb?.(); },
     advance(ms: number) { now += ms; },
-    key(type: 'keydown' | 'keyup', code: string) { win.dispatch(type, { code, repeat: false, preventDefault() {} }); },
+    key(type: 'keydown' | 'keyup', code: string, mods: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean } = {}) { win.dispatch(type, { code, repeat: false, preventDefault() {}, ...mods }); },
     closeLink() { h.closers.at(-1)!(); },
     status(phase: OnlineStatus['phase']) { session.setStatus({ phase, role: 'guest' } as OnlineStatus); },
     dispose() { session.dispose(); disposeDuel(d); }
@@ -165,6 +165,7 @@ describe('the online pew (W-1 review F2)', () => {
     r.d.tactical.systems[0]!.pewCharge = 0;   // the lagging replica: empty
     const c = r.attach();
     r.session.frame();
+    r.key('keydown', 'KeyR'); r.key('keyup', 'KeyR'); r.pump();   // W-4b: pew pew, the selected weapon, to MAN, where the click fires (W-4 spec §4.3: kind (a))
     h.sceneOpts[0]!.requests!.pew(1234); r.pump();
     expect(pewCommands(c)).toHaveLength(1);
     r.session.frame(); expect(refusals()).toEqual([]);   // nothing is shown before the authority answers
@@ -179,6 +180,7 @@ describe('the online pew (W-1 review F2)', () => {
   it('an applied pew shows nothing; a seat that is not the gunner refuses locally and sends nothing', () => {
     const r = rig(1), c = r.attach();
     r.session.frame();
+    r.key('keydown', 'KeyR'); r.key('keyup', 'KeyR'); r.pump();   // W-4b: pew pew, the selected weapon, to MAN, where the click fires (W-4 spec §4.3: kind (a))
     h.sceneOpts[0]!.requests!.pew(1234); r.pump();
     c.results.push({ id: c.ids[c.commands().map((x) => x.kind).lastIndexOf('pewFire')]!, tick: 3, status: 'applied' }); r.pump(); r.session.frame();
     expect(refusals()).toEqual([]);
@@ -195,7 +197,7 @@ describe('the online Hound Weapons seat (W-4 spec §11)', () => {
   it('2 selects the autocannon: the held trigger rides the frame as gunHeld; 1 selects pew pew and drops it', () => {
     const r = rig(1), c = r.attach();
     r.session.frame();
-    tapKey(r, 'Digit2'); h.sceneOpts[0]!.requests!.trigger(true); r.pump(); r.session.frame();
+    tapKey(r, 'Digit2'); tapKey(r, 'KeyR'); h.sceneOpts[0]!.requests!.trigger(true); r.pump(); r.session.frame();   // the autocannon selected and on MAN in the same pump (W-4 spec §4.3: kind (a))
     expect(c.helds().at(-1)).toMatchObject({ weaponSel: 1, gunHeld: true });
     h.sceneOpts[0]!.requests!.trigger(false); tapKey(r, 'Digit1'); r.pump();
     expect(c.helds().at(-1)).toMatchObject({ weaponSel: 0 });
@@ -207,6 +209,7 @@ describe('the online Hound Weapons seat (W-4 spec §11)', () => {
     r.d.tactical.systems[0]!.pewCharge = 0;   // the lagging replica: empty
     const c = r.attach();
     r.session.frame();
+    tapKey(r, 'KeyR'); r.pump();   // W-4b: pew pew to MAN (W-4 spec §4.3: kind (a))
     h.sceneOpts[0]!.requests!.pew(1234); r.pump();
     expect(c.commands().filter((x) => x.kind === 'pewFire')).toEqual([{ kind: 'pewFire' }]);
     const id = c.ids[c.commands().map((x) => x.kind).lastIndexOf('pewFire')]!;
@@ -247,6 +250,55 @@ describe('the online Hound Weapons seat (W-4 spec §11)', () => {
     expect(c.helds().at(-1)).toMatchObject({ weaponSel: 2 });
     r.dispose();
   });
+  it('R sends gunMode for the selected gun; a second R before the result flips back (from gunModeSent for that slot)', () => {
+    const r = rig(1), c = r.attach(); r.session.frame();
+    const modes = () => c.commands().filter((x) => x.kind === 'gunMode' || x.kind === 'torpMode');
+    tapKey(r, 'KeyR'); r.pump(); tapKey(r, 'KeyR'); r.pump();
+    expect(modes()).toEqual([{ kind: 'gunMode', slot: 0, manual: true }, { kind: 'gunMode', slot: 0, manual: false }]);
+    tapKey(r, 'Digit2'); tapKey(r, 'KeyR'); r.pump();
+    expect(modes().at(-1)).toEqual({ kind: 'gunMode', slot: 1, manual: true });   // the autocannon's own switch; pew pew's in-flight mode is untouched
+    tapKey(r, 'Digit3'); tapKey(r, 'KeyR'); r.pump();
+    expect(modes().at(-1)).toEqual({ kind: 'torpMode', manual: true });   // the torpedo selected: R is its torpMode
+    r.dispose();
+  });
+  it('Shift+R sends both guns to AUTO when either is on MAN (only the one that changes), else both to MAN, and never torpMode; Ctrl+R sends nothing', () => {
+    const r = rig(1), c = r.attach(); r.session.frame();
+    const modes = () => c.commands().filter((x) => x.kind === 'gunMode' || x.kind === 'torpMode');
+    const shiftR = (): void => { r.key('keydown', 'KeyR', { shiftKey: true }); r.key('keyup', 'KeyR', { shiftKey: true }); r.pump(); };
+    shiftR();
+    expect(modes()).toEqual([{ kind: 'gunMode', slot: 0, manual: true }, { kind: 'gunMode', slot: 1, manual: true }]);
+    tapKey(r, 'KeyR'); r.pump();   // pew pew back to AUTO: the autocannon is still on MAN in flight
+    shiftR();
+    expect(modes().slice(3)).toEqual([{ kind: 'gunMode', slot: 1, manual: false }]);
+    r.key('keydown', 'KeyR', { ctrlKey: true }); r.key('keyup', 'KeyR', { ctrlKey: true }); r.pump();
+    expect(modes()).toHaveLength(4);
+    r.dispose();
+  });
+  it('Z and V send nothing from the Hound\'s Weapons seat', () => {
+    const r = rig(1), c = r.attach(); r.session.frame();
+    tapKey(r, 'KeyZ'); tapKey(r, 'KeyV'); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'gunMode' || x.kind === 'torpMode' || x.kind === 'laserMode')).toEqual([]);
+    r.dispose();
+  });
+  it('on AUTO a left click with pew pew selected sends nothing; after R it sends pewFire {}', () => {
+    const r = rig(1), c = r.attach(); r.session.frame();
+    h.sceneOpts[0]!.requests!.pew(1234); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'pewFire')).toEqual([]);
+    tapKey(r, 'KeyR'); r.pump();
+    h.sceneOpts[0]!.requests!.pew(1234); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'pewFire')).toEqual([{ kind: 'pewFire' }]);
+    r.dispose();
+  });
+  it('the held frame follows the reticle, pump by pump (the latest kept, not drained)', () => {
+    const r = rig(1), c = r.attach(); r.session.frame();
+    h.sceneOpts[0]!.requests!.reticle(4000); r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ turretAim: 4000 });
+    r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ turretAim: 4000 });   // no new pointer sample: the last reticle stands
+    h.sceneOpts[0]!.requests!.reticle(5000); r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ turretAim: 5000 });
+    r.dispose();
+  });
 });
 
 describe('the online manual laser (W-2)', () => {
@@ -267,7 +319,7 @@ describe('the online manual laser (W-2)', () => {
     r.d.tactical.systems[0]!.laserCharge = 0;   // the lagging replica: empty
     const c = r.attach();
     r.session.frame();
-    h.sceneOpts[0]!.requests!.aimLaser(1234);
+    h.sceneOpts[0]!.requests!.reticle(1234);   // W-4 spec §9: the reticle (was aimLaser; kind (a) rename)
     r.key('keydown', 'Space'); r.key('keyup', 'Space'); r.pump();
     expect(sent(c, 'laserFire')).toEqual([{ kind: 'laserFire', aim: 4, aimAcc: 210 }]);
     expect(sent(c, 'laserCharge')).toEqual([]);
@@ -286,7 +338,7 @@ describe('the online manual torpedo (W-3)', () => {
   /** The crew far from the enemy (out of torpedo range). */
   const apart = (d: DuelState): void => { Object.assign(d.tactical.ships[0], { x: 0, y: 1500, vx: 0, vy: 0 }); Object.assign(d.tactical.ships[1], { x: 0, y: -1500, vx: 0, vy: 0 }); };
   it('V sends torpMode from the mode in flight, else the replica\'s', () => {
-    const r = rig(1), c = r.attach();
+    const r = rig(1, undefined, undefined, undefined, ShipClass.ValkyrnLaser), c = r.attach();   // W-4 amendment §2.4 (kind (a)): V is not read at the Hound's Weapons seat; it stays the laser fit's
     r.session.frame();
     r.key('keydown', 'KeyV'); r.key('keyup', 'KeyV'); r.pump();
     r.key('keydown', 'KeyV'); r.key('keyup', 'KeyV'); r.pump();

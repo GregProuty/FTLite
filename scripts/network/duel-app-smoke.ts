@@ -153,10 +153,12 @@ async function main() {
     const fast = await until(async () => [latest(await status(h)), latest(await status(g))], ([a, b]: any) => a.speed > speedBefore + 1 && b.speed > speedBefore + 1, 'speed rises on both');
     proof.thrust = { before: speedBefore, host: fast[0].speed, guest: fast[1].speed };
     step = 'step 5';
-    // 5. W-4 spec §2, §9 (W-4a): the Hound has no beam. The Weapons machine (the host) presses Space: nothing fires on either
-    //    screen (no laser, pew or gun round). It frees pew pew's bar and gives the autocannon one through the pips (the bars
-    //    move on both), then sets the torpedo MANUAL (V) and launches it (F, no lock or range): a launch on both.
+    // 5. W-4 spec §2, §9 (W-4a): the Hound has no beam. The Weapons machine (the host) presses Space (pew pew on MAN):
+    //    nothing fires on either screen (no laser, pew or gun round). It frees pew pew's bar and gives the autocannon one
+    //    through the pips (the bars move on both), then selects the torpedo (3), sets it MANUAL (R) and launches it (F, no
+    //    lock or range): a launch on both.
     const fired = (r: any): number => r.shots + r.pewShots + r.gunShots;
+    await press(h, 'R'); await delay(500);   // W-4 spec §4.3, amendment §2.4 (W-4b): pew pew, the selected weapon, to MAN, so no AUTO round can fire in the quiet check (the autocannon has no bar yet)
     const before = [latest(await status(h)), latest(await status(g))];
     await h.request('key', { key: 'Space', down: true }); await delay(200); await h.request('key', { key: 'Space', down: false });
     await delay(2000);
@@ -165,7 +167,7 @@ async function main() {
     await h.request('right-click', { id: 'console-weapon-pips-0' }); await delay(300);
     await h.request('click', { id: 'console-weapon-pips-1' });
     const powered = await until(async () => [latest(await status(h)), latest(await status(g))], ([a, b]: any) => a.weaponPower[1] === 1 && b.weaponPower[1] === 1, 'the autocannon powered on both', 8000);
-    await press(h, 'V'); await delay(300); await press(h, 'F');
+    await press(h, '3'); await delay(300); await press(h, 'R'); await delay(300); await press(h, 'F');   // W-4 amendment §2.4: V is retired at the Hound's seat: select the torpedo, R to MANUAL, F
     const launched = await until(async () => [latest(await status(h)), latest(await status(g))], ([a, b]: any) => a.launches > before[0].launches && b.launches > before[1].launches, 'a MANUAL torpedo launch on both', 8000);
     proof.weapons = { quiet: [fired(quiet[0]), fired(quiet[1])], autocannonBars: [powered[0].weaponPower[1], powered[1].weaponPower[1]], launches: [launched[0].launches, launched[1].launches] };
     step = 'step 6';
