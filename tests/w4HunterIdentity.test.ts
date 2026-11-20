@@ -2,7 +2,7 @@
 // written every tick, nobody at its consoles), on the Valkyrn class (W-4 leaves it bit-identical by its fences), hashed
 // per tick on the Hunter's body, weapons and brain and on the crew ship's hull, shields and rooms only, so the new crew
 // fields cannot reach the digest. The digests were recorded on the branch at W4_BASE (master's code, SIM V); re-recorded on master d2eb6377
-// (SIM 62, after Asteroids-iii's rocks) at the W-4 merge, where the merged tree gives the same three; re-recorded for asteroids-iv-a's cell rocks (SIM 65) and its deeper torpedo bursts (SIM 66, seed 2 only).
+// (SIM 62, after Asteroids-iii's rocks) at the W-4 merge, where the merged tree gives the same three; re-recorded for asteroids-iv-a's cell rocks (SIM 65) and its deeper torpedo bursts (SIM 66, seed 2 only); re-recorded for the big outer lane (SIM 67, all three).
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
@@ -11,7 +11,7 @@ import { createTacticalState, Outcome } from '../src/renderer/src/sim/tactical/s
 import { UNCREWED_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 
 const TICKS = 3000;
-const DIGESTS: Readonly<Record<number, string>> = { 1: '3000:543a7e110ced76db', 2: '3000:f0a8155441d905dd', 3: '3000:acd60ecd3280a0cc' };   // (SIM_VERSION 66, deeper torpedo bursts, owner 2026-11-20): was 2 b73ac3e541e2ff89 (seeds 1 and 3 unchanged); (SIM_VERSION 65, asteroids-iv-a): was 1 d28638b2cc4b604d, 2 bc99f85ea5a8593e, 3 d9324c2a0c606026 (SIM 62 to 64); the Hunter flies among cell rocks
+const DIGESTS: Readonly<Record<number, string>> = { 1: '3000:b238db66dce03bd3', 2: '3000:832db0512097f2e3', 3: '3000:09705f0c5850958b' };   // (SIM_VERSION 67, the big outer lane + SHATTER_DEPTH 1.6, owner 2026-11-20): was 1 543a7e110ced76db, 2 f0a8155441d905dd, 3 acd60ecd3280a0cc (the map changed for every seed); (SIM_VERSION 66, deeper torpedo bursts, owner 2026-11-20): was 2 b73ac3e541e2ff89 (seeds 1 and 3 unchanged); (SIM_VERSION 65, asteroids-iv-a): was 1 d28638b2cc4b604d, 2 bc99f85ea5a8593e, 3 d9324c2a0c606026 (SIM 62 to 64); the Hunter flies among cell rocks
 
 function run(seed: number): string {
   const st = createTacticalState(seed, 2, ShipClass.Valkyrn), h = createHash('sha256'), c = st.ships[0]!;

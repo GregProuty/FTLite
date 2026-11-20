@@ -152,7 +152,9 @@ describe('a decided round and the rematch (spec §7)', () => {
     } finally { disposeDuel(d); }
   });
   it('a round started at T = 1234 (not a multiple of the 30-tick re-check) settles burst debris onto its rails on the same round ticks as a fresh duel (asteroids-iii §14: the staggered re-check is round-relative)', () => {
-    const d = decided(4);
+    // The lowest seed whose round (round seed 2 here) settles debris within the 4200 ticks: asteroids-iv's big outer lane
+    // (SIM_VERSION 67, the map changed for every seed): was decided(4), whose round seed 5 had one rejoin and now has none.
+    const d = decided(1);
     try {
       for (let k = 0; k < 1232; k++) step(d);
       step(d, [env(d, 0, { kind: 'rematch' })]);

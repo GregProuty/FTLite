@@ -1,6 +1,6 @@
 // The merge of the Helm-flight spike with the Engineering spike (owner 2026-11-19): the Valkyrn (not newtonianHelm) keeps
 // master's flight and bots bit for bit. The pinned digests were first computed on master 2ced83cf (SIM 58), and re-recorded
-// for asteroids-iii's orbiting belt (SIM 60, unchanged per tick at 61: the rocks it flies among changed) and for asteroids-iv-a's cell rocks (SIM 65), with the same digest
+// for asteroids-iii's orbiting belt (SIM 60, unchanged per tick at 61: the rocks it flies among changed) for asteroids-iv-a's cell rocks (SIM 65) and for its big outer lane (SIM 67), with the same digest
 // over the first 3000 ticks of five duels: the scripted pilot (crew of one) at seeds 1 to 3 and the scripted pair on the
 // Hound as a Valkyrn at seeds 1 and 2. Each tick hashes the tactical state (both ships' flight, the Hunter included), the
 // throttle level, the held heading, the power module and the command results; it leaves out SIM_VERSION and the helm
@@ -51,9 +51,11 @@ function run(kind: 'pilot' | 'pair', seed: number): string {
 describe('the Valkyrn after the merge (owner 2026-11-19)', () => {
   it('flies and fights as pinned (master 2ced83cf\'s flight and bots, among asteroids-iii\'s orbiting belt): five duels, 3000 ticks each, every tick identical', { timeout: 120_000 }, () => {
     expect([run('pilot', 1), run('pilot', 2), run('pilot', 3), run('pair', 1), run('pair', 2)]).toEqual([
-      'pilot-1:3000:a7b469bcff1beaec', 'pilot-2:3000:6214870a998950e9', 'pilot-3:3000:188388744e790a69',
-      'pair-1:3000:b07564acfb0523b8', 'pair-2:3000:337f17afe5e6844d'
-    ]);   // asteroids-iv-a cell rocks (SIM_VERSION 65, a deliberate change of the rocks and a new hashed rockCells array; kind b): was
+      'pilot-1:3000:4ff16b1bc07aa71a', 'pilot-2:3000:ad8a6fe131ef2a4e', 'pilot-3:3000:c9d8200c5e371f2b',
+      'pair-1:3000:09341308154e53ed', 'pair-2:3000:11b43ce33cd9e93a'
+    ]);   // the big outer lane + SHATTER_DEPTH 1.6 (SIM_VERSION 67, owner 2026-11-20: a fourth belt lane and the clusters moved out,
+    // a deliberate change of the map the Valkyrn flies among; kind b): was 'pilot-1:3000:a7b469bcff1beaec', 'pilot-2:3000:6214870a998950e9',
+    // 'pilot-3:3000:188388744e790a69', 'pair-1:3000:b07564acfb0523b8', 'pair-2:3000:337f17afe5e6844d' (SIM 65 and 66). Asteroids-iv-a cell rocks (SIM_VERSION 65, a deliberate change of the rocks and a new hashed rockCells array; kind b): was
     // 'pilot-1:3000:ebade52a9952e496', 'pilot-2:3000:56df6c0cc22dedf6', 'pilot-3:3000:5d30f3e5493bc4b6', 'pair-1:3000:1e4c62e39497d371',
     // 'pair-2:3000:1176eae486500499' (SIM 64). Asteroids-iii orbiting belt (SIM_VERSION 60, a deliberate change of the rocks the Valkyrn flies among; kind b): was
     // 'pilot-1:3000:663e629155fe584b', 'pilot-2:3000:113670d9223b854b', 'pilot-3:3000:18e78e4191de122e', 'pair-1:3000:f13a7b16f6e43c4d',
