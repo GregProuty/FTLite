@@ -247,7 +247,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
     /** One frame from `source`; `dt` in seconds. Returns the station of the console drawn, or null when none (Artemis
      *  spec §6.2: the mode clears the console's holds when it changes). */
     draw(source: DuelViewSource, dt: number, overlay: SceneOverlay): ConsoleStation | null {
-      if (epoch === null) { epoch = source.epoch(); lastOutcome = source.duel.tactical.outcome; if (source.seed !== options.seed) layer.reseed(source.seed); }   // the online duel learns its seed from the first publication; a round already decided on attach is no kill to show
+      if (epoch === null) { epoch = source.epoch(); lastOutcome = (source.confirmed?.() ?? source.duel).tactical.outcome; if (source.seed !== options.seed) layer.reseed(source.seed); }   // the online duel learns its seed from the first publication; a round already decided on attach is no kill to show
       if (source.epoch() !== epoch) {   // a new round (a restart before H-2): every view-owned cache starts again
         epoch = source.epoch();
         resetFx(fx); resetRockTrack(rockTrack); layer.reset(); layer.reseed(source.seed); sound?.reset();   // the next round's star field; a fresh audio baseline
@@ -257,13 +257,14 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel); scene.addChildAt(interior.container, 1);
       }
       const d = source.duel, view = source.view(), alpha = source.alpha(), contact = options.contact;
+      const c = source.confirmed?.() ?? d;   // Net-4a §3.6: the outcome and the one-shots
       /** Playtest2feedback §3: the crew Helm's lever is thrMille; the Valkyrn's is its level (Feel-i's sit card reads either). */
       const shownThrottle = (): number => (classOf(d.tactical, CREW_SLOT).newtonianHelm ? source.thrMille?.() ?? d.thrMille : source.throttle());
       const fogView = stepFog(fog, d.tactical, performance.now() / 1000, source.epoch());   // Engineering spike §10.4
       const camKey = view === 'interior' ? null : viewCamera(view), cam = camKey ? source.cameras[camKey] : null;   // Valkyrn spec §5: Flight flies the Helm's camera
       // Everything the console changes follows whether it is drawn (Artemis spec §6.1): a paused or decided console view
       // falls back to the right-hand readout with its rows and help.
-      const hidden = consoleHidden(d, overlay, source.running()), onConsole = !hidden && view !== 'interior';
+      const hidden = consoleHidden(c, overlay, source.running()), onConsole = !hidden && view !== 'interior';
       // Enemy ship window spec §6.5 steps 1 to 3: the station from the seat, this frame's map click, then the closing rules.
       const station = hidden ? null : consoleStation(d, source.active());
       const onMap = view !== 'interior' && (station === 'helm' || station === 'weapons' || station === 'science' || station === 'flight');   // Sci-1 spec §7.2: the window on all three
@@ -395,11 +396,11 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       }
       // Feel-i §3: the kill, seen as the round's outcome turning with the enemy's hull gone (both modes read the same state).
       const enemySlot = targetOf(d.tactical, CREW_SLOT);
-      if (lastOutcome === Outcome.Running && d.tactical.outcome !== Outcome.Running && (d.tactical.systems[enemySlot]?.hull ?? 1) <= 0) {
+      if (lastOutcome === Outcome.Running && c.tactical.outcome !== Outcome.Running && (c.tactical.systems[enemySlot]?.hull ?? 1) <= 0) {
         const e = interpolatedShip(d.tactical, source.prev, alpha, enemySlot);
         pushKill(fx, e.x, e.y, e.h);
       }
-      lastOutcome = d.tactical.outcome;
+      lastOutcome = c.tactical.outcome;
       // Feel-i §1: sitting down. A new sit at the Helm or Weapons frames both ships, may show the card, and lights the goal.
       // Only a character's own sit counts (Feel-i review): a Tab to a seated character keeps its zoom and shows no card.
       const sitOf = (pid: number): SitSeat | null => { const s = consoleStation(d, pid); return s === 'helm' || s === 'weapons' || s === 'flight' ? s : null; };
@@ -417,7 +418,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       if (seat !== null && (held.left || held.right || held.fire || held.up || held.down || aimed !== null || shownThrottle() !== sitThrottle)) acted = true;
       if (sound) {   // Audio-i spec section 4: the same events the effects use; pan from the screen on a map view, crew-relative inside
         const crew = d.tactical.ships[CREW_SLOT]!;
-        sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true, me: source.active(), crew: crewLife(d), dt, hostile: enemyHostile(d.tactical),   // duel polish i spec §C
+        sound.frame({ duel: d, events, axes: source.axes(), paused: source.paused(), live: source.live?.() ?? true, me: source.active(), crew: crewLife(d), confirmed: c, confirmedCrew: crewLife(c), dt, hostile: enemyHostile(d.tactical),   // duel polish i spec §C
           torpedo: torpedoTone(d), pings: pinged, vent,   // Feel-ii §2.5, §2.7; playtest2feedback §6
           pan: fogPan(d.tactical, (x, y) => (cam ? screenPan(worldToScreen(cam, viewport, x, y).x, viewport.w) : worldPan(x - crew.x))) });
       }
@@ -429,7 +430,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       recordTrails(fx, d.tactical, source.missilePrev, alpha);
       layer.container.visible = view !== 'interior'; interior.container.visible = view === 'interior';
       let overlayView: MapOverlayView | null = null;
-      if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt, events, frozen ? 0 : dt, { camera: source.interiorCamera, active: source.active() }, options.pointer?.() ?? null);   // Art-i spec section 7: the light and feel hold while paused; Engineering spike §6: the hover outline
+      if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt, events, frozen ? 0 : dt, { camera: source.interiorCamera, active: source.active() }, options.pointer?.() ?? null, source.crewOverride?.() ?? null);   // Art-i spec section 7: the light and feel hold while paused; Engineering spike §6: the hover outline
       else {
         // Spike ii §6.5: with a weapon picked up, the rock under the pointer (no ship contact there) wears a hover bracket.
         const point = aimed !== null ? options.pointer?.() ?? null : null, pickAt = { state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, fog: fogView };
