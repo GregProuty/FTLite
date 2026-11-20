@@ -292,3 +292,17 @@ Same-version bless at SIM_VERSION 64, on HEAD 20fd5255.
 ## Task 9
 
 SIM_VERSION 64 -> 65 alone, blessed in 9b14bd7d. Baselines at 94596a71 (post Net-4a merge): canonical trace golden 7200 ticks, determinism-v2 108000 ticks in 13 runs; duel oracle R=21 runs, T=175320 ticks, F=740 fields. Both checks identical per tick. Bless: basic final 4451b91d, duel-1 final 01634e7c, duel-rematch final 19c7dd6d, determinism-v2 unchanged apart from version and hashes. Full suite: 539 files, 6417 passed, 3 skipped.
+
+## Task 10
+
+Screenshots from `scripts/ui-round-1-shots.cjs` (built app, Electron, Single player on the Hound, 1280x720 content, fresh profile so Settings are the defaults). Run: `npx electron-vite build && node scripts/ui-round-1-shots.cjs [out] [worktree] [path to playwright-core]` (playwright-core@1.48.2 installed outside the repo). The crew start standing, so the script seats the active character at the Helm through the `__spikeAsteroids.seatWeapons` hook with `d.weapons` pointed at the Helm for that one call (restored at once), Tab to the other character, and seats it at Weapons. For shot 3 the Hunter is pinned 700 u off the crew ship so it is in sensor range. Esc with the enemy window open closes the window first (contactController.escape, by design), so the script pauses first and then opens the window with T. No product code changed.
+
+PNGs in `C:\Users\djuar\FTLite-shots\ui-round-1\`:
+1. `1-helm-grid-off.png`: ok. Helm seated: no grid lines on the map; the square names (J, K, L along the top, 5, 6, 7 down the left) are kept; no dashed ring round the own ship (only the small selection ring and the compass ring). The long dashed arc off to the right is not centred on the ship (a lane/orbit line), not the torpedo ring.
+2. `2-weapons-no-ring.png`: ok. The hint reads `WEAPONS: CLICK A WEAPON, THEN A ROOM`, sub-line `1 LASER  2 TORPEDO  E/Q NEXT ROOM  L-CLICK MAP PEW`; no `ROCKS n` tally; no dashed ring round the ship (the filled wedge is the weapon arc).
+3. `3-weapons-paused.png`: ok. Paused (`reasons() = ['user']`) at Weapons with the enemy window (UNKNOWN CONTACT) open: the console, tab strip, status table, own ship window and enemy window all stay; one pause line `PAUSED  ESC: RESUME  F11: FULLSCREEN  M: MAIN MENU` on a small panel at top centre (about y 66-90), just under the `BRG 074 RNG 728 TORP OUT` readout, no overlap. The Weapons hint panel is not drawn while paused (the pause line takes the top centre).
+4. `4-ship-paused.png`: ok. Stood (X) and paused in the ship view: the HULL bar (x 10-330, y about 70-90) and the pause panel (x about 478-802) do not overlap; the tab strip, status table and power panel stay.
+5. `5-fps.png`: ok. Crop of the bottom-right 200x60 at the Helm: `240 FPS` sits below the `250 u` scale bar. (`5-fps-full.png` is the uncropped frame, kept for context.)
+6. `6-settings.png`: ok, one nit. Map grid = Off; the FPS counter checkbox is shown, checked by default. Nit: the "FPS counter" checkbox label runs on the same line as "Valkyrn: fit laser instead of gun" with no gap (both are inline labels, Settings.tsx lines 43-52). Cosmetic; not fixed here.
+
+Console: the run logs `Failed to load resource: net::ERR_FILE_NOT_FOUND` errors (no page errors); not investigated, nothing visible is missing in the shots.

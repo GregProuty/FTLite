@@ -1179,3 +1179,11 @@ Spec `docs/superpowers/specs/2026-11-20-asteroids-look-design.md`. No plan: a sm
   4. Let two free rocks meet. Nothing sparks.
 
   Do the rocks now read as background? Still as before, and yours to call: the 2 px screen shake when a rock breaks on screen (`BREAK_SHAKE` in `src/renderer/src/render/tactical/rockFx.ts`), the laser's hot chips off a rock, and the dotted predicted path of a targeted rock. The crack strength is `CRACK_ALPHA` in `src/renderer/src/render/tactical/tacticalModel.ts`.
+
+## UI round Part 1 (quick fixes), SIM_VERSION 65
+
+Spec: docs/superpowers/specs/2026-11-20-ui-round-design.md §1. Report: docs/superpowers/research/2026-11-20-ui-round-1-report.md.
+
+- [x] Automated: suite, typecheck, determinism (Node, Electron, Firefox), canonical trace and duel oracle across 64 -> 65, duel app smoke.
+- [x] Claude's screenshots (FTLite-shots/ui-round-1): grid off, no torpedo ring, rooms-only hint, pause keeps the UI, pause line clear of the hull bar, FPS corner, Settings.
+- [ ] Owner playtest: the Hunter at 95 hull feels right; the Valkyrn feels fast enough; the pause line and the FPS counter read well; F11 in the browser.
