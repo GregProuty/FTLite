@@ -61,14 +61,16 @@ that asteroid and the round's seed. Integer hashing and `+ − × ÷` only.
 
 | Map radius R | Shells | Full cell count | Spacing d |
 | --- | --- | --- | --- |
-| R ≤ 20 | 1 | 7 | R / 1.5 |
-| 20 < R ≤ 40 | 2 | 19 | R / 2.5 |
-| R > 40 | 2 and the 12 cells at √7 | 31 | R / 3.1457513110645907 |
+| R ≤ 20 | 1 | 7 | R / 1.5773502691896258 |
+| 20 < R ≤ 40 | 2 | 19 | R / 2.5773502691896258 |
+| R > 40 | 2 and the 12 cells at √7 | 31 | R / 3.2231015802542165 |
 
-- The spacing puts the outermost cell's contact circle exactly at R, so the map's spacing rules (`ASTEROID_GAP`, the
-  lanes, the clusters) still hold.
-- **Variety.** Each cell of the outermost shell is dropped when `hash(seed, k, q, r) mod 100 < RIM_DROP` (30). Inner
-  cells are never dropped, so every template is connected and has at least 1, 7 or 19 cells. Rocks get bays and bumps.
+- The spacing puts the outermost cell's hit circle exactly at R (the divisor is the outermost centre's distance in
+  spacings plus 0.5773502691896258), so no part of a rock lies outside its map circle and the map's spacing rules
+  (`ASTEROID_GAP`, the lanes, the clusters) still hold.
+- **Variety.** Each cell of the outermost shell is a candidate to drop when `hash(seed, k, q, r) mod 100 < RIM_DROP`
+  (30). Candidates are dropped in ascending hash order until the template is down to its floor of 4, 13 or 25 cells.
+  Inner cells are never dropped, so every template is connected. Rocks get bays and bumps.
 - A template has at most 31 cells, so a rock's live cells fit one unsigned 32-bit mask.
 
 ### 3.3 State beside the pool
@@ -83,9 +85,9 @@ per slot, and are hashed, snapshotted, cloned and sent with it:
 Meaning of the pool fields for a cell rock:
 
 - **x, y** is the centre of mass: the mean of its live cells' centres (all cells of a rock weigh the same).
-- **r** is the bounding radius about that centre: the farthest live cell centre plus the hit radius. A whole seeded rock
-  keeps r = R. Everything that used r as a rough size keeps doing so: the grid, predictions, rejoin, targeting brackets,
-  the Hunter's avoidance.
+- **r** is a bounding radius about that centre. A seeded rock starts with r = R, its map radius (all its cells lie inside
+  it, §3.2). A piece is born with r = its farthest live cell centre plus the hit radius. Everything that used r as a
+  rough size keeps doing so: the grid, predictions, rejoin, targeting brackets, the Hunter's avoidance.
 - **hp** is `rockHp(r)` at birth, as today (`ceil(r / 10)`), so an unbroken rock is exactly as tough as now.
 
 **A plain rock.** A slot with `rockTmpl` −1 is a rock of one round cell whose contact and hit radius are both r. Every rule
@@ -95,8 +97,9 @@ rocks always have a template; plain rocks exist for tests and as the safe meanin
 **Derived values** (never hashed, memoised per template and mask): the cell count, the centre of mass in the template
 frame, each live cell's offset from it, the bounding radius, the mass and the moment of inertia.
 
-- Mass: `n · d³ · CELL_MASS_K`, with `CELL_MASS_K` set so a full 19-cell rock of R 30 weighs 900 (the ship's mass, as
-  today's r³ / 30). Mass is conserved by a break, less the dust.
+- Mass: every cell of a template weighs `R³ / (ROCK_MASS_DIVISOR · full cell count)`, so a rock with no cell dropped
+  weighs exactly today's R³ / 30 (R 30 weighs 900, the ship's mass). A rock's mass is its cell count times that. A break
+  conserves mass, less the dust.
 - Inertia: `Σ m_cell · (|offset|² + (d / 2)² / 2)`.
 
 ## 4. Motion
@@ -157,7 +160,7 @@ A 31-cell rock gives about four to six real chunks round a small hole.
 - **Place.** Its centre of mass, at the parent's orientation. No cell moves at the moment of the break.
 - **Velocity.** The parent's velocity at that point (`v + ω × offset`), plus a kick:
   - a cut: the two sides part along the line's normal at a relative speed `v_esc(ρ) · CUT_KICK` (0.12; a tidal cut 0.04),
-    shared by inverse mass so momentum is kept;
+    shared between the sides by inverse mass so momentum is kept; every piece on a side gets that side's change;
   - a shatter: away from P at `v_esc(ρ) · (0.30 + 0.30 f_j)`, as today's burst.
 - **Spin.** The parent's ω.
 - **Slots.** Unchanged: the largest piece keeps the parent's slot, the rest take the lowest empty slots, then evict a
@@ -190,6 +193,8 @@ circle. For a plain rock each gives today's circle answer.
 - **The blast's reach** is measured to the nearest cell's surface.
 - **The planet and the edge.** A free rock with any cell touching the planet, or its centre past the far edge, is dust,
   whole, as today.
+- **Predictions keep the circle.** The Helm's predicted path and collision warning, the targeted rock's dotted path and
+  the Hunter's avoidance read the bounding circle, so they err on the safe side near a bay or a flat face.
 
 ## 7. Drawing
 
@@ -226,12 +231,15 @@ The owner wants the rock step as cheap as possible. Today's p99 is 0.1 to 0.45 m
 
 Each phase ends with the full suite, determinism and the app smoke, and is merged on its own so the owner can look early.
 
-- **iv-a: real pieces.** Templates, the three arrays, hash and wire, the cut and the shatter, the drawing of cells. Physics
-  still uses each rock's bounding circle, and nothing turns (ω stays 0). The owner sees halves and chunks.
-- **iv-b: true shapes.** `rockShape.ts` and its callers: beams, rounds, torpedoes, ships, rock-rock, the blast's reach, the
-  aim point.
-- **iv-c: spin.** Orientation and ω, rotational impulses and pushes, rails turning their rocks, rejoin's spin rule, the
-  renderer's orientation lerp.
+- **iv-a: real pieces with true shapes.** Templates, the three arrays, hash and wire, the cut and the shatter,
+  `rockShape.ts` and its callers (beams, rounds, torpedoes, ships, rock-rock, the planet test, the blast's reach, the aim
+  point), and the drawing of cells. Nothing turns yet: every orientation is the identity and ω stays 0, so contacts use
+  the impulse of §6 without its inertia terms. The owner sees and flies among real halves and chunks.
+- **iv-b: spin.** ω and the orientation's motion, rotational impulses and pushes, rails turning their rocks, rejoin's spin
+  rule, the renderer's orientation lerp.
+
+The two were first drafted as three, with the pieces arriving before the true shapes. That middle state was dropped: two
+fresh halves' bounding circles overlap deeply, so circle physics would throw them apart on the next tick.
 
 ## 11. Tests
 
@@ -251,4 +259,5 @@ Each phase ends with the full suite, determinism and the app smoke, and is merge
 
 Starting numbers, all in `rockTuning.ts`: `RIM_DROP` 30, `CUT_KICK` 0.12, the tidal kick 0.04, `CRATER_R` 0.75 d,
 `ROCK_SPIN_MAX` 2, `REJOIN_SPIN` 0.05, the corner jitter 0.18 d. Questions for the look after iv-a: are the blocks the
-right size, and do the halves drift apart at the right speed?
+right size (the cell counts 7, 19 and 31 of §3.2), do the halves drift apart at the right speed, and are the seams faint
+enough?
