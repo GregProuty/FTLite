@@ -41,7 +41,7 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning?: FlightT
       const m = missileOf(state, i), input = inputs[i]!;
       flyMissile(state, i, m && m.manual && input.weapons ? manualTorpTurn(m, input.torpTurn, input.torpHeading) : 0);
     }
-    stepRocks(state);   // SPIKE (destructible asteroids): fragments fly and meet the planet and the other rocks
+    stepRocks(state);   // asteroids-iii §3.4, §5.4: the free rocks fly true gravity paths and meet the planet and the other rocks
     resolveContacts(state, true);   // spike ii §5.1: rocks are bodies in the duel
     resolveMissiles(state);
     stepRounds(state);   // Valkyrn spec §7.2: after the ships fly and contacts resolve, so a round also moves on its spawn tick

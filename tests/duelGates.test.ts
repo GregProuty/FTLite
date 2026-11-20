@@ -19,7 +19,7 @@ const runs = new Map<number, DuelRun>();
 const LASER_EXEMPT: ReadonlySet<string> = new Set(['h0:2']);
 
 describe('the H-0 telemetry gates: scripted pair against the hunter, seeds 1 to 10', () => {
-  for (const seed of GATE_SEEDS) it(`seed ${seed}: ends before the cap, the crew uses both weapons, no planet-contact end under 30 s`, () => {
+  for (const seed of GATE_SEEDS) it(`seed ${seed}: ends before the cap, the crew uses both weapons${LASER_EXEMPT.has(`h0:${seed}`) ? ' (laser use exempt: owner 2026-11-19)' : ''}, no planet-contact end under 30 s`, () => {
     const r = runDuel(seed, 'scripted'), t = r.telemetry;
     runs.set(seed, r);
     expect(t.outcome, telemetryLine(r)).not.toBe(Outcome.Running);

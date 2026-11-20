@@ -20,9 +20,9 @@ import { computeContentDigest } from '../../build/contentDigest';
 import { startOnlineAppRuntime } from './online-app-runtime';
 
 /** The test-only first seed: with no flight or weapon input its first round is decided on tick 4199, about 70 s of play
- *  (the Hunter's 30 s grace included), a crew win (SIM_VERSION 60, asteroids-iii: found by search over seeds 1-300 before
+ *  (the Hunter's 30 s grace included), a crew win (SIM_VERSION 60/61, identical per tick, asteroids-iii: found by search over seeds 1-300 before
  *  tick 4500, none, then 301-4000 before tick 5000, 423 the earliest). Seed 6626 before: decided on tick 3979, a crew loss,
- *  whoever is seated or away (7381 at SIM 60, past the step's 90 s; found by search over seeds 1-8000 at
+ *  whoever is seated or away (7381 at SIM 60/61, identical per tick, past the step's 90 s; found by search over seeds 1-8000 at
  *  SIM_VERSION 59, the playtest2feedback merge: the crew Helm's Newtonian flight has no drag, so the unflown Hound
  *  drifts; 6626 is the earliest, then 5400 at 4172 and 2952 at 4230, a crew win; no seed in 1-8000 is decided before
  *  tick 3979). Seed 1980 before: decided on tick 3472 (SIM_VERSION 53 to 58; 8271 at 59, past the step's 90 s), found

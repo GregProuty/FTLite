@@ -75,8 +75,10 @@ export function lanePullOut(x: number, y: number, k: number, out: Pair): void {
 }
 const pStep: Pair = { c: 0, s: 0 }, pTurn: Pair = { c: 0, s: 0 }, pSpin: Pair = { c: 0, s: 0 }, pSpinN: Pair = { c: 0, s: 0 };
 /** railPos with ρ = |centre|, ω = orbitRate(ρ) and (c, s) = railStep(ρ) given (a caller that holds them across many ticks;
- *  c, s are unread at n = 0), n = T − t ≥ 0. Allocation-free; the operations are railPos's, in its order. */
+ *  c, s are unread at n = 0), n = T − t ≥ 0. Allocation-free; the operations are railPos's, in its order. Throws when n < 0,
+ *  as railPos does: a rail is never read before its anchor tick. */
 export function railPosFrom(cx: number, cy: number, ox: number, oy: number, n: number, tumble: boolean, rc: number, w: number, c: number, s: number, out: RailOut): void {
+  if (n < 0) throw new Error(`railPosFrom: n = ${n}, before the rail's anchor tick`);
   let Cx = cx, Cy = cy, Ox = ox, Oy = oy;
   if (n > 0) {
     turnPowerOut(c, s, n, pTurn);

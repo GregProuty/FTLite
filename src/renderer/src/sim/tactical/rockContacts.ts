@@ -1,6 +1,8 @@
 // Spike ii §3.2, §3.3 (docs/superpowers/specs/2026-11-18-asteroids-ii-design.md), asteroids-iii §3.4, §5.4: the free rocks'
 // turn in stepDuel, after the missiles fly and before the ship contacts.
-// Part 1, motion: every Free rock not born this tick, ascending, by moveFreeSlot (§13.3: the symmetric age-ramped drag toward V_c, the lane pull, the soft edge, the cap, counted in rockCapHits). Then rocksMoved: free rocks now stand at tick + 1. A rock touching the planet, or past R_MAP + rockEdgeSlack(), turns to dust at the start of its contact turn.
+// Part 1, motion: every Free rock not born this tick, ascending; §13.3 (rocheBreak): one inside ROCHE_R with r ≥ FAN_SPLIT_MIN_R
+// and at least ROCHE_MIN_AGE ticks old fan-breaks along its velocity instead (by 'tidal'; its pieces are born, so they hold
+// this tick); every other moves by moveFreeSlot (§13.3: the symmetric age-ramped drag toward V_c, the lane pull, the soft edge, the cap, counted in rockCapHits). Then rocksMoved: free rocks now stand at tick + 1. A rock touching the planet, or past R_MAP + rockEdgeSlack(), turns to dust at the start of its contact turn.
 // Part 2, contacts, a live outer loop: slot a from 0 upward, reading kinds as they stand now, takes a turn when it is
 // Free and not born. Its turn: the planet and edge test (dust, turn over); else rocksNear(a) once, ascending, and each
 // b ≠ a still alive, not born and not done is resolved if it touches (a Rail b at its accessor position); a break of a

@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { createRng } from '../src/shared/rng';
 import { generateMap } from '../src/renderer/src/sim/tactical/map';
-import { circularVelocity, escapeSpeed, lanePull, laneZone, orbitRate, railPos, railStep, SPIN_RATE, targetVelocity, turnPower, type RailOut } from '../src/renderer/src/sim/tactical/rails';
+import { circularVelocity, escapeSpeed, lanePull, laneZone, orbitRate, railPos, railPosFrom, railStep, SPIN_RATE, targetVelocity, turnPower, type RailOut } from '../src/renderer/src/sim/tactical/rails';
 import { ROCK_GRID_PAD, ROCK_SWITCHES } from '../src/renderer/src/sim/tactical/rockTuning';
 import { ASTEROID_GAP, BELT_COUNT, CLUSTER_CENTRE_MAX, CLUSTER_CENTRE_MIN, CLUSTER_COUNT, CLUSTER_RHO_SEPARATION, CLUSTER_RHO_SLACK, DT, LANES } from '../src/renderer/src/sim/tactical/tuning';
 
@@ -55,6 +55,7 @@ describe('the rail maths (spec §2, §3.2, §13.1)', () => {
     railPos(700.125, -999.5, 3.25, -1.5, 40, 40, true, o);
     expect([o.x, o.y]).toEqual([700.125 + 3.25, -999.5 - 1.5]);
     expect(() => railPos(1, 2, 0, 0, 5, 4, false, o)).toThrow(/before/);
+    expect(() => railPosFrom(1, 2, 0, 0, -1, false, Math.sqrt(5), orbitRate(Math.sqrt(5)), 1, 0, o)).toThrow(/before/);   // railPosFrom guards n < 0 too
   });
   it('prograde matches the ships\' spawn orbits (spawnAt)', () => {
     for (const seed of [1, 7, 42]) for (const s of generateMap(createRng(seed)).spawns) {

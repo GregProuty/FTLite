@@ -1,5 +1,6 @@
 // The merge of the Helm-flight spike with the Engineering spike (owner 2026-11-19): the Valkyrn (not newtonianHelm) keeps
-// master's flight and bots bit for bit. The pinned digests were computed on master 2ced83cf (SIM 58) with the same digest
+// master's flight and bots bit for bit. The pinned digests were first computed on master 2ced83cf (SIM 58), and re-recorded
+// for asteroids-iii's orbiting belt (SIM 60, unchanged per tick at 61: the rocks it flies among changed), with the same digest
 // over the first 3000 ticks of five duels: the scripted pilot (crew of one) at seeds 1 to 3 and the scripted pair on the
 // Hound as a Valkyrn at seeds 1 and 2. Each tick hashes the tactical state (both ships' flight, the Hunter included), the
 // throttle level, the held heading, the power module and the command results; it leaves out SIM_VERSION and the helm
@@ -34,7 +35,7 @@ function run(kind: 'pilot' | 'pair', seed: number): string {
 }
 
 describe('the Valkyrn after the merge (owner 2026-11-19)', () => {
-  it('flies and fights exactly as on master: five duels, 3000 ticks each, every tick identical', { timeout: 120_000 }, () => {
+  it('flies and fights as pinned (master 2ced83cf\'s flight and bots, among asteroids-iii\'s orbiting belt): five duels, 3000 ticks each, every tick identical', { timeout: 120_000 }, () => {
     expect([run('pilot', 1), run('pilot', 2), run('pilot', 3), run('pair', 1), run('pair', 2)]).toEqual([
       'pilot-1:3000:ebade52a9952e496', 'pilot-2:3000:56df6c0cc22dedf6', 'pilot-3:3000:5d30f3e5493bc4b6',
       'pair-1:3000:1e4c62e39497d371', 'pair-2:3000:1176eae486500499'
