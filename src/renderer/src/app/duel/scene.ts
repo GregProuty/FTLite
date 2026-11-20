@@ -7,6 +7,7 @@ import { Container } from 'pixi.js';
 import { enemyHostile, pointSeen, shipSeen } from '../../sim/tactical/science';
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
+import type { CrewOverride } from '../../render/duel/crewOverride';
 import type { Renderer } from '../../render/renderer';
 import { crtActive, crtScale } from '../../render/crt';
 import type { EndView } from '../../render/duel/endModel';
@@ -96,6 +97,10 @@ export interface DuelViewSource {
   helmAxes?(): Axes;
   /** Feel-ii §2.8: the console controls refused since the last take, each with its reason (the duel mode's checks). */
   takeRefusals?(): Refusal[];
+  /** Net-4a §3.6: other players' characters drawn from the confirmed state (online, while predicting); absent: none. */
+  crewOverride?(): CrewOverride | undefined;
+  /** Net-4a §3.6: the confirmed state, for the end card, the outcome and the one-shot sounds. Absent (Single player): `duel`. */
+  confirmed?(): DuelState;
   /** W-4 spec §10: the Hound's selected weapon (0..2) to frame; absent: 0. */
   weaponSel?(): number;
   /** W-4 spec §10, §11: gun slot's turret offset to draw (0 pew pew, 1 the autocannon): online the own seat's prediction, else the sim's. Absent: the sim's. */

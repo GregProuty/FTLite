@@ -4,7 +4,7 @@
 // descriptor's mode.
 import { describe, expect, it, vi } from 'vitest';
 import { CLOSED_PROMPT, leavePromptKeys } from '../src/renderer/src/app/duel/onlineDuel';
-import { createOnlineDuelSource, gapEvents, duelCounters } from '../src/renderer/src/app/duel/onlineSource';
+import { createOnlineDuelSource, gapEvents, duelCounters, placeEvents } from '../src/renderer/src/app/duel/onlineSource';
 import { createOnlineModeSession, type InnerOnlineSession } from '../src/renderer/src/app/onlineModeSession';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
@@ -213,5 +213,55 @@ describe('the online source follows the throttle (Artemis spec §5.3, §6.1)', (
       d.tactical.outcome = Outcome.CrewWins; d.decidedTick = d.interior.tick; c.publish(d); source.observe();
       expect(source.axes()).toEqual({ turn: 0, thrust: 0 });
     } finally { disposeDuel(d); c.dispose(); }
+  });
+});
+
+describe('the online source draws the prediction (Net-4a §3.6, §3.7)', () => {
+  /** A prediction view over `p`, with `before` the bodies P had before its newest step. */
+  function prediction(p: DuelState, before: { ships: { x: number; y: number; h: number }[]; missiles: null[]; crew: { x: number; y: number }[] }, alpha = 0.5) {
+    let on = true;
+    return { view: { active: () => on, state: () => p, before: () => before, alpha: () => alpha }, off() { on = false; } };
+  }
+  it('while active: duel is P, prev and crewPrev are the before-bodies of P, alpha is the local one; confirmed() is the replica', () => {
+    const live = createSeatedDuel(CUTTER, 3), c = confirmed(); c.publish(live);
+    const p = loadDuelSnapshot(CUTTER, saveDuelSnapshot(live, DIGEST), DIGEST);
+    try {
+      for (let k = 0; k < 6; k++) stepDuelTick(p, { held: [], commands: [] });
+      const before = { ships: [{ x: 1, y: 2, h: 3 }, { x: 4, y: 5, h: 6 }], missiles: [null, null], crew: [{ x: 7, y: 8 }, { x: 9, y: 10 }] };
+      const pr = prediction(p, before, 0.25), s = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 }, prediction: pr.view });
+      s.observe();
+      expect(s.duel).toBe(p);
+      expect([s.prev, s.crewPrev, s.alpha()]).toEqual([before.ships, before.crew, 0.25]);
+      expect(s.confirmed()).toBe(c.client.state());
+      pr.off();
+      expect(s.duel).toBe(c.client.state());
+    } finally { disposeDuel(p); disposeDuel(live); c.dispose(); }
+  });
+  it('crewOverride: the own slot is null; the partner from the confirmed publications with the gap alpha', () => {
+    const live = createSeatedDuel(CUTTER, 3), c = confirmed(); c.publish(live);
+    const p = loadDuelSnapshot(CUTTER, saveDuelSnapshot(live, DIGEST), DIGEST);
+    try {
+      const pr = prediction(p, { ships: [], missiles: [], crew: [] }), s = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 }, prediction: pr.view });
+      s.observe();
+      for (let k = 0; k < 3; k++) stepDuelTick(live, { held: [], commands: [] });
+      c.publish(live); s.observe();
+      const o = s.crewOverride()!;
+      expect(o.at[0]).toBeNull(); expect(o.prev[0]).toBeNull();
+      expect(o.at[1]).not.toBeNull(); expect(o.prev[1]).not.toBeNull();
+    } finally { disposeDuel(p); disposeDuel(live); c.dispose(); }
+  });
+  it('placeEvents: beams and sparks at the ships of P; a missile ending where it was', () => {
+    const t = createTacticalState(1);
+    t.ships[0]!.x = 100; t.ships[0]!.y = 50; t.ships[1]!.x = 400; t.ships[1]!.y = 50;
+    const out = placeEvents([
+      { kind: 'laser', ship: 0, hit: true, stripped: false, room: 0, x1: 0, y1: 0, x2: 0, y2: 0 },
+      { kind: 'contact', ship: 0, body: 'asteroid', x: 0, y: 0 },
+      { kind: 'gunHit', ship: 1, room: -1, stripped: false, hull: false, level: false, x: 0, y: 0 },
+      { kind: 'missileEnd', ship: 0, cause: 'expired', target: -1, room: -1, x: 7, y: 8 }
+    ] as ViewEvent[], t);
+    expect(out[0]).toMatchObject({ x1: 100, y1: 50, x2: 400, y2: 50 });
+    expect(out[1]).toMatchObject({ x: 100, y: 50 });
+    expect(out[2]).toMatchObject({ x: 400, y: 50 });
+    expect(out[3]).toMatchObject({ x: 7, y: 8 });
   });
 });
