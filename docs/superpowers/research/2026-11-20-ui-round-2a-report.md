@@ -31,3 +31,15 @@ Spec: docs/superpowers/specs/2026-11-20-ui-round-design.md §2.2-§2.4a. Plan: d
 - Screenshots (scripts/ui-round-2a-shots.cjs, C:/Users/djuar/FTLite-shots/ui-round-2a/): 1-helm (+ 1-helm-contact with BRG 074  RNG 728), 2-weapons-window (enemy window top right, sit card at the top, clear), 3-science (SENSOR RANGE 900), 4-ship (full width, empty Weapons badge blinking red; 4-ship-away), 5-damage (burning WEAP blinking, damaged SHLD hot with its progress bar, offline ENG, HEALTH row), 6-flight (Helm block x 346 and Flight block x 658 side by side). No info box, no zoom box.
 - Gate entry appended to docs/gates.md; owner look check open.
 - Concerns: the AWAY label is hidden under a console badge's name when the away character stands on a console tile, and in DIM it is barely visible on the light floor; the 2 px room progress bar sits on the power panel's bottom border. Not patched. Full detail: .superpowers/sdd/task-7-report.md.
+
+## Final review fixes
+
+1. Critical: `interiorView.ts` had the crew label's `t.position.set(...)` swallowed by a trailing comment, so DOWNED and AWAY labels sat at (0,0). Restored; the placement is now the exported pure helper `crewLabelAt(x, y)` (rounded x, y + half a tile, WARN tint) that the draw loop calls.
+   Test: `tests/duelInterior.test.ts`, "a downed character shows its DOWNED label under the character in the DOWNED red, not at (0,0)". It draws a view with a downed character, finds the visible DOWNED label in `world.children`, and checks its position and tint (plus a `crewLabelAt` unit check). Verified it fails with the position call removed and passes with the fix.
+2. `crewLabels` were added to `world` twice; now once (after `badgeText`), and the back-to-front comment says the crew labels draw last, above the console badge names. No unused imports remained.
+3. Stale comments reworded: weaponsModel (contact window's left edge, INFO_BAND; status row line), ContactWindow.tsx (top right), scene.ts (contact window).
+4. Deleted unused `INVERSE_TOP/H/PAD` in `crtRowLook.ts` and the no-op `pairs` helper in `tests/crewList.test.ts`.
+5. Spec: §2.2 TORPEDO INBOUND row now "a banner on the ship view (...EVADE in the map's status sentence)"; §2.4a Helm range bullet notes the Valkyrn's Flight view shows the same line.
+
+Results: typecheck clean; the five named test files plus the new test green; full suite 544 files, 6402 passed, 3 skipped, 0 failed (after `electron-vite build`).
+AWAY screenshot check: `FTLite-shots/ui-round-2a/4-ship-away.png` regenerated; the red AWAY label sits directly under the away character.
