@@ -30,7 +30,7 @@ import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 import { createTorpedoFollow, trackManualTorpedo } from './torpedoCamera';
 import { consoleInReach, crewHelmSeat, cycleLock, houndWeaponsSeat, repairInReach, seatOf, stepTorpRoom } from './controls';
-import { gunFreqRequest, laserFreqKey, modeRequests, nextWeaponSel, powerDelta, weaponsSeatHeld } from './weaponsSeat';
+import { flightFrame, gunFreqRequest, laserFreqKey, modeRequests, nextWeaponSel, NO_FLIGHT, powerDelta, weaponsSeatHeld, type FlightLatch } from './weaponsSeat';
 import type { ContactRequests } from './contactController';
 import type { Refusal } from './scene';
 import { lockRefusal, NO_LASER, refusal } from '../../render/duel/situationModel';
@@ -281,7 +281,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   // Valkyrn spec §4.4, §5.1: Tab's ship view while seated (n = 1), the Flight seat's held bearing, and the gun's last frame.
   let shipView = false, steer = -1, gunPrev = false, torpHold = -1;   // W-3: the MANUAL torpedo's held heading (−1 none), re-sent every frame
   // W-4 spec §9: the Hound's Weapons selection (client state, the pew at a sit), the last gun selected (W-4c) and the trigger's last frame.
-  let weaponSel = 0, lastGunSel = 0, triggerPrev = false;
+  let weaponSel = 0, lastGunSel = 0, triggerPrev = false, flight: FlightLatch = NO_FLIGHT, triggerLive = false;   // W-4 spec §7: the seat's flight latch and this frame's gated trigger
   // Playtest2feedback §4a: whether this left-button hold has steered yet (the refusal's press edge), and whether the active
   // character flew the crew Helm on the last frame (final review I1).
   let steerPrev = false, crewHelmPrev = false;
@@ -410,7 +410,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     round = d.round; pending = []; switching = false; deferred = [];
     activeHeld = NEUTRAL; sentHeld = idleHeld(); sentAxes = NO_AXES;
     shipView = false; steer = -1; gunPrev = false; torpHold = -1; steerPrev = false; crewHelmPrev = false;
-    weaponSel = 0; lastGunSel = 0; triggerPrev = false;
+    weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false;
     events = []; counts = hitCounts(d);
     capture(); freshCameras(); cameraInput.reset(); resetInteriorCamera(interiorCamera);
     deps.clearKeys?.();
@@ -440,7 +440,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       return IDLE_KEYS();
     }
     const seat = seatOf(d, active), p = k.presses;
-    if (!houndWeaponsSeat(d, active)) { weaponSel = 0; lastGunSel = 0; triggerPrev = false; }   // W-4 spec §9: a sit starts on pew pew
+    if (!houndWeaponsSeat(d, active)) { weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; }   // W-4 spec §9: a sit starts on pew pew
     if (seat !== 'flight') gunPrev = false;
     if (seat === 'standing') {
       if (p.interact > 0 && repairInReach(d, active) < 0) { const c = consoleInReach(d, active); if (c >= 0) queue({ kind: 'sit', station: c }); }
@@ -515,8 +515,13 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       return k;
     }
     if (houndWeaponsSeat(d, active)) {   // W-4 spec §9 (W-4a): the Hound's Weapons seat
-      weaponSel = nextWeaponSel(weaponSel, k, manualTorpedoFlying(d.tactical));   // §19.1: until W-4c, A/D steer a MANUAL torpedo in flight
+      // W-4 spec §7: around a MANUAL flight: the latch first (a torpedo selection returns to the last gun when it ends), then this
+      // frame's keys (A/D select during a flight too); LMB clicks and the trigger are dropped while it flies.
+      const ff = flightFrame(flight, manualTorpedoFlying(d.tactical), weaponSel, lastGunSel, deps.triggerHeld?.() ?? false, deps.gunHeld?.() ?? false);   // gunHeld: the raw left button (duelMode's pointer.leftHeld(); the Flight seat's trigger elsewhere)
+      flight = ff.latch; triggerLive = ff.trigger;
+      weaponSel = nextWeaponSel(ff.sel, k);
       if (weaponSel !== WeaponSlot.Torpedo) lastGunSel = weaponSel;
+      const click = ff.clicks ? pew : null;   // the map's left click this frame, unless it is the start of a steer
       const dw = powerDelta(p);   // W / S: a bar on or off the selected weapon (at Weapons they are not the throttle)
       if (dw !== 0) {
         for (let n = 0; n < Math.abs(dw); n++) queue({ kind: 'weaponPower', slot: weaponSel, delta: Math.sign(dw) });
@@ -548,13 +553,13 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       for (const slot of [0, 1] as const) if (mode.changed[slot]) queue({ kind: 'gunMode', slot, manual: mode.modes[slot] });
       if (mode.changed[2]) queue({ kind: 'torpMode', manual: mode.modes[2] });
       const pewManual = mode.modes[0], gunManual = mode.modes[1], torpManual = mode.modes[2];
-      const lmbLaunch = pew !== null && weaponSel === WeaponSlot.Torpedo;   // LMB on the map with the torpedo selected launches it, as F
+      const lmbLaunch = click !== null && weaponSel === WeaponSlot.Torpedo;   // LMB on the map with the torpedo selected launches it, as F
       if (p.launch > 0 || lmbLaunch) { queue({ kind: 'missileLaunch' }); const why = refusal(d, 'launch', torpManual); if (why) refuse('launch', why); }
-      if (pew !== null && weaponSel === WeaponSlot.Pew && pewManual) {   // W-4 spec §4.3: on AUTO the click does nothing; on MAN, LMB with pew pew selected: one round along its turret
+      if (click !== null && weaponSel === WeaponSlot.Pew && pewManual) {   // W-4 spec §4.3: on AUTO the click does nothing; on MAN, LMB with pew pew selected: one round along its turret
         const why = refusal(d, 'pew');
         if (why) refuse('pew', why); else queue({ kind: 'pewFire' });
       }
-      const trig = deps.triggerHeld?.() ?? false;   // the autocannon fires while held (the held frame's gunHeld); a dead trigger says why
+      const trig = triggerLive;   // W-4 spec §7: the gated trigger; the autocannon fires while held (the held frame's gunHeld); a dead trigger says why
       if (trig && !triggerPrev && weaponSel === WeaponSlot.Autocannon && gunManual) { const why = refusal(d, 'autocannon'); if (why) refuse('autocannon', why); }
       triggerPrev = trig;
       if (p.camera > 0) { const cam = cameras.weapons; snapBack(cam, missileOf(d.tactical, 0) && cam.follow !== 'missile' ? 'missile' : 'ship'); }
@@ -674,7 +679,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
         ...(k.fireHeld && !look && (seatNow === 'helm' || seatNow === 'flight') ? { face: true } : {}),
         ...(steer >= 0 ? { aim: steer } : {}), ...(gunNow ? { gunHeld: true } : {}),   // Valkyrn spec §5.1
         ...(torpHold >= 0 ? { torpHeading: torpHold } : {}) };   // W-3, W-4 spec §7
-      if (!ended() && houndWeaponsSeat(d, active)) activeHeld = { ...activeHeld, ...weaponsSeatHeld(weaponSel, (deps.triggerHeld?.() ?? false) && gunModeBase(1), deps.reticleAim?.() ?? -1) };   // W-4 spec §8
+      if (!ended() && houndWeaponsSeat(d, active)) activeHeld = { ...activeHeld, ...weaponsSeatHeld(weaponSel, triggerLive && gunModeBase(1), deps.reticleAim?.() ?? -1) };   // W-4 spec §7, §8: the gated trigger, only while the autocannon's own switch is MAN
       pacer.sync();   // an Escape this frame pauses before any due tick runs
       pacer.pump();
       frameAlpha = alphaAt(deps.now(), lastTickTime);

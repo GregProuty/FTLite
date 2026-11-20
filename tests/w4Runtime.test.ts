@@ -10,13 +10,15 @@ import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import { createContactController } from '../src/renderer/src/app/duel/contactController';
 import { sitDown, standUp } from '../src/renderer/src/sim/stations';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
+import { removeMissile } from '../src/renderer/src/sim/tactical/state';
+import { DuelSystem } from '../src/renderer/src/sim/tactical/bars';
 import { holdInSight } from './helpers/sensorSight';
 
 const layout = parseShip(cutter), vp = { w: 1280, h: 720 };
 const ONE_FRAME = { presses: emptyPresses(), freqTo: null, freqKeyTo: null, gunFreqKeyTo: null, selectTo: null, modeTaps: [0, 0, 0], lockTo: null, torpTo: null } as const;
 
 function rig(cls?: number, kb?: DuelKeyboard) {   // kb: sample a real keyboard instead of the stub keys
-  let now = 0, keys: KeySample = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() }, pew: number | null = null, trigger = false, reticle: number | null = null;
+  let now = 0, keys: KeySample = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() }, pew: number | null = null, trigger = false, left = false, reticle: number | null = null, torpAt: number | null = null;
   const tasks: { at: number; cb: () => void }[] = [], contact = createContactController();
   const rt = createDuelRuntime({
     now: () => now, seed: 5, viewport: vp, layout, ...(cls !== undefined ? { cls } : {}),
@@ -26,6 +28,8 @@ function rig(cls?: number, kb?: DuelKeyboard) {   // kb: sample a real keyboard 
     takeContactRequests: () => contact.takeRequests(),
     takePew: () => { const p = pew; pew = null; return p; },
     triggerHeld: () => trigger,
+    gunHeld: () => left,   // W-4 spec §7: the raw left button (duelMode's pointer.leftHeld()); at this seat only flightFrame reads it
+    takeTorpHeading: () => { const v = torpAt; torpAt = null; return v; },   // the map's LMB torpedo steer, one frame's bearing
     reticleAim: () => reticle
   });
   /** A frame, one tick of wall time, a frame: what the first frame queued is applied on exactly that tick. */
@@ -33,14 +37,16 @@ function rig(cls?: number, kb?: DuelKeyboard) {   // kb: sample a real keyboard 
   const press = (action: KeyAction, n = 1): void => { keys = { ...keys, presses: { ...keys.presses, [action]: keys.presses[action] + n } }; };
   const set = (over: Partial<KeySample>): void => { keys = { ...keys, ...over }; };
   const click = (): void => { pew = 0; };   // a left click on the open map (its bearing is ignored on the Hound)
-  const hold = (on: boolean): void => { trigger = on; };
+  const hold = (on: boolean): void => { trigger = on; left = on; };   // the button down on the open map
+  const holdOff = (on: boolean): void => { left = on; trigger = false; };   // W-4 spec §7: the button down over a console block
+  const steerTo = (h: number): void => { torpAt = h; };   // W-4 spec §7: one frame's LMB steer bearing
   const aim = (v: number | null): void => { reticle = v; };
   const tap = (slot: 0 | 1 | 2): void => { const m = [...(keys.modeTaps ?? [0, 0, 0])]; m[slot] = (m[slot] ?? 0) + 1; keys = { ...keys, modeTaps: m }; };
   const statuses = (): string[] => rt.lastResults().map((r) => `${r.status}${'reason' in r && r.reason ? `:${r.reason}` : ''}`);
   tick();   // the solo start: player 1 goes away on tick 0
   const d = rt.duel;
   sitDown(d.interior, 0, d.weapons); tick();
-  return { rt, d, tick, press, set, click, hold, aim, tap, statuses, contact };
+  return { rt, d, tick, press, set, click, hold, holdOff, steerTo, aim, tap, statuses, contact };
 }
 
 describe("Single player at the Hound's Weapons seat (W-4 spec §9)", () => {
@@ -252,6 +258,88 @@ describe("the target room at the Hound's Weapons seat (W-4 amendment §3.6)", ()
       expect([r.contact.intercept('KeyE'), r.contact.intercept('KeyQ')]).toEqual([false, false]);   // the keys fall through to the seat
       r.press('interact'); r.tick();
       expect([r.statuses(), sys.lock, sys.torpLock, r.contact.aimWeapon()]).toEqual([['applied'], 2, -1, 'torpedo']);
+    } finally { r.rt.dispose(); }
+  });
+});
+
+describe('Single player around a MANUAL flight (W-4 spec §7)', () => {
+  it('during a flight: A/D select, the held trigger and clicks send nothing, R and Shift+R still work (amendment §2.6)', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      sys.bars[DuelSystem.Weapons] = 3; sys.weaponPower = [1, 1, 1];
+      r.press('weaponModeAll'); r.tick();   // Shift+R: both guns to MAN
+      r.set({ selectTo: 2 }); r.press('weaponMode'); r.tick();   // the torpedo selected: R sets it MANUAL (V does nothing at this seat)
+      r.press('launch'); r.tick();
+      expect([sys.pewManual, sys.gunManual, sys.torpManual, sys.missilesLaunched]).toEqual([true, true, true, 1]);
+      r.press('selectPrev'); r.tick();   // A: from the torpedo to the autocannon
+      expect(r.rt.held()[0]!.weaponSel).toBe(1);
+      expect('torpTurn' in r.rt.held()[0]!).toBe(false);
+      r.hold(true); r.tick(); r.tick();
+      expect(r.rt.held()[0]!.gunHeld).toBeUndefined();   // no trigger goes out (the sim drops it too, Task 3)
+      r.hold(false); r.set({ selectTo: 0 }); r.tick(); r.rt.takeRefusals();
+      r.click(); r.tick();
+      expect([r.statuses(), sys.missilesLaunched, r.rt.takeRefusals()]).toEqual([[], 1, []]);   // the click queued nothing: no pewFire, no second launch, no refusal
+      r.press('weaponMode'); r.tick();
+      expect([sys.pewManual, sys.gunManual]).toEqual([false, true]);   // R still flips the selected gun (pew pew) during the flight
+      r.press('weaponModeAll'); r.tick();
+      expect([sys.pewManual, sys.gunManual, sys.torpManual]).toEqual([false, false, true]);   // Shift+R too: the autocannon was on MAN, so both go to AUTO; the torpedo keeps its mode
+    } finally { r.rt.dispose(); }
+  });
+  it('a flight that ends with the button held off the map, then dragged onto it, sends no trigger until a fresh press (review finding 8)', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      sys.bars[DuelSystem.Weapons] = 3; sys.weaponPower = [1, 1, 1];
+      r.press('weaponModeAll'); r.tick();   // Shift+R: both guns to MAN
+      r.set({ selectTo: 2 }); r.press('weaponMode'); r.tick();   // the torpedo selected: R sets it MANUAL
+      r.set({ selectTo: 1 }); r.tick();   // back on the autocannon
+      r.press('launch'); r.tick();
+      expect(sys.missilesLaunched).toBe(1);
+      r.holdOff(true); r.tick();   // the button down over a console block: no trigger
+      removeMissile(r.d.tactical, 0); r.tick();   // the flight ends with it still down
+      r.hold(true);   // the pointer drags onto the open map; the button was never let go
+      for (let n = 0; n < 10; n++) { r.tick(); expect(r.rt.held()[0]!.gunHeld, `frame ${n}`).toBeUndefined(); }
+      r.hold(false); r.tick(); r.hold(true); r.tick();
+      expect(r.rt.held()[0]!.gunHeld).toBe(true);   // a fresh press fires
+    } finally { r.rt.dispose(); }
+  });
+  it('a click-launch whose press stays down steers at once: the next frames carry the held bearing, kept after the release; a quick click sends none (W-4c Decision 6)', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      r.set({ selectTo: 2 }); r.press('weaponMode'); r.tick();   // the torpedo selected: R sets it MANUAL
+      r.click(); r.tick();
+      expect(sys.missilesLaunched).toBe(1);
+      expect('torpHeading' in r.rt.held()[0]!).toBe(false);   // the launch frame: no bearing yet
+      r.steerTo(40); r.tick();   // the scene's LMB steer: the launch press still down over the map
+      expect(r.rt.held()[0]).toMatchObject({ torpHeading: 40 });
+      r.tick();   // let go: no new bearing, the last one holds
+      expect(r.rt.held()[0]).toMatchObject({ torpHeading: 40 });
+      expect(sys.missilesLaunched).toBe(1);   // the press never launches a second
+    } finally { r.rt.dispose(); }
+    const q = rig(), qs = q.d.tactical.systems[0];
+    try {
+      q.set({ selectTo: 2 }); q.press('weaponMode'); q.tick();
+      q.click(); q.tick(); q.tick(); q.tick();   // released in the launch frame: the scene asks nothing
+      expect([qs.missilesLaunched, 'torpHeading' in q.rt.held()[0]!]).toEqual([1, false]);   // it flies on its launch heading
+    } finally { q.rt.dispose(); }
+  });
+  it('the flight ends: a torpedo selection returns to the last gun; a trigger held across it is stale until a fresh press; no second launch', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      sys.bars[DuelSystem.Weapons] = 3; sys.weaponPower = [1, 1, 1];
+      r.press('weaponModeAll'); r.tick();   // Shift+R: both guns to MAN
+      r.set({ selectTo: 1 }); r.tick(); r.set({ selectTo: 2 }); r.tick();
+      r.press('weaponMode'); r.tick();   // the torpedo selected: R sets it MANUAL
+      r.click(); r.tick();
+      expect(sys.missilesLaunched).toBe(1);
+      r.hold(true); r.tick();
+      removeMissile(r.d.tactical, 0); r.tick();
+      expect(r.rt.held()[0]!.weaponSel).toBe(1);   // back to the autocannon, the last gun selected
+      expect(r.rt.held()[0]!.gunHeld).toBeUndefined();   // the held trigger is stale
+      expect(sys.missilesLaunched).toBe(1);
+      r.hold(false); r.tick(); r.hold(true);
+      for (let n = 0; n < 20; n++) r.tick();
+      expect(r.rt.held()[0]!.gunHeld).toBe(true);
+      expect(sys.gunShots).toBeGreaterThan(0);
     } finally { r.rt.dispose(); }
   });
 });

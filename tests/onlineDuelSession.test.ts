@@ -13,7 +13,7 @@ import { createSeatedDuel } from './helpers/duelSeat';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
-import { placeMissile } from '../src/renderer/src/sim/tactical/state';
+import { placeMissile, removeMissile } from '../src/renderer/src/sim/tactical/state';
 import { sitDown, standUp } from '../src/renderer/src/sim/stations';
 import type { OnlinePortDescriptor, OnlineStatus } from '../src/shared/onlineSession';
 import { duelCompatibility } from '../src/network/online/onlineDuel';
@@ -369,6 +369,27 @@ describe('the online Hound Weapons seat (W-4 spec §11)', () => {
     expect(modes()).toEqual([{ kind: 'gunMode', slot: 1, manual: true }]);
     consoles[0]!.mode?.(0); consoles[0]!.mode?.(2); r.pump();
     expect(modes().slice(1)).toEqual([{ kind: 'gunMode', slot: 0, manual: true }, { kind: 'torpMode', manual: true }]);
+    r.dispose();
+  });
+  it('a MANUAL flight: no gunHeld, no pewFire, then the selection returns; the turret is not predicted while it flies (W-4 spec §7, §11)', () => {
+    const r = rig(1);
+    placeMissile(r.d.tactical, 0, { x: 0, y: 1300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 30 }, true);
+    const c = r.attach(); r.session.frame();
+    const src = () => h.sources.at(-1) as unknown as { turret(slot: 0 | 1): number };
+    const key = (code: string): void => { r.key('keydown', code); r.key('keyup', code); r.pump(); };
+    r.key('keydown', 'KeyR', { shiftKey: true }); r.key('keyup', 'KeyR', { shiftKey: true }); r.pump();   // Shift+R: both guns to MAN (the rig's key takes the modifiers since W-4b)
+    const want = (c.state()!.tactical.ships[0].heading * 256 + 2000) % 65536;
+    h.sceneOpts[0]!.requests!.reticle(want); r.pump(); r.pump(); r.session.frame();
+    expect(src().turret(0)).toBe(0);   // k = 0 while it flies
+    key('Digit2'); h.sceneOpts[0]!.requests!.trigger(true); r.pump();
+    expect(c.helds().at(-1)).not.toHaveProperty('gunHeld');
+    h.sceneOpts[0]!.requests!.trigger(false); key('Digit1');
+    h.sceneOpts[0]!.requests!.pew(1234); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'pewFire')).toEqual([]);
+    key('Digit3');
+    removeMissile(r.d.tactical, 0); r.client().publish(r.d); r.pump(); r.session.frame();
+    expect(c.helds().at(-1)).toMatchObject({ weaponSel: 0 });   // back to the last gun
+    expect(src().turret(0)).toBeGreaterThan(0);   // predicted again
     r.dispose();
   });
 });

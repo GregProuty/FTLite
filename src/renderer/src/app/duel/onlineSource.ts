@@ -178,7 +178,8 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const d = duel();
       if (!houndWeaponsSeat(d, seat)) return slot === 0 ? d.tactical.systems[0].pewTurret : d.tactical.systems[0].gunTurret;
       const sys = d.tactical.systems[0];
-      return predictTurret(d.tactical, slot, sentHeld, gunModeShown[slot] ?? (slot === 0 ? sys.pewManual : sys.gunManual), unackedFrames);   // W-4 amendment §2.6: that gun's own mode
+      return predictTurret(d.tactical, slot, sentHeld, gunModeShown[slot] ?? (slot === 0 ? sys.pewManual : sys.gunManual),   // W-4 amendment §2.6: that gun's own mode
+        manualTorpedoFlying(d.tactical) ? 0 : unackedFrames);   // W-4 spec §11: (from W-4c) no MANUAL torpedo flies
     },
     /** Gun `slot`'s mode in flight (onlineDuel's gunModeSent for it), or null: the replica's flag is the base. */
     gunModeBase(slot, manual) { gunModeShown[slot] = manual; },

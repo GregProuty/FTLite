@@ -66,14 +66,14 @@ describe('the digit keys split by class (W-4 spec §9)', () => {
 });
 
 describe('selection, power and the trigger (W-4 spec §9)', () => {
-  it('selectTo wins; A/D step with wrap; while a MANUAL torpedo flies A/D do not select (W-4a, spec §19.1)', () => {
+  it('selectTo wins; A/D step with wrap, during a MANUAL flight too (W-4 spec §7)', () => {
     const k = (over: Partial<{ selectTo: number | null; selectPrev: number; selectNext: number }>) => ({ selectTo: over.selectTo ?? null, presses: { ...emptyPresses(), selectPrev: over.selectPrev ?? 0, selectNext: over.selectNext ?? 0 } });
-    expect(nextWeaponSel(0, k({ selectPrev: 1 }), false)).toBe(2);
-    expect(nextWeaponSel(2, k({ selectNext: 1 }), false)).toBe(0);
-    expect(nextWeaponSel(0, k({ selectNext: 2 }), false)).toBe(2);
-    expect(nextWeaponSel(1, k({ selectTo: 0, selectNext: 1 }), false)).toBe(0);
-    expect(nextWeaponSel(1, k({ selectNext: 1 }), true)).toBe(1);
-    expect(nextWeaponSel(1, k({ selectTo: 2 }), true)).toBe(2);
+    expect(nextWeaponSel(0, k({ selectPrev: 1 }))).toBe(2);
+    expect(nextWeaponSel(2, k({ selectNext: 1 }))).toBe(0);
+    expect(nextWeaponSel(0, k({ selectNext: 2 }))).toBe(2);
+    expect(nextWeaponSel(1, k({ selectTo: 0, selectNext: 1 }))).toBe(0);
+    expect(nextWeaponSel(1, k({ selectNext: 1 }))).toBe(2);   // W-4c: A/D select while a MANUAL torpedo flies
+    expect(nextWeaponSel(1, k({ selectTo: 2 }))).toBe(2);
   });
   it('W/S give a delta; the held fields send gunHeld only with the autocannon selected', () => {
     expect(powerDelta({ ...emptyPresses(), throttleUp: 1 })).toBe(1);

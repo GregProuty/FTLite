@@ -9,13 +9,28 @@ import { frequencyRequest, type KeyAction, type KeySample } from './input';
 /** The three weapons, in slot order. */
 export const WEAPON_COUNT = 3;
 
-/** The selection after a frame: a 1/2/3 key or a card click (selectTo) wins; else A/D's press edges step it, wrapping;
- *  while `steering` (W-4a: a MANUAL torpedo flies, W-3's A/D steer it) A/D do not select. */
-export function nextWeaponSel(sel: number, k: Pick<KeySample, 'selectTo'> & { presses: Pick<Record<KeyAction, number>, 'selectPrev' | 'selectNext'> }, steering: boolean): number {
+/** W-4 spec §9: selectTo wins; else the A/D press edges step with wrap (W-4c: during a MANUAL flight too). */
+export function nextWeaponSel(sel: number, k: Pick<KeySample, 'selectTo'> & { presses: Pick<Record<KeyAction, number>, 'selectPrev' | 'selectNext'> }): number {
   if (k.selectTo !== undefined && k.selectTo !== null && Number.isInteger(k.selectTo) && k.selectTo >= 0 && k.selectTo < WEAPON_COUNT) return k.selectTo;
-  if (steering) return sel;
   const steps = k.presses.selectNext - k.presses.selectPrev;
   return (((sel + steps) % WEAPON_COUNT) + WEAPON_COUNT) % WEAPON_COUNT;
+}
+/** W-4 spec §7: the Hound's Weapons seat's memory of a MANUAL torpedo flight: whether one flew last frame, and whether the held
+ *  trigger has been held since that flight ended (stale until released: a fresh press is needed). */
+export interface FlightLatch { flying: boolean; stale: boolean }
+export const NO_FLIGHT: FlightLatch = Object.freeze({ flying: false, stale: false });
+
+/** W-4 spec §7 (Decisions 6-8 of the W-4c plan): one frame of the seat around a MANUAL flight, before this frame's keys.
+ *  `flyingNow` the crew's MANUAL torpedo flies (local state, or the replica online); `sel` / `lastGun` the selection and the last
+ *  gun selected; `triggerNow` the left button held over the open map (the map-gated trigger); `buttonNow` the raw left
+ *  button, anywhere. Returns the next latch, the selection (on the frame the flight ends, the torpedo goes back to the last
+ *  gun), the trigger to send (never while flying, nor while stale: stale from a flight's end with the button down, on the
+ *  map or off it, until the button is released) and whether a left click may fire or launch (never while flying: the press
+ *  is the steer). */
+export function flightFrame(latch: FlightLatch, flyingNow: boolean, sel: number, lastGun: number, triggerNow: boolean, buttonNow: boolean): { latch: FlightLatch; sel: number; trigger: boolean; clicks: boolean } {
+  const ended = latch.flying && !flyingNow;
+  const stale = flyingNow ? false : ended ? buttonNow : latch.stale && buttonNow;
+  return { latch: { flying: flyingNow, stale }, sel: ended && sel === WeaponSlot.Torpedo ? lastGun : sel, trigger: triggerNow && !flyingNow && !stale, clicks: !flyingNow };
 }
 /** W/S this frame as a bar delta on the selected weapon (W up, S down; at the Weapons seat they are not the throttle). */
 export function powerDelta(presses: Pick<Record<KeyAction, number>, 'throttleUp' | 'throttleDown'>): number { return presses.throttleUp - presses.throttleDown; }
