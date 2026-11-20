@@ -20,7 +20,7 @@ import { CALLOUT_LIFT_PUNY } from '../src/renderer/src/render/calloutModel';
 import { stationSides } from '../src/renderer/src/render/consoleModel';
 import {
   BOARDER_BAR_LIFT_3D, boarderPose, CALLOUT_LIFT_3D, CALLOUT_LIFT_DOWN_3D, CARRY_LIFT_3D, CREW3D_BODIES, CREW3D_DIRECTIONS, CREW3D_KEY, CREW3D_META, CREW3D_NAMES,
-  CREW3D_SCALE, CREW3D_SHEETS, crew3dAnchorY, crew3dBody, crew3dHeadLift, crew3dMaskName, crew3dName, crew3dPose, crew3dSheet, loadCrew3d, nextCrew3d, saveCrew3d,
+  CREW3D_SCALE, CREW3D_SHEETS, crew3dAnchorY, crew3dBody, crew3dFrame, crew3dHeadLift, crew3dMaskName, crew3dName, crew3dPose, crew3dSheet, loadCrew3d, nextCrew3d, saveCrew3d,
   type Crew3dPoseInput
 } from '../src/renderer/src/render/crew3dModel';
 import { installCrew3d } from '../src/renderer/src/app/crew3dBoot';
@@ -55,6 +55,11 @@ function fakeAssets(with3d: boolean): GameAssets {
     nineSlice: (n) => { throw new Error(`no nine-slice ${n}`); }
   };
 }
+/** A running clock that advances `frames` frames of the fake assets' 6 fps animations (plus half a frame, clear of rounding). */
+const ticks = (frames: number): { dt: number; paused: boolean } => ({ dt: (frames + 0.5) / 6, paused: false });
+const PAUSED = { dt: 0, paused: true };
+const frameOf = (s: AnimatedSprite): number => Number(s.texture.label!.split('#')[1]);
+
 /** The i-th 3D figure of a crew layer: its root, the rendered sprite and the colour layer. */
 function figureOf(layer: ReturnType<typeof createCrewLayer>, i: number): { root: Container; base: AnimatedSprite; mask: AnimatedSprite } {
   const roots = layer.container.children.filter((c) => c.children.length === 2 && c.children.every((k) => k instanceof AnimatedSprite));
@@ -111,6 +116,11 @@ describe('the Crew3D model (spec section 4)', () => {
     const downed = crew3dPose({ ...standing, pid: 2, life: 'downed' }), dead = crew3dPose({ ...standing, pid: 2, life: 'dead' });
     expect([downed.anim, downed.alpha, downed.tint, downed.maskTint]).toEqual(['down', 0.85, 0xffffff, CREW_COLORS[2]]);
     expect([dead.anim, dead.alpha, dead.tint, dead.maskTint]).toEqual(['down', 1, 0x777777, 0x777777]);
+  });
+  it('a frame comes from the animation\'s own time: a loop wraps, a one-shot holds its last frame', () => {
+    expect([0, 0.9, 1, 7.99, 8, 19].map((t) => crew3dFrame(t, 8, true))).toEqual([0, 0, 1, 7, 0, 3]);
+    expect([0, 5, 6, 99].map((t) => crew3dFrame(t, 6, false))).toEqual([0, 5, 5, 5]);
+    expect([crew3dFrame(12.5, 1, true), crew3dFrame(-1, 4, true)]).toEqual([0, 0]);
   });
   it('a boarder attacks while it fights, walks when it moves, else idles', () => {
     expect(boarderPose(true, false, 'e').name).toBe('crew3d.boarder.attack.e');
@@ -199,8 +209,8 @@ describe('the crew layer with the 3D crew (spec section 4)', () => {
     const s = cutterState(), layer = createCrewLayer(fakeAssets(true), createRenderMemory()), a = s.crew[0]!;
     layer.draw(s, 1);
     const f = figureOf(layer, 0);
-    f.base.gotoAndStop(2); layer.draw(s, 1);
-    expect(f.mask.texture.label).toBe('crew3d.crewA.idle.s.mask#2');
+    layer.draw(s, 1, undefined, [], [], ticks(2));
+    expect([f.base.texture.label, f.mask.texture.label]).toEqual(['crew3d.crewA.idle.s#2', 'crew3d.crewA.idle.s.mask#2']);
     layer.draw(s, 1, undefined, [], [{ pid: 0, kind: 'power', x: (Position.x[a]! + 3) * TILE_PX, y: Position.y[a]! * TILE_PX }]);
     expect([f.base.texture.label, f.mask.texture.label]).toEqual(['crew3d.crewA.work.e#0', 'crew3d.crewA.work.e.mask#0']);
   });
@@ -210,11 +220,27 @@ describe('the crew layer with the 3D crew (spec section 4)', () => {
     Position.x[a] = Position.x[a]! + 0.1; layer.draw(s, 1);
     const f = figureOf(layer, 0);
     expect(f.base.texture.label).toMatch(/^crew3d[.]crewA[.]walk[.]e#/);
-    f.base.gotoAndPlay(5);
-    Position.x[a] = Position.x[a]! + 0.1; Position.y[a] = Position.y[a]! + 0.1; layer.draw(s, 1);
-    expect([f.base.texture.label, f.mask.texture.label]).toEqual(['crew3d.crewA.walk.se#5', 'crew3d.crewA.walk.se.mask#5']);
-    layer.draw(s, 1);   // no movement since the last drawn frame: idle, from its first frame
+    const start = frameOf(f.base);
+    Position.x[a] = Position.x[a]! + 0.1; Position.y[a] = Position.y[a]! + 0.1; layer.draw(s, 1, undefined, [], [], ticks(3));
+    expect([f.base.texture.label, f.mask.texture.label]).toEqual([`crew3d.crewA.walk.se#${(start + 3) % 8}`, `crew3d.crewA.walk.se.mask#${(start + 3) % 8}`]);
+    layer.draw(s, 1, undefined, [], [], ticks(3));   // no movement since the last drawn frame: idle, from its first frame
     expect(f.base.texture.label).toBe('crew3d.crewA.idle.se#0');
+  });
+  it('the animation runs on the layer\'s clock: it advances with the seconds given, and a pause holds the pose and the frame', () => {
+    const s = cutterState(), layer = createCrewLayer(fakeAssets(true), createRenderMemory()), a = s.crew[0]!;
+    layer.draw(s, 1);
+    Position.x[a] = Position.x[a]! + 0.1; layer.draw(s, 1);
+    Position.x[a] = Position.x[a]! + 0.1; layer.draw(s, 1, undefined, [], [], ticks(2));
+    const f = figureOf(layer, 0), mid = f.base.texture.label!;
+    expect(mid).toMatch(/^crew3d[.]crewA[.]walk[.]e#/);
+    expect(f.base.playing).toBe(false);                          // never Pixi's ticker
+    for (let k = 0; k < 3; k++) layer.draw(s, 1, undefined, [], [], PAUSED);   // nothing moves while paused: still mid-stride, not idle
+    expect([f.base.texture.label, f.mask.texture.label]).toEqual([mid, mid.replace('#', '.mask#')]);
+    layer.draw(s, 1);                                            // an absent clock: the pose follows, no time passes
+    expect(f.base.texture.label).toBe('crew3d.crewA.idle.e#0');
+    layer.draw(s, 1, undefined, [], [], ticks(1)); expect(frameOf(f.base)).toBe(1);
+    layer.draw(s, 1, undefined, [], [], PAUSED); expect(frameOf(f.base)).toBe(1);
+    layer.draw(s, 1, undefined, [], [], ticks(4)); expect(frameOf(f.base)).toBe(2);   // (1.5 + 4.5) frames into a 4-frame loop
   });
   it('a work target underfoot does not turn the figure, and walking beats the work pose', () => {
     const s = cutterState(), layer = createCrewLayer(fakeAssets(true), createRenderMemory()), a = s.crew[0]!;
@@ -285,8 +311,12 @@ describe('the boarder layer with the 3D boarder (spec section 4)', () => {
     Position.x[eid] = cx + 0.9; Position.y[eid] = cy;         // in the boarder's room, to its east
     layer.draw(s);
     expect(body.texture.label).toMatch(/^crew3d[.]boarder[.]attack[.]e#/);
-    body.gotoAndPlay(3);
-    Position.y[eid] = cy + 0.9; layer.draw(s);                // the crew member steps to its south-east: the swing carries on
+    expect(body.playing).toBe(false);                         // its own clock, never Pixi's ticker
+    layer.draw(s, 1 / 60, 3.5 / 6);                           // three frames on
+    expect(body.texture.label).toBe('crew3d.boarder.attack.e#3');
+    layer.draw(s, 1 / 60, 0); layer.draw(s, 1 / 60, 0);       // paused: the frame holds
+    expect(body.texture.label).toBe('crew3d.boarder.attack.e#3');
+    Position.y[eid] = cy + 0.9; layer.draw(s, 1 / 60, 0);     // the crew member steps to its south-east: the swing carries on
     expect(body.texture.label).toBe('crew3d.boarder.attack.se#3');
   });
   it('the dev toggle rebuilds the figure in the old art', () => {

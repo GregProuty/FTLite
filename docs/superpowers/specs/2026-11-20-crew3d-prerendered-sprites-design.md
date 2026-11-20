@@ -42,6 +42,10 @@ recommendation at every other choice. What that changed from the design below:
   0.75 tile does not turn the figure. A turn keeps the animation's frame; only a new animation restarts it.
 - **Draw order.** Crew sort by screen y (rank, so the order only changes when it must); a lying body sorts 0.6 tile
   behind its position. The duel's health bar sits over the 3D head.
+- **The animation holds while the game is paused** (owner, 2026-11-20). The 3D crew and the raider animate on the
+  presentation clock the layers are given (the light and feel's clock: 0 while a sector run or a duel is paused, or a
+  duel is decided), never on Pixi's own ticker. A paused crew member keeps its pose and its frame, so someone paused
+  mid-stride stays mid-stride instead of dropping to idle. The old art still plays on Pixi's ticker, as before.
 - **The render smoke test runs on request** (`CREW3D_RENDER_TEST=1` and Blender installed), not in every test run: it
   is a real GPU render.
 

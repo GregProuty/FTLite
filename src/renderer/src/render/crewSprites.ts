@@ -15,7 +15,7 @@ import { stationSides, type Side } from './consoleModel';
 import { CREW_COLORS, tokenLook } from './tokenModel';
 import { battlemapFor } from './battlemapModel';
 import { drawPaintedToken } from './painted/tokenDraw';
-import { CARRY_LIFT_3D, CREW3D_ANCHOR_X, CREW3D_SCALE, crew3dPose, DOWN_SORT_LIFT, WORK_AIM_MIN_TILES } from './crew3dModel';
+import { CARRY_LIFT_3D, CREW3D_ANCHOR_X, CREW3D_RUNNING, CREW3D_SCALE, crew3dFrame, crew3dPose, DOWN_SORT_LIFT, WORK_AIM_MIN_TILES, type Crew3dClock } from './crew3dModel';
 import type { Working } from './particles/sources';
 import type { PresentationPoint } from '../../../network/state/timeline';
 
@@ -27,12 +27,15 @@ const STRIDE_PER_TILE = (2 * Math.PI) / 0.7;
 const ANCHOR_X = 0.5, ANCHOR_Y = 0.75;   // spec §2: feet at the bottom of the 0.6-tile collision box
 
 /** `bob`: per player, a world-unit lift for a working crew member (Art-i spec section 6); absent or undefined is 0.
- *  `working`: who is working on what this frame (Crew3D spec section 4): the 3D crew play their work poses from it. */
-export interface CrewLayer { container: Container; draw(state: SimState, alpha: number, presentation?: readonly PresentationPoint[], bob?: readonly (number | undefined)[], working?: readonly Working[]): void }
+ *  `working`: who is working on what this frame (Crew3D spec section 4): the 3D crew play their work poses from it.
+ *  `clock`: the presentation seconds this frame and whether the game is paused: the 3D crew animate on it, and a pause
+ *  holds their pose and frame. Absent, nothing advances. */
+export interface CrewLayer { container: Container; draw(state: SimState, alpha: number, presentation?: readonly PresentationPoint[], bob?: readonly (number | undefined)[], working?: readonly Working[], clock?: Crew3dClock): void }
 
 interface CrewSprite { sprite: AnimatedSprite; anim: string | null }
 /** A 3D crew member: the rendered figure and, over it, the team-colour layer, which shows the same frame. */
-interface Crew3dFigure { root: Container; base: AnimatedSprite; mask: AnimatedSprite; anim: string | null; clock: string | null }
+/** `time`: frames into the animation, advanced by the layer's clock (never by Pixi's ticker). `key`: its draw-order key. */
+interface Crew3dFigure { root: Container; base: AnimatedSprite; mask: AnimatedSprite; anim: string | null; clock: string | null; time: number; fps: number; loop: boolean; key: number }
 
 /** One AnimatedSprite per crew member, keyed by StableId. Falls back to the Increment 1 circles when any crew name is missing.
  *  With the crewArt feature (Art-ii spec section 1) each player wears their own LimeZu character (slot pid % 4), untinted;
@@ -62,20 +65,26 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory, crew3d
     const base = new AnimatedSprite(first), mask = new AnimatedSprite(first);
     for (const s of [base, mask]) { s.scale.set(CREW3D_SCALE); root.addChild(s); }
     container.addChild(root);
-    return { root, base, mask, anim: null, clock: null };
+    return { root, base, mask, anim: null, clock: null, time: 0, fps: 0, loop: true, key: 0 };
   };
   /** The 3D crew (Crew3D spec section 4): two sprites per member, the figure and its colour layer tinted with the
    *  player colour, on the same frame. Lower on the screen draws in front. */
-  const draw3d = (state: SimState, alpha: number, liveIds: number[], pointFor: (eid: number) => PresentationPoint | undefined, bob: readonly (number | undefined)[], working: readonly Working[]): void => {
+  const draw3d = (state: SimState, alpha: number, liveIds: number[], pointFor: (eid: number) => PresentationPoint | undefined, bob: readonly (number | undefined)[], working: readonly Working[], clock: Crew3dClock): void => {
     syncCache(sprites, [], () => { throw new Error('unreachable'); }, (cs) => cs.sprite.destroy());
     syncCache(circles, [], () => { throw new Error('unreachable'); }, (g) => g.destroy());
     syncCache(tokens, [], () => { throw new Error('unreachable'); }, (g, id) => { g.destroy(); strides.delete(id); });
     syncCache(figures, liveIds, newFigure, (f, id) => { f.root.destroy({ children: true }); forget(id); });
     container.sortableChildren = true; carried.zIndex = Number.MAX_SAFE_INTEGER;
     if (sidesFor !== state.derived.layoutHash) { sides = stationSides(state); sidesFor = state.derived.layoutHash; }
-    const order: { f: Crew3dFigure; key: number }[] = [];
+    const order: Crew3dFigure[] = [];
     for (const eid of state.crew) {
       const id = Stable.id[eid]!, f = figures.get(id)!, pid = Owner.pid[eid]!, { x, y, dx, dy } = interpolated(eid, alpha, pointFor(eid));
+      order.push(f);
+      if (clock.paused && f.anim !== null) {   // paused: the pose and the frame hold (nothing moves, so "not moving" must not read as idle)
+        f.root.position.set(x * TILE_PX, y * TILE_PX + (bob[pid] ?? 0));
+        drawCarried(state, eid, pid, x, y, CARRY_LIFT_3D);
+        continue;
+      }
       const facing: Facing8 = facingFromDelta(dx, dy, memory.facing.get(id) ?? 's'); memory.facing.set(id, facing);
       const seat = Seated.station[eid]!, l = Life.state[eid], work = working.find((w) => w.pid === pid);
       // a target underfoot gives no direction worth turning to: keep the facing
@@ -87,22 +96,20 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory, crew3d
       });
       if (f.anim !== p.name) {
         const a = assets.animation(p.name), m = assets.animation(p.mask);
-        // a turn keeps the stride: only a new body or animation restarts the clock
-        const start = f.clock === p.clock ? f.base.currentFrame : p.anim === 'walk' ? id : 0;
-        f.anim = p.name; f.clock = p.clock; f.base.textures = a.textures; f.mask.textures = m.textures;
-        f.base.animationSpeed = a.fps / 60; f.base.loop = a.loop;
-        if (a.textures.length > 1) f.base.gotoAndPlay(start % a.textures.length); else f.base.gotoAndStop(0);
-      }
-      f.mask.gotoAndStop(f.base.currentFrame);   // the colour layer never runs its own clock
+        if (f.clock !== p.clock) f.time = p.anim === 'walk' ? id % a.textures.length : 0; else f.time += clock.dt * f.fps;   // a turn keeps the stride
+        f.anim = p.name; f.clock = p.clock; f.fps = a.fps; f.loop = a.loop; f.base.textures = a.textures; f.mask.textures = m.textures;
+      } else f.time += clock.dt * f.fps;
+      const frame = crew3dFrame(f.time, f.base.totalFrames, f.loop);
+      f.base.gotoAndStop(frame); f.mask.gotoAndStop(frame);   // both layers on the layer's clock, never Pixi's ticker
       for (const s of [f.base, f.mask]) s.anchor.set(CREW3D_ANCHOR_X, p.anchorY);
       f.base.tint = p.tint; f.mask.tint = p.maskTint; f.root.alpha = p.alpha;
       f.root.position.set(x * TILE_PX, y * TILE_PX + (bob[pid] ?? 0));
-      order.push({ f, key: p.anim === 'down' ? y - DOWN_SORT_LIFT : y });   // a lying body is anchored at its middle: sort it by its far edge
+      f.key = p.anim === 'down' ? y - DOWN_SORT_LIFT : y;   // a lying body is anchored at its middle: sort it by its far edge
       drawCarried(state, eid, pid, x, y, CARRY_LIFT_3D);
     }
     // Lower on the screen draws in front. The rank, not y, is the zIndex: it changes only when the order does, so a
     // walking crew member does not make Pixi rebuild the render group every frame.
-    order.sort((a, b) => a.key - b.key).forEach((o, rank) => { if (o.f.root.zIndex !== rank) o.f.root.zIndex = rank; });
+    order.sort((a, b) => a.key - b.key).forEach((f, rank) => { if (f.root.zIndex !== rank) f.root.zIndex = rank; });
   };
 
   /** Interpolated draw position, and the movement since the last drawn frame (not since the last tick: a paused sim must read as idle). */
@@ -123,12 +130,12 @@ export function createCrewLayer(assets: GameAssets, memory: RenderMemory, crew3d
 
   return {
     container,
-    draw(state, alpha, presentation, bob = [], working = []) {
+    draw(state, alpha, presentation, bob = [], working = [], clock = CREW3D_RUNNING) {
       const pointFor = (eid: number) => presentation?.find(point => point.id === `crew:${state.crew.indexOf(eid)}`);
       const liveIds = state.crew.map((eid) => Stable.id[eid]!);
       if (carried.parent !== container) container.addChild(carried); else container.setChildIndex(carried, container.children.length - 1);
       syncCache(torps, liveIds, () => { const g = new Graphics(); drawTorpedo(g, 0, 0, 20); carried.addChild(g); return g; }, (g) => { g.destroy(); });
-      if (use3d && crew3d()) { draw3d(state, alpha, liveIds, pointFor, bob, working); return; }
+      if (use3d && crew3d()) { draw3d(state, alpha, liveIds, pointFor, bob, working, clock); return; }
       syncCache(figures, [], () => { throw new Error('unreachable'); }, (f) => f.root.destroy({ children: true }));
       container.sortableChildren = false;
       if (battlemapFor(state.layout.id, missing)) {   // Art-iv spec section 5: VTT tokens on a painted ship
