@@ -91,9 +91,10 @@ export interface ShipSystems {
    *  ever MANUAL (torpMode), and every round starts AUTO. A launch copies it onto the torpedo (Missile.manual). */
   torpManual: boolean;
   /** W-4 spec §3.1: the Hound's turrets, each a signed offset from the nose in fine heading steps (AIM_STEPS to the turn),
-   *  within ± its class's turret arcSteps (0 on a class without that turret); and both guns' mode, false AUTO, true MAN
-   *  (gunMode; only the crew slot of a turret class is ever MAN). Every round starts 0 / 0 / AUTO. */
-  pewTurret: number; gunTurret: number; gunsManual: boolean;
+   *  within ± its class's turret arcSteps (0 on a class without that turret). W-4 amendment §2.1: each gun's own mode,
+   *  pew pew's and the autocannon's, false AUTO, true MAN (gunMode {slot}; only the crew slot of a class whose weapon in
+   *  that slot has a turret is ever MAN). Every round starts 0 / 0 / AUTO / AUTO. */
+  pewTurret: number; gunTurret: number; pewManual: boolean; gunManual: boolean;
 }
 
 /** A cruise missile's flight (spec §7b). */
@@ -234,7 +235,7 @@ function systemsFor(cls: number, target: number, crew = false): ShipSystems {
     pewCharge: pew ? pewFullCharge(pew) : 0, pewShots: 0, pewHits: 0,   // W-1: a pew starts the round full
     laserManual: false, laserAim: -1,   // W-2: every round starts AUTO, with no MANUAL burst pending
     torpManual: false,   // W-3: and the torpedo too
-    pewTurret: 0, gunTurret: 0, gunsManual: false,   // W-4 spec §3.1: the turrets on the nose, both guns AUTO
+    pewTurret: 0, gunTurret: 0, pewManual: false, gunManual: false,   // W-4 spec §3.1, amendment §2.1: the turrets on the nose, each gun AUTO
     bars: crew ? [...START_BARS] : Array<number>(DUEL_SYSTEM_COUNT).fill(0),   // Engineering spike spec §2
     weaponPower: crew ? [...START_WEAPON_POWER] : Array<number>(WEAPON_SLOTS).fill(0)   // spec §10.3
   };
@@ -242,7 +243,7 @@ function systemsFor(cls: number, target: number, crew = false): ShipSystems {
 function emptySystems(): ShipSystems {
   return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, laserTargeted: false, torpLock: 0, torpRoom: 0, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: 0, magazineClock: 0, laserRock: 0, torpRock: 0, torpRockFlying: 0, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
-    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0, pewCharge: 0, pewShots: 0, pewHits: 0, laserManual: false, laserAim: 0, torpManual: false, pewTurret: 0, gunTurret: 0, gunsManual: false,
+    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0, pewCharge: 0, pewShots: 0, pewHits: 0, laserManual: false, laserAim: 0, torpManual: false, pewTurret: 0, gunTurret: 0, pewManual: false, gunManual: false,
     bars: Array<number>(DUEL_SYSTEM_COUNT).fill(0), weaponPower: Array<number>(WEAPON_SLOTS).fill(0) };
 }
 /** A free missile pool entry. */

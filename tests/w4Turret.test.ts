@@ -1,4 +1,4 @@
-// W-4 spec §3.1, §3.2, §13.1: the turret state (two signed offsets and one mode flag, 0 / false at the start, bounded by
+// W-4 spec §3.1, §3.2, §13.1: the turret state (two signed offsets and a mode flag per gun (W-4 amendment §2.1), 0 / false at the start, bounded by
 // the slot's own class), and the slew law: toward the wanted offset (clampAim's signed difference, clamped to the arc) by
 // at most the rate, never past it; integers in and out; the wrap across 0 / 65535.
 import { describe, expect, it } from 'vitest';
@@ -45,17 +45,17 @@ describe('the slew law (W-4 spec §3.2)', () => {
 describe('the turret state (W-4 spec §3.1, §13.1)', () => {
   it('starts 0 / false on every slot and class', () => {
     for (const cls of [ShipClass.Cutter, ShipClass.Valkyrn, ShipClass.ValkyrnLaser]) for (const s of createTacticalState(5, 2, cls).systems)
-      expect([s.pewTurret, s.gunTurret, s.gunsManual]).toEqual([0, 0, false]);
+      expect([s.pewTurret, s.gunTurret, s.pewManual, s.gunManual]).toEqual([0, 0, false, false]);   // W-4 amendment §2.1: a mode per gun
   });
   it('round-trips mid-slew through flatten and unflatten', () => {
     const st = createTacticalState(5), s = st.systems[0]!;
-    Object.assign(s, { pewTurret: -2911, gunTurret: 4000, gunsManual: true });
+    Object.assign(s, { pewTurret: -2911, gunTurret: 4000, pewManual: true, gunManual: false });
     const back = createTacticalState(5);
     unflattenTactical(back, flattenTactical(st));
-    expect([back.systems[0]!.pewTurret, back.systems[0]!.gunTurret, back.systems[0]!.gunsManual]).toEqual([-2911, 4000, true]);
+    expect([back.systems[0]!.pewTurret, back.systems[0]!.gunTurret, back.systems[0]!.pewManual, back.systems[0]!.gunManual]).toEqual([-2911, 4000, true, false]);   // the two flags are separate values
     expect(() => validateTacticalValues(st, flattenTactical(st))).not.toThrow();
   });
-  it('bounds each turret by its slot\'s class: the Hound\'s ±arc, 0 elsewhere; gunsManual only on the crew slot of a turret class', () => {
+  it('bounds each turret by its slot\'s class: the Hound\'s ±arc, 0 elsewhere; each gun\'s mode only on the crew slot of a class whose weapon in that slot has a turret', () => {
     const bad = (cls: number, f: (st: ReturnType<typeof createTacticalState>) => void): string => {
       const st = createTacticalState(5, 2, cls); f(st);
       try { validateTacticalValues(st, flattenTactical(st)); return 'ok'; } catch (e) { return String((e as Error).message); }
@@ -65,8 +65,15 @@ describe('the turret state (W-4 spec §3.1, §13.1)', () => {
     expect(bad(ShipClass.Cutter, (st) => { st.systems[0]!.gunTurret = GUN + 1; })).toMatch(/gunTurret/);
     expect(bad(ShipClass.Cutter, (st) => { st.systems[1]!.pewTurret = 1; })).toMatch(/pewTurret/);   // the Hunter: no turret
     expect(bad(ShipClass.Valkyrn, (st) => { st.systems[0]!.gunTurret = 1; })).toMatch(/gunTurret/);   // the Valkyrn's gun: no turret
-    expect(bad(ShipClass.Cutter, (st) => { st.systems[0]!.gunsManual = true; })).toBe('ok');
-    expect(bad(ShipClass.Cutter, (st) => { st.systems[1]!.gunsManual = true; })).toMatch(/gunsManual/);
-    expect(bad(ShipClass.Valkyrn, (st) => { st.systems[0]!.gunsManual = true; })).toMatch(/gunsManual/);
+    // W-4 amendment §2.1: each flag is checked against its own weapon's turret.
+    expect(bad(ShipClass.Cutter, (st) => { st.systems[0]!.pewManual = true; })).toBe('ok');
+    expect(bad(ShipClass.Cutter, (st) => { st.systems[0]!.gunManual = true; })).toBe('ok');
+    expect(bad(ShipClass.Cutter, (st) => { st.systems[0]!.pewManual = true; st.systems[0]!.gunManual = true; })).toBe('ok');
+    expect(bad(ShipClass.Cutter, (st) => { st.systems[1]!.pewManual = true; })).toMatch(/pewManual/);   // the Hunter: its pew has no turret
+    expect(bad(ShipClass.Cutter, (st) => { st.systems[1]!.gunManual = true; })).toMatch(/gunManual/);   // and it has no gun
+    expect(bad(ShipClass.Valkyrn, (st) => { st.systems[0]!.gunManual = true; })).toMatch(/gunManual/);   // the Valkyrn's gun: no turret
+    expect(bad(ShipClass.Valkyrn, (st) => { st.systems[0]!.pewManual = true; })).toMatch(/pewManual/);   // no pew at all
+    expect(bad(ShipClass.ValkyrnLaser, (st) => { st.systems[0]!.pewManual = true; })).toMatch(/pewManual/);
+    expect(bad(ShipClass.ValkyrnLaser, (st) => { st.systems[0]!.gunManual = true; })).toMatch(/gunManual/);
   });
 });

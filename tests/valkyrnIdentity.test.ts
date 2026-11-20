@@ -5,7 +5,7 @@
 // throttle level, the held heading, the power module and the command results; it leaves out SIM_VERSION and the helm
 // module's crew-Helm field (thrMille), which only the Cutter's Newtonian Helm uses. A pinned whole-run number (kind b):
 // a deliberate Valkyrn change re-records it, with a "was" note.
-// W-4 spec §13.4 (W-4b): the hashed array leaves out pewTurret, gunTurret and gunsManual by name (they are always 0 / false
+// W-4 spec §13.4 (W-4b): the hashed array leaves out pewTurret, gunTurret, pewManual and gunManual by name (they are always 0 / false
 // on the Valkyrn, and a nonzero one appends `:TURRET`, failing the pin); the digests are unchanged.
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
@@ -22,9 +22,9 @@ import type { TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { VALKYRN } from './helpers/valkyrnGate';
 
 const HOUND = parseShip(hound), TICKS = 3000;
-/** W-4 spec §13.4: the three W-4b fields (always 0 / false on the Valkyrn, asserted per tick below) are left out by name, so
+/** W-4 spec §13.4: the four W-4b fields (always 0 / false on the Valkyrn, asserted per tick below) are left out by name, so
  *  the hashed array is flattenTactical before W-4b's fields, element for element: every tactical module's fields in order, −0 as 0. */
-const W4B_FIELDS = /^systems\.\d+\.(pewTurret|gunTurret|gunsManual)$/;
+const W4B_FIELDS = /^systems\.\d+\.(pewTurret|gunTurret|pewManual|gunManual)$/;
 function flattenWithoutTurrets(t: TacticalState): number[] {
   const out: number[] = [];
   for (const m of TACTICAL_MODULES) for (const f of m.fields(t)) if (!W4B_FIELDS.test(f.name)) f.read(t, out);
@@ -40,7 +40,7 @@ function run(kind: 'pilot' | 'pair', seed: number): string {
       const r = stepDuelTick(d, input);
       h.update(Buffer.from(Float64Array.from([...flattenWithoutTurrets(d.tactical), d.throttle, d.holdHeading, ...d.power.heat, ...d.power.coolant, ...d.power.failed.map(Number)]).buffer));
       h.update(JSON.stringify(r));
-      for (const s of d.tactical.systems) zero &&= s.pewTurret === 0 && s.gunTurret === 0 && !s.gunsManual;
+      for (const s of d.tactical.systems) zero &&= s.pewTurret === 0 && s.gunTurret === 0 && !s.pewManual && !s.gunManual;
     }
     return `${kind}-${seed}:${d.interior.tick}:${h.digest('hex').slice(0, 16)}${zero ? '' : ':TURRET'}`;
   } finally { disposeDuel(d); }

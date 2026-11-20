@@ -8,7 +8,7 @@
 import { hashF64 } from '../../../../shared/hash';
 import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
 import { DUEL_SYSTEM_COUNT, SYSTEM_SLOTS, WEAPON_BAR_MAX, WEAPON_SLOTS } from './bars';
-import { hasTurret, pewFullCharge, SHIP_CLASSES, type ShipClassDef } from './defs';
+import { pewFullCharge, SHIP_CLASSES, type ShipClassDef } from './defs';
 import { AIM_STEPS, DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, GUN_POOL, HEADING_COUNT, HUNTER_PEW_GAP, HUNTER_TRAIL_TICKS, PEW_POOL, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
 import { rockCapacity, ROCK_RESERVE, ROCK_STRIDE } from './rocks';
 import { CREW_SLOT, emptyMissile, emptyRound, HunterMode, Outcome, type GunRound, type Missile, type MissileFlight, type Ship, type ShipSystems, type TacticalState } from './state';
@@ -23,8 +23,8 @@ const BODY = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'planetHits', 'aste
 const SYSTEMS_HEAD = ['cls', 'target', 'hull'] as const satisfies readonly (keyof ShipSystems)[];
 const SYSTEMS_TAIL = ['shields', 'shieldClock', 'laserCharge', 'laserHold', 'fireHeld', 'lock', 'freq', 'laserTargeted', 'torpLock', 'torpRoom', 'laserBurst', 'laserBurstClock', 'magazine', 'magazineClock',
   'shots', 'laserHits', 'layersStripped', 'missilesLaunched', 'missileHits', 'missilesLost', 'laserRock', 'torpRock', 'torpRockFlying', 'rocksBroken',   // the rock targets, spike ii §8
-  'gunHeat', 'gunLocked', 'gunCooldown', 'gunMuzzle', 'gunWear', 'gunHull', 'gunShots', 'gunHits', 'pewCharge', 'pewShots', 'pewHits', 'laserManual', 'laserAim', 'torpManual', 'pewTurret', 'gunTurret', 'gunsManual'] as const satisfies readonly (keyof ShipSystems)[];   // the gun's, Valkyrn spec §7.3; the pew's, W-1; the laser mode and burst aim, W-2; the torpedo mode, W-3; the turrets and the guns' mode, W-4b; gunRoomWear closes the record
-const FLAGS = new Set<string>(['released', 'fireHeld', 'laserTargeted', 'gunLocked', 'laserManual', 'torpManual', 'gunsManual']);
+  'gunHeat', 'gunLocked', 'gunCooldown', 'gunMuzzle', 'gunWear', 'gunHull', 'gunShots', 'gunHits', 'pewCharge', 'pewShots', 'pewHits', 'laserManual', 'laserAim', 'torpManual', 'pewTurret', 'gunTurret', 'pewManual', 'gunManual'] as const satisfies readonly (keyof ShipSystems)[];   // the gun's, Valkyrn spec §7.3; the pew's, W-1; the laser mode and burst aim, W-2; the torpedo mode, W-3; the turrets and each gun's mode, W-4b (amendment §2.1); gunRoomWear closes the record
+const FLAGS = new Set<string>(['released', 'fireHeld', 'laserTargeted', 'gunLocked', 'laserManual', 'torpManual', 'pewManual', 'gunManual']);
 export const MISSILE_KEYS = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'age'] as const satisfies readonly (keyof MissileFlight)[];
 /** Compile-time completeness: a `Missile` member missing from these keys makes this `never` assignment fail typecheck. */
 type MissingMissileKeys = Exclude<keyof Missile, (typeof MISSILE_KEYS)[number] | 'active' | 'owner' | 'manual'>;   // W-3: manual is its own bit
@@ -253,9 +253,9 @@ const systemsRules = (slots: number, rocks: number): Readonly<Record<string, (v:
   laserManual: flagBit, laserAim: within(-1, AIM_STEPS - 1),
   // W-3 (pew pew spec §4): the torpedo mode a bit (validateTacticalValues adds the crew-only check).
   torpManual: flagBit,
-  // W-4 spec §13.1: the guns' mode a bit (validateTacticalValues adds the crew-and-turret check); the turrets are checked
-  // against the slot's own class (turretRule).
-  gunsManual: flagBit,
+  // W-4 spec §13.1, amendment §2.1: each gun's mode a bit (validateTacticalValues adds the crew-and-turret check); the
+  // turrets are checked against the slot's own class (turretRule).
+  pewManual: flagBit, gunManual: flagBit,
   bars: within(0, Math.max(...SYSTEM_SLOTS)),   // Engineering spike spec §2, §10.1: 0..10 per system
   weaponPower: within(0, WEAPON_BAR_MAX + 1)   // spec §10.3
 });
@@ -300,7 +300,7 @@ function fieldNameParts(name: string): FieldNameParts {
  *  writing them anywhere: heading indices, integer counters, room levels 0..2, shields, the laser and the magazine
  *  against the largest class, the hunter's and the outcome's enums, the map's asteroid count and the slot count; an
  *  inactive ship slot holds only zeros; each missile pool entry: active 0 or 1, a free entry holds only zeros, a missile's
- *  owner is an active slot with no other missile in flight, its heading index and age. Each round pool entry likewise: active 0 or 1, a free entry holds only zeros, an owner that is an active slot, an age within the longest gun life (the gun's round pool and the pew's alike, W-1). W-2: only the crew slot's laser is MANUAL, and a slot's laserAim is −1 unless a burst shot is pending. W-3: only the crew slot's torpedo mode is MANUAL, and only the crew's torpedo is manual. W-4: a slot's turrets within its class's arcs, and the guns' mode only on the crew slot of a turret class. `shape` is any tactical state made
+ *  owner is an active slot with no other missile in flight, its heading index and age. Each round pool entry likewise: active 0 or 1, a free entry holds only zeros, an owner that is an active slot, an age within the longest gun life (the gun's round pool and the pew's alike, W-1). W-2: only the crew slot's laser is MANUAL, and a slot's laserAim is −1 unless a burst shot is pending. W-3: only the crew slot's torpedo mode is MANUAL, and only the crew's torpedo is manual. W-4: a slot's turrets within its class's arcs, and each gun's mode only on the crew slot of a class whose weapon in that slot has a turret (amendment §2.1). `shape` is any tactical state made
  *  from the same seed and slot count (only its map and slot count are read). Throws naming the first bad field; returns
  *  the offset after the values. */
 export function validateTacticalValues(shape: TacticalState, values: ArrayLike<number>, offset = 0): number {
@@ -327,9 +327,9 @@ export function validateTacticalValues(shape: TacticalState, values: ArrayLike<n
         if (ship[1] === 'systems' && key === 'laserAim' && i !== CREW_SLOT && slice[0] !== -1) bad('only the crew laser has a manual aim');   // W-2: the Hunter is always AUTO
         if (ship[1] === 'systems' && key === 'laserAim' && slice[0] !== -1 && (burstOf.get(i) ?? 0) === 0) bad('a manual aim with no burst pending');   // W-2: it waits only for a burst's next shot
         if (ship[1] === 'systems' && key === 'torpManual' && i !== CREW_SLOT && slice[0] !== 0) bad('only the crew torpedo has a manual mode');   // W-3: the Hunter is always AUTO
-        if (ship[1] === 'systems' && key === 'gunsManual' && slice[0] !== 0) {   // W-4 spec §13.1: only the crew slot of a turret class has a gun mode
-          const c = SHIP_CLASSES[clsOf.get(i) ?? -1];
-          if (i !== CREW_SLOT || c === undefined || !hasTurret(c)) bad('only the crew slot of a turret class has a gun mode');
+        if (ship[1] === 'systems' && (key === 'pewManual' || key === 'gunManual') && slice[0] !== 0) {   // W-4 amendment §2.1: a gun's mode only on the crew slot of a class whose weapon in that slot has a turret
+          const c = SHIP_CLASSES[clsOf.get(i) ?? -1], turret = (key === 'pewManual' ? c?.slots.pew : c?.slots.gun)?.turret ?? null;
+          if (i !== CREW_SLOT || turret === null) bad('only the crew slot of a class with that turret has a gun mode');
         }
       }
     } else if (missile) {
