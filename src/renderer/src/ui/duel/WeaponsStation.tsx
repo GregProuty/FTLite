@@ -100,6 +100,48 @@ function Pips({ slot, bars, crt, flash = false }: { slot: 0 | 1 | 2; bars: numbe
   );
 }
 
+/** The TORPEDO card's body under its header (both blocks): the AUTO / MAN tag (`onMode` flips it), MAG, the status word
+ *  (STEER LMB / COASTING / FLYING in flight, MANUAL, else IN RANGE / OUT OF RANGE), the target and LAUNCH. */
+function TorpedoCardBody({ weapons, onMode, flash }: { weapons: WeaponsPanel; onMode: () => void; flash: boolean }) {
+  const actions = useActions(), { crt } = useCrt();
+  const dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT, hot = crt ? CRT.hot : AMBER;
+  const T = weaponCard('torpedo'), tx = T.x + 6, torpRock = weapons.torpRock === true || weapons.torpRockFlying === true;
+  return (
+    <>
+      {weapons.torpManual !== undefined
+        ? <Button name="torp-mode" label={weapons.torpManual ? 'MAN' : 'AUTO'} x={tx + 66} y={T.y + 2} w={36} h={18} lit={weapons.torpManual} onPress={onMode} />
+        : null}
+      <PixelText text={`MAG ${weapons.magazine}`} x={tx} y={T.y + 20} size={FONT_SIZE} tint={main} />
+      {weapons.missileFlying
+        ? <PixelText text={weapons.torpSteer === true ? 'STEER LMB' : weapons.torpCoast === true ? 'COASTING' : 'FLYING'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={hot} />
+        : weapons.torpManual === true
+        ? <PixelText text="MANUAL" x={tx} y={T.y + 42} size={FONT_NATIVE} tint={main} />
+        : <PixelText text={weapons.torpedoInRange ? 'IN RANGE' : 'OUT OF RANGE'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={weapons.torpedoInRange ? main : dim} />}
+      <PixelText text={targetText(weapons.torpTarget, torpRock)} x={tx} y={T.y + 56} size={FONT_NATIVE} tint={weapons.torpTarget >= 0 || torpRock ? hot : dim} />
+      <Button name="launch" label="LAUNCH" hint="F" x={tx} y={T.pipsY + 14} w={T.w - 12} h={24} dim={!weapons.canLaunch} flash={flash} onPress={() => actions.console.press('launch')} />
+    </>
+  );
+}
+
+/** Sci-1 spec §7.4: the frequency row under the divider (both blocks): A B C with the tuned one lit, the weak one marked, and
+ *  the key hint (`hint`: 4/5/6 on the Hound, 3/4/5 on a laser class) at the right. */
+function FreqRow({ weapons, hint }: { weapons: WeaponsPanel; hint: string }) {
+  const actions = useActions(), { crt } = useCrt();
+  const top = stationTop('weapons'), x0 = STATION.x + 8, y0 = top + 6 + PEW_ROW_H + CARD_PIPS_H, right = STATION.x + STATION.w - 8;
+  const dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT;
+  return (
+    <>
+      <Box x={x0} y={y0 + 156} w={right - x0} h={1} style={{ background: hex(crt ? CRT.dim : BAR_OFF) }} />
+      <PixelText text="FREQ" x={x0} y={y0 + 174} size={FONT_NATIVE} tint={main} />
+      {FREQ_NAMES.map((label, f) => <Button key={f} name={`freq-${f}`} label={label} x={x0 + 52 + f * 56} y={y0 + 170} w={52} h={24}
+        lit={weapons.freq === f} onPress={() => actions.console.frequency(f)} />)}
+      {weapons.weakFreq !== null && <Box x={x0 + 52 + weapons.weakFreq * 56 + 41} y={y0 + 164} w={7} h={7} attrs={{ 'data-ui-weak-freq': FREQ_NAMES[weapons.weakFreq] ?? '' }}
+        style={{ background: hex(crt ? CRT.hot : AMBER), transform: 'rotate(45deg)' }} />}
+      <PixelText text={hint} x={right} y={y0 + 174} size={FONT_NATIVE} tint={dim} anchorX={1} />
+    </>
+  );
+}
+
 /** The Weapons station's how-to hint (spike ii: a rock is a target too). */
 export const WEAPONS_HINT = 'CLICK A WEAPON, THEN A ROOM OR ROCK';
 /** Engineering spike §10.3: the free Weapons bars' words, right-aligned on the reason row (every refusal and reason starts
@@ -127,14 +169,13 @@ function HoundWeapons({ weapons, aim }: { weapons: WeaponsPanel; aim: Weapon | n
   const dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT, hot = crt ? CRT.hot : AMBER;
   const A = weaponCard('autocannon'), T = weaponCard('torpedo'), ax = A.x + 6, tx = T.x + 6;
   const gun = weapons.autocannon!, selected = weapons.selected ?? 0, bars = weapons.weaponBars ?? null, pew = weapons.pew ?? [];
-  const torpRock = weapons.torpRock === true || weapons.torpRockFlying === true;
   const refused = weapons.refused ?? null, flash = (k: string): boolean => refused?.control === k && refused.flash;
   const powerFlash = (slot: number): boolean => refused?.control === 'power' && refused.flash && selected === slot;
   const blinkOn = Math.floor(now * 2 * FIRING_FLASH_HZ) % 2 === 0;
   const pewHot = selected === 0, edge = pewHot ? hot : crt ? CRT.mid : DIM;
   const select = (slot: 0 | 1 | 2) => (): void => actions.console.select?.(slot);
   const gunTag = (slot: 0 | 1): string => (weapons.gunsHand === slot ? 'MAN' : weapons.gunsHold ? 'HOLD' : 'AUTO');   // amendment §2.5: what the gun does now
-  const who = (c: string): string => (c === 'launch' ? 'TORPEDO' : c === 'pew' ? 'PEW' : c === 'autocannon' ? 'AUTOCANNON' : c === 'power' ? 'POWER' : c === 'laser' ? 'ROOM' : 'FIRE');   // W-4 amendment §3.6: on the Hound the laser control is the target room's refusal
+  const who = (c: string): string => (c === 'launch' ? 'TORPEDO' : c === 'pew' ? 'PEW' : c === 'autocannon' ? 'AUTOCANNON' : c === 'power' ? 'POWER' : c === 'laser' ? 'ROOM' : /* fire, and any other control */ 'FIRE');   // W-4 amendment §3.6: on the Hound the laser control is the target room's refusal
   return (
     <>
       <Panel x={STATION.x} y={top} w={STATION.w} h={STATION.h.weapons} />
@@ -162,29 +203,13 @@ function HoundWeapons({ weapons, aim }: { weapons: WeaponsPanel; aim: Weapon | n
       <Card weapon="torpedo" lit={aim === 'torpedo'} crt={crt} rock={weapons.torpRock === true} selected={selected === 2} onSelect={select(2)} />
       <PixelText text="TORPEDO" x={tx} y={T.y + 6} size={FONT_NATIVE} tint={aim === 'torpedo' || selected === 2 ? hot : dim} />
       <PixelText text="3" x={T.x + T.w - 6} y={T.y + 6} size={FONT_NATIVE} tint={dim} anchorX={1} />
-      {weapons.torpManual !== undefined
-        ? <Button name="torp-mode" label={weapons.torpManual ? 'MAN' : 'AUTO'} x={tx + 66} y={T.y + 2} w={36} h={18} lit={weapons.torpManual} onPress={() => actions.console.mode?.(2)} />
-        : null}
-      <PixelText text={`MAG ${weapons.magazine}`} x={tx} y={T.y + 20} size={FONT_SIZE} tint={main} />
-      {weapons.missileFlying
-        ? <PixelText text={weapons.torpSteer === true ? 'STEER LMB' : weapons.torpCoast === true ? 'COASTING' : 'FLYING'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={hot} />
-        : weapons.torpManual === true
-        ? <PixelText text="MANUAL" x={tx} y={T.y + 42} size={FONT_NATIVE} tint={main} />
-        : <PixelText text={weapons.torpedoInRange ? 'IN RANGE' : 'OUT OF RANGE'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={weapons.torpedoInRange ? main : dim} />}
-      <PixelText text={targetText(weapons.torpTarget, torpRock)} x={tx} y={T.y + 56} size={FONT_NATIVE} tint={weapons.torpTarget >= 0 || torpRock ? hot : dim} />
-      <Button name="launch" label="LAUNCH" hint="F" x={tx} y={T.pipsY + 14} w={T.w - 12} h={24} dim={!weapons.canLaunch} flash={flash('launch')} onPress={() => actions.console.press('launch')} />
+      <TorpedoCardBody weapons={weapons} onMode={() => actions.console.mode?.(2)} flash={flash('launch')} />
       {bars && ([0, 1, 2] as const).map((slot) => <Pips key={slot} slot={slot} bars={bars[slot] ?? 0} crt={crt} flash={powerFlash(slot)} />)}
       <PixelText text={refused !== null ? `${who(refused.control)}: ${refused.reason}` : 'LMB FIRE · A/D SELECT · W/S POWER'} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={refused !== null ? hot : dim} />
       {bars && <PixelText text={freeText(weapons.weaponFree ?? 0)} x={right} y={y0 + 116} size={FONT_NATIVE} tint={(weapons.weaponFree ?? 0) > 0 ? hot : dim} anchorX={1} />}
       <PixelText text={houndRoomHint(weapons.lock, weapons.torpTarget >= 0 || weapons.torpRock === true)} x={x0} y={y0 + 134} size={FONT_NATIVE} tint={dim} />
       <PixelText text={`ROCKS ${weapons.rocks ?? 0}`} x={right} y={y0 + 134} size={FONT_NATIVE} tint={(weapons.rocks ?? 0) > 0 ? main : dim} anchorX={1} />
-      <Box x={x0} y={y0 + 156} w={right - x0} h={1} style={{ background: hex(crt ? CRT.dim : BAR_OFF) }} />
-      <PixelText text="FREQ" x={x0} y={y0 + 174} size={FONT_NATIVE} tint={main} />
-      {FREQ_NAMES.map((label, f) => <Button key={f} name={`freq-${f}`} label={label} x={x0 + 52 + f * 56} y={y0 + 170} w={52} h={24}
-        lit={weapons.freq === f} onPress={() => actions.console.frequency(f)} />)}
-      {weapons.weakFreq !== null && <Box x={x0 + 52 + weapons.weakFreq * 56 + 41} y={y0 + 164} w={7} h={7} attrs={{ 'data-ui-weak-freq': FREQ_NAMES[weapons.weakFreq] ?? '' }}
-        style={{ background: hex(crt ? CRT.hot : AMBER), transform: 'rotate(45deg)' }} />}
-      <PixelText text="4/5/6" x={right} y={y0 + 174} size={FONT_NATIVE} tint={dim} anchorX={1} />
+      <FreqRow weapons={weapons} hint="4/5/6" />
     </>
   );
 }
@@ -197,7 +222,7 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
   const barColour = crt ? crtRowLook(c, now).bar : c.bar?.colour ?? TEXT;
   const L = weaponCard('laser'), T = weaponCard('torpedo'), lx = L.x + 6, tx = T.x + 6;
   const reason = weapons.laserReason ?? null, firing = reason === 'FIRING', bars = weapons.weaponBars ?? null;
-  const laserRock = weapons.laserRock === true, torpRock = weapons.torpRock === true || weapons.torpRockFlying === true;
+  const laserRock = weapons.laserRock === true;
   // Feel-ii §2.8: a refused FIRE or LAUNCH flashes, and the row under the cards names why for REFUSAL_SHOW_S. Engineering
   // spike §10.4: a refused beam lock (E/Q on an unseen enemy, the `laser` control) flashes FIRE and reads BEAM.
   const refused = weapons.refused ?? null, flash = (k: string): boolean => (refused?.control === k || (k === 'fire' && refused?.control === 'laser')) && refused.flash;
@@ -225,17 +250,7 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
       <Card weapon="torpedo" lit={aim === 'torpedo'} crt={crt} rock={weapons.torpRock === true} />
       <PixelText text="TORPEDO" x={tx} y={T.y + 6} size={FONT_NATIVE} tint={aim === 'torpedo' ? hot : dim} />
       <PixelText text="2" x={T.x + T.w - 6} y={T.y + 6} size={FONT_NATIVE} tint={dim} anchorX={1} />
-      {weapons.torpManual !== undefined
-        ? <Button name="torp-mode" label={weapons.torpManual ? 'MAN' : 'AUTO'} x={tx + 66} y={T.y + 2} w={36} h={18} lit={weapons.torpManual} onPress={() => actions.console.press('torpMode')} />
-        : null}
-      <PixelText text={`MAG ${weapons.magazine}`} x={tx} y={T.y + 20} size={FONT_SIZE} tint={main} />
-      {weapons.missileFlying
-        ? <PixelText text={weapons.torpSteer === true ? 'STEER LMB' : weapons.torpCoast === true ? 'COASTING' : 'FLYING'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={hot} />
-        : weapons.torpManual === true
-        ? <PixelText text="MANUAL" x={tx} y={T.y + 42} size={FONT_NATIVE} tint={main} />
-        : <PixelText text={weapons.torpedoInRange ? 'IN RANGE' : 'OUT OF RANGE'} x={tx} y={T.y + 42} size={FONT_NATIVE} tint={weapons.torpedoInRange ? main : dim} />}
-      <PixelText text={targetText(weapons.torpTarget, torpRock)} x={tx} y={T.y + 56} size={FONT_NATIVE} tint={weapons.torpTarget >= 0 || torpRock ? hot : dim} />
-      <Button name="launch" label="LAUNCH" hint="F" x={tx} y={T.pipsY + 14} w={T.w - 12} h={24} dim={!weapons.canLaunch} flash={flash('launch')} onPress={() => actions.console.press('launch')} />
+      <TorpedoCardBody weapons={weapons} onMode={() => actions.console.press('torpMode')} flash={flash('launch')} />
       {refused !== null
         ? <PixelText text={`${refused.control === 'launch' ? 'LAUNCH' : refused.control === 'pew' ? 'PEW' : refused.control === 'laser' ? 'BEAM' : 'FIRE'}: ${refused.reason}`} x={x0} y={y0 + 116} size={FONT_NATIVE} tint={hot} />
         : reason !== null && !firing
@@ -244,13 +259,7 @@ export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null
       {bars && ([0, 1, 2] as const).map((slot) => <Pips key={slot} slot={slot} bars={bars[slot] ?? 0} crt={crt} />)}
       {bars && <PixelText text={freeText(weapons.weaponFree ?? 0)} x={right} y={y0 + 116} size={FONT_NATIVE} tint={(weapons.weaponFree ?? 0) > 0 ? hot : dim} anchorX={1} />}
       <PixelText text={reason !== null && !firing ? WEAPONS_HINT : 'RIGHT-CLICK A WEAPON: CLEAR'} x={x0} y={y0 + 134} size={FONT_NATIVE} tint={dim} />
-      <Box x={x0} y={y0 + 156} w={right - x0} h={1} style={{ background: hex(crt ? CRT.dim : BAR_OFF) }} />
-      <PixelText text="FREQ" x={x0} y={y0 + 174} size={FONT_NATIVE} tint={main} />
-      {FREQ_NAMES.map((label, f) => <Button key={f} name={`freq-${f}`} label={label} x={x0 + 52 + f * 56} y={y0 + 170} w={52} h={24}
-        lit={weapons.freq === f} onPress={() => actions.console.frequency(f)} />)}
-      {weapons.weakFreq !== null && <Box x={x0 + 52 + weapons.weakFreq * 56 + 41} y={y0 + 164} w={7} h={7} attrs={{ 'data-ui-weak-freq': FREQ_NAMES[weapons.weakFreq] ?? '' }}
-        style={{ background: hex(crt ? CRT.hot : AMBER), transform: 'rotate(45deg)' }} />}
-      <PixelText text="3/4/5" x={right} y={y0 + 174} size={FONT_NATIVE} tint={dim} anchorX={1} />
+      <FreqRow weapons={weapons} hint="3/4/5" />
       <PixelText text={`ROCKS ${weapons.rocks ?? 0}`} x={right} y={y0 + 134} size={FONT_NATIVE} tint={(weapons.rocks ?? 0) > 0 ? main : dim} anchorX={1} />
     </>
   );

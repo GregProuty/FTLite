@@ -22,7 +22,7 @@ import { worldToScreen, type Point } from './camera';
 import { rockEffectDraw } from './rockFx';
 import { CORE_S, FLOAT_RISE_PX, FLOAT_S, FLOAT_STEP_PX, interpolatedMissile, KILL_S, type FxState } from './fxModel';
 import {
-  BEARING_RING_ZOOM, fineHeadingOf, headingAngle, interpolatedShip, drawnScale, ringDraw, SHIP_CHEVRON_PX, type Label, type PrevBody, type RingDraw,
+  BEARING_RING_ZOOM, headingAngle, interpolatedShip, drawnScale, ringDraw, SHIP_CHEVRON_PX, type Label, type PrevBody, type RingDraw,
   type TacticalModelInput
 } from './tacticalModel';
 import { HULLS, hullFor, roomCentre } from './hullModel';
@@ -84,9 +84,8 @@ export interface CombatDraw {
   torpedoPath?: Point[]; evade?: EvadeDraw | null; pings?: PingDraw[];
   /** Valkyrn spec §7.4: the gun sight on the Flight map, and the rounds in flight as tracers (a gun class only). */
   gunSight?: GunSightDraw | null; rounds?: { x1: number; y1: number; x2: number; y2: number }[];
-  /** W-1 (pew pew spec §1): on the Weapons map the pew cone (its edges drawn dim) and the aim line toward the pointer,
-   *  clamped into the cone (mid); on every console map each pew round as a short streak (hot). */
-  pewCone?: ArcDraw | null; pewAim?: Segment | null; pewRounds?: Segment[];
+  /** W-1 (pew pew spec §1): on every console map each pew round as a short streak (hot). */
+  pewRounds?: Segment[];
   /** W-2 (pew pew spec §2): on the Weapons map in MANUAL, while Space would fire, the laser's aim line (drawn dashed main). */
   laserAim?: Segment | null;
   /** W-4 spec §10: the Hound's turrets: the selected gun's arc (Weapons), each gun's muzzle line, the reticle (Weapons) and AUTO's bracket (Weapons). */
@@ -125,8 +124,6 @@ export interface CombatModelInput extends TacticalModelInput {
   pings?: readonly Ping[];
   /** Valkyrn spec §5: the Flight seat's map (the Helm map with the Weapons side tools): the gun sight, the torpedo circle lit. */
   flight?: boolean;
-  /** W-1: the pointer on the Weapons map (screen px), for the pew's aim line; absent or null draws none. */
-  pewPointer?: Point | null;
   /** W-2: the MANUAL laser's aim on the Weapons map (a fine heading, MapRequests.laserAim); null or absent aims along the nose. */
   laserAim?: number | null;
   /** W-4 spec §10, §11: the turret offsets to draw (online the own seat's predicted selected turret); absent: the state's. */
@@ -289,19 +286,6 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   // Feel-ii §2.7: the pings, target pings riding on the enemy's drawn marker while it is shown.
   const pings = pingDraws(input.pings ?? [], toS, enemyShown ? enemyS : null);
   const gun = cls.slots.gun ? { gunSight: input.flight ? gunSightDraw({ state, prev, alpha, camera: cam, viewport: vp, t: input.t ?? 0 }) : null, rounds: roundDraws(state, toS) } : {};   // Valkyrn spec §7.4
-  // W-1 (pew pew spec §1): the pew cone about the nose (the sim's integer heading, which it clamps about), the aim line toward
-  // the pointer clamped as the sim will clamp it, and every round as a streak ending at the round.
-  const pewDef = cls.slots.pew;
-  let pewCone: ArcDraw | null = null, pewAim: Segment | null = null;
-  if (input.console === 'weapons' && pewDef && pewDef.turret === null && input.ships.includes(0)) {   // W-4: a turret pew draws its arc and muzzle line below
-    const heading = state.ships[0].heading, r = PEW_RANGE * z;
-    pewCone = { x: ownS.x, y: ownS.y, r, angle: headingAngle(heading), half: (pewDef.arcSteps / AIM_STEPS) * 2 * Math.PI };
-    const p = input.pewPointer ?? null;
-    if (p && Math.hypot(p.x - ownS.x, p.y - ownS.y) > 1) {
-      const a = (clampAim(heading, fineHeadingOf(p.x - ownS.x, p.y - ownS.y), pewDef.arcSteps) / AIM_STEPS) * 2 * Math.PI;
-      pewAim = { x1: ownS.x, y1: ownS.y, x2: ownS.x + Math.sin(a) * r, y2: ownS.y - Math.cos(a) * r };
-    }
-  }
   // W-4 spec §10: on a turret class (the Hound) the selected gun's arc about the drawn nose (dim), each gun's muzzle line
   // along its turret offset about the drawn nose (Decision 5: the hull carries the turret; the selected one mid on the
   // Weapons map, dim elsewhere), the reticle at the pointer, and a bracket on the enemy while an AUTO-driven gun (not in
@@ -342,5 +326,5 @@ export function combatModel(input: CombatModelInput): CombatDraw {
     const a = toS(q.x - q.vx * PEW_STREAK_S, q.y - q.vy * PEW_STREAK_S), b = toS(q.x, q.y);
     return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
   });
-  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange, status, helmArc, solution, goal, floats, torpedoPath, evade, pings, pewCone, pewAim, pewRounds, laserAim, turretArc, muzzles, reticle, bracket, ...gun };
+  return { weapons, lock, missiles, effects, charge, callouts, torpedoRange, status, helmArc, solution, goal, floats, torpedoPath, evade, pings, pewRounds, laserAim, turretArc, muzzles, reticle, bracket, ...gun };
 }

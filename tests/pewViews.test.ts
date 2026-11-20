@@ -1,5 +1,4 @@
-// W-1 pew pew (spec 2026-11-18-pew-pew-weapons-design §1, §5): the views. The Weapons map draws the cone edges and the aim
-// line clamped into the cone, every round as a short streak; a pew hit sparks, pops a stripped layer and floats -1 on a
+// W-1 pew pew (spec 2026-11-18-pew-pew-weapons-design §1, §5): the views. The Weapons map draws every round as a short streak; a pew hit sparks, pops a stripped layer and floats -1 on a
 // crew hull hit; the online view's gap events carry the pew from its counters.
 import { describe, expect, it } from 'vitest';
 import { duelCounters, gapEvents } from '../src/renderer/src/app/duel/onlineSource';
@@ -13,8 +12,8 @@ import { AIM_STEPS, HEADING_COUNT, PEW_RANGE } from '../src/renderer/src/sim/tac
 
 const vp = { w: 1280, h: 720 };
 const prevOf = (st: TacticalState): PrevBody[] => st.ships.map((s) => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc }));
-function input(st: TacticalState, cam: Camera, console: 'helm' | 'weapons', pewPointer: { x: number; y: number } | null = null): CombatModelInput {
-  return { state: st, prev: prevOf(st), alpha: 1, camera: cam, viewport: vp, console, axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: 236, missilePrev: [null, null], fx: createFx(), pewPointer };
+function input(st: TacticalState, cam: Camera, console: 'helm' | 'weapons'): CombatModelInput {
+  return { state: st, prev: prevOf(st), alpha: 1, camera: cam, viewport: vp, console, axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: 236, missilePrev: [null, null], fx: createFx() };
 }
 function northFacing(): TacticalState {
   const st = createTacticalState(5);
@@ -30,13 +29,12 @@ describe('fineHeadingOf', () => {
 });
 
 describe('the Weapons map (spec §1)', () => {
-  // W-4 spec §10: the Hound's turreted pew draws no W-1 cone or aim line; the selected arc and the muzzle lines replace them
-  // (tests/w4Map.test.ts). The crew class's pew always has a turret, so no class keeps the cone / aim-line rules: the aim-line
-  // case is deleted and the cone case pins the arc's width and the absence of the cone.
-  it("draws no W-1 cone or aim line on the Hound's Weapons map; the turret arc keeps the pew's width", () => {
+  // W-4 spec §10: the Hound's turreted pew draws the selected arc and the muzzle lines (tests/w4Map.test.ts). The crew class's
+  // pew always has a turret, so no class keeps the W-1 cone / aim-line rules: the aim-line case and the cone (with its model
+  // fields) are deleted; this case pins the turret arc's width.
+  it("the Hound's Weapons map turret arc keeps the pew's width", () => {
     const st = northFacing(), cam = createCamera(st.ships[0].x, st.ships[0].y, 0.5);
-    const c = combatModel(input(st, cam, 'weapons', { x: 700, y: 300 }));
-    expect([c.pewCone ?? null, c.pewAim ?? null]).toEqual([null, null]);
+    const c = combatModel(input(st, cam, 'weapons'));
     expect(PEW_HALF).toBeCloseTo(Math.PI / 3, 12);
     expect(c.turretArc!.half).toBeCloseTo(PEW_HALF, 3);
     expect(c.turretArc!.r).toBe(PEW_RANGE * 0.5);

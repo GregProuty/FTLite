@@ -33,13 +33,12 @@ function scene(bearing = 0, cls?: number): { st: TacticalState; cam: Camera } {
 const angleOf = (m: { x1: number; y1: number; x2: number; y2: number }): number => Math.atan2(m.x2 - m.x1, -(m.y2 - m.y1));
 
 describe("the Hound's Weapons map (W-4 spec §10)", () => {
-  it("the selected arc is the selected gun's; none with the torpedo selected; no W-1 cone or aim line", () => {
+  it("the selected arc is the selected gun's; none with the torpedo selected", () => {
     const { st, cam } = scene();
     const c0 = combatModel(input(st, cam, 'weapons', { weaponSel: 0 })), c1 = combatModel(input(st, cam, 'weapons', { weaponSel: 1 })), c2 = combatModel(input(st, cam, 'weapons', { weaponSel: 2 }));
     expect(c0.turretArc!.half).toBeCloseTo((PEW_ARC_STEPS / AIM_STEPS) * 2 * Math.PI, 12);
     expect(c1.turretArc!.half).toBeCloseTo((AUTOCANNON_ARC_STEPS / AIM_STEPS) * 2 * Math.PI, 12);
     expect(c2.turretArc ?? null).toBeNull();
-    expect([c0.pewCone ?? null, c0.pewAim ?? null]).toEqual([null, null]);
   });
   it('the muzzle lines follow the turrets (input.turrets wins over the state) and the selection', () => {
     const { st, cam } = scene();
