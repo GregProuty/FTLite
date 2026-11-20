@@ -102,8 +102,9 @@ Scope: the Hound only, as W-4. The Hunter, the Valkyrn and the laser fit keep th
   key handler already sees `shiftKey`, as the Shift+W case does).
   - **Ctrl+R and Meta+R are not mode presses.** The handler's `KeyEventLike` carries only `code`, `repeat` and
     `shiftKey` today, so it gains `ctrlKey?` and `metaKey?`, and `down` counts neither action for KeyR when either is
-    set. The page guards already let Ctrl and Meta chords through to the browser (`pageGuards.ts`), and KeyR is not
-    added to `GUARDED_CODES`: plain R and Shift+R have no browser default.
+    set. The page guards already let Ctrl and Meta chords through to the browser (`pageGuards.ts`). `GUARDED_CODES`
+    is built from `PRESS_CODES`, so KeyR joins it with no edit there; that only stops a plain R's default while
+    playing.
 - **W-4's rename of KeyZ's action is dropped.** KeyZ stays `laserMode` and KeyV stays `torpMode` in the table. The
   runtime and online read them only at a laser class's Weapons seat (the laser fit), as today. At the Hound's Weapons
   seat they read neither. W-4a's Hound branch reads V today (`p.torpMode`, in `runtime.ts` and `onlineDuel.ts`); that
@@ -111,7 +112,8 @@ Scope: the Hound only, as W-4. The Hunter, the Valkyrn and the laser fit keep th
 - **Elsewhere:** on the laser fit's Weapons seat Z and V are unchanged and R does nothing. The Flight seat reads none of
   Z, V and R, as today (it has no modes). Moving the laser fit to R is not in this build (§7).
 - **`app/controlsList.ts`:** W-4's "Z: both guns AUTO / MAN" row becomes "R: the selected weapon AUTO / MAN" and
-  "Shift+R: both guns AUTO / MAN". The Hound's Z and V rows go. The rows stay built from the input tables.
+  "Shift+R: both guns AUTO / MAN". The list has one Weapons section for both fits, so the Z and V rows stay and are
+  re-labelled for the laser fit's Weapons seat. The rows stay built from the input tables.
 
 ### 2.5 The console
 
@@ -190,8 +192,10 @@ Scope: the Hound only, as W-4. The Hunter, the Valkyrn and the laser fit keep th
   - every round fired by AUTO's rules: 0;
   - every round of the Hunter and the Valkyrn: 0.
 - **`placeRound` and `emptyRound`** (`gun.ts`, `state.ts`) write it. `placeRound` copies a fixed list of members, so
-  `room` joins the list, or a recycled entry would keep its old tag. Its argument type (`Omit<GunRound, 'active'>`)
-  then makes every caller pass it: the Hunter's and the Valkyrn's pass 0.
+  `room` joins the list, or a recycled entry would keep its old tag. In `placeRound`'s argument `room` is optional
+  and defaults to 0: about thirty tests place rounds by hand, one of them the fence file
+  `tests/valkyrnRoundsRocks.test.ts`, which must not change. The sim's own callers pass it (the Hunter's and the
+  Valkyrn's 0).
 - **Hash** (`hash.ts`): `roundFields` gains a third field of its own per entry, `${pool}.${k}.room`, a scalar after
   `${pool}.${k}.flight`. It does not join `ROUND_KEYS` (the `flight` vector), so it can be left out by name.
   `MissingRoundKeys` excludes `'room'` beside `'active'` and `'owner'`. `ROUND_SLOT` becomes 8, and
