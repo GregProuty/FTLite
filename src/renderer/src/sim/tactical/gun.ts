@@ -8,18 +8,19 @@ import { weaponBars, WeaponSlot } from './bars';
 import { dirBetween, hx, hy } from './direction';
 import { hitRock, pushRock } from './rockBreak';
 import { rockAt, rockMass, rocksNear } from './rocks';
-import { classOf, CREW_SLOT, emptyRound, handControl, Room, type GunRound, type TacticalState } from './state';
+import { classOf, CREW_SLOT, emptyRound, handControl, Room, roundRoom, type GunRound, type TacticalState } from './state';
 import { interceptTime, nearestHeading } from './lead';
 import { AIM_STEPS, DT, GUN_AUTO_HEAT_STOP, HEADING_COUNT } from './tuning';
 import type { ShipInput } from './weapons';
 
 /** Put a round in a pool (spec §7.2; W-1: the gun's `state.rounds` by default, or the pew's `state.pew`): the lowest free
- *  entry, else the active round with the highest age, the lowest index on a tie. Returns its entry. */
-export function placeRound(state: TacticalState, r: Omit<GunRound, 'active'>, pool: GunRound[] = state.rounds): GunRound {
+ *  entry, else the active round with the highest age, the lowest index on a tie. Returns its entry. W-4 amendment §3.3:
+ *  `room` the round's tag (absent 0, none). */
+export function placeRound(state: TacticalState, r: Omit<GunRound, 'active' | 'room'> & { room?: number }, pool: GunRound[] = state.rounds): GunRound {
   let k = pool.findIndex((e) => !e.active);
   if (k < 0) { k = 0; for (let j = 1; j < pool.length; j++) if (pool[j]!.age > pool[k]!.age) k = j; }
   const e = pool[k]!;
-  Object.assign(e, { x: r.x, y: r.y, vx: r.vx, vy: r.vy, age: r.age, owner: r.owner, active: true });
+  Object.assign(e, { x: r.x, y: r.y, vx: r.vx, vy: r.vy, age: r.age, owner: r.owner, active: true, room: r.room ?? 0 });   // W-4 amendment §3.3: a recycled entry takes the new round's tag (none unless given)
   return e;
 }
 
@@ -52,15 +53,16 @@ export function gunLead(state: TacticalState, i: number, tx: number, ty: number,
 
 /** One round from ship i's next muzzle: `muzzleForward` ahead of the centre and `muzzleLateral` to starboard (90°
  *  clockwise of the nose, (−hy, hx)) or port, at `speed` along the nose plus the ship's velocity; the muzzles alternate,
- *  the cooldown restarts, and the heat rises, locking the gun when it reaches heatMax. */
-function fireRound(state: TacticalState, i: number, g: GunDef, manual = false): void {
+ *  the cooldown restarts, and the heat rises, locking the gun when it reaches heatMax. W-4 amendment §3.3: `room` tags the
+ *  round (the autocannon in hand: its ship's lock + 1). */
+function fireRound(state: TacticalState, i: number, g: GunDef, manual = false, room = 0): void {
   const ship = state.ships[i]!, s = state.systems[i]!, h0 = hx(ship.heading), h1 = hy(ship.heading), side = s.gunMuzzle === 0 ? 1 : -1;
   // W-4 spec §5: the muzzles stay on the hull (the nose frame); a turret gun's round flies along its aim (pew.ts aimDir's
   // arithmetic), the Valkyrn's along the nose as before.
   const a = g.turret === null ? 0 : gunAimFine(state, i), [ux, uy] = g.turret === null ? [h0, h1] : dirBetween(Math.floor(a / HEADING_COUNT), (a % HEADING_COUNT) / HEADING_COUNT);
   placeRound(state, {
     x: ship.x + h0 * g.muzzleForward - h1 * g.muzzleLateral * side, y: ship.y + h1 * g.muzzleForward + h0 * g.muzzleLateral * side,
-    vx: ship.vx + ux * g.speed, vy: ship.vy + uy * g.speed, age: 0, owner: i
+    vx: ship.vx + ux * g.speed, vy: ship.vy + uy * g.speed, age: 0, owner: i, room
   });
   state.events.push({ kind: 'gunFire', ship: i, muzzle: s.gunMuzzle });
   s.gunMuzzle = 1 - s.gunMuzzle; s.gunCooldown = g.turret === null ? g.intervalTicks : gunInterval(state, i, manual); s.gunShots++;
@@ -90,7 +92,7 @@ export function tickGun(state: TacticalState, i: number, input: ShipInput, auto 
   // W-4 spec §4.3, §5: in hand it fires on the held trigger (the step sets it only with the autocannon selected); AUTO-driven
   // (on AUTO, or on MAN but not selected: owner 2026-11-19) it fires on solution once hostile (`auto`, applyWeaponsInput) while
   // below the 80 % heat stop, so it never locks; no hysteresis. A held trigger does nothing to an AUTO-driven gun.
-  if (hand ? input.gunHeld : auto && s.gunHeat < GUN_AUTO_HEAT_STOP) fireRound(state, i, g, hand);
+  if (hand ? input.gunHeld : auto && s.gunHeat < GUN_AUTO_HEAT_STOP) fireRound(state, i, g, hand, hand ? s.lock + 1 : 0);   // W-4 amendment §3.3: a round fired by hand carries the target room; an AUTO-driven gun's carries none
 }
 
 /** W-1: shared with the pew's rounds (pew.ts). The entry parameter t in [0, 1] of the segment (ox, oy) → (nx, ny) into the circle at (cx, cy) of radius r: 0 when
@@ -128,8 +130,9 @@ export function gunRoomOf(state: TacticalState, target: number, ox: number, oy: 
 /** Owner's round on (ox, oy) → (nx, ny) hit ship k (spec §7.2). Shielded: one wear toward a layer; at hitsPerLayer the
  *  layer goes (shieldClock 0) and the wear is 0. Unshielded: one hull wear (every hitsPerHull, hull −1) and one wear on
  *  the struck Room (every hitsPerLevel, its level +1 to 2; at level 2 its wear stays 0). The owner counts the hit; a
- *  gunHit event marks the closest-approach point, and `level` says whether it raised the struck Room's level. */
-function gunHit(state: TacticalState, owner: number, k: number, ox: number, oy: number, nx: number, ny: number): void {
+ *  gunHit event marks the closest-approach point, and `level` says whether it raised the struck Room's level. W-4
+ *  amendment §3.4: `tag` the round's room; a turret gun wears that room (none for an untagged round). */
+function gunHit(state: TacticalState, owner: number, k: number, ox: number, oy: number, nx: number, ny: number, tag = 0): void {
   const g = classOf(state, owner).slots.gun, t = state.systems[k]!, b = state.ships[k]!;
   if (!g) return;
   const [x, y] = closest(ox, oy, nx, ny, b.x, b.y);
@@ -142,12 +145,16 @@ function gunHit(state: TacticalState, owner: number, k: number, ox: number, oy: 
     state.events.push({ kind: 'gunHit', ship: k, room: -1, stripped, hull: false, level: false, x, y });
     return;
   }
-  const room = gunRoomOf(state, k, ox, oy, nx, ny);
+  // W-4 amendment §3.4: a turret gun's round wears the room it was fired at (its tag, wherever on the ship it lands), and an
+  // untagged one (AUTO's) wears no room: room −1, level false. The Valkyrn's gun (no turret) keeps the room under the round.
+  const room = g.turret === null ? gunRoomOf(state, k, ox, oy, nx, ny) : roundRoom(tag);
   const hull = ++t.gunHull >= g.hitsPerHull;   // this hit takes a hull point (spec §7.3: only it is the terminal cause gun)
   if (hull) { t.hull = Math.max(0, t.hull - 1); t.gunHull = 0; }
   let level = false;   // this hit raised the Room's level (the view's ROOM HIT / OFFLINE callout)
-  if (t.rooms[room] < 2) { if (++t.gunRoomWear[room] >= g.hitsPerLevel) { t.rooms[room]++; t.gunRoomWear[room] = 0; level = true; } }
-  else t.gunRoomWear[room] = 0;
+  if (room !== -1) {
+    if (t.rooms[room] < 2) { if (++t.gunRoomWear[room] >= g.hitsPerLevel) { t.rooms[room]++; t.gunRoomWear[room] = 0; level = true; } }
+    else t.gunRoomWear[room] = 0;
+  }
   state.events.push({ kind: 'gunHit', ship: k, room, stripped: false, hull, level, x, y });
 }
 
@@ -194,7 +201,7 @@ export function stepRounds(state: TacticalState): void {
     }
     const p = state.map.planet, tp = segmentEntry(ox, oy, r.x, r.y, p.x, p.y, p.r);
     if (tp >= 0 && tp < best) { best = tp; ship = -1; rock = -1; }
-    if (ship >= 0) gunHit(state, r.owner, ship, ox, oy, r.x, r.y);
+    if (ship >= 0) gunHit(state, r.owner, ship, ox, oy, r.x, r.y, r.room);
     else if (rock >= 0 && g !== null && g !== undefined && g.rock !== null) roundStrikesRock(state, r.owner, rock, ox, oy, r.x, r.y, g.rock);   // W-4 spec §5.1; GUN.rock is null: absorbed, as before
     if (best <= 1 || r.age >= life) Object.assign(r, emptyRound());
   }

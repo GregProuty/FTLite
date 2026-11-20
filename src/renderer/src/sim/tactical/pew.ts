@@ -14,8 +14,8 @@ import { placeRound, segmentEntry } from './gun';
 import { interceptTime, nearestHeading } from './lead';
 import { shootDown } from './missiles';
 import { rockAt, rocksNear } from './rocks';
-import { classOf, CREW_SLOT, emptyRound, type TacticalState } from './state';
-import { AIM_STEPS, DT, HEADING_COUNT } from './tuning';
+import { classOf, CREW_SLOT, emptyRound, roundRoom, type TacticalState } from './state';
+import { AIM_STEPS, DT, HEADING_COUNT, PEW_ROOM_WEAR } from './tuning';
 
 /** A full charge in charge units: every third stored. */
 export function pewFull(def: PewDef): number { return pewFullCharge(def); }
@@ -82,12 +82,12 @@ export function pewMuzzle(state: TacticalState, i: number): { x: number; y: numb
 
 /** Fire ship i's pew along fine aim `aim` (spec §1): with the pew, a valid aim (an integer 0..AIM_STEPS − 1) and at least
  *  a third stored, a round leaves the muzzle at the round speed along the clamped aim, a third is spent, the shot is
- *  counted and a pewFire event pushed; returns whether it fired. */
-export function firePew(state: TacticalState, i: number, aim: number): boolean {
+ *  counted and a pewFire event pushed; returns whether it fired. W-4 amendment §3.3: `room` tags the round (0: none). */
+export function firePew(state: TacticalState, i: number, aim: number, room = 0): boolean {
   const def = classOf(state, i).slots.pew, s = state.systems[i]!;
   if (!def || !Number.isInteger(aim) || aim < 0 || aim >= AIM_STEPS || !pewReady(state, i)) return false;
   const [ux, uy] = aimDir(clampAim(state.ships[i]!.heading, aim, def.arcSteps)), m = pewMuzzle(state, i);
-  placeRound(state, { x: m.x, y: m.y, vx: ux * def.speed, vy: uy * def.speed, age: 0, owner: i }, state.pew);
+  placeRound(state, { x: m.x, y: m.y, vx: ux * def.speed, vy: uy * def.speed, age: 0, owner: i, room }, state.pew);
   s.pewCharge -= pewThird(def); s.pewShots++;
   state.events.push({ kind: 'pewFire', ship: i, x: m.x, y: m.y });
   return true;
@@ -98,7 +98,7 @@ export function pewAimFine(state: TacticalState, i: number): number {
   return (((state.ships[i]!.heading * HEADING_COUNT + state.systems[i]!.pewTurret) % AIM_STEPS) + AIM_STEPS) % AIM_STEPS;   // turret.ts turretWorldAim's formula
 }
 /** W-4 spec §6: an admitted pewFire: a round along the turret (firePew's clamp leaves an aim inside the arc as it is). */
-export function firePewTrigger(state: TacticalState, i: number): boolean { return firePew(state, i, pewAimFine(state, i)); }
+export function firePewTrigger(state: TacticalState, i: number, room = 0): boolean { return firePew(state, i, pewAimFine(state, i), room); }
 
 /** One tick of ship i's pew recharge (spec §1; Engineering spike §11): pewGain units while below full, to full, every tick. */
 export function tickPew(state: TacticalState, i: number, manual = false): void {
@@ -107,18 +107,30 @@ export function tickPew(state: TacticalState, i: number, manual = false): void {
 }
 
 /** Owner's pew round hit ship k at (x, y) (spec §1): with a shield layer up it strips one (the shield clock and the gun's
- *  wear go to 0, as any strip; W-4 spec §5.2: two on the weak frequency from the crew's turret pew); else it costs the owner's pew hull. Never a room level. The owner counts the hit; a pewHit
- *  event marks it. */
-function pewHit(state: TacticalState, owner: number, k: number, x: number, y: number): void {
-  const def = classOf(state, owner).slots.pew, t = state.systems[k]!;
+ *  wear go to 0, as any strip; W-4 spec §5.2: two on the weak frequency from the crew's turret pew); else it costs the owner's
+ *  pew hull. W-4 amendment §3.4: an unshielded hit by a tagged round (`tag`, a round the crew fired by hand) of the crew's
+ *  turret pew also adds PEW_ROOM_WEAR to its target room's gunRoomWear, the autocannon's counter: at the owner's gun's
+ *  hitsPerLevel the room's level rises and the wear goes to 0, and on a level-2 room the wear is held at 0. An untagged round,
+ *  the Hunter's pew and a class with no gun never wear a room. The owner counts the hit; a pewHit event marks it, with the
+ *  room worn (−1 none) and whether its level rose. */
+function pewHit(state: TacticalState, owner: number, k: number, x: number, y: number, tag = 0): void {
+  const cls = classOf(state, owner), def = cls.slots.pew, gun = cls.slots.gun, t = state.systems[k]!;
   if (!def) return;
   state.systems[owner]!.pewHits++;
   const stripped = t.shields > 0;
   // W-4 spec §5.2: the crew's turret pew (the Hound's) on the enemy's weak frequency strips 2 layers (as many as are up).
   const weak = owner === CREW_SLOT && def.turret !== null && state.systems[owner]!.freq === state.weakFreq;
+  let room: -1 | 0 | 1 | 2 = -1, level = false;
   if (stripped) { t.shields -= weak ? Math.min(2, t.shields) : 1; t.shieldClock = 0; t.gunWear = 0; }
-  else t.hull = Math.max(0, t.hull - def.hull);
-  state.events.push({ kind: 'pewHit', ship: k, owner, stripped, hull: !stripped, x, y });
+  else {
+    t.hull = Math.max(0, t.hull - def.hull);
+    if (owner === CREW_SLOT && def.turret !== null && gun !== null) room = roundRoom(tag);   // W-4 amendment §3.4
+    if (room !== -1 && gun !== null) {
+      if (t.rooms[room] < 2) { if ((t.gunRoomWear[room] += PEW_ROOM_WEAR) >= gun.hitsPerLevel) { t.rooms[room]++; t.gunRoomWear[room] = 0; level = true; } }
+      else t.gunRoomWear[room] = 0;
+    }
+  }
+  state.events.push({ kind: 'pewHit', ship: k, owner, stripped, hull: !stripped, room, level, x, y });
 }
 
 /**
@@ -159,7 +171,7 @@ export function stepPew(state: TacticalState): void {
       if (t >= 0 && t < best) { best = t; hit = 'ship'; k = j; }
     }
     if (hit === 'torpedo') shootDown(state, k);
-    else if (hit === 'ship') pewHit(state, r.owner, k, ox + (r.x - ox) * best, oy + (r.y - oy) * best);
+    else if (hit === 'ship') pewHit(state, r.owner, k, ox + (r.x - ox) * best, oy + (r.y - oy) * best, r.room);
     if (hit !== 'none' || r.age >= life) Object.assign(r, emptyRound());
   }
 }

@@ -1,6 +1,6 @@
 // W-4 spec §2, §5: the autocannon is the Valkyrn's gun on the Hound: its interval by bars (AUTO 10 / 8 / 6 / 5; 0 bars
 // fires nothing), the Valkyrn's heat and lock (Weapons damage halving the cooling), rounds along its aim (the nose until
-// W-4b's turret) with the ship's velocity added, the twin muzzles alternating, and gunHit's room level after 6 hits.
+// W-4b's turret) with the ship's velocity added, the twin muzzles alternating, and, by hand, the target room's level after 6 hits (W-4 amendment §3.4).
 import { describe, expect, it } from 'vitest';
 import { gunAimFine, gunInterval, stepRounds, tickGun } from '../src/renderer/src/sim/tactical/gun';
 import { AUTOCANNON } from '../src/renderer/src/sim/tactical/defs';
@@ -90,16 +90,23 @@ describe('the autocannon (W-4 spec §2, §5)', () => {
     for (let k = 0; k < 10; k++) tickGun(st, 0, IDLE_INPUT, true);
     expect(s.gunCooldown).toBe(6);   // the round that left at the end of the 10 restarted the clock at 3 bars' 6
   });
-  it('six unshielded hits raise a room a level (gunHit as the Valkyrn\'s)', () => {
-    const st = hound(3);
+  it('six unshielded hits by hand raise the target room a level; the same rounds on AUTO raise none (W-4 amendment §3.4)', () => {
+    const st = hound(3), s = st.systems[0]!;
     Object.assign(st.ships[1], { x: 0, y: 1500 - 120, vx: 0, vy: 0, heading: 128, headingAcc: 0 });
     st.systems[1]!.shields = 0;
+    s.gunManual = true; s.lock = Room.Engines;   // in hand: its own switch on MAN, and selected
     let levelled = false;
     for (let k = 0; k < 200 && !levelled; k++) {
-      st.events = []; tickGun(st, 0, IDLE_INPUT, true); stepRounds(st);
-      levelled = st.events.some((e) => e.kind === 'gunHit' && e.level);
+      st.events = []; tickGun(st, 0, { ...TRIGGER, weaponSel: 1 }); stepRounds(st);
+      levelled = st.events.some((e) => e.kind === 'gunHit' && e.level && e.room === Room.Engines);
     }
     expect(levelled).toBe(true);
-    expect(st.systems[0]!.gunHits).toBe(6);
+    expect([s.gunHits, st.systems[1]!.rooms]).toEqual([6, [0, 0, 1]]);   // the tagged room, wherever the rounds landed
+    const auto = hound(3);
+    Object.assign(auto.ships[1], { x: 0, y: 1500 - 120, vx: 0, vy: 0, heading: 128, headingAcc: 0 });
+    auto.systems[1]!.shields = 0;
+    for (let k = 0; k < 120; k++) { tickGun(auto, 0, IDLE_INPUT, true); stepRounds(auto); }
+    expect(auto.systems[0]!.gunHits).toBeGreaterThanOrEqual(6);
+    expect([auto.systems[1]!.rooms, auto.systems[1]!.gunRoomWear]).toEqual([[0, 0, 0], [0, 0, 0]]);
   });
 });

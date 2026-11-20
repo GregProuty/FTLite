@@ -58,7 +58,7 @@ describe('the Weapons map (spec §1)', () => {
 describe('pew hits and the online view (spec §1)', () => {
   it('a hit sparks; a stripped layer pops; a crew hull hit floats -1', () => {
     const fx = createFx();
-    pushPewHits(fx, [{ kind: 'pewHit', ship: 1, owner: 0, stripped: true, hull: false, x: 1, y: 2 }, { kind: 'pewHit', ship: 1, owner: 0, stripped: false, hull: true, x: 3, y: 4 }]);
+    pushPewHits(fx, [{ kind: 'pewHit', ship: 1, owner: 0, stripped: true, hull: false, room: -1, level: false, x: 1, y: 2 }, { kind: 'pewHit', ship: 1, owner: 0, stripped: false, hull: true, room: -1, level: false, x: 3, y: 4 }]);
     expect(fx.items.map((i) => i.kind)).toEqual(['spark', 'pop', 'spark']);
     expect(fx.floats.map((f) => f.text)).toEqual(['-1']);
   });

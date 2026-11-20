@@ -104,10 +104,14 @@ export interface MissileFlight { x: number; y: number; vx: number; vy: number; h
  *  ship's Weapons input and strikes the room under its impact point); a toggle during the flight never changes it. */
 export interface Missile extends MissileFlight { active: boolean; owner: number; manual: boolean }
 /** Valkyrn spec §7.2: a gun round in the pool: its position, velocity (u/s) and ticks flown, the ship slot that fired
- *  it, and whether it flies. A free entry holds zeros. */
-export interface GunRound { x: number; y: number; vx: number; vy: number; age: number; owner: number; active: boolean }
+ *  it, and whether it flies. W-4 amendment §3.3: `room`, the target room it was fired at: 0 for none, else the Room index
+ *  + 1 (1 Weapons, 2 Shields, 3 Engines); set only on a round the crew fires by hand from a turret, and never changed in
+ *  flight. A free entry holds zeros. */
+export interface GunRound { x: number; y: number; vx: number; vy: number; age: number; owner: number; active: boolean; room: number }
 /** A free round pool entry. */
-export function emptyRound(): GunRound { return { x: 0, y: 0, vx: 0, vy: 0, age: 0, owner: 0, active: false }; }
+export function emptyRound(): GunRound { return { x: 0, y: 0, vx: 0, vy: 0, age: 0, owner: 0, active: false, room: 0 }; }
+/** W-4 amendment §3.3: the Room a round's tag names (tag − 1), or −1 for an untagged round (0) or any other value. */
+export function roundRoom(tag: number): -1 | 0 | 1 | 2 { return tag === 1 ? 0 : tag === 2 ? 1 : tag === 3 ? 2 : -1; }
 
 export const HunterMode = { Hunt: 0, Repair: 1 } as const;
 /** The enemy's brain (spec §9). */
@@ -159,8 +163,10 @@ export type DuelEvent =
   | { kind: 'gunHit'; ship: number; room: number; stripped: boolean; hull: boolean; level: boolean; x: number; y: number }   // level: the hit raised the Room's level (Valkyrn spec §7.4)
   /** W-1 (pew pew spec §1): ship `ship` fired a pew round from its muzzle (x, y). */
   | { kind: 'pewFire'; ship: number; x: number; y: number }
-  /** W-1: ship `owner`'s pew round hit ship `ship` at (x, y): `stripped` it took a shield layer, `hull` it cost hull. */
-  | { kind: 'pewHit'; ship: number; owner: number; stripped: boolean; hull: boolean; x: number; y: number }
+  /** W-1: ship `owner`'s pew round hit ship `ship` at (x, y): `stripped` it took a shield layer, `hull` it cost hull.
+   *  W-4 amendment §3.4: `room` the Room a round fired by hand wore (−1 for none, and on a shield hit) and `level` whether
+   *  that raised its level, as gunHit has. */
+  | { kind: 'pewHit'; ship: number; owner: number; stripped: boolean; hull: boolean; room: number; level: boolean; x: number; y: number }
   /** A scan finished: `contact` is now known to `level`. */
   | { kind: 'scanDone'; contact: number; level: number }
   /** The derelict was salvaged: its loot, and whether it was trapped. */

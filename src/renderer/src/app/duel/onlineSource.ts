@@ -88,9 +88,10 @@ export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: r
     // a strip, so the event names none (−1, not stripped), at the target's position.
     if (tgt) for (let k = 0; k < now.gunHits - was.gunHits; k++) out.push({ kind: 'gunHit', ship: target, room: -1, stripped: false, hull: false, level: false, x: tgt.x, y: tgt.y } satisfies DuelEvent);
     // W-1 (pew pew spec §1): each pewShots increment is a round fired at the ship, each pewHits increment a round that hit the
-    // target (the snapshot carries neither the strip nor the hull, so the event names neither).
+    // target (the snapshot carries neither the strip nor the hull, so the event names neither), nor the room (W-4 amendment
+    // §3.4: online a room hit by a gun shows no callout, as the gun's).
     for (let k = 0; k < now.pewShots - was.pewShots; k++) out.push({ kind: 'pewFire', ship: i, x: ship.x, y: ship.y } satisfies DuelEvent);
-    if (tgt) for (let k = 0; k < now.pewHits - was.pewHits; k++) out.push({ kind: 'pewHit', ship: target, owner: i, stripped: false, hull: false, x: tgt.x, y: tgt.y } satisfies DuelEvent);
+    if (tgt) for (let k = 0; k < now.pewHits - was.pewHits; k++) out.push({ kind: 'pewHit', ship: target, owner: i, stripped: false, hull: false, room: -1, level: false, x: tgt.x, y: tgt.y } satisfies DuelEvent);
     (['planet', 'asteroid', 'ship'] as const).forEach((kind, k) => {
       for (let n = 0; n < now.contacts[k]! - was.contacts[k]!; n++) out.push({ kind: 'contact', ship: i, body: kind, x: ship.x, y: ship.y });
     });

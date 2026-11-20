@@ -185,6 +185,9 @@ export const GUN_HITS_PER_HULL = 12;
 /** Valkyrn spec §7.2, §12: gun hits on a Room per damage level. 6, kept at the start value; the Valkyrn gate
  *  (tests/duelGates.test.ts): median 229.8 s, 9 crew wins, 1 Hunter win over seeds 1 to 10. */
 export const GUN_HITS_PER_LEVEL = 6;
+/** W-4 amendment §3.4: the wear a pew pew hit by hand adds to its target room's gunRoomWear (the autocannon's counter, a
+ *  level at the owner's gun's hitsPerLevel, 6): two hits a level. */
+export const PEW_ROOM_WEAR = 3;
 
 // Playtest2feedback (spec 2026-11-18-playtest2feedback-design §2, §4, §4a): the crew Helm's Newtonian flight, on a class
 // whose `newtonianHelm` is true (the Cutter). Start values, tuned in playtest.

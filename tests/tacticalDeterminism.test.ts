@@ -127,7 +127,7 @@ describe('flatten key guard', () => {
     // and 3 pew scalars per slot. W-2: the laser mode and the burst aim, 2 more per slot. W-3: the torpedo mode, 1 more per slot,
     // and the manual bit in each missile entry (MISSILE_SLOT). So a systems record is 41 scalars and 6 vector values; Engineering
     // spike spec §2: per slot the 5 bars and the 3 weaponPower values (spec §10.3). W-4 spec §3.1, §13.1 (W-4b), amendment §2.1: the two
-    // turrets and each gun's mode, 4 more per slot (45 scalars).
+    // turrets and each gun's mode, 4 more per slot (45 scalars). W-4 amendment §3.3: ROUND_SLOT is 8 (each round's room).
     expect(flattenTactical(st).length).toBe(6 + 2 * (13 + st.map.asteroids.length + ROCK_RESERVE + 2) + 2 * MISSILE_SLOT + GUN_POOL * ROUND_SLOT + PEW_POOL * ROUND_SLOT + 9 + st.hunter.trail.length + (st.map.asteroids.length + ROCK_RESERVE) * ROCK_STRIDE + 6 + 2 * 59 + 17);
   });
 });

@@ -30,11 +30,12 @@ export const MISSILE_KEYS = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'age
 type MissingMissileKeys = Exclude<keyof Missile, (typeof MISSILE_KEYS)[number] | 'active' | 'owner' | 'manual'>;   // W-3: manual is its own bit
 const missileKeysComplete: MissingMissileKeys extends never ? true : never = true;
 void missileKeysComplete;
-/** Values per round pool entry: active, owner, then x, y, vx, vy, age (zeros when free); Valkyrn spec §7.3. */
-export const ROUND_SLOT = 7;
+/** Values per round pool entry: active, owner, then x, y, vx, vy, age, then (W-4 amendment §3.3) the room (zeros when
+ *  free); Valkyrn spec §7.3. */
+export const ROUND_SLOT = 8;
 export const ROUND_KEYS = ['x', 'y', 'vx', 'vy', 'age'] as const satisfies readonly (keyof GunRound)[];
 /** Compile-time completeness: a `GunRound` member missing from these keys makes this `never` assignment fail typecheck. */
-type MissingRoundKeys = Exclude<keyof GunRound, (typeof ROUND_KEYS)[number] | 'active' | 'owner'>;
+type MissingRoundKeys = Exclude<keyof GunRound, (typeof ROUND_KEYS)[number] | 'active' | 'owner' | 'room'>;   // W-4 amendment §3.3: room is its own field
 const roundKeysComplete: MissingRoundKeys extends never ? true : never = true;
 void roundKeysComplete;
 const HUNTER_HEAD = ['mode', 'room', 'timer', 'working', 'fireAt', 'lastLaunch', 'trailHead', 'pewBurst', 'pewClock'] as const;
@@ -69,7 +70,7 @@ function missileFields(k: number): ModuleField<TacticalState>[] {
   ];
 }
 /** Round pool entry k of `pool` (Valkyrn spec §7.3: the gun's `rounds`; W-1: the pew's `pew`): active, owner, then its
- *  flight; a free entry holds only zeros. */
+ *  flight; a free entry holds only zeros. W-4 amendment §3.3: then its room. */
 function roundFields(pool: 'rounds' | 'pew', k: number): ModuleField<TacticalState>[] {
   return [
     bit(`${pool}.${k}.active`, (s) => s[pool][k]!.active, (s, v) => { s[pool][k]!.active = v; }),
@@ -82,7 +83,8 @@ function roundFields(pool: 'rounds' | 'pew', k: number): ModuleField<TacticalSta
         if (!r.active && (r.owner !== 0 || ROUND_KEYS.some((_, j) => values[offset + j] !== 0))) throw new Error(`${pool}.${k}: a free entry holds values`);
         ROUND_KEYS.forEach((key, j) => { r[key] = values[offset + j]!; });
       }
-    }
+    },
+    scalar(`${pool}.${k}.room`, (s) => s[pool][k]!.room, (s, v) => { s[pool][k]!.room = v; })   // W-4 amendment §3.3: the target room it was fired at, a field of its own after the flight
   ];
 }
 
@@ -300,7 +302,7 @@ function fieldNameParts(name: string): FieldNameParts {
  *  writing them anywhere: heading indices, integer counters, room levels 0..2, shields, the laser and the magazine
  *  against the largest class, the hunter's and the outcome's enums, the map's asteroid count and the slot count; an
  *  inactive ship slot holds only zeros; each missile pool entry: active 0 or 1, a free entry holds only zeros, a missile's
- *  owner is an active slot with no other missile in flight, its heading index and age. Each round pool entry likewise: active 0 or 1, a free entry holds only zeros, an owner that is an active slot, an age within the longest gun life (the gun's round pool and the pew's alike, W-1). W-2: only the crew slot's laser is MANUAL, and a slot's laserAim is −1 unless a burst shot is pending. W-3: only the crew slot's torpedo mode is MANUAL, and only the crew's torpedo is manual. W-4: a slot's turrets within its class's arcs, and each gun's mode only on the crew slot of a class whose weapon in that slot has a turret (amendment §2.1). `shape` is any tactical state made
+ *  owner is an active slot with no other missile in flight, its heading index and age. Each round pool entry likewise: active 0 or 1, a free entry holds only zeros, an owner that is an active slot, an age within the longest gun life (the gun's round pool and the pew's alike, W-1), and (W-4 amendment §3.3) a room 0..3 that is nonzero only on a crew round. W-2: only the crew slot's laser is MANUAL, and a slot's laserAim is −1 unless a burst shot is pending. W-3: only the crew slot's torpedo mode is MANUAL, and only the crew's torpedo is manual. W-4: a slot's turrets within its class's arcs, and each gun's mode only on the crew slot of a class whose weapon in that slot has a turret (amendment §2.1). `shape` is any tactical state made
  *  from the same seed and slot count (only its map and slot count are read). Throws naming the first bad field; returns
  *  the offset after the values. */
 export function validateTacticalValues(shape: TacticalState, values: ArrayLike<number>, offset = 0): number {
@@ -349,11 +351,17 @@ export function validateTacticalValues(shape: TacticalState, values: ArrayLike<n
       }
       if (active === 1 && key === 'flight') { const [, , , , head, headAcc, age] = slice as number[]; if (!heading(head!) || !acc(headAcc!) || !count(age!)) bad('heading, headingAcc or age out of range'); }
     } else if (round) {   // Valkyrn spec §7.3: a round's entry as a missile's, its age within the longest gun life; W-1: a pew round's within the longest pew life
-      const key = round[3]!, active = values[at - (key === 'active' ? 0 : key === 'owner' ? 1 : 2)]!;
+      // W-4 amendment §3.3: the room closes the entry, after the flight's ROUND_KEYS.length values (as a missile's manual bit).
+      const key = round[3]!, active = values[at - (key === 'active' ? 0 : key === 'owner' ? 1 : key === 'flight' ? 2 : 2 + ROUND_KEYS.length)]!;
       if (key === 'active' && !flagBit(slice[0]!)) bad('active is not 0 or 1');
       if (active === 0 && slice.some((v) => v !== 0)) bad('a free entry holds values');
       if (active === 1 && key === 'owner' && (!within(0, slots - 1)(slice[0]!) || inactive.has(slice[0]!))) bad('its owner is not an active ship slot');
       if (active === 1 && key === 'flight' && !within(0, round[1] === 'pew' ? most((c) => c.slots.pew?.lifeTicks) : most((c) => c.slots.gun?.lifeTicks))(slice[4]!)) bad('age out of range');
+      if (active === 1 && key === 'room') {   // W-4 amendment §3.3: 0 none, else a Room index + 1; only a crew round is tagged
+        if (!within(0, 3)(slice[0]!)) bad('room is not 0..3');
+        // The owner's class is not checked: rounds are in the space module, validated before the ship module where the classes are learned.
+        if (slice[0] !== 0 && values[at - 1 - ROUND_KEYS.length] !== CREW_SLOT) bad('only a crew round carries a room');   // the entry's owner
+      }
     } else if (f.name === 'known') { if (!within(0, 2)(slice[0]!) || !within(0, 1)(slice[1]!)) bad('out of range'); }   // the enemy 0..2, the derelict 0..1
     else { const rule = top[f.name]; if (rule && !slice.every(rule)) bad('out of range'); }
     at += f.count;

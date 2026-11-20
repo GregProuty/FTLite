@@ -53,11 +53,11 @@ describe('pewFire without an aim (W-4 spec §6)', () => {
     try { expect(stepDuelTick(v, { held: [], commands: [env(v, 1 - v.helmPlayer, { kind: 'pewFire' }, 1)] })[0]).toMatchObject({ status: 'rejected', reason: 'unavailable' }); }
     finally { disposeDuel(v); }
   });
-  it("every laser command from the Hound's Weapons seat is unavailable, except laserFrequency (W-4 spec §2.1, §14 Loadout)", () => {
+  it("every laser command from the Hound's Weapons seat is unavailable, except laserFrequency and laserLock (W-4 spec §2.1, §14 Loadout; amendment §3.2)", () => {
     const d = createSeatedDuel(CUTTER, 5), g = 1 - d.helmPlayer;
     try {
-      holdInSight(d.tactical);   // so laserLock is judged by the laser rule, not the sight rule
-      const laser: DuelCommand[] = [{ kind: 'laserLock', room: 1 }, { kind: 'laserCharge', held: true }, { kind: 'laserMode', manual: true }, { kind: 'laserFire', aim: 0, aimAcc: 0 }, { kind: 'rockLock', weapon: 'laser', rock: -1 }];
+      holdInSight(d.tactical);   // the enemy seen, as before (laserLock's own cases are in tests/w4Rooms.test.ts)
+      const laser: DuelCommand[] = [{ kind: 'laserCharge', held: true }, { kind: 'laserMode', manual: true }, { kind: 'laserFire', aim: 0, aimAcc: 0 }, { kind: 'rockLock', weapon: 'laser', rock: -1 }];
       const r = stepDuelTick(d, { held: [], commands: laser.map((c, k) => env(d, g, c, k + 1)) });
       expect(r.map((x) => [x.status, x.reason ?? null])).toEqual(laser.map(() => ['rejected', 'unavailable']));
       expect(stepDuelTick(d, { held: [], commands: [env(d, g, { kind: 'laserFrequency', freq: 1 }, 9)] })[0]).toMatchObject({ status: 'applied' });

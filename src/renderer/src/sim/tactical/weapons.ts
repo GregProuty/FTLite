@@ -9,6 +9,7 @@ import { AUTO_DIG } from './rockTuning';
 import { laserStrikesRock, rockOnTarget, rockShotLine } from './rockWeapons';
 import { hx, hy } from './direction';
 import { tickGun } from './gun';
+import { hasTurret } from './defs';
 import { BEAM_RATE_BY_BARS, BEAM_SHOTS_BY_BARS, DuelSystem, effectiveBars, MAGAZINE_REGEN_UNITS, SHIELD_LAYERS_BY_BARS, SHIELD_RATE_BY_BARS, TORPEDO_RELOAD_BY_BARS, weaponBars, WeaponSlot } from './bars';
 import { aimDir, clampAim, firePew, firePewTrigger, pewAutoReady, tickPew } from './pew';
 import { classOf, CREW_SLOT, handControl, missileOf, Room, type Axes, type TacticalState } from './state';
@@ -301,7 +302,7 @@ function stepBurst(state: TacticalState, i: number): void {
 /** Apply ship i's weapon commands for this tick, before anything moves (spec §7 table). The crew's ship (FTL targeting
  *  spec §2): `laserLock` sets the laser's target (−1 clears it, keeping the lock room for a manual shot) and `torpLock`
  *  the torpedo's, and an accepted room lock clears the matching rock target; `rockLock` sets that weapon's rock target (a rock lock clears its room lock); a charge press fires a full laser; then, attended, the laser with a target fires its burst when full
- *  and eligible, and a torpedo with a target launches when the launch is legal (launchMissile clears torpLock). W-2 (pew pew spec §2): in MANUAL the laser fires neither on a charge press nor by itself. W-3 (pew pew spec §3): in MANUAL a torpedo lock never auto-launches, missileLaunch needs no range, and a stored rock target breaking this call does not cancel a launch. W-4: the turrets slew after the burst, before the gun. */
+ *  and eligible, and a torpedo with a target launches when the launch is legal (launchMissile clears torpLock). W-2 (pew pew spec §2): in MANUAL the laser fires neither on a charge press nor by itself. W-3 (pew pew spec §3): in MANUAL a torpedo lock never auto-launches, missileLaunch needs no range, and a stored rock target breaking this call does not cancel a launch. W-4: the turrets slew after the burst, before the gun. W-4 amendment §3.2: on a turret class without a laser `laserLock` sets the lock (the target room) alone. */
 export function applyWeaponsInput(state: TacticalState, i: number, input: ShipInput): void {
   const s = state.systems[i]!, crew = i === CREW_SLOT, armed = classOf(state, i).slots.laser !== null;   // Valkyrn spec §6.1: a null laser skips lock, charge and auto-fire
   if (armed && input.weapons && input.laserLock !== null && validTarget(input.laserLock)) {   // first: a burst shot reads this tick's lock
@@ -309,6 +310,10 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
     if (validLock(input.laserLock)) { s.lock = input.laserLock; if (crew) s.laserTargeted = true; }
     else if (crew) s.laserTargeted = false;
   }
+  // W-4 amendment §3.2: on a class with a turret gun and no laser (the Hound) laserLock is the target room's command. It sets
+  // the crew's lock and nothing else: laserTargeted stays false and laserRock is not touched. Here, first in the tick's
+  // order (before tickGun and the pew), so a round fired by hand this tick carries the new room.
+  if (!armed && crew && hasTurret(classOf(state, i)) && input.weapons && input.laserLock !== null && validLock(input.laserLock)) s.lock = input.laserLock;
   if (input.weapons && crew && input.torpLock !== null && validTarget(input.torpLock)) { s.torpRock = -1; s.torpLock = input.torpLock; }
   if (input.weapons && crew) {   // spike ii §6.1: rockLock, after laserLock and torpLock, before the burst
     const rl = input.rockLock, live = (k: number): boolean => k >= 0 && k < rockSlots(state) && rockAlive(state, k);
@@ -345,7 +350,8 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
     }
     if (crew && !s.torpManual && (s.torpLock >= 0 || s.torpRock >= 0) && canLaunch(state, i) && (s.torpRock >= 0 || shipSeen(state, s.target))) launchMissile(state, i);   // auto-launch, once (spike ii: or on a rock target); W-3: never in MANUAL; Task 10: the enemy only when seen
   }
-  if (input.pewTrigger) firePewTrigger(state, i);   // W-4 spec §6, §8: the crew's MAN pewFire, along the turret; last, as before
+  // W-4 amendment §3.3: a clicked shot carries the target room, in hand that tick or not (a held weaponSel can trail the command online).
+  if (input.pewTrigger) firePewTrigger(state, i, crew && classOf(state, i).slots.pew?.turret ? s.lock + 1 : 0);   // W-4 spec §6, §8: the crew's MAN pewFire, along the turret; last, as before
   else if (auto.pew && hostile && pewAutoReady(state, i)) firePewTrigger(state, i);   // W-4 spec §4.3 (Decision 4): AUTO, one round each time a third has charged, never a burst
   else if (input.pewAim >= 0) firePew(state, i, input.pewAim);   // W-1 (pew pew spec §1): the Hunter's aim; attended (above)
 }

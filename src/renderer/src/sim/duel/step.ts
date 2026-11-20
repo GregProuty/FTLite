@@ -325,7 +325,8 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (c.kind !== 'laserMode' && c.kind !== 'torpMode' && c.kind !== 'gunMode' && c.kind !== 'laserLock' && c.kind !== 'torpLock' && c.kind !== 'rockLock' && c.kind !== 'laserCharge' && c.kind !== 'laserFire' && c.kind !== 'missileLaunch' && c.kind !== 'pewFire') continue;
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }   // −1 is the empty-seat value, never a player
-    if ((c.kind === 'laserMode' || c.kind === 'laserLock' || c.kind === 'laserCharge' || c.kind === 'laserFire' || (c.kind === 'rockLock' && c.weapon === 'laser')) && classOf(d.tactical, 0).slots.laser === null) { result(e, 'unavailable'); continue; }   // Valkyrn spec §6.1: no laser; W-2: nor its mode or MANUAL shot
+    // Valkyrn spec §6.1: no laser; W-2: nor its mode or MANUAL shot. W-4 amendment §3.2: on a class with a turret gun (the Hound) laserLock is the target room's command, so it is not caught here.
+    if ((c.kind === 'laserMode' || (c.kind === 'laserLock' && !hasTurret(classOf(d.tactical, 0))) || c.kind === 'laserCharge' || c.kind === 'laserFire' || (c.kind === 'rockLock' && c.weapon === 'laser')) && classOf(d.tactical, 0).slots.laser === null) { result(e, 'unavailable'); continue; }
     if (c.kind === 'pewFire' && classOf(d.tactical, 0).slots.pew === null) { result(e, 'unavailable'); continue; }   // W-1: no pew (the Valkyrn)
     if (c.kind === 'laserMode') {   // W-2 (pew pew spec §2): the mode, set now
       if (typeof c.manual !== 'boolean') { result(e, 'malformed'); continue; }
@@ -344,7 +345,12 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
       if (c.manual === sys0[key]) { result(e, undefined, 'noop'); continue; }   // that gun's mode is unchanged (a second for the slot in a tick is judged against the first)
       sys0[key] = c.manual;
     }
-    else if (c.kind === 'laserLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; } crew.laserLock = c.room; }   // −1 clears the target; Task 10, spec §10.4: seen
+    else if (c.kind === 'laserLock') {
+      if (!validTarget(c.room)) { result(e, 'malformed'); continue; }
+      if (c.room < 0 && classOf(d.tactical, 0).slots.laser === null) { result(e, 'unavailable'); continue; }   // W-4 amendment §3.2: the Hound's target room has no "none": nothing to clear
+      if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; }   // Task 10, spec §10.4: seen
+      crew.laserLock = c.room;   // −1 clears the laser's target (a laser class only)
+    }
     else if (c.kind === 'torpLock') { if (!validTarget(c.room)) { result(e, 'malformed'); continue; } if (c.room >= 0 && !shipSeen(d.tactical, d.tactical.systems[0].target)) { result(e, 'unavailable'); continue; } crew.torpLock = c.room; torpLocked = true; }   // spec §10.4: seen
     else if (c.kind === 'rockLock') {
       if (!validRockLock(d.tactical, c.weapon, c.rock)) { result(e, 'malformed'); continue; }

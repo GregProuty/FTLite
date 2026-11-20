@@ -274,8 +274,8 @@ describe('the fog on pew rounds and the MANUAL weapons (merge decision 1d)', () 
       const t = createTacticalState(5), own = t.ships[0]!, e = t.ships[1]!, r = sensorRange(t.systems[0]!);
       Object.assign(e, { x: own.x + (seen ? r / 2 : r * 2), y: own.y, active: true });
       const enemyFire: ViewEvent = { kind: 'pewFire', ship: 1, x: e.x, y: e.y }, crewFire: ViewEvent = { kind: 'pewFire', ship: 0, x: own.x, y: own.y };
-      const crewHitsEnemy: ViewEvent = { kind: 'pewHit', ship: 1, owner: 0, stripped: false, hull: true, x: e.x, y: e.y };
-      const enemyHitsCrew: ViewEvent = { kind: 'pewHit', ship: 0, owner: 1, stripped: true, hull: false, x: own.x, y: own.y };
+      const crewHitsEnemy: ViewEvent = { kind: 'pewHit', ship: 1, owner: 0, stripped: false, hull: true, room: -1, level: false, x: e.x, y: e.y };
+      const enemyHitsCrew: ViewEvent = { kind: 'pewHit', ship: 0, owner: 1, stripped: true, hull: false, room: -1, level: false, x: own.x, y: own.y };
       expect(fogEvents(t, [enemyFire, crewFire, crewHitsEnemy, enemyHitsCrew])).toEqual(seen ? [enemyFire, crewFire, crewHitsEnemy, enemyHitsCrew] : [crewFire, crewHitsEnemy, enemyHitsCrew]);
     }
   });

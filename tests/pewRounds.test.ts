@@ -64,7 +64,7 @@ describe('what a round hits (spec §1, §5)', () => {
     firePew(st, 0, NORTH); st.events = [];
     for (let k = 0; k < 20 && flying(st).length > 0; k++) stepPew(st);
     expect([st.systems[1].shields, st.systems[1].hull, st.systems[1].rooms, st.systems[0].pewHits]).toEqual([layers - 1, hull, [0, 0, 0], 1]);
-    expect(st.events).toEqual([{ kind: 'pewHit', ship: 1, owner: 0, stripped: true, hull: false, x: 0, y: expect.closeTo(1300 + SHIP_RADIUS, 9) }]);
+    expect(st.events).toEqual([{ kind: 'pewHit', ship: 1, owner: 0, stripped: true, hull: false, room: -1, level: false, x: 0, y: expect.closeTo(1300 + SHIP_RADIUS, 9) }]);
   });
   it('an unshielded ship loses PEW_HULL hull; no room level changes', () => {
     const st = open();
