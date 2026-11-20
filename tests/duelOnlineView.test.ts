@@ -188,17 +188,15 @@ describe('the online interior zoom camera (interior zoom spec rule 5)', () => {
 });
 
 describe('the online source follows the throttle (Artemis spec §5.3, §6.1)', () => {
-  it('the Helm seat flies the replica throttle; throttle() is the session base, else the replica', () => {
+  it('the Helm seat\'s throttle() is the drawn state\'s throttle', () => {
     const d = createSeatedDuel(CUTTER, 3, 0, 2, ShipClass.Valkyrn), c = confirmed();   // playtest2feedback Decision 17: moveX turns only the Valkyrn class
     const source = createOnlineDuelSource({ client: c.client, seat: 0, now: () => 0, viewport: { w: 1280, h: 720 } });
     try {
       d.throttle = 2; c.publish(d); source.observe();
+      expect(source.throttle()).toBe(c.client.state()!.throttle);
+      expect((source as { throttleBase?: unknown }).throttleBase).toBeUndefined();
       source.sent({ moveX: 1, moveY: -1, interactHeld: false });
       expect([source.axes(), source.throttle()]).toEqual([{ turn: 1, thrust: 0.5 }, 2]);
-      source.throttleBase(4);
-      expect([source.throttle(), source.axes().thrust]).toEqual([4, 0.5]);   // the drawn path follows the replica
-      source.throttleBase(null);
-      expect(source.throttle()).toBe(2);
       const gunner = createOnlineDuelSource({ client: c.client, seat: 1, now: () => 0, viewport: { w: 1280, h: 720 } });
       gunner.observe();
       expect(gunner.axes()).toEqual({ turn: 0, thrust: 0 });

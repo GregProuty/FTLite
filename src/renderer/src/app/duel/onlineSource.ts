@@ -6,7 +6,6 @@
 import { Position } from '../../sim/components';
 import type { DuelState } from '../../sim/duel/state';
 import { throttleThrust } from '../../sim/duel/throttle';
-import { engineBars, heldAxis, noVent, rampTicks, throttleCap, throttleFloor, ventOf, type HelmVent } from '../../sim/duel/helmFlight';
 import { crewAxes } from '../../sim/duel/step';
 import { hx, hy } from '../../sim/tactical/direction';
 import { CREW_SLOT, missileOf, NO_AXES, Outcome, type Axes, type DuelEvent, type Missile, type TacticalState } from '../../sim/tactical/state';
@@ -18,8 +17,7 @@ import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxMod
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import type { PredictedBodies } from '../../clientControl/duelPredictor';
 import type { CrewOverride } from '../../render/duel/crewOverride';
-import { crewHelmSeat, houndWeaponsSeat, seatOf } from './controls';
-import { predictTurret } from './weaponsSeat';
+import { crewHelmSeat, seatOf } from './controls';
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 import { createTorpedoFollow, trackManualTorpedo } from './torpedoCamera';
 import { NO_HELD_FLAGS, type HeldFlags, type KeySample, type PointerSample } from './input';
@@ -128,9 +126,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   let latest: { bodies: PrevBody[]; missiles: (PrevBody | null)[]; crew: { x: number; y: number }[]; counters: Counters[] } | null = null;
   let events: ViewEvent[] = [], sentHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
   let cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() }, torpFollow = createTorpedoFollow();
-  let uiHeld: HeldFlags = NO_HELD_FLAGS, shownThrottle: number | null = null, refusals: Refusal[] = [];
-  let gunModeShown: [boolean | null, boolean | null] = [null, null];   // W-4 amendment §2.6: each gun's mode in flight, [pew pew, the autocannon]
-  let unackedFrames = 0;   // playtest2feedback Decision 14: this seat's held frames the replica has not taken yet
+  let uiHeld: HeldFlags = NO_HELD_FLAGS, refusals: Refusal[] = [];
   /** Playtest2feedback §3: this seat flies the crew Helm (a newtonianHelm class) in a running round. */
   const crewHelm = (d: DuelState): boolean => crewHelmSeat(d, seat) && d.tactical.outcome === Outcome.Running;
   const cameraInput = createCameraInput(deps.now, deps.viewport), interiorCamera = createInteriorCamera();
@@ -162,16 +158,13 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   }
   const predicted = (): DuelState | null => (deps.prediction?.active() ? deps.prediction.state() : null);
   const predictedBodies = (): PredictedBodies | null => (predicted() ? deps.prediction!.before() : null);
-  /** The confirmed replica: every member that predicts by hand today keeps reading it until Task 9 removes the hand-written guesses. */
-  const replica = (): DuelState => client.state()!;
-  const duel = (): DuelState => predicted() ?? replica();
+  /** Net-4a §3.6, §3.9: the drawn state: P while predicting, else the confirmed replica. */
+  const duel = (): DuelState => predicted() ?? client.state()!;
   const viewAlpha = (): number => (predicted() ? deps.prediction!.alpha() : frameAlpha);
   const source: DuelViewSource & {
     observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: HeldInput): void; heldFlags(flags: HeldFlags): void;
     confirmed(): DuelState; crewOverride(): CrewOverride | undefined;
-    thrMille(): number; helmVent(): HelmVent; unacked(n: number): void; weaponSel(): number;
-    throttleBase(level: number | null): void;
-    turret(slot: 0 | 1): number; gunModeBase(slot: 0 | 1, manual: boolean | null): void;
+    weaponSel(): number; turret(slot: 0 | 1): number;
     refuse(control: Refusal['control'], reason: string): void;
     arrivals(): readonly number[]; takeArrivals(): number[]; ready(): boolean;
   } = {
@@ -182,37 +175,16 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     get crewPrev() { return predictedBodies()?.crew ?? cCrewPrev; },
     get cameras() { return cameras; },
     interiorCamera,
-    epoch: () => replica().round,
+    epoch: () => duel().round,
     active: () => seat,
-    view: (): DuelView => { const s = seatOf(replica(), seat); return s === 'standing' ? 'interior' : s; },
-    axes: (): Axes => {   // Artemis spec §5.3: the held turn and the replica's throttle, while this seat flies a running round
-      const d = replica();
-      if (crewHelm(d)) return crewAxes(d, sentHeld, source.thrMille());   // playtest2feedback §3, §6: the local prediction
+    view: (): DuelView => { const s = seatOf(duel(), seat); return s === 'standing' ? 'interior' : s; },
+    axes: (): Axes => {   // Artemis spec §5.3; Net-4a §3.9: the sim's own axes for this seat's held input, on the drawn state
+      const d = duel();
+      if (crewHelm(d)) return crewAxes(d, sentHeld);
       return seatOf(d, seat) === 'helm' && d.tactical.outcome === Outcome.Running ? { turn: heldTurn(d, sentHeld), thrust: throttleThrust(d.throttle) } : NO_AXES;
     },
-    /** Playtest2feedback §3: the crew Helm's thrMille: the replica's plus the ramp this seat's held W/S adds over its
-     *  unacknowledged frames (the sim's rule); away from the Helm, the replica's. */
-    thrMille: (): number => {
-      const d = replica();
-      if (!crewHelm(d)) return d.thrMille;
-      const e = engineBars(d);
-      return rampTicks(d.thrMille, heldAxis(sentHeld.throttleHeld), throttleFloor(e), throttleCap(e), unackedFrames);
-    },
-    /** W-4 spec §11: gun slot's turret: at the Hound's Weapons seat the own selected one predicted over the unacknowledged
-     *  frames (predictTurret, the mode in flight first), else the replica's. */
-    turret: (slot: 0 | 1): number => {
-      const d = replica();
-      if (!houndWeaponsSeat(d, seat)) return slot === 0 ? d.tactical.systems[0].pewTurret : d.tactical.systems[0].gunTurret;
-      const sys = d.tactical.systems[0];
-      return predictTurret(d.tactical, slot, sentHeld, gunModeShown[slot] ?? (slot === 0 ? sys.pewManual : sys.gunManual),   // W-4 amendment §2.6: that gun's own mode
-        manualTorpedoFlying(d.tactical) ? 0 : unackedFrames);   // W-4 spec §11: (from W-4c) no MANUAL torpedo flies
-    },
-    /** Gun `slot`'s mode in flight (onlineDuel's gunModeSent for it), or null: the replica's flag is the base. */
-    gunModeBase(slot, manual) { gunModeShown[slot] = manual; },
+    turret: (slot: 0 | 1): number => { const s = duel().tactical.systems[0]; return slot === 0 ? s.pewTurret : s.gunTurret; },   // Net-4a §3.9: P's turret
     weaponSel: (): number => sentHeld.weaponSel ?? 0,   // W-4 spec §10: the selection this seat last sent
-    /** Playtest2feedback Decision 11: the puffs and the hiss online: this seat's own predicted vent at the crew Helm, else none. */
-    helmVent: (): HelmVent => { const d = replica(); return crewHelm(d) ? ventOf(crewAxes(d, sentHeld)) : noVent(); },
-    unacked(n) { unackedFrames = Math.max(0, n); },
     alpha: viewAlpha,
     /** Net-4a §3.6: the confirmed replica (end card, outcome, one-shot sounds). */
     confirmed: (): DuelState => client.state()!,
@@ -226,12 +198,10 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     uiHeld: () => uiHeld,
     /** Only the publication phase 'running' shows the console (Artemis deviation 5). */
     running: () => client.publication()?.phase === 'running',
-    /** The level the console shows (Artemis spec §6.1): the session's level in flight, else the replica's. */
-    throttle: () => shownThrottle ?? replica().throttle,
-    /** The session's level in flight (spec §5.4's throttleSent), or null. */
-    throttleBase(level) { shownThrottle = level; },
-    /** Feel-ii §1.2: this seat's own axes at the Helm, else what the replica alone tells (no partner's A/D or Space). */
-    helmAxes: (): Axes => (seatOf(replica(), seat) === 'helm' ? source.axes() : stateAxes(replica())),
+    /** The level the console shows (Artemis spec §6.1; Net-4a §3.9: the drawn state's). */
+    throttle: () => duel().throttle,
+    /** Feel-ii §1.2: this seat's own axes at the Helm, else what the drawn state alone tells (no partner's A/D or Space). */
+    helmAxes: (): Axes => (seatOf(duel(), seat) === 'helm' ? source.axes() : stateAxes(duel())),
     /** Feel-ii §2.8: the session's refused controls, drained by the scene. */
     refuse(control, reason) { refusals.push({ control, reason }); },
     takeRefusals() { const out = refusals; refusals = []; return out; },
@@ -242,14 +212,14 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     frame(dt, keys, pointer) {
       observe();
       if (!client.state()) return;
-      const d = replica(), pd = duel();   // Net-4a §3.6: only the cameras' follow reads P (pd); the seat and the torpedo flag stay the replica's until Task 9
+      const d = duel();   // Net-4a §3.6, §3.9: the seat, the torpedo flag and the cameras' follow read the drawn state
       frameAlpha = Math.max(0, Math.min(1, (deps.now() - receivedAt) * TICK_HZ / (1000 * gap)));
       const view = seatOf(d, seat), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : view === 'science' ? cameras.science : null;
       if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer, view === 'helm'); else cameraInput.applyInterior(interiorCamera, keys, pointer); }   // W-4 spec §7: at Weapons the right button pans again
       trackManualTorpedo(cameras.weapons, torpFollow, manualTorpedoFlying(d.tactical));   // W-3 (pew pew spec §3): follow a MANUAL torpedo, then go back
       for (const c of [cameras.helm, cameras.weapons, cameras.science]) {
-        if (c.follow === 'missile' && !missileOf(pd.tactical, 0)) followBody(c, 'ship');
-        const target = c.follow === 'missile' ? interpolatedMissile(pd.tactical, source.missilePrev, viewAlpha(), 0) : followTarget(pd.tactical, source.prev, viewAlpha(), c.follow);
+        if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');
+        const target = c.follow === 'missile' ? interpolatedMissile(d.tactical, source.missilePrev, viewAlpha(), 0) : followTarget(d.tactical, source.prev, viewAlpha(), c.follow);
         updateCamera(c, deps.viewport, dt, target);
       }
     },

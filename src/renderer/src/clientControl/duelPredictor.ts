@@ -15,7 +15,7 @@ import { stepDuelTick, type DuelInput } from '../sim/duel/step';
 import { CREW_SLOT, missileOf, Outcome } from '../sim/tactical/state';
 import { hashF64 } from '../../../shared/hash';
 
-/** §3.4: the most ticks P stands past the confirmed tick (500 ms, the old UNACKED_MAX). */
+/** §3.4: the most ticks P stands past the confirmed tick (500 ms, the old cap on unacknowledged held frames). */
 export const PREDICT_MAX_TICKS = 30;
 /** §3.4 step 3: within this many ticks of the measured target, P's own tick is the target (one tick of jitter moves no clock). */
 export const PREDICT_SLACK_TICKS = 2;

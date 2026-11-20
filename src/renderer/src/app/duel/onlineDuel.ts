@@ -63,8 +63,6 @@ const NOTICE_MS = 3000;
 export const LINK_POLL_MS = 1000, LIVE_SAMPLES = 300;
 /** The camera's presses: the zoom keys, and C, which only the interior's camera reads here (the consoles' C is in play()). */
 const keysOnly = (k: KeySample): KeySample => ({ ...k, presses: { ...emptyPresses(), zoomIn: k.presses.zoomIn, zoomOut: k.presses.zoomOut, camera: k.presses.camera } });
-/** Playtest2feedback Decision 14: the most unacknowledged held frames the local throttle prediction counts. */
-export const UNACKED_MAX = 30;
 /** Net-4a §3.3: the local tick (60 a second, as the authority's tick driver) and the most one pump runs; the rest are dropped. */
 export const LOCAL_TICK_MS = 1000 / 60, LOCAL_TICKS_MAX = 4;
 const neutral = (): HeldInput => ({ moveX: 0, moveY: 0, interactHeld: false });
@@ -102,9 +100,6 @@ export function leavePromptKeys(prompt: LeavePrompt, d: DuelState, phase: string
   return { prompt: { open, round }, send, leave };
 }
 
-/** A mode this seat asked for, until its result comes back. */
-type ModeSent = { manual: boolean; sequence: number; round: number };
-
 export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   const canvas = deps.renderer.app.canvas;
   // Enemy ship window spec §6.1, §6.2: local to this screen, never sent. While the window is shown its intercept takes Esc
@@ -127,8 +122,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   let lastPhase = '', noticeUntil = 0, notice: string | null = null, lastFrame = 0, cameraKeys = keysOnly(sampleIdle());
   let attaches = 0, pauses = 0, roundAttaches = 1, roundPauses = 0, startedAtIso = new Date().toISOString(), cancel = () => {}, offClose = () => {};
   let lastHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false }, lastFlags: HeldFlags = NO_HELD_FLAGS;
-  // Playtest2feedback §4a: the crew Helm's held steer, its left button on the last pump, and the last held sequence sent.
-  let steer = -1, steerPrev = false, lastHeldSequence = 0;
+  // Playtest2feedback §4a: the crew Helm's held steer and its left button on the last pump.
+  let steer = -1, steerPrev = false;
   let crewHelmPrev = false;   // final review I1: this seat flew the crew Helm on the last pump that saw the replica
   const requests0 = (): number | null => requests.takeHeading();   // Feel-ii §1.1: drained every pump
   // Playtest2feedback §4a: the map's steer bearing, drained every pump beside the heading. Inside pump the name `requests`
@@ -139,27 +134,18 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   const torpRequest = (): number | null => requests.takeTorpHeading();   // W-3: the MANUAL torpedo's held heading from the right button, drained every pump
   // W-4 spec §8: the map's trigger. Inside play and pump the name requests is a ContactRequests (shadowed), so it is read through this closure, as takeSteer0.
   const triggerNow = (): boolean => requests.triggerHeld();
-  // Artemis spec §5.4: the throttle this seat last asked for, until its result comes back; the base W, S and the console build on.
-  let throttleSent: { level: number; sequence: number; round: number } | null = null;
-  // Feel-ii §1.1: the heading this seat last asked for, until its result comes back (as throttleSent); the dedupe's base.
-  // A null sequence: A/D or auto-face held at the Helm cleared the hold locally (the sim clears it), until the replica shows it.
-  let headingSent: { heading: number; sequence: number | null; round: number } | null = null;
-  // W-2 (pew pew spec §2): the laser mode this seat last asked for, until its result comes back (as throttleSent); and the
-  // laserFire commands it sent, whose 'unavailable' answer shows NO CHARGE (W-1 review F2's rule).
-  let laserModeSent: { manual: boolean; sequence: number; round: number } | null = null;
-  // W-4 spec §4.1, §11, amendment §2.4: each gun's mode this seat last asked for, [pew pew, the autocannon], until its result
-  // comes back (as laserModeSent): the base R, Shift+R and the tags build on, so two quick presses flip twice.
-  let gunModeSent: [ModeSent | null, ModeSent | null] = [null, null];
+  // Net-4a §3.9: the throttle, heading, modes and lock this seat asked for are in P (it holds every unacknowledged input), so
+  // the decisions below read P and keep no in-flight copies. W-2 (pew pew spec §2): the laserFire commands this seat sent,
+  // whose 'unavailable' answer shows NO CHARGE (W-1 review F2's rule).
   const laserSent = new Set<number>();
-  // W-3 (pew pew spec §3): the torpedo mode this seat last asked for, until its result comes back (as laserModeSent); the
-  // MANUAL launches it sent, whose 'unavailable' answer names the reason (the always-send rule); and the MANUAL torpedo's
-  // held heading, re-sent in every held frame while it flies (−1 none).
+  // W-3 (pew pew spec §3): the MANUAL launches this seat sent, whose 'unavailable' answer names the reason (the always-send
+  // rule); the MANUAL torpedo's held heading, re-sent in every held frame while it flies (−1 none), and the round it was reset on.
   // W-4 spec §9, §11: the Hound's Weapons seat's selection (pew pew at a sit), the last gun selected (W-4c reads it) and the
   // trigger on the last pump (the autocannon's refusal is on its press edge), and the round the selection was last reset on.
-  let torpModeSent: { manual: boolean; sequence: number; round: number } | null = null, torpHold = -1, weaponSel = 0, lastGunSel = 0, triggerPrev = false, selRound = -1, flight: FlightLatch = NO_FLIGHT, triggerLive = false;   // W-4 spec §7: the seat's flight latch and this pump's gated trigger
-  // W-4 amendment §3.6: the target room this seat last asked for, until its result comes back (as torpModeSent): the base E
-  // and Q step from, so two quick presses step twice before the replica catches up.
-  let lockSent: { room: number; sequence: number; round: number } | null = null;
+  let torpHold = -1, torpRound = -1, weaponSel = 0, lastGunSel = 0, triggerPrev = false, selRound = -1, flight: FlightLatch = NO_FLIGHT, triggerLive = false;   // W-4 spec §7: the seat's flight latch and this pump's gated trigger
+  // Net-4a §3.9: the autocannon's mode this pump's play() decided (P's, after this pump's R or tag), or null. Its gunMode rides
+  // this tick's entry with the held frame and the sim sets the mode before the gun fires (step.ts), so the trigger reads it.
+  let gunManualNow: boolean | null = null;
   const torpSent = new Set<number>();
   // Net-4a §3.3, §3.4: the predictor (owned with the stream client), the last publication it was given, the local tick
   // clock, this tick's commands (collected by send), a neutralize's held sequence for the next entry, and the timings (§3.10).
@@ -198,8 +184,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (id && collected && command.kind !== 'setPaused' && command.kind !== 'rematch' && command.kind !== 'presence') collected.push({ runId: descriptor.runId, id, requestedTick: 0, command });
     return id;
   }
-  /** The authority's held frame is neutral once input stops, so the local prediction (throttle ramp, vent, puffs) drops too. */
-  function neutralSource(): void { source?.sent({ moveX: 0, moveY: 0, interactHeld: false }); source?.unacked(0); }
+  /** The authority's held frame is neutral once input stops, so this seat's drawn axes drop too. */
+  function neutralSource(): void { source?.sent(neutral()); }
   function stopInput(): void {
     if (client && descriptor && producing) {
       const s = client.neutralize(descriptor.seatId); if (s !== null) neutralSequence = s;   // Net-4a §3.3: the next entry carries it. FTL targeting spec §2: the crew's Space is a single press, so there is no held charge to let go of
@@ -248,15 +234,9 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     const now = deps.now();
     if (fresh) while (heldStamps.length && heldStamps[0]!.sequence <= p.heldHighWater[descriptor.seatId]!) sample(heldSamples, liveHeld, now - heldStamps.shift()!.at);
     for (const result of client.takeResults()) {
-      if (throttleSent && result.id.player === descriptor.seatId && result.id.sequence === throttleSent.sequence) throttleSent = null;   // applied, noop or rejected: the replica is the base again
-      if (headingSent && result.id.player === descriptor.seatId && result.id.sequence === headingSent.sequence) headingSent = null;
       // W-1 review F2: the authority decides NO CHARGE (the lagging replica cannot): its 'unavailable' for a pewFire this seat sent shows it.
       if (result.id.player === descriptor.seatId && pewSent.delete(result.id.sequence) && result.status === 'rejected' && result.reason === 'unavailable') source.refuse('pew', 'NO CHARGE');
-      if (laserModeSent && result.id.player === descriptor.seatId && result.id.sequence === laserModeSent.sequence) laserModeSent = null;   // W-2: the replica is the base again
       if (result.id.player === descriptor.seatId && laserSent.delete(result.id.sequence) && result.status === 'rejected' && result.reason === 'unavailable') source.refuse('fire', 'NO CHARGE');   // W-2
-      if (torpModeSent && result.id.player === descriptor.seatId && result.id.sequence === torpModeSent.sequence) torpModeSent = null;   // W-3: the replica is the base again
-      if (lockSent && result.id.player === descriptor.seatId && result.id.sequence === lockSent.sequence) lockSent = null;   // W-4 amendment §3.6: the replica is the base again
-      for (const slot of [0, 1] as const) { const sent = gunModeSent[slot]; if (sent && result.id.player === descriptor.seatId && result.id.sequence === sent.sequence) gunModeSent[slot] = null; }   // W-4: the replica is the base again
       if (result.id.player === descriptor.seatId && torpSent.delete(result.id.sequence) && result.status === 'rejected' && result.reason === 'unavailable') source.refuse('launch', refusal(d, 'launch', true) ?? 'NO TORPEDOES');   // W-3
       const at = result.id.player === descriptor.seatId ? commandStamps.get(result.id.sequence) : undefined;
       if (at !== undefined) { commandStamps.delete(result.id.sequence); if (result.status === 'applied') sample(commandSamples, liveCommand, now - at); }
@@ -273,17 +253,15 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     const seat = seatOf(d, me), p = k.presses;
     if (!houndWeaponsSeat(d, me)) { weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; }   // W-4 spec §9: a sit starts on pew pew (as Single player, before the standing return)
     if (seat === 'standing') {
-      if (p.interact > 0 && repairInReach(d, me) < 0) { const c = consoleInReach(d, me); if (c >= 0) { throttleSent = null; headingSent = null; laserModeSent = null; torpModeSent = null; lockSent = null; gunModeSent = [null, null]; torpHold = -1; weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; send({ kind: 'sit', station: c }); } }
+      if (p.interact > 0 && repairInReach(d, me) < 0) { const c = consoleInReach(d, me); if (c >= 0) { torpHold = -1; weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; send({ kind: 'sit', station: c }); } }
       return;
     }
-    if (p.stand > 0) { throttleSent = null; headingSent = null; laserModeSent = null; torpModeSent = null; lockSent = null; gunModeSent = [null, null]; torpHold = -1; weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; send({ kind: 'stand' }); return; }
+    if (p.stand > 0) { torpHold = -1; weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; send({ kind: 'stand' }); return; }
     if (requests.scan !== null && d.tactical.known[requests.scan] < CONTACT_MAX_LEVEL[requests.scan]) send({ kind: 'contactScan', contact: requests.scan });   // Sci-1 spec §5
     if (crewHelmSeat(d, me)) {   // playtest2feedback §3-§5: the held frame carries the rest
       if (p.camera > 0 && source) snapBack(source.cameras.helm);
-      if (k.fireHeld) headingSent = { heading: -1, sequence: null, round: d.round };   // only auto-face clears the hold here
-      if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== (headingSent ? headingSent.heading : d.holdHeading)) {
-        const id = send({ kind: 'heading', heading }); if (id) headingSent = { heading, sequence: id.sequence, round: d.round };
-      }
+      // Net-4a §3.9: deduped against P's hold (P already cleared it on the ticks auto-face was held).
+      if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== d.holdHeading) send({ kind: 'heading', heading });
       // §4a: a hold steers once the map gives a bearing (a press over a block or the ship steers nothing yet).
       const off = refusal(d, 'turn'), held = k.held ?? NO_HELD_FLAGS, steering = pointer.leftHeld(), steered = steering && steerNow !== null;
       if (off) {
@@ -297,16 +275,10 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     }
     if (seat === 'helm') {
       if (p.camera > 0 && source) snapBack(source.cameras.helm);
-      const level = throttleRequest(throttleSent ? throttleSent.level : d.throttle, p, k.throttleTo, throttleCap(d.tactical.systems[0]!));   // Artemis spec §5.4
-      if (level !== null) { const id = send({ kind: 'throttle', level }); if (id) throttleSent = { level, sequence: id.sequence, round: d.round }; }
-      // Feel-ii §1.1: deduped against the heading in flight, else the replica's; A/D or auto-face held clears the hold (the sim
-      // clears it after this tick's commands), so the base is −1 before and after this frame's request.
-      const turning = (Math.sign(k.moveX) || 0) !== 0 || k.fireHeld;
-      if (turning) headingSent = { heading: -1, sequence: null, round: d.round };
-      if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== (headingSent ? headingSent.heading : d.holdHeading)) {
-        const id = send({ kind: 'heading', heading }); if (id) headingSent = { heading, sequence: id.sequence, round: d.round };
-      }
-      if (turning) headingSent = { heading: -1, sequence: null, round: d.round };
+      const level = throttleRequest(d.throttle, p, k.throttleTo, throttleCap(d.tactical.systems[0]!));   // Artemis spec §5.4; Net-4a §3.9: from P's level
+      if (level !== null) send({ kind: 'throttle', level });
+      // Feel-ii §1.1, Net-4a §3.9: deduped against P's hold (P already cleared it on the ticks A/D or auto-face were held).
+      if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== d.holdHeading) send({ kind: 'heading', heading });
       // Feel-ii §2.8: with Engines off the Helm's controls fly nothing (the commands still go).
       const off = refusal(d, 'turn'), held = k.held ?? NO_HELD_FLAGS;
       if (off) {
@@ -334,15 +306,15 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
         for (let n = 0; n < Math.abs(dw); n++) send({ kind: 'weaponPower', slot: weaponSel, delta: Math.sign(dw) });
         const why = weaponPowerRefusal(d, weaponSel, Math.sign(dw)); if (why) source?.refuse('power', why);
       }
-      // W-4 amendment §3.6: E / Q step the target room from the room in flight (lockSent), else the replica's lock; a plain room
-      // click in the enemy window sets it. Neither makes a torpedo lock, and requests.torpStep is not read here.
+      // W-4 amendment §3.6, Net-4a §3.9: E / Q step the target room from P's lock; a plain room click in the enemy window sets
+      // it. Neither makes a torpedo lock, and requests.torpStep is not read here.
       const sendLock = (room: number): void => {
-        const id = send({ kind: 'laserLock', room }); if (id) lockSent = { room, sequence: id.sequence, round: d.round };
+        send({ kind: 'laserLock', room });
         const why = lockRefusal(d); if (why) source?.refuse('laser', why);   // NO CONTACT: the authority refuses a room on an unseen enemy
       };
       const steps = p.interact - p.prevLock;
       if (steps !== 0) {
-        let room = lockSent ? lockSent.room : sys0.lock;
+        let room = sys0.lock;
         for (let n = 0; n < Math.abs(steps); n++) room = cycleLock(room, steps > 0 ? 1 : -1);
         sendLock(room);
       }
@@ -351,12 +323,13 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       for (const rl of [requests.rockLock, k.rockTo]) if (rl && rl.weapon === 'torpedo') send({ kind: 'rockLock', weapon: 'torpedo', rock: rl.rock });
       const fk = k.gunFreqKeyTo ?? k.freqTo;   // 4 / 5 / 6 or the row's buttons (§5.2), a one-shot edge sent as it comes (Sci-1 §7.4's online rule); 3 selects
       if (fk !== undefined && fk !== null && Number.isInteger(fk) && fk >= 0 && fk <= 2) send({ kind: 'laserFrequency', freq: fk });
-      // W-4 amendment §2.4, §2.5: R, Shift+R and the tags, each weapon judged from the mode in flight for it, else the
-      // replica's. Z and V are not read at this seat.
-      const mode = modeRequests([gunModeSent[0] ? gunModeSent[0].manual : sys0.pewManual, gunModeSent[1] ? gunModeSent[1].manual : sys0.gunManual, torpModeSent ? torpModeSent.manual : sys0.torpManual], weaponSel, p, k.modeTaps);
-      for (const slot of [0, 1] as const) if (mode.changed[slot]) { const id = send({ kind: 'gunMode', slot, manual: mode.modes[slot] }); if (id) gunModeSent[slot] = { manual: mode.modes[slot], sequence: id.sequence, round: d.round }; }
-      if (mode.changed[2]) { const id = send({ kind: 'torpMode', manual: mode.modes[2] }); if (id) torpModeSent = { manual: mode.modes[2], sequence: id.sequence, round: d.round }; }
+      // W-4 amendment §2.4, §2.5, Net-4a §3.9: R, Shift+R and the tags, each weapon judged from its mode in P. Z and V are not
+      // read at this seat.
+      const mode = modeRequests([sys0.pewManual, sys0.gunManual, sys0.torpManual], weaponSel, p, k.modeTaps);
+      for (const slot of [0, 1] as const) if (mode.changed[slot]) send({ kind: 'gunMode', slot, manual: mode.modes[slot] });
+      if (mode.changed[2]) send({ kind: 'torpMode', manual: mode.modes[2] });
       const pewManual = mode.modes[0], gunManual = mode.modes[1], torpManual = mode.modes[2];
+      gunManualNow = gunManual;
       const launches = p.launch + (click !== null && weaponSel === WeaponSlot.Torpedo ? 1 : 0);   // F, or LMB with the torpedo selected
       if (launches > 0 && torpManual) {   // W-3's MANUAL rule for the lagging replica, as the laser branch's
         const why = refusal(d, 'launch', true);
@@ -395,13 +368,10 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     // Sci-1 spec §7.4: a one-shot edge, sent as it comes (the lagging replica is no base, a quick undo would be dropped); the sim answers noop to an unchanged value
     const lk = laserFreqKey(k);   // W-4 spec §9: 3/4/5 (the key field) or a console button
     if (lk !== undefined && lk !== null && Number.isInteger(lk) && lk >= 0 && lk <= 2) send({ kind: 'laserFrequency', freq: lk });
-    // W-2 (pew pew spec §2): Z or the LASER card's AUTO / MAN tag toggles the laser's mode, from the mode in flight, else the
-    // replica's (an odd number of presses this pump toggles it).
-    let manual = laserModeSent ? laserModeSent.manual : sys.laserManual;
-    if (p.laserMode % 2 === 1 && classOf(d.tactical, 0).slots.laser !== null) {
-      manual = !manual;
-      const id = send({ kind: 'laserMode', manual }); if (id) laserModeSent = { manual, sequence: id.sequence, round: d.round };
-    }
+    // W-2 (pew pew spec §2), Net-4a §3.9: Z or the LASER card's AUTO / MAN tag toggles the laser's mode, from P's (an odd
+    // number of presses this pump toggles it).
+    let manual = sys.laserManual;
+    if (p.laserMode % 2 === 1 && classOf(d.tactical, 0).slots.laser !== null) { manual = !manual; send({ kind: 'laserMode', manual }); }
     if (manual) {
       // W-2: in MANUAL Space fires the laser along the Weapons map's aim (else the nose). The replica lags the authority, so its
       // charge is no gate (W-1 review F2's rule): NO GUNNER, TORPEDO FLYING and WEAPONS OFFLINE refuse locally, a press on a
@@ -415,13 +385,10 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
         }
       }
     } else if (p.fireDown > 0 && canCharge(d.tactical, 0)) send({ kind: 'laserCharge', held: true });   // FTL targeting spec §2: Space is a single press that fires a full laser; there is no release to send
-    // W-3 (pew pew spec §3): V or the TORPEDO card's AUTO / MAN tag toggles the torpedo's mode, from the mode in flight, else
-    // the replica's (an odd number of presses this pump toggles it).
-    let torpManual = torpModeSent ? torpModeSent.manual : sys.torpManual;
-    if (p.torpMode % 2 === 1) {
-      torpManual = !torpManual;
-      const id = send({ kind: 'torpMode', manual: torpManual }); if (id) torpModeSent = { manual: torpManual, sequence: id.sequence, round: d.round };
-    }
+    // W-3 (pew pew spec §3), Net-4a §3.9: V or the TORPEDO card's AUTO / MAN tag toggles the torpedo's mode, from P's (an odd
+    // number of presses this pump toggles it).
+    let torpManual = sys.torpManual;
+    if (p.torpMode % 2 === 1) { torpManual = !torpManual; send({ kind: 'torpMode', manual: torpManual }); }
     if (p.launch > 0 && torpManual) {
       // W-3: in MANUAL F needs no target and no range. The replica lags the authority, so its magazine is no gate (W-1 review
       // F2's rule): NO GUNNER, TORPEDO FLYING and WEAPONS OFFLINE refuse locally, a press on a seemingly empty magazine is
@@ -446,31 +413,26 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   }
   /** Net-4a §3.3: a producing local tick (the first of a pump): the presses, the commands and this seat's held frame. */
   function produce(): LocalInput {
-    collected = null;   // a throw in play() on an earlier tick leaves no stale list
+    collected = null; gunManualNow = null;   // a throw in play() on an earlier tick leaves no stale list
     let k = keyboard.sample();
     const requests = contact.takeRequests(), heading = requests0(), steerTaken = takeSteer0(), pew = pewRequest(), torpNow = torpRequest();   // drained before any early return, so a steer never goes stale
     const prevHeld = lastFlags; lastFlags = k.held ?? NO_HELD_FLAGS;
     source?.heldFlags(k.held ?? NO_HELD_FLAGS);
     cameraKeys = { ...cameraKeys, presses: { ...cameraKeys.presses, zoomIn: cameraKeys.presses.zoomIn + k.presses.zoomIn, zoomOut: cameraKeys.presses.zoomOut + k.presses.zoomOut, camera: cameraKeys.presses.camera + k.presses.camera } };
-    const d = client?.state(), p = client?.publication();
-    if (throttleSent && d && d.round !== throttleSent.round) throttleSent = null;   // a new round starts at STOP
-    if (laserModeSent && d && d.round !== laserModeSent.round) laserModeSent = null;   // W-2: every round starts AUTO
-    if (torpModeSent && d && d.round !== torpModeSent.round) { torpModeSent = null; torpHold = -1; }   // W-3: every round starts AUTO
-    if (lockSent && d && d.round !== lockSent.round) lockSent = null;   // W-4 amendment §3.6: every round starts on Shields
-    for (const slot of [0, 1] as const) { const sent = gunModeSent[slot]; if (sent && d && d.round !== sent.round) gunModeSent[slot] = null; }   // W-4: every round starts AUTO
+    // Net-4a §3.9, §3.6: the console decisions read the prediction (P); the round's outcome and the leave prompt stay on the
+    // confirmed replica (c), so a predicted kill never neutralizes input or opens the prompt ahead of the authority (R1-F8).
+    const c = client?.state(), d = predictor?.state() ?? c, p = client?.publication();
+    if (d && d.round !== torpRound) { torpRound = d.round; torpHold = -1; }   // W-3: a new round holds no MANUAL heading
     if (d && d.round !== selRound) { selRound = d.round; weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; }   // W-4 spec §9: every round starts on pew pew
-    if (headingSent && d && (d.round !== headingSent.round || (headingSent.sequence === null && d.holdHeading === -1))) headingSent = null;   // a new round holds none; the replica caught up with the local clear
-    source?.throttleBase(throttleSent ? throttleSent.level : null);
-    for (const slot of [0, 1] as const) source?.gunModeBase(slot, gunModeSent[slot] ? gunModeSent[slot]!.manual : null);   // W-4 spec §11, amendment §2.6
-    if (!client || linkClosed || !d || !p || !descriptor || !synced || !focused || blocked) { if (producing) stopInput(); return idle(); }
-    const me = descriptor.seatId, decided = d.tactical.outcome !== Outcome.Running;
+    if (!client || linkClosed || !c || !d || !p || !descriptor || !synced || !focused || blocked) { if (producing) stopInput(); return idle(); }
+    const me = descriptor.seatId, decided = c.tactical.outcome !== Outcome.Running;
     // Final review I1: on the pump this seat becomes the crew Helm (the sit's publication arrived), the keys held now are
     // stale until pressed again (E sits and is a thruster; W, A and D walk), and this sample's crew fields are dropped.
     const crewHelmNow = crewHelmSeat(d, me);
     if (crewHelmNow && !crewHelmPrev) { keyboard.staleHeld(); k = { ...k, throttleHeld: 0, rcsX: 0, rcsY: 0 }; }
     crewHelmPrev = crewHelmNow;
     // Escape and the leave prompt (spec §7): a prompt from a round that is no longer decided and running closes first.
-    const keys = leavePromptKeys(leaveConfirm, d, p.phase, k.presses);
+    const keys = leavePromptKeys(leaveConfirm, c, p.phase, k.presses);
     leaveConfirm = keys.prompt;
     if (keys.send) send(keys.send);
     if (keys.leave) deps.leave();
@@ -488,16 +450,12 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     // gives it a heading to hold (torpHold, re-sent every pump; letting go keeps the last one) until the flight ends.
     const torpSteering = !decided && seatOf(d, me) === 'weapons' && manualTorpedoFlying(d.tactical);
     if (!torpSteering) torpHold = -1; else if (torpNow !== null && torpNow >= 0) torpHold = torpNow;
-    const held: HeldInput = { ...sessionHeld(k, d, me, steer, { sel: weaponSel, trigger: triggerLive && (gunModeSent[1] ? gunModeSent[1].manual : d.tactical.systems[0].gunManual), aim: reticleNow() ?? -1 }), ...(torpHold >= 0 ? { torpHeading: torpHold } : {}) };
+    const held: HeldInput = { ...sessionHeld(k, d, me, steer, { sel: weaponSel, trigger: triggerLive && (gunManualNow ?? d.tactical.systems[0].gunManual), aim: reticleNow() ?? -1 }), ...(torpHold >= 0 ? { torpHeading: torpHold } : {}) };
     const sent = decided ? neutral() : held, sequence = client.held(me, sent);
-    if (sequence !== null) lastHeldSequence = sequence;
-    source?.unacked(Math.min(UNACKED_MAX, Math.max(0, lastHeldSequence - (p.heldHighWater[me] ?? 0))));   // Decision 14
     if (sequence !== null && !decided && heldChanged(held, lastHeld)) {
       heldStamps.push({ sequence, at: deps.now() }); if (heldStamps.length > 64) heldStamps.shift();
     }
     if (!decided) { lastHeld = held; source?.sent(held); }
-    source?.throttleBase(throttleSent ? throttleSent.level : null);   // a press this pump shows this pump
-    for (const slot of [0, 1] as const) source?.gunModeBase(slot, gunModeSent[slot] ? gunModeSent[slot]!.manual : null);   // W-4 spec §11, amendment §2.6
     producing = true;
     const commands = collected; collected = null;
     if (sequence === null) return idle();
@@ -547,7 +505,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       observe(); release();
       // This round's gaps before the re-attach stay in its record (the reconnect time itself is never one).
       if (source) { roundGaps.push(...source.takeArrivals()); if (roundGaps.length > 4096) roundGaps.splice(0, roundGaps.length - 4096); }
-      descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; throttleSent = null; headingSent = null; laserModeSent = null; torpModeSent = null; lockSent = null; gunModeSent = [null, null]; torpHold = -1; weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; steer = -1; steerPrev = false; lastHeldSequence = 0; attaches++;
+      descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; torpHold = -1; weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; steer = -1; steerPrev = false; attaches++;
       heldStamps.length = 0; commandStamps.clear(); pewSent.clear(); laserSent.clear(); torpSent.clear();   // the new client restarts its sequences: an old stamp would match a new frame
       // Spec §6.2: a map click counts only while this window has focus and input is not blocked; otherwise it is drained and dropped.
       scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED', ui: deps.ui, audio: deps.audio, contact,

@@ -400,7 +400,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   const torpModeBase = (): boolean => { const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'torpMode')?.command; return c && c.kind === 'torpMode' ? c.manual : d.tactical.systems[0].torpManual; };
   /** W-4 amendment §2.4: the active player's latest queued gunMode for gun `slot` (0 pew pew, 1 the autocannon), else the
    *  sim's flag (as torpModeBase). */
-  const gunModeBase = (slot: 0 | 1): boolean => {
+  const gunBase = (slot: 0 | 1): boolean => {
     const c = [...pending].reverse().find((x) => x.player === active && x.command.kind === 'gunMode' && x.command.slot === slot)?.command;
     return c && c.kind === 'gunMode' ? c.manual : slot === 0 ? d.tactical.systems[0].pewManual : d.tactical.systems[0].gunManual;
   };
@@ -549,7 +549,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       // W-4 amendment §2.4, §2.5: R flips the selected weapon's switch (a gun's gunMode; the torpedo's torpMode when it is
       // selected), Shift+R sets both guns together, and a tag click flips its own weapon; each judged from the latest queued
       // mode, else the sim's. Z and V (p.laserMode, p.torpMode) are not read at this seat.
-      const mode = modeRequests([gunModeBase(0), gunModeBase(1), torpModeBase()], weaponSel, p, k.modeTaps);
+      const mode = modeRequests([gunBase(0), gunBase(1), torpModeBase()], weaponSel, p, k.modeTaps);
       for (const slot of [0, 1] as const) if (mode.changed[slot]) queue({ kind: 'gunMode', slot, manual: mode.modes[slot] });
       if (mode.changed[2]) queue({ kind: 'torpMode', manual: mode.modes[2] });
       const pewManual = mode.modes[0], gunManual = mode.modes[1], torpManual = mode.modes[2];
@@ -679,7 +679,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
         ...(k.fireHeld && !look && (seatNow === 'helm' || seatNow === 'flight') ? { face: true } : {}),
         ...(steer >= 0 ? { aim: steer } : {}), ...(gunNow ? { gunHeld: true } : {}),   // Valkyrn spec §5.1
         ...(torpHold >= 0 ? { torpHeading: torpHold } : {}) };   // W-3, W-4 spec §7
-      if (!ended() && houndWeaponsSeat(d, active)) activeHeld = { ...activeHeld, ...weaponsSeatHeld(weaponSel, triggerLive && gunModeBase(1), deps.reticleAim?.() ?? -1) };   // W-4 spec §7, §8: the gated trigger, only while the autocannon's own switch is MAN
+      if (!ended() && houndWeaponsSeat(d, active)) activeHeld = { ...activeHeld, ...weaponsSeatHeld(weaponSel, triggerLive && gunBase(1), deps.reticleAim?.() ?? -1) };   // W-4 spec §7, §8: the gated trigger, only while the autocannon's own switch is MAN
       pacer.sync();   // an Escape this frame pauses before any due tick runs
       pacer.pump();
       frameAlpha = alphaAt(deps.now(), lastTickTime);
