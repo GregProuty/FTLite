@@ -25,3 +25,9 @@ Spec: docs/superpowers/specs/2026-11-20-ui-round-design.md §2.2-§2.4a. Plan: d
 - `side:` fixtures were removed from 16 UI test files. The full list is in .superpowers/sdd/task-3-report.md.
 - Suite: typecheck clean, build OK. 541 files: 6385 passed, 5 failed, 3 skipped. Four of the failures were this task's and are fixed; those files pass alone (57/57). snapshot.test.ts timed out under load and passes alone (49/49).
 - Concerns: the widest sit card (600 px, x 388..988) overlaps the contact window by 20 px. Map clicks less than about 80 px below the centred ship land on the Weapons block. The online notice is still centred at 766 (CONSOLE_RESERVE).
+
+## Task 7: verification, screenshots, the gate
+- Typecheck clean; electron-vite build OK; vitest 544 files, 6401 passed, 3 skipped (no load timeouts); determinism PASS (Node, Electron 37.10.3, Firefox 160; duel restore 597 checks); duel app smoke two-process PASS (159 s). `git diff --stat 82efba31 -- tests/golden tests/fixtures src/renderer/src/sim` is empty.
+- Screenshots (scripts/ui-round-2a-shots.cjs, C:/Users/djuar/FTLite-shots/ui-round-2a/): 1-helm (+ 1-helm-contact with BRG 074  RNG 728), 2-weapons-window (enemy window top right, sit card at the top, clear), 3-science (SENSOR RANGE 900), 4-ship (full width, empty Weapons badge blinking red; 4-ship-away), 5-damage (burning WEAP blinking, damaged SHLD hot with its progress bar, offline ENG, HEALTH row), 6-flight (Helm block x 346 and Flight block x 658 side by side). No info box, no zoom box.
+- Gate entry appended to docs/gates.md; owner look check open.
+- Concerns: the AWAY label is hidden under a console badge's name when the away character stands on a console tile, and in DIM it is barely visible on the light floor; the 2 px room progress bar sits on the power panel's bottom border. Not patched. Full detail: .superpowers/sdd/task-7-report.md.
