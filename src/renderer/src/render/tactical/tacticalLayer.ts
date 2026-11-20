@@ -11,15 +11,12 @@ import type { CrtScale } from '../crt';
 import { createCrtFilters, type CrtFilters } from './crtFilter';
 import { ALERT_BLINK_HZ, blink, CRT, DAMAGE_BLINK_HZ, DASH, ENEMY_BLINK_HZ, GAP, HATCH_ANGLE, HATCH_SPACING, roomLevel, roomLook } from './crtTheme';
 import { dashCircle, dashLine, hatchSegments } from './dashModel';
-import { asteroidShape, blipMark, CHEVRON_SIZE, crackDraw, type ArrowTarget, type ContactMarkDraw, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
+import { asteroidShape, blipMark, CHEVRON_SIZE, CRACK_ALPHA, crackDraw, type ArrowTarget, type ContactMarkDraw, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
 import { ENEMY_RING, HULLS } from './hullModel';
 import type { ArcDraw, CombatDraw, MissileDraw } from './weaponsModel';
 import type { Viewport } from './camera';
 import { CALLOUT_MAX } from './hitModel';
 import { FLOATS_MAX } from './fxModel';
-
-/** §7.1: the rock trails' alpha is quantised into this many bands, one polyline stroke each. */
-const TRAIL_BANDS = 4;
 import { CROSS_PX, PIP_PX } from '../duel/leadModel';
 
 export { CREW_SHIP, ENEMY_SHIP, SHIELD_RING } from './shipColours';
@@ -274,28 +271,13 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         bodies.circle(p.x, p.y, Math.max(1, p.r)).stroke({ width: 1, color: CRT.mid, alpha: 0.6 });
       }
       for (const a of d.asteroids) {
-        if (a.trail) {   // §7.1, §13.5: the free rock's fading trail, oldest faintest: one polyline per alpha band
-          const segs = a.trail.length / 2 - 1;
-          for (let band = 0; band < TRAIL_BANDS; band++) {
-            const lo = Math.floor((band * segs) / TRAIL_BANDS), hi = Math.floor(((band + 1) * segs) / TRAIL_BANDS);
-            if (hi <= lo) continue;
-            bodies.moveTo(a.trail[lo * 2]!, a.trail[lo * 2 + 1]!);
-            for (let i = lo + 1; i <= hi; i++) bodies.lineTo(a.trail[i * 2]!, a.trail[i * 2 + 1]!);
-            bodies.stroke({ width: 1, color: CRT.dim, alpha: (0.5 * (band + 1)) / TRAIL_BANDS });
-          }
-        }
-        if (a.streak) {   // spike ii §7 item 3: a moving rock's fading streak behind it
-          const mx = (a.x + a.streak.x) / 2, my = (a.y + a.streak.y) / 2;
-          bodies.moveTo(a.x, a.y).lineTo(mx, my).stroke({ width: Math.max(1, Math.min(3, a.r * 0.5)), color: CRT.mid, alpha: a.streak.alpha });
-          bodies.moveTo(mx, my).lineTo(a.streak.x, a.streak.y).stroke({ width: 1, color: CRT.dim, alpha: a.streak.alpha * 0.6 });
-        }
         if (a.dot) { bodies.rect(Math.round(a.x) - 1, Math.round(a.y) - 1, 2, 2).fill(CRT.mid); continue; }
         const shape = asteroidShape(a.index), pts: number[] = [];
         shape.forEach((m, k) => { const ang = (k / shape.length) * Math.PI * 2 + (a.spin ?? 0); pts.push(a.x + Math.cos(ang) * a.r * m, a.y + Math.sin(ang) * a.r * m); });
-        const wear = a.wear ?? 0;   // §7.3: the fill dims at wear ≥ 0.5; the outline keeps CRT.main once worn
-        bodies.poly(pts).fill(wear >= 0.5 ? CRT.faint : CRT.dim).stroke({ width: 1, color: wear > 0 ? CRT.main : CRT.mid });
-        // §7.3 step 6: cut into the rock: a 1 px CRT.glass line at 0.85, then a 1 px CRT.mid highlight 0.6 px off at 0.5
-        for (const s of crackDraw(a.index, wear, a.x, a.y, a.r, a.spin ?? 0)) bodies.moveTo(s.x1, s.y1).lineTo(s.x2, s.y2).stroke({ width: 1, color: s.light ? CRT.mid : CRT.glass, alpha: s.light ? 0.5 : 0.85 });
+        // Look pass spec §2: a rock is background: the same CRT.dim fill and CRT.mid outline whole or worn, and its cracks
+        // one CRT.faint stroke each (darker than the fill, never lighter), no highlight.
+        bodies.poly(pts).fill(CRT.dim).stroke({ width: 1, color: CRT.mid });
+        for (const s of crackDraw(a.index, a.wear ?? 0, a.x, a.y, a.r, a.spin ?? 0)) bodies.moveTo(s.x1, s.y1).lineTo(s.x2, s.y2).stroke({ width: 1, color: CRT.faint, alpha: CRACK_ALPHA });
       }
 
       for (const q of d.rockPath ?? []) bodies.rect(Math.round(q.x) - 1, Math.round(q.y) - 1, 2, 2).fill({ color: CRT.mid, alpha: 0.8 });   // §7.2: the target's next 20 s
