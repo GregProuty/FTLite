@@ -21,11 +21,11 @@
 //     |v − ω(ρω)·perp(p)| < CLUSTER_JOIN_SNAP and its annulus crosses no rail outside C; it keeps the distance D from C's
 //     centre, so it never meets a member.
 //   - Between the two (neither joins), it stays Free, refused as 'sweepCluster'.
-import { laneZone, orbitRate, railPos, SPIN_RATE, targetVelocity, type RailOut } from './rails';
+import { laneZone, orbitRate, railPos, SPIN_RATE, type RailOut } from './rails';
 import { CLUSTER_JOIN_SNAP, LANE_CAPTURE_DR, RAIL_OFFSET_MAX, REJOIN_EDGE_CLEAR, REJOIN_RECHECK_TICKS, REJOIN_MIN_TICKS, REJOIN_PLANET_CLEAR, REJOIN_SNAP_FACTOR, REJOIN_SNAP_MAX, REJOIN_SPEED } from './rockTuning';
-import { isRail, railCentreRadius, railRowChanged, rockPhase, RockKind, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
+import { railCentreRadius, railRowChanged, rockPhase, RockKind, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
 import type { TacticalState } from './state';
-import { ASTEROID_GAP, LANES, PLANET_RADIUS, R_MAP } from './tuning';
+import { ASTEROID_GAP, GM, GRAVITY_EPS, LANES, PLANET_RADIUS, R_MAP } from './tuning';
 
 /** How a Free rock rejoins: its ρω and how; a cluster join (§14 D14) also says which (the tumble group, or the ring: the
  *  cluster's rotation as a plain Rail), and a tumble join carries the cluster's kind and its centre at T + 1. */
@@ -36,71 +36,90 @@ export interface RejoinChoice { rhoW: number; how: 'lane' | 'group' | 'own' | 'c
 export type RejoinRefusal = 'state' | 'clock' | 'speed' | 'bounds' | 'overlap' | 'laneFar' | 'snap' | 'sweepCluster' | 'sweepLane' | 'sweepRail';
 /** Two ω-radii this close are the same rail rate (a lane rock's |centre| is its lane's ρ to an ulp). */
 const SAME_RHO = 1e-6;
-const laneRail = (rc: number): boolean => LANES.some((l) => Math.abs(rc - l.rho) < SAME_RHO);
-const clusterRail = (s: TacticalState, rc: number): boolean => s.map.clusterRho.some((c) => Math.abs(rc - c) < SAME_RHO);
-/** The orbital radii live rail j sweeps: a Rail's |p| is constant (it turns rigidly), a Tumble's spins within |centre| ± |offset|. */
-function sweep(s: TacticalState, j: number): [number, number] {
-  const v = s.rocks, b = j * ROCK_STRIDE, r = v[b + 5]!, rc = railCentreRadius(s, j);
-  if (v[b] === RockKind.Tumble) { const ro = Math.sqrt(v[b + 3]! * v[b + 3]! + v[b + 4]! * v[b + 4]!); return [rc - ro - r, rc + ro + r]; }
-  const px = v[b + 1]! + v[b + 3]!, py = v[b + 2]! + v[b + 4]!, p = Math.sqrt(px * px + py * py);
-  return [p - r, p + r];
+const EPS2 = GRAVITY_EPS * GRAVITY_EPS;
+function laneRail(rc: number): boolean { for (let i = 0; i < LANES.length; i++) if (Math.abs(rc - LANES[i]!.rho) < SAME_RHO) return true; return false; }
+function clusterRail(s: TacticalState, rc: number): boolean { const c = s.map.clusterRho; for (let i = 0; i < c.length; i++) if (Math.abs(rc - c[i]!) < SAME_RHO) return true; return false; }
+
+// The rail classes, taken once per settle pass (and once per call outside one): for each slot its class bits (0 when it
+// is not a live rail), its centre radius |centre| and the orbital radii it sweeps, [swLo, swHi]: a Rail's |p| is constant
+// (it turns rigidly), a Tumble's spins within |centre| ± |offset|. Within a pass only a rejoining slot changes, and
+// settleRocks re-classifies it, so every read sees the values the per-call computation gave, bit for bit.
+const C_RAIL = 1, C_TUMBLE = 2, C_LANE = 4, C_CLUSTER = 8;
+let cls = new Uint8Array(0), rcOf = new Float64Array(0), swLo = new Float64Array(0), swHi = new Float64Array(0);
+/** The state whose settle pass is running, or null; passReady once that pass has classified (lazily, at its first
+ *  candidate to need the classes). */
+let passOf: TacticalState | null = null, passReady = false;
+function classifyRail(s: TacticalState, j: number): void {
+  const v = s.rocks, b = j * ROCK_STRIDE, kind = v[b]!;
+  if (kind !== RockKind.Rail && kind !== RockKind.Tumble) { cls[j] = 0; return; }
+  const r = v[b + 5]!, rc = railCentreRadius(s, j);
+  rcOf[j] = rc;
+  if (kind === RockKind.Tumble) { const ro = Math.sqrt(v[b + 3]! * v[b + 3]! + v[b + 4]! * v[b + 4]!); swLo[j] = rc - ro - r; swHi[j] = rc + ro + r; }
+  else { const px = v[b + 1]! + v[b + 3]!, py = v[b + 2]! + v[b + 4]!, p = Math.sqrt(px * px + py * py); swLo[j] = p - r; swHi[j] = p + r; }
+  cls[j] = (kind === RockKind.Tumble ? C_TUMBLE : C_RAIL) | (laneRail(rc) ? C_LANE : 0) | (clusterRail(s, rc) ? C_CLUSTER : 0);
 }
+function classifyRails(s: TacticalState): void {
+  const n = rockSlots(s);
+  if (cls.length < n) { cls = new Uint8Array(n); rcOf = new Float64Array(n); swLo = new Float64Array(n); swHi = new Float64Array(n); }
+  for (let j = 0; j < n; j++) classifyRail(s, j);
+}
+function refuse(why: { reason: RejoinRefusal | null } | undefined, reason: RejoinRefusal): null { if (why) why.reason = reason; return null; }
 
 /** Whether Free rock k rejoins now, and how (every §3.4 and §13.2 rule, plan deviation 3); null when it stays Free, with
  *  `why.reason` set to the first rule that refused it. */
 export function rejoinChoice(s: TacticalState, k: number, why?: { reason: RejoinRefusal | null }): RejoinChoice | null {
-  const v = s.rocks, b = k * ROCK_STRIDE, n = rockSlots(s), no = (reason: RejoinRefusal): null => { if (why) why.reason = reason; return null; };
-  if (v[b] !== RockKind.Free || s.rockBorn[k] === 1 || s.rockTouched[k] === 1) return no('state');
-  if (rockPhase(s) - v[b + 7]! < REJOIN_MIN_TICKS) return no('clock');
-  const x = v[b + 1]!, y = v[b + 2]!, r = v[b + 5]!, [tx, ty] = targetVelocity(x, y), dvx = v[b + 3]! - tx, dvy = v[b + 4]! - ty;
-  if (dvx * dvx + dvy * dvy >= REJOIN_SPEED * REJOIN_SPEED) return no('speed');
+  const v = s.rocks, b = k * ROCK_STRIDE, n = rockSlots(s);
+  if (v[b] !== RockKind.Free || s.rockBorn[k] === 1 || s.rockTouched[k] === 1) return refuse(why, 'state');
+  if (rockPhase(s) - v[b + 7]! < REJOIN_MIN_TICKS) return refuse(why, 'clock');
+  // targetVelocity (= circularVelocity) inlined: the same operations in the same order, no tuple
+  const x = v[b + 1]!, y = v[b + 2]!, r = v[b + 5]!, q = x * x + y * y + EPS2, wt = Math.sqrt(GM / (q * Math.sqrt(q))), dvx = v[b + 3]! - -wt * y, dvy = v[b + 4]! - wt * x;
+  if (dvx * dvx + dvy * dvy >= REJOIN_SPEED * REJOIN_SPEED) return refuse(why, 'speed');
   const rho = Math.sqrt(x * x + y * y);
-  if (rho + r > R_MAP - REJOIN_EDGE_CLEAR || rho - r < PLANET_RADIUS + REJOIN_PLANET_CLEAR) return no('bounds');
+  if (rho + r > R_MAP - REJOIN_EDGE_CLEAR || rho - r < PLANET_RADIUS + REJOIN_PLANET_CLEAR) return refuse(why, 'bounds');
   for (let j = 0; j < n; j++) {
     if (j === k || v[j * ROCK_STRIDE] === RockKind.Gone) continue;
     const dx = rockX(s, j) - x, dy = rockY(s, j) - y, rr = r + v[j * ROCK_STRIDE + 5]!;
-    if (dx * dx + dy * dy < rr * rr) return no('overlap');
+    if (dx * dx + dy * dy < rr * rr) return refuse(why, 'overlap');
   }
+  if (passOf !== s || !passReady) { classifyRails(s); passReady = passOf === s; }
   const lo = rho - r - ASTEROID_GAP, hi = rho + r + ASTEROID_GAP, zone = laneZone(rho);
-  let choice: RejoinChoice = { rhoW: rho, how: 'own' };
+  let rhoW = rho, how: RejoinChoice['how'] = 'own';
   if (zone >= 0) {   // §13.2: a lane capture only close to the lane radius
-    if (Math.abs(rho - LANES[zone]!.rho) > LANE_CAPTURE_DR) return no('laneFar');
-    choice = { rhoW: LANES[zone]!.rho, how: 'lane' };
+    if (Math.abs(rho - LANES[zone]!.rho) > LANE_CAPTURE_DR) return refuse(why, 'laneFar');
+    rhoW = LANES[zone]!.rho; how = 'lane';
   }
   else for (let j = 0; j < n; j++) {
-    if (j === k || v[j * ROCK_STRIDE] !== RockKind.Rail) continue;
-    const rc = railCentreRadius(s, j);
-    if (laneRail(rc) || clusterRail(s, rc)) continue;
-    const [a, z] = sweep(s, j);
-    if (!(lo < z && hi > a)) continue;
-    if (REJOIN_SNAP_FACTOR * orbitRate(rho) * Math.abs(rho - rc) >= REJOIN_SNAP_MAX) return no('snap');
-    choice = { rhoW: rc, how: 'group' };
+    const c = cls[j]!;
+    if (j === k || (c & C_RAIL) === 0 || (c & (C_LANE | C_CLUSTER)) !== 0) continue;
+    if (!(lo < swHi[j]! && hi > swLo[j]!)) continue;
+    const rc = rcOf[j]!;
+    if (REJOIN_SNAP_FACTOR * orbitRate(rho) * Math.abs(rho - rc) >= REJOIN_SNAP_MAX) return refuse(why, 'snap');
+    rhoW = rc; how = 'group';
     break;
   }
   let first: RejoinRefusal | null = null, group = -1;   // the first sweep's reason; the one cluster (its ρω) sweeping, if only clusters do
   for (let j = 0; j < n; j++) {   // plan deviation 3
-    if (j === k || !isRail(v[j * ROCK_STRIDE]!)) continue;
-    if (Math.abs(railCentreRadius(s, j) - choice.rhoW) < SAME_RHO && v[j * ROCK_STRIDE] === RockKind.Rail) continue;   // same ω: rigid together
-    const [a, z] = sweep(s, j), rj = railCentreRadius(s, j);
-    if (!(lo < z && hi > a)) continue;
-    const inCluster = v[j * ROCK_STRIDE] === RockKind.Tumble || clusterRail(s, rj);
-    first ??= inCluster ? 'sweepCluster' : laneRail(rj) ? 'sweepLane' : 'sweepRail';
-    if (!inCluster) return no(first);
+    const c = cls[j]!;
+    if (j === k || c === 0) continue;
+    const rj = rcOf[j]!;
+    if ((c & C_RAIL) !== 0 && Math.abs(rj - rhoW) < SAME_RHO) continue;   // same ω: rigid together
+    if (!(lo < swHi[j]! && hi > swLo[j]!)) continue;
+    const inCluster = (c & (C_TUMBLE | C_CLUSTER)) !== 0;
+    first ??= inCluster ? 'sweepCluster' : (c & C_LANE) !== 0 ? 'sweepLane' : 'sweepRail';
+    if (!inCluster) return refuse(why, first);
     if (group < 0) group = rj;
-    else if (Math.abs(rj - group) >= SAME_RHO) return no(first);   // two clusters sweep it
+    else if (Math.abs(rj - group) >= SAME_RHO) return refuse(why, first);   // two clusters sweep it
   }
-  if (first === null) return choice;
-  return clusterJoin(s, k, group) ?? no(first);
+  if (first === null) return { rhoW, how };
+  return clusterJoin(s, k, group) ?? refuse(why, first);
 }
 
 const centreOut: RailOut = { x: 0, y: 0, vx: 0, vy: 0 };
-/** Whether any live rail outside the cluster of ρω `group` sweeps across [lo, hi]. */
+/** Whether any live rail outside the cluster of ρω `group` sweeps across [lo, hi] (the classes are current). */
 function crossesOutside(s: TacticalState, k: number, group: number, lo: number, hi: number): boolean {
-  const v = s.rocks;
   for (let j = 0, n = rockSlots(s); j < n; j++) {
-    if (j === k || !isRail(v[j * ROCK_STRIDE]!) || Math.abs(railCentreRadius(s, j) - group) < SAME_RHO) continue;
-    const [a, z] = sweep(s, j);
-    if (lo < z && hi > a) return true;
+    if (j === k || cls[j] === 0 || Math.abs(rcOf[j]! - group) < SAME_RHO) continue;
+    if (lo < swHi[j]! && hi > swLo[j]!) return true;
   }
   return false;
 }
@@ -120,7 +139,7 @@ function clusterJoin(s: TacticalState, k: number, group: number): RejoinChoice |
   let g = -1, firstRail = -1, roMax = 0, rMax = 0;
   for (let j = 0; j < n; j++) {
     const J = j * ROCK_STRIDE;
-    if (j === k || !isRail(v[J]!) || Math.abs(railCentreRadius(s, j) - group) >= SAME_RHO) continue;
+    if (j === k || cls[j] === 0 || Math.abs(rcOf[j]! - group) >= SAME_RHO) continue;
     if (firstRail < 0) firstRail = j;
     if (v[J] === RockKind.Tumble) {
       if (g < 0) g = j;
@@ -130,7 +149,7 @@ function clusterJoin(s: TacticalState, k: number, group: number): RejoinChoice |
   const tumbling = g >= 0;
   if (!tumbling) {   // the clusterTumble switch off: every member a Rail; the extents over all of them
     g = firstRail;
-    for (let j = 0; j < n; j++) { const J = j * ROCK_STRIDE; if (j !== k && isRail(v[J]!) && Math.abs(railCentreRadius(s, j) - group) < SAME_RHO) { const ro = Math.sqrt(v[J + 3]! * v[J + 3]! + v[J + 4]! * v[J + 4]!); if (ro > roMax) roMax = ro; if (v[J + 5]! > rMax) rMax = v[J + 5]!; } }
+    for (let j = 0; j < n; j++) { const J = j * ROCK_STRIDE; if (j !== k && cls[j] !== 0 && Math.abs(rcOf[j]! - group) < SAME_RHO) { const ro = Math.sqrt(v[J + 3]! * v[J + 3]! + v[J + 4]! * v[J + 4]!); if (ro > roMax) roMax = ro; if (v[J + 5]! > rMax) rMax = v[J + 5]!; } }
   }
   if (g < 0) return null;
   const G = g * ROCK_STRIDE, kind = v[G]!, gx = v[G + 1]!, gy = v[G + 2]!, rho_c = Math.sqrt(gx * gx + gy * gy), w = orbitRate(rho_c);
@@ -144,7 +163,7 @@ function clusterJoin(s: TacticalState, k: number, group: number): RejoinChoice |
       ok = !crossesOutside(s, k, group, rc - D - r - ASTEROID_GAP, rc + D + r + ASTEROID_GAP);
       for (let j = 0; j < n && ok; j++) {   // C's ring rocks (its Rails) sit at a fixed distance from the centre: keep the member circle inside theirs
         const J = j * ROCK_STRIDE;
-        if (j === k || v[J] !== RockKind.Rail || Math.abs(railCentreRadius(s, j) - group) >= SAME_RHO) continue;
+        if (j === k || (cls[j]! & C_RAIL) === 0 || Math.abs(rcOf[j]! - group) >= SAME_RHO) continue;
         const ex = rockX(s, j) - cx, ey = rockY(s, j) - cy;
         if (D + r + ASTEROID_GAP >= Math.sqrt(ex * ex + ey * ey) - v[J + 5]!) ok = false;
       }
@@ -167,7 +186,8 @@ function clusterJoin(s: TacticalState, k: number, group: number): RejoinChoice |
  *  ticks where (T1 + k) % REJOIN_RECHECK_TICKS is 0 (from the tick and the slot alone, no state); a younger one every tick. */
 export function settleRocks(s: TacticalState): void {
   const v = s.rocks, T1 = rockPhase(s);
-  for (let k = 0, n = rockSlots(s); k < n; k++) {
+  passOf = s; passReady = false;
+  try { for (let k = 0, n = rockSlots(s); k < n; k++) {
     const b0 = k * ROCK_STRIDE;
     if (v[b0] !== RockKind.Free) continue;
     if (T1 - v[b0 + 7]! >= REJOIN_MIN_TICKS + REJOIN_RECHECK_TICKS && (T1 + k) % REJOIN_RECHECK_TICKS !== 0) continue;
@@ -177,6 +197,7 @@ export function settleRocks(s: TacticalState): void {
     const tumble = c.join === 'tumble', cx = tumble ? c.cx! : x * f, cy = tumble ? c.cy! : y * f;
     v[b] = tumble ? c.kind! : RockKind.Rail; v[b + 1] = cx; v[b + 2] = cy; v[b + 3] = x - cx; v[b + 4] = y - cy; v[b + 7] = T1;
     railRowChanged(s, k);
+    classifyRail(s, k);   // it is a live rail for the later ones
     s.events.push({ kind: 'rock', what: 'rejoin', by: 'settle', rock: k, x, y, r: v[b + 5]!, vx: 0, vy: 0, how: c.how, ...(c.join ? { join: c.join } : {}) });
-  }
+  } } finally { passOf = null; passReady = false; }
 }

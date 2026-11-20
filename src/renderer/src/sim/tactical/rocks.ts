@@ -224,7 +224,8 @@ export function rocksNear(s: TacticalState, x: number, y: number, h: number, out
 
 /** Write slot k's eight values (a rail: its centre in x, y and its offset in vx, vy); t defaults to the phase tick. */
 export function writeRock(s: TacticalState, k: number, kind: number, x: number, y: number, vx: number, vy: number, r: number, hp: number, t: number = rockPhase(s)): void {
-  s.rocks.set([kind, x, y, vx, vy, r, hp, t], k * ROCK_STRIDE);
+  const v = s.rocks, b = k * ROCK_STRIDE;   // written in place: no array per birth
+  v[b] = kind; v[b + 1] = x; v[b + 2] = y; v[b + 3] = vx; v[b + 4] = vy; v[b + 5] = r; v[b + 6] = hp; v[b + 7] = t;
   railRowChanged(s, k);
 }
 
