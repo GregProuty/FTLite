@@ -19,14 +19,14 @@ const peer=z.object({role:z.enum(['host','guest']),seat:z.union([z.literal(0),z.
   inputs:z.array(z.object({player:nat,sequence:pos,order:pos,command:label.optional()}).strict()).min(1).max(512),
   results:z.array(z.object({id:z.object({player:nat,sequence:pos}).strict(),status:z.literal('applied')}).strict()).min(1).max(128),
   publications:z.array(publication).min(1).max(256),routes:z.array(z.object({state:z.literal('connected'),selected:z.literal(true),localType:z.enum(['host','srflx','prflx','relay']),remoteType:z.enum(['host','srflx','prflx','relay']),policy:z.enum(['all','relay']),sent:pos,received:pos}).strict()).min(1).max(3),cleanup}).strict();
-// The duel run (H-2b): the forced round end and round 2's thrust, beam and hash agreement, each machine's round-1
+// The duel run (H-2b): the forced round end and round 2's thrust, torpedo launch and hash agreement, each machine's round-1
 // playtest record (route label and RTT only) and both apps' exact cleanup.
 const duelRecord=z.object({role:z.enum(['host','guest']),round:z.literal(0),transport:z.enum(['loopback','lan','internet']).nullable(),rttMs:z.number().finite().nonnegative().nullable(),held:nat,command:nat}).strict();
 const duel=z.object({seed:nat,decidedTick:pos,thrust:z.object({before:z.number().finite(),host:z.number().finite(),guest:z.number().finite()}).strict(),
-  beam:z.object({before:nat,host:pos,guest:pos}).strict(),agreement:z.object({tick:pos,sequence:pos,hash:z.string().regex(/^[a-f0-9]{8}$/)}).strict(),
+  launch:z.object({before:nat,host:pos,guest:pos}).strict(),agreement:z.object({tick:pos,sequence:pos,hash:z.string().regex(/^[a-f0-9]{8}$/)}).strict(),
   records:z.tuple([duelRecord,duelRecord]),cleanup:z.tuple([cleanup,cleanup])}).strict();
-// One machine of a two-machine duel: its own screen's thrust peak and beam, its round-1 record and its app's cleanup.
-const deviceDuel=z.object({seed:nat,decidedTick:pos,thrust:z.object({before:z.number().finite(),peak:z.number().finite()}).strict(),beam:z.object({before:nat,after:pos}).strict(),record:duelRecord,cleanup}).strict();
+// One machine of a two-machine duel: its own screen's thrust peak and torpedo launch, its round-1 record and its app's cleanup.
+const deviceDuel=z.object({seed:nat,decidedTick:pos,thrust:z.object({before:z.number().finite(),peak:z.number().finite()}).strict(),launch:z.object({before:nat,after:pos}).strict(),record:duelRecord,cleanup}).strict();
 const run=z.object({version:z.literal(1),identity,serviceOrigin:z.string().max(200),forceRelay:z.boolean(),mode:z.enum(['local-pair','single-device']),machineLabel:label,networkLabel:label,failure:z.null(),cleanupFailed:z.literal(false),temporaryRemoved:z.literal(true),directoryCleanupAttempted:z.literal(true),elapsedMs:pos,budgetMs:pos.max(600000),processes:z.array(z.object({pid:pos,exited:z.literal(true),exitCode:z.literal(0),kind:z.literal('preparation')}).strict()).min(1).max(8),peers:z.array(peer).min(1).max(2),duel:duel.optional(),deviceDuel:deviceDuel.optional()}).strict();
 const evidence=z.array(z.object({path:z.string().regex(/^[A-Za-z0-9_./-]+$/).max(300),sha256:sha}).strict()).max(32);
 const fail=():never=>{throw Error('internet-evidence-invalid');};
@@ -54,14 +54,14 @@ function checkDuel(r:z.infer<typeof run>) {
   const d=r.duel;if(!d||r.deviceDuel)fail();
   const [h,g]=d!.records;
   if(h.role!=='host'||g.role!=='guest'
-    || d!.thrust.host<=d!.thrust.before+1 || d!.thrust.guest<=d!.thrust.before+1 || d!.beam.host<=d!.beam.before || d!.beam.guest<=d!.beam.before)fail();
+    || d!.thrust.host<=d!.thrust.before+1 || d!.thrust.guest<=d!.thrust.before+1 || d!.launch.host<=d!.launch.before || d!.launch.guest<=d!.launch.before)fail();
   checkRecord(h,r.forceRelay);checkRecord(g,r.forceRelay);
   for(const c of d!.cleanup)checkCleanup(c);
 }
-/** A single device runs its half of a two-machine duel: its own seat's record, and thrust and a beam on its own screen. */
+/** A single device runs its half of a two-machine duel: its own seat's record, and thrust and a torpedo launch on its own screen. */
 function checkDeviceDuel(r:z.infer<typeof run>) {
   const d=r.deviceDuel;if(!d||r.duel)fail();
-  if(d!.record.role!==r.peers[0]!.role || d!.thrust.peak<=d!.thrust.before+1 || d!.beam.after<=d!.beam.before)fail();
+  if(d!.record.role!==r.peers[0]!.role || d!.thrust.peak<=d!.thrust.before+1 || d!.launch.after<=d!.launch.before)fail();
   checkRecord(d!.record,r.forceRelay);checkCleanup(d!.cleanup);
 }
 function parseRun(value:unknown,localOnly=false) {

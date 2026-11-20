@@ -50,9 +50,10 @@ window.addEventListener('ftlite:online:test-port', (event: Event) => {
         images.put(image, header.baseSequence ? [header.baseSequence] : []);
         const p = imageToDuelPublication(image, { resolveLayout: () => layout, contentDigest: '' }, false), v = p.snapshot.values, n = named(p.snapshot.header.seed);
         const round = duelRoundOf(p.snapshot), vx = v[n.at.get('ships.0.vx')!]!, vy = v[n.at.get('ships.0.vy')!]!;
+        const wp = n.at.get('systems.0.weaponPower')!;
         record.publications.push({ runId: p.runId, tick: p.tick, sequence: p.publicationSequence, hash: p.hash, phase: p.phase, pauseReason: p.pauseReason,
           round: round.round, outcome: round.outcome, helmPlayer: round.helmPlayer, seed: p.snapshot.header.seed, speed: Math.sqrt(vx * vx + vy * vy),
-          shots: v[n.at.get('systems.0.shots')!]!, present: [v[n.presence]!, v[n.presence + 1]!], heldHighWater: p.heldHighWater, commandHighWater: p.commandHighWater });
+          shots: v[n.at.get('systems.0.shots')!]!, pewShots: v[n.at.get('systems.0.pewShots')!]!, gunShots: v[n.at.get('systems.0.gunShots')!]!, launches: v[n.at.get('systems.0.missilesLaunched')!]!, weaponPower: [0, 1, 2].map((k) => v[wp + k]!), present: [v[n.presence]!, v[n.presence + 1]!], heldHighWater: p.heldHighWater, commandHighWater: p.commandHighWater });
         if (record.publications.length > 256) record.publications.shift();
       } else if (!incoming && metadata.class === 'input') {
         const message: any = codec.decodeMessage(decodeOpaquePacket(bytes).bytes);
