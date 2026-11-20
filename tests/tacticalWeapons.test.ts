@@ -4,6 +4,7 @@ import { applyWeaponsInput, canCharge, canLaunch, IDLE_INPUT, laserEligible, tic
 import { inArc, lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
 import { LASER_ARC_COS, LASER_CHARGE_UNITS, LASER_HOLD_TICKS, LASER_RANGE, MAGAZINE, MAGAZINE_REGEN_TICKS, SHIELD_RATE, SHIELD_RECHARGE_UNITS, SHIP_HULL, LASER_BURST_GAP_TICKS } from '../src/renderer/src/sim/tactical/tuning';
 import { HUNTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
+import { rockAlive, rockAt, rockSlots, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { makeHostile } from './helpers/hostile';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
 
@@ -85,12 +86,27 @@ describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2
     expect(laserEligible(st, 0, 1)).toBe(false);
   });
   it('a press in range and arc misses when the planet or an asteroid blocks the line of sight (SPIKE: the asteroid takes the shot)', () => {
+    // Asteroids-iii (SIM_VERSION 60, lanes): seeded rock 0 is now an inner-lane rock of r 16 (hp 2), which one laser hit
+    // breaks; the rig takes the lowest seeded rock that survives a hit (hp above 2) with no other rock on its 400 u line.
+    const loneRock = (st: TacticalState): number => {
+      for (let k = 0; k < st.map.asteroids.length; k++) {
+        const c = rockAt(st, k);
+        let alone = c.hp > 2;
+        for (let j = 0; j < rockSlots(st) && alone; j++) {
+          if (j === k || !rockAlive(st, j)) continue;
+          const o = rockAt(st, j), px = Math.max(c.x - 200, Math.min(c.x + 200, o.x)) - o.x, py = c.y - o.y;
+          if (px * px + py * py < (o.r + 20) * (o.r + 20)) alone = false;
+        }
+        if (alone) return k;
+      }
+      throw Error('no seeded rock stands alone on a 400 u line');
+    };
     const blockers: [string, (st: TacticalState) => [number, number]][] = [
       ['planet', () => [0, 0]],
-      ['asteroid', (st) => { const a = st.map.asteroids[0]!; return [a.x, a.y]; }]
+      ['asteroid', (st) => { const a = rockAt(st, loneRock(st)); return [a.x, a.y]; }]
     ];
     for (const [name, centre] of blockers) {
-      const st = duel(), [a, b] = st.ships, [cx, cy] = centre(st);
+      const st = duel(), [a, b] = st.ships, [cx, cy] = centre(st), k = loneRock(st);
       Object.assign(a, { x: cx - 200, y: cy, heading: 64 });           // 400 apart along the x axis, blocker in the middle
       Object.assign(b, { x: cx + 200, y: cy });
       expect(lineOfSight(st, a.x, a.y, b.x, b.y), name).toBe(false);
@@ -102,7 +118,7 @@ describe('laser charge and release (spec §7a, §7 table; FTL targeting spec §2
       const shot = st.events.find((e) => e.kind === 'laser');
       expect(shot, name).toMatchObject({ kind: 'laser', ship: 0, hit: false });
       if (name === 'planet') expect((shot as { rock?: number }).rock, name).toBeUndefined();
-      else { expect((shot as { rock?: number }).rock, name).toBe(0); expect(st.rocks[6], name).toBe(Math.ceil(st.map.asteroids[0]!.r / 10) - 2); expect(st.rocks[0], name).toBe(2); }
+      else { expect((shot as { rock?: number }).rock, name).toBe(k); expect(st.rocks[k * ROCK_STRIDE + 6], name).toBe(Math.ceil(st.map.asteroids[k]!.r / 10) - 2); expect(st.rocks[k * ROCK_STRIDE], name).toBe(2); }
     }
   });
   it('a full crew charge never vents (LASER_HOLD_TICKS is the hunter laser only)', () => {
