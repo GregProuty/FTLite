@@ -1,7 +1,6 @@
 // Playtest2feedback (spec 2026-11-18-playtest2feedback-design §4, §7, §8): the cold gas thrusters in the duel step: the
 // ship-relative push at two headings, the thrusters working with the Engines failed, and helmVent as unhashed scratch.
-// Owner 2026-11-19 (replaced rule, kind a): the cold gas is free: no tank, no spend, no compressor; every held axis vents
-// while the Helm is attended, for as long as it is held.
+// Helm round 2 §3.3 (replaced rule, kind a): the gas is a charge; its spend and refill are in tests/helmGas.test.ts.
 import { describe, expect, it } from 'vitest';
 import type { HeldInput } from '../src/renderer/src/net/contracts';
 import { hashDuel } from '../src/renderer/src/sim/duel/hash';
@@ -47,20 +46,7 @@ describe('the push (spec §4)', () => {
   });
 });
 
-describe('the free cold gas (owner 2026-11-19, replacing spec §4\'s tank)', () => {
-  it('pushes with no tank: both axes vent every tick they are held, 3000 ticks on end, with no tank field on the duel', () => {
-    const [d, twin] = pair(0);
-    try {
-      expect(Object.keys(d)).not.toEqual(expect.arrayContaining(['rcsGas']));
-      expect(Object.keys(d)).not.toEqual(expect.arrayContaining(['rcsAcc']));
-      for (let k = 0; k < 3000; k++) {
-        step(d, { ...NONE, rcsX: k % 2 === 0 ? 1 : -1, rcsY: 1 }); step(twin);
-        expect(d.helmVent, `tick ${k}`).toEqual({ x: k % 2 === 0 ? 1 : -1, y: 1 });
-      }
-      const ds = d.tactical.ships[0], ts = twin.tactical.ships[0];
-      expect(Math.hypot(ds.vx - ts.vx, ds.vy - ts.vy)).toBeGreaterThan(0);
-    } finally { disposeDuel(d); disposeDuel(twin); }
-  });
+describe('the cold gas thrusters (helm round 2 §3.3: a charge, tests/helmGas.test.ts)', () => {
   it('pushes at 0 Engines bars too: the thrusters are not the Engines', () => {
     const [d, twin] = pair(0);
     try {

@@ -6,7 +6,7 @@
 // throttle stays where it is left, reverse reaches −500, and the cold gas is a charge (gasTick).
 import { DuelSystem, effectiveBars } from '../tactical/bars';
 import type { Axes, ShipSystems } from '../tactical/state';
-import { THR_MIN, THR_RAMP } from './tuning';
+import { GAS_MAX, GAS_REFILL, GAS_REFILL_DELAY, GAS_SPEND, THR_MIN, THR_RAMP } from './tuning';
 
 /** §4, helm round 2 §3.2, §3.3: this tick's vented thruster axes (−1, 0 or 1 each: x port/starboard, y aft/forward): the
  *  axes that actually vented. Per-tick scratch on DuelState (helmVent), never hashed or snapshotted. */
@@ -40,6 +40,25 @@ export function rampTicks(m: number, held: number, floor: number, cap: number, t
   let out = m;
   for (let k = 0; k < ticks; k++) out = rampThrottle(out, held, floor, cap);
   return out;
+}
+
+/** Helm round 2 §3.3: one tick of the cold gas charge from the attendant's held axes (each −1, 0 or 1; both 0 with nobody
+ *  at the Helm). In order:
+ *  1. spend: the fore/aft axis (y), then the port/starboard axis (x), the order crewHelm reads them, each venting while
+ *     `gas >= GAS_SPEND` and taking GAS_SPEND;
+ *  2. the idle count: 0 on a tick either axis is held (vented or not), else one more, up to GAS_REFILL_DELAY;
+ *  3. the refill: GAS_REFILL, to GAS_MAX, on a tick the idle count stands at GAS_REFILL_DELAY after step 2.
+ *  So nothing refills while an axis is held. Integers in and out; `x` and `y` are the axes that vented. The step and the
+ *  app's crewAxes both call it, so the prediction vents what the sim vents. */
+export function gasTick(gas: number, gasIdle: number, heldX: number, heldY: number): { gas: number; gasIdle: number; x: number; y: number } {
+  let g = gas;
+  const y = heldY !== 0 && g >= GAS_SPEND ? heldY : 0;
+  if (y !== 0) g -= GAS_SPEND;
+  const x = heldX !== 0 && g >= GAS_SPEND ? heldX : 0;
+  if (x !== 0) g -= GAS_SPEND;
+  const idle = heldX !== 0 || heldY !== 0 ? 0 : Math.min(gasIdle + 1, GAS_REFILL_DELAY);
+  if (idle === GAS_REFILL_DELAY) g = Math.min(GAS_MAX, g + GAS_REFILL);
+  return { gas: g, gasIdle: idle, x, y };
 }
 
 

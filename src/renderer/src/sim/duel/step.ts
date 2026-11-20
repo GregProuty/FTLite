@@ -33,7 +33,7 @@ import { applyPower, clampToCapacity, cycleDuelCoolant, duelHeatStep, OVERDRIVE_
 import { duelInjection, patchWork, toggleAirlock, toggleDoor, validAirlock, validDoor, workJob } from './hazards';
 import { throttleThrust, validHoldHeading, validThrottle } from './throttle';
 import { createDuel, disposeDuel, type DuelState } from './state';
-import { crewThrust, engineBars, heldAxis, noVent, rampThrottle, throttleCap, throttleFloor } from './helmFlight';
+import { crewThrust, engineBars, gasTick, heldAxis, noVent, rampThrottle, throttleCap, throttleFloor } from './helmFlight';
 import { DUEL_FIRE_O2_RATE, REPAIR_RATE_SOLO, REPAIR_RATE_TEAM, REPAIR_UNITS } from './tuning';
 
 export interface DuelInput { held: readonly HeldInput[]; commands: readonly DuelEnvelope[] }
@@ -166,14 +166,14 @@ export function headingDelta(heading: number, target: number): number {
  *  - the thrust of one ramp step on the held throttle from `thrMille` (the duel's by default, or the app's local
  *    prediction of it), clamped to the Engines bars' floor and cap as the step clamps it (owner 2026-11-19);
  *  - helm round 2 §2.3: with the latch (`cut`, the state's by default; online, the seat's predicted one) that step holds still;
- *  - the held thrusters, every one of which vents (owner 2026-11-19: free cold gas).
+ *  - helm round 2 §3.3: the held thrusters that vent from the state's charge, in crewHelm's order (gasTick).
  *  Pure. */
 export function crewAxes(d: DuelState, h: HeldInput, thrMille: number = d.thrMille, cut: boolean = d.thrCut): Axes {
-  const y = heldAxis(h.rcsY), x = heldAxis(h.rcsX), engine = engineBars(d);
+  const gas = gasTick(d.gas, d.gasIdle, heldAxis(h.rcsX), heldAxis(h.rcsY)), engine = engineBars(d);   // helm round 2 §3.3: crewHelm's vent test
   // Helm round 2 §2.3, §7 (Decision 6): while the latch holds the ramp ignores throttleHeld; a latch that clears this tick
   // does so only when throttleHeld is 0, so `cut ? 0 : held` is crewHelm's clear-then-ramp.
   const thrust = crewThrust(rampThrottle(thrMille, cut ? 0 : heldAxis(h.throttleHeld), throttleFloor(engine), throttleCap(engine)));
-  return { turn: helmTurn(d, h), thrust, rcsX: x, rcsY: y };   // owner 2026-11-19: every held thruster vents (Task 5: while the charge lasts)
+  return { turn: helmTurn(d, h), thrust, rcsX: gas.x, rcsY: gas.y };
 }
 
 /** Playtest2feedback (spec §3, §4, §4a, §5, §7's step order 2 to 7): the crew Helm's tick on a newtonianHelm class,
@@ -182,8 +182,8 @@ export function crewAxes(d: DuelState, h: HeldInput, thrMille: number = d.thrMil
  *  - a held aim becomes the held heading, and A/D or auto-face clears it (owner 2026-11-19, as the other classes);
  *  - helm round 2 §2.3: the cut's latch clears on a tick with no attendant or throttleHeld 0; then the throttle ramp on the attendant's throttleHeld (0 while the latch holds or with no attendant; no return to 0, §2.1), clamped to the Engines bars' floor and cap
  *    (owner 2026-11-19: Engineering's effective Engines bars, after this tick's ship commands);
- *  - the fore/aft and the side thruster, each venting whenever the attendant holds it (owner 2026-11-19: free cold gas, so
- *    no tank, no spend and no compressor);
+ *  - helm round 2 §3.3: the fore/aft then the side thruster, each venting while the charge covers it, then the idle count
+ *    and the refill (gasTick; unattended, both axes read 0, so nothing vents and the charge refills);
  *  - this tick's helmVent;
  *  - the crew's axes, which fly attended or not.
  *  Runs only while the round runs (stepDuelTick). */
@@ -200,10 +200,11 @@ function crewHelm(d: DuelState, h: HeldInput | null, crew: ShipInput): void {
   const lever = h ? heldAxis(h.throttleHeld) : 0;
   if (d.thrCut && lever === 0) d.thrCut = false;
   d.thrMille = rampThrottle(d.thrMille, d.thrCut ? 0 : lever, throttleFloor(engine), throttleCap(engine));
-  const rcsY = h ? heldAxis(h.rcsY) : 0, rcsX = h ? heldAxis(h.rcsX) : 0;   // owner 2026-11-19: free cold gas, no tank
-  d.helmVent = { x: rcsX, y: rcsY };
+  const gas = gasTick(d.gas, d.gasIdle, h ? heldAxis(h.rcsX) : 0, h ? heldAxis(h.rcsY) : 0);   // helm round 2 §3.3: the charge
+  d.gas = gas.gas; d.gasIdle = gas.gasIdle;
+  d.helmVent = { x: gas.x, y: gas.y };   // the axes that actually vented
   crew.helm = true;
-  crew.axes = { turn, thrust: crewThrust(d.thrMille), rcsX, rcsY };
+  crew.axes = { turn, thrust: crewThrust(d.thrMille), rcsX: gas.x, rcsY: gas.y };
 }
 
 /**

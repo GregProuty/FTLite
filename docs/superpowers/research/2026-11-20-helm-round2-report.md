@@ -60,5 +60,7 @@ FAIL: median 140.1 s < 180
 
 - Task 4 (the turn boost, the free-flight CREW_FLIGHT and the boosted vent fields are replaced rules): `tests/crewFlight.test.ts` (NO_GRAVITY is the drag-0 branch, DRAG0, CREW_FLIGHT literal, boost-band test deleted because no class keeps a boost, the boost describe is now the fixed turn), `tests/crewSteering.test.ts` (helmBoost reads removed, the gas boost describe is the fixed turn, crewAxes expectations without turnBoost), `tests/crewHelmFx.test.ts` (no boosted-turn puffs), `tests/crewThrusters.test.ts` (the push is flown before drag: × KEEP; helmVent without boosted/turn), `tests/duelAudio.test.ts` (no boosted-turn hiss), `tests/crewHelmOnline.test.ts`, `tests/onlineDuelSession.test.ts`, `tests/helmModule.test.ts` (helmVent literals), `tests/duelScripted.test.ts` (the hazard prediction describe), `tests/crewTelemetry.test.ts` (a comment).
 
+- Task 5 (the free cold gas is replaced by the charge): `tests/crewThrusters.test.ts` (the describe renamed, the 3000-tick free-gas test deleted because no class keeps free gas, the header line), covered instead by `tests/helmGas.test.ts`. No kind (b) failures in the Task 5 targeted run.
+
 ## Scripted Helm tuning (spec §5's gate rule)
 

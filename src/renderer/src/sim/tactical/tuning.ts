@@ -212,8 +212,9 @@ export const PEW_ROOM_WEAR = 3;
 /** Playtest2feedback §2: the top speed thrust may not push a ship flying with drag 0 past (u/s); gravity, the edge and
  *  bounces still can. Helm round 2 §3.1: no game ship flies with drag 0 now; the test configurations still do. */
 export const MAX_SPEED = 400;
-/** §4: one vented cold gas axis's push (u/s²), in the ship frame; never scaled by Engines damage. */
-export const RCS_THRUST = 35;
+/** §4, helm round 2 §3.3: one vented cold gas axis's push (u/s²), in the ship frame; never scaled by the Engines. 70 (was
+ *  35): a full charge on one thruster is 105 u/s before drag, a real dodge. */
+export const RCS_THRUST = 70;
 /** Helm round 2 §3.1: the Hound's own drag and stabilise (the values every ship flew before the playtest2feedback spike),
  *  so tuning them never moves the Hunter. */
 export const CREW_DRAG = 0.15;

@@ -79,7 +79,7 @@ export interface DuelState {
   /** Helm round 2 §3.3 (the helm module): the cold gas charge, 0..GAS_MAX (full at a round's start), and the ticks since a
    *  thruster axis was last held, 0..GAS_REFILL_DELAY (GAS_REFILL_DELAY at a round's start). */
   gas: number; gasIdle: number;
-  /** §4: this tick's vented thruster axes and boost, per-tick scratch for the puffs and the hiss; not state. */
+  /** §4, helm round 2 §3.3: this tick's vented thruster axes (the ones the charge covered), per-tick scratch for the puffs and the hiss; not state. */
   helmVent: HelmVent;
   /** Valkyrn spec §6.1: the crew slot's class index (SHIP_CLASSES): createDuel's `cls`, else the layout's `shipClass`,
    *  else the Cutter. Hashed and snapshotted as the tactical `systems.0.cls`, which always equals it, and carried in the

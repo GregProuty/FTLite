@@ -104,7 +104,7 @@ export const DUEL_NOT_SNAPSHOTTED: Readonly<Record<string, string>> = {
   science: 'the Science station index, from the layout',
   crewClass: 'the crew slot\'s class: hashed and snapshotted as the ship module\'s systems.0.cls, and in the snapshot header (Valkyrn spec §6.1)',
   events: 'per-tick repair events, cleared every tick',
-  helmVent: 'per-tick scratch: this tick\'s vented thruster axes and boost, recomputed every running tick (playtest2feedback §4)',
+  helmVent: 'per-tick scratch: this tick\'s vented thruster axes, recomputed every running tick (playtest2feedback §4, helm round 2 §3.3)',
   systemRooms: 'each system\'s interior room, derived from the layout by createDuel (Engineering spike Decision 3)'
 };
 
