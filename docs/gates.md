@@ -1064,3 +1064,26 @@ Spec `docs/superpowers/specs/2026-11-19-w4-weapons-controls-design.md` §2, §5,
   3. A rock breaking under autocannon fire.
 
   Do the cards read on the amber CRT, and does holding the autocannon feel like the Valkyrn's gun?
+
+## W-4b: turrets and AUTO/MAN (2026-11-19)
+
+Spec `docs/superpowers/specs/2026-11-19-w4-weapons-controls-design.md` §3, §4, §6, §8-§12, §13.1, §13.4, §19, as amended by `docs/superpowers/specs/2026-11-19-w4-amendment-modes-rooms-design.md` §2 to §6; plan `docs/superpowers/plans/2026-11-19-w4b-turrets-auto.md`.
+
+- [x] Automated (W-4b): `npx vitest run` passes (498 files, 6010 tests). This includes the turret state (hashed, bounded per class), the slew law (rate, arc, wrap, integers), MAN slewing only the gun in hand at 455 / 341 while the other fights on AUTO, AUTO at 364 / 273 and on solution within 182 fine steps (firing through a sustained Helm turn), AUTO's solutions (seen, range, line of sight, arc, ship only) and firing (the pew per third, the autocannon to 80 % heat and never locking, nothing in the 30 s hold), the scripted Helm lining the guns up, MAN's fire-rate tables, `gunMode {slot, manual}` (a mode per gun) and `pewFire`'s AUTO refusal on pew pew's own switch, `turretAim` in every held schema, R and Shift+R (Z and V unread at the Hound's seat) and a switch on each card, the target room (`laserLock` on the Hound, E / Q and the plain room click, never `torpLock`; rounds fired by hand tagged with it; six autocannon hits or two pew pew hits by hand a room level, AUTO hits the hull only; the enemy window's bracket; online `lockSent`), the map's arc, muzzle lines, reticle and bracket, the online turret prediction equal to the stepped turret, and the scripted gunner on AUTO guns (`tests/w4*.test.ts`). `npx tsc -b` is clean; SIM_VERSION 60, goldens blessed at 60, no bump; `tests/valkyrnIdentity.test.ts`'s digests and `tests/w4HunterIdentity.test.ts` unchanged; determinism passes on Node, Electron and Firefox. Tuning ladder: base numbers (no rung met the target of a crew win with every per-seed gate passing; the sweep is in `docs/superpowers/research/2026-11-19-w4-report.md`, W-4b Task 13; the owner decides).
+- [ ] Manual (owner): play a Single player duel at the Hound's Weapons seat.
+  1. Move the mouse over the map: the reticle follows; with the selected gun on MAN (R) its muzzle line trails the reticle and stops at the arc's edge.
+  2. R flips the selected weapon's tag (the torpedo's when it is selected), Shift+R both guns' together; a click on a tag flips that weapon alone. Z and V do nothing here.
+  3. In the first 30 s, on AUTO, the guns track the enemy and the tags read HOLD; nothing fires.
+  4. Once hostile, on AUTO, both guns track and fire at the ship with no input; the bracket lights on the enemy.
+  5. With both guns on MAN and pew pew selected, its tag reads MAN and the autocannon's AUTO (lit), and the autocannon keeps firing on its own while you aim the pew.
+  6. MAN feels quicker to traverse and fire than AUTO.
+  7. Q / E moves the bracket in the enemy window (Weapons, Shields, Engines), and the second hint row names the room; a click on a room there, with nothing picked up, sets it too.
+  8. Six autocannon hits or two pew pew hits by hand take the bracketed room down a level; on AUTO the same hits only wear the hull.
+  9. With the torpedo picked up (its card), Q / E still move the guns' room, and a room click sets the torpedo's own target.
+
+  Screenshots for the look gate:
+  1. The map in MAN, with the reticle, the selected arc and two muzzle lines.
+  2. AUTO on solution with the bracket.
+  3. The Weapons block with one gun on MAN and one on AUTO, and the enemy window with the target room bracketed.
+
+  Does the slewing read as "slowly follows"?
