@@ -35,16 +35,18 @@ describe('the blip (sensors blip spec §2.1, §2.2)', () => {
 });
 
 describe('the ping (sensors blip spec §2.3)', () => {
-  it('the hash of (epoch, index) gives pinned u and v', () => {
-    expect(blipHash(0, 0)).toEqual({ u: 8705 / 65536, v: 10503 / 65536 });
-    expect(blipHash(3, 17)).toEqual({ u: 18494 / 65536, v: 40792 / 65536 });
-    expect(blipHash(12345, 4)).toEqual({ u: 40159 / 65536, v: 61642 / 65536 });
+  it('the hash of (seed, epoch, index) gives pinned u and v; seed 0 is the unseeded hash', () => {
+    expect(blipHash(0, 0, 0)).toEqual({ u: 8705 / 65536, v: 10503 / 65536 });
+    expect(blipHash(0, 3, 17)).toEqual({ u: 18494 / 65536, v: 40792 / 65536 });
+    expect(blipHash(0, 12345, 4)).toEqual({ u: 40159 / 65536, v: 61642 / 65536 });
+    expect(blipHash(5, 0, 0)).toEqual({ u: 14649 / 65536, v: 57745 / 65536 });
+    expect(blipHash(2026, 0, 0)).toEqual({ u: 27956 / 65536, v: 29734 / 65536 });
   });
   it('the centre is the enemy\'s place plus 0.8 r sqrt(u) along the angle 2 pi v, always within 0.8 r of the enemy', () => {
     const { t, e, f } = scene(1000), b = stepFog(f, t, 0, 0).blip!;
-    const { u, v } = blipHash(0, 0), len = 0.8 * 400 * Math.sqrt(u), a = 2 * Math.PI * v;
+    const { u, v } = blipHash(t.seed, 0, 0), len = 0.8 * 400 * Math.sqrt(u), a = 2 * Math.PI * v;
     expect(b.x).toBeCloseTo(e.x + Math.cos(a) * len, 9); expect(b.y).toBeCloseTo(e.y + Math.sin(a) * len, 9);
-    expect(b.x).toBeCloseTo(2962.328351, 5); expect(b.y).toBeCloseTo(2098.573521, 5);   // pinned: the enemy at (2900, 2000)
+    expect(b.x).toBeCloseTo(3011.011907, 5); expect(b.y).toBeCloseTo(1897.211776, 5);   // pinned: the enemy at (2900, 2000), seed 5
     const s = scene(1000);
     for (let epoch = 0; epoch < 5; epoch++) for (let index = 0; index < 40; index++) {
       s.t.tick = index * BLIP_PING_TICKS + 7;
@@ -58,6 +60,12 @@ describe('the ping (sensors blip spec §2.3)', () => {
     expect(at(0, 239)).toEqual(at(0, 120));       // both in ping 1
     expect(at(0, 240)).not.toEqual(at(0, 239));   // ping 2
     expect(at(1, 0)).not.toEqual(at(0, 0));       // another round
+  });
+  it('another game (another seed), the same round and ping index: another centre', () => {
+    const s1 = scene(1000), s2 = scene(1000);
+    s2.t.seed = 6;
+    const b1 = stepFog(createFog(), s1.t, 0, 0).blip!, b2 = stepFog(createFog(), s2.t, 0, 0).blip!;
+    expect([b1.x, b1.y]).not.toEqual([b2.x, b2.y]);
   });
   it('the circle holds its centre and radius for 120 ticks while the enemy moves, its age running 0 to 1; then a new ping', () => {
     const { t, e, f } = scene(3000, 240), first = stepFog(f, t, 0, 0).blip!;

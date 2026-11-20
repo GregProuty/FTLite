@@ -8,7 +8,7 @@
 // Sensors blip spec §2 (2026-11-19) amends the above: the enemy ship leaves no ghost. While it is active and unseen it
 // has a blip: a ping (a centre and a radius fixed when it is made) held until the next one. Pings are timed on the
 // tactical state's tick, not the presentation clock, so a paused or frozen state makes no new ping. Each screen makes
-// its own; the offset is a hash of the round and the ping's index, and reads no Math.random and none of the sim's
+// its own; the offset is a hash of the round's seed, the round and the ping's index, and reads no Math.random and none of the sim's
 // random state.
 import { contactSeen, derelictPos, pointSeen, sensorRange } from '../../sim/tactical/science';
 import { Contact, CREW_SLOT, missileOf, targetOf, type TacticalState } from '../../sim/tactical/state';
@@ -34,10 +34,11 @@ const KINDS: readonly GhostKind[] = ['enemy', 'derelict', 'missile'];
 
 export function createFog(): FogTracker { return { tracks: new Map(), epoch: null, ping: null }; }
 
-/** Sensors blip spec §2.3: the hash of the round (`epoch`) and the ping's `index`, in 32-bit integer arithmetic, as two
- *  numbers in 0..1. The same round and index give the same pair. Plain view code: no Math.random, no sim state. */
-export function blipHash(epoch: number, index: number): { u: number; v: number } {
-  let h = Math.imul(epoch ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(index + 1, 0xc2b2ae35);
+/** Sensors blip spec §2.3 (amended 2026-11-20: the seed keeps the offsets from repeating across games): the hash of the
+ *  round's seed, the round (`epoch`) and the ping's `index`, in 32-bit integer arithmetic, as two
+ *  numbers in 0..1. The same seed, round and index give the same pair. Plain view code: no Math.random, no sim state. */
+export function blipHash(seed: number, epoch: number, index: number): { u: number; v: number } {
+  let h = Math.imul(epoch ^ Math.imul(seed, 0x27d4eb2d) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(index + 1, 0xc2b2ae35);
   h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
   return { u: (h & 0xffff) / 65536, v: (h >>> 16) / 65536 };
 }
@@ -77,7 +78,7 @@ export function stepFog(f: FogTracker, t: TacticalState, now: number, epoch: num
     let p = f.ping;
     if (!p || p.index !== index) {
       const own = t.ships[CREW_SLOT]!, dx = en.x - own.x, dy = en.y - own.y, r = blipRadius(Math.sqrt(dx * dx + dy * dy) - range);
-      const { u, v } = blipHash(epoch, index), len = 0.8 * r * Math.sqrt(u), a = 2 * Math.PI * v;
+      const { u, v } = blipHash(t.seed, epoch, index), len = 0.8 * r * Math.sqrt(u), a = 2 * Math.PI * v;
       p = f.ping = { index, madeAt: t.tick, x: en.x + Math.cos(a) * len, y: en.y + Math.sin(a) * len, r };
     }
     // Its age: 0 when made (a ping made partway through a period too), 1 as the next is due.
