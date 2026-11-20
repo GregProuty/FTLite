@@ -144,7 +144,8 @@ describe('the scripted gunner on the Hound (W-4 spec §12: AUTO guns)', () => {
     const d = createSeatedDuel(layout, 2, 0, 2, ShipClass.Valkyrn), pair = createScriptedPair(2);
     try {
       const mine = scriptedInput(pair, d).commands.filter((e) => e.id.player === 1 - d.helmPlayer).map((e) => e.command);
-      expect(mine).toEqual([{ kind: 'weaponPower', slot: 0, delta: -1 }, { kind: 'weaponPower', slot: 1, delta: 1 }]);    } finally { disposeDuel(d); }
+      expect(mine).toEqual([{ kind: 'weaponPower', slot: 0, delta: -1 }, { kind: 'weaponPower', slot: 1, delta: 1 }]);
+    } finally { disposeDuel(d); }
   });
 });
 
