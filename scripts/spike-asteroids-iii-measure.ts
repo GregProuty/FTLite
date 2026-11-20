@@ -2,7 +2,7 @@
 //   npx tsx scripts/spike-asteroids-iii-measure.ts [--json <path>] [--only feel|stress|cost|idle|burst]
 // feel   §8.2: seed 2026, the Hunter off, the crew on a circular orbit 300 u outward of each of the 10 largest main-lane
 //        rocks, one rock-targeted torpedo each. A shot passes with (a) ≥ 6 real pieces, (b) ≥ 3 touch events within 20 s,
-//        (c) ≥ 50% of the burst's born piece mass (by the active mass law, rockMass) alive at 30 s (plan deviation 23), (d) ≥ 4 burst pieces whose velocity relative to V_c turned ≥ 25°
+//        (c) ≥ 50% of the burst's born piece mass (by the active mass law, rockMassOf) alive at 30 s (plan deviation 23), (d) ≥ 4 burst pieces whose velocity relative to V_c turned ≥ 25°
 //        by 20 s. Gate: ≥ 7 of 10. §13.7: run with all four switches on (the gate) and all four off (reported).
 // stress §8.3: seeds 1-20 × 4,000 ticks, the Hunter off, the stress driver; twins hashed every 500 ticks; a save and
 //        restore at 4,000 then 1,000 more ticks; the safety counters (edge dust, rockSlotDust, rockCapHits: gates 0), tidal
@@ -25,7 +25,7 @@ import { parkCoOrbit, stressInput, switchOff } from '../tests/helpers/rockStress
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { flattenTactical, hashTactical, unflattenTactical, validateTacticalValues } from '../src/renderer/src/sim/tactical/hash';
 import { circularVelocity } from '../src/renderer/src/sim/tactical/rails';
-import { beginRockTick, rockAlive, rockAt, rockHp, RockKind, rockMass, rocksNearGrid, rockSlots, ROCK_STRIDE, rockX, rockY, writeRock } from '../src/renderer/src/sim/tactical/rocks';
+import { beginRockTick, rockAlive, rockAt, rockHp, RockKind, rockMassOf, rocksNearGrid, rockSlots, ROCK_STRIDE, rockX, rockY, writeRock } from '../src/renderer/src/sim/tactical/rocks';
 import { breakRock } from '../src/renderer/src/sim/tactical/rockBreak';
 import { rejoinChoice, type RejoinRefusal } from '../src/renderer/src/sim/tactical/rockSettle';
 import { ROCK_SWITCHES } from '../src/renderer/src/sim/tactical/rockTuning';
@@ -57,7 +57,7 @@ function feelShot(rock: number) {
     const now = st.tick - 1;
     for (const e of st.events) {
       if (e.kind !== 'rock') continue;
-      if (e.what === 'split' && e.burst && blastAt < 0) { blastAt = now; pieces = e.pieces!.length; for (const p of e.pieces!) { family.add(p); bornMass += rockMass(rockAt(st, p).r); } continue; }
+      if (e.what === 'split' && e.burst && blastAt < 0) { blastAt = now; pieces = e.pieces!.length; for (const p of e.pieces!) { family.add(p); bornMass += rockMassOf(st, p); } continue; }
       if (blastAt < 0) continue;
       if (e.what === 'touch' && now <= blastAt + 1200) touches++;
       if (e.what === 'split' && family.has(e.rock)) { u0.delete(e.rock); for (const p of e.pieces ?? []) family.add(p); }
@@ -74,7 +74,7 @@ function feelShot(rock: number) {
     }
     if (blastAt >= 0 && now === blastAt + 1800) {
       let m = 0;
-      for (const p of family) if (rockAlive(st, p)) m += rockMass(rockAt(st, p).r);
+      for (const p of family) if (rockAlive(st, p)) m += rockMassOf(st, p);
       massShare = bornMass > 0 ? m / bornMass : 0;   // plan deviation 23: of the born pieces' mass, by the active mass law
     }
   }
@@ -225,7 +225,7 @@ const burstWhy = want('burst') ? IDLE_SEEDS.map((seed) => {
     if (BURST_TIMES.some((t) => t * 60 === k)) {
       let big = -1;
       for (let j = 0; j < st.map.beltCount; j++) if (st.rocks[j * ROCK_STRIDE] === RockKind.Rail && (big < 0 || st.rocks[j * ROCK_STRIDE + 5]! > st.rocks[big * ROCK_STRIDE + 5]!)) big = j;
-      if (big >= 0) { const a = rockAt(st, big); breakRock(st, big, -a.x, -a.y, 'torpedo', 0, 'burst'); beginRockTick(st); }
+      if (big >= 0) { const a = rockAt(st, big); breakRock(st, big, a.x, a.y, -a.x, -a.y, 'torpedo', 0, 'shatter'); beginRockTick(st); }
     }
     if (k >= 30 * 60 && k % 60 === 0) tallyRefusals(st, refusedBy);
   }

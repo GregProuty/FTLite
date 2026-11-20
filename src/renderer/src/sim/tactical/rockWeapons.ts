@@ -29,10 +29,10 @@ export function rockShotLine(state: TacticalState, i: number, k: number): { rock
   return { rock: f.rock, x: a.x + (aimAt.x - a.x) * f.t, y: a.y + (aimAt.y - a.y) * f.t };
 }
 
-/** §4.1: ship i's laser shot meets rock k at (x, y): push first, then damage (a fan break along the line at hp ≤ 0). */
+/** §4.1: ship i's laser shot meets rock k at (x, y): push first, then damage (at hp ≤ 0 a cut through (x, y) along the line). */
 export function laserStrikesRock(state: TacticalState, i: number, k: number, x: number, y: number): void {
   const a = state.ships[i]!, dx = x - a.x, dy = y - a.y, d = Math.sqrt(dx * dx + dy * dy), ux = d > 0 ? dx / d : 0, uy = d > 0 ? dy / d : -1;
   const r = rockAt(state, k), j = Math.min(LASER_ROCK_PUSH / rockMassOf(state, k), LASER_PUSH_CAP * escapeSpeed(Math.sqrt(r.x * r.x + r.y * r.y)));   // §5.3: capped
   pushRock(state, k, ux * j, uy * j);
-  hitRock(state, k, LASER_ROCK_DAMAGE, ux, uy, 'laser', i);
+  hitRock(state, k, LASER_ROCK_DAMAGE, x, y, ux, uy, 'laser', i);
 }

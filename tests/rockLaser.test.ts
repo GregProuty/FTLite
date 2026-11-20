@@ -1,17 +1,17 @@
 // Spike ii §4.1, §6.2, §6.3: a laser shot on a rock (push J / m, then 2 damage, a rail rock is freed), the rock target's
-// on-target rule, the shot line (the planet misses, a rock in the way takes it), the fan break, the burst re-aims,
+// on-target rule, the shot line (the planet misses, a rock in the way takes it), the cut along the shot (asteroids-iv §5.2), the burst re-aims,
 // firstBlocker skips born slots, AUTO_DIG is off, and the Weapons card's words.
 import { describe, expect, it } from 'vitest';
 import { applyWeaponsInput, IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { classOf } from '../src/renderer/src/sim/tactical/state';
-import { firstBlocker, rockAt, rockMass, RockKind } from '../src/renderer/src/sim/tactical/rocks';
+import { firstBlocker, rockAt, rockMass, rockMaskOf, RockKind, rockTmpl, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { AUTO_DIG } from '../src/renderer/src/sim/tactical/rockTuning';
 import { rockOnTarget } from '../src/renderer/src/sim/tactical/rockWeapons';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { laserCardReason, laserSituation, statusSentence } from '../src/renderer/src/render/duel/situationModel';
 import { escapeSpeed } from '../src/renderer/src/sim/tactical/rails';
-import { arena, mover, rail, rockEvents, seeded, withSwitches } from './helpers/rockArena';
+import { arena, mover, rail, rockEvents, seeded, shaped, tmplOf, withSwitches } from './helpers/rockArena';
 import { lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
 
 /** The arena with the crew facing east (heading 64) at (0, −2500), its laser full and targeted (the round's opener). */
@@ -54,15 +54,23 @@ describe('a laser shot on a rock (spec §4.1)', () => {
     expect(after.vy).toBeCloseTo(before.vy, 12);
     expect(after.hp).toBe(1);
   });
-  it('a laser break on r 42 gives 3 pieces, on r 30 and r 20 and r 13 gives 2, on r 12 dust; the target clears and the tally counts', () => {
-    for (const [r, n] of [[42, 3], [30, 2], [20, 2], [13, 2], [12, 0]] as const) {
-      const st = east();
-      mover(st, 100, 200, -2500, 0, 0, r, 2);
+  it('a laser break cuts the rock along the shot: two sides of it; a plain rock is dust; the target clears and the tally counts', () => {
+    for (const plain of [false, true]) {
+      const st = east(), tm = tmplOf(st, 31);
+      if (plain) mover(st, 100, 200, -2500, 0, 0, 30, 2);
+      else { shaped(st, 100, tm, 200, -2500); st.rocks[100 * ROCK_STRIDE + 6] = 2; }
       st.systems[0].laserRock = 100;
       applyWeaponsInput(st, 0, IDLE_INPUT);
-      if (n > 0) expect(rockEvents(st, 'split')[0]).toMatchObject({ rock: 100, by: 'laser', ship: 0, pieces: expect.any(Array) });
-      if (n > 0) expect(rockEvents(st, 'split')[0]!.pieces).toHaveLength(n);
-      else expect(rockEvents(st, 'dust')).toMatchObject([{ rock: 100, by: 'laser', ship: 0 }]);
+      if (plain) expect(rockEvents(st, 'dust')).toMatchObject([{ rock: 100, by: 'laser', ship: 0 }]);
+      else {
+        const split = rockEvents(st, 'split')[0]!, pieces = split.pieces!;
+        expect(split).toMatchObject({ rock: 100, by: 'laser', ship: 0 }); expect(split.burst).toBeUndefined();
+        expect(pieces.length).toBeGreaterThanOrEqual(2);
+        let all = 0;
+        for (const p of pieces) { const m = rockMaskOf(st, p); expect(rockTmpl(st, p)).toBe(tm); expect(all & m).toBe(0); all |= m; }
+        const vys = pieces.map((p) => rockAt(st, p).vy);   // the shot runs east: the sides part north and south
+        expect(Math.min(...vys)).toBeLessThan(0); expect(Math.max(...vys)).toBeGreaterThan(0);
+      }
       expect([st.systems[0].laserRock, st.systems[0].rocksBroken]).toEqual([-1, 1]);
     }
   });

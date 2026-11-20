@@ -17,7 +17,7 @@ import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import type { SimModule } from '../src/renderer/src/sim/module';
 import { canonicalFields } from '../src/renderer/src/sim/canonicalFields';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
-import { beginRockTick, isRail, rockKind, RockKind, rockSlots, ROCK_STRIDE, rockX, rockY } from '../src/renderer/src/sim/tactical/rocks';
+import { beginRockTick, isRail, rockAt, rockKind, RockKind, rockSlots, ROCK_STRIDE, rockX, rockY } from '../src/renderer/src/sim/tactical/rocks';
 import { breakRock } from '../src/renderer/src/sim/tactical/rockBreak';
 import { switchOff } from './helpers/rockStress';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -159,9 +159,9 @@ describe('a decided round and the rematch (spec §7)', () => {
       const T = d.baseTick, fresh = createDuel(CUTTER, d.tactical.seed);
       expect(T).toBe(1234);
       try {
-        for (const x of [d, fresh]) {   // the Hunter off and a burst of every fifth belt rock: identical script-side writes
+        for (const x of [d, fresh]) {   // the Hunter off and a shatter of every fifth belt rock: identical script-side writes
           switchOff(x.tactical, 1);
-          for (let k = 0; k < 70; k += 5) { beginRockTick(x.tactical); breakRock(x.tactical, k, 1, 0, 'laser', -1, 'burst'); }
+          for (let k = 0; k < 70; k += 5) { beginRockTick(x.tactical); const a = rockAt(x.tactical, k); breakRock(x.tactical, k, a.x, a.y, 1, 0, 'laser', -1, 'shatter'); }
           beginRockTick(x.tactical);
         }
         let rejoins = 0;

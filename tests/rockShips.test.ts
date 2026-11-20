@@ -4,9 +4,10 @@
 import { describe, expect, it } from 'vitest';
 import { ramHull, resolveContacts } from '../src/renderer/src/sim/tactical/contacts';
 import { stepSoloFlight } from '../src/renderer/src/sim/tactical/physics';
-import { rockAlive, rockAt, rockMass, RockKind, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
+import { rockAlive, rockAt, rockMass, RockKind, rockTmpl, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
+import { shapeOf, templateFor } from '../src/renderer/src/sim/tactical/rockCells';
 import { RAM_SOFT, ROCK_SEPARATE_MAX, SHIP_MASS } from '../src/renderer/src/sim/tactical/rockTuning';
-import { arena, mover, rail, rockEvents, seeded, withSwitches } from './helpers/rockArena';
+import { arena, mover, rail, rockEvents, seeded, shaped, tmplOf, withSwitches } from './helpers/rockArena';
 
 /** A moving rock of radius r touching the crew ship (at rest at (0, −2500), radius 20) from the east, closing at `speed`. */
 function incoming(r: number, speed: number, hp = 99) { const st = arena(); mover(st, 100, 20 + r - 1, -2500, -speed, 0, r, hp); return st; }
@@ -40,12 +41,16 @@ describe('a moving rock is a second body (spec §5.1 case 3)', () => {
     const st = incoming(15, 200, 99);
     resolveContacts(st, true);
     expect(rockAt(st, 100).hp).toBeCloseTo(99 - (170 / 40) * 1800 / 1125, 12);
-    const small = incoming(15, 200, 2);
+    const small = arena(), tm = tmplOf(small, 31), t = templateFor(small.map, tm), sh = shapeOf(t, t.full);
+    let w = 0; for (let c = 1; c < t.n; c++) if (t.x[c]! < t.x[w]!) w = c;
+    shaped(small, 100, tm, 20 - 1 + t.contactR - (t.x[w]! - sh.gx), -2500 - (t.y[w]! - sh.gy), -200, 0);   // its westernmost cell 1 deep in the ship
+    small.rocks[100 * ROCK_STRIDE + 6] = 1;
     resolveContacts(small, true);
-    // r 15 is over the fan's 2-piece threshold (13), so the break splits it: piece 0 keeps slot 100
-    expect(rockEvents(small).map((e) => [e.what, e.by, e.ship])).toEqual([['bump', 'ram', 0], ['split', 'ram', 0]]);
-    expect([rockAlive(small, 100), rockAt(small, 100).r, small.systems[0].rocksBroken]).toEqual([true, (0.9 * 15) / Math.sqrt(2), 1]);
-    const tiny = incoming(12, 200, 1);
+    // asteroids-iv §5.2: a cell rock is cut through the contact point (crumbs are dust with rock −1): the largest piece keeps slot 100
+    expect(rockEvents(small).filter((e) => e.rock !== -1).map((e) => [e.what, e.by, e.ship])).toEqual([['bump', 'ram', 0], ['split', 'ram', 0]]);
+    expect([rockAlive(small, 100), rockTmpl(small, 100), small.systems[0].rocksBroken]).toEqual([true, tm, 1]);
+    expect(rockEvents(small, 'split')[0]!.pieces!.length).toBeGreaterThanOrEqual(2);
+    const tiny = incoming(12, 200, 1);   // a plain rock is one cell: it turns to dust whole
     resolveContacts(tiny, true);
     expect(rockEvents(tiny).map((e) => [e.what, e.by, e.ship])).toEqual([['bump', 'ram', 0], ['dust', 'ram', 0]]);
     expect([rockAlive(tiny, 100), tiny.systems[0].rocksBroken]).toEqual([false, 1]);

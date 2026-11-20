@@ -1,5 +1,5 @@
 // W-4 spec §5.1: an autocannon round meeting a rock pushes it 500 / m along the round (freeing a rail rock), wears it
-// 1/4 hp with a rock `hit` event by 'gun' and the owner, and breaks it in the fan pattern at 0 hp; the ties stay
+// 1/4 hp with a rock `hit` event by 'gun' and the owner, and breaks it at 0 hp (a plain rock to dust, a cell rock cut along the round); the ties stay
 // stepRounds' (ship, then rocks, then the planet); pew pew rounds and the Valkyrn's rounds still stop with no effect; a
 // MAN round at a rock ends the hold; the view sparks on a gun hit and plays no sound for it.
 import { describe, expect, it } from 'vitest';
@@ -11,7 +11,8 @@ import { AUTOCANNON_ROCK_PUSH } from '../src/renderer/src/sim/tactical/rockTunin
 import { hostilityStep } from '../src/renderer/src/sim/tactical/science';
 import { pushRockFx } from '../src/renderer/src/render/tactical/rockFx';
 import { rockSounds } from '../src/renderer/src/audio/rockSounds';
-import { arena, mover, rockEvents, seeded } from './helpers/rockArena';
+import { shapeOf, templateFor } from '../src/renderer/src/sim/tactical/rockCells';
+import { arena, mover, rockEvents, seeded, shaped, tmplOf } from './helpers/rockArena';
 import { createFx } from '../src/renderer/src/render/tactical/fxModel';
 
 const R = (st: ReturnType<typeof arena>, x: number, y: number) => placeRound(st, { x, y, vx: 700, vy: 0, age: 0, owner: 0 });
@@ -41,17 +42,32 @@ describe('autocannon rounds and rocks (W-4 spec §5.1)', () => {
     expect(st.rocks[0 * ROCK_STRIDE]).toBe(RockKind.Free);
     expect(rockAt(st, 0).vx).toBeGreaterThan(vx0);
   });
-  it('an r 15 rock (2 hp) breaks on the 8th round, in the fan pattern, and the owner\'s rocksBroken rises by 1', () => {
-    const st = arena(5, ShipClass.Cutter);
-    mover(st, 100, 200, -2500, 0, 0, 15, 2);
-    for (let n = 1; n <= 8; n++) {
-      st.events = [];
-      const a = rockAt(st, 100);
-      R(st, a.x - a.r - 5, a.y); stepRounds(st);
-      if (n < 8) { expect(rockAt(st, 100).hp, `round ${n}`).toBe(2 - n * 0.25); expect(rockEvents(st, 'split')).toHaveLength(0); }
+  it('an r 15 rock (2 hp) breaks on the 8th round: a plain rock to dust, a cell rock cut along the round; the owner\'s rocksBroken rises by 1', () => {
+    for (const plain of [true, false]) {
+      const st = arena(5, ShipClass.Cutter);
+      let x0 = 200 - 15 - 5, y0 = -2500;   // the round's start: 5 short of the rock's surface
+      if (plain) mover(st, 100, 200, -2500, 0, 0, 15, 2);
+      else {   // a cell rock at 2 hp; the round flies at the westernmost cell of the row nearest its centre of mass
+        const tm = tmplOf(st, 31), t = templateFor(st.map, tm), sh = shapeOf(t, t.full);
+        let w = 0;
+        for (let c = 1; c < t.n; c++) { const dy = Math.abs(t.y[c]! - sh.gy) - Math.abs(t.y[w]! - sh.gy); if (dy < -1e-9 || (dy < 1e-9 && t.x[c]! < t.x[w]!)) w = c; }
+        shaped(st, 100, tm, 200, -2500); st.rocks[100 * ROCK_STRIDE + 6] = 2;
+        x0 = 200 + t.x[w]! - sh.gx - t.hitR - 5; y0 = -2500 + t.y[w]! - sh.gy;
+      }
+      for (let n = 1; n <= 8; n++) {
+        st.events = [];
+        R(st, x0, y0); stepRounds(st);
+        if (n < 8) { expect(rockAt(st, 100).hp, `round ${n}`).toBe(2 - n * 0.25); expect(rockEvents(st, 'split')).toHaveLength(0); }
+      }
+      if (plain) { expect(rockEvents(st, 'dust')).toMatchObject([{ rock: 100, by: 'gun', ship: 0 }]); expect(rockEvents(st, 'split')).toEqual([]); }
+      else {
+        const split = rockEvents(st, 'split');
+        expect(split).toMatchObject([{ rock: 100, by: 'gun', ship: 0 }]);
+        const vys = split[0]!.pieces!.map((p) => rockAt(st, p).vy);   // the round flies east: the sides part north and south
+        expect(Math.min(...vys)).toBeLessThan(0); expect(Math.max(...vys)).toBeGreaterThan(0);
+      }
+      expect(st.systems[0]!.rocksBroken).toBe(1);
     }
-    expect(rockEvents(st, 'split').length + rockEvents(st, 'dust').length).toBe(1);
-    expect(st.systems[0]!.rocksBroken).toBe(1);
   });
   it('a piece born this tick is not hit by a later round in the same tick', () => {
     const st = arena(5, ShipClass.Cutter);

@@ -74,7 +74,7 @@ export function quietRun(seed: number, seconds: number, windows: readonly (reado
       stepDuelTick(d, IDLE); pinHunter(d);
       if (bursts.some((s) => Math.round(s * TICK_HZ) === k)) {
         const rock = biggestBeltRail(d);
-        if (rock >= 0) { const a = rockAt(t, rock); breakRock(t, rock, -a.x, -a.y, 'torpedo', 0, 'burst'); beginRockTick(t); }   // toward the planet from where it is now
+        if (rock >= 0) { const a = rockAt(t, rock); breakRock(t, rock, a.x, a.y, -a.x, -a.y, 'torpedo', 0, 'shatter'); beginRockTick(t); }   // toward the planet from where it is now
       }
       for (let j = 0; j < kinds.length; j++) { const now = t.rocks[j * ROCK_STRIDE]!; if (kinds[j] === 1 && now !== 1) leftKind1++; kinds[j] = now; }
       if (k % TICK_HZ === 0) { let free = 0; for (let j = 0; j < kinds.length; j++) if (kinds[j] === 2) free++; freeEachSecond.push(free); }

@@ -5,10 +5,10 @@ import { describe, expect, it } from 'vitest';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
-import { rockAlive, rockAt, RockKind, rockKind, rockMass, rocksNear, rockSlots, rockT } from '../src/renderer/src/sim/tactical/rocks';
+import { rockAlive, rockAt, RockKind, rockKind, rockMass, rocksNear, rockSlots, rockT, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { breakRock, crushDamage, pushRock } from '../src/renderer/src/sim/tactical/rockBreak';
 import { resolveRockPair, restitution, stepRocks } from '../src/renderer/src/sim/tactical/rockContacts';
-import { arena, mover, rail, rockEvents, seeded, withSwitches } from './helpers/rockArena';
+import { arena, mover, rail, rockEvents, seeded, shaped, tmplOf, withSwitches } from './helpers/rockArena';
 
 const momentum = (st: ReturnType<typeof arena>, ks: number[]): [number, number] => ks.reduce<[number, number]>((p, k) => { const a = rockAt(st, k), m = a.r * a.r; return [p[0] + m * a.vx, p[1] + m * a.vy]; }, [0, 0]);
 
@@ -48,14 +48,21 @@ describe('rock-rock pairs (spec §3.3)', () => {
     expect(st.rockCollisions).toBe(1);
   }));
   it('apply both amounts before any break; a breaks first, then b, along n and −n', () => {
-    const st = arena();
+    const st = arena();   // plain rocks are one cell: each turns to dust whole, a then b
     mover(st, 100, 0, 2000, 100, 0, 30, 1); mover(st, 101, 59, 2000, -100, 0, 30, 1);
     resolveRockPair(st, 100, 101);
-    expect(rockEvents(st).map((e) => `${e.what}:${e.rock}`)).toEqual(['bump:100', 'split:100', 'split:101']);
-    const [a, b] = rockEvents(st, 'split');
-    expect(rockAt(st, a!.pieces![0]!).vx).toBeLessThan(0);   // a's pieces fly away from b (n points from b to a: west)
-    expect(rockAt(st, b!.pieces![0]!).vx).toBeGreaterThan(0);
-    expect(a!.vx).toBeCloseTo(-80, 9);   // the parent velocity is the post-bounce one
+    expect(rockEvents(st).map((e) => `${e.what}:${e.rock}`)).toEqual(['bump:100', 'dust:100', 'dust:101']);
+    expect(rockEvents(st, 'dust')[0]!.vx).toBeCloseTo(-80, 9);   // the parent velocity is the post-bounce one
+    const cs = arena(), tm = tmplOf(cs, 31);   // asteroids-iv §5.2: cell rocks are cut through the contact point, a along n, b along −n
+    shaped(cs, 100, tm, 0, 2000, 100, 0);
+    shaped(cs, 101, tm, rockAt(cs, 100).r, 2000, -100, 0);   // one bounding radius apart: deep in each other
+    cs.rocks[100 * ROCK_STRIDE + 6] = 1; cs.rocks[101 * ROCK_STRIDE + 6] = 1;
+    resolveRockPair(cs, 100, 101);
+    expect(rockEvents(cs).filter((e) => e.rock !== -1).map((e) => `${e.what}:${e.rock}`)).toEqual(['bump:100', 'split:100', 'split:101']);
+    const [a, b] = rockEvents(cs, 'split');
+    for (const p of a!.pieces!) expect(rockAt(cs, p).vx).toBeLessThan(0);   // a's pieces fly away from b (n points from b to a: west)
+    for (const p of b!.pieces!) expect(rockAt(cs, p).vx).toBeGreaterThan(0);
+    expect(a!.vx).toBeLessThan(0); expect(b!.vx).toBeGreaterThan(0);   // the parent velocity is the post-bounce one
   });
   it('a pair is resolved once per tick', () => {
     const st = arena();
@@ -99,7 +106,7 @@ describe('rock-rock pairs (spec §3.3)', () => {
     };
     let broken = 0, pushed = 0;
     for (let k = 0; k < st.map.asteroids.length; k++) {
-      if (st.map.asteroids[k]!.r >= 40 && broken < 6) { breakRock(st, k, 1, 1, 'laser', 0, 'fan'); broken++; }
+      if (st.map.asteroids[k]!.r >= 40 && broken < 6) { const a = rockAt(st, k); breakRock(st, k, a.x, a.y, 1, 1, 'laser', 0, 'cut'); broken++; }
       else if (pushed < 6) { pushRock(st, k, 30, -20); pushed++; }
     }
     for (let t = 0; t < 400; t++) {

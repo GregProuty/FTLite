@@ -67,7 +67,8 @@ export function ramHull(impact: number): number { return Math.min(RAM_HULL_MAX, 
  * velocity); every rock is then a second body. Normal n from the rock to the ship, closing speed vc = (vk − vs) · n. The
  * overlap is shared by inverse mass, the impulse (1 + RESTITUTION) vc / (1/ms + 1/mk) when closing, hull by ramHull of the
  * impact vc · mk / (mk + ms). A ship contact is a push: the rock's clock restarts and it is touched. Outside the pair's
- * grace: the hull cost, then the rock's ram damage (the §3.3 formula with the ship as the other body; a fan break along −n).
+ * grace: the hull cost, then the rock's ram damage (the §3.3 formula with the ship as the other body; at hp ≤ 0 a cut
+ * through the contact point along −n).
  * Asteroids-iv spec §6: the contact is with the rock's deepest cell (contact radius), after the bounding circle.
  */
 function shipRock(state: TacticalState, i: number, k: number): void {
@@ -96,7 +97,7 @@ function shipRock(state: TacticalState, i: number, k: number): void {
   if (dmg <= 0) return;
   const broke = wearRock(state, k, dmg), a = rockAt(state, k);
   state.events.push({ kind: 'rock', what: 'bump', by: 'ram', rock: k, x: s.x - nx * radius, y: s.y - ny * radius, r: a.r, vx: a.vx, vy: a.vy, ship: i });
-  if (broke) breakRock(state, k, -nx, -ny, 'ram', i, 'fan', [k]);
+  if (broke) breakRock(state, k, s.x - nx * radius, s.y - ny * radius, -nx, -ny, 'ram', i, 'cut', [k]);   // asteroids-iv spec §5.2: a cut through the contact point along the normal
 }
 
 /** Spike ii §5.1: ship slot i's static contacts in the duel: the planet as today, then each rock of rocksNear (taken once,

@@ -1,8 +1,8 @@
 // Spike ii §3.2, §3.3 (docs/superpowers/specs/2026-11-18-asteroids-ii-design.md), asteroids-iii §3.4, §5.4: the free rocks'
 // turn in stepDuel, after the missiles fly and before the ship contacts.
-// Part 1, motion: every Free rock not born this tick, ascending; §13.3 (rocheBreak): one inside ROCHE_R with r ≥ FAN_SPLIT_MIN_R
-// and at least ROCHE_MIN_AGE ticks old fan-breaks along its velocity instead (by 'tidal'; its pieces are born, so they hold
-// this tick); every other moves by moveFreeSlot (§13.3: the symmetric age-ramped drag toward V_c, the lane pull, the soft edge, the cap, counted in rockCapHits). Then rocksMoved: free rocks now stand at tick + 1. A rock touching the planet, or past R_MAP + rockEdgeSlack(), turns to dust at the start of its contact turn.
+// Part 1, motion: every Free rock not born this tick, ascending; §13.3 (rocheBreak): a cell rock inside ROCHE_R with at least
+// TIDAL_MIN_CELLS cells and at least ROCHE_MIN_AGE ticks old is cut through its centre of mass along its velocity instead
+// (asteroids-iv §5.2; by 'tidal'; its pieces are born, so they hold this tick); every other moves by moveFreeSlot (§13.3: the symmetric age-ramped drag toward V_c, the lane pull, the soft edge, the cap, counted in rockCapHits). Then rocksMoved: free rocks now stand at tick + 1. A rock touching the planet, or past R_MAP + rockEdgeSlack(), turns to dust at the start of its contact turn.
 // Part 2, contacts, a live outer loop: slot a from 0 upward, reading kinds as they stand now, takes a turn when it is
 // Free and not born. Its turn: the planet and edge test (dust, turn over); else rocksNear(a) once, ascending, and each
 // b ≠ a still alive, not born and not done is resolved if it touches (a Rail b at its accessor position); a break of a
@@ -11,9 +11,10 @@
 // Pairs (asteroids-iii §5.4, §13.4): only Free rocks take turns; candidates are every live, unborn rock near the turn's rock, ascending; one that had its turn this tick (rockDone) is skipped. A rail never has rockDone, so a free-rail pair is always checked; a rail freed mid-pass takes its own turn later if its slot is higher.
 import { lanePullOut, type Pair } from './rails';
 import { breakRock, crushDamage, dustRock, wearRock } from './rockBreak';
+import { popcount } from './rockCells';
 import { makeContact, rockCircleContact, rockPairContact } from './rockShape';
-import { freeRock, markTouched, regridRock, rockAlive, rockMassOf, RockKind, rockTmpl, rockPhase, rocksMoved, restartClock, rocksNear, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
-import { BOUNCE_MIN, E_LOW, E_RAMP, E_SPAN, EDGE_SETTLE_K, FAN_SPLIT_MIN_R, K_EDGE_ROCK, ROCK_CRUSH_SPEED, ROCK_EDGE_SLACK, ROCK_EDGE_SLACK_SOFT, ROCK_GRAVITY, ROCK_MAX_SPEED, ROCHE_MIN_AGE, ROCHE_R, ROCK_SEPARATE_MAX, ROCK_SWITCHES, SETTLE_A0, SETTLE_A1, SETTLE_K_MAX, SEPARATE_SHARE, SEPARATE_SLOP, TOUCH_MIN } from './rockTuning';
+import { freeRock, markTouched, regridRock, rockAlive, rockMassOf, RockKind, rockTmpl, rockPhase, rocksMoved, restartClock, rockMaskOf, rocksNear, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
+import { BOUNCE_MIN, E_LOW, E_RAMP, E_SPAN, EDGE_SETTLE_K, K_EDGE_ROCK, ROCK_CRUSH_SPEED, ROCK_EDGE_SLACK, ROCK_EDGE_SLACK_SOFT, ROCK_GRAVITY, ROCK_MAX_SPEED, ROCHE_MIN_AGE, ROCHE_R, ROCK_SEPARATE_MAX, ROCK_SWITCHES, SETTLE_A0, SETTLE_A1, SETTLE_K_MAX, SEPARATE_SHARE, SEPARATE_SLOP, TIDAL_MIN_CELLS, TOUCH_MIN } from './rockTuning';
 import type { TacticalState } from './state';
 import { DT, GM, GRAVITY_EPS, K_EDGE, R_MAP } from './tuning';
 import { TICK_HZ } from '../tuning';
@@ -36,7 +37,8 @@ export function restitution(vc: number): number { return E_LOW + E_SPAN * Math.m
  * between rocks of different clocks: rockTouches + 1 and a touch event (siblings share t, so they never count). Above
  * BOUNCE_MIN: j = (1 + e(vc)) vc / (1/ma + 1/mb) and both clocks restart (a push); at or below it (and closing): an e = 0
  * impulse j = vc / (1/ma + 1/mb), momentum kept. Above ROCK_CRUSH_SPEED: rockCollisions + 1, a bump event, both amounts
- * applied (a then b), then breaks (a along n, b along −n, each with its post-bounce velocity), neither able to evict a or b.
+ * applied (a then b), then breaks (asteroids-iv §5.2: cuts through the contact point, a along n, b along −n, each with its
+ * post-bounce velocity), neither able to evict a or b.
  * Asteroids-iv spec §6: the contact is with the rock's deepest cell (contact radius), after the bounding circle.
  */
 export function resolveRockPair(s: TacticalState, a: number, b: number): void {
@@ -67,8 +69,9 @@ export function resolveRockPair(s: TacticalState, a: number, b: number): void {
   const aBreaks = wearRock(s, a, da), bBreaks = wearRock(s, b, db);
   s.rockCollisions++;
   s.events.push({ kind: 'rock', what: 'bump', by: 'collision', rock: a, other: b, x: v[A + 1]! + cax - nx * cra, y: v[A + 2]! + cay - ny * cra, r: ra, vx: v[A + 3]!, vy: v[A + 4]! });
-  if (aBreaks) breakRock(s, a, nx, ny, 'collision', -1, 'fan', [a, b]);
-  if (bBreaks) breakRock(s, b, -nx, -ny, 'collision', -1, 'fan', [a, b]);
+  const cx = v[A + 1]! + cax - nx * cra, cy = v[A + 2]! + cay - ny * cra;   // the contact point, read before a break rewrites slot a
+  if (aBreaks) breakRock(s, a, cx, cy, nx, ny, 'collision', -1, 'cut', [a, b]);
+  if (bBreaks) breakRock(s, b, cx, cy, -nx, -ny, 'collision', -1, 'cut', [a, b]);
 }
 
 /** §13.3: the settling drag's rate for a rock `ageTicks` old (since its last birth, freeing or push): 0 before SETTLE_A0
@@ -121,8 +124,8 @@ export function stepRocks(s: TacticalState): void {
     const b = k * ROCK_STRIDE;
     if (v[b] !== RockKind.Free || s.rockBorn[k] === 1) continue;
     const rx = v[b + 1]!, ry = v[b + 2]!;
-    if (ROCK_SWITCHES.rocheBreak && rx * rx + ry * ry < ROCHE_R * ROCHE_R && v[b + 5]! >= FAN_SPLIT_MIN_R && T1 - v[b + 7]! >= ROCHE_MIN_AGE) {
-      breakRock(s, k, v[b + 3]!, v[b + 4]!, 'tidal', -1, 'tidal');   // §13.3: a tidal fan along its velocity; its pieces are born, so they hold this tick
+    if (ROCK_SWITCHES.rocheBreak && rx * rx + ry * ry < ROCHE_R * ROCHE_R && T1 - v[b + 7]! >= ROCHE_MIN_AGE && rockTmpl(s, k) >= 0 && popcount(rockMaskOf(s, k)) >= TIDAL_MIN_CELLS) {
+      breakRock(s, k, rx, ry, v[b + 3]!, v[b + 4]!, 'tidal', -1, 'tidal');   // spec §5.2: a cut through the centre of mass along its velocity; its pieces are born, so they hold this tick
       continue;
     }
     if (moveFreeSlot(v, b, T1)) s.rockCapHits++;

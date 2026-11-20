@@ -1,4 +1,4 @@
-// Spike ii §4.2, §6.4, §9.3: the torpedo's direct hit bursts its rock whatever its hp, the blast cracks and throws the
+// Spike ii §4.2, §6.4, §9.3: the torpedo's direct hit shatters its rock whatever its hp (asteroids-iv §5.3), the blast cracks and throws the
 // rocks in its radius with a linear fall-off and pushes ships without damage, the list is taken before the direct hit's
 // pieces (a reused slot is not hit), and a rock-targeted torpedo launches on the rock's range, homes on the moving rock
 // and hits it; −2 flies unguided.
@@ -9,25 +9,38 @@ import { homingTurn } from '../src/renderer/src/sim/tactical/missiles';
 import { placeMissile } from '../src/renderer/src/sim/tactical/state';
 import { applyWeaponsInput, canLaunch, IDLE_INPUT, torpedoInRange } from '../src/renderer/src/sim/tactical/weapons';
 import { escapeSpeed } from '../src/renderer/src/sim/tactical/rails';
-import { rockAlive, rockAt, rockMass } from '../src/renderer/src/sim/tactical/rocks';
+import { makeCells, rockAlive, rockAt, rockBorn, rockCellsInto, rockHp, rockMass, rockMaskOf, rockTmpl, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
+import { shapeOf, templateFor } from '../src/renderer/src/sim/tactical/rockCells';
 import { kickFraction } from '../src/renderer/src/sim/tactical/rockBreak';
 import { blastFall, detonateTorpedo } from '../src/renderer/src/sim/tactical/rockBlast';
-import { arena, fillPool, mover, rockEvents, withSwitches } from './helpers/rockArena';
+import { arena, fillPool, mover, rockEvents, shaped, tmplOf, withSwitches } from './helpers/rockArena';
+
+const cells = makeCells();
+/** Rock k's westernmost cell: its template index c and world centre (x, y), and the cells' hit radius. */
+function westCell(st: ReturnType<typeof arena>, k: number): { c: number; x: number; y: number; hitR: number } {
+  const t = templateFor(st.map, rockTmpl(st, k)), sh = shapeOf(t, rockMaskOf(st, k)), a = rockAt(st, k);
+  let c = -1;
+  for (let i = 0; i < t.n; i++) if (((sh.mask >>> i) & 1) === 1 && (c < 0 || t.x[i]! < t.x[c]!)) c = i;
+  rockCellsInto(st, k, cells);
+  return { c, x: a.x + t.x[c]! - sh.gx, y: a.y + t.y[c]! - sh.gy, hitR: cells.hitR };
+}
 
 describe('the direct hit (spec §4.2 item 1)', () => {
-  it('bursts the touched rock whatever its hp: r 50 gives 8, r 35 and r 30 give 6, r 20 gives 4, r 19 dust; piece 0 straight on at v_esc · 0.30 plus the rock', () => {
-    for (const [r, n] of [[50, 8], [35, 6], [30, 6], [20, 4], [19, 0]] as const) {
-      const st = arena();
-      mover(st, 100, -54, 2000, 5, 0, r, 99);
-      detonateTorpedo(st, 0, 0, 2000, -300, 0, 100);
-      expect(rockEvents(st, 'blast')).toMatchObject([{ rock: 100, by: 'torpedo', ship: 0, x: 0, y: 2000, r: 120 }]);
-      expect([st.rockBlasts, st.systems[0].rocksBroken]).toEqual([1, 1]);
-      if (n === 0) { expect(rockEvents(st, 'dust')).toMatchObject([{ rock: 100, by: 'torpedo', ship: 0 }]); continue; }
-      const pieces = rockEvents(st, 'split')[0]!.pieces!;
-      expect(pieces).toHaveLength(n);
-      expect(rockAt(st, pieces[0]!).vx).toBeCloseTo(5 - 0.3 * escapeSpeed(Math.hypot(-54, 2000)), 9);   // u: the torpedo's velocity relative to the rock (west)
-      expect(rockAt(st, pieces[0]!).vy).toBeCloseTo(0, 9);
-    }
+  it('shatters the touched rock whatever its hp: real chunks of it, the struck cell dust', () => {
+    const st = arena(), tm = tmplOf(st, 31);
+    shaped(st, 100, tm, -54, 2000, 5, 0);
+    st.rocks[100 * ROCK_STRIDE + 6] = 99;   // whatever its hp
+    const w = westCell(st, 100);
+    detonateTorpedo(st, 0, w.x - w.hitR, w.y, 300, 0, 100);   // on the westernmost cell's surface, flying east into it
+    expect(rockEvents(st, 'blast')).toMatchObject([{ rock: 100, by: 'torpedo', ship: 0, x: w.x - w.hitR, y: w.y, r: 120 }]);
+    expect([st.rockBlasts, st.systems[0].rocksBroken]).toEqual([1, 1]);
+    const split = rockEvents(st, 'split')[0]!, pieces = split.pieces!;
+    expect(split.burst).toBe(true); expect(pieces.length).toBeGreaterThanOrEqual(2);
+    let all = 0;
+    for (const p of pieces) { const m = rockMaskOf(st, p); expect(rockTmpl(st, p)).toBe(tm); expect(all & m).toBe(0); all |= m; }
+    expect((all >>> w.c) & 1).toBe(0);   // the struck cell is the crater
+    const a0 = rockAt(st, pieces[0]!);
+    expect(Math.hypot(a0.vx - 5, a0.vy)).toBeCloseTo(0.3 * escapeSpeed(Math.hypot(-54, 2000)), 9);   // piece 0 at v_esc · 0.30 plus the rock
   });
 });
 
@@ -65,20 +78,20 @@ describe('the blast (spec §4.2 items 2 and 3, asteroids-iii §5.3)', () => {
     expect([st.systems[0].hull, st.systems[1].hull]).toEqual(hulls);
   });
   it('takes its list before the direct hit: a slot the pieces reuse (born) is not hit by the blast', () => {
-    const st = arena();
-    mover(st, 100, -54, 2000, 0, 0, 50, 1);
+    const st = arena(), tm = tmplOf(st, 31);
+    shaped(st, 100, tm, -54, 2000);
+    const w = westCell(st, 100), tx = w.x - w.hitR;
     fillPool(st, 9);
-    mover(st, 120, 60, 2000, 0, 0, 8.5, 5);   // in the radius and the smallest: evicted first
-    detonateTorpedo(st, 0, 0, 2000, -200, 0, 100);
+    mover(st, 120, tx - 60, w.y, 0, 0, 8.5, 5);   // in the radius and the smallest: evicted first
+    detonateTorpedo(st, 0, tx, w.y, 200, 0, 100);
     const pieces = rockEvents(st, 'split')[0]!.pieces!, p = rockAt(st, 120), k1 = escapeSpeed(Math.hypot(-54, 2000)) * (0.3 + 0.3 * kickFraction(1));
-    expect(pieces).toHaveLength(8);
+    expect(pieces.length).toBeGreaterThanOrEqual(2);
     expect(pieces[1]).toBe(120);
-    expect(p.r).toBeCloseTo((0.9 * 50) / Math.sqrt(8), 12);
-    expect(p.hp).toBe(2);
-    expect(p.vx).toBeCloseTo(-0.7071067811865476 * k1, 9);   // its own burst velocity (u west, +45°), no blast push
-    expect(p.vy).toBeCloseTo(-0.7071067811865476 * k1, 9);
+    expect(rockTmpl(st, 120)).toBe(tm); expect(rockBorn(st, 120)).toBe(true);
+    expect(p.hp).toBe(rockHp(p.r));
+    expect(Math.hypot(p.vx, p.vy)).toBeCloseTo(k1, 9);   // its own shatter kick, no blast push
     expect(rockEvents(st, 'hit').some((e) => e.rock === 120)).toBe(false);
-    expect(st.rockEvictions).toBe(7);
+    expect(st.rockEvictions).toBe(pieces.length - 1);
   });
 });
 

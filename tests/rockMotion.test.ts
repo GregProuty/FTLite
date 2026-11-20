@@ -6,11 +6,12 @@ import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { gravityAccel } from '../src/renderer/src/sim/tactical/physics';
 import { circularVelocity, escapeSpeed, lanePull, targetVelocity } from '../src/renderer/src/sim/tactical/rails';
 import { moveFreeSlot, rockEdgeAccel, rockEdgeSlack, settleRate, stepRocks } from '../src/renderer/src/sim/tactical/rockContacts';
-import { rockAlive, rockAt, RockKind, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
+import { rockAlive, rockAt, RockKind, rockTmpl, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
+import { popcount, templateFor } from '../src/renderer/src/sim/tactical/rockCells';
 import { ROCK_EDGE_SLACK, ROCK_EDGE_SLACK_SOFT } from '../src/renderer/src/sim/tactical/rockTuning';
 import { DT, GM, GRAVITY_EPS, K_EDGE, R_MAP } from '../src/renderer/src/sim/tactical/tuning';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
-import { arena, mover, rockEvents, withSwitches } from './helpers/rockArena';
+import { arena, mover, rockEvents, shaped, tmplOf, withSwitches } from './helpers/rockArena';
 
 /** A lone free rock slot (kind, x, y, vx, vy, r, hp, t) at (x, y), velocity V_c plus (dvx, dvy), clock t. */
 function slot(x: number, y: number, dvx = 0, dvy = 0, t = 0): Float64Array {
@@ -113,22 +114,31 @@ describe('free-rock motion (spec §13.3)', () => {
 });
 
 describe('the Roche break (spec §13.3)', () => {
-  it('a free rock inside ρ 175, r ≥ 13 and at least 30 ticks old fan-breaks along its velocity, cause tidal, kicks 0.03 to 0.08 of v_esc', () => {
+  it('a free cell rock of at least 4 cells inside ρ 175 and at least 30 ticks old is cut through its centre of mass along its velocity, cause tidal, its sides parting at 0.04 of v_esc; a plain rock is not', () => {
     const st = arena(); st.tick = 100;
-    const [vx, vy] = circularVelocity(0, 160);
-    mover(st, 100, 0, 160, vx, vy, 20, 5, 70);    // 30 ticks old
-    mover(st, 101, 0, -160, -vx, -vy, 20, 5, 71);  // 29 ticks old: not yet
-    mover(st, 102, 160, 0, 0, 0, 12, 5, 0);        // r 12: under FAN_SPLIT_MIN_R
+    const [vx, vy] = circularVelocity(0, 160), tm = tmplOf(st, 31), t = templateFor(st.map, tm);
+    const old = (k: number, t0: number): void => { st.rocks[k * ROCK_STRIDE + 7] = t0; };
+    shaped(st, 100, tm, 0, 160, vx, vy); old(100, 70);       // 30 ticks old
+    shaped(st, 101, tm, 0, -160, -vx, -vy); old(101, 71);    // 29 ticks old: not yet
+    mover(st, 102, 160, 0, 0, 0, 20, 5, 0);                  // a plain rock: not
+    let three = 1;   // cell 0 and its first two neighbours
+    for (let c = 1; c < t.n && popcount(three) < 3; c++) if ((t.nb[0]! >>> c) & 1) three |= 1 << c;
+    shaped(st, 103, tm, -160, 0, 0, 0, three); old(103, 0);  // 3 cells: under TIDAL_MIN_CELLS
+    expect(popcount(three)).toBe(3);
     stepRocks(st);
     const split = rockEvents(st, 'split');
     expect(split.map((e) => [e.rock, e.by])).toEqual([[100, 'tidal']]);
+    const sp = Math.hypot(vx, vy), nx = -vy / sp, ny = vx / sp, along: number[] = [];   // the line's normal
     for (const p of split[0]!.pieces!) {
-      const a = rockAt(st, p), dv = Math.hypot(a.vx - vx, a.vy - vy) / escapeSpeed(160);
-      expect(dv).toBeGreaterThanOrEqual(0.03 - 1e-9); expect(dv).toBeLessThan(0.08);
+      const a = rockAt(st, p);
+      expect(rockTmpl(st, p)).toBe(tm);
+      expect((a.vx - vx) * vx + (a.vy - vy) * vy).toBeCloseTo(0, 9);   // the kick is across the velocity
+      along.push(((a.vx - vx) * nx + (a.vy - vy) * ny) / escapeSpeed(160));
     }
+    expect(Math.max(...along) - Math.min(...along)).toBeCloseTo(0.04, 9);   // the two sides part at 0.04 · v_esc
     withSwitches({ rocheBreak: false }, () => {
       const off = arena(); off.tick = 100;
-      mover(off, 100, 0, 160, vx, vy, 20, 5, 0);
+      shaped(off, 100, tm, 0, 160, vx, vy); off.rocks[100 * ROCK_STRIDE + 7] = 0;
       stepRocks(off);
       expect(rockEvents(off, 'split')).toEqual([]);
     });
