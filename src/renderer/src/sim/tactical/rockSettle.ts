@@ -183,14 +183,15 @@ function clusterJoin(s: TacticalState, k: number, group: number): RejoinChoice |
 
 /** §3.4, §13.2: the end-of-tick rejoin pass, ascending (a rock that rejoins counts as a live rail for the later ones).
  *  §14 (the cost fix): a Free rock whose clock has run REJOIN_MIN_TICKS + REJOIN_RECHECK_TICKS or more is checked only on
- *  ticks where (T1 + k) % REJOIN_RECHECK_TICKS is 0 (from the tick and the slot alone, no state); a younger one every tick. */
+ *  ticks where (T1 − startTick + k) % REJOIN_RECHECK_TICKS is 0 (from the round tick and the slot alone, no other state:
+ *  round-relative, so a round started at T behaves as a fresh duel started at 0); a younger one every tick. */
 export function settleRocks(s: TacticalState): void {
   const v = s.rocks, T1 = rockPhase(s);
   passOf = s; passReady = false;
   try { for (let k = 0, n = rockSlots(s); k < n; k++) {
     const b0 = k * ROCK_STRIDE;
     if (v[b0] !== RockKind.Free) continue;
-    if (T1 - v[b0 + 7]! >= REJOIN_MIN_TICKS + REJOIN_RECHECK_TICKS && (T1 + k) % REJOIN_RECHECK_TICKS !== 0) continue;
+    if (T1 - v[b0 + 7]! >= REJOIN_MIN_TICKS + REJOIN_RECHECK_TICKS && (T1 - s.startTick + k) % REJOIN_RECHECK_TICKS !== 0) continue;
     const c = rejoinChoice(s, k);
     if (!c) continue;
     const b = k * ROCK_STRIDE, x = v[b + 1]!, y = v[b + 2]!, f = c.rhoW / Math.sqrt(x * x + y * y);

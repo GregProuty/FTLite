@@ -190,7 +190,7 @@ At 4x the busy scene's p95 (16.5 ms) sits just under 16.7 ms and p99 at it. If p
 - **Predictions 10 to 40 times faster** (Task 11 fix round), bit-identical to the first version.
 - **A tuple-free `moveFreeSlot`** (Task 12a), bit-identical.
 - **A per-step rail table** (Task 13 round 2): every rail's position is worked out once per step phase and the memo answers from it. Proven equal to the memo with `Object.is` over 2,000 stress ticks and more than 100,000 rows, and checked mid-step over 300,000 rows.
-- **A staggered rejoin re-check** (`REJOIN_RECHECK_TICKS = 30`): an old Free rock whose clock has run 30 or more ticks past the minimum is checked only when `(T1 + k) % 30 == 0`, from tick, slot and clock only. An old rock can wait up to 29 ticks (0.5 s) to rejoin.
+- **A staggered rejoin re-check** (`REJOIN_RECHECK_TICKS = 30`): an old Free rock whose clock has run 30 or more ticks past the minimum is checked only when `(T1 − startTick + k) % 30 == 0` (round-relative, so a rematch round behaves as a fresh duel), from the round tick, slot and clock only. An old rock can wait up to 29 ticks (0.5 s) to rejoin.
 - **The renderer path cache and banded trails** (Task 12a): the predicted path is computed once per tick, and a trail is drawn as a few alpha bands, not a stroke per sample.
 - **The fx cap** (Task 12b): `FX_SOFT_CAP = 300`; above it the oldest specks (shards, puffs) go first, in place.
 - **Settled cost** went from p99 3.9 ms (round 1) to 0.143 ms.
