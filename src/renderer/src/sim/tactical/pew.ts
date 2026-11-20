@@ -54,7 +54,8 @@ export function pewAutoReady(state: TacticalState, i: number): boolean {
   return def !== null && pewReady(state, i) && (c >= pewFull(def) || c % pewThird(def) < pewGain(state, i));
 }
 
-/** A pewFire command's aim (spec §4): a heading index 0..255 and its fraction aimAcc 0..255, both integers. */
+/** A laserFire command's aim (W-2, pew pew spec §4; its only reader since W-4 spec §6 dropped pewFire's aim): a heading
+ *  index 0..255 and its fraction aimAcc 0..255, both integers. */
 export function validAim(aim: unknown, aimAcc: unknown): boolean {
   return typeof aim === 'number' && typeof aimAcc === 'number' && Number.isInteger(aim) && Number.isInteger(aimAcc)
     && aim >= 0 && aim < HEADING_COUNT && aimAcc >= 0 && aimAcc < HEADING_COUNT;

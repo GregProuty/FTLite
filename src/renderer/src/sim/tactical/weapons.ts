@@ -351,7 +351,7 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
     if (crew && !s.torpManual && (s.torpLock >= 0 || s.torpRock >= 0) && canLaunch(state, i) && (s.torpRock >= 0 || shipSeen(state, s.target))) launchMissile(state, i);   // auto-launch, once (spike ii: or on a rock target); W-3: never in MANUAL; Task 10: the enemy only when seen
   }
   // W-4 amendment §3.3: a clicked shot carries the target room, in hand that tick or not (a held weaponSel can trail the command online).
-  if (input.pewTrigger) firePewTrigger(state, i, crew && classOf(state, i).slots.pew?.turret ? s.lock + 1 : 0);   // W-4 spec §6, §8: the crew's MAN pewFire, along the turret; last, as before
+  if (input.pewTrigger) firePewTrigger(state, i, crew && classOf(state, i).slots.pew?.turret != null ? s.lock + 1 : 0);   // W-4 spec §6, §8: the crew's MAN pewFire, along the turret; last, as before
   else if (auto.pew && hostile && pewAutoReady(state, i)) firePewTrigger(state, i);   // W-4 spec §4.3 (Decision 4): AUTO, one round each time a third has charged, never a burst
   else if (input.pewAim >= 0) firePew(state, i, input.pewAim);   // W-1 (pew pew spec §1): the Hunter's aim; attended (above)
 }

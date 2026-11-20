@@ -129,9 +129,10 @@ export function gunRoomOf(state: TacticalState, target: number, ox: number, oy: 
 
 /** Owner's round on (ox, oy) → (nx, ny) hit ship k (spec §7.2). Shielded: one wear toward a layer; at hitsPerLayer the
  *  layer goes (shieldClock 0) and the wear is 0. Unshielded: one hull wear (every hitsPerHull, hull −1) and one wear on
- *  the struck Room (every hitsPerLevel, its level +1 to 2; at level 2 its wear stays 0). The owner counts the hit; a
- *  gunHit event marks the closest-approach point, and `level` says whether it raised the struck Room's level. W-4
- *  amendment §3.4: `tag` the round's room; a turret gun wears that room (none for an untagged round). */
+ *  a Room (every hitsPerLevel, its level +1 to 2; at level 2 its wear stays 0): W-4 amendment §3.4, a turret gun wears the
+ *  round's tagged room (`tag`; none for an untagged round), the Valkyrn's gun (no turret) the Room under the round
+ *  (gunRoomOf). The owner counts the hit; a gunHit event marks the closest-approach point, and `level` says whether it
+ *  raised that Room's level. */
 function gunHit(state: TacticalState, owner: number, k: number, ox: number, oy: number, nx: number, ny: number, tag = 0): void {
   const g = classOf(state, owner).slots.gun, t = state.systems[k]!, b = state.ships[k]!;
   if (!g) return;

@@ -58,7 +58,7 @@ export function autoSolution(state: TacticalState, i: number, gun: 'pew' | 'gun'
 
 /** Which AUTO guns sit on their solution after this tick's slew (Task 7 fires them). */
 export interface AutoOnSolution { pew: boolean; gun: boolean }
-const NONE: AutoOnSolution = Object.freeze({ pew: false, gun: false });
+const NONE: Readonly<AutoOnSolution> = Object.freeze({ pew: false, gun: false });
 
 /**
  * W-4 spec §3.4: one tick of ship i's turrets, before anything moves (the pre-move heading), from applyWeaponsInput after
