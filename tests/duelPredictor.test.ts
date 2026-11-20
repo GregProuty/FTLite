@@ -93,6 +93,23 @@ describe('the duel predictor (Net-4a §3.3, §3.4)', () => {
     expect(a.d.throttle).toBe(2);   // and the authority applied it once
     p.dispose();
   });
+  it('a predicted stand the authority never runs is taken back: the correction reports reseated (plan deviation 3)', () => {
+    // Seat 0, seated at Navigation, stands at L 1; the authority refuses or loses it (the command watermark passes it
+    // and the character stays seated), so the re-simulation seats P again. A correction with no seat change is not reseated.
+    const a = authority(), p = predictor();
+    p.confirm(a.publication(), a.confirmed());
+    p.tick(entry(1, N(), [cmd(1, { kind: 'stand' })]));
+    a.step([N(), N()]); a.water.held[0] = 1; a.water.command[0] = 1;
+    for (let L = 2; L <= 3; L++) { p.tick(entry(L)); a.step([N(), N()]); a.water.held[0] = L; }
+    expect(p.confirm(a.publication(), a.confirmed())).toBe('resimulated');
+    expect(p.stats().correction?.reseated).toBe(true);
+    expect(hashDuel(p.state()!)).toBe(hashDuel(a.d));
+    // This seat's throttle frame at L 4 is lost (the authority latches neutral for it): a correction, still seated.
+    for (let L = 4; L <= 6; L++) { p.tick(entry(L, L === 4 ? { ...N(), throttleHeld: 1 } : N())); a.step([N(), N()]); a.water.held[0] = L; }
+    expect(p.confirm(a.publication(), a.confirmed())).toBe('resimulated');
+    expect(p.stats().correction?.reseated).toBe(false);
+    p.dispose();
+  });
   it('never stands more than PREDICT_MAX_TICKS past the confirmed tick: tick() is false there and logs the entry', () => {
     const a = authority(), p = predictor();
     p.confirm(a.publication(), a.confirmed());

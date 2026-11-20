@@ -10,7 +10,7 @@ import { stepDuelTick } from '../../src/renderer/src/sim/duel/step';
 import { resolveCutter } from './duelAuthority';
 import type { onlineDuel } from './onlineDuel';
 
-export interface Confirm { result: 'verified' | 'resimulated' | 'reset'; tick: number; hashBefore: string | null; hash: string; standing: number; measured: number; correction: { ship: number; character: number } | null }
+export interface Confirm { result: 'verified' | 'resimulated' | 'reset'; tick: number; hashBefore: string | null; hash: string; standing: number; measured: number; correction: { ship: number; character: number; reseated: boolean } | null }
 /** One step P took in tick(): the tick it produced and this seat's held input in it (by heldKey). */
 export interface Used { tick: number; own: string }
 export function predictedSeat(world: ReturnType<typeof onlineDuel>, seat: number, input: (local: number, view: DuelState) => { held: HeldInput; commands: DuelCommand[] }) {

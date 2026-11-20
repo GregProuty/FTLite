@@ -7,7 +7,7 @@
 import type { CommandEnvelope, DuelCommand, HeldInput } from '../net/contracts';
 import type { ResolveLayout } from '../authority/rules';
 import type { DuelPublication } from './duelClient';
-import { Position } from '../sim/components';
+import { Position, Seated } from '../sim/components';
 import { flattenDuel } from '../sim/duel/hash';
 import { loadDuelSnapshot, restoreDuelSnapshot } from '../sim/duel/snapshot';
 import { disposeDuel, type DuelState } from '../sim/duel/state';
@@ -29,7 +29,8 @@ export interface PredictedBody { x: number; y: number; h: number }
 export interface PredictedBodies { ships: PredictedBody[]; missiles: (PredictedBody | null)[]; crew: { x: number; y: number }[] }
 export interface PredictionStats {
   verified: number; resimulated: number; resets: number; lead: number; measured: number; standing: number;
-  correction: { ship: number; character: number } | null;
+  /** Plan deviation 3: `reseated` when this seat's seated station differs across the re-simulation (a refused or moved sit or stand taken back, §3.7). */
+  correction: { ship: number; character: number; reseated: boolean } | null;
 }
 export interface DuelPredictorOptions { seat: number; contentDigest: string; resolveLayout: ResolveLayout; step?(d: DuelState, input: DuelInput): void }
 export interface DuelPredictor {
@@ -137,14 +138,14 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
       for (let k = T + 1; ok && k <= target; k++) { const s = steps.get(k), plan = planned(k); ok = !!s && s.key === inputKey(withOwn(plan.own), plan.commands); }
       if (ok) { stats.verified++; stats.correction = null; stats.lead = standing - T; return 'verified'; }
       // Step 5: restore and step to the target with the planned inputs.
-      const ship = d.tactical.ships[CREW_SLOT]!, sx = ship.x, sy = ship.y, eid = d.interior.crew[seat], cx = eid === undefined ? 0 : Position.x[eid]!, cy = eid === undefined ? 0 : Position.y[eid]!;
+      const ship = d.tactical.ships[CREW_SLOT]!, sx = ship.x, sy = ship.y, eid = d.interior.crew[seat], cx = eid === undefined ? 0 : Position.x[eid]!, cy = eid === undefined ? 0 : Position.y[eid]!, seated = eid === undefined ? -1 : Seated.station[eid]!;
       restoreDuelSnapshot(d, publication.snapshot, options.contentDigest);
       steps.clear(); steps.set(T, { key: '', hash: publication.hash });
       prior = bodies(d);
       for (let k = T + 1; k <= target; k++) { const plan = planned(k); advance(plan.own, plan.commands); }
       const after = d.tactical.ships[CREW_SLOT]!, dx = after.x - sx, dy = after.y - sy;
       const ex = eid === undefined ? 0 : Position.x[eid]! - cx, ey = eid === undefined ? 0 : Position.y[eid]! - cy;
-      stats.correction = target === standing ? { ship: Math.sqrt(dx * dx + dy * dy), character: Math.sqrt(ex * ex + ey * ey) } : null;
+      stats.correction = target === standing ? { ship: Math.sqrt(dx * dx + dy * dy), character: Math.sqrt(ex * ex + ey * ey), reseated: (eid === undefined ? -1 : Seated.station[eid]!) !== seated } : null;
       stats.resimulated++; stats.lead = target - T;
       return 'resimulated';
     },
