@@ -49,7 +49,7 @@ describe('utility trusted process boundary', () => {
     const owner = createUtilityHost(createModeRegistry([sectorMode]), { contentDigest: __GAMEPLAY_CONTENT_DIGEST__,
       clock: { nowMs: () => now }, leaseClock: { nowMs: () => samples.length ? (now = samples.shift()!) : now, epochMs: () => 100000 + now }, nonce: () => (++nonce).toString(16).padStart(32, '0'),
       scheduler: { schedule(delay, callback) { scheduled.push({ delay, callback }); return () => {}; } }, onCrash() {} }, m => messages.push(m));
-    owner.receive({ kind: 'initialize', ...identity, modeId: 'sector', simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, sessionLease }, []);
+    owner.receive({ kind: 'initialize', ...identity, modeId: 'sector', schemaVersion: sectorMode.schemaVersion, simVersion: SIM_VERSION, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, sessionLease }, []);
     const privateMessage = (kind: string, extra: object) => owner.receive({ kind, requestId: ++id, hostGeneration: 7, ...extra }, []);
     const grant = () => { const request = messages.filter(m => m.kind === 'lease-request').at(-1).request;
       privateMessage('lease-grant', { request, grant: { roomId: sessionLease.roomId, hostGeneration: 7, hostSeatId: 0, nonce: request.nonce, expiresAtEpochMs: 100000 + now + 15000 } }); };
