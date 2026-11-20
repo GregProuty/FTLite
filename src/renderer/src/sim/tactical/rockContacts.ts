@@ -11,12 +11,14 @@
 // Pairs (asteroids-iii §5.4, §13.4): only Free rocks take turns; candidates are every live, unborn rock near the turn's rock, ascending; one that had its turn this tick (rockDone) is skipped. A rail never has rockDone, so a free-rail pair is always checked; a rail freed mid-pass takes its own turn later if its slot is higher.
 import { lanePullOut, type Pair } from './rails';
 import { breakRock, crushDamage, dustRock, wearRock } from './rockBreak';
-import { freeRock, markTouched, regridRock, rockAlive, rockMassOf, RockKind, rockPhase, rocksMoved, restartClock, rocksNear, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
+import { makeContact, rockCircleContact, rockPairContact } from './rockShape';
+import { freeRock, markTouched, regridRock, rockAlive, rockMassOf, RockKind, rockTmpl, rockPhase, rocksMoved, restartClock, rocksNear, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
 import { BOUNCE_MIN, E_LOW, E_RAMP, E_SPAN, EDGE_SETTLE_K, FAN_SPLIT_MIN_R, K_EDGE_ROCK, ROCK_CRUSH_SPEED, ROCK_EDGE_SLACK, ROCK_EDGE_SLACK_SOFT, ROCK_GRAVITY, ROCK_MAX_SPEED, ROCHE_MIN_AGE, ROCHE_R, ROCK_SEPARATE_MAX, ROCK_SWITCHES, SETTLE_A0, SETTLE_A1, SETTLE_K_MAX, SEPARATE_SHARE, SEPARATE_SLOP, TOUCH_MIN } from './rockTuning';
 import type { TacticalState } from './state';
 import { DT, GM, GRAVITY_EPS, K_EDGE, R_MAP } from './tuning';
 import { TICK_HZ } from '../tuning';
 
+const pair = makeContact(), planetHit = makeContact();
 function touching(ax: number, ay: number, ar: number, bx: number, by: number, br: number): boolean {
   const dx = ax - bx, dy = ay - by, rr = ar + br;
   return dx * dx + dy * dy < rr * rr;
@@ -35,16 +37,17 @@ export function restitution(vc: number): number { return E_LOW + E_SPAN * Math.m
  * BOUNCE_MIN: j = (1 + e(vc)) vc / (1/ma + 1/mb) and both clocks restart (a push); at or below it (and closing): an e = 0
  * impulse j = vc / (1/ma + 1/mb), momentum kept. Above ROCK_CRUSH_SPEED: rockCollisions + 1, a bump event, both amounts
  * applied (a then b), then breaks (a along n, b along −n, each with its post-bounce velocity), neither able to evict a or b.
+ * Asteroids-iv spec §6: the contact is with the rock's deepest cell (contact radius), after the bounding circle.
  */
 export function resolveRockPair(s: TacticalState, a: number, b: number): void {
   const v = s.rocks, A = a * ROCK_STRIDE, B = b * ROCK_STRIDE, ta = v[A + 7]!, tb = v[B + 7]!;
   freeRock(s, a); freeRock(s, b);
   markTouched(s, a); markTouched(s, b);
-  const dx = v[A + 1]! - v[B + 1]!, dy = v[A + 2]! - v[B + 2]!, d = Math.sqrt(dx * dx + dy * dy);
-  const nx = d > 0 ? dx / d : 0, ny = d > 0 ? dy / d : -1;
+  rockPairContact(s, a, b, pair);   // asteroids-iv spec §6: the least separated pair of cells (a plain pair: the two circles)
+  const nx = pair.nx, ny = pair.ny, cax = pair.ax, cay = pair.ay, cra = pair.ra;
   const vc = (v[B + 3]! - v[A + 3]!) * nx + (v[B + 4]! - v[A + 4]!) * ny;
   const ra = v[A + 5]!, rb = v[B + 5]!, ma = rockMassOf(s, a), mb = rockMassOf(s, b), ia = 1 / ma, ib = 1 / mb;
-  const fix = SEPARATE_SHARE * Math.max(0, ra + rb - d - SEPARATE_SLOP);
+  const fix = SEPARATE_SHARE * Math.max(0, pair.rr - pair.d - SEPARATE_SLOP);
   if (fix > 0) {
     const sa = Math.min(ROCK_SEPARATE_MAX, (fix * ia) / (ia + ib)), sb = Math.min(ROCK_SEPARATE_MAX, (fix * ib) / (ia + ib));
     v[A + 1]! += nx * sa; v[A + 2]! += ny * sa; v[B + 1]! -= nx * sb; v[B + 2]! -= ny * sb;
@@ -52,7 +55,7 @@ export function resolveRockPair(s: TacticalState, a: number, b: number): void {
   }
   if (vc > TOUCH_MIN && ta !== tb) {
     s.rockTouches++;
-    s.events.push({ kind: 'rock', what: 'touch', by: 'collision', rock: a, other: b, x: v[A + 1]! - nx * ra, y: v[A + 2]! - ny * ra, r: ra, vx: v[A + 3]!, vy: v[A + 4]!, speed: vc });
+    s.events.push({ kind: 'rock', what: 'touch', by: 'collision', rock: a, other: b, x: v[A + 1]! + cax - nx * cra, y: v[A + 2]! + cay - ny * cra, r: ra, vx: v[A + 3]!, vy: v[A + 4]!, speed: vc });
   }
   if (vc > 0) {
     const bounce = vc > BOUNCE_MIN, j = ((bounce ? 1 + restitution(vc) : 1) * vc) / (ia + ib);
@@ -63,7 +66,7 @@ export function resolveRockPair(s: TacticalState, a: number, b: number): void {
   const da = crushDamage(vc, ma, mb), db = crushDamage(vc, mb, ma);
   const aBreaks = wearRock(s, a, da), bBreaks = wearRock(s, b, db);
   s.rockCollisions++;
-  s.events.push({ kind: 'rock', what: 'bump', by: 'collision', rock: a, other: b, x: v[A + 1]! - nx * ra, y: v[A + 2]! - ny * ra, r: ra, vx: v[A + 3]!, vy: v[A + 4]! });
+  s.events.push({ kind: 'rock', what: 'bump', by: 'collision', rock: a, other: b, x: v[A + 1]! + cax - nx * cra, y: v[A + 2]! + cay - ny * cra, r: ra, vx: v[A + 3]!, vy: v[A + 4]! });
   if (aBreaks) breakRock(s, a, nx, ny, 'collision', -1, 'fan', [a, b]);
   if (bBreaks) breakRock(s, b, -nx, -ny, 'collision', -1, 'fan', [a, b]);
 }
@@ -130,13 +133,14 @@ export function stepRocks(s: TacticalState): void {
   for (let a = 0; a < n; a++) {   // part 2: contacts, reading kinds as they stand now
     const A = a * ROCK_STRIDE;
     if (v[A] !== RockKind.Free || s.rockBorn[a] === 1) continue;
-    const x = v[A + 1]!, y = v[A + 2]!, r = v[A + 5]!, planet = touching(x, y, r, p.x, p.y, p.r);
+    const x = v[A + 1]!, y = v[A + 2]!, r = v[A + 5]!, planet = touching(x, y, r, p.x, p.y, p.r) && (rockTmpl(s, a) < 0 || rockCircleContact(s, a, p.x, p.y, p.r, planetHit));   // spec §6: any cell on the planet
     if (planet || x * x + y * y > far * far) { dustRock(s, a, planet ? 'planet' : 'edge'); s.rockDone[a] = 1; continue; }
     const cn = rocksNear(s, x, y, r, contactNear);
     for (let ci = 0; ci < cn; ci++) {
       const o = contactNear[ci]!;
       if (o === a || !rockAlive(s, o) || s.rockBorn[o] === 1 || s.rockDone[o] === 1) continue;
       if (!touching(v[A + 1]!, v[A + 2]!, v[A + 5]!, rockX(s, o), rockY(s, o), v[o * ROCK_STRIDE + 5]!)) continue;
+      if ((rockTmpl(s, a) >= 0 || rockTmpl(s, o) >= 0) && !rockPairContact(s, a, o, pair)) continue;   // spec §6: bounding circles overlap but no two cells touch
       resolveRockPair(s, a, o);
       if (v[A] !== RockKind.Free || s.rockBorn[a] === 1) break;   // a broke: its turn ends
     }
