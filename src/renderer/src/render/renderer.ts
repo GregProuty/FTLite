@@ -144,8 +144,8 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       const working = sectorWorking(state, memory.repair);
       const { shake, bob } = feel.draw({ state, grade: sectorGradeInput(state), hit: { rooms: hits.rooms }, sparks: failedStationPoints(state), working, artPx: 2 * fit.scale }, paused ? 0 : dt, dt);
       world.position.set(fit.x + shake.x, fit.y + shake.y); projectiles.container.position.set(shake.x, shake.y);   // the shake moves the world and the projectiles, as before
-      crew.draw(state, alpha, presentation, bob, working);
-      boarders.draw(state, dt);
+      crew.draw(state, alpha, presentation, bob, working, { dt: paused ? 0 : dt, paused });   // the 3D crew hold their pose and frame while paused
+      boarders.draw(state, dt, paused ? 0 : dt);
       callouts.draw(state, bubbles, { scale: fit.scale, x: fit.x + shake.x, y: fit.y + shake.y });
     }
   };

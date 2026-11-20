@@ -101,6 +101,17 @@ export function crew3dPose(i: Crew3dPoseInput): Crew3dPose {
   };
 }
 
+/** The presentation clock a layer animates on: seconds since the last drawn frame, and whether the game is paused.
+ *  The 3D figures never use Pixi's own ticker, so a pause holds their pose and their frame. */
+export interface Crew3dClock { dt: number; paused: boolean }
+export const CREW3D_RUNNING: Crew3dClock = { dt: 0, paused: false };
+/** The frame shown `time` frames into an animation: a loop wraps, a one-shot holds its last frame. */
+export function crew3dFrame(time: number, frames: number, loop: boolean): number {
+  if (frames <= 1) return 0;
+  const f = Math.max(0, Math.floor(time));
+  return loop ? f % frames : Math.min(f, frames - 1);
+}
+
 /** A work target nearer than this (tiles) does not turn the figure: it is underfoot, and its direction is noise. */
 export const WORK_AIM_MIN_TILES = 0.75;
 /** World units a lying body is sorted behind its position: it is anchored at its middle and reaches 0.6 tile up. */

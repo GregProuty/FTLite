@@ -211,8 +211,10 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
       const working = duelWorking(d);
       const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working, artPx: 2 * fit.scale, starPx: 2 * fit0.scale }, presentDt, dt);
       world.position.set(fit.x + shake.x, fit.y + shake.y);   // only the interior world shakes; the readout column stays still
-      crew.draw(st, alpha, undefined, bob, working);   // Crew3D spec section 4: the 3D crew pose from the same list
-      boarders.draw(st, dt);
+      // Crew3D spec section 4: the 3D crew pose from the same list, on the presentation clock: `presentDt` is 0 while the
+      // duel is paused or decided, and then they hold their pose and frame.
+      crew.draw(st, alpha, undefined, bob, working, { dt: presentDt, paused: presentDt === 0 && dt > 0 });
+      boarders.draw(st, dt, presentDt);
     },
     destroy() { memory.reset(); fx.destroy(); container.destroy({ children: true }); }   // the feel first: it frees its shared GraphicsContexts
   };
