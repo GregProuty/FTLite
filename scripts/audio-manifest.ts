@@ -6,7 +6,7 @@ import { MUSIC, PACK_DIRS, isAudioName, sfxFiles } from '../src/renderer/src/aud
 import { MOODS, type Mood } from '../src/renderer/src/audio/musicState';
 
 const PATH = 'public/assets/manifest.json', RETRIEVED = '2026-11-17';
-const CC0 = 'https://creativecommons.org/publicdomain/zero/1.0/', CCBY = 'https://creativecommons.org/licenses/by/4.0/';
+const CC0 = 'https://creativecommons.org/publicdomain/zero/1.0/', CCBY = 'https://creativecommons.org/licenses/by/4.0/', CCBY3 = 'https://creativecommons.org/licenses/by/3.0/';
 const PACKS: Record<string, { title: string; source: string; archived: string; credit: string }> = {
   [PACK_DIRS.sci]: { title: 'Sci-fi Sounds', source: 'https://kenney.nl/assets/sci-fi-sounds', archived: 'https://web.archive.org/web/20261115051605/https://kenney.nl/assets/sci-fi-sounds', credit: '"Sci-fi Sounds" by Kenney (www.kenney.nl), CC0' },
   [PACK_DIRS.ui]: { title: 'Interface Sounds', source: 'https://kenney.nl/assets/interface-sounds', archived: 'https://web.archive.org/web/20261109194509/https://kenney.nl/assets/interface-sounds', credit: '"Interface Sounds" by Kenney (www.kenney.nl), CC0' }
@@ -14,18 +14,19 @@ const PACKS: Record<string, { title: string; source: string; archived: string; c
 /** The five tracks (music spike, 2026-11-19), all from OpenGameArt. Each was trimmed, level-matched and re-encoded, which every one of these licences allows. */
 const OGA = 'https://opengameart.org/content/', OGA_BY = 'https://static.opengameart.org/OGA-BY-3.0.txt', MUSIC_RETRIEVED = '2026-11-19';
 const MUSIC_EDIT = 'silence trimmed at both ends, level-matched, re-encoded to OGG Vorbis';
-interface TrackInfo { title: string; author: string; user: string; slug: string; stamp: string; license: 'CC0-1.0' | 'CC-BY-4.0' | 'OGA-BY-3.0' }
+interface TrackInfo { title: string; author: string; user: string; slug: string; stamp: string; license: 'CC0-1.0' | 'CC-BY-4.0' | 'CC-BY-3.0' | 'OGA-BY-3.0' }
 const TRACKS: Record<Mood, TrackInfo> = {
   calm: { title: 'Bit Space (FTL Inspired)', author: 'Beam Theory', user: 'beam-theory', slug: 'bit-space-ftl-inspired-loop-0', stamp: '20260220053333', license: 'OGA-BY-3.0' },
   space: { title: 'Observing the Star', author: 'yd', user: 'yd', slug: 'another-space-background-track', stamp: '20260725074235', license: 'CC0-1.0' },
   intrigue: { title: 'Cyberpunk Moonlight Sonata', author: 'Joth', user: 'joth', slug: 'cyberpunk-moonlight-sonata', stamp: '20260417093211', license: 'CC0-1.0' },
   adventure: { title: 'Brave Space Explorers', author: 'Alexandr Zhelanov', user: 'alexandr-zhelanov', slug: 'brave-space-explorers', stamp: '20250904102653', license: 'CC-BY-4.0' },
-  combat: { title: 'Law in the City', author: 'Alexandr Zhelanov', user: 'alexandr-zhelanov', slug: 'law-in-the-city', stamp: '20251116220120', license: 'CC-BY-4.0' }
+  combat: { title: 'Orbital Colossus', author: 'Matthew Pablo', user: 'matthew-pablo', slug: 'space-boss-battle-theme', stamp: '20260314112542', license: 'CC-BY-3.0' }
 };
 /** The credit names the licence in short: the in-game credits card is one narrow line per work (tests/hudFit.test.ts); the notices file carries the licence URL. */
 const LICENCE_TEXT: Record<TrackInfo['license'], { url: string; credit: string }> = {
   'CC0-1.0': { url: CC0, credit: 'CC0' },
   'CC-BY-4.0': { url: CCBY, credit: 'CC-BY 4.0' },
+  'CC-BY-3.0': { url: CCBY3, credit: 'CC-BY 3.0' },
   'OGA-BY-3.0': { url: OGA_BY, credit: 'OGA-BY 3.0' }
 };
 
