@@ -31,6 +31,7 @@ import { duelHit } from '../impactModel';
 import { damagedRepairPoints, duelWorking } from '../particles/sources';
 import type { ViewEvent } from '../tactical/fxModel';
 import { featureReady } from '../fallback';
+import { CARRY_LIFT_3D } from '../crew3dModel';
 import { createHealFx, crewLife, healFxDraw, stepHealFx } from './healFxModel';
 import { createRandom, hashString } from '../particles/random';
 
@@ -76,6 +77,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   const desks = createConsoleLayer(assets), crew = createCrewLayer(assets, memory, crew3d), boarders = createBoarderLayer(assets, crew3d);
   const air = new Graphics(), damage = new Graphics(), marks = new Graphics();   // Engineering spike §6: the air tint under the damage tint
   let last: Placement | null = null;
+  const bar3d = featureReady(missing, 'crew3d');   // Crew3D spec section 4: the health bar clears the taller figure
   const hazardLabels = Array.from({ length: HAZARD_LABELS }, () => {
     const t = new BitmapText({ text: '', style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE } });
     t.anchor.set(0.5, 0); t.roundPixels = true; t.visible = false; return t;
@@ -181,7 +183,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         const was = crewPrev[c.pid], x = was ? (was.x + (c.x / TILE_PX - was.x) * alpha) * TILE_PX : c.x, y = was ? (was.y + (c.y / TILE_PX - was.y) * alpha) * TILE_PX : c.y;
         drawn[c.pid] = { x, y };
         if (c.bar) {
-          const w = TILE_PX * 0.8, bx = x - w / 2, by = y - TILE_PX * 0.75;
+          const w = TILE_PX * 0.8, bx = x - w / 2, by = y - (bar3d && crew3d() ? CARRY_LIFT_3D - 2 : TILE_PX * 0.75);   // Crew3D: over the standing figure's head, not across its chest
           marks.rect(bx - 1, by - 1, w + 2, 5).fill({ color: 0x000000, alpha: 0.6 });
           marks.rect(bx, by, w * c.fill, 3).fill({ color: Math.ceil(c.fill * HEALTH_MAX) < HEALTH_LOW ? WARN : GOOD })   // the HEALTH row's rounding;
         }

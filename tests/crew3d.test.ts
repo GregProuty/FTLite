@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -15,6 +15,8 @@ import type { GameAnimation, GameAssets } from '../src/renderer/src/render/asset
 import { createRenderMemory } from '../src/renderer/src/render/memory';
 import { createCrewLayer, CREW_COLORS } from '../src/renderer/src/render/crewSprites';
 import { createBoarderLayer } from '../src/renderer/src/render/boarderLayer';
+import { createCalloutLayer } from '../src/renderer/src/render/callouts';
+import { CALLOUT_LIFT_PUNY } from '../src/renderer/src/render/calloutModel';
 import { stationSides } from '../src/renderer/src/render/consoleModel';
 import {
   BOARDER_BAR_LIFT_3D, boarderPose, CALLOUT_LIFT_3D, CALLOUT_LIFT_DOWN_3D, CARRY_LIFT_3D, CREW3D_BODIES, CREW3D_DIRECTIONS, CREW3D_KEY, CREW3D_META, CREW3D_NAMES,
@@ -24,6 +26,12 @@ import {
 import { installCrew3d } from '../src/renderer/src/app/crew3dBoot';
 import { TILE_PX } from '../src/shared/resolution';
 import { cutterState, makeState, placeBoarder, quiet, room } from './helpers/sim';
+
+// Node has no font atlas or canvas: the real Pixi scene graph stays, only bitmap glyph measurement is replaced (as in crewArt.test.ts).
+vi.mock('pixi.js', async (original) => {
+  const pixi = await original<typeof import('pixi.js')>();
+  return { ...pixi, BitmapText: class extends pixi.Container { text = ''; roundPixels = false; constructor(_options: unknown) { super(); } } };
+});
 
 // AnimatedSprite.play() starts Pixi's shared ticker, which needs requestAnimationFrame (absent in node).
 beforeAll(() => {
@@ -77,14 +85,19 @@ describe('the Crew3D model (spec section 4)', () => {
     expect([0, 1, 2, 3, 5].map((pid) => crew3dPose({ ...standing, pid }).maskTint)).toEqual([CREW_COLORS[0], CREW_COLORS[1], CREW_COLORS[2], CREW_COLORS[3], CREW_COLORS[1]]);
     expect(crew3dPose(standing).tint).toBe(0xffffff);
   });
-  it('pose priority: down, then working, then seated, then walk, then idle', () => {
+  it('pose priority: down, then walk, then working, then seated, then idle', () => {
     const working = { kind: 'fire' as const, facing: 'ne' as const };
     const all: Crew3dPoseInput = { ...standing, life: 'downed', seated: true, seatSide: 'e', working, moving: true };
     expect(crew3dPose(all).anim).toBe('down');
-    expect(crew3dPose({ ...all, life: 'conscious' }).anim).toBe('firefight');
-    expect(crew3dPose({ ...all, life: 'conscious', working: null }).anim).toBe('work');
-    expect(crew3dPose({ ...all, life: 'conscious', working: null, seated: false }).anim).toBe('walk');
+    expect(crew3dPose({ ...all, life: 'conscious', seated: false }).anim).toBe('walk');   // a planted work pose would slide
+    expect(crew3dPose({ ...all, life: 'conscious', seated: false, moving: false }).anim).toBe('firefight');
+    expect(crew3dPose({ ...all, life: 'conscious', working: null }).anim).toBe('work');   // a seat's snap is not a walk
     expect(crew3dPose(standing).anim).toBe('idle');
+  });
+  it('the clock is the body and the animation, without the direction', () => {
+    expect(crew3dPose({ ...standing, moving: true, facing: 'e' }).clock).toBe(crew3dPose({ ...standing, moving: true, facing: 'se' }).clock);
+    expect(crew3dPose({ ...standing, moving: true }).clock).not.toBe(crew3dPose(standing).clock);
+    expect(crew3dPose({ ...standing, pid: 1 }).clock).not.toBe(crew3dPose(standing).clock);
   });
   it('fire, breach and power work play firefight, repair and work, aimed at the target; a seat faces its console', () => {
     for (const [kind, anim] of [['fire', 'firefight'], ['breach', 'repair'], ['power', 'work'], ['repair', 'repair']] as const) {
@@ -104,10 +117,21 @@ describe('the Crew3D model (spec section 4)', () => {
     expect(boarderPose(true, true, 'e').name).toBe('crew3d.boarder.walk.e');
     expect(boarderPose(false, false, 'sw').name).toBe('crew3d.boarder.idle.sw');
   });
-  it('the lifts follow the measured head: the torpedo 6 over it, the bubble 10 more, the health bar 5 over a boarder', () => {
-    expect(CARRY_LIFT_3D).toBe(Math.max(...CREW3D_BODIES.map(crew3dHeadLift)) + 6);
-    expect(CALLOUT_LIFT_3D).toBe(CARRY_LIFT_3D + 10); expect(CALLOUT_LIFT_DOWN_3D).toBe(26);
-    expect(BOARDER_BAR_LIFT_3D).toBe(crew3dHeadLift('boarder') + 5);
+  it('the lifts clear the rendered heads: the torpedo and the bubble over the tallest crew body, the bar over the raider', () => {
+    const f = CREW3D_META.frame, rows = (char: string): number => CREW3D_META.characters[char]!.animations[0]!.originRow - CREW3D_META.characters[char]!.headRow;
+    for (const char of CREW3D_BODIES) expect(CARRY_LIFT_3D).toBeGreaterThan(rows(char) * (2 * TILE_PX) / f);
+    expect(CALLOUT_LIFT_3D).toBeGreaterThan(CARRY_LIFT_3D); expect(CALLOUT_LIFT_DOWN_3D).toBeLessThan(TILE_PX);
+    expect(BOARDER_BAR_LIFT_3D).toBeGreaterThan(rows('boarder') * (2 * TILE_PX) / f);
+  });
+  it('the callout bubble sits over the 3D head, lower over a downed body, and at the old height with the toggle off', () => {
+    let on = true;
+    const s = cutterState(), layer = createCalloutLayer(fakeAssets(true), () => on), fit = { scale: 1, x: 0, y: 0 }, eid = s.crew[0]!;
+    const tail = (): number => { layer.draw(s, [{ pid: 0, text: 'now!' } as never], fit); return (layer.container.children[0] as Container).position.y; };
+    const up = tail();
+    Life.state[eid] = LifeState.Downed; const down = tail();
+    Life.state[eid] = LifeState.Conscious; on = false; const old = tail();
+    expect(Math.abs(down - up - (CALLOUT_LIFT_3D - CALLOUT_LIFT_DOWN_3D))).toBeLessThanOrEqual(1);   // the bubble snaps to whole pixels
+    expect(Math.abs(old - up - (CALLOUT_LIFT_3D - CALLOUT_LIFT_PUNY))).toBeLessThanOrEqual(1);
   });
 });
 
@@ -171,12 +195,34 @@ describe('the crew layer with the 3D crew (spec section 4)', () => {
       expect(f.root.position.x).toBeCloseTo(Position.x[eid]! * TILE_PX); expect(f.root.position.y).toBeCloseTo(Position.y[eid]! * TILE_PX);
     });
   });
-  it('the colour layer follows the figure\'s frame', () => {
-    const s = cutterState(), layer = createCrewLayer(fakeAssets(true), createRenderMemory());
+  it('the colour layer follows the figure\'s frame, within an animation and across a change of animation', () => {
+    const s = cutterState(), layer = createCrewLayer(fakeAssets(true), createRenderMemory()), a = s.crew[0]!;
     layer.draw(s, 1);
     const f = figureOf(layer, 0);
     f.base.gotoAndStop(2); layer.draw(s, 1);
     expect(f.mask.texture.label).toBe('crew3d.crewA.idle.s.mask#2');
+    layer.draw(s, 1, undefined, [], [{ pid: 0, kind: 'power', x: (Position.x[a]! + 3) * TILE_PX, y: Position.y[a]! * TILE_PX }]);
+    expect([f.base.texture.label, f.mask.texture.label]).toEqual(['crew3d.crewA.work.e#0', 'crew3d.crewA.work.e.mask#0']);
+  });
+  it('a turn keeps the stride; a new animation starts its own', () => {
+    const s = cutterState(), layer = createCrewLayer(fakeAssets(true), createRenderMemory()), a = s.crew[0]!;
+    layer.draw(s, 1);
+    Position.x[a] = Position.x[a]! + 0.1; layer.draw(s, 1);
+    const f = figureOf(layer, 0);
+    expect(f.base.texture.label).toMatch(/^crew3d[.]crewA[.]walk[.]e#/);
+    f.base.gotoAndPlay(5);
+    Position.x[a] = Position.x[a]! + 0.1; Position.y[a] = Position.y[a]! + 0.1; layer.draw(s, 1);
+    expect([f.base.texture.label, f.mask.texture.label]).toEqual(['crew3d.crewA.walk.se#5', 'crew3d.crewA.walk.se.mask#5']);
+    layer.draw(s, 1);   // no movement since the last drawn frame: idle, from its first frame
+    expect(f.base.texture.label).toBe('crew3d.crewA.idle.se#0');
+  });
+  it('a work target underfoot does not turn the figure, and walking beats the work pose', () => {
+    const s = cutterState(), layer = createCrewLayer(fakeAssets(true), createRenderMemory()), a = s.crew[0]!;
+    const near = { pid: 0, kind: 'fire' as const, x: (Position.x[a]! + 0.3) * TILE_PX, y: (Position.y[a]! - 0.3) * TILE_PX };
+    layer.draw(s, 1, undefined, [], [near]);
+    expect(figureOf(layer, 0).base.texture.label).toBe('crew3d.crewA.firefight.s#0');   // still facing south
+    Position.y[a] = Position.y[a]! + 0.1; layer.draw(s, 1, undefined, [], [near]);
+    expect(figureOf(layer, 0).base.texture.label).toMatch(/^crew3d[.]crewA[.]walk[.]s#/);
   });
   it('working crew play the work pose toward the target; seated crew face the console; downed and dead crew lie down', () => {
     const s = cutterState(), layer = createCrewLayer(fakeAssets(true), createRenderMemory()), a = s.crew[0]!;
@@ -195,22 +241,31 @@ describe('the crew layer with the 3D crew (spec section 4)', () => {
     Life.state[a] = LifeState.Dead; layer.draw(s, 1);
     expect([f.base.tint, f.mask.tint, f.root.alpha]).toEqual([0x777777, 0x777777, 1]);
   });
-  it('lower on the screen draws in front, and the carried torpedo stays on top', () => {
-    const s = cutterState(), layer = createCrewLayer(fakeAssets(true), createRenderMemory());
+  it('lower on the screen draws in front, a lying body behind whoever stands over it, and the carried torpedo on top', () => {
+    const s = cutterState(), layer = createCrewLayer(fakeAssets(true), createRenderMemory()), [a, b] = [s.crew[0]!, s.crew[1]!];
+    Position.x[b] = Position.x[a]!; Position.y[b] = Position.y[a]! + 0.5;   // b stands just south of a
     layer.draw(s, 1);
     expect(layer.container.sortableChildren).toBe(true);
-    s.crew.forEach((eid, i) => expect(figureOf(layer, i).root.zIndex).toBe(Position.y[eid]!));
+    expect(figureOf(layer, 1).root.zIndex).toBeGreaterThan(figureOf(layer, 0).root.zIndex);
+    Life.state[b] = LifeState.Downed; layer.draw(s, 1);   // b lies there: its body reaches 0.6 tile north, so a's legs draw over it
+    expect(figureOf(layer, 1).root.zIndex).toBeLessThan(figureOf(layer, 0).root.zIndex);
     const carried = layer.container.children.find((c) => !(c.children[0] instanceof AnimatedSprite))!;
     expect(carried.zIndex).toBeGreaterThan(1e9);
+    const before = figureOf(layer, 0).root.zIndex;
+    Position.x[a] = Position.x[a]! + 0.05; layer.draw(s, 1);
+    expect(figureOf(layer, 0).root.zIndex).toBe(before);   // the rank, not y: unchanged while the order holds
   });
   it('the dev toggle falls back to the old art and comes back; without the sheets the old art draws', () => {
     let on = true;
     const s = cutterState(), layer = createCrewLayer(fakeAssets(true), createRenderMemory(), () => on);
     layer.draw(s, 1); expect(figureOf(layer, 0).root).toBeDefined();
+    expect(layer.container.children).toHaveLength(1 + s.crew.length);   // the torpedo holder and one figure each
     on = false; layer.draw(s, 1);
     expect(layer.container.children.filter((c) => c instanceof AnimatedSprite)).toHaveLength(s.crew.length);   // the Puny sprites
+    expect(layer.container.children).toHaveLength(1 + s.crew.length);   // and the 3D figures are gone
     expect(layer.container.sortableChildren).toBe(false);
     on = true; layer.draw(s, 1); expect(figureOf(layer, 0).base.texture.label).toBe('crew3d.crewA.idle.s#0');
+    expect(layer.container.children).toHaveLength(1 + s.crew.length);   // and the Puny sprites are gone
     const old = createCrewLayer(fakeAssets(false), createRenderMemory());
     old.draw(s, 1); expect(old.container.children.filter((c) => c instanceof AnimatedSprite)).toHaveLength(s.crew.length);
   });
@@ -230,6 +285,9 @@ describe('the boarder layer with the 3D boarder (spec section 4)', () => {
     Position.x[eid] = cx + 0.9; Position.y[eid] = cy;         // in the boarder's room, to its east
     layer.draw(s);
     expect(body.texture.label).toMatch(/^crew3d[.]boarder[.]attack[.]e#/);
+    body.gotoAndPlay(3);
+    Position.y[eid] = cy + 0.9; layer.draw(s);                // the crew member steps to its south-east: the swing carries on
+    expect(body.texture.label).toBe('crew3d.boarder.attack.se#3');
   });
   it('the dev toggle rebuilds the figure in the old art', () => {
     let on = true;
@@ -264,10 +322,11 @@ describe('the Crew3D dev toggle (spec section 4)', () => {
   });
 });
 
-// The rig script smoke test (spec section 5): only where Blender is installed. One pose in one direction through the
-// whole pipeline: frame size, a transparent background, and the feet on the recorded ground row.
+// The rig script smoke test (spec section 5): a real headless render, so it runs only on request
+// (CREW3D_RENDER_TEST=1) and where Blender is installed. One pose in one direction through the whole pipeline: frame
+// size, a transparent background, and the feet on the recorded ground row.
 const BLENDER = process.env.BLENDER ?? 'C:/Program Files/Blender Foundation/Blender 5.3/blender.exe';
-describe.skipIf(!existsSync(BLENDER))('the sprite render script (spec section 5)', () => {
+describe.skipIf(process.env.CREW3D_RENDER_TEST !== '1' || !existsSync(BLENDER))('the sprite render script (spec section 5)', () => {
   it('renders one idle frame facing south: 128 px, transparent around the figure, feet at the ground row', () => {
     const out = mkdtempSync(join(tmpdir(), 'ftlite-crew3d-'));
     const r = spawnSync(BLENDER, ['--background', '--factory-startup', '--disable-autoexec', '--python', 'tools/sprite-render/render.py', '--', 'tools/sprite-render/lookdev.json',

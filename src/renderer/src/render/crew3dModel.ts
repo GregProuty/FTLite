@@ -78,25 +78,33 @@ export interface Crew3dPoseInput {
   working: { kind: Crew3dWork; facing: Facing8 } | null;
   facing: Facing8; moving: boolean;
 }
-export interface Crew3dPose { char: string; anim: Crew3dAnim; name: string; mask: string; facing: Facing8; anchorY: number; tint: number; maskTint: number; alpha: number }
+/** `clock`: the body and animation without the direction; a turn keeps the frame while the clock stays the same. */
+export interface Crew3dPose { char: string; anim: Crew3dAnim; clock: string; name: string; mask: string; facing: Facing8; anchorY: number; tint: number; maskTint: number; alpha: number }
 
 const WORK_ANIM: Readonly<Record<Crew3dWork, Crew3dAnim>> = { fire: 'firefight', breach: 'repair', power: 'work', repair: 'repair' };
 
-/** What a crew member shows. Priority: down, then working (aimed at the target), then seated (working, facing the
- *  console), then walk, then idle. A dead body keeps the grey tint, on the base and on the colour layer. */
+/** What a crew member shows. Priority: down, then walk (a planted work pose would slide), then working (aimed at the
+ *  target), then seated (working, facing the console), then idle. A dead body keeps the grey tint, on the base and on
+ *  the colour layer. */
 export function crew3dPose(i: Crew3dPoseInput): Crew3dPose {
   const char = crew3dBody(i.pid);
   let anim: Crew3dAnim, facing = i.facing;
   if (i.life !== 'conscious') anim = 'down';
+  else if (i.moving && !i.seated) anim = 'walk';
   else if (i.working) { anim = WORK_ANIM[i.working.kind]; facing = i.working.facing; }
   else if (i.seated) { anim = 'work'; facing = i.seatSide ?? i.facing; }
-  else anim = i.moving ? 'walk' : 'idle';
+  else anim = 'idle';
   const dead = i.life === 'dead';
   return {
-    char, anim, facing, name: crew3dName(char, anim, facing), mask: crew3dMaskName(char, anim, facing), anchorY: crew3dAnchorY(char, anim),
+    char, anim, facing, clock: `${char}.${anim}`, name: crew3dName(char, anim, facing), mask: crew3dMaskName(char, anim, facing), anchorY: crew3dAnchorY(char, anim),
     tint: dead ? DEAD_TINT : 0xffffff, maskTint: dead ? DEAD_TINT : CREW_COLORS[((i.pid % 4) + 4) % 4]!, alpha: i.life === 'downed' ? 0.85 : 1
   };
 }
+
+/** A work target nearer than this (tiles) does not turn the figure: it is underfoot, and its direction is noise. */
+export const WORK_AIM_MIN_TILES = 0.75;
+/** World units a lying body is sorted behind its position: it is anchored at its middle and reaches 0.6 tile up. */
+export const DOWN_SORT_LIFT = 0.6;
 
 /** A boarder: attack while it fights, else walk or idle. Untinted (its own red armour), no colour layer. */
 export function boarderPose(fighting: boolean, moving: boolean, facing: Facing8): { anim: BoarderAnim; name: string; anchorY: number } {

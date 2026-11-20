@@ -16,7 +16,7 @@ const SCALE = TILE_PX / 16, ANCHOR_X = 0.5, ANCHOR_Y = 0.75;
 const SPREAD = 2;   // the sim seats boarders 0.4 tiles apart; the figures are wider, so draw them 0.8 apart
 const BAR_W = 18, BAR_H = 3, BAR_Y = -30;
 
-interface Figure { root: Container; body: AnimatedSprite | Graphics; bar: Graphics; walker: Walker; facing: Facing8; anim: string | null }
+interface Figure { root: Container; body: AnimatedSprite | Graphics; bar: Graphics; walker: Walker; facing: Facing8; anim: string | null; clock: string | null }
 
 /** Drawn humanoid for when the crew art is missing (and in tests): a red-suited figure with a dark visor. */
 function drawFigure(g: Graphics): void {
@@ -34,10 +34,12 @@ export function createBoarderLayer(assets?: GameAssets, crew3d: () => boolean = 
   const use3d = !!assets && featureReady(new Set(assets.missing), 'crew3d');   // Crew3D spec section 4: the rendered raider, untinted
   let was3d = false;
   const figs = new Map<number, Figure>();
-  const setAnim = (f: Figure, name: string, textures: Texture[], fps: number): void => {
+  /** `clock`: the animation without its direction (Crew3D): a turn inside one clock keeps the frame. */
+  const setAnim = (f: Figure, name: string, textures: Texture[], fps: number, clock: string | null = null): void => {
     if (f.anim === name || !(f.body instanceof AnimatedSprite)) return;
-    f.anim = name; f.body.textures = textures; f.body.animationSpeed = fps / 60; f.body.loop = true;
-    if (textures.length > 1) f.body.gotoAndPlay(0); else f.body.gotoAndStop(0);
+    const start = clock !== null && f.clock === clock ? f.body.currentFrame : 0;
+    f.anim = name; f.clock = clock; f.body.textures = textures; f.body.animationSpeed = fps / 60; f.body.loop = true;
+    if (textures.length > 1) f.body.gotoAndPlay(start % textures.length); else f.body.gotoAndStop(0);
   };
   return {
     container,
@@ -55,7 +57,7 @@ export function createBoarderLayer(assets?: GameAssets, crew3d: () => boolean = 
         else { const g = new Graphics(); drawFigure(g); body = g; }
         const bar = new Graphics();
         root.addChild(body, bar); container.addChild(root);
-        const fig: Figure = { root, body, bar, walker: freshWalker(m), facing: 's', anim: null }; return fig;
+        const fig: Figure = { root, body, bar, walker: freshWalker(m), facing: 's', anim: null, clock: null }; return fig;
       }, (f) => { f.root.destroy({ children: true }); });
       for (const m of markers) {
         const f = figs.get(m.stableId)!, { dx, dy } = stepWalker(state, f.walker, m, dt);
@@ -66,7 +68,7 @@ export function createBoarderLayer(assets?: GameAssets, crew3d: () => boolean = 
           const foe = moving ? undefined : state.crew.find((eid) => Life.state[eid] === LifeState.Conscious && roomAt(state, Position.x[eid]!, Position.y[eid]!) === m.room);
           f.facing = foe === undefined ? facingFromDelta(dx, dy, f.facing) : facingFromDelta(Position.x[foe]! - f.walker.x, Position.y[foe]! - f.walker.y, f.facing);
           const p = boarderPose(foe !== undefined, moving, f.facing), a = assets!.animation(p.name);
-          setAnim(f, p.name, a.textures, a.fps); (f.body as AnimatedSprite).anchor.set(CREW3D_ANCHOR_X, p.anchorY);
+          setAnim(f, p.name, a.textures, a.fps, p.anim); (f.body as AnimatedSprite).anchor.set(CREW3D_ANCHOR_X, p.anchorY);
         } else if (useArt) {
           f.facing = facingFromDelta(dx, dy, f.facing);
           const moving = Math.abs(dx) >= MOVE_EPS_PX || Math.abs(dy) >= MOVE_EPS_PX;

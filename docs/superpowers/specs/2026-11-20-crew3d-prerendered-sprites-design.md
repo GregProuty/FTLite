@@ -37,6 +37,13 @@ recommendation at every other choice. What that changed from the design below:
   be decided there first), the audition contact sheet, and a headless-vs-live reproduction check (the live session was
   only used for the soldier look; the shipped sheets come from headless runs only).
 - **The 3D crew draw on every ship**, the painted Hound and Valkyrn included, ahead of the painted tokens.
+- **Pose priority: down, walk, working, seated, idle.** Walking beats the work pose (section 4 had working first):
+  neither sim makes a working crew member stand still, and a planted pose would slide. A work target nearer than
+  0.75 tile does not turn the figure. A turn keeps the animation's frame; only a new animation restarts it.
+- **Draw order.** Crew sort by screen y (rank, so the order only changes when it must); a lying body sorts 0.6 tile
+  behind its position. The duel's health bar sits over the 3D head.
+- **The render smoke test runs on request** (`CREW3D_RENDER_TEST=1` and Blender installed), not in every test run: it
+  is a real GPU render.
 
 ## Goal
 
