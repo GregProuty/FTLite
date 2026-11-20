@@ -1,6 +1,7 @@
 // Asteroids-iii §7.1, §13.5 (renderer only): each rock slot's history for smooth motion and trails, view-owned and never
-// hashed. A rail is drawn at tick − 1 + α by rotating its centre and offset (any Math here: renderer); a free rock is lerped
-// from its last-tick position. Free rocks keep a ring of TRAIL_LEN samples at TRAIL_HZ: a rock younger than YOUNG_AGE_S
+// hashed. A rail is drawn at tick − gap·(1 − α) by rotating its centre and offset (any Math here: renderer), gap the whole
+// ticks between the last two observed ticks (1 on a host, about 3 on a guest, whose α spans the publication gap); a free
+// rock is lerped from its last observed position. Free rocks keep a ring of TRAIL_LEN samples at TRAIL_HZ: a rock younger than YOUNG_AGE_S
 // shows TRAIL_YOUNG_S of it, an older one TRAIL_OLD_S. A slot's history resets when its kind or r changes or it jumps more
 // than JUMP_RESET_U between ticks, which covers slot reuse on guests (who get no rock events).
 import { isRail, RockKind, rockSlots, ROCK_STRIDE, rockT, rockX, rockY } from '../../sim/tactical/rocks';
@@ -12,21 +13,23 @@ import type { Point } from './camera';
 export const TRAIL_HZ = 4, TRAIL_YOUNG_S = 25, TRAIL_OLD_S = 6, YOUNG_AGE_S = 60, JUMP_RESET_U = 50;
 export const TRAIL_LEN = TRAIL_YOUNG_S * TRAIL_HZ;
 const TRAIL_EVERY = TICK_HZ / TRAIL_HZ;
-export interface RockTrack { tick: number; n: number; kind: Float64Array; r: Float64Array; px: Float64Array; py: Float64Array; cx: Float64Array; cy: Float64Array; trail: Float64Array; head: Int32Array; len: Int32Array }
+export interface RockTrack { tick: number; gap: number; n: number; kind: Float64Array; r: Float64Array; px: Float64Array; py: Float64Array; cx: Float64Array; cy: Float64Array; trail: Float64Array; head: Int32Array; len: Int32Array }
 
 export function createRockTrack(): RockTrack {
-  return { tick: -1, n: 0, kind: new Float64Array(0), r: new Float64Array(0), px: new Float64Array(0), py: new Float64Array(0), cx: new Float64Array(0), cy: new Float64Array(0), trail: new Float64Array(0), head: new Int32Array(0), len: new Int32Array(0) };
+  return { tick: -1, gap: 1, n: 0, kind: new Float64Array(0), r: new Float64Array(0), px: new Float64Array(0), py: new Float64Array(0), cx: new Float64Array(0), cy: new Float64Array(0), trail: new Float64Array(0), head: new Int32Array(0), len: new Int32Array(0) };
 }
-export function resetRockTrack(t: RockTrack): void { t.tick = -1; t.len.fill(0); t.head.fill(0); }
+export function resetRockTrack(t: RockTrack): void { t.tick = -1; t.gap = 1; t.len.fill(0); t.head.fill(0); }
 function sized(t: RockTrack, n: number): void {
-  Object.assign(t, { n, tick: -1, kind: new Float64Array(n), r: new Float64Array(n), px: new Float64Array(n), py: new Float64Array(n), cx: new Float64Array(n), cy: new Float64Array(n), trail: new Float64Array(n * TRAIL_LEN * 2), head: new Int32Array(n), len: new Int32Array(n) });
+  Object.assign(t, { n, tick: -1, gap: 1, kind: new Float64Array(n), r: new Float64Array(n), px: new Float64Array(n), py: new Float64Array(n), cx: new Float64Array(n), cy: new Float64Array(n), trail: new Float64Array(n * TRAIL_LEN * 2), head: new Int32Array(n), len: new Int32Array(n) });
 }
-/** Once per frame: on a new tick, shift each slot's positions, reset what changed, and sample the free rocks' trails. */
+/** Once per frame: on a new tick, record the tick gap (the ticks since the last one seen, at least 1), shift each slot's
+ *  positions, reset what changed, and sample the free rocks' trails. */
 export function updateRockTrack(t: RockTrack, s: TacticalState): void {
   const n = rockSlots(s);
   if (t.n !== n) sized(t, n);
   if (s.tick === t.tick) return;
   const first = t.tick < 0 || s.tick < t.tick, sample = first || Math.floor(s.tick / TRAIL_EVERY) !== Math.floor(t.tick / TRAIL_EVERY);
+  t.gap = first ? 1 : Math.max(1, s.tick - t.tick);
   for (let k = 0; k < n; k++) {
     const kind = s.rocks[k * ROCK_STRIDE]!;
     if (kind === RockKind.Gone) { t.kind[k] = 0; t.len[k] = 0; continue; }
@@ -42,11 +45,16 @@ export function updateRockTrack(t: RockTrack, s: TacticalState): void {
   }
   t.tick = s.tick;
 }
-/** Where to draw rock k this frame: a rail at tick − 1 + α (its anchor at least), a free rock lerped from its last tick. */
+/** The tick a rail and an outline's spin are drawn at this frame: tick − gap·(1 − α), from the last observed tick at α 0
+ *  to this one at α 1 (gap 1 without a track: tick − 1 + α). */
+export function rockDrawTick(t: RockTrack | null, s: TacticalState, alpha: number): number {
+  return s.tick - (t ? t.gap : 1) * (1 - alpha);
+}
+/** Where to draw rock k this frame: a rail at rockDrawTick (its anchor at least), a free rock lerped from its last tick. */
 export function rockDrawPos(t: RockTrack | null, s: TacticalState, k: number, alpha: number): Point {
   const v = s.rocks, b = k * ROCK_STRIDE;
   if (isRail(v[b]!)) {
-    const cx = v[b + 1]!, cy = v[b + 2]!, ox = v[b + 3]!, oy = v[b + 4]!, n = Math.max(0, s.tick - 1 + alpha - v[b + 7]!);
+    const cx = v[b + 1]!, cy = v[b + 2]!, ox = v[b + 3]!, oy = v[b + 4]!, n = Math.max(0, rockDrawTick(t, s, alpha) - v[b + 7]!);
     const ac = (orbitRate(Math.hypot(cx, cy)) * n) / TICK_HZ, ao = ac + (v[b] === RockKind.Tumble ? (SPIN_RATE * n) / TICK_HZ : 0);
     return { x: Math.cos(ac) * cx - Math.sin(ac) * cy + Math.cos(ao) * ox - Math.sin(ao) * oy, y: Math.sin(ac) * cx + Math.cos(ac) * cy + Math.sin(ao) * ox + Math.cos(ao) * oy };
   }

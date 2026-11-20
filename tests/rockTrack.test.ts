@@ -33,6 +33,30 @@ describe('the rock track (spec §7.1, §13.5)', () => {
     const r = rockDrawPos(track, st, 4, 0.5);
     expect(r.x).toBeCloseTo((before.x + st.rocks[4 * 8 + 1]!) / 2, 9); expect(r.y).toBeCloseTo((before.y + st.rocks[4 * 8 + 2]!) / 2, 9);
   });
+  it('on a guest seeing every third tick (gap 3), draws a rail at tick − 3(1 − α), so the rail and the outline spin run on without a judder', () => {
+    const st = arena(), track = createRockTrack();
+    rail(st, 3, 0, 1700, 20);
+    for (let i = 0; i < 30; i++) stepDuel(st, IDLE_INPUT);
+    updateRockTrack(track, st);
+    const T0 = st.tick, end = rockDrawPos(track, st, 3, 1), spinEnd = model(st, { rockTrack: track, alpha: 1 }).asteroids.find((a) => a.index === 3)!.spin;
+    for (let i = 0; i < 3; i++) stepDuel(st, IDLE_INPUT);
+    updateRockTrack(track, st);
+    expect(track.gap).toBe(3);
+    const out: RailOut = { x: 0, y: 0, vx: 0, vy: 0 }, v = st.rocks, b = 3 * ROCK_STRIDE;
+    for (const alpha of [0, 1]) {   // whole ticks: tick − 3 and tick, where the sim's railPos puts it
+      railPos(v[b + 1]!, v[b + 2]!, v[b + 3]!, v[b + 4]!, v[b + 7]!, st.tick - 3 * (1 - alpha), false, out);
+      const p = rockDrawPos(track, st, 3, alpha);
+      expect(p.x).toBeCloseTo(out.x, 6); expect(p.y).toBeCloseTo(out.y, 6);
+    }
+    const half = rockDrawPos(track, st, 3, 0.5), a = (orbitRate(1700) * (st.tick - 1.5 - v[b + 7]!)) / 60;   // between: by its rotation
+    expect(half.x).toBeCloseTo(-Math.sin(a) * 1700, 9); expect(half.y).toBeCloseTo(Math.cos(a) * 1700, 9);
+    const start = rockDrawPos(track, st, 3, 0);   // the new gap starts where the last one ended: no step back
+    expect(start.x).toBeCloseTo(end.x, 9); expect(start.y).toBeCloseTo(end.y, 9);
+    expect(T0 + 3).toBe(st.tick);
+    const spin = (alpha: number): number => model(st, { rockTrack: track, alpha }).asteroids.find((a) => a.index === 3)!.spin!;
+    expect(spin(0)).toBeCloseTo(spinEnd!, 9);
+    expect(spin(0.5)).toBeCloseTo((asteroidSpin(3) * (st.tick - 1.5)) / 60, 9);
+  });
   it("draws a Tumble with a nonzero offset where the sim's railPos puts it at tick - 1 and at tick", () => {
     const st = arena(), track = createRockTrack();
     writeRock(st, 6, RockKind.Tumble, 1500, 300, 25, -12, 20, 5, st.tick);
@@ -109,7 +133,7 @@ describe('the map model (spec §7.1, §7.2, §13.5)', () => {
     for (let i = 0; i < 200; i++) { const w = Math.abs(asteroidSpin(i)); expect(w).toBeGreaterThanOrEqual(0.1); expect(w).toBeLessThanOrEqual(0.5); }
     expect(new Set(Array.from({ length: 50 }, (_, i) => Math.sign(asteroidSpin(i)))).size).toBe(2);
     const st = arena(); rail(st, 3, 0, 2000, 20); st.tick = 600;
-    expect(model(st).asteroids.find((a) => a.index === 3)!.spin).toBeCloseTo(asteroidSpin(3) * (600 + 1) / 60, 9);
+    expect(model(st).asteroids.find((a) => a.index === 3)!.spin).toBeCloseTo(asteroidSpin(3) * 600 / 60, 9);   // at α 1: the rail's own draw tick
   });
   it('draws the Weapons map\'s rock target\'s next 20 s as a dotted path; none without a target or off Weapons', () => {
     const st = arena(); rail(st, 3, 0, 2000, 20);

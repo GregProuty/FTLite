@@ -10,7 +10,7 @@ import { rockAlive, rockAt, rockHpMax, RockKind, rockSlots } from '../../sim/tac
 import { AIM_STEPS, HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
-import { rockDrawPos, rockTrailInto, type RockTrack } from './rockTrack';
+import { rockDrawPos, rockDrawTick, rockTrailInto, type RockTrack } from './rockTrack';
 import { hullFor, type HullId } from './hullModel';
 import type { HelmVent } from '../../sim/duel/helmFlight';
 import type { FogView, GhostKind } from './fogModel';
@@ -409,7 +409,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
         buf[m * 2] = p.x; buf[m * 2 + 1] = p.y; buf.length = (m + 1) * 2; trail = buf;
       }
     }
-    asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX, wear: Math.max(0, Math.min(1, 1 - a.hp / rockHpMax(a.r))), spin: (asteroidSpin(index) * (state.tick + alpha)) / TICK_HZ,
+    asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX, wear: Math.max(0, Math.min(1, 1 - a.hp / rockHpMax(a.r))), spin: (asteroidSpin(index) * rockDrawTick(input.rockTrack ?? null, state, alpha)) / TICK_HZ,
       ...(streak ? { streak } : {}), ...(trail ? { trail } : {}) });
   }
 
