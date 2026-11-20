@@ -1087,3 +1087,21 @@ Spec `docs/superpowers/specs/2026-11-19-w4-weapons-controls-design.md` §3, §4,
   3. The Weapons block with one gun on MAN and one on AUTO, and the enemy window with the target room bracketed.
 
   Does the slewing read as "slowly follows"?
+
+## W-4c: flying the torpedo (2026-11-19)
+
+Spec `docs/superpowers/specs/2026-11-19-w4-weapons-controls-design.md` §7, §9, §10, §11, §19; plan `docs/superpowers/plans/2026-11-19-w4c-manual-torpedo.md`.
+
+- [x] Automated (W-4c): `npx vitest run` passes (500 files, 6033 tests, 2 skipped). This includes the held heading as the only MANUAL steer (`torpTurn` gone from every schema; a frame carrying it is malformed), the left button's bearing from the torpedo's marker, a pick-up from before the launch dropped so the button steers at once, a click-launch held down steering at once, the right button panning at Weapons, no gun in hand while it flies (nothing follows the reticle, the trigger fires nothing, `pewFire` refused `missile-in-flight`) with every gun, MAN ones included, firing on AUTO, the fresh press after the flight (a button held off the map and dragged on included) and the selection's return, and no turret prediction while it flies (`tests/w4Flight.test.ts`, `tests/w4TorpedoSeat.test.ts`, `tests/manualTorpedo*.test.ts`). The duel oracle proves every scripted and passive run unchanged per tick at SIM_VERSION 60. `npx tsc -b` is clean. Determinism passes on Node, Electron and Firefox.
+- [ ] Manual (owner): play a Single player duel at the Hound's Weapons seat.
+  1. Select the torpedo (3) and press R (or click its tag) to set it MANUAL, then F (or click the map). V does nothing here.
+  2. Hold the left button on the map: the torpedo swings toward the cursor, and the card reads STEER LMB. Let go: it holds that heading.
+  3. While it flies, the muzzle lines do not follow the reticle and the left button fires nothing. Once the enemy is hostile the guns, on MAN or AUTO, track it and fire on their own (owner 2026-11-19: no gun is in your hands during the flight); a gun set to MAN reads AUTO (or HOLD), still lit, until it ends.
+  4. A / D and 1 / 2 / 3 still move the selection during the flight, and R and Shift+R still flip each tag's light (its switch); the words stay AUTO or HOLD until the flight ends. The right drag pans the map.
+  5. When it ends, the selection is the gun you had before. A held left button fires nothing until you let go and press again, even if it was held over the console and dragged onto the map.
+  6. Select the torpedo (3), R to MANUAL, and click the map: it launches. Keep the button down and it turns toward the pointer once its boost ends; a quick click leaves it flying straight on the nose's heading. A torpedo picked up by its card before the launch is dropped, so holding the button steers at once.
+
+  Screenshots for the look gate:
+  1. A MANUAL torpedo under the left-button steer, with the STEER LMB card.
+
+  Does it feel like the Helm's steer?
