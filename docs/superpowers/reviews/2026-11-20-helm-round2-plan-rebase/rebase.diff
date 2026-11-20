@@ -1,0 +1,384 @@
+diff --git a/docs/superpowers/plans/2026-11-20-helm-round2.md b/docs/superpowers/plans/2026-11-20-helm-round2.md
+index dc164239..597c783a 100644
+--- a/docs/superpowers/plans/2026-11-20-helm-round2.md
++++ b/docs/superpowers/plans/2026-11-20-helm-round2.md
+@@ -2,24 +2,24 @@
+ 
+ > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+ 
+-**Goal:** The crew Helm on the Hound gets a throttle that stays where it is left, a tap of S (or of W in reverse) that cuts it to 0, reverse at 50 %, the old drag and stabilise back (stabilise now also under thrust), a fixed turn rate with no gas boost, a cold gas charge that empties and refills, no right-click heading and no Space auto-face at the player's Helm, a velocity ring on the map, a THR readout and a GAS bar on the console, a Settings value for the tap time, new hints, and SIM_VERSION 62 → 63.
++**Goal:** The crew Helm on the Hound gets a throttle that stays where it is left, a tap of S (or of W in reverse) that cuts it to 0, reverse at 50 %, the old drag and stabilise back (stabilise now also under thrust), a fixed turn rate with no gas boost, a cold gas charge that empties and refills, no right-click heading and no Space auto-face at the player's Helm, a velocity ring on the map, a THR readout and a GAS bar on the console, a Settings value for the tap time, new hints, and SIM_VERSION 63 → 64.
+ 
+ **Architecture:**
+ 
+ - **The sim.** Three new hashed values in the helm module after `thrMille`: `thrCut` (the cut's latch), `gas` (0..720) and `gasIdle` (0..30). A new Helm command `throttleCut` is admitted in its own loop after `heading`'s. `crewHelm` (`sim/duel/step.ts`) clears the latch, ramps (no return to 0), clamps, then spends and refills the gas through one pure helper `gasTick` (`sim/duel/helmFlight.ts`) that the app's `crewAxes` also calls. `flyShip` loses the turn boost and gains `FlightTuning.stabiliseUnderThrust`; `CREW_FLIGHT` takes the drag branch again. The Hound's reverse is its own `HOUND_REVERSE_FRACTION`.
+ - **The scripted Helm** sends `throttleCut` when it wants no thrust and the throttle is set, and before any stand from the crew Helm.
+ - **The app.** The keyboard times W and S (a fake clock in tests) and emits one-shot `throttleDown` / `throttleTap`. Both runtimes record the throttle when a key goes down and send `throttleCut` on a tap from the right side. Online, the source predicts 0 while a cut is in flight and predicts the latch. The crew Helm stops sending `face` and `heading`, and its right button pans. The console gets a THR readout, a GAS bar and new hints; the map gets a 4 px ring at the velocity line's end; Settings gets "Throttle tap".
+-- **The close** follows the repo's bless pattern: the kind (b) re-picks, a same-version bless at 62 for the new behaviour, then SIM_VERSION 62 → 63 alone, proved by the canonical trace and the duel oracle per tick.
++- **The close** follows the repo's bless pattern: the kind (b) re-picks, a same-version bless at 63 for the new behaviour, then SIM_VERSION 63 → 64 alone, proved by the canonical trace and the duel oracle per tick.
+ 
+ **Tech Stack:** TypeScript 5.8 (strict, `noUncheckedIndexedAccess`), Vitest 3.2 (+ jsdom for UI tests), React + zustand (console), zod 3 (wire), Pixi.js (map), Electron/electron-vite, the golden scripts under `scripts/golden/`.
+ 
+-**Spec:** `docs/superpowers/specs/2026-11-19-helm-round2-design.md` (converged after two review rounds; its review record is `docs/superpowers/reviews/2026-11-19-helm-round2-spec/`). Its decisions are fixed. Where its quoted code (master eaf84426, SIM 61) differs from the tree at `02b1ef81`, this plan follows the spec's intent and says so under "Decisions".
++**Spec:** `docs/superpowers/specs/2026-11-19-helm-round2-design.md` (converged after two review rounds; its review record is `docs/superpowers/reviews/2026-11-19-helm-round2-spec/`). Its decisions are fixed. Where its quoted code (master eaf84426, SIM 61) differs from the tree at `2c4f7c5d`, this plan follows the spec's intent and says so under "Decisions".
+ 
+-**Branch and worktree:** `helm-round2` in `C:\Users\djuar\FTLite\.worktrees\helm-round2`, cut at `02b1ef81` (W-4 weapons controls merged with master, SIM_VERSION 62). Every command runs from the worktree root. Other sessions work in the main checkout and other worktrees: never touch them.
++**Branch and worktree:** `helm-round2` in `C:\Users\djuar\FTLite\.worktrees\helm-round2`, re-based onto `2c4f7c5d` (master 926a9a19 merged in: W-4 at SIM_VERSION 63, bumped alone in 1b0103a8, and the sensors blip; SIM_VERSION 63). Every command runs from the worktree root. Other sessions work in the main checkout and other worktrees: never touch them.
+ 
+ ## Global Constraints
+ 
+-- **Version.** SIM_VERSION is **62** at `02b1ef81` (`src/renderer/src/sim/tuning.ts:7`). Tasks 2 to 13 change gameplay at 62. Task 14 blesses at 62 (a same-version bless: a deliberate gameplay change). Task 15 bumps 62 → 63 alone (spec §8, §10). Never pass `--fresh`. Never hand-edit goldens.
++- **Version.** SIM_VERSION is **63** at `2c4f7c5d` (`src/renderer/src/sim/tuning.ts:7`). Tasks 2 to 13 change gameplay at 63. Task 14 blesses at 63 (a same-version bless: a deliberate gameplay change). Task 15 bumps 63 → 64 alone (spec §8, §10). Never pass `--fresh`. Never hand-edit goldens.
+ - **Generated files come only from `npm run bless`** (`scripts/bless-golden.ts`): `tests/golden/basic.json`, `tests/golden/duel-1.json`, `tests/golden/duel-rematch.json`, `tests/fixtures/determinism-v2.json`.
+ - **Verifying a bless.** `tests/golden.test.ts` cannot go red on a source-only change (it adapts its header to the digest). A bless is verified by `git diff tests/golden/basic.json` (only the content digest moves on a same-version bless), by `npx tsx scripts/golden/canonical-trace.ts golden`, and by `npx vitest run tests/blessGuard.test.ts`.
+ - **Exact names and values (binding, from the spec):**
+@@ -49,11 +49,11 @@
+ - **Line endings:** working copies are CRLF (`core.autocrlf=true`). Change existing files with the Edit tool. New files may be LF.
+ - **Worktrees:** `node_modules` and `services/signalling/node_modules` are junctions into the main checkout. Never delete them; a missing one is recreated, never "cleaned".
+ - **Git:** never `git add -A`, `git add .` or `git stash`; stage by name. Every commit ends with a blank line then `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`, passed as the last `-m`. After writing any file, check it is not all null bytes (`head -c 64 <file> | od -c | head -1`). Commit at the end of every task.
+-- **Anchors:** line numbers below were read at `02b1ef81`. Match every edit by the quoted text, not the number.
++- **Anchors:** line numbers below were read at `2c4f7c5d`. Match every edit by the quoted text, not the number.
+ - **Comments:** a header comment citing the spec on each new file; doc comments on exports; "helm round 2 §n" on changed lines that need a reason.
+ - **Prose and copy:** plain, short sentences.
+ 
+-## Decisions where the spec leaves room, and where the code at 02b1ef81 forces a choice
++## Decisions where the spec leaves room, and where the code at 2c4f7c5d forces a choice
+ 
+ 1. **(§6.1) The THR readout sits at `y0 + 78`, not `y0 + 72`.** Measured: `CAP …` is drawn at `y0 + 56` in `FONT_SIZE` (scale 2), so its capitals cover rows `y0 + 64`..`y0 + 77` (theme.ts: caps from +8, 7 font rows high). `THR <n>%` at `FONT_NATIVE` covers rows `y + 4`..`y + 10`. At `y0 + 72` that is `y0 + 76`..`y0 + 82`: two rows overlap CAP. At `y0 + 78` it is `y0 + 82`..`y0 + 88`: 4 rows clear of CAP and 1 row clear of the PORT / STBD buttons at `y0 + 90`. Its widest text, `THR -50%` or `THR 100%`, is 47 px.
+ 2. **(§6.1) The GAS bar's box is at `y0 + 121`, its label `GAS` at `y0 + 118`.** The label's capitals cover `y0 + 122`..`y0 + 128`, so a 10 px bar from `y0 + 121` sits on the label's line. It runs from `rx + 32` to `rx + 148` (x 184..300), inside the panel's inner edge at x 310.
+@@ -69,11 +69,16 @@
+ 12. **(§5) A shared scripted knob gets a crew twin before it moves.** `AVOID_TICKS`, `EVADE_RANGE`, `ORBIT_MIN` and `ORBIT_MAX` are also read by the Valkyrn's pair and pilot (`scriptedPilot.ts` imports `EVADE_RANGE` and `hazardAway`; `createScriptedPair` draws the orbit for every class). Moving one would move `valkyrnIdentity.test.ts`'s digests. So if the gate rule moves one of them, Task 6 adds a `CREW_` twin read only on a newtonianHelm class, as `CREW_SPEED_SLACK` was split from `SPEED_SLACK`. Task 6 gives the code for each.
+ 13. **(§6.2) The velocity ring is drawn for a newtonianHelm crew class only.** The spec header keeps the Valkyrn's bits, and its Flight seat shares the Helm map.
+ 14. **(§6.1) The GAS bar's "hot while a thruster vents" reads the scene's vent** (`source.helmVent?.() ?? d.helmVent`, the value the puffs use), passed to `consoleModel` as a new optional `vent`.
+-15. **(§4) Where the tree differs from the spec's quoted lines.** At `02b1ef81` the Single player held frame sends `face` for `seatNow === 'helm' || seatNow === 'flight'`, and the camera's right-button exemption is `shown === 'helm' || shown === 'flight'` (the Valkyrn's Flight seat came after the spec's quote). The plan removes the crew Helm from each and keeps `'flight'`.
++15. **(§4) Where the tree differs from the spec's quoted lines.** At `2c4f7c5d` the Single player held frame sends `face` for `seatNow === 'helm' || seatNow === 'flight'`, and the camera's right-button exemption is `shown === 'helm' || shown === 'flight'` (the Valkyrn's Flight seat came after the spec's quote). The plan removes the crew Helm from each and keeps `'flight'`.
+ 16. **(§6.1) Percent readouts round:** `THR ${Math.round(thrMille / 10)}%` and `THRUST ${Math.round(thrMille / 10)}%`.
+-17. **(§8, §10) The bump is 62 → 63.** The spec's quotes are from SIM 61; §10 already says this build bumps once more from W-4's merge (62).
++17. **(§8, §10) The bump is 63 → 64.** The spec's quotes are from SIM 61; §10 says this build bumps once more after W-4's merge. W-4 reached master and was bumped to 63 alone there (1b0103a8), so this build starts at 63.
+ 18. **(§5) The report** for the gate rule's tuning changes is `docs/superpowers/research/2026-11-20-helm-round2-report.md` (Task 1 creates it).
+-19. **(§3.3, §8) "Full 240 ticks after that" counts refill ticks.** The rule refills on every tick from the 30th idle tick on, so 720 / 3 = 240 refill ticks fill an empty charge: the first on the 30th tick after the last held tick (index 29), the last on the 269th (index 268). Task 5's test pins that reading of §3.3's rule; §8's "240 ticks later" is read the same way.
++19. **(§6.1, §6.2, §6.4) The sensors blip (master 926a9a19) shares three of the edited files; nothing in it collides.**
++    - `readoutModel.ts`: the blip changed only the OUTSIDE strip's ENEMY row (`BLIP ~<n>` while unseen) and added the optional `ReadoutInput.fog`. The `THRUST <n>%` / `COASTING` row (Task 10) is the row under HELM, before WEAPONS and ENEMY. It stays one row either way, as the blip's ENEMY row does, so the scene's count-only `readoutRows` calls still agree with the drawn rows. Task 10's readout test passes no `fog`.
++    - `tacticalModel.ts` / `tacticalLayer.ts`: the blip adds `TacticalDraw.blip`, the `'blip'` arrow and its dotted circle and `?` (drawn in the `contours` and `words` passes). The velocity ring (Task 11) is on `HelmDraw` and drawn on the `helm` graphics right after the velocity line, as Task 11 says. It reads no fog state and shows only the own ship's velocity, so it tells nothing about an unseen enemy. The blip's `CRT.mid` tint is the ring's too; the ring is a solid 4 px circle at the line's end, the blip a dotted circle of the ping's size, so they read apart.
++    - `scene.ts`: the blip adds `sitCardBelow` (the sit card's top or bottom place) and passes `fog` to `readoutRows`. Task 8's right-button and goal edits and Task 10's `vent` argument are elsewhere in `draw`; their quoted text is unchanged at `2c4f7c5d`, and only their line numbers moved (now 313-322, 409-410 and 454; `vent` at 381). Task 13's new card is wider (600 px) but its place is still `sitCardBelow`'s.
++    - The blip's own tests (`tests/sensorsBlip*.test.ts`, `tests/engineeringFog.test.ts`) are added to Task 10's and Task 11's runs.
++20. **(§3.3, §8) "Full 240 ticks after that" counts refill ticks.** The rule refills on every tick from the 30th idle tick on, so 720 / 3 = 240 refill ticks fill an empty charge: the first on the 30th tick after the last held tick (index 29), the last on the 269th (index 268). Task 5's test pins that reading of §3.3's rule; §8's "240 ticks later" is read the same way.
+ 
+ ## Spec coverage
+ 
+@@ -110,16 +115,16 @@
+ - Create: `docs/superpowers/research/2026-11-20-helm-round2-report.md`
+ 
+ **Interfaces:**
+-- Consumes: the worktree at `02b1ef81`.
++- Consumes: the worktree at `2c4f7c5d`.
+ - Produces: `HR2_BASE` (a commit hash), the canonical trace baseline (temp folder), the gate numbers at the start (Tasks 6 and 14 compare the Valkyrn lines), and the report file every later task appends to.
+ 
+ - [ ] **Step 1: Pre-flight**
+ 
+-Run: `git branch --show-current; git merge-base --is-ancestor 02b1ef81 HEAD && echo base-ok; git diff --quiet 02b1ef81 HEAD -- src tests scripts package.json && echo code-ok; git status --short -- src tests scripts package.json`
+-Expected: `helm-round2`, `base-ok`, `code-ok`, and no status output. The branch carries docs commits on top of `02b1ef81` (this plan and its review record) and may hold untracked files under `docs/superpowers/reviews/`; both are expected. If the branch is wrong, a line is missing, or `src`, `tests`, `scripts` or `package.json` differ from `02b1ef81` or are dirty, stop and report to the controller.
++Run: `git branch --show-current; git merge-base --is-ancestor 2c4f7c5d HEAD && echo base-ok; git diff --quiet 2c4f7c5d HEAD -- src tests scripts package.json && echo code-ok; git status --short -- src tests scripts package.json`
++Expected: `helm-round2`, `base-ok`, `code-ok`, and no status output. The branch carries docs commits on top of `2c4f7c5d` (this plan and its review record) and may hold untracked files under `docs/superpowers/reviews/`; both are expected. If the branch is wrong, a line is missing, or `src`, `tests`, `scripts` or `package.json` differ from `2c4f7c5d` or are dirty, stop and report to the controller.
+ 
+ Run: `git grep -n "export const SIM_VERSION = " -- src/renderer/src/sim/tuning.ts`
+-Expected: `src/renderer/src/sim/tuning.ts:7:export const SIM_VERSION = 62;`
++Expected: `src/renderer/src/sim/tuning.ts:7:export const SIM_VERSION = 63;`
+ 
+ Run: `ls -la node_modules services/signalling/node_modules | head -4`
+ Expected: both are links into `C:/Users/djuar/FTLite/...`. If one is missing, recreate it from PowerShell with `New-Item -ItemType Junction -Path <worktree>\<path> -Target C:\Users\djuar\FTLite\<path>` and say so in the report. Never delete one.
+@@ -130,12 +135,12 @@ Expected: a non-zero count (what Tasks 3 and 4 remove).
+ - [ ] **Step 2: The full suite at the start**
+ 
+ Run, one at a time: `npm run typecheck`; `npx electron-vite build`; `npx vitest run --maxWorkers=4`.
+-Expected: tsc clean; the build succeeds; 512 files, 6162 tests passed, 2 skipped (02b1ef81's merge message). A load-sensitive timeout is re-run alone. If anything else fails, stop and report: this plan starts from a green branch.
++Expected: tsc clean; the build succeeds; every file passes, at the counts Step 2 prints (no figure for 2c4f7c5d is recorded in a commit message; record them in the report). A load-sensitive timeout is re-run alone. If anything else fails, stop and report: this plan starts from a green branch.
+ 
+ - [ ] **Step 3: The canonical trace baseline**
+ 
+ Run: `npx tsx scripts/golden/canonical-trace.ts baseline`
+-Expected: `baseline at sim version 62: golden 7200 ticks, determinism-v2 108000 ticks in 13 runs; written to <temp>\trace.json`, exit 0. Task 14 uses it to prove the sector game unchanged (`same`) and `basic.json` changed only in its digest (`golden`).
++Expected: `baseline at sim version 63: golden 7200 ticks, determinism-v2 108000 ticks in 13 runs; written to <temp>\trace.json`, exit 0. Task 14 uses it to prove the sector game unchanged (`same`) and `basic.json` changed only in its digest (`golden`).
+ 
+ - [ ] **Step 4: The gate numbers**
+ 
+@@ -147,7 +152,7 @@ Expected: the Valkyrn gate's lines and summary. Copy them: Tasks 6 and 14 must p
+ 
+ - [ ] **Step 5: The report**
+ 
+-Run: `git rev-parse --short=8 HEAD`. This is `HR2_BASE`: the branch head at the start, whose code is `02b1ef81`'s.
++Run: `git rev-parse --short=8 HEAD`. This is `HR2_BASE`: the branch head at the start, whose code is `2c4f7c5d`'s.
+ 
+ Create `docs/superpowers/research/2026-11-20-helm-round2-report.md`:
+ 
+@@ -158,7 +163,7 @@ Spec `docs/superpowers/specs/2026-11-19-helm-round2-design.md`; plan `docs/super
+ 
+ ## Base
+ 
+-- `HR2_BASE` = <hash>, SIM_VERSION 62, branch `helm-round2`.
++- `HR2_BASE` = <hash>, SIM_VERSION 63, branch `helm-round2`.
+ - Full suite at the base: <files> files, <tests> tests passed, <skipped> skipped.
+ - Canonical trace baseline: <the line from Step 3>.
+ - Scripted gates at the base:
+@@ -186,7 +191,7 @@ Expected: readable text, not `\0`.
+ 
+ ```bash
+ git add docs/superpowers/research/2026-11-20-helm-round2-report.md
+-git commit -m "docs(helm): Helm round 2 base report: HR2_BASE, the suite, the canonical baseline and the gate numbers at SIM_VERSION 62" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
++git commit -m "docs(helm): Helm round 2 base report: HR2_BASE, the suite, the canonical baseline and the gate numbers at SIM_VERSION 63" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+ ```
+ 
+ ---
+@@ -986,7 +991,7 @@ git commit -m "feat(helm): the throttle stays where it is left, reverse at 50 %
+ - Modify: `src/renderer/src/sim/duel/tuning.ts:69-72` (`BOOST_FACE_SIN` and its comment removed)
+ - Modify: `src/renderer/src/sim/duel/scripted.ts:28` (import), `:82-84` (`ScriptedPair.axes` doc), `:136-144` (`predictAxes`), `:427-428` (the boost record)
+ - Modify: `src/renderer/src/sim/duel/telemetry.ts:135-138`
+-- Modify: `src/renderer/src/render/tactical/tacticalModel.ts:525-534` (the puffs)
++- Modify: `src/renderer/src/render/tactical/tacticalModel.ts:533-542` (the puffs)
+ - Modify: `src/renderer/src/app/duel/duelAudio.ts:29`, `:57`
+ - Create: `tests/helmFlightRound2.test.ts`
+ - Test (kind a): `tests/crewFlight.test.ts`, `tests/crewSteering.test.ts`, `tests/crewHelmFx.test.ts`, `tests/crewThrusters.test.ts`, `tests/duelAudio.test.ts`, `tests/crewHelmOnline.test.ts`, `tests/onlineDuelSession.test.ts`, `tests/helmModule.test.ts`, `tests/duelScripted.test.ts`, `tests/crewTelemetry.test.ts`
+@@ -1934,7 +1939,7 @@ Update the file's header comment: after `and either walks to a repair by the nea
+ - [ ] **Step 4: Run the scripted tests**
+ 
+ Run: `npx vitest run tests/duelScripted.test.ts tests/crewSteering.test.ts tests/valkyrnIdentity.test.ts`
+-Expected: PASS. If `'plays a whole duel with every command admitted'` fails only because seed 1's duel no longer uses one of the listed kinds (kind b, a property-picked seed): re-pick the lowest seed in 1..19 whose duel uses every kind in the new list, as W-4b Task 7 did (`// helm round 2 (SIM 62), kind b: seed 1 …`), and record it in the report. `valkyrnIdentity` must pass unchanged: the Valkyrn's pair takes none of the new lines (`leaveSeat` and the cut are fenced to a newtonianHelm class).
++Expected: PASS. If `'plays a whole duel with every command admitted'` fails only because seed 1's duel no longer uses one of the listed kinds (kind b, a property-picked seed): re-pick the lowest seed in 1..19 whose duel uses every kind in the new list, as W-4b Task 7 did (`// helm round 2 (SIM 63), kind b: seed 1 …`), and record it in the report. `valkyrnIdentity` must pass unchanged: the Valkyrn's pair takes none of the new lines (`leaveSeat` and the cut are fenced to a newtonianHelm class).
+ 
+ - [ ] **Step 5: The per-seed gates (spec §5's gate rule)**
+ 
+@@ -2190,7 +2195,7 @@ git commit -m "feat(helm): the duel keyboard times W and S: throttleDown on a fr
+ - Modify: `src/renderer/src/render/duel/situationModel.ts:209` (`RefusedControl`, `NO_GAS`)
+ - Modify: `src/renderer/src/render/duel/consoleModel.ts:142` (`HELM_CONTROLS`)
+ - Modify: `src/renderer/src/app/duel/runtime.ts` (imports; `isConsoleCommand`; the seat state; `newRound`; `play`'s crew Helm branch; `frame`'s stale sample, held frame and camera)
+-- Modify: `src/renderer/src/app/duel/scene.ts:306-315` (the right button), `:402-403` (the goal)
++- Modify: `src/renderer/src/app/duel/scene.ts:313-322` (the right button), `:409-410` (the goal)
+ - Create: `tests/helmRound2Runtime.test.ts`
+ - Test: `tests/crewHelmScene.test.ts` (its rig gains `cls` and the right button; new cases); kind (a): `tests/crewHelmClient.test.ts`
+ 
+@@ -2961,9 +2966,9 @@ git commit -m "feat(helm): online tap and cut: the predicted throttle judges the
+ 
+ **Files:**
+ - Modify: `src/renderer/src/render/duel/consoleModel.ts:19-20` (import), `:31-38` (`CrewHelmPanel`, `crewPanel`), `:102-107` (`ConsoleModelInput`), `:165` (the Helm panel's `crew`)
+-- Modify: `src/renderer/src/app/duel/scene.ts:447` (`consoleModel`'s input gains `vent`)
++- Modify: `src/renderer/src/app/duel/scene.ts:454` (`consoleModel`'s input gains `vent`)
+ - Modify: `src/renderer/src/ui/duel/HelmStation.tsx:1-5` (header), `:78-121` (`THR_LABELS`, `CrewHelmStation`)
+-- Modify: `src/renderer/src/render/duel/readoutModel.ts:155`
++- Modify: `src/renderer/src/render/duel/readoutModel.ts:159`
+ - Test: `tests/crewHelmUi.test.tsx` (extended), `tests/duelReadout.test.ts` (new case)
+ 
+ **Interfaces:**
+@@ -3104,7 +3109,7 @@ In the Helm panel, replace `...(station === 'helm' && crewHelmSeat(d, i.me) ? {
+         ...(station === 'helm' && crewHelmSeat(d, i.me) ? { crew: crewPanel(d, i.thrMille ?? d.thrMille, i.vent ?? null) } : {}) }   // playtest2feedback §6; helm round 2 §6.1: the gas
+ ```
+ 
+-In `src/renderer/src/app/duel/scene.ts`, in the `consoleModel({ duel: d, … })` call (line 447), after `thrMille: source.thrMille?.() ?? d.thrMille,` add `vent,` (the frame's `const vent = source.helmVent?.() ?? d.helmVent;`, line 374).
++In `src/renderer/src/app/duel/scene.ts`, in the `consoleModel({ duel: d, … })` call (line 454), after `thrMille: source.thrMille?.() ?? d.thrMille,` add `vent,` (the frame's `const vent = source.helmVent?.() ?? d.helmVent;`, line 381).
+ 
+ - [ ] **Step 4: The block**
+ 
+@@ -3181,7 +3186,7 @@ with
+ 
+ - [ ] **Step 6: Run the tests**
+ 
+-Run: `npx vitest run tests/crewHelmUi.test.tsx tests/duelReadout.test.ts tests/crtReadout.test.ts tests/feelUi.test.tsx tests/feelIiUi.test.tsx tests/uiConsole.test.tsx tests/flightConsole.test.tsx tests/w4Ui.test.tsx`
++Run: `npx vitest run tests/crewHelmUi.test.tsx tests/duelReadout.test.ts tests/sensorsBlipReadout.test.ts tests/engineeringFog.test.ts tests/crtReadout.test.ts tests/feelUi.test.tsx tests/feelIiUi.test.tsx tests/uiConsole.test.tsx tests/flightConsole.test.tsx tests/w4Ui.test.tsx`
+ Expected: all PASS. The notched Helm (the Valkyrn's Flight seat and the other Helm) keeps its AUTO-FACE button, so `feelUi`'s and `feelIiUi`'s button cases are unchanged. `npm run typecheck`: clean (any other `CrewHelmPanel` literal in a test gains the four gas fields: kind (a), record it).
+ 
+ - [ ] **Step 7: Commit**
+@@ -3196,8 +3201,8 @@ git commit -m "feat(helm): the crew Helm console: the bar to REV -50, THR, the G
+ ### Task 11: The map: a ring at the velocity line's end
+ 
+ **Files:**
+-- Modify: `src/renderer/src/render/tactical/tacticalModel.ts:90-93` (`HelmDraw`), the helm draw (`velocity:` line, ~568), and a new export `VELOCITY_RING_PX`
+-- Modify: `src/renderer/src/render/tactical/tacticalLayer.ts:332-333` (draw the ring after the dashed line)
++- Modify: `src/renderer/src/render/tactical/tacticalModel.ts:90-93` (`HelmDraw`), the helm draw (`velocity:` line, 576), and a new export `VELOCITY_RING_PX`
++- Modify: `src/renderer/src/render/tactical/tacticalLayer.ts:341-342` (draw the ring after the dashed line)
+ - Test: `tests/crewHelmFx.test.ts` (new case)
+ 
+ **Interfaces:**
+@@ -3277,7 +3282,7 @@ insert:
+ 
+ - [ ] **Step 4: Run the tests**
+ 
+-Run: `npx vitest run tests/crewHelmFx.test.ts tests/tacticalModel.test.ts tests/tacticalLayer.test.ts tests/crewHelmScene.test.ts`
++Run: `npx vitest run tests/crewHelmFx.test.ts tests/tacticalModel.test.ts tests/tacticalLayer.test.ts tests/crewHelmScene.test.ts tests/sensorsBlipMap.test.ts tests/sensorsBlipLayer.test.ts tests/valkyrnViews.test.ts`
+ Expected: all PASS (skip a file name that does not exist; `git grep -l "tacticalLayer\|tacticalModel(" -- tests` lists the rest, run them too). `npm run typecheck`: clean.
+ 
+ - [ ] **Step 5: Commit**
+@@ -3560,10 +3565,10 @@ git commit -m "feat(helm): the Helm sit card teaches the lever, the tap and brak
+ 
+ ---
+ 
+-### Task 14: The same-version bless at 62, the kind (b) re-picks, the gates, the fences and the full verification
++### Task 14: The same-version bless at 63, the kind (b) re-picks, the gates, the fences and the full verification
+ 
+ **Files:**
+-- Regenerated by `npm run bless` (same version 62): `tests/golden/basic.json` (its content digest only), `tests/golden/duel-1.json`, `tests/golden/duel-rematch.json`; `tests/fixtures/determinism-v2.json` must come out unchanged
++- Regenerated by `npm run bless` (same version 63): `tests/golden/basic.json` (its content digest only), `tests/golden/duel-1.json`, `tests/golden/duel-rematch.json`; `tests/fixtures/determinism-v2.json` must come out unchanged
+ - Modify: each kind (b) test in the report's "Task 14 re-picks" list
+ - Modify (only if Step 7 needs it): `scripts/network/duel-app-smoke.ts`, `scripts/network/internet-app-smoke.ts`
+ - Modify: `docs/superpowers/research/2026-11-20-helm-round2-report.md`
+@@ -3575,7 +3580,7 @@ git commit -m "feat(helm): the Helm sit card teaches the lever, the tap and brak
+ - [ ] **Step 1: Pre-flight**
+ 
+ Run: `git status --short -- src tests scripts; git grep -n "export const SIM_VERSION = " -- src/renderer/src/sim/tuning.ts`
+-Expected: no status output; `SIM_VERSION = 62;`.
++Expected: no status output; `SIM_VERSION = 63;`.
+ 
+ - [ ] **Step 2: The sector game is unchanged per tick**
+ 
+@@ -3588,15 +3593,15 @@ If it fails with a value difference, stop: a sector path changed. Find it in the
+ 
+ Run: `npm run bless`
+ Expected, exit 0, four `blessed …` lines:
+-- `tests/golden/basic.json: 120 checkpoints, final 6aad809e` (W-4's bless at 62, `git log -1 --format=%B 02b1ef81`): only its content digest moves;
+-- `tests/golden/duel-1.json: <c> checkpoints, <t> ticks, outcome <o>, final <h>`: new numbers (the scripted Helm flies differently);
+-- `tests/fixtures/determinism-v2.json: sim version 62, 1800 samples and 330 boundaries re-executed (unchanged)`;
+-- `tests/golden/duel-rematch.json: …`: new numbers.
++- `tests/golden/basic.json: 120 checkpoints, final f616991e` (W-4's bump to 63 on master, `git log -1 --format=%B 1b0103a8`; the sensors blip left the goldens alone): only its content digest moves;
++- `tests/golden/duel-1.json: <c> checkpoints, <t> ticks, outcome <o>, final <h>`: new numbers (the scripted Helm flies differently; at `2c4f7c5d` it is 16 checkpoints, 9641 ticks, outcome 2, final def3825f);
++- `tests/fixtures/determinism-v2.json: sim version 63, 1800 samples and 330 boundaries re-executed (unchanged)`;
++- `tests/golden/duel-rematch.json: …`: new numbers (at `2c4f7c5d`: 26 checkpoints, rematch on tick 9641, rounds 9641 ticks outcome 2 then 6131 ticks outcome 2, final daaf236a).
+ 
+ A refusal means an artifact is missing or at another version: stop and report. Never pass `--fresh`.
+ 
+ Run: `git status --short tests/golden tests/fixtures; git diff --stat tests/golden/basic.json`
+-Expected: `M` on `basic.json`, `duel-1.json` and `duel-rematch.json` only (`determinism-v2.json` unchanged). The `basic.json` bless line names W-4's checkpoint count and final hash (6aad809e), so its digest is the only thing that moved; the `golden` check below proves no other leaf did.
++Expected: `M` on `basic.json`, `duel-1.json` and `duel-rematch.json` only (`determinism-v2.json` unchanged). The `basic.json` bless line names W-4's checkpoint count and final hash (f616991e), so its digest is the only thing that moved; the `golden` check below proves no other leaf did.
+ 
+ Run: `npx tsx scripts/golden/canonical-trace.ts golden`
+ Expected: `tests/golden/basic.json: <k> leaves differ, 0 outside version, digest and hashes`, exit 0.
+@@ -3606,7 +3611,7 @@ Expected: all PASS.
+ 
+ - [ ] **Step 4: The kind (b) re-picks**
+ 
+-For each test in the report's "Task 14 re-picks" list (and any other whole-run pin now red), run it, take the new value from the failure, and set it with a `// helm round 2 (SIM 62), kind b: was <old>` note. A seed or tick the test's own comment says was chosen for a property is re-searched by that property, as its comment describes (W-4b's report shows the pattern: `tests/duelSnapshot.test.ts`'s fixture, the first tick from 5000 on with exactly one missile in flight, a damaged crew room and a repair in progress; `tests/duelModules.test.ts`'s played duel; `tests/tacticalSlots.test.ts`'s run length; `tests/duelOracle.test.ts`'s first-difference line, from the run itself).
++For each test in the report's "Task 14 re-picks" list (and any other whole-run pin now red), run it, take the new value from the failure, and set it with a `// helm round 2 (SIM 63), kind b: was <old>` note. A seed or tick the test's own comment says was chosen for a property is re-searched by that property, as its comment describes (W-4b's report shows the pattern: `tests/duelSnapshot.test.ts`'s fixture, the first tick from 5000 on with exactly one missile in flight, a damaged crew room and a repair in progress; `tests/duelModules.test.ts`'s played duel; `tests/tacticalSlots.test.ts`'s run length; `tests/duelOracle.test.ts`'s first-difference line, from the run itself).
+ 
+ Run: `npx vitest run tests/golden.test.ts tests/duelGolden.test.ts tests/duelRematchGolden.test.ts tests/duelCheckpoint.test.ts tests/duelSnapshot.test.ts tests/duelModules.test.ts tests/tacticalSlots.test.ts tests/duelScripted.test.ts tests/duelOracle.test.ts tests/duelGates.test.ts`
+ Expected: all PASS.
+@@ -3658,7 +3663,7 @@ for (let seed = 1; seed <= 4000; seed++) {
+ console.log('no seed in 1..4000 is decided before tick 5000: report BLOCKED with this line');
+ ```
+ 
+-Set `DUEL_TEST_SEED` in `scripts/network/duel-app-smoke.ts` to the printed seed and the same constant in `scripts/network/internet-app-smoke.ts`; rewrite the doc comment's first sentence and step 2's `decided on tick 3979` with the new tick (`helm round 2 (SIM 62): <old> -> <seed>, decided on tick <t>`), keep the earlier history, and re-run the smoke.
++Set `DUEL_TEST_SEED` in `scripts/network/duel-app-smoke.ts` to the printed seed and the same constant in `scripts/network/internet-app-smoke.ts`; rewrite the doc comment's first sentence and step 2's `decided on tick 3979` with the new tick (`helm round 2 (SIM 63): <old> -> <seed>, decided on tick <t>`), keep the earlier history, and re-run the smoke.
+ 
+ - [ ] **Step 8: The report and commit**
+ 
+@@ -3668,14 +3673,14 @@ Run: `git status --short` and `head -c 64 <file> | od -c | head -1` for each cha
+ 
+ ```bash
+ git add tests/golden/basic.json tests/golden/duel-1.json tests/golden/duel-rematch.json docs/superpowers/research/2026-11-20-helm-round2-report.md <each re-picked test> <the two smoke scripts if DUEL_TEST_SEED moved>
+-git commit -m "test(helm): same-version bless at SIM_VERSION 62 for Helm round 2 (duel goldens re-recorded; basic.json content digest only); the kind b re-picks" -m "<the four bless lines from Step 3>; <the re-picks, one per line>" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
++git commit -m "test(helm): same-version bless at SIM_VERSION 63 for Helm round 2 (duel goldens re-recorded; basic.json content digest only); the kind b re-picks" -m "<the four bless lines from Step 3>; <the re-picks, one per line>" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+ ```
+ 
+ Run: `git rev-parse --short=8 HEAD`. This is `HR2_BLESS`.
+ 
+ ---
+ 
+-### Task 15: SIM_VERSION 62 → 63 alone, proved and blessed
++### Task 15: SIM_VERSION 63 → 64 alone, proved and blessed
+ 
+ **Files:**
+ - Modify: `src/renderer/src/sim/tuning.ts:7`
+@@ -3683,7 +3688,7 @@ Run: `git rev-parse --short=8 HEAD`. This is `HR2_BLESS`.
+ 
+ **Interfaces:**
+ - Consumes: `HR2_BLESS`.
+-- Produces: the branch at SIM_VERSION 63.
++- Produces: the branch at SIM_VERSION 64.
+ 
+ - [ ] **Step 1: Pre-flight**
+ 
+@@ -3693,29 +3698,29 @@ Expected: `HR2_BLESS`, and no status output.
+ - [ ] **Step 2: Both baselines at `HR2_BLESS`**
+ 
+ Run: `npx tsx scripts/golden/canonical-trace.ts baseline`
+-Expected: `baseline at sim version 62: golden 7200 ticks, determinism-v2 108000 ticks in 13 runs; written to <temp>\trace.json`, exit 0.
++Expected: `baseline at sim version 63: golden 7200 ticks, determinism-v2 108000 ticks in 13 runs; written to <temp>\trace.json`, exit 0.
+ 
+ Run: `npx tsx scripts/golden/duel-oracle.ts baseline`
+-Expected: `duel oracle baseline at sim version 62: <R> runs, <T> ticks, <F> named fields per tick; written to <temp>\duel-oracle.json`, exit 0. Note `<R>`, `<T>` and `<F>`. The new helm fields (`thrCut`, `gas`, `gasIdle`) are in this baseline already, so the bump needs no `ADDITIONS` or `MIGRATIONS` entry.
++Expected: `duel oracle baseline at sim version 63: <R> runs, <T> ticks, <F> named fields per tick; written to <temp>\duel-oracle.json`, exit 0. Note `<R>`, `<T>` and `<F>`. The new helm fields (`thrCut`, `gas`, `gasIdle`) are in this baseline already, so the bump needs no `ADDITIONS` or `MIGRATIONS` entry.
+ 
+ - [ ] **Step 3: The version**
+ 
+-`src/renderer/src/sim/tuning.ts` line 7 becomes `export const SIM_VERSION = 63;` (Edit). Nothing else changes in this task.
++`src/renderer/src/sim/tuning.ts` line 7 becomes `export const SIM_VERSION = 64;` (Edit). Nothing else changes in this task.
+ 
+ - [ ] **Step 4: Both proofs before the bless**
+ 
+ Run: `npx tsx scripts/golden/canonical-trace.ts check`
+-Expected: `per-tick canonical trace identical, sim version 62 → 63: golden 7200 ticks, determinism-v2 108000 ticks in 13 runs (baseline HEAD <HR2_BLESS>)`, exit 0.
++Expected: `per-tick canonical trace identical, sim version 63 → 64: golden 7200 ticks, determinism-v2 108000 ticks in 13 runs (baseline HEAD <HR2_BLESS>)`, exit 0.
+ 
+ Run: `npx tsx scripts/golden/duel-oracle.ts check`
+-Expected: `duel oracle: <R> runs, <T> ticks, <F> named fields, results, events and telemetry identical at every tick field for field, sim version 62 → 63 (baseline HEAD <HR2_BLESS>)`, exit 0.
++Expected: `duel oracle: <R> runs, <T> ticks, <F> named fields, results, events and telemetry identical at every tick field for field, sim version 63 → 64 (baseline HEAD <HR2_BLESS>)`, exit 0.
+ 
+-If a check refuses because its baseline is stale (another version, another checkout, or a HEAD other than `HR2_BLESS`): set line 7 back to 62, re-run both Step 2 commands, set it to 63 again, and re-run both checks. Any other failure: stop and report.
++If a check refuses because its baseline is stale (another version, another checkout, or a HEAD other than `HR2_BLESS`): set line 7 back to 63, re-run both Step 2 commands, set it to 64 again, and re-run both checks. Any other failure: stop and report.
+ 
+ - [ ] **Step 5: Bless**
+ 
+ Run: `npm run bless`
+-Expected, exit 0: four `blessed …` lines with Task 14's counts, ticks and outcomes and new hashes; the determinism line reads `sim version 62 → 63, 1800 samples and 330 boundaries unchanged apart from the version and hashes`.
++Expected, exit 0: four `blessed …` lines with Task 14's counts, ticks and outcomes and new hashes; the determinism line reads `sim version 63 → 64, 1800 samples and 330 boundaries unchanged apart from the version and hashes`.
+ 
+ Run: `npx tsx scripts/golden/canonical-trace.ts golden`
+ Expected: `tests/golden/basic.json: <k> leaves differ, 0 outside version, digest and hashes`, exit 0.
+@@ -3728,7 +3733,7 @@ Expected: exactly the five files: `tuning.ts` and the four generated ones.
+ 
+ ```bash
+ git add src/renderer/src/sim/tuning.ts tests/golden/basic.json tests/golden/duel-1.json tests/golden/duel-rematch.json tests/fixtures/determinism-v2.json
+-git commit -m "chore(helm): SIM_VERSION 62 -> 63 alone, blessed (canonical trace and duel oracle prove every run unchanged per tick)" -m "<the four blessed lines from Step 5>. Baselines recorded at <HR2_BLESS>: canonical trace 7200 + 108000 ticks; duel oracle <R> runs, <T> ticks, <F> named fields per tick." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
++git commit -m "chore(helm): SIM_VERSION 63 -> 64 alone, blessed (canonical trace and duel oracle prove every run unchanged per tick)" -m "<the four blessed lines from Step 5>. Baselines recorded at <HR2_BLESS>: canonical trace 7200 + 108000 ticks; duel oracle <R> runs, <T> ticks, <F> named fields per tick." -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+ ```
+ 
+ - [ ] **Step 6: The duel app smoke**
+@@ -3744,7 +3749,7 @@ Expected: PASS with the `ACTUAL DUEL APP` line. The bump changes no run (Step 4)
+ - Modify: `docs/gates.md` (append), `docs/superpowers/research/2026-11-20-helm-round2-report.md`
+ 
+ **Interfaces:**
+-- Consumes: the branch at SIM_VERSION 63.
++- Consumes: the branch at SIM_VERSION 64.
+ - Produces: the merge-ready branch. The merge to master is the controller's.
+ 
+ - [ ] **Step 1: The final checks**
+@@ -3757,7 +3762,7 @@ Run, one at a time:
+ - `npm run test:determinism`: PASS on Node, Electron and Firefox. Then `git checkout -- .superpowers/sdd/2026-11-14-net-1b-durability`.
+ 
+ Run: `git grep -n "export const SIM_VERSION = " -- src/renderer/src/sim/tuning.ts`
+-Expected: `… SIM_VERSION = 63;`
++Expected: `… SIM_VERSION = 64;`
+ 
+ Run: `git diff --stat HR2_BASE -- tests/valkyrnIdentity.test.ts tests/w4HunterIdentity.test.ts tests/valkyrnRoundsRocks.test.ts tests/pewHunter.test.ts tests/torpedoGuidance.test.ts`
+ Expected: no output.
+@@ -3775,7 +3780,7 @@ Append to `docs/gates.md` with Edit (the file is CRLF), after its last line (W-4
+ 
+ Spec `docs/superpowers/specs/2026-11-19-helm-round2-design.md`; plan `docs/superpowers/plans/2026-11-20-helm-round2.md`; report `docs/superpowers/research/2026-11-20-helm-round2-report.md`.
+ 
+-- [x] Automated: `npx vitest run` passes (<files> files, <tests> tests). This includes the throttle that stays (−500..1000, 17 a tick, held through an empty Helm, clamped by a lost bar and not raised when it returns), reverse at 50 % on the Hound (48 u/s² on the Hunter), `throttleCut` and its latch (a late S frame leaves the throttle at 0), the keyboard's tap on a fake clock (150 / 200 / 250 / 300 ms, read live), both runtimes judging the tap against the throttle at keydown, the online prediction (0 while a cut is in flight; the latch predicted), drag and a stabilise that acts under thrust, the fixed 150°/s turn, the gas charge (90 ticks of one thruster, the 30-tick wait, 240 refill ticks; NO GAS once a press), the 1-bar climb at 300 u, the scripted Helm's cuts (it never stands with the throttle set), the console's THR, GAS bar and hints, the velocity ring, the Settings row and the sit card (`tests/helm*.test.ts` and the files the plan names). Same-version bless at SIM 62, then SIM_VERSION 62 → 63 alone (canonical trace and duel oracle per tick). `tests/valkyrnIdentity.test.ts` and `tests/w4HunterIdentity.test.ts` unchanged; the Valkyrn gate unchanged. `npx tsc -b` is clean; `npm run build` succeeds; determinism passes on Node, Electron and Firefox. Scripted Helm tuning: <the report's line, or "none">. `DUEL_TEST_SEED`: <unchanged 423, or the re-pick line>.
++- [x] Automated: `npx vitest run` passes (<files> files, <tests> tests). This includes the throttle that stays (−500..1000, 17 a tick, held through an empty Helm, clamped by a lost bar and not raised when it returns), reverse at 50 % on the Hound (48 u/s² on the Hunter), `throttleCut` and its latch (a late S frame leaves the throttle at 0), the keyboard's tap on a fake clock (150 / 200 / 250 / 300 ms, read live), both runtimes judging the tap against the throttle at keydown, the online prediction (0 while a cut is in flight; the latch predicted), drag and a stabilise that acts under thrust, the fixed 150°/s turn, the gas charge (90 ticks of one thruster, the 30-tick wait, 240 refill ticks; NO GAS once a press), the 1-bar climb at 300 u, the scripted Helm's cuts (it never stands with the throttle set), the console's THR, GAS bar and hints, the velocity ring, the Settings row and the sit card (`tests/helm*.test.ts` and the files the plan names). Same-version bless at SIM 63, then SIM_VERSION 63 → 64 alone (canonical trace and duel oracle per tick). `tests/valkyrnIdentity.test.ts` and `tests/w4HunterIdentity.test.ts` unchanged; the Valkyrn gate unchanged. `npx tsc -b` is clean; `npm run build` succeeds; determinism passes on Node, Electron and Firefox. Scripted Helm tuning: <the report's line, or "none">. `DUEL_TEST_SEED`: <unchanged 423, or the re-pick line>.
+ - [ ] Manual (owner): play a Single player duel at the Hound's Helm.
+   1. Hold W to about half and let go: the throttle bar and THR stay there, and the ship keeps thrusting. Stand up: it still thrusts (the OUTSIDE row reads THRUST n%).
+   2. Tap S: the throttle drops to 0 at once. Hold S: it ramps into reverse (to REV, −50). Tap W from reverse: 0 again. A tap from 0 only nudges it.
+@@ -3797,13 +3802,13 @@ Spec `docs/superpowers/specs/2026-11-19-helm-round2-design.md`; plan `docs/super
+ 
+ - [ ] **Step 3: The report**
+ 
+-In the report add a `## Task 15 and Task 16` section: the bump commit and its bless lines; the oracle counts; the final test count; the fence result; "Helm round 2 complete on `helm-round2` at SIM_VERSION 63; the merge to master is the controller's".
++In the report add a `## Task 15 and Task 16` section: the bump commit and its bless lines; the oracle counts; the final test count; the fence result; "Helm round 2 complete on `helm-round2` at SIM_VERSION 64; the merge to master is the controller's".
+ 
+ Run `head -c 64` on both files, as in Task 14 Step 8.
+ 
+ ```bash
+ git add docs/gates.md docs/superpowers/research/2026-11-20-helm-round2-report.md
+-git commit -m "docs(helm): Helm round 2 complete at SIM_VERSION 63: the final checks and the gate entry" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
++git commit -m "docs(helm): Helm round 2 complete at SIM_VERSION 64: the final checks and the gate entry" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+ ```
+ 
+ ---
