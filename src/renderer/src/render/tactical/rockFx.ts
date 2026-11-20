@@ -48,7 +48,7 @@ export function pushRockFx(fx: FxState, events: readonly ViewEvent[]): void {
       fx.items.push({ kind: 'shock', age: 0, life: SHOCK_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.hot, size: e.r },
         { kind: 'core', age: 0, life: CORE_FLASH_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.hot, size: e.r * 0.3 });
       for (let n = between(fx, 18, 24), j = 0; j < n; j++) fling(fx, 'speck', BLAST_SPECK_S, e.x, e.y, (2 * Math.PI * j) / n, 0.3, 150, 320, 0, 0, CRT.hot);
-    } else if (e.what === 'bump' && e.by === 'collision') fx.items.push({ kind: 'spark', age: 0, life: SPARK_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.hot });   // §7 item 7
+    } else if ((e.what === 'bump' && e.by === 'collision') || (e.what === 'hit' && e.by === 'gun')) fx.items.push({ kind: 'spark', age: 0, life: SPARK_S, x1: e.x, y1: e.y, x2: e.x, y2: e.y, colour: CRT.hot });   // §7 item 7; W-4 spec §5.1: an autocannon round's hit
   }
 }
 

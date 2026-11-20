@@ -3,10 +3,11 @@
 // heat and counts the cooldown down, then fires a round from the pre-move pose while the trigger is held at an attended
 // Weapons station. Rounds live in the fixed pool tactical.rounds. stepRounds moves the rounds after the ships fly and
 // contacts resolve and sweeps each as a segment (spec §7.2). Only + − × ÷ and sqrt (the determinism guard).
-import type { GunDef } from './defs';
+import type { GunDef, GunRockDef } from './defs';
 import { weaponBars, WeaponSlot } from './bars';
 import { dirBetween, hx, hy } from './direction';
-import { rockAt, rocksNear } from './rocks';
+import { hitRock, pushRock } from './rockBreak';
+import { rockAt, rockMass, rocksNear } from './rocks';
 import { classOf, emptyRound, Room, type GunRound, type TacticalState } from './state';
 import { DT, HEADING_COUNT } from './tuning';
 import type { ShipInput } from './weapons';
@@ -125,6 +126,16 @@ function gunHit(state: TacticalState, owner: number, k: number, ox: number, oy: 
   state.events.push({ kind: 'gunHit', ship: k, room, stripped: false, hull, level, x, y });
 }
 
+/** W-4 spec §5.1: owner's round on (ox, oy) -> (nx, ny) meets rock k first: push it pushPerRound / m along the round's
+ *  segment (waking a static rock), then wear it 1 / roundsPerHp hp (a `hit` event by 'gun', rockHits + 1, a fan break
+ *  along the round at 0 hp, the owner's rocksBroken), as the laser's laserStrikesRock does: push first, then damage. */
+function roundStrikesRock(state: TacticalState, owner: number, k: number, ox: number, oy: number, nx: number, ny: number, rd: GunRockDef): void {
+  const dx = nx - ox, dy = ny - oy, d = Math.sqrt(dx * dx + dy * dy), ux = d > 0 ? dx / d : 0, uy = d > 0 ? dy / d : -1;
+  const j = rd.pushPerRound / rockMass(rockAt(state, k).r);
+  pushRock(state, k, ux * j, uy * j);
+  hitRock(state, k, 1 / rd.roundsPerHp, ux, uy, 'gun', owner);
+}
+
 /**
  * Every round in flight, in pool order (spec §7.2): it flies straight one tick (no gravity, no drag; it also moves on
  * its spawn tick) and ages; its segment from the old to the new position is swept against every other active ship's
@@ -135,13 +146,16 @@ function gunHit(state: TacticalState, owner: number, k: number, ox: number, oy: 
  * stands when this runs (after stepRocks moved them this tick), found with rocksNear as the laser's firstBlocker does,
  * and like it a piece born this tick is not in the way. A round that meets a rock is absorbed: it ends and the rock is
  * untouched (no push, no wear, no event).
+ * W-4 spec §5.1: a round of a gun with `rock` (the autocannon) that meets a rock first wears and pushes it
+ * (roundStrikesRock); the Valkyrn's (rock null) is absorbed as before. The ties are unchanged: a ship wins, then rocks
+ * by slot, then the planet.
  */
 export function stepRounds(state: TacticalState): void {
   for (const r of state.rounds) {
     if (!r.active) continue;
-    const ox = r.x, oy = r.y, life = classOf(state, r.owner).slots.gun?.lifeTicks ?? 0;
+    const ox = r.x, oy = r.y, g = classOf(state, r.owner).slots.gun, life = g?.lifeTicks ?? 0;
     r.x += r.vx * DT; r.y += r.vy * DT; r.age++;
-    let best = 2, ship = -1;   // entry parameters are at most 1
+    let best = 2, ship = -1, rock = -1;   // entry parameters are at most 1; W-4 spec §5.1: rock is the rock that is the first contact
     state.ships.forEach((s, k) => {
       if (!s.active || k === r.owner) return;
       const t = segmentEntry(ox, oy, r.x, r.y, s.x, s.y, classOf(state, k).radius);
@@ -151,11 +165,12 @@ export function stepRounds(state: TacticalState): void {
     for (const k of rocksNear(state, (ox + r.x) / 2, (oy + r.y) / 2, half)) {
       if (state.rockBorn[k] === 1) continue;   // as firstBlocker: a piece made earlier this tick is not in the way
       const a = rockAt(state, k), t = segmentEntry(ox, oy, r.x, r.y, a.x, a.y, a.r);
-      if (t >= 0 && t < best) { best = t; ship = -1; }
+      if (t >= 0 && t < best) { best = t; ship = -1; rock = k; }
     }
     const p = state.map.planet, tp = segmentEntry(ox, oy, r.x, r.y, p.x, p.y, p.r);
-    if (tp >= 0 && tp < best) { best = tp; ship = -1; }
+    if (tp >= 0 && tp < best) { best = tp; ship = -1; rock = -1; }
     if (ship >= 0) gunHit(state, r.owner, ship, ox, oy, r.x, r.y);
+    else if (rock >= 0 && g !== null && g !== undefined && g.rock !== null) roundStrikesRock(state, r.owner, rock, ox, oy, r.x, r.y, g.rock);   // W-4 spec §5.1; GUN.rock is null: absorbed, as before
     if (best <= 1 || r.age >= life) Object.assign(r, emptyRound());
   }
 }
