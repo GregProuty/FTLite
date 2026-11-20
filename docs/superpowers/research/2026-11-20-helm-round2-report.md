@@ -52,6 +52,8 @@ FAIL: median 140.1 s < 180
 ## Task 14 re-picks (kind b)
 
 - Task 2: `tests/duelGolden.test.ts` and `tests/duelRematchGolden.test.ts` (the duel hash holds three more values); the known-red window opens. Re-bless in Task 14.
+- Task 3: `tests/tacticalSlots.test.ts:162` (seed 1's whole scripted duel length, `expected 10125 to be 7796`; the property `wrong === 0` still passes).
+- Task 3: `tests/duelSnapshot.test.ts` fixture tick (seed 1, tick 6465, picked by "the crew pew turret is slewed there"): its `systems.0.cls = 1` case now reaches `duel slot identity` instead of `pewTurret: out of range`. Re-pick the tick in Task 14 (log `systems.0.pewTurret` to confirm).
 
 ## Kind (a) rewrites
 
