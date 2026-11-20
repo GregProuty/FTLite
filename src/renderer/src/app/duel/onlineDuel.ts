@@ -209,7 +209,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   }
   function release(): void {
     stopInput(); offClose(); offClose = () => {};
-    client?.dispose(); client = null; predictor?.dispose(); predictor = null; confirmedSequence = 0; link?.close('renderer-detached'); link = null;
+    client?.dispose(); client = null; predictor?.dispose(); predictor = null; confirmedSequence = 0; neutralSequence = null; link?.close('renderer-detached'); link = null;
   }
   function freeze(): void {
     if (linkClosed) return;   // frozen at the close: the copy is final until the next attach
@@ -446,6 +446,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   }
   /** Net-4a §3.3: a producing local tick (the first of a pump): the presses, the commands and this seat's held frame. */
   function produce(): LocalInput {
+    collected = null;   // a throw in play() on an earlier tick leaves no stale list
     let k = keyboard.sample();
     const requests = contact.takeRequests(), heading = requests0(), steerTaken = takeSteer0(), pew = pewRequest(), torpNow = torpRequest();   // drained before any early return, so a steer never goes stale
     const prevHeld = lastFlags; lastFlags = k.held ?? NO_HELD_FLAGS;
@@ -473,7 +474,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     leaveConfirm = keys.prompt;
     if (keys.send) send(keys.send);
     if (keys.leave) deps.leave();
-    if (leaveConfirm.open || keys.leave) { producing = true; const s = client.held(me, neutral()); neutralSource(); return s === null ? idle() : { heldSequence: s, held: neutral(), commands: [] }; }
+    if (leaveConfirm.open || keys.leave) { producing = true; const s = client.held(me, neutral()); neutralSource(); if (s === null) return idle(); neutralSequence = null; return { heldSequence: s, held: neutral(), commands: [] }; }
     if (p.phase !== 'running') { neutralSource(); return idle(); }
     collected = [];
     if (decided) { if (k.presses.confirm > 0) send({ kind: 'rematch' }); }
@@ -499,7 +500,9 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     for (const slot of [0, 1] as const) source?.gunModeBase(slot, gunModeSent[slot] ? gunModeSent[slot]!.manual : null);   // W-4 spec §11, amendment §2.6
     producing = true;
     const commands = collected; collected = null;
-    return sequence === null ? idle() : { heldSequence: sequence, held: sent, commands };
+    if (sequence === null) return idle();
+    neutralSequence = null;   // a newer held frame supersedes a parked neutralize's sequence
+    return { heldSequence: sequence, held: sent, commands };
   }
   /** Net-4a §3.3: a not-producing local tick: neutral, no commands, and the sequence of a neutralize sent since, if any. */
   function idle(): LocalInput { const s = neutralSequence; neutralSequence = null; return { heldSequence: s, held: neutral(), commands: [] }; }

@@ -51,7 +51,7 @@ function stubClient() {
     state: () => replica, publication: () => pub,
     command(player: number, command: DuelCommand) { sent.push({ kind: 'command', command }); const id = { player, sequence: ++commandSequence }; ids.push(id); return id; },
     held(_player: number, held: HeldInput) { sent.push({ kind: 'held', held: { ...held } }); return ++heldSequence; },
-    neutralize(player: number): number | null { neutralized.push(player); return null; },
+    neutralize(player: number): number | null { neutralized.push(player); return ++heldSequence; },   // as the real client: a neutral held frame, its sequence
     commandStatus: () => ({ state: status }),
     takeResults: () => results.splice(0), takeEvents: () => events.splice(0),
     dispose() { if (replica) disposeDuel(replica); replica = null; pub = null; }
@@ -61,7 +61,9 @@ type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
   clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null; notice?: string | null }[], overlay: [] as (readonly string[] | null)[],
   sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; reticle(aim: number): void; torpHeading(h: number): void; trigger(held: boolean): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 },
-  source: null as null | { helmVent(): { x: number; y: number; boosted: boolean }; thrMille(): number }
+  source: null as null | { helmVent(): { x: number; y: number; boosted: boolean }; thrMille(): number },
+  /** Net-4a: each predictor the session made, its dispose count and the entries it was ticked with. */
+  predictors: [] as { disposed: number; ticks: { heldSequence: number | null; held: HeldInput; commands: readonly unknown[] }[] }[]
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
 vi.mock('../src/network/portLink', () => ({
@@ -71,6 +73,15 @@ vi.mock('../src/network/portLink', () => ({
     return { onClose(cb: () => void) { listeners.push(cb); return () => { const i = listeners.indexOf(cb); if (i >= 0) listeners.splice(i, 1); }; }, close() {}, send() {}, onMessage: () => () => {} };
   }
 }));
+// Net-4a: the real predictor, spied on (its dispose and every entry it is ticked with).
+vi.mock('../src/renderer/src/clientControl/duelPredictor', async (importOriginal) => {
+  const m = await importOriginal<typeof import('../src/renderer/src/clientControl/duelPredictor')>();
+  return { ...m, createDuelPredictor: (o: Parameters<typeof m.createDuelPredictor>[0]) => {
+    const real = m.createDuelPredictor(o), rec = { disposed: 0, ticks: [] as { heldSequence: number | null; held: HeldInput; commands: readonly unknown[] }[] };
+    h.predictors.push(rec);
+    return { ...real, tick(e: Parameters<typeof real.tick>[0]) { rec.ticks.push({ ...e, held: { ...e.held } }); return real.tick(e); }, dispose() { rec.disposed++; real.dispose(); } };
+  } };
+});
 vi.mock('../src/network/transport/bridge', () => ({ browserPortEndpoint: () => ({}) }));
 vi.mock('../src/renderer/src/app/duel/scene', () => ({
   // Mirrors the real scene: draw hands the UI a frame, dispose clears the sink (scene.ts dispose: options.ui.clear()).
@@ -111,7 +122,7 @@ const nextRound = (d: DuelState): void => {
 };
 
 let win: ReturnType<typeof target>;
-beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; h.sceneOpts.length = 0; h.sources.length = 0; h.disposes.n = 0; });
+beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; h.sceneOpts.length = 0; h.sources.length = 0; h.disposes.n = 0; h.predictors.length = 0; });
 afterEach(() => { delete (globalThis as { window?: unknown }).window; });
 
 function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame() {}, clear() {} }, api: object = {}, extra: object = {}, cls?: number) {   // playtest2feedback Decision 17: cls picks the Valkyrn for the client's throttle prediction tests
@@ -973,8 +984,14 @@ describe('the session predicts (Net-4a §3.3, §3.6)', () => {
   it('the first tick of a pump takes the presses; the later ones repeat its held input with no commands', () => {
     const r = rig(1, undefined, undefined, undefined, ShipClass.ValkyrnLaser), c = r.attach();   // seat 1 at the ValkyrnLaser's Weapons: Space charges the laser (the Cutter's Hound-style Weapons seat ignores Space)
     const before = c.commands().length;
+    const heldBefore = c.helds().length;
     r.key('keydown', 'Space'); r.key('keyup', 'Space'); r.pump(50);
     expect(c.commands().slice(before).filter((x) => x.kind === 'laserCharge')).toHaveLength(1);
+    const frames = c.helds().slice(heldBefore);
+    expect(frames).toHaveLength(3);
+    for (const f of frames) expect(f).toEqual(frames[0]);   // the later ticks repeat the first's held input
+    const entries = h.predictors.at(-1)!.ticks.slice(-3);
+    expect(entries.map((e) => e.commands.length)).toEqual([1, 0, 0]);   // the press is the first tick's only
     r.dispose();
   });
   it('the scene draws P ahead of the confirmed replica; confirmed() is the replica', () => {
@@ -992,6 +1009,31 @@ describe('the session predicts (Net-4a §3.3, §3.6)', () => {
     for (let k = 0; k < 4; k++) r.pump();
     session_frame(r);
     expect((h.source as unknown as { duel: DuelState }).duel.interior.tick).toBe(c.publication()!.tick + 5);
+    r.dispose();
+  });
+  it('a link close disposes the predictor: it is ticked no more', () => {
+    const r = rig(0); r.attach();
+    for (let k = 0; k < 3; k++) r.pump();
+    const pr = h.predictors.at(-1)!, ticked = pr.ticks.length;
+    expect(pr.disposed).toBe(0);
+    r.closeLink();
+    expect(pr.disposed).toBe(1);
+    for (let k = 0; k < 3; k++) r.pump();
+    expect(pr.ticks.length).toBe(ticked);
+    r.dispose();
+  });
+  it('a neutralize\'s held sequence rides the next local tick\'s entry, and only that one', () => {
+    const r = rig(0), c = r.attach();
+    for (let k = 0; k < 2; k++) r.pump();
+    const pr = h.predictors.at(-1)!, n = c.neutralized.length;
+    r.session.setFocused(false);
+    expect(c.neutralized.length).toBe(n + 1);
+    const from = pr.ticks.length;
+    r.pump(); r.pump();
+    const [a, b] = pr.ticks.slice(from);
+    expect(a!.heldSequence).toBe(c.helds().length + 1);   // the stub's neutralize took the sequence after the last held frame
+    expect(a!.held).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
+    expect(b!.heldSequence).toBeNull();
     r.dispose();
   });
   it('a link close drops the prediction: the frozen copy is drawn', () => {
