@@ -21,3 +21,6 @@ public/assets/paid/
 .vercel/
 .vercel
 .env*
+
+# Python bytecode (tools/sprite-render)
+__pycache__/

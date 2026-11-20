@@ -1,5 +1,6 @@
 import { STATION_IDS } from '../sim/stationKinds';
 import { CREW_ART_NAMES } from './crewArt';
+import { CREW3D_NAMES } from './crew3dModel';
 import { AUDIO_ASSET_NAMES } from '../audio/soundBank';
 
 /** Every asset name the renderer uses (spec §3 name contract). required = must be bound in the manifest; optional = may be unbound (in-house piece, Graphics fallback). */
@@ -30,6 +31,7 @@ add('required', 'crew.down');
 add('optional', 'crew.sit');
 // Art-ii (spec section 1): the bought crew, a paid pack absent on a fresh clone; the Puny crew then draw as before
 add('optional', ...CREW_ART_NAMES);
+add('optional', ...CREW3D_NAMES);       // Crew3D spec section 4: the pre-rendered 3D crew and boarder; the old art without them
 add('optional', ...CONSOLE_ART_NAMES);   // Art-ii spec section 2: the bought consoles; the procedural desks without them
 add('optional', 'ship.hound.map');   // Art-iv: the 2-Minute Tabletop Hound battlemap, a paid painting
 add('optional', 'ship.valkyrn.map');   // Valkyrn spec §4.1: the 2-Minute Tabletop Valkyrn battlemap, a paid painting

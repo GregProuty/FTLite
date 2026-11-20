@@ -1,0 +1,277 @@
+{
+  "note": "Crew3D look, accepted by the owner 2026-11-20: Diablo 2-style pixel pass, 60 degree tilt, 8 directions. Every value the look depends on lives here; render.py has none of its own.",
+  "frame": 128,
+  "supersample": 4,
+  "tilt": 60,
+  "orthoScale": 1.75,
+  "focusZ": 0.8,
+  "directions": [
+    ["n", 180],
+    ["ne", 135],
+    ["e", 90],
+    ["se", 45],
+    ["s", 0],
+    ["sw", -45],
+    ["w", -90],
+    ["nw", -135]
+  ],
+  "render": {
+    "samples": 64,
+    "seed": 1,
+    "device": "GPU",
+    "viewTransform": "Standard",
+    "look": "High Contrast",
+    "maskSamples": 4
+  },
+  "lights": [
+    {
+      "name": "Key",
+      "location": [-3.2, -1.5, 5.0],
+      "energy": 900,
+      "size": 1.0,
+      "color": [1.0, 0.95, 0.85]
+    },
+    {
+      "name": "Fill",
+      "location": [3.5, -3.0, 1.5],
+      "energy": 60,
+      "size": 4.0,
+      "color": [0.6, 0.7, 1.0]
+    },
+    {
+      "name": "Rim",
+      "location": [2.5, 3.5, 3.5],
+      "energy": 250,
+      "size": 1.0,
+      "color": [0.75, 0.85, 1.0]
+    }
+  ],
+  "lightTarget": [0.0, 0.0, 0.9],
+  "world": {
+    "low": [0.02, 0.02, 0.025],
+    "high": [0.35, 0.37, 0.42],
+    "lowAt": 0.45,
+    "highAt": 0.75,
+    "strength": 0.2
+  },
+  "grit": {
+    "grime": [0.015, 0.012, 0.01],
+    "bare": [0.4, 0.4, 0.38],
+    "metallic": 0.75,
+    "roughness": [0.3, 0.6],
+    "mottle": [0.35, 1.5],
+    "bump": 0.4,
+    "wear": 1.0,
+    "wearRamp": [0.52, 0.58],
+    "aoDistance": 0.05
+  },
+  "pixelPass": {
+    "alphaCut": 0.5,
+    "gamma": 1.15,
+    "colors": 64,
+    "accentSaturation": 90,
+    "accentWeight": 6,
+    "shadow": {
+      "shiftX": 0.32,
+      "keepY": 0.2,
+      "alpha": 90
+    },
+    "maskGain": 1.35
+  },
+  "sheet": {
+    "columns": 16
+  },
+  "animationSets": {
+    "crew": [
+      {
+        "name": "idle",
+        "frames": 4,
+        "fps": 4,
+        "loop": true
+      },
+      {
+        "name": "walk",
+        "frames": 8,
+        "fps": 12,
+        "loop": true
+      },
+      {
+        "name": "work",
+        "frames": 6,
+        "fps": 8,
+        "loop": true
+      },
+      {
+        "name": "repair",
+        "frames": 6,
+        "fps": 8,
+        "loop": true
+      },
+      {
+        "name": "firefight",
+        "frames": 6,
+        "fps": 8,
+        "loop": true
+      },
+      {
+        "name": "down",
+        "frames": 1,
+        "fps": 1,
+        "loop": false,
+        "focusZ": 0.0,
+        "shadow": false
+      }
+    ],
+    "boarder": [
+      {
+        "name": "idle",
+        "frames": 4,
+        "fps": 4,
+        "loop": true
+      },
+      {
+        "name": "walk",
+        "frames": 8,
+        "fps": 12,
+        "loop": true
+      },
+      {
+        "name": "attack",
+        "frames": 6,
+        "fps": 10,
+        "loop": true
+      }
+    ]
+  },
+  "characters": {
+    "crewA": {
+      "animations": "crew",
+      "mask": true,
+      "dims": {
+        "ankle": 0.08,
+        "shin": 0.45,
+        "thigh": 0.45,
+        "spine": 0.26,
+        "chest": 0.3,
+        "neck": 0.02,
+        "head": 0.115,
+        "shoulderW": 0.215,
+        "hipW": 0.1,
+        "upperArm": 0.3,
+        "foreArm": 0.27,
+        "girth": 0.92
+      },
+      "kit": {
+        "helmet": "crest",
+        "pack": "large",
+        "holster": true,
+        "tools": true,
+        "accent": ["chest", "shoulders", "knees", "crest"]
+      },
+      "palette": {
+        "steel": {
+          "base": [0.09, 0.1, 0.115]
+        },
+        "accent": {
+          "base": [0.2, 0.2, 0.2],
+          "metallic": 0.4,
+          "bare": [0.45, 0.45, 0.45]
+        },
+        "trim": {
+          "base": [0.26, 0.15, 0.05]
+        },
+        "suit": [0.06, 0.04, 0.028],
+        "dark": [0.03, 0.03, 0.035],
+        "leather": [0.12, 0.07, 0.035],
+        "glow": [0.1, 0.35, 1.0],
+        "glowStrength": 2.0
+      }
+    },
+    "crewB": {
+      "animations": "crew",
+      "mask": true,
+      "dims": {
+        "ankle": 0.08,
+        "shin": 0.42,
+        "thigh": 0.42,
+        "spine": 0.25,
+        "chest": 0.28,
+        "neck": 0.02,
+        "head": 0.108,
+        "shoulderW": 0.185,
+        "hipW": 0.095,
+        "upperArm": 0.285,
+        "foreArm": 0.26,
+        "girth": 0.88
+      },
+      "kit": {
+        "helmet": "dome",
+        "pack": "small",
+        "holster": true,
+        "tools": true,
+        "accent": ["chest", "helmet", "gauntlet", "greave"]
+      },
+      "palette": {
+        "steel": {
+          "base": [0.13, 0.13, 0.13]
+        },
+        "accent": {
+          "base": [0.2, 0.2, 0.2],
+          "metallic": 0.4,
+          "bare": [0.45, 0.45, 0.45]
+        },
+        "trim": {
+          "base": [0.22, 0.2, 0.16]
+        },
+        "suit": [0.045, 0.045, 0.05],
+        "dark": [0.03, 0.03, 0.035],
+        "leather": [0.1, 0.07, 0.04],
+        "glow": [1.0, 0.55, 0.1],
+        "glowStrength": 2.0
+      }
+    },
+    "boarder": {
+      "animations": "boarder",
+      "mask": false,
+      "dims": {
+        "ankle": 0.08,
+        "shin": 0.45,
+        "thigh": 0.45,
+        "spine": 0.27,
+        "chest": 0.31,
+        "neck": 0.02,
+        "head": 0.118,
+        "shoulderW": 0.23,
+        "hipW": 0.105,
+        "upperArm": 0.31,
+        "foreArm": 0.28,
+        "girth": 1.08
+      },
+      "kit": {
+        "helmet": "horned",
+        "pack": "none",
+        "spikes": true,
+        "blade": true,
+        "accent": ["chest", "shoulders", "cuisse"]
+      },
+      "palette": {
+        "steel": {
+          "base": [0.045, 0.045, 0.05]
+        },
+        "accent": {
+          "base": [0.24, 0.03, 0.025],
+          "metallic": 0.5
+        },
+        "trim": {
+          "base": [0.36, 0.3, 0.2],
+          "metallic": 0.4
+        },
+        "suit": [0.03, 0.025, 0.025],
+        "dark": [0.02, 0.02, 0.02],
+        "leather": [0.09, 0.05, 0.03],
+        "glow": [1.0, 0.12, 0.04],
+        "glowStrength": 3.0
+      }
+    }
+  }
+}

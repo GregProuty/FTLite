@@ -13,6 +13,7 @@ import { createTileLayer } from './tiles';
 import { createEffectsLayer } from './effects';
 import { createIconLayer } from './roomIcons';
 import { createCrewLayer } from './crewSprites';
+import { DEFAULT_CREW3D, type Crew3dSetting } from './crew3dModel';
 import { createBoarderLayer } from './boarderLayer';
 import { createMagazineLayer } from './torpedoLayer';
 import { createConsoleLayer } from './consoleLayer';
@@ -47,6 +48,9 @@ export interface Renderer {
   /** The CRT strength setting (CRT map spec section 4), set at boot from storage (app/crtBoot.ts); the console views read it each frame. */
   crt(): CrtSetting;
   setCrt(setting: CrtSetting): void;
+  /** Crew3D spec section 4: the 3D crew art or the old art (app/crew3dBoot.ts; F8 in dev builds); absent reads 'on'. */
+  crew3d?(): Crew3dSetting;
+  setCrew3d?(setting: Crew3dSetting): void;
   /** Feel-i: the console maps' screen shake setting (Settings), read by the duel scene each frame; absent reads 'full'. */
   shake?(): ShakeSetting;
   setShake?(setting: ShakeSetting): void;
@@ -67,15 +71,17 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const world = new Container(); world.isRenderGroup = true;
   const projectiles = createProjectileLayer();   // spec Demo-vii section 2: over the ship (internal pixels), under the HUD
   const enemyWindow = createEnemyWindowLayer({ fontFamily: assets.fontFamily, fire: assets.has('fire.loop') ? assets.animation('fire.loop') : null, panel: null });   // the themed panel (spec Demo-x-c section 1)
-  const callouts = createCalloutLayer(assets);
+  let crew3dSetting: Crew3dSetting = DEFAULT_CREW3D;
+  const crew3dOn = (): boolean => crew3dSetting === 'on';
+  const callouts = createCalloutLayer(assets, crew3dOn);
   app.stage.addChild(world, enemyWindow.container, projectiles.container, callouts.container);   // spec Demo-viii amendment R2: world, enemy window, projectiles, HUD; the callout bubbles (spec Coop-i section 3) just under the HUD
   let anim = freshWindowAnim();
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory);
   const effects = createEffectsLayer(assets, memory);
   const icons = createIconLayer();
-  const crew = createCrewLayer(assets, memory);
-  const boarders = createBoarderLayer(assets);
+  const crew = createCrewLayer(assets, memory, crew3dOn);
+  const boarders = createBoarderLayer(assets, crew3dOn);
   const consoleDesks = createConsoleLayer(assets);   // spec Demo-xii section 1: a desk at every station, under the crew (Art-ii: the bought consoles)
   const magazine = createMagazineLayer();   // spec Coop-ii section 2: the magazine tile, under the crew
   const props = createPropLayer(assets);    // Art-iii spec section 4: the set dressing, directly over the tiles
@@ -106,6 +112,8 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
     setFeel(setting) { feelSetting = setting; },
     crt: () => crtSetting,
     setCrt(setting) { crtSetting = setting; },
+    crew3d: () => crew3dSetting,
+    setCrew3d(setting) { crew3dSetting = setting; },
     shake: () => shakeSetting,
     setShake(setting) { shakeSetting = setting; },
     mapGrid: () => mapGridSetting,
@@ -133,9 +141,10 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       // Light and feel (Art-i spec sections 5-8): this frame's hit rooms, the working crew, the failed stations.
       const hits = sectorHits(state.rooms.impactTick, state.tick, seenImpact); seenImpact = hits.seen;
       watchRepair(memory.repair, state);
-      const { shake, bob } = feel.draw({ state, grade: sectorGradeInput(state), hit: { rooms: hits.rooms }, sparks: failedStationPoints(state), working: sectorWorking(state, memory.repair), artPx: 2 * fit.scale }, paused ? 0 : dt, dt);
+      const working = sectorWorking(state, memory.repair);
+      const { shake, bob } = feel.draw({ state, grade: sectorGradeInput(state), hit: { rooms: hits.rooms }, sparks: failedStationPoints(state), working, artPx: 2 * fit.scale }, paused ? 0 : dt, dt);
       world.position.set(fit.x + shake.x, fit.y + shake.y); projectiles.container.position.set(shake.x, shake.y);   // the shake moves the world and the projectiles, as before
-      crew.draw(state, alpha, presentation, bob);
+      crew.draw(state, alpha, presentation, bob, working);
       boarders.draw(state, dt);
       callouts.draw(state, bubbles, { scale: fit.scale, x: fit.x + shake.x, y: fit.y + shake.y });
     }

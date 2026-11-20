@@ -10,6 +10,7 @@ import { SIM_VERSION } from '../src/renderer/src/sim/tuning';
 import type { OnlinePortDescriptor, OnlineStatus } from '../src/shared/onlineSession';
 import { saveSnapshot } from '../src/renderer/src/sim/snapshot';
 import { createCrewLayer } from '../src/renderer/src/render/crewSprites';
+import { FEATURE_NAMES } from '../src/renderer/src/render/fallback';
 import { createRenderMemory } from '../src/renderer/src/render/memory';
 import type { GameAssets } from '../src/renderer/src/render/assets';
 import { Position, Stable } from '../src/renderer/src/sim/components';
@@ -140,7 +141,7 @@ describe('online renderer uses the real streaming client', () => {
     const [view, , , , points] = h.draw.mock.calls.at(-1)!;
     const point = points.find((p: any) => p.id === 'crew:2'); expect(point.x).toBeLessThan(Position.x[view.crew[2]]!);
     const snapshot = saveSnapshot(view), memory = createRenderMemory();
-    const layer = createCrewLayer({ missing: ['crew.idle.s'] } as GameAssets, memory);
+    const layer = createCrewLayer({ missing: ['crew.idle.s', ...FEATURE_NAMES.crew3d] } as GameAssets, memory);   // no crew art at all: the circles
     layer.draw(view, 1, points);
     expect(memory.lastDrawn.get(Stable.id[view.crew[2]]!)).toEqual({ x: point.x, y: point.y });
     expect(layer.container.children.some(child => child.position.x === point.x * TILE_PX && child.position.y === point.y * TILE_PX)).toBe(true);
