@@ -11,7 +11,6 @@ import { laserSituation, refusal, statusSentence, weaponsOffline } from '../src/
 import { createDuelKeyboard, NO_HELD_FLAGS, type EventSource } from '../src/renderer/src/app/duel/input';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import { lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
-import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
 import { initRocks } from '../src/renderer/src/sim/tactical/rocks';
 import { placeMissile, Room } from '../src/renderer/src/sim/tactical/state';
 import { IDLE_INPUT, tickWeapons } from '../src/renderer/src/sim/tactical/weapons';
@@ -70,7 +69,7 @@ describe('WEAPONS OFFLINE only when all three weapons are dark (spec §10.3, §1
     const d = createDuel(HOUND, 5), t = d.tactical, sys = t.systems[0], me = t.ships[0]!, e = t.ships[1]!;
     try {
       seatDuelCrew(d);
-      t.map = { ...t.map, asteroids: [] }; t.grid = buildGrid([], t.map.rMap); t.rocks = initRocks(t.map);   // no rocks (feelIiModels' clearRocks): the line is clear by construction (nothing steps)
+      t.map = { ...t.map, asteroids: [] }; t.rocks = initRocks(t.map);   // no rocks (feelIiModels' clearRocks): the line is clear by construction (nothing steps)
       e.x = me.x + hx(me.heading) * 200; e.y = me.y + hy(me.heading) * 200; e.active = true;   // dead ahead, in range and arc
       expect(lineOfSight(t, me.x, me.y, e.x, e.y)).toBe(true);   // the precondition
       expect(weaponsOffline(t)).toBe(false);
@@ -96,7 +95,7 @@ describe('WEAPONS OFFLINE only when all three weapons are dark (spec §10.3, §1
   it('the beam dark, the torpedo powered: NO GUNNER and TORPEDO FLYING still speak, else none', () => {
     const d = createDuel(HOUND, 5), t = d.tactical, me = t.ships[0]!, e = t.ships[1]!;
     try {
-      t.map = { ...t.map, asteroids: [] }; t.grid = buildGrid([], t.map.rMap); t.rocks = initRocks(t.map);
+      t.map = { ...t.map, asteroids: [] }; t.rocks = initRocks(t.map);
       e.x = me.x + hx(me.heading) * 200; e.y = me.y + hy(me.heading) * 200; e.active = true;
       expect(weaponsOffline(t)).toBe(false);
       expect(laserSituation(t, Infinity, true).kind).toBe('none');

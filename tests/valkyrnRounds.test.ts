@@ -12,7 +12,6 @@ import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { GUN, ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { gunRoomOf, placeRound, stepRounds } from '../src/renderer/src/sim/tactical/gun';
-import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
 import { hunterThink } from '../src/renderer/src/sim/tactical/hunter';
 import { flySlot } from '../src/renderer/src/sim/tactical/physics';
 import { createTacticalState, Outcome, Room, type DuelEvent, type TacticalState } from '../src/renderer/src/sim/tactical/state';
@@ -29,7 +28,7 @@ const H = { x: -300, y: -300 };
  *  asteroids; the Hunter's shields set to `shields`. */
 function range(shields = 2): TacticalState {
   const st = makeHostile(createTacticalState(5, 2, ShipClass.Valkyrn));
-  st.map = { ...st.map, asteroids: [] }; st.grid = buildGrid([], st.map.rMap);
+  st.map = { ...st.map, asteroids: [] };
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: H.x, y: H.y, vx: 0, vy: 0, heading: 0 });
   st.systems[1].shields = shields;

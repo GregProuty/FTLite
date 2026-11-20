@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRng } from '../src/shared/rng';
 import { circularSpeed, clusterOf, generateMap, laneBand, laneOf, validateMap } from '../src/renderer/src/sim/tactical/map';
-import { buildGrid, queryGrid } from '../src/renderer/src/sim/tactical/grid';
 import { initRocks, RockKind, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { withSwitches } from './helpers/rockArena';
 import { ASTEROID_GAP, CLUSTER_RADIUS, CLUSTER_RHO_SEPARATION, CLUSTER_R_MAX, LANES, SPAWN_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
@@ -29,19 +28,6 @@ describe('duel map (spec §3)', () => {
   });
 });
 
-describe('broad phase (spec §4)', () => {
-  it('finds every asteroid a brute-force search finds, in ascending order', () => {
-    const m = generateMap(createRng(3)), g = buildGrid(m.asteroids, m.rMap);
-    for (const [x, y] of [[0, -1200], [1250, 40], [-900, 900], [2500, 0], [3000, 3000]] as const) {
-      const r = 20 + 55;
-      const brute = m.asteroids.flatMap((a, i) => (Math.abs(a.x - x) <= r + a.r && Math.abs(a.y - y) <= r + a.r ? [i] : []));
-      const got = queryGrid(g, x, y, r);
-      for (const i of brute) expect(got).toContain(i);
-      expect(got).toEqual([...got].sort((a, b) => a - b));
-      expect(new Set(got).size).toBe(got.length);
-    }
-  });
-});
 
 describe('lanes and rigid clusters (asteroids-iii §3.5)', () => {
   it('over 200 seeds: 17, 36 and 17 rocks on their lane radii in their size bands, clusters at least 420 apart in ρ', () => {

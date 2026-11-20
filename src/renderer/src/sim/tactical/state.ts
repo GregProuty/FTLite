@@ -6,7 +6,6 @@ import { createRng, nextInt, type RngState } from '../../../../shared/rng';
 import { DUEL_CLASSES, pewFullCharge, SHIP_CLASSES, ShipClass, type ShipClassDef } from './defs';
 import { DUEL_SYSTEM_COUNT, SHIELD_LAYERS_BY_BARS, START_BARS, START_WEAPON_POWER, WEAPON_SLOTS } from './bars';
 import { dirBetween } from './direction';
-import { buildGrid, type BroadPhase } from './grid';
 import { generateMap, type MapDef, type Spawn } from './map';
 import { cloneTacticalFromModule } from './hash';
 import { initRocks, rockCapacity } from './rocks';
@@ -173,7 +172,7 @@ export type DuelEvent =
 export type RockCause = 'laser' | 'torpedo' | 'collision' | 'ram' | 'planet' | 'edge' | 'tidal' | 'settle';
 
 export interface TacticalState {
-  tick: number; seed: number; rng: RngState; map: MapDef; grid: BroadPhase;
+  tick: number; seed: number; rng: RngState; map: MapDef;
   /** Spike ii (rocks.ts): the mutable rock pool and its counters (§8; asteroids-iii §5.4 rockTouches, §5.5 rockSlotDust,
    *  §13.3 rockCapHits), then the per-tick transient masks (not hashed, not snapshotted, cleared at the start and the end
    *  of every stepDuel). */
@@ -282,7 +281,7 @@ export function createTacticalState(seed: number, slots = DUEL_CLASSES.length, c
   const science = scienceDraws(rng, map);   // Sci-1 spec §4.5: right after the map, before anything else reads the rng
   const bodies = rockCapacity(map) + slots, extra = Array.from({ length: slots - 2 });
   return {
-    tick: 0, seed, rng, map, grid: buildGrid(map.asteroids, map.rMap), rocks: initRocks(map), rockHits: 0, rockSplits: 0, rockDust: 0, rockBlasts: 0, rockCollisions: 0, rockEvictions: 0, rockTouches: 0, rockSlotDust: 0, rockCapHits: 0,
+    tick: 0, seed, rng, map, rocks: initRocks(map), rockHits: 0, rockSplits: 0, rockDust: 0, rockBlasts: 0, rockCollisions: 0, rockEvictions: 0, rockTouches: 0, rockSlotDust: 0, rockCapHits: 0,
     rockBorn: new Uint8Array(rockCapacity(map)), rockDone: new Uint8Array(rockCapacity(map)), rockTouched: new Uint8Array(rockCapacity(map)),
     ships: [shipAt(map.spawns[0], bodies), shipAt(map.spawns[1], bodies), ...extra.map(() => emptyShip(bodies))],
     systems: [systemsFor(crewClass, 1, true),systemsFor(DUEL_CLASSES[1]!, 0), ...extra.map(emptySystems)],
@@ -321,7 +320,7 @@ export function removeMissile(state: TacticalState, i: number): void {
 
 /** Deep copy of the whole tactical state for snapshots, rollback and replay checks, derived from the space and ship
  *  modules' fields (sim/tactical/hash.ts): a field the modules declare is copied without anything listed here. The map
- *  and broad-phase grid are immutable after creation and are shared. */
+ *  is immutable after creation and is shared. */
 export function cloneTactical(s: TacticalState): TacticalState { return cloneTacticalFromModule(s); }
 
 /** Deep copy of a ship's body. Any new nested Ship state (arrays, typed arrays) must be copied here. */

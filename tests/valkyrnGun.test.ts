@@ -11,7 +11,6 @@ import { disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { GUN, ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { placeRound } from '../src/renderer/src/sim/tactical/gun';
-import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
 import { flattenTactical, TACTICAL_MODULES, validateTacticalValues } from '../src/renderer/src/sim/tactical/hash';
 import { createTacticalState, Room, type DuelEvent, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { GUN_COOL, GUN_COOL_LOCKED, GUN_POOL } from '../src/renderer/src/sim/tactical/tuning';
@@ -26,7 +25,7 @@ type GunFire = Extract<DuelEvent, { kind: 'gunFire' }>;
 /** The crew ship of class `cls` at (−600, −300) facing east at rest, the enemy parked far off, no asteroids. */
 function gunState(cls: number = ShipClass.Valkyrn): TacticalState {
   const st = makeHostile(createTacticalState(5, 2, cls));
-  st.map = { ...st.map, asteroids: [] }; st.grid = buildGrid([], st.map.rMap);
+  st.map = { ...st.map, asteroids: [] };
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: 2600, y: 2600, vx: 0, vy: 0 });
   return st;

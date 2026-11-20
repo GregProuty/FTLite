@@ -143,7 +143,6 @@ export const spaceModule: SimModule<TacticalState> = {
   fields: (s) => spaceFields(s.map.asteroids.length, s.ships.length),
   notSnapshotted: {
     map: 'regenerated from the seed by generateMap; the duel snapshot checks its mapHash',
-    grid: 'the broad-phase grid, rebuilt from the map',
     events: 'per-tick events for the views, cleared every tick',
     rockBorn: 'spike ii §3.1: slots written with a new piece this tick; cleared at the start and the end of every stepDuel tick',
     rockDone: 'spike ii §3.3: slots that had their contact turn this tick; cleared at the start and the end of every stepDuel tick',
@@ -202,7 +201,7 @@ export function hashTactical(s: TacticalState): string { return hashF64(flattenT
 
 /** Deep copy of a tactical state, derived from the space and ship modules (engine refactor spec §6: clone comes from the
  *  modules' fields): the copy gets fresh containers of the state's shape, then every field's values are written into it.
- *  The map and the broad-phase grid are immutable after creation and are shared; the per-tick events are copied. −0 is kept. */
+ *  The map is immutable after creation and is shared; the per-tick events are copied. −0 is kept. */
 export function cloneTacticalFromModule(s: TacticalState): TacticalState {
   const copy: TacticalState = { ...s, rng: { s: 0 }, rocks: new Float64Array(s.rocks.length),
     rockBorn: new Uint8Array(s.rockBorn.length), rockDone: new Uint8Array(s.rockDone.length), rockTouched: new Uint8Array(s.rockTouched.length),

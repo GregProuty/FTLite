@@ -1,7 +1,7 @@
 // The duel snapshot (engine refactor spec §6, an R-1 deliverable). The values are exactly flattenDuel: SIM_VERSION, the
 // tactical state in flattenTactical's order (the space then the ship module), presence (n flags, Sci-2 spec §4.2), repair, the round (H-2 spec
 // §7), the helm throttle (Artemis-ii) and held heading (Feel-ii), then the interior through the sector snapshot path.
-// Regenerated, not stored: the map (from the seed, checked by mapHash), the broad-phase grid, the repair points and
+// Regenerated, not stored: the map (from the seed, checked by mapHash), the repair points and
 // Derived (from the duel layout). Not stored: the per-tick events. Every check runs before any allocation, including
 // every tactical field's bounds and slot invariants, presence and repair, except the final one, which restores into a
 // fresh duel and requires hashDuel to equal the hash the header records.
@@ -141,7 +141,7 @@ export function validateDuelSnapshot(layout: ShipLayout, value: unknown, content
   if (typeof h.tick !== 'number' || !Number.isSafeInteger(h.tick) || h.tick < 0) throw new Error('duel snapshot tick is invalid');
   if (typeof h.seed !== 'number' || !Number.isInteger(h.seed) || h.seed < 0 || h.seed > 0xffffffff) throw new Error('duel snapshot seed is invalid');
   if (typeof h.mapHash !== 'string' || typeof h.hash !== 'string') throw new Error('duel snapshot hashes are invalid');
-  const seed = seedEntry(h.seed);   // the map and grid only, from the cache: no interior allocation
+  const seed = seedEntry(h.seed);   // the map only, from the cache: no interior allocation
   if (!seed.valid) throw new Error('duel snapshot seed makes an invalid map');
   if (seed.mapHash !== h.mapHash) throw new Error('duel snapshot map does not match its seed');
   if (!Array.isArray(snap.values) || snap.values.some((v) => typeof v !== 'number' || !Number.isFinite(v))) throw new Error('duel snapshot values must be finite numbers');

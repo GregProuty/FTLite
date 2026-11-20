@@ -10,7 +10,6 @@ import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { classIndexById, CUTTER_CLASS, GUN, HUNTER_CLASS, LASER, MISSILE, SHIP_CLASSES, ShipClass, VALKYRN_CLASS, VALKYRN_LASER_CLASS } from '../src/renderer/src/sim/tactical/defs';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
-import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
 import { flattenTactical, validateTacticalValues } from '../src/renderer/src/sim/tactical/hash';
 import { createTacticalState, Outcome, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { DT, GUN_POOL, HEADING_COUNT, SHIP_RADIUS, VALKYRN_HULL, VALKYRN_THRUST, VALKYRN_TURN_DEG_PER_S } from '../src/renderer/src/sim/tactical/tuning';
@@ -25,7 +24,7 @@ const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
  *  no asteroids: inside the Cutter laser's arc and range. */
 function facing(cls: number): TacticalState {
   const st = todaysCrewWeapons(makeHostile(createTacticalState(5, 2, cls)));   // Engineering spike spec §10.3: the beam and torpedo stand on bars (the round starts the beam dark)
-  st.map = { ...st.map, asteroids: [] }; st.grid = buildGrid([], st.map.rMap);
+  st.map = { ...st.map, asteroids: [] };
   Object.assign(st.ships[0], { x: -600, y: -300, vx: 0, vy: 0, heading: 64 });
   Object.assign(st.ships[1], { x: -300, y: -300, vx: 0, vy: 0, heading: 192 });
   return st;

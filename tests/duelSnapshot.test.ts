@@ -37,12 +37,12 @@ describe('the duel snapshot (spec §6)', () => {
       } finally { disposeDuel(r); }
     } finally { disposeDuel(d); }
   });
-  it('regenerates the map, grid, repair points and Derived; never stores events', () => {
+  it('regenerates the map, repair points and Derived; never stores events', () => {
     const { d } = scriptedDuel(3, 300);
     try {
       const r = loadDuelSnapshot(CUTTER, saveDuelSnapshot(d, DIGEST), DIGEST);
       try {
-        expect(r.tactical.map).toEqual(d.tactical.map); expect(r.tactical.grid).toEqual(d.tactical.grid);
+        expect(r.tactical.map).toEqual(d.tactical.map);
         expect(r.points).toEqual(d.points); expect(r.interior.derived.layoutHash).toBe(d.interior.derived.layoutHash);
         expect(r.events).toEqual([]); expect(r.tactical.events).toEqual([]);
       } finally { disposeDuel(r); }

@@ -12,7 +12,6 @@ import { combatModel, TORPEDO_PATH_TICKS } from '../src/renderer/src/render/tact
 import { createCamera } from '../src/renderer/src/render/tactical/camera';
 import { createFx } from '../src/renderer/src/render/tactical/fxModel';
 import { gravityAccel } from '../src/renderer/src/sim/tactical/physics';
-import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
 import { initRocks } from '../src/renderer/src/sim/tactical/rocks';
 import { predictFlight, predictMissile, predictPath } from '../src/renderer/src/sim/tactical/predict';
 import { classOf, createTacticalState, missileOf, Outcome, placeMissile, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
@@ -39,14 +38,13 @@ const input = (st: TacticalState, console: 'helm' | 'weapons', extra: Record<str
   console, axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: 156, reserveLeft: 228, missilePrev: [null, null], fx: createFx(),
   infoBand: { left: 408, right: 1136 }, ...extra
 }) as const;
-/** An asteroid of radius r at (x, y), on the grid the contact check reads. */
+/** An asteroid of radius r at (x, y), in the live rock pool the contact check reads. */
 function rock(st: TacticalState, x: number, y: number, r: number): void {
   st.map = { ...st.map, asteroids: [...st.map.asteroids, { x, y, r } as TacticalState['map']['asteroids'][number]] };
-  st.grid = buildGrid(st.map.asteroids, st.map.rMap);
   st.rocks = initRocks(st.map);   // SPIKE (destructible asteroids): the live rock pool is what the sim and the models read
 }
-/** No asteroids (the map, its broad phase and the live rock pool). */
-function clearRocks(st: TacticalState): void { st.map = { ...st.map, asteroids: [] }; st.grid = buildGrid([], st.map.rMap); st.rocks = initRocks(st.map); }
+/** No asteroids (the map and the live rock pool). */
+function clearRocks(st: TacticalState): void { st.map = { ...st.map, asteroids: [] }; st.rocks = initRocks(st.map); }
 
 describe('the collision warning (Feel-ii §1.2)', () => {
   it('predictFlight is predictPath plus the contact: its point and tick, null when the path runs clear', () => {

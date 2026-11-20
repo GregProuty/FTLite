@@ -159,7 +159,7 @@ describe('the duel modules (spec §6 module contract)', () => {
       bothFlying(d.tactical);
       const original = flattenTactical(d.tactical), copy = cloneTactical(d.tactical);
       expect(flattenTactical(copy)).toEqual(original);
-      expect(copy.map).toBe(d.tactical.map); expect(copy.grid).toBe(d.tactical.grid);
+      expect(copy.map).toBe(d.tactical.map);
       for (const m of TACTICAL_MODULES) for (const f of m.fields(copy)) {
         if (IDENTITY.has(f.name) || /^missiles\.\d+\.active$/.test(f.name)) continue;   // a freed entry would refuse its own values
         const values: number[] = []; f.read(copy, values);

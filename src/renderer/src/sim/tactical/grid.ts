@@ -1,36 +1,8 @@
-// Broad phase (spec §4): a fixed uniform grid over the static asteroids, built once per map (the flight view's seeded map). Asteroids-iii: the rock pool's own grid below.
-// A query returns asteroid indices in ascending order, so every caller visits contacts in one fixed order.
-import type { Circle } from './map';
+// Asteroids-iii §6.1: the rock pool's broad phase (it replaced spec §4's seeded, never-rebuilt asteroid grid, now removed).
 import { ROCK_EDGE_SLACK_SOFT, ROCK_GRID_CELL, ROCK_R_MAX } from './rockTuning';
-import { BROAD_CELL, R_MAP } from './tuning';
+import { R_MAP } from './tuning';
 
-export interface BroadPhase { origin: number; cols: number; cells: number[][] }
-
-function cellOf(g: BroadPhase, v: number): number {
-  return Math.min(g.cols - 1, Math.max(0, Math.floor((v - g.origin) / BROAD_CELL)));
-}
-
-export function buildGrid(asteroids: readonly Circle[], rMap: number): BroadPhase {
-  const origin = -(rMap + BROAD_CELL);
-  const cols = Math.ceil((2 * (rMap + BROAD_CELL)) / BROAD_CELL);
-  const g: BroadPhase = { origin, cols, cells: Array.from({ length: cols * cols }, () => [] as number[]) };
-  asteroids.forEach((a, i) => {
-    for (let cy = cellOf(g, a.y - a.r); cy <= cellOf(g, a.y + a.r); cy++)
-      for (let cx = cellOf(g, a.x - a.r); cx <= cellOf(g, a.x + a.r); cx++) g.cells[cy * cols + cx]!.push(i);
-  });
-  return g;
-}
-
-/** Indices of every asteroid whose cells overlap the square around (x, y) of half-size r, ascending, no repeats. */
-export function queryGrid(g: BroadPhase, x: number, y: number, r: number): number[] {
-  const found: number[] = [];
-  for (let cy = cellOf(g, y - r); cy <= cellOf(g, y + r); cy++)
-    for (let cx = cellOf(g, x - r); cx <= cellOf(g, x + r); cx++) for (const i of g.cells[cy * g.cols + cx]!) found.push(i);
-  found.sort((a, b) => a - b);
-  return found.filter((v, k) => k === 0 || v !== found[k - 1]);
-}
-
-// Asteroids-iii §6.1: the rock pool's broad phase, replacing the seeded never-rebuilt grid for rocks. A uniform grid of
+// The rock grid: a uniform grid of
 // ROCK_GRID_CELL cells over ±(R_MAP + ROCK_EDGE_SLACK_SOFT + ROCK_R_MAX), built into reused typed arrays (cell heads and next
 // links) and kept in a WeakMap keyed by the state object, so it is never hashed, snapshotted or copied by a clone. Each
 // live rock is linked into the one cell holding its centre; a query widens its box by ROCK_R_MAX plus the pad and writes
