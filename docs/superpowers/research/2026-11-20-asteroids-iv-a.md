@@ -104,3 +104,17 @@ The delta gate (<= 5,500) holds easily. The free count is 2 to 9 over the 10 gat
 ## Not run / caveats
 
 Nothing was skipped. The idle baseline predates the new array, so its delta comparison is indicative only. The idle and burst failures were not compared against a master run of the same script; they may be new with the cell work (rocks freed in a quiet scene) and need a look by the controller.
+
+## Baseline check (controller, 2026-11-20)
+
+The idle and burst sections were re-run on the branch point before any cell work (master 8002535f, SIM 64), in a throwaway worktree:
+
+| Section | Before cell rocks | With cell rocks |
+|---|---|---|
+| idle: rocks freed in 600 s, 20 seeds | 452 | 294 |
+| idle: 300 s delta medians, seeds 1-3 (bytes) | 863, 1151, 1151 | 1007, 1391, 1151 |
+| burst: free at 270 s, seeds 1-3 | 9, 12, 23 (2 of 3 fail) | 12, 17, 19 (3 of 3 fail) |
+
+Both gates already failed before this work, so their failures are not caused by cell rocks. The freeing in a quiet scene comes from changes merged to master after asteroids-iii set the gate. Burst is about the same either way. These belong in a separate look at the idle scene, not in iv-a.
+
+The feel gate's piece count is a real difference from the spec: a shatter gives 2 to 4 pieces (median 3), not "about four to six". That is the owner's call at the playtest. The knob is `CRATER_K` (smaller keeps more cells) and the number of sector lines in `shatterGroups`.
