@@ -187,7 +187,9 @@ export const TACTICAL_MODULES: readonly SimModule<TacticalState>[] = [spaceModul
 export function flattenTactical(s: TacticalState): Float64Array {
   const out: number[] = [];
   for (const m of TACTICAL_MODULES) flattenModule(m, s, out);
-  return Float64Array.from(out, (v) => (v === 0 ? 0 : v));
+  const values = new Float64Array(out.length);   // a plain loop, not Float64Array.from with a mapper (Perf-i spec §2.1)
+  for (let k = 0; k < out.length; k++) { const v = out[k]!; values[k] = v === 0 ? 0 : v; }
+  return values;
 }
 /** The number of values flattenTactical writes for this state's map and slots. */
 export function tacticalLength(s: TacticalState): number { return TACTICAL_MODULES.reduce((n, m) => n + moduleLength(m, s), 0); }
@@ -293,6 +295,19 @@ function rockSlotProblem(v: readonly number[], b: number, tick: number): string 
   return null;
 }
 
+/** A field name's slot parts, parsed once per name (Perf-i spec §2.4): validateTacticalValues reads them for every field
+ *  of every publication, on the host and on each client. The names are a fixed set per map and slot count. */
+interface FieldNameParts { ship: RegExpExecArray | null; missile: RegExpExecArray | null; round: RegExpExecArray | null }
+const fieldParts = new Map<string, FieldNameParts>();
+function fieldNameParts(name: string): FieldNameParts {
+  let parts = fieldParts.get(name);
+  if (!parts) {
+    parts = { ship: /^(ships|systems)\.(\d+)\.(.+)$/.exec(name), missile: /^missiles\.(\d+)\.(.+)$/.exec(name), round: /^(rounds|pew)\.(\d+)\.(.+)$/.exec(name) };
+    fieldParts.set(name, parts);
+  }
+  return parts;
+}
+
 /** Check tactical values (the space then the ship module's) against their field bounds and slot invariants without
  *  writing them anywhere: heading indices, integer counters, room levels 0..2, shields, the laser and the magazine
  *  against the largest class, the hunter's and the outcome's enums, the map's asteroid count and the slot count; an
@@ -309,7 +324,7 @@ export function validateTacticalValues(shape: TacticalState, values: ArrayLike<n
     if (slice.some((v) => typeof v !== 'number' || !Number.isFinite(v))) bad('not finite');
     if (f.name === 'tick') tickSeen = slice[0]!;
     if (f.name === 'rocks') for (let k = 0; k * ROCK_STRIDE < slice.length; k++) { const why = rockSlotProblem(slice, k * ROCK_STRIDE, tickSeen); if (why) bad(`slot ${k}: ${why}`); }
-    const ship = /^(ships|systems)\.(\d+)\.(.+)$/.exec(f.name), missile = /^missiles\.(\d+)\.(.+)$/.exec(f.name), round = /^(rounds|pew)\.(\d+)\.(.+)$/.exec(f.name);
+    const { ship, missile, round } = fieldNameParts(f.name);
     if (f.name === 'map.asteroids.length') { if (slice[0] !== shape.map.asteroids.length) bad('does not match the map'); }
     else if (f.name === 'ships.length') { if (slice[0] !== slots) bad('does not match the slot count'); }
     else if (ship) {

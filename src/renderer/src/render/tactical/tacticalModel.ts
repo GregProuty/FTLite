@@ -14,6 +14,7 @@ import { rockDrawPos, rockDrawTick, rockTrailInto, type RockTrack } from './rock
 import { hullFor, type HullId } from './hullModel';
 import type { HelmVent } from '../../sim/duel/helmFlight';
 import type { FogView, GhostKind } from './fogModel';
+import { DENT_FULL_R, dentEase, dentOf, WELL_MAX_SHIFT, wellScale, type Dent, type MapGridSetting } from './mapGrid';
 
 /** The grid square's half-size: the smallest multiple of 500 that encloses the map circle (plan decision 4). */
 export const GRID_EXTENT = Math.ceil(R_MAP / 500) * 500;
@@ -49,7 +50,18 @@ export const STAR_PARALLAX = 0.02;
 export interface PrevBody { x: number; y: number; h: number }
 export interface Line { x1: number; y1: number; x2: number; y2: number }
 export interface Label { text: string; x: number; y: number }
-export interface GridDraw { spacing: number; lines: (Line & { major: boolean })[]; columns: Label[]; rows: Label[] }
+/** `curves` (the gravity grid only; `lines` is then empty): each bent line as a flat x, y, x, y… screen polyline. */
+export interface GridDraw { spacing: number; lines: (Line & { major: boolean })[]; columns: Label[]; rows: Label[]; curves?: { pts: number[]; major: boolean }[] }
+/** The gravity grid: a bent line gets a point about every WELL_SEG_PX screen pixels; a line the well bows by less than
+ *  WELL_STRAIGHT_PX is drawn straight (two points). */
+export const WELL_SEG_PX = 14, WELL_STRAIGHT_PX = 0.5;
+/** The gravity grid draws this many lines per square-grid line, so the well's shape reads; every 500 units stays major. */
+export const WELL_DENSITY = 2;
+/** A body's dent is drawn only where it moves the grid by at least this many screen pixels. */
+export const DENT_MIN_PX = 0.75;
+/** How far outside the view a grid line is still worked out: the well's farthest shift plus a large body's (the same
+ *  whatever is on the map, so the lines' points do not jump as bodies come and go). */
+export const WELL_PAD = WELL_MAX_SHIFT + dentOf(0, 0, 2 * DENT_FULL_R).shift;
 export interface CircleDraw { x: number; y: number; r: number }
 /** Spike ii: `wear` 0 (whole) .. 1 from hp / hpMax, drawn as cracks and a dimmer fill; `streak` (§7 item 3) the screen end of
  *  a moving rock's fading streak behind it, with its alpha. */
@@ -171,6 +183,8 @@ export interface TacticalModelInput {
   fog?: FogView | null;
   /** Own ship window spec §3: a console window the off-screen arrows go around (OWN_SHIP); absent: none. */
   avoid?: { x: number; y: number; w: number; h: number };
+  /** The grid's style (Settings, mapGrid.ts); absent: the square grid. */
+  mapGrid?: MapGridSetting;
 }
 
 /** Radius at which the planet's pull is `accel`, by bisection on the falling side of gravityAccel (startup only). */
@@ -256,7 +270,7 @@ export function ringCrossesRect(x: number, y: number, r: number, w: number, h: n
   return fx * fx + fy * fy >= r * r;
 }
 
-function gridDraw(cam: Camera, vp: Viewport): GridDraw {
+function gridDraw(cam: Camera, vp: Viewport, well: Point | null, dents: readonly Dent[] = []): GridDraw {
   const spacing = cam.zoom > GRID_MINOR_ZOOM ? GRID_MINOR : GRID_MAJOR;
   const v = visibleWorld(cam, vp), E = GRID_EXTENT;
   const x0 = Math.max(-E, v.x0), x1 = Math.min(E, v.x1), y0 = Math.max(-E, v.y0), y1 = Math.min(E, v.y1);
@@ -264,28 +278,105 @@ function gridDraw(cam: Camera, vp: Viewport): GridDraw {
   if (x0 > x1 || y0 > y1) return { spacing, lines, columns, rows };
   const sy0 = worldToScreen(cam, vp, 0, y0).y, sy1 = worldToScreen(cam, vp, 0, y1).y;
   const sx0 = worldToScreen(cam, vp, x0, 0).x, sx1 = worldToScreen(cam, vp, x1, 0).x;
-  for (let k = Math.ceil((x0 + E) / spacing); -E + k * spacing <= x1; k++) {
-    const wx = -E + k * spacing, sx = worldToScreen(cam, vp, wx, 0).x;
-    lines.push({ x1: sx, y1: sy0, x2: sx, y2: sy1, major: (wx + E) % GRID_MAJOR === 0 });
-  }
-  for (let k = Math.ceil((y0 + E) / spacing); -E + k * spacing <= y1; k++) {
-    const wy = -E + k * spacing, sy = worldToScreen(cam, vp, 0, wy).y;
-    lines.push({ x1: sx0, y1: sy, x2: sx1, y2: sy, major: (wy + E) % GRID_MAJOR === 0 });
+  const curves = well ? wellCurves(cam, vp, well, spacing / WELL_DENSITY, dents) : undefined;
+  if (!well) {
+    for (let k = Math.ceil((x0 + E) / spacing); -E + k * spacing <= x1; k++) {
+      const wx = -E + k * spacing, sx = worldToScreen(cam, vp, wx, 0).x;
+      lines.push({ x1: sx, y1: sy0, x2: sx, y2: sy1, major: (wx + E) % GRID_MAJOR === 0 });
+    }
+    for (let k = Math.ceil((y0 + E) / spacing); -E + k * spacing <= y1; k++) {
+      const wy = -E + k * spacing, sy = worldToScreen(cam, vp, 0, wy).y;
+      lines.push({ x1: sx0, y1: sy, x2: sx1, y2: sy, major: (wy + E) % GRID_MAJOR === 0 });
+    }
   }
   // Labels name the 500-unit squares at every zoom, so a square keeps its name (plan decision 4); each sits in the middle
   // of the square's visible part, along the top and left edges of the screen (or of the grid, when that edge is on screen).
+  // On the gravity grid a label is pulled toward the planet as the lines beside it are, so it stays between them.
   const n = (2 * E) / GRID_MAJOR, top = Math.max(4, sy0 + 4), left = Math.max(4, sx0 + 4);
+  const pulled = (x: number, y: number): Point => {
+    if (!well) return worldToScreen(cam, vp, x, y);
+    const dx = x - well.x, dy = y - well.y, f = wellScale(dx * dx + dy * dy);
+    return worldToScreen(cam, vp, well.x + dx * f, well.y + dy * f);
+  };
   for (let k = 0; k < n; k++) {
     const a = Math.max(x0, -E + k * GRID_MAJOR), b = Math.min(x1, -E + (k + 1) * GRID_MAJOR);
     if (b <= a || (b - a) * cam.zoom < 24) continue;
-    columns.push({ text: columnName(k), x: worldToScreen(cam, vp, (a + b) / 2, 0).x, y: top });
+    columns.push({ text: columnName(k), x: pulled((a + b) / 2, y0).x, y: top });
   }
   for (let k = 0; k < n; k++) {
     const a = Math.max(y0, -E + k * GRID_MAJOR), b = Math.min(y1, -E + (k + 1) * GRID_MAJOR);
     if (b <= a || (b - a) * cam.zoom < 24) continue;
-    rows.push({ text: String(k + 1), x: left, y: worldToScreen(cam, vp, 0, (a + b) / 2).y });
+    rows.push({ text: String(k + 1), x: left, y: pulled(x0, (a + b) / 2).y });
   }
-  return { spacing, lines, columns, rows };
+  return curves ? { spacing, lines, columns, rows, curves } : { spacing, lines, columns, rows };
+}
+
+/** The dent pass's scratch (wellCurves): per point of the line in hand, the summed dent offsets (x, y) and pulls. */
+let dentScratch = new Float64Array(0);
+
+/** The gravity grid's lines (mapGrid.ts): every grid line that can reach the screen, each point scaled toward the planet
+ *  by wellScale, then moved by the bodies' dents that reach it. A line no dent reaches that runs through the planet, or
+ *  that the well barely bows, stays two points. Per point: about ten multiplies and one divide for the planet; a dent
+ *  costs the same again, but only on the stretch of each line inside its reach (found by a binary search: a line's
+ *  points run in order along it, bent or not). */
+function wellCurves(cam: Camera, vp: Viewport, well: Point, spacing: number, dents: readonly Dent[]): NonNullable<GridDraw['curves']> {
+  const v = visibleWorld(cam, vp), E = GRID_EXTENT, z = cam.zoom, pad = WELL_PAD;
+  // The well and the dents only pull points toward them, by at most `pad`, so a line that far outside the view can still be drawn in it.
+  const lo = [Math.max(-E, v.x0 - pad), Math.max(-E, v.y0 - pad)], hi = [Math.min(E, v.x1 + pad), Math.min(E, v.y1 + pad)];
+  const o = [vp.w / 2 - cam.centreX * z, vp.h / 2 - cam.centreY * z], centre = [well.x, well.y], z2 = z * z;
+  const curves: NonNullable<GridDraw['curves']> = [];
+  for (let axis = 0; axis < 2; axis++) {   // 0: the north-south lines (x fixed, y runs); 1: the east-west lines
+    const run = 1 - axis, a = lo[run]!, b = hi[run]!;
+    if (a >= b) continue;
+    for (let k = Math.ceil((lo[axis]! + E) / spacing); -E + k * spacing <= hi[axis]!; k++) {
+      const w = -E + k * spacing, d = w - centre[axis]!;
+      // The line's nearest point to the planet moves the most: that is how far the line bows.
+      let bent = Math.abs(d) * (1 - wellScale(d * d)) * z >= WELL_STRAIGHT_PX;
+      for (let j = 0; !bent && j < dents.length; j++) bent = Math.abs(w - (axis === 0 ? dents[j]!.x : dents[j]!.y)) < dents[j]!.reach;
+      const n = bent ? Math.max(1, Math.ceil(((b - a) * z) / WELL_SEG_PX)) : 1, step = (b - a) / n;
+      const pts = new Array<number>(2 * (n + 1));
+      let near = Infinity, far = -Infinity;   // the drawn line's extent across itself, in screen px
+      for (let i = 0; i <= n; i++) {
+        const t = a + step * i, x = axis === 0 ? w : t, y = axis === 0 ? t : w;
+        const dx = x - well.x, dy = y - well.y, f = bent ? wellScale(dx * dx + dy * dy) : 1;
+        const px = o[0]! + (well.x + dx * f) * z, py = o[1]! + (well.y + dy * f) * z, across = axis === 0 ? px : py;
+        pts[2 * i] = px; pts[2 * i + 1] = py;
+        if (across < near) near = across; if (across > far) far = across;
+      }
+      if (bent && dents.length > 0) dentLine(pts, n, axis, near, far, dents, o, z, z2);
+      curves.push({ pts, major: (w + E) % GRID_MAJOR === 0 });
+    }
+  }
+  return curves;
+}
+
+/** Moves one drawn line's points (screen px, in order along `1 - axis`) by the dents that reach it: each point by the
+ *  sum of the dents' pulls on it, eased by dentEase so overlapping dents never fold the grid. */
+function dentLine(pts: number[], n: number, axis: number, near: number, far: number, dents: readonly Dent[], o: readonly number[], z: number, z2: number): void {
+  const run = 1 - axis;
+  let first = n + 1, last = -1;
+  for (const dent of dents) {
+    const reach = dent.reach * z, ca = o[axis]! + (axis === 0 ? dent.x : dent.y) * z, cr = o[run]! + (axis === 0 ? dent.y : dent.x) * z;
+    if (ca < near - reach || ca > far + reach) continue;
+    // The first point at or past the dent's near edge along the line; the points run on from there to its far edge.
+    let i = 0, top = n + 1;
+    for (const from = cr - reach; i < top;) { const mid = (i + top) >> 1; if (pts[2 * mid + run]! < from) i = mid + 1; else top = mid; }
+    if (i > n || pts[2 * i + run]! > cr + reach) continue;
+    if (last < 0) { if (dentScratch.length < 3 * (n + 1)) dentScratch = new Float64Array(3 * (n + 1)); dentScratch.fill(0, 0, 3 * (n + 1)); }
+    if (i < first) first = i;
+    const c2 = dent.c2 * z2;
+    for (const to = cr + reach; i <= n && pts[2 * i + run]! <= to; i++) {
+      const da = pts[2 * i + axis]! - ca, dr = pts[2 * i + run]! - cr, s = c2 / (da * da + dr * dr + c2), g = dent.pull * s * s;
+      dentScratch[3 * i] = dentScratch[3 * i]! + da * g; dentScratch[3 * i + 1] = dentScratch[3 * i + 1]! + dr * g; dentScratch[3 * i + 2] = dentScratch[3 * i + 2]! + g;
+    }
+    if (i - 1 > last) last = i - 1;
+  }
+  for (let i = first; i <= last; i++) {
+    const sum = dentScratch[3 * i + 2]!;
+    if (sum === 0) continue;
+    const ease = dentEase(sum);
+    pts[2 * i + axis] = pts[2 * i + axis]! - dentScratch[3 * i]! * ease; pts[2 * i + run] = pts[2 * i + run]! - dentScratch[3 * i + 1]! * ease;
+  }
 }
 
 /** The bearing ring about a screen point: ticks every 10°, labels every 30° (north 0). */
@@ -420,6 +511,14 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     if (!onScreen(b.x, b.y, Math.max(SHIP_RADIUS * 2, (SHIP_RADIUS * 1.9 * drawnScale(z)) / z))) continue;   // the drawn rings reach 1.9 units
     const p = toS(b.x, b.y);
     ships.push({ index: i, x: p.x, y: p.y, angle: headingAngle(b.h), scale: drawnScale(z), chevron: 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, crew: i === 0, hull: i === 0 ? input.crewHull ?? hullFor(true) : hullFor(false), rooms: s.rooms, shields: s.shields });
+  }
+
+  // The gravity grid's dents (mapGrid.ts): every drawn ship and live rock whose dent reaches the view and shows there.
+  const dents: Dent[] = [];
+  if (input.mapGrid === 'gravity') {
+    const add = (x: number, y: number, r: number): void => { const d = dentOf(x, y, r); if (d.shift * z >= DENT_MIN_PX && onScreen(x, y, d.reach)) dents.push(d); };
+    for (let k = 0, n = rockSlots(state); k < n; k++) if (rockAlive(state, k)) { const w = rockDrawPos(input.rockTrack ?? null, state, k, alpha); add(w.x, w.y, rockAt(state, k).r); }   // where the rock is drawn
+    for (const i of input.ships) { const b = interpolatedShip(state, prev, alpha, i); add(b.x, b.y, SHIP_RADIUS); }
   }
 
   const own = interpolatedShip(state, prev, alpha, 0), ownS = toS(own.x, own.y);
@@ -557,7 +656,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   }
   const units = [...SCALE_STEPS].reverse().find((u) => u * z <= SCALE_BAR_MAX_PX) ?? SCALE_STEPS[0]!;
   return {
-    grid: gridDraw(cam, vp), contours, edge, planet, asteroids, ships, helm, arrows,
+    grid: gridDraw(cam, vp, input.mapGrid === 'gravity' ? map.planet : null, dents), contours, edge, planet, asteroids, ships, helm, arrows,
     ...(marks ? { marks, salvage, lockRing } : {}),
     ...(gravity ? { gravity } : {}),
     ...(input.fog ? { sensor, ghosts } : {}),

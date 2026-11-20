@@ -29,6 +29,7 @@ import { backdropOption } from './twinkleLayer';
 import { DEFAULT_FEEL, type FeelSetting } from './feel';
 import { DEFAULT_CRT, type CrtSetting } from './crt';
 import { DEFAULT_SHAKE, type ShakeSetting } from './shake';
+import { DEFAULT_MAP_GRID, type MapGridSetting } from './tactical/mapGrid';
 import { sectorGradeInput } from './gradeModel';
 import { sectorHits } from './impactModel';
 import { failedStationPoints, sectorWorking, watchRepair } from './particles/sources';
@@ -49,6 +50,9 @@ export interface Renderer {
   /** Feel-i: the console maps' screen shake setting (Settings), read by the duel scene each frame; absent reads 'full'. */
   shake?(): ShakeSetting;
   setShake?(setting: ShakeSetting): void;
+  /** The console map's grid setting (Settings), read by the map views each frame; absent reads the default. */
+  mapGrid?(): MapGridSetting;
+  setMapGrid?(setting: MapGridSetting): void;
   reset(): void;
   recordPrev(state: SimState): void;
   /** `paused`: the session is paused (Art-i spec section 7): the light and feel get a presentation dt of 0, so the particles,
@@ -75,7 +79,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   const consoleDesks = createConsoleLayer(assets);   // spec Demo-xii section 1: a desk at every station, under the crew (Art-ii: the bought consoles)
   const magazine = createMagazineLayer();   // spec Coop-ii section 2: the magazine tile, under the crew
   const props = createPropLayer(assets);    // Art-iii spec section 4: the set dressing, directly over the tiles
-  let feelSetting: FeelSetting = DEFAULT_FEEL, crtSetting: CrtSetting = DEFAULT_CRT, shakeSetting: ShakeSetting = DEFAULT_SHAKE;
+  let feelSetting: FeelSetting = DEFAULT_FEEL, crtSetting: CrtSetting = DEFAULT_CRT, shakeSetting: ShakeSetting = DEFAULT_SHAKE, mapGridSetting: MapGridSetting = DEFAULT_MAP_GRID;
   const missing = new Set(assets.missing);
   const feel = createInteriorFeel({   // Art-i spec sections 5-8; Art-ii: the bought consoles and blasts
     world, band: WORLD_BAND, feel: () => feelSetting, consoleArt: featureReady(missing, 'consoleArt'), backdrop: backdropOption(assets),   // Art-v: the painted backdrop
@@ -104,6 +108,8 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
     setCrt(setting) { crtSetting = setting; },
     shake: () => shakeSetting,
     setShake(setting) { shakeSetting = setting; },
+    mapGrid: () => mapGridSetting,
+    setMapGrid(setting) { mapGridSetting = setting; },
     reset() { memory.reset(); projectiles.reset(); enemyWindow.reset(); feel.reset(); anim = freshWindowAnim(); lastDraw = null; seenImpact = null; },   // session.start (a new run); the app has no runtime snapshot load
     recordPrev(state) {
       for (const eid of state.crew) memory.prev.set(Stable.id[eid]!, { x: Position.x[eid]!, y: Position.y[eid]! });

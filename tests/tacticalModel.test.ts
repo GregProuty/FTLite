@@ -3,10 +3,12 @@ import { createCamera, pan, type Camera } from '../src/renderer/src/render/tacti
 import { createFeelTracker, feelReadout, feelRows, FEEL_WINDOW_TICKS, recordFeel } from '../src/renderer/src/render/tactical/feelModel';
 import {
   asteroidShape, BEARING_RING_PX, STAR_PARALLAX, starOffset, columnName, contourRadius, GRID_EXTENT, interpolatedShip, pathSeconds, pickRadius, pickShip, ringCrossesRect,
-  aroundAvoid, shipScale, SHIP_MIN_PX_PER_UNIT, spreadArrows, tacticalModel, type ArrowDraw, type PrevBody, type TacticalModelInput
+  aroundAvoid, WELL_PAD, shipScale, SHIP_MIN_PX_PER_UNIT, spreadArrows, tacticalModel, type ArrowDraw, type PrevBody, type TacticalModelInput
 } from '../src/renderer/src/render/tactical/tacticalModel';
 import { OWN_SHIP } from '../src/renderer/src/render/duel/consoleLayout';
 import { HULLS } from '../src/renderer/src/render/tactical/hullModel';
+import { DENT_FULL_R, DENT_PULL_MAX, DENT_SUM_MAX, dentEase, dentOf, WELL_MAX_SHIFT, WELL_PULL, wellScale } from '../src/renderer/src/render/tactical/mapGrid';
+import { RockKind, writeRock } from '../src/renderer/src/sim/tactical/rocks';
 import { gravityAccel, stepSoloFlight } from '../src/renderer/src/sim/tactical/physics';
 import { createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 
@@ -30,6 +32,106 @@ describe('gravity contours (H-1 spec §7 item 3)', () => {
     expect(tacticalModel(input(st, cam)).contours.map((c) => c.accel)).toEqual([40, 10, 3]);
     const far = createCamera(2400, 0, 1.2);
     expect(tacticalModel(input(st, far)).contours).toEqual([]);
+  });
+});
+
+describe('the gravity grid (owner 2026-11-19)', () => {
+  // The planet's well alone: no rocks and no ships drawn, so nothing else dents the grid.
+  const empty = (): TacticalState => { const s = createTacticalState(4); s.rocks.fill(0); return s; };
+  const st = empty(), well = { mapGrid: 'gravity', ships: [] } as const;
+  const drawn = (r: number) => r * wellScale(r * r);
+  it('pulls points toward the planet, most at its centre, never past each other, and fades far out', () => {
+    expect(wellScale(0)).toBeCloseTo(1 - WELL_PULL, 12);
+    let last = -1, most = 0;
+    for (let r = 0; r <= 3000; r += 5) { expect(drawn(r)).toBeGreaterThan(last); last = drawn(r); most = Math.max(most, r - drawn(r)); }
+    expect(most).toBeLessThanOrEqual(WELL_MAX_SHIFT); expect(most).toBeGreaterThan(WELL_MAX_SHIFT * 0.99);
+    expect(3000 - drawn(3000)).toBeLessThan(20);   // the map's edge barely moves
+  });
+  it('draws two lines for each of the square grid, each a polyline: bent beside the planet, straight through it', () => {
+    const cam = createCamera(0, 0, 0.12), g = tacticalModel(input(st, cam, well)).grid, square = tacticalModel(input(st, cam, { ships: [] })).grid;
+    expect(g.lines).toEqual([]); expect(square.curves).toBeUndefined();
+    expect(g.curves!.length).toBe(2 * (2 * GRID_EXTENT / 250 + 1)); expect(g.curves!.filter((c) => c.major).length).toBe(square.lines.length);
+    expect(g.columns.map((c) => c.text)).toEqual(square.columns.map((c) => c.text));   // the squares keep their names
+    const vertical = g.curves!.slice(0, g.curves!.length / 2), at = (k: number) => vertical[k]!;   // x = −3000, −2750 … 3000
+    expect(at(12).pts.length).toBe(4); expect(at(12).pts[0]).toBeCloseTo(640, 9); expect(at(12).pts[2]).toBeCloseTo(640, 9);   // through the planet
+    expect(at(14).major).toBe(true); expect(at(13).major).toBe(false);
+    const near = at(14).pts, xs = near.filter((_, i) => i % 2 === 0);   // x = 500
+    expect(near.length).toBeGreaterThan(4);
+    const flat = 640 + 500 * 0.12;
+    expect(Math.min(...xs)).toBeCloseTo(640 + drawn(500) * 0.12, 1);   // closest beside the planet
+    expect(Math.max(...xs)).toBeLessThanOrEqual(flat); expect(Math.max(...xs)).toBeGreaterThan(flat - 1);   // square again far along the line
+    expect(g.curves!.every((c) => c.pts.every(Number.isFinite))).toBe(true);
+  });
+  it('keeps to the lines near the screen and adds the minor lines past zoom 0.6', () => {
+    const g = tacticalModel(input(st, createCamera(1500, 1500, 1.2), well)).grid;
+    expect(g.spacing).toBe(250); expect(g.curves!.some((c) => !c.major)).toBe(true);
+    expect(g.curves!.length).toBeLessThan(30);   // ±533 by ±300 units of view plus the well's reach, a line every 125 units
+    const reach = (WELL_PAD + WELL_MAX_SHIFT) * 1.2 + 1;   // a line is kept WELL_PAD past the view, and the well moves it at most its own shift more
+    for (const c of g.curves!) for (let i = 0; i < c.pts.length; i += 2) { expect(c.pts[i]).toBeGreaterThan(-reach); expect(c.pts[i]).toBeLessThan(1280 + reach); }
+  });
+});
+
+describe('the gravity grid’s dents (owner 2026-11-19: ships and rocks, by size)', () => {
+  const empty = (): TacticalState => { const s = createTacticalState(4); s.rocks.fill(0); return s; };
+  const cam = createCamera(2000, 2000, 0.5);   // far from the planet: x and y lines every 250 units, 1750 … 2250 in view
+  const lines = (s: TacticalState, ships: number[] = []) => tacticalModel(input(s, cam, { mapGrid: 'gravity', ships })).grid.curves!;
+  const farthest = (a: { pts: number[] }[], b: { pts: number[] }[]) => Math.max(...a.flatMap((c, k) => c.pts.map((p, i) => Math.abs(p - b[k]!.pts[i]!))));
+  it('a bigger body dents deeper and wider, up to the full pull', () => {
+    const small = dentOf(0, 0, 15), big = dentOf(0, 0, 45), huge = dentOf(0, 0, 90);
+    expect(big.shift).toBeGreaterThan(3 * small.shift); expect(big.reach).toBe(3 * small.reach); expect(big.pull).toBeGreaterThan(small.pull);
+    expect(big.pull).toBe(DENT_PULL_MAX); expect(huge.pull).toBe(DENT_PULL_MAX); expect(DENT_FULL_R).toBe(45);
+    expect(DENT_PULL_MAX).toBeLessThan(1);   // a lone dent never folds the grid
+  });
+  it('a rock pulls the lines beside it toward itself, more for a bigger rock, and leaves far lines alone', () => {
+    const none = lines(empty());
+    const withRock = (r: number) => { const s = empty(); writeRock(s, 0, RockKind.Free, 2060, 2000, 0, 0, r, 10); return lines(s); };
+    const big = withRock(45), small = withRock(20);
+    expect(big.length).toBe(none.length);
+    const at2000 = none.findIndex((c) => Math.abs(c.pts[0]! - (640 + (2000 * wellScale(2000 * 2000 + 1500 * 1500) - 2000) * 0.5)) < 6);   // the x = 2000 line
+    const xs = (c: { pts: number[] }) => c.pts.filter((_, i) => i % 2 === 0);
+    const pull = (set: { pts: number[] }[]) => Math.max(...xs(set[at2000]!).map((x, i) => x - xs(none[at2000]!)[i]!));   // toward the rock: east, +x
+    expect(pull(big)).toBeGreaterThan(8); expect(pull(small)).toBeGreaterThan(1); expect(pull(big)).toBeGreaterThan(2 * pull(small));
+    const reach = dentOf(2060, 2000, 45);
+    expect(farthest(big, none)).toBeLessThanOrEqual(reach.shift * 0.5 + 1e-9);   // never more than the dent's deepest, in pixels
+    const s = empty(); writeRock(s, 0, RockKind.Free, 2000 + 1280 + reach.reach + 50, 2000, 0, 0, 45, 10);   // its whole reach is off screen
+    expect(lines(s)).toEqual(none);
+    const dead = empty(); writeRock(dead, 0, RockKind.Gone, 2060, 2000, 0, 0, 45, 0);
+    expect(lines(dead)).toEqual(none);
+  });
+  it('a dimple sits on its body even deep in the planet’s well: every point it moves goes toward the drawn rock', () => {
+    const near = createCamera(500, 300, 0.5), at = (s: TacticalState) => tacticalModel(input(s, near, { mapGrid: 'gravity', ships: [] })).grid.curves!;
+    const s = empty(); writeRock(s, 0, RockKind.Free, 560, 340, 0, 0, 45, 10);
+    const none = at(empty()), dented = at(s), rock = { x: 640 + 60 * 0.5, y: 360 + 40 * 0.5 };   // the rock's place on screen
+    let moved = 0;
+    dented.forEach((c, k) => { for (let i = 0; i < c.pts.length; i += 2) {
+      if (none[k]!.pts.length !== c.pts.length) return;   // the two lines through the planet: two points without a dent, so not comparable point by point
+      const was = Math.hypot(none[k]!.pts[i]! - rock.x, none[k]!.pts[i + 1]! - rock.y), now = Math.hypot(c.pts[i]! - rock.x, c.pts[i + 1]! - rock.y);
+      expect(now).toBeLessThanOrEqual(was + 1e-9); if (was - now > 1) moved++;
+    } });
+    expect(moved).toBeGreaterThan(20);
+  });
+  it('overlapping dents are eased so a pile of debris never folds the grid', () => {
+    expect(dentEase(0.01)).toBeCloseTo(1, 6); expect(dentEase(DENT_PULL_MAX)).toBeGreaterThan(0.85);   // a lone dent keeps nearly all its pull
+    let last = 0;
+    for (let sum = 0.05; sum < 12; sum += 0.05) { const eased = sum * dentEase(sum); expect(eased).toBeGreaterThan(last); expect(eased).toBeLessThan(DENT_SUM_MAX); last = eased; }
+    const s = empty();   // twelve rocks within 70 units: their plain pulls sum to several times 1
+    for (let k = 0; k < 12; k++) writeRock(s, k, RockKind.Free, 2000 + 70 * Math.cos(k * 2.4) * (k / 12), 2000 + 70 * Math.sin(k * 2.4) * (k / 12), 0, 0, 20 + 2 * k, 5);
+    const g = tacticalModel(input(s, createCamera(2000, 2000, 1.2), { mapGrid: 'gravity', ships: [] })).grid.curves!;
+    const upright = (c: { pts: number[] }) => Math.abs(c.pts[c.pts.length - 1]! - c.pts[1]!) > Math.abs(c.pts[c.pts.length - 2]! - c.pts[0]!);
+    const vertical = g.filter(upright), horizontal = g.filter((c) => !upright(c));
+    expect(vertical.length).toBeGreaterThan(8); expect(horizontal.length).toBeGreaterThan(5);
+    for (const c of vertical) for (let i = 3; i < c.pts.length; i += 2) expect(c.pts[i]!).toBeGreaterThan(c.pts[i - 2]!);   // each line still runs one way
+    for (const c of horizontal) for (let i = 2; i < c.pts.length; i += 2) expect(c.pts[i]!).toBeGreaterThan(c.pts[i - 2]!);
+    for (let k = 1; k < vertical.length; k++) for (let i = 0; i < vertical[k]!.pts.length; i += 2) expect(vertical[k]!.pts[i]!).toBeGreaterThan(vertical[k - 1]!.pts[i]!);   // and neighbours never cross
+    for (let k = 1; k < horizontal.length; k++) for (let i = 1; i < horizontal[k]!.pts.length; i += 2) expect(horizontal[k]!.pts[i]!).toBeGreaterThan(horizontal[k - 1]!.pts[i]!);
+  });
+  it('a drawn ship carries a small dent with it; a ship left out of the view (unseen) dents nothing', () => {
+    const s = empty(); Object.assign(s.ships[0]!, { x: 2060, y: 2000 });
+    const none = lines(s), there = lines(s, [0]);
+    expect(farthest(there, none)).toBeGreaterThan(1); expect(farthest(there, none)).toBeLessThan(6);
+    Object.assign(s.ships[0]!, { x: 2060, y: 2100 });
+    expect(lines(s, [0])).not.toEqual(there);
+    expect(lines(s)).toEqual(none);
   });
 });
 

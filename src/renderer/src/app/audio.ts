@@ -1,9 +1,9 @@
 import type { Cue } from '../events/audioCues';
 import type { SoundSource } from '../render/assets';
 import { CUE_RECIPES, DUCK_CUES } from '../audio/cueRecipes';
-import { MUSIC_BATTLE, MUSIC_CALM, sfxKeyOf, type SfxKey, type SoundRequest } from '../audio/soundBank';
+import { MUSIC, MUSIC_CALM, sfxKeyOf, type SfxKey, type SoundRequest } from '../audio/soundBank';
 import { admitVoice, createVoicePool, detuneCents, pickVariant } from '../audio/voices';
-import { BATTLE_LOOP_END_S, BATTLE_LOOP_START_S, BATTLE_START_S, CALM_LOOP_START_S, createMusic, IDLE_STATUS, liveStatus, stepMusic, type AudioStatus } from '../audio/musicState';
+import { MOODS, createMusic, IDLE_STATUS, liveStatus, stepMusic, type AudioStatus, type Mood } from '../audio/musicState';
 import { CRACKLE_SECONDS, FIRE_FILTER_HZ, FIRE_FILTER_Q, FIRE_SMOOTH_S, HUM_SMOOTH_S, crackleSamples, fireGain, humTarget } from '../audio/loops';
 
 export type { SoundSource } from '../render/assets';
@@ -45,7 +45,7 @@ export interface AudioOut {
   play(cue: Cue): void;
   /** Sample requests from a view's pure sound model. */
   sounds(list: readonly SoundRequest[]): void;
-  /** This frame's report (spec section 5): engaged, paused, a duck, the hum's drive and the burning rooms. */
+  /** This frame's report (spec section 5): the mood, paused, a duck, the hum's drive and the burning rooms. */
   status(s: AudioStatus): void;
 }
 export interface Audio extends AudioOut {
@@ -74,14 +74,15 @@ export function createAudio(options: AudioOptions = {}): Audio {
   const c = ctx;
   const safe = (f: () => void): void => { try { f(); } catch { /* audio unavailable: never disturb the game */ } };
 
-  // The buses (spec section 3): voice -> panner -> effects -> master -> destination; music source -> its crossfade gain ->
-  // mix (pause, duck) -> music bus -> master. Creation order matters to tests/audioEngine.test.ts.
+  // The buses (spec section 3): voice -> panner -> effects -> master -> destination; music source -> its mood's crossfade
+  // gain -> mix (pause, duck) -> music bus -> master. Creation order matters to tests/audioEngine.test.ts.
   const master = c.createGain(), musicBus = c.createGain(), effects = c.createGain(), synthBus = c.createGain();
   master.connect(c.destination); musicBus.connect(master); effects.connect(master); synthBus.connect(effects);
   master.gain.value = 1; musicBus.gain.value = MUSIC_LEVEL; effects.gain.value = EFFECTS_LEVEL; synthBus.gain.value = SYNTH_GAIN;
-  const mix = c.createGain(), calmGain = c.createGain(), battleGain = c.createGain();
-  mix.connect(musicBus); calmGain.connect(mix); battleGain.connect(mix);
-  mix.gain.value = 1; calmGain.gain.value = 1; battleGain.gain.value = 0;
+  const mix = c.createGain();
+  mix.connect(musicBus); mix.gain.value = 1;
+  const moodGain = {} as Record<Mood, GainNode>, moodSrc: Partial<Record<Mood, AudioBufferSourceNode>> = {};
+  for (const m of MOODS) { const g = c.createGain(); g.connect(mix); g.gain.value = m === 'calm' ? MUSIC.calm.level : 0; moodGain[m] = g; }   // one gain per mood, in MOODS order
   // The loops (spec section 4): the engine hum (a sample, started once decoded) and the synthesised fire crackle.
   const humGain = c.createGain(), fireLoop = c.createGain();
   humGain.connect(effects); fireLoop.connect(effects);
@@ -90,7 +91,7 @@ export function createAudio(options: AudioOptions = {}): Audio {
   const buffers = new Map<SfxKey, AudioBuffer[]>(), tracks = new Map<string, AudioBuffer>();
   const pool = createVoicePool(), live = new Map<number, AudioBufferSourceNode>(), lastVariant = new Map<string, number>();
   const music = createMusic();
-  let calmSrc: AudioBufferSourceNode | null = null, battleSrc: AudioBufferSourceNode | null = null, humSrc: AudioBufferSourceNode | null = null;
+  let humSrc: AudioBufferSourceNode | null = null;
   let report: { status: AudioStatus; at: number } | null = null, duckPending = false, wall = 0;
 
   safe(() => {   // the crackle runs from boot at gain 0
@@ -141,24 +142,19 @@ export function createAudio(options: AudioOptions = {}): Audio {
     live.set(id, src);
   }
 
-  function startCalm(): void {
-    const buf = tracks.get(MUSIC_CALM);
-    if (!buf || calmSrc) return;
-    const src = c.createBufferSource(); src.buffer = buf; src.loop = true; src.loopStart = CALM_LOOP_START_S; src.loopEnd = buf.duration;
-    src.connect(calmGain); src.start(c.currentTime, 0); calmSrc = src;
-  }
-  /** Battle starts at the orchestral turn each time it begins and loops from there (spec section 5). */
-  function startBattle(t: number): void {
-    const buf = tracks.get(MUSIC_BATTLE);
-    if (!buf || battleSrc) return;
+  /** A mood's track starts from its `start` each time the mood begins, and loops between its loop points (music spike). */
+  function startTrack(m: Mood, t: number): void {
+    const def = MUSIC[m], buf = tracks.get(def.name);
+    if (!buf || moodSrc[m]) return;
     const src = c.createBufferSource(); src.buffer = buf; src.loop = true;
-    src.loopStart = Math.min(BATTLE_LOOP_START_S, buf.duration); src.loopEnd = BATTLE_LOOP_END_S ?? buf.duration;
-    src.connect(battleGain); src.start(t, Math.min(BATTLE_START_S, Math.max(0, buf.duration - 1))); battleSrc = src;
+    src.loopStart = Math.min(def.loopStart, buf.duration); src.loopEnd = Math.min(def.loopEnd ?? buf.duration, buf.duration);
+    src.connect(moodGain[m]); src.start(t, Math.min(def.start, Math.max(0, buf.duration - 1))); moodSrc[m] = src;
   }
-  function stopBattle(): void {
-    if (!battleSrc) return;
-    try { battleSrc.stop(); } catch { /* already stopped */ }
-    battleSrc = null;
+  function stopTrack(m: Mood): void {
+    const src = moodSrc[m];
+    if (!src) return;
+    try { src.stop(); } catch { /* already stopped */ }
+    delete moodSrc[m];
   }
   function startHum(): void {
     const buf = buffers.get('engineHum')?.[0];
@@ -204,7 +200,7 @@ export function createAudio(options: AudioOptions = {}): Audio {
         const buf = await decode(s);
         if (!buf) return;
         ok++; tracks.set(s.name, buf);
-        if (s.name === MUSIC_CALM) safe(startCalm);   // calm starts as soon as it is decoded
+        if (s.name === MUSIC_CALM) safe(() => startTrack('calm', c.currentTime));   // calm starts as soon as it is decoded; the others when their mood begins
       }));
       log(`[audio] decoded ${ok}/${sources.length} files`);
     },
@@ -212,11 +208,12 @@ export function createAudio(options: AudioOptions = {}): Audio {
       safe(() => {
         wall = now;
         const st = liveStatus(report, now), t = c.currentTime;
-        const m = stepMusic(music, { now, engaged: st.engaged, paused: st.paused, duck: duckPending, idle: st === IDLE_STATUS });
+        const m = stepMusic(music, { now, mood: st.mood, paused: st.paused, duck: duckPending, idle: st === IDLE_STATUS });
         duckPending = false;
-        if (m.battleOn) startBattle(t); else stopBattle();
-        calmGain.gain.setTargetAtTime(m.calm, t, MUSIC_SMOOTH_S);
-        battleGain.gain.setTargetAtTime(m.battle, t, MUSIC_SMOOTH_S);
+        for (const mood of MOODS) {
+          if (m.on[mood]) startTrack(mood, t); else stopTrack(mood);
+          moodGain[mood].gain.setTargetAtTime(m.gains[mood] * MUSIC[mood].level, t, MUSIC_SMOOTH_S);
+        }
         mix.gain.setTargetAtTime(m.mix, t, MIX_SMOOTH_S);
         const hum = st.hum && !st.paused ? humTarget(st.hum) : null;
         humGain.gain.setTargetAtTime(hum ? hum.gain : 0, t, HUM_SMOOTH_S);

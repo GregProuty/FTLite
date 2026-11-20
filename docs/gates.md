@@ -1033,3 +1033,15 @@ Spec `docs/superpowers/specs/2026-11-18-pew-pew-weapons-design.md` §3; plan `do
   3. The torpedo swinging onto a right-drag heading.
 
   Do the tags read on the amber CRT, is the followed torpedo easy to fly, and does the right-drag heading feel like the Helm's?
+
+## Music spike: five moods (2026-11-19, branch spike/music)
+- [x] Five tracks, one per mood, replace the two Scott Buckley tracks: calm "Bit Space (FTL Inspired)" (Beam Theory, OGA-BY 3.0), space "Observing the Star" (yd, CC0), intrigue "Cyberpunk Moonlight Sonata" (Joth, CC0), adventure "Brave Space Explorers" and combat "Law in the City" (Alexandr Zhelanov, CC-BY 4.0). All from OpenGameArt, trimmed, level-matched and re-encoded to OGG (12.3 MB together; the old pair was 18.5 MB). Credits and notices regenerated.
+- [x] `tests/audioMusic.test.ts`, `audioEngine`, `audioManifest`, `audioSector`, `audioDuel`, `duelAudio`: the five-mood state machine (combat at once and held 8 s, a quiet mood after 1 s, idle goes calm), one gain and one source per mood, the sector and duel mood rules. `npm run typecheck` and `npm run build` pass; the built app logs `[audio] decoded 55/55 files`. Audio leaves SIM_VERSION unchanged.
+- [ ] Manual (owner), by ear. The tracks were picked without listening, so this is the real test.
+  1. Main menu: the calm track plays.
+  2. Single player, the first seconds of a round: the space track. Sit at Science and start a scan: the intrigue track comes in after about a second.
+  3. Fire first, or wait for HOSTILE: the combat track crossfades in over 2 s.
+  4. Win the round: the adventure track about 8 s after the fight ends. Lose it: calm.
+  5. Esc pauses the music; back to the menu returns to calm.
+
+  Is each track good, does it fit its mood, and are the five at a comfortable level against each other and the effects? To swap a track or tune one, see `MUSIC` in `src/renderer/src/audio/soundBank.ts` (file, start, loop points, level). The other candidates are in `C:\Users\djuar\FTLite-assets\music-spike\audition.html`.

@@ -25,7 +25,9 @@ rock numbers) `sim/tactical/rockTuning.ts`, and tuned in playtest.
 
 The owner answered three of §17's calls on 2026-11-19, and this spec carries the answers: the autocannon breaks rocks
 (§5.1), Science's weak frequency boosts pew pew and the autocannon (§5.2), AUTO holds fire during the 30 s hold (§4.3),
-and AUTO pew aims only at the enemy ship (§4.2).
+and AUTO pew aims only at the enemy ship (§4.2). After the plans' review the owner made two more calls (§17 items 19 and
+20): in MAN only the selected gun is in the gunner's hands and the other fights on AUTO (§3.4), and AUTO fires within a
+small tolerance of its solution (§4.2).
 
 ## 1. Scope and which ships
 
@@ -50,7 +52,7 @@ and AUTO pew aims only at the enemy ship (§4.2).
   (torpedo, then slot 1, then pew, `trimmedWeaponPower` L76) and the 9-bar budget are unchanged.
 - **`defs.ts`:**
   - `GunDef` gains `turret: TurretDef | null`, `intervalByBars: readonly (readonly number[])[] | null` (indexed
-    `[manual ? 1 : 0][bars]`), `rock: GunRockDef | null` (§5.1) and `weakHitsPerLayer: number | null` (§5.2).
+    `[hand control ? 1 : 0][bars]`, §3.4), `rock: GunRockDef | null` (§5.1) and `weakHitsPerLayer: number | null` (§5.2).
     `PewDef` gains `turret: TurretDef | null`.
   - `TurretDef = { arcSteps: number; traverse: readonly [number, number] }`: the arc in fine heading steps
     (`AIM_STEPS` 65536 to the turn) and the traverse per tick for AUTO and for MAN.
@@ -135,7 +137,9 @@ Why these numbers:
 - **Visibly slower than the ship.** The Hound turns at 150°/s (`TURN_DEG_PER_S`), 300°/s when boosted. So the muzzle
   line visibly trails a flicked reticle, and the Helm's nose still matters: a fast Helm turn outruns either turret.
 - **Fast enough to track a fight.** A Hunter crossing at 300 u/s at 200 u sweeps about 86°/s, inside both rates. In MAN
-  both keep up with the ship's unboosted turn.
+  the pew just keeps up with the ship's unboosted 150°/s turn (455 steps a tick against the turn's 455.1). The
+  autocannon does not (112.4°/s in MAN, 90°/s in AUTO), and no turret keeps up with a boosted turn. A turret that trails
+  a turning ship still fires on AUTO, inside the fire tolerance (§4.2).
 - **Full sweep times.** The pew crosses its 120° cone in 1.0 s (0.8 s MAN). The autocannon crosses its 60° cone in
   0.67 s (0.53 s MAN). The autocannon's arc is narrower, so it gets a slower turret.
 - **Integer and exact.** Each rate is a whole number of fine steps. 455 is round(364 × 1.25) and 341 is
@@ -145,11 +149,20 @@ Why these numbers:
 
 All of these hold only while the Weapons console is attended (`input.weapons`), as every crew weapon does today:
 - **No power, no slew.** A gun with 0 bars holds still.
-- **MAN:** the **selected** gun (§8 `weaponSel`) slews toward the held reticle (`turretAim`) at its MAN traverse. The
-  other gun holds its angle. If there's no reticle, or the torpedo is selected, nothing slews.
-- **While the crew's MANUAL torpedo flies** (`manualTorpedoFlying`), MAN guns hold. The reticle is ignored.
-- **AUTO:** each powered AUTO gun slews toward its own solution (§4.2) at its AUTO traverse. With no solution it slews
-  back to 0, the nose. It slews during the 30 s hold too; only its firing waits (§4.3).
+- **Hand control** (owner 2026-11-19, §17 item 19). A gun is in the gunner's hands when the mode is MAN (`gunsManual`)
+  and it is the **selected** weapon (§8 `weaponSel`), and no crew MANUAL torpedo flies. One sim helper decides it,
+  `handControl(state, i, weaponSel, slot)` (`state.ts`). The gun in hand slews toward the held reticle (`turretAim`)
+  at its MAN traverse, fires by LMB, and takes the MAN bonus (§4.4). With no reticle it holds its angle.
+- **Every other powered gun is AUTO-driven:** both guns in AUTO, the unselected gun in MAN, and both guns in MAN with the
+  torpedo or nothing selected. An AUTO-driven gun slews toward its own solution (§4.2) at its AUTO traverse, and with no
+  solution it slews back to 0, the nose. It fires by AUTO's rules (§4.3): the hold, the 80 % heat stop, ship-only
+  targets and the line of sight. It slews during the 30 s hold too; only its firing waits. Taking control of one gun
+  never costs the other's firepower.
+- **While the crew's MANUAL torpedo flies** (`missileOf(state, 0)?.manual`), no gun is in hand, whatever the mode and
+  the selection. Both guns are AUTO-driven, and the reticle is ignored (§7). The owner's text is "guns left on auto keep
+  firing; can't aim or fire guns by hand". Nothing is aimed or fired by hand, since the left button steers the torpedo,
+  and every gun keeps fighting. A MAN gun fights on AUTO for the flight rather than holding, so launching from a gun
+  instead of from the torpedo selection costs nothing (Decision 10).
 - **Unattended:** both turrets hold.
 
 The slew runs in `applyWeaponsInput` (`weapons.ts` L297) right after `stepBurst`, before `tickGun` (L313) and before
@@ -194,13 +207,26 @@ torpedo that crosses its path. Autocannon rounds never hit torpedoes (`stepRound
   Hunter's 20 u radius.
 - **No solution** when there is no intercept, or the offset lies outside ±`arcSteps`.
 
-**When it fires.** A gun is on solution on a tick when the slew (§3.4) leaves the turret exactly on the solution's offset.
-The solutions are whole-heading multiples and the rates exceed one step's drift, so a tracked target settles.
+**When it fires** (owner 2026-11-19, §17 item 20). A gun is on solution on a tick when the slew (§3.4) leaves the turret
+within `AUTO_FIRE_TOLERANCE = 182` fine steps (1.0°, `tuning.ts`) of the solution's offset, `|turret − solution| ≤ 182`.
+The round still flies along the turret's real world aim, not along the solution. The value is chosen for two reasons:
+- **The hit radius.** The worst aim error is the tolerance plus the lead's half step: 182 + 128 = 310 steps (1.70°).
+  That is 13.4 u at the pew's 450 u and 17.8 u at the autocannon's 600 u, both inside the Hunter's 20 u radius, and it
+  stays inside out to about 670 u.
+- **The traverse.** 182 is the autocannon's AUTO lag per tick in a full-rate 150°/s Helm turn (455 − 273). In such a
+  turn a turret meets its target head-on and then trails it. An exact-only rule can step past the solution and never land
+  on it in a pass. A scan of 4096 start headings, two turns each (a turret-and-bearing model, both guns), gave 531 runs
+  with no on-solution tick under the exact rule and none at 128 or more. 182 also gives the pew (lag 91 a tick) about two
+  trailing ticks a pass. So AUTO still fires in a sustained turn, less often than on a steady target.
+- A steady or slowly crossing target settles inside the tolerance: the solutions are whole-heading multiples, and both
+  AUTO rates exceed a one-index (256-step) drift.
 
 ### 4.3 AUTO firing
 
-Every AUTO rule needs the Weapons console attended, the gun powered (bars ≥ 1) and the enemy hostile
-(`enemyHostile(state)`, `science.ts` L29; the hold rule below).
+These rules hold for every AUTO-driven gun (§3.4): both guns in AUTO, and in MAN every gun not in hand. Every AUTO rule
+needs the Weapons console attended, the gun powered (bars ≥ 1) and the enemy hostile (`enemyHostile(state)`,
+`science.ts` L29; the hold rule below). An AUTO-driven gun uses AUTO's traverse and fire rates (§4.4's bonus is the gun
+in hand's).
 - **AUTO pew:** it fires one round along its turret's world aim whenever it is on solution and a third is stored
   (`pewReady`). So it fires each time a third has charged, and it never bursts.
 - **AUTO autocannon:** it fires along its turret whenever it is on solution, `gunHeat < GUN_AUTO_HEAT_STOP`, and
@@ -226,17 +252,19 @@ Every AUTO rule needs the Weapons console attended, the gun powered (bars ≥ 1)
 
 ### 4.4 MAN
 
-The player aims (the reticle, §3.4) and fires (LMB, §9). MAN gets a bonus:
+The player aims the gun in hand (the reticle, §3.4) and fires it (LMB, §9). The other gun fights on AUTO (§3.4, §4.3).
+The gun in hand gets a bonus, and an AUTO-driven gun keeps AUTO's numbers even in MAN:
 - **Traverse +25 %:** the MAN column of §3.3.
 - **Fire rate about +20 %.** Integer tables, because charge and cooldowns are integers:
   - **Pew:** charge units a tick, `PEW_MAN_GAIN_BY_BARS = [0, 7, 10, 14, 18]`, against AUTO's 6 / 8 / 12 / 15 (360
     units a third). That is a third in about 51 / 36 / 26 / 20 ticks, +17 / +25 / +17 / +20 %. AUTO keeps
     `PEW_TICKS_BY_BARS`, so its gains stay whole as now.
     - `PEW_CHARGE_SCALE` is not changed, so the Hunter's charge units stay the same.
-    - `pewGain` (`pew.ts` L31) reads the MAN table only for the crew slot of a turret pew in MAN.
+    - `pewGain` (`pew.ts` L31) reads the MAN table only for the crew slot of a turret pew in hand (§3.4). `tickPew`
+      gets that flag from `tickWeapons`, which reads the tick's `weaponSel`.
   - **Autocannon:** interval `AUTOCANNON_MAN_INTERVAL_BY_BARS = [0, 8, 7, 5, 4]` against AUTO's 10 / 8 / 6 / 5. That is
     +25 / +14 / +20 / +25 %.
-  - **The interval is read when a round fires:** `gunCooldown` is set from the mode and bars at that moment.
+  - **The interval is read when a round fires:** `gunCooldown` is set from hand control and the bars at that moment.
 - **MAN heat:** the lock rules are the Valkyrn's (Decision 7 of the Valkyrn spec). Holding LMB can lock the gun: from
   cold, about 2 s at the 4-tick interval and about 3.8 s at 6. That is the skill cost of MAN.
 
@@ -245,10 +273,10 @@ The player aims (the reticle, §3.4) and fires (LMB, §9). MAN gets a bonus:
 - **`tickGun`** (`gun.ts` L44) runs as today for a gun whose `turret` is null: the Valkyrn's code, byte for byte. For a
   turret gun:
   - **cooling and cooldown** as today;
-  - **the interval** is `intervalByBars[mode][trimmed slot-1 bars]`, and 0 bars means no round;
-  - **MAN:** a round fires when `input.gunHeld` (§8: LMB held, the autocannon selected, no MANUAL torpedo flying) and
-    the Valkyrn's rules hold (attended, not locked, Weapons below level 2, cooldown 0);
-  - **AUTO:** §4.3.
+  - **the interval** is `intervalByBars[hand ? 1 : 0][trimmed slot-1 bars]`, and 0 bars means no round;
+  - **in hand** (§3.4): a round fires when `input.gunHeld` (§8: LMB held, the autocannon selected, no MANUAL torpedo
+    flying) and the Valkyrn's rules hold (attended, not locked, Weapons below level 2, cooldown 0);
+  - **AUTO-driven** (AUTO, or MAN with the autocannon not in hand): §4.3. A held trigger is ignored.
 - **`fireRound`** (L26):
   - The two muzzle points stay on the hull, the nose frame, as now.
   - The round's direction is the turret's world aim for a turret gun, else the nose, as today.
@@ -351,6 +379,10 @@ don't change: the frequency is a shield rule.
   - `noop` for a second one in a tick;
   - `unavailable` without a third or without a bar (`pewReady`).
   - An admitted one sets `ShipInput.pewTrigger`.
+  - The admission reads the mode, not the selection. The app sends `pewFire` only with pew pew selected in MAN (§9).
+    Online, a held `weaponSel` can trail the command by a frame, and refusing on it would show a false NO CHARGE (§11).
+    A `pewFire` admitted with the pew not in hand fires one round along its AUTO-slewed turret, the tick's only pew
+    round.
 - **Firing:** `applyWeaponsInput` fires the trigger along the post-slew turret, at the end, where `firePew` runs today.
   The Hunter's `ShipInput.pewAim` and `firePew(state, i, aim)` are unchanged.
 - **Before W-4b lands** (W-4a on its own on the branch): the pew turret is 0, so pew pew fires straight ahead.
@@ -380,8 +412,9 @@ don't change: the frequency is a shield rule.
     `onlineSource.ts` L199) goes.
 - **The camera** follows it as now (`trackManualTorpedo`, `torpedoCamera.ts` L16).
 - **The guns while it flies:**
-  - no MAN slew, no `gunHeld`, and `pewFire` is refused `missile-in-flight` (§3.4, §6);
-  - AUTO guns keep slewing and firing;
+  - no gun is in hand (§3.4): no reticle slew, no `gunHeld`, and `pewFire` is refused `missile-in-flight` (§6);
+  - every powered gun is AUTO-driven and keeps slewing and firing by AUTO's rules, a MAN gun included (owner
+    2026-11-19: "guns left on auto keep firing; can't aim or fire guns by hand"; Decision 10);
   - Z still toggles the guns, so the gunner can set AUTO after the launch;
   - A/D, 1/2/3 and W/S still select and power.
 - **When the flight ends** (a hit, out of fuel, shot down, the edge): LMB goes back to the selected weapon on its **next
@@ -425,7 +458,8 @@ L256):
 - `turretAim` and `weaponSel` as sent;
 - `gunHeld` true only on a turret class when `held.gunHeld && weaponSel === 1`. On the Valkyrn it is today's rule,
   unchanged.
-- The sim then applies the MAN and flight rules (§3.4, §5).
+- The sim then applies hand control and the flight rules (§3.4, §5). `tickGun`, `tickPew` (through `tickWeapons`) and
+  the slew read `handControl` with the tick's `weaponSel`.
 
 **The tick order** inside `applyWeaponsInput` for the crew:
 1. locks;
@@ -451,7 +485,7 @@ Weapons seat (the seat is `weapons` and the class has a turret). The Valkyrn's F
 | LMB held | Autocannon selected, MAN: `gunHeld` (fires while held) | — |
 | LMB click | Torpedo selected: `missileLaunch` (as F), or why not | — |
 | LMB held | MANUAL torpedo flying: steer it (§7) | — |
-| LMB, AUTO gun selected | Nothing | — |
+| LMB, AUTO gun selected | Nothing (in AUTO the selected gun is AUTO-driven, §3.4) | — |
 | A / D | Select the previous / next weapon, wrapping | A/D steer the MANUAL torpedo |
 | 1 / 2 / 3, Num 1 / 2 / 3 | Select pew pew / autocannon / torpedo | 1 / 2 picked up the laser / torpedo; 3 tuned frequency A |
 | W / S | `weaponPower` +1 / −1 on the selected weapon | Nothing at Weapons |
@@ -536,20 +570,27 @@ set it from `KeySample.selectTo`, the A / D press edges and a card click.
   - **AUTOCANNON:** a heat bar with `OVERHEAT` blinking while locked (from the Valkyrn's GUN card, Valkyrn spec §7.4), its
     rate in rounds a second at the current bars and mode (`6/S`; `OFF` at 0 bars), and the same AUTO / MAN tag.
     - **The two gun tags are one switch:** both lit in MAN, and a click on either sends `gunMode`, as Z does.
-    - **In the hold** (§4.3) an AUTO gun's tag reads `HOLD` instead of `AUTO`, so the gunner sees why it is quiet.
+    - **Each tag's word is what its gun does** (§3.4): `MAN` on the gun in hand, `AUTO` on an AUTO-driven gun. So in
+      MAN with pew pew selected the tags read MAN and AUTO, both lit.
+    - **In the hold** (§4.3) an AUTO-driven gun's tag reads `HOLD` instead of `AUTO`, so the gunner sees why it is quiet.
   - **The frequency row** (`A B C`, Sci-1 §7.4, `WeaponsStation.tsx` L151-L154) shows on the Hound under the cards, with
     the tuned one lit and the weak one marked after a Level 2 scan, as today. Its buttons send `laserFrequency`; its key
     hint reads 4 / 5 / 6.
   - **TORPEDO:** as now, with its own tag (V). In MAN while it flies it reads `STEER LMB`, not `STEER A/D`.
   - **The bar pips under each card** stay (left click +1, right click −1).
-  - **The hint row:** `LMB FIRE · A/D SELECT · W/S POWER · Z AUTO/MAN`. The BEAM refusal and firing texts go, and the
-    refusal row names PEW, AUTOCANNON or TORPEDO.
+  - **The hint rows:** `LMB FIRE · A/D SELECT · W/S POWER` under the cards, then `Z AUTO/MAN · RIGHT-CLICK TORPEDO:
+    CLEAR` (W-4b adds the Z part). Each fits left of the right-aligned `FREE n` / `ROCKS n` with 8 px to spare. The
+    four-part line would not: it is 268 px against 241. The BEAM refusal and firing texts go, and the refusal row names
+    PEW, AUTOCANNON, TORPEDO or POWER.
 - **The Weapons map** (`render/tactical/weaponsModel.ts` L277-L304, `tacticalLayer.ts` L375):
   - the **selected gun's arc** edges, about the nose (`dim`), replacing the W-1 cone;
   - each gun's **muzzle line** along its real turret angle (`aimDir` of the interpolated turret): the selected gun's
     `mid`, the other's `dim`. The pew's runs to `PEW_RANGE`, the autocannon's to 600;
   - the **reticle** at the pointer, a small cross (`main`);
-  - in AUTO, a **bracket on the target** while a gun is on solution (`hot`; `dim` during the hold, when it won't fire);
+  - a **bracket on the target** while an AUTO-driven gun is on solution (`hot`; `dim` during the hold, when it won't
+    fire). The view's test is the sim's one tick ahead: the gun's next AUTO slew from the drawn turret lands within
+    `AUTO_FIRE_TOLERANCE` of the current solution, so a target that drifts a step between ticks does not flicker it. In
+    MAN the unselected gun can show it;
   - the W-2 dashed laser line is not drawn on the Hound;
   - autocannon rounds as the tracers `roundDraws` already draws for any gun class (`weaponsModel.ts` L276).
 - **Sound:** the autocannon uses the Valkyrn gun's fire and hit sounds (the `gunFire` / `gunHit` events), with no new
@@ -601,6 +642,13 @@ The goal is bots that use pew pew and the autocannon. The crew bots lose all ten
   - **No deliberate point defence** (§4.2, owner 2026-11-19). `gunnerPew` shot an inbound torpedo first; the Hound's
     bots don't. Their pew rounds can still hit a torpedo crossing the line to the ship.
 - **The torpedo rule** keeps `MISSILE_GAP` and the `torpLock`, without the laser terms: `canLaunch` and the gap.
+- **The scripted Helm lines the guns up** (`helmAxes`, `scripted.ts` L135). Today it auto-faces only for a full,
+  targeted laser (`laserFull && laserTargeted`, `LASER_RANGE`, `LASER_ARC_COS`), so on the Hound, with no laser, it would
+  never turn the guns onto the enemy. On a turret class only (`hasTurret`), after the avoid and dodge branches, it holds
+  auto-face (`face`, thrust 0) when the target ship is seen (`shipSeen`), active, within the autocannon's AUTO range
+  (600) and outside the autocannon's ±30° (`AUTOCANNON_ARC_COS`, cos 30°). Inside ±30° both turrets reach the target,
+  so it orbits. W-4a, with no turrets yet, uses its stand-in pew's geometry instead: `PEW_RANGE` and the nose's ±60°
+  (`PEW_ARC_COS`). Every other class keeps today's branch byte for byte, so the Valkyrn pair is unchanged.
 - **The hold** (§4.3). The AUTO guns are quiet until the enemy turns hostile. The gunner's own move ends the hold
   sensibly: its `torpLock` launches the AUTO torpedo once the enemy is seen and in torpedo range, the launch counts in
   `missilesLaunched`, and the AUTO guns open on the next tick. If the torpedo never gets a launch in the first 30 s,
@@ -616,15 +664,18 @@ The goal is bots that use pew pew and the autocannon. The crew bots lose all ten
 - **The gates** (§14): the per-seed gates must pass. The aggregate band (3 to 5 minutes, the crew both wins and loses)
   stays `it.skip` as at SIM 59 (kind c). Its numbers go in the plan's report.
 - **The tuning ladder** runs once, at the end of W-4b (§19.1). Its target is at least one crew win over the ten gate
-  seeds with every per-seed gate passing. Each rung is tried in order, value by value, with the earlier rungs held at
-  their base values; the first setting that meets the target is kept and the ladder stops:
+  seeds with every per-seed gate passing. Every setting below is run and recorded in order, value by value, with the
+  other rungs at their base values, whichever rung passes. The first setting in that order that meets the target is
+  kept:
+  0. the scripted Helm's line-up (above): on (the base, always kept). One reference row with it off
+     (`HOUND_HELM_LINEUP = false`) is recorded and never kept, so the report shows what the line-up is worth;
   1. `AUTOCANNON`'s `hitsPerHull`: 12 (base), 10, 8, 6;
   2. `AUTOCANNON_AUTO_RANGE`: 600 (base), 450;
   3. `MISSILE_GAP`: the base, then −25 % and −50 % (rounded to whole ticks);
   4. the gunner's bar move: autocannon +1 (base), then also pew −1 and autocannon +1 more (0 / 2 / 1), each command admitted
      by the same pre-check.
-  - If no setting meets the target, the base numbers ship, and the report records the whole sweep (each setting's wins
-    and per-seed results). The owner then decides.
+  - The report records the whole sweep either way: each setting's wins, losses, median length and per-seed results. If
+    no setting meets the target, the base numbers ship and the owner decides.
   - Never the Hunter's or the Valkyrn's knobs.
 
 ## 13. State, hash, snapshots, determinism
@@ -739,8 +790,11 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
   - `slewTurret` moves at most the rate, never past the wanted offset, and clamps to the arc;
   - the wrap across 0 / 65535;
   - an integer in and out for every case;
-  - MAN slews only the selected gun, at 455 / 341;
+  - MAN slews only the gun in hand toward the reticle, at 455 / 341; the other gun slews on AUTO; with the torpedo
+    selected both are AUTO-driven; with no reticle the gun in hand holds;
   - AUTO at 364 / 273;
+  - on solution within 182 fine steps of the lead and not at 183, both sides;
+  - `gunLead` gives none past the round's life;
   - no power or unattended holds;
   - a turning ship carries the turret.
 - **AUTO** (`w4Auto.test.ts`):
@@ -754,6 +808,10 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
     continuous AUTO; it settles at one round per about 12.5 ticks;
   - **no fire** on an unseen (fogged) enemy, behind a rock, or out of the arc;
   - AUTO turrets go back to the nose with no target;
+  - **a turning ship:** in a sustained 150°/s Helm turn across the target both guns still fire, the autocannon less
+    often than at rest;
+  - **MAN costs no firepower:** with pew pew in hand the autocannon fires on its own, with the torpedo selected both
+    do, and the hold still keeps them quiet;
   - a seeded scenario pins a known hit count.
 - **MAN** (`w4Manual.test.ts`):
   - the pew gain 7 / 10 / 14 / 18;
@@ -765,7 +823,11 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
   - `torpTurn` is gone from every schema (a frame carrying it is malformed);
   - `torpHeading` from the left-button steer turns it and holds on release;
   - the right button pans at Weapons;
-  - the guns during a flight: MAN holds and `pewFire` is `missile-in-flight`, while AUTO keeps firing;
+  - the guns during a flight: nothing follows the reticle, the trigger fires nothing and `pewFire` is
+    `missile-in-flight`, while every powered gun, a MAN one included, keeps firing on AUTO;
+  - a pick-up made before a MANUAL launch is dropped when the flight starts, so the held button steers at once;
+  - a click-launch whose press stays down steers the torpedo at once, and a quick click leaves it on its launch heading;
+  - a flight that ends with the button held off the map, then dragged onto it, fires nothing until a fresh press;
   - after the flight, a held LMB fires nothing until a fresh press, and the selection returns from the torpedo to the
     last gun;
   - W-3's flight tests keep their numbers.
@@ -797,6 +859,8 @@ Each rule gets a test. File names are suggestions, prefixed `w4`.
   - NO CHARGE comes from the authority's `unavailable`.
 - **Scripted and gates:**
   - the gunner's first tick sends `shipPower` then `weaponPower` and ends at 1 / 1 / 1;
+  - the Hound's scripted Helm holds auto-face with the target seen, in range and outside the line-up arc, and not inside
+    it; the Valkyrn's Helm never does;
   - on the Hound the gunner sends no `pewFire`, no `gunMode` and no laser command; its AUTO guns fire nothing before the
     `hostile` event, and the hold ends by its torpedo launch or the clock;
   - the Valkyrn pair's commands are unchanged;
@@ -847,7 +911,7 @@ then each file read to confirm the beam is the crew's, not the Hunter's):
 |---|---|---|---|---|
 | Loadout | pew (turret ±60°), autocannon (turret ±30°), torpedo; no beam | unchanged (laser, pew, torpedo) | unchanged (fixed gun, torpedo) | unchanged (beam, torpedo) |
 | Slot-1 bars | autocannon interval 10 / 8 / 6 / 5 | none | ignored, as now | beam shots and charge, as now |
-| AUTO / MAN guns | new (Z, both together; start AUTO) | always auto (its own AI) | none (`gunMode` `unavailable`) | none; W-2 `laserMode` on Z |
+| AUTO / MAN guns | new (Z, both together; start AUTO; in MAN only the selected gun is in hand, the other stays AUTO) | always auto (its own AI) | none (`gunMode` `unavailable`) | none; W-2 `laserMode` on Z |
 | AUTO in the 30 s hold | tracks, holds fire (`HOLD`) | holds, as now | no AUTO | AUTO beam fires, as now |
 | AUTO targets | the enemy ship only; no torpedo-first | its own AI, unchanged | — | unchanged |
 | Rocks | autocannon rounds wear 1/4 hp and break rocks; pew rounds stop with no effect | unchanged | gun rounds absorbed, as now | beam digs, as now |
@@ -856,7 +920,7 @@ then each file read to confirm the beam is the crew's, not the Hunter's):
 | LMB at Weapons | fire the selected weapon / steer a MANUAL torpedo | — | the Flight seat's gun, unchanged | unchanged |
 | A/D, 1 / 2 / 3, W/S at Weapons | select, select, power | — | Flight seat unchanged | Flight seat unchanged |
 | Manual torpedo | mouse-steered (LMB), no A/D or right drag | none | unchanged rules (no MANUAL flight on the Flight seat) | unchanged |
-| Bots | gunner powers the autocannon, AUTO guns open after the hold; no point defence | `hunter.ts` unchanged | pilot and pair bit-identical | — |
+| Bots | gunner powers the autocannon, AUTO guns open after the hold; no point defence; the Helm lines the guns up | `hunter.ts` unchanged | pilot and pair bit-identical | — |
 | Sim tests pinned | goldens re-blessed | identity digest (§13.4) | `valkyrnIdentity` digests unchanged | `manualLaser*` pass |
 
 ## 16. Decisions
@@ -871,11 +935,15 @@ then each file read to confirm the beam is the crew's, not the Hunter's):
 5. **Z toggles both guns together, and V stays the torpedo's.**
 6. **AUTO guns** slew and fire with lead at a seen, hostile enemy ship in range and arc. The pew fires on each charged
    third. The autocannon stops at 80 % heat. LMB does nothing on an AUTO gun, and W/S still work.
-7. **MAN gets +25 % traverse and about +20 % fire rate,** as integer tables.
+7. **The gun in hand gets +25 % traverse and about +20 % fire rate,** as integer tables.
 8. **The traverse rates** are pew 364 / 455 and autocannon 273 / 341 fine steps a tick (§3.3).
 9. **The MANUAL torpedo is flown by LMB toward the cursor.** Releasing holds the heading. W-3's flight numbers stay, A/D
    and the right drag are removed, and the camera follows.
-10. **While a MANUAL torpedo flies, MAN guns neither aim nor fire, and AUTO guns fight on.**
+10. **While a MANUAL torpedo flies, no gun is aimed or fired by hand, and every powered gun fights on AUTO, a MAN gun
+    included** (owner 2026-11-19, §17 item 19). The owner's text is "guns left on auto keep firing; can't aim or fire
+    guns by hand". The left button is the torpedo's, so nothing is done by hand. Under item 19 a gun not in hand is
+    AUTO-driven, so it keeps firing and launching from a gun loses nothing. Holding it instead would make the guns' fire
+    depend on what was selected at launch.
 11. **The scripted gunner powers the autocannon from the spare reactor bar and leaves the guns on AUTO.** The Valkyrn
     bots don't change.
 12. **SIM 59 → 60 with the bless pattern.** The authority decides, and the client predicts the turret and the reticle.
@@ -885,10 +953,16 @@ then each file read to confirm the beam is the crew's, not the Hunter's):
     and the autocannon strips a layer in 4 hits instead of 8. Tuned with 4 / 5 / 6 or the frequency row.
 15. **AUTO holds fire during the 30 s hold** (owner 2026-11-19). It tracks; the hold ends as today.
 16. **AUTO pew targets only the enemy ship** (owner 2026-11-19). Its rounds can still hit a torpedo in their path.
+17. **In MAN only the selected gun is in the gunner's hands; the other fights on AUTO** (owner 2026-11-19). Taking
+    control never costs firepower.
+18. **AUTO fires within 182 fine steps (1.0°) of its solution** (owner 2026-11-19), so it still fires in a sustained
+    Helm turn.
+19. **The Hound's scripted Helm lines the guns up** (auto-face outside the autocannon's ±30°, within 600 u); the
+    Valkyrn's Helm is unchanged.
 
 ## 17. Judgement calls the code forced (owner to check)
 
-Items 1, 2 and 4 were answered by the owner on 2026-11-19. The rest are open.
+Items 1, 2, 4, 19 and 20 were answered by the owner on 2026-11-19. The rest are open.
 
 1. **The Hound's laser slot is null, not a hidden beam.** This turns off every beam path through the Valkyrn's existing
    no-laser guards. The cost was that Science's weak shield frequency (Sci-1 Level 2) no longer affected the Hound, and
@@ -930,6 +1004,20 @@ Items 1, 2 and 4 were answered by the owner on 2026-11-19. The rest are open.
 17. **The Valkyrn identity test leaves the three new fields out by name.** Their values are asserted zero, so the
     pinned digests can stay.
 18. **The 600 u AUTO range for the autocannon,** just under a round's 607 u reach at rest.
+19. **What the other gun does in MAN.** The spec had the unselected gun hold its angle in MAN (§3.4), and MAN guns hold
+    during a MANUAL flight. So taking control of one gun silenced the other.
+    **Owner 2026-11-19:** in MAN the selected gun is aimed by the reticle and fired by LMB, with the MAN bonus. The
+    unselected gun keeps behaving exactly as AUTO: it slews to its own lead solution and fires on its own, with the AUTO
+    rules (the hold, the 80 % heat stop, ship-only targets, line of sight). Taking control never costs firepower.
+    §3.4's hand control carries it, through one sim helper, `handControl`. During a MANUAL torpedo flight no gun is in
+    hand, so both guns, a MAN one included, fight on AUTO (Decision 10). That follows the owner's earlier text, "guns left
+    on auto keep firing; can't aim or fire guns by hand". The tags, the bracket and the tests follow (§10, §14).
+20. **AUTO fired only exactly on its solution** (§4.2), so in a sustained Helm turn faster than the turret a trailing gun
+    could pass a whole sweep without firing.
+    **Owner 2026-11-19:** AUTO fires when the turret is within a small tolerance of the lead solution, not only exactly
+    on it. The tolerance is `AUTO_FIRE_TOLERANCE = 182` fine steps (1.0°), justified in §4.2 by the hit radius and the
+    traverse. §3.3's claim that both turrets keep up with the ship's turn in MAN was wrong for the autocannon and is
+    corrected.
 
 ## 18. Out of scope / later
 
@@ -955,7 +1043,7 @@ the W-2 and W-3 entries (an Automated box and a Manual box with screenshots).
    - What it builds: §2, §5 with its rocks (§5.1) and the weak frequency (§5.2, keys 4 / 5 / 6 and the row), §6's
      `pewFire` without the aim (the pew turret stays at 0, so it fires along the nose), W/S, A/D and 1 / 2 / 3
      selection with the highlight, LMB fire by selection (the autocannon held), and the scripted gunner's bar move
-     (§12) with the W-4a stand-in pew rule (§19.1). AUTO and its hold arrive in W-4b.
+     (§12) with the W-4a stand-in pew rule and the Helm's ±60° line-up (§19.1). AUTO and its hold arrive in W-4b.
    - Gate entry: "W-4a: the Hound's guns". The cards in slot order with the selected one lit; W/S moving bars; holding LMB
      with the autocannon selected (heat rising, OVERHEAT); 1 / 2 / 3 and A/D; the autocannon chipping and breaking a
      rock; after a Level 2 scan, tuning to the weak frequency and pew pew taking 2 layers.
@@ -964,14 +1052,15 @@ the W-2 and W-3 entries (an Automated box and a Manual box with screenshots).
    - What it builds: §3, §4, the map's arc, muzzle lines and reticle, Z and the shared tag, and online prediction (§11).
    - Gate entry: "W-4b: turrets and AUTO/MAN". The muzzle lines trail the reticle and stop at the arc; Z flips both
      tags; in the hold AUTO guns track with `HOLD` on their tags and fire nothing; once hostile, on AUTO both guns track
-     and fire at the ship with no input; MAN feels quicker.
+     and fire at the ship with no input; in MAN the unselected gun keeps firing on its own; MAN feels quicker.
    - Screenshots: the map in MAN, with the reticle, the selected arc and two muzzle lines; AUTO on solution with the
      bracket.
    - Does the slewing read as "slowly follows"?
 3. **W-4c: the mouse-flown torpedo.**
    - What it builds: §7.
    - Gate entry: "W-4c: flying the torpedo". V to MAN, F, then hold LMB and the torpedo swings toward the cursor; let go
-     and it holds; AUTO guns keep firing while MAN guns go quiet; when it ends, LMB is the selected gun again.
+     and it holds; the guns, MAN or AUTO, keep firing on their own and nothing follows the reticle; when it ends, LMB is
+     the selected gun again.
    - Screenshots: a MANUAL torpedo under LMB steer, with the STEER LMB card.
    - Does it feel like the Helm's steer?
 
@@ -995,9 +1084,11 @@ parts.
   - **The scripted gunner** makes §12's bar move. It has no AUTO guns yet, so it keeps a stand-in pew rule:
     `gunnerPew`'s ship branch (seen, within `PEW_RANGE`, inside the nose's ±60° cone, `pewReady`, `SCRIPTED_PEW_GAP`)
     sends `pewFire {}`, and the round flies along the nose. It has no torpedo-first branch. W-4b deletes the stand-in.
+  - **The scripted Helm's line-up** (§12) uses the stand-in's geometry: auto-face while the target is seen, within
+    `PEW_RANGE` and outside the nose's ±60°. W-4b moves it to the autocannon's 600 u and ±30°.
   - A MANUAL torpedo still flies by W-3's rules: while it flies, A / D steer it (W-3) and do not select, and the right
     button gives it a heading. W-4c changes both (§7).
 - **W-4b.** It adds the state, the turrets, the mode, AUTO and MAN, and the online prediction. The flight rules of §7
-  ("The guns while it flies") are W-4c's: in W-4b a MANUAL torpedo in flight does not stop the guns, and A / D still
-  steer it.
+  ("The guns while it flies") are W-4c's: in W-4b a MANUAL torpedo in flight does not take the gun out of the
+  gunner's hands, and A / D still steer it.
 - **W-4c.** It adds §7, including `pewFire`'s `missile-in-flight` refusal, and then the SIM bump.

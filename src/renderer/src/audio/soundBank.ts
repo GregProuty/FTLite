@@ -1,5 +1,6 @@
 // Audio-i spec sections 1-3: the sound bank. Which Kenney file backs each effect key, the manifest names they bind, the
 // music names, and the request shape the views hand the engine. Pure data: no Web Audio, no sim.
+import { MOODS, type Mood } from './musicState';
 
 export type Pack = 'sci' | 'ui';
 export const PACK_DIRS: Readonly<Record<Pack, string>> = { sci: 'raw/kenney-sci-fi-sounds', ui: 'raw/kenney-interface-sounds' };
@@ -42,10 +43,24 @@ export function sfxFiles(): SfxFile[] {
   });
 }
 
-/** The two tracks (spec section 5): Cobalt is calm, Time and Space is battle. */
-export const MUSIC_CALM = 'music.calm', MUSIC_BATTLE = 'music.battle';
-export const MUSIC_FILES: Readonly<Record<string, string>> = { [MUSIC_CALM]: 'raw/scott-buckley/cobalt.mp3', [MUSIC_BATTLE]: 'raw/scott-buckley/time-and-space.mp3' };
-export const AUDIO_ASSET_NAMES: readonly string[] = [...sfxFiles().map((f) => f.name), MUSIC_CALM, MUSIC_BATTLE];
+/** One mood's track (music spike, 2026-11-19): its manifest name and file, where it starts each time the mood begins and
+ *  the loop points (seconds; `loopEnd` null is the track's end), and its level against the other tracks. The files are
+ *  level-matched when encoded, so `level` is for tuning by ear; none of these numbers were set by ear. */
+export interface MusicTrack { readonly name: string; readonly file: string; readonly start: number; readonly loopStart: number; readonly loopEnd: number | null; readonly level: number }
+const track = (mood: Mood, file: string, level = 1): MusicTrack => ({ name: `music.${mood}`, file, start: 0, loopStart: 0, loopEnd: null, level });
+/** The five tracks, one per mood. Space is a quiet piece with loud peaks, so it could not be raised when encoded: its level lifts it here. */
+export const MUSIC: Readonly<Record<Mood, MusicTrack>> = {
+  calm: track('calm', 'raw/beam-theory/bit-space.ogg'),
+  space: track('space', 'raw/yd/observing-the-star.ogg', 1.8),
+  intrigue: track('intrigue', 'raw/joth/cyberpunk-moonlight-sonata.ogg'),
+  adventure: track('adventure', 'raw/alexandr-zhelanov/brave-space-explorers.ogg'),
+  combat: track('combat', 'raw/alexandr-zhelanov/law-in-the-city.ogg')
+};
+export const MUSIC_CALM = MUSIC.calm.name, MUSIC_COMBAT = MUSIC.combat.name;
+export const MUSIC_FILES: Readonly<Record<string, string>> = Object.fromEntries(MOODS.map((m) => [MUSIC[m].name, MUSIC[m].file]));
+/** `music.<mood>` back to its mood; null for anything else. */
+export function moodOf(name: string): Mood | null { return MOODS.find((m) => MUSIC[m].name === name) ?? null; }
+export const AUDIO_ASSET_NAMES: readonly string[] = [...sfxFiles().map((f) => f.name), ...MOODS.map((m) => MUSIC[m].name)];
 
 export function isAudioName(name: string | undefined): boolean { return name !== undefined && (name.startsWith('sfx.') || name.startsWith('music.')); }
 /** `sfx.<key>.<n>` back to its key and variant; null for anything else. */

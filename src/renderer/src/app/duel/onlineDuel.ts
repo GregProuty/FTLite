@@ -62,12 +62,12 @@ export const LINK_POLL_MS = 1000, LIVE_SAMPLES = 300;
 const keysOnly = (k: KeySample): KeySample => ({ ...k, presses: { ...emptyPresses(), zoomIn: k.presses.zoomIn, zoomOut: k.presses.zoomOut, camera: k.presses.camera } });
 /** Playtest2feedback Decision 14: the most unacknowledged held frames the local throttle prediction counts. */
 export const UNACKED_MAX = 30;
-/** Playtest2feedback §3, §4, §4a: this seat's held frame. At the crew Helm (a newtonianHelm class): moveX 0, the held
+/** Playtest2feedback §3, §4, §4a: this seat's held frame. At the crew Helm (a newtonianHelm class): A/D's turn, the held
  *  throttle and thrusters and the left button's steer (crewHelmHeld). Elsewhere, and on any other class: quantised to -1,
  *  0 and 1 (H-2 spec §3), with Space at the Helm as auto-face (Feel-i). */
 export function sessionHeld(k: KeySample, d: DuelState, me: number, steer: number): HeldInput {
   const seat = seatOf(d, me), crewHelm = crewHelmSeat(d, me);
-  return { moveX: crewHelm ? 0 : Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld,
+  return { moveX: Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld,
     ...(k.fireHeld && seat === 'helm' ? { face: true } : {}), ...(crewHelm ? crewHelmHeld(k, steer) : {}) };
 }
 const heldChanged = (a: HeldInput, b: HeldInput): boolean => a.moveX !== b.moveX || a.moveY !== b.moveY || a.interactHeld !== b.interactHeld || a.face !== b.face

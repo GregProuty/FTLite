@@ -132,11 +132,11 @@ export function aimTurn(heading: number, aim: number): number {
 }
 
 /** The turn the Helm attendant's held input flies this tick (Artemis spec §5.3, Feel-i, Feel-ii spec §1.1, Valkyrn spec
- *  §6.2): A/D (not on a newtonianHelm class, playtest2feedback §4a), else auto-face's turn, else the aim's, else the held heading's, else none. Pure; reads the state before
+ *  §6.2): A/D (on every class, owner 2026-11-19), else auto-face's turn, else the aim's, else the held heading's, else none. Pure; reads the state before
  *  the step (the app's predicted path calls it too). */
 export function helmTurn(d: DuelState, h: HeldInput): number {
-  // Playtest2feedback §4a: an authority rule: moveX turns only a class that is not newtonianHelm (the crew's A/D are thrusters).
-  if (!classOf(d.tactical, 0).newtonianHelm && (Math.sign(h.moveX) || 0) !== 0) return h.moveX;
+  // Owner 2026-11-19: A/D turn every class again (playtest2feedback §4a had made them thrusters on a newtonianHelm class).
+  if ((Math.sign(h.moveX) || 0) !== 0) return Math.sign(h.moveX);
   if (d.tactical.outcome !== Outcome.Running) return 0;
   if (h.face === true) return autoFaceTurn(d.tactical, 0);
   const aim = heldAim(h);
@@ -161,6 +161,7 @@ export function headingDelta(heading: number, target: number): number {
 export function helmBoost(d: DuelState, h: HeldInput): number {
   const t = d.tactical, cls = classOf(t, 0);
   if (!cls.newtonianHelm || helmTurn(d, h) === 0 || shipEngineFactor(t, 0) <= 0) return 1;   // owner 2026-11-19: the gas is free
+  if ((Math.sign(h.moveX) || 0) !== 0) return 1;   // owner 2026-11-19: A/D turn at the normal rate, unboosted
   const heading = t.ships[0].heading;
   if (h.face === true) {
     const p = autoFacePoint(t, 0), dist = Math.sqrt(p.x * p.x + p.y * p.y), h0 = hx(heading), h1 = hy(heading);
@@ -187,7 +188,7 @@ export function crewAxes(d: DuelState, h: HeldInput, thrMille: number = d.thrMil
 /** Playtest2feedback (spec §3, §4, §4a, §5, §7's step order 2 to 7): the crew Helm's tick on a newtonianHelm class,
  *  attended (`h` is the attendant's held input) or not (null). In order:
  *  - the turn and its boost, from the state before the step;
- *  - a held aim becomes the held heading, and auto-face clears it (moveX never touches it on this class);
+ *  - a held aim becomes the held heading, and A/D or auto-face clears it (owner 2026-11-19, as the other classes);
  *  - the throttle ramp on the attendant's throttleHeld (0 with no attendant), clamped to the Engines bars' floor and cap
  *    (owner 2026-11-19: Engineering's effective Engines bars, after this tick's ship commands);
  *  - the fore/aft and the side thruster, each venting whenever the attendant holds it (owner 2026-11-19: free cold gas, so
@@ -198,7 +199,7 @@ export function crewAxes(d: DuelState, h: HeldInput, thrMille: number = d.thrMil
 function crewHelm(d: DuelState, h: HeldInput | null, crew: ShipInput): void {
   const held = h ?? NO_HELD, turn = helmTurn(d, held), boost = helmBoost(d, held);
   if (h) {
-    if (h.face === true) d.holdHeading = -1;
+    if ((Math.sign(h.moveX) || 0) !== 0 || h.face === true) d.holdHeading = -1;
     else if (heldAim(h) >= 0) d.holdHeading = heldAim(h);
   }
   const engine = engineBars(d);

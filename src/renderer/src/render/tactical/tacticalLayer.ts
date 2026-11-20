@@ -237,6 +237,7 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       filters?.tick(t);
       for (const g of drawn) g.clear();
       for (const l of d.grid.lines) grid.moveTo(l.x1, l.y1).lineTo(l.x2, l.y2).stroke({ width: 1, color: l.major ? CRT.dim : CRT.faint, alpha: l.major ? 0.5 : 1 });
+      for (const c of d.grid.curves ?? []) grid.poly(c.pts, false).stroke({ width: 1, color: c.major ? CRT.dim : CRT.faint, alpha: c.major ? 0.5 : 1 });   // the gravity grid
       fill(cols, d.grid.columns); fill(rows, d.grid.rows);
 
       for (const k of d.contours) contours.circle(k.x, k.y, k.r).stroke({ width: 1, color: CRT.dim, alpha: 0.45 });

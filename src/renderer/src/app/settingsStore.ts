@@ -4,6 +4,7 @@
 import type { RecordStorage } from './telemetryStore';
 import type { Volumes } from './audio';
 import { DEFAULT_SHAKE, validShake, type ShakeSetting } from '../render/shake';
+import { DEFAULT_MAP_GRID, validMapGrid, type MapGridSetting } from '../render/tactical/mapGrid';
 import { DEFAULT_SOLO_SHIP, isSoloShipId, type SoloShipId } from '../sim/ship/fleet';
 
 export const SETTINGS_KEY = 'ftlite-settings';
@@ -15,9 +16,10 @@ export const VOLUME_LABELS: Readonly<Record<VolumeChannel, string>> = { master: 
 
 /** Feel-i: `shake`, the console maps' screen shake (off, low, full); a version 2 record without it reads full. Valkyrn spec
  *  §8, §9: `soloShip`, the Single player ship last picked, and `valkyrnLaserFit`, the developer laser fit; a record without
- *  them reads the first solo ship and the gun. */
-export interface Settings extends Volumes { version: 2; shake: ShakeSetting; soloShip: SoloShipId; valkyrnLaserFit: boolean }
-export const DEFAULT_SETTINGS: Settings = { version: 2, master: 1, music: 0.5, effects: 1, shake: DEFAULT_SHAKE, soloShip: DEFAULT_SOLO_SHIP, valkyrnLaserFit: false };   // music at half (owner 2026-11-17)
+ *  them reads the first solo ship and the gun. `mapGrid` (owner 2026-11-19), the console map's grid; a record without it
+ *  reads the gravity grid. */
+export interface Settings extends Volumes { version: 2; shake: ShakeSetting; soloShip: SoloShipId; valkyrnLaserFit: boolean; mapGrid: MapGridSetting }
+export const DEFAULT_SETTINGS: Settings = { version: 2, master: 1, music: 0.5, effects: 1, shake: DEFAULT_SHAKE, soloShip: DEFAULT_SOLO_SHIP, valkyrnLaserFit: false, mapGrid: DEFAULT_MAP_GRID };   // music at half (owner 2026-11-17)
 
 const step = (v: unknown, fallback: number): number => (typeof v === 'number' && VOLUME_STEPS.includes(v) ? v : fallback);
 
@@ -30,7 +32,8 @@ export function loadSettings(storage: RecordStorage): Settings {
     if (r.version !== 2) return { ...DEFAULT_SETTINGS };
     return { version: 2, master: step(r.master, DEFAULT_SETTINGS.master), music: step(r.music, DEFAULT_SETTINGS.music), effects: step(r.effects, DEFAULT_SETTINGS.effects),
       shake: validShake(r.shake) ? r.shake : DEFAULT_SETTINGS.shake,
-      soloShip: isSoloShipId(r.soloShip) ? r.soloShip : DEFAULT_SETTINGS.soloShip, valkyrnLaserFit: r.valkyrnLaserFit === true };
+      soloShip: isSoloShipId(r.soloShip) ? r.soloShip : DEFAULT_SETTINGS.soloShip, valkyrnLaserFit: r.valkyrnLaserFit === true,
+      mapGrid: validMapGrid(r.mapGrid) ? r.mapGrid : DEFAULT_SETTINGS.mapGrid };
   } catch { return { ...DEFAULT_SETTINGS }; }
 }
 

@@ -27,14 +27,17 @@ export const MOVE_CODES = { up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD
 export const INTERACT_HELD = 'KeyE', FIRE_HELD = 'Space';
 /** Feel-ii §2.7: G drops a ping at the pointer on a console map (the duel modes take it through the keyboard's intercept). */
 export const PING_CODE = 'KeyG';
-/** Playtest2feedback §4: the crew Helm's cold gas keys: A, Q and ← push to port, D, E and → to starboard, ↑ forward, ↓ aft. */
-export const RCS_CODES = { port: ['KeyA', 'KeyQ', 'ArrowLeft'], starboard: ['KeyD', 'KeyE', 'ArrowRight'], fore: ['ArrowUp'], aft: ['ArrowDown'] } as const;
+/** Playtest2feedback §4: the crew Helm's cold gas keys: Q and ← push to port, E and → to starboard, ↑ forward, ↓ aft.
+ *  Owner 2026-11-19: A and D turn the ship again (they were thrusters too). */
+export const RCS_CODES = { port: ['KeyQ', 'ArrowLeft'], starboard: ['KeyE', 'ArrowRight'], fore: ['ArrowUp'], aft: ['ArrowDown'] } as const;
 
 /** The merged held state a console draws (spec §6.1): Space, A, D, W, S from the keys or the console's buttons. */
-export interface HeldFlags { fire: boolean; left: boolean; right: boolean; up: boolean; down: boolean }
+export interface HeldFlags { fire: boolean; left: boolean; right: boolean; up: boolean; down: boolean;
+  /** The crew Helm's side thrusters held (Q or ←, E or →, or the PORT and STBD buttons); absent is false. */
+  port?: boolean; starboard?: boolean }
 export const NO_HELD_FLAGS: HeldFlags = { fire: false, left: false, right: false, up: false, down: false };
 /** The codes a console button can hold (spec §6.2). */
-export type HoldCode = 'Space' | 'KeyA' | 'KeyD' | 'KeyW' | 'KeyS';
+export type HoldCode = 'Space' | 'KeyA' | 'KeyD' | 'KeyW' | 'KeyS' | 'ArrowLeft' | 'ArrowRight';
 /** What a console click can do (spec §6.2): a press edge, a held code, a direct lock request, a throttle notch, or a laser
  *  frequency (Sci-1 spec §7.4). FTL targeting spec §1: `lock` sets the laser's target room (−1 clears it) and `torpLock`
  *  the torpedo's. */
@@ -182,7 +185,8 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     sample(): KeySample {
       const x = (has(MOVE_CODES.right) ? 1 : 0) - (has(MOVE_CODES.left) ? 1 : 0), y = (has(MOVE_CODES.down) ? 1 : 0) - (has(MOVE_CODES.up) ? 1 : 0);
       const len = Math.sqrt(x * x + y * y) || 1;
-      const held: HeldFlags = { fire: has(FIRE_HELD), left: has(MOVE_CODES.left), right: has(MOVE_CODES.right), up: has(MOVE_CODES.up), down: has(MOVE_CODES.down) };
+      const held: HeldFlags = { fire: has(FIRE_HELD), left: has(MOVE_CODES.left), right: has(MOVE_CODES.right), up: has(MOVE_CODES.up), down: has(MOVE_CODES.down),
+        port: RCS_CODES.port.some(has), starboard: RCS_CODES.starboard.some(has) };
       // Playtest2feedback §3, §4: the crew Helm's held throttle and thrusters, each opposite pair cancelling.
       // Final review I1: a stale key (held when the seat became the crew Helm) counts for none of them.
       const any = (codes: readonly string[]): number => (codes.some(live) ? 1 : 0);

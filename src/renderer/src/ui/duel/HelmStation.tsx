@@ -111,10 +111,10 @@ const CrewHelmStation = memo(function CrewHelmStation({ helm, crew }: { helm: He
       <PixelText text={`SPD ${helm.speed}`} x={rx} y={y0 + 18} size={FONT_SIZE} tint={main} />
       <PixelText text={`ENGINES ${crew.bars}`} x={rx} y={y0 + 40} size={FONT_NATIVE} tint={dim} />
       <PixelText text={`CAP ${crew.cap / 10}%${crew.floor < 0 ? '' : '  NO REV'}`} x={rx} y={y0 + 56} size={FONT_SIZE} tint={crew.cap > 0 ? main : hot} />   {/* owner 2026-11-19: 1 bar = 25 %, reverse needs a bar */}
-      <Button name="rcs-port" label="PORT" hint="A" x={rx} y={y0 + 90} w={70} h={24} lit={h.left} onHold={(on) => actions.console.hold('KeyA', on)} />
-      <Button name="rcs-stbd" label="STBD" hint="D" x={rx + 78} y={y0 + 90} w={70} h={24} lit={h.right} onHold={(on) => actions.console.hold('KeyD', on)} />
+      <Button name="rcs-port" label="PORT" hint="Q" x={rx} y={y0 + 90} w={70} h={24} lit={h.port === true} onHold={(on) => actions.console.hold('ArrowLeft', on)} />
+      <Button name="rcs-stbd" label="STBD" hint="E" x={rx + 78} y={y0 + 90} w={70} h={24} lit={h.starboard === true} onHold={(on) => actions.console.hold('ArrowRight', on)} />
       <Button name="auto-face" label="AUTO-FACE" hint="SPC" x={rx} y={y0 + 118} w={148} h={24} lit={h.fire} flash={flash('auto-face')} onHold={(on) => actions.console.hold('Space', on)} />
-      {hint(['throttle'], 'W/S THR  A/D Q/E GAS', y0 + 150)}
+      {hint(['throttle'], 'W/S THR  A/D TURN  Q/E GAS', y0 + 150)}
       {hint(['turn', 'heading', 'auto-face'], 'LMB STEER  RMB HDG', y0 + 170)}   {/* two rows, the lowest at y0 + 170 as the existing block's; RMB HEADING is in the controls list */}
     </>
   );

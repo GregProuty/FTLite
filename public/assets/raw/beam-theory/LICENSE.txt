@@ -1,0 +1,13 @@
+Music by Beam Theory (opengameart.org/users/beam-theory)
+
+Tracks:
+  bit-space.ogg  'Bit Space (FTL Inspired)'  https://opengameart.org/content/bit-space-ftl-inspired-loop-0
+
+License: OpenGameArt.org Attribution 3.0 (OGA-BY 3.0)
+https://static.opengameart.org/OGA-BY-3.0.txt
+
+Credit:
+  'Bit Space (FTL Inspired)' by Beam Theory (opengameart.org/users/beam-theory), OGA-BY 3.0
+
+Retrieved: 2026-11-19
+Modifications: silence trimmed at both ends, level-matched, re-encoded to OGG Vorbis

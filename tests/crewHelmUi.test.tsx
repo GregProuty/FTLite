@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Playtest2feedback (spec 2026-11-18-playtest2feedback-design §6): the crew Helm's console: the model's readings, the
 // throttle bar −25..100 with its Engines cap and locked part, the Engines bars and cap (owner 2026-11-19: no HELM POWER
-// cells, no PRESSURE gauge and no NO PRESSURE), PORT and STBD holding A and D; the Valkyrn keeps its notches.
+// cells, no PRESSURE gauge and no NO PRESSURE), PORT and STBD holding ← and → (Q and E's thrusters); the Valkyrn keeps its notches.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { UiContext } from '../src/renderer/src/ui/context';
@@ -69,12 +69,12 @@ describe('the crew HelmStation (spec §6)', () => {
     act(() => duel.frame(view(helmView({ crew: { ...crew, cap: 0, floor: 0, bars: 0 } }))));
     expect(texts()).toContain('ENGINES 0'); expect(texts()).toContain('CAP 0%  NO REV');
   });
-  it('PORT and STBD hold A and D', () => {
+  it('PORT and STBD hold the side thrusters (← and →, owner 2026-11-19: A and D turn)', () => {
     const { duel, input } = mount();
     act(() => duel.frame(view(helmView())));
     fireEvent.pointerDown(btn('rcs-port')!, { button: 0 }); fireEvent.pointerUp(btn('rcs-port')!);
     fireEvent.pointerDown(btn('rcs-stbd')!, { button: 0 });
-    expect(input.hold.mock.calls).toEqual([['KeyA', true], ['KeyA', false], ['KeyD', true]]);
+    expect(input.hold.mock.calls).toEqual([['ArrowLeft', true], ['ArrowLeft', false], ['ArrowRight', true]]);
   });
   it('a Helm panel without `crew` (the Valkyrn\'s Flight seat) keeps the notches', () => {
     const { duel } = mount();

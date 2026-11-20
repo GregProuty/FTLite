@@ -66,6 +66,9 @@ export async function loadBytes(url: string): Promise<ArrayBuffer> {
   }
 }
 
+/** Pixi's Assets.init, started once for the page (it warns when called twice). */
+let assetsInit: Promise<void> | undefined;
+
 export async function loadAssets(manifestUrl: string): Promise<GameAssets> {
   // The packaged app runs from file://, where Chromium refuses fetch(); Pixi's default ImageBitmap path uses fetch, so take the <img> path everywhere.
   if (loadTextures.config) loadTextures.config.preferCreateImageBitmap = false;
@@ -78,14 +81,23 @@ export async function loadAssets(manifestUrl: string): Promise<GameAssets> {
   const failedRequired: string[] = [];
   const sounds: SoundSource[] = [];
 
+  // Perf-i spec §2.5: every image and the font start loading at once (the browser runs the requests side by side), then
+  // each is bound, and each failure reported, in manifest order, as when they loaded one at a time. Pixi's Assets is
+  // initialised first: its first load does that itself, but loads started beside it would not wait for it to finish.
+  await (assetsInit ??= Assets.init());
+  const loads: { e: ManifestEntry; load: Promise<Texture | null> }[] = [];
   for (const e of manifest) {
     const url = new URL(e.file, base).href;
     const kind = assetKind(e);
     if (kind === 'audio') { sounds.push({ name: e.name!, url }); continue; }   // Audio-i spec section 2: decoded later, never blocks boot
+    const load = kind === 'font' ? loadFont(url).then(() => null) : loadImage(url);
+    load.catch(() => {});   // the loop below reports it; this only keeps an early failure from being an unhandled rejection
+    loads.push({ e, load });
+  }
+  for (const { e, load } of loads) {
     try {
-      if (kind === 'font') { await loadFont(url); continue; }
-      const tex = await loadImage(url);
-      bind(e, tex, textures, animations, nines);
+      const tex = await load;
+      if (tex) bind(e, tex, textures, animations, nines);
     } catch (err) {
       if (e.required) { failedRequired.push(e.file); console.error(`required asset failed: ${e.file}`, err); }
       else console.warn(`optional asset missing, placeholder in use: ${e.file}`);
