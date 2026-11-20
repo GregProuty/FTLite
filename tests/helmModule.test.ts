@@ -13,7 +13,7 @@ import { loadDuelSnapshot, saveDuelSnapshot, validateDuelSnapshot } from '../src
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import * as duelTuning from '../src/renderer/src/sim/duel/tuning';
-import { THR_MAX, THR_MIN, THR_RAMP, THR_RETURN } from '../src/renderer/src/sim/duel/tuning';
+import { GAS_MAX, GAS_REFILL, GAS_REFILL_DELAY, GAS_SPEND, THR_MAX, THR_MIN, THR_RAMP, THR_RETURN } from '../src/renderer/src/sim/duel/tuning';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -100,15 +100,16 @@ describe('the pure rules (spec §3, §4, §5)', () => {
 });
 
 describe('the fields in the hash, the flatten and the snapshot (spec §7)', () => {
-  it('thrMille moves the hash; helmVent does not', () => {
+  it('thrMille, thrCut, gas and gasIdle move the hash; helmVent does not', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
       const base = hashDuel(d);
-      for (const [key, value] of [['thrMille', 7]] as const) {
+      for (const [key, value] of [['thrMille', 7], ['gas', 700], ['gasIdle', 3]] as const) {   // helm round 2 §8
         const was = d[key]; d[key] = value;
         expect(hashDuel(d), key).not.toBe(base);
         d[key] = was;
       }
+      d.thrCut = true; expect(hashDuel(d), 'thrCut').not.toBe(base); d.thrCut = false;   // helm round 2 §8
       expect(hashDuel(d)).toBe(base);
       d.helmVent = { x: 1, y: -1, boosted: true, turn: 1 };
       expect(hashDuel(d)).toBe(base);
@@ -116,22 +117,22 @@ describe('the fields in the hash, the flatten and the snapshot (spec §7)', () =
       expect(Object.keys(DUEL_NOT_SNAPSHOTTED)).not.toContain('helmBars');
     } finally { disposeDuel(d); }
   });
-  it('flatten carries the helm module as throttle, holdHeading, thrMille, then the power module', () => {
+  it('flatten carries the helm module as throttle, holdHeading, thrMille, thrCut, gas, gasIdle, then the power module (helm round 2 §8)', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
-      Object.assign(d, { thrMille: -100 });
+      Object.assign(d, { thrMille: -100, thrCut: true, gas: 312, gasIdle: 7 });
       d.power.heat[0] = 9;
       const at = helmOffset(d);
-      expect(Array.from(flattenDuel(d)).slice(at, at + 4)).toEqual([d.throttle, d.holdHeading, -100, 9]);
+      expect(Array.from(flattenDuel(d)).slice(at, at + 7)).toEqual([d.throttle, d.holdHeading, -100, 1, 312, 7, 9]);
     } finally { disposeDuel(d); }
   });
   it('round-trips through the snapshot; a restore holds no vent', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
-      Object.assign(d, { thrMille: -100, helmVent: { x: 1, y: 0, boosted: true, turn: 1 } });
+      Object.assign(d, { thrMille: -100, thrCut: true, gas: 312, gasIdle: 7, helmVent: { x: 1, y: 0, boosted: true, turn: 1 } });
       const r = loadDuelSnapshot(CUTTER, JSON.parse(JSON.stringify(saveDuelSnapshot(d, DIGEST))), DIGEST);
       try {
-        expect([r.thrMille, hashDuel(r)]).toEqual([-100, hashDuel(d)]);
+        expect([r.thrMille, r.thrCut, r.gas, r.gasIdle, hashDuel(r)]).toEqual([-100, true, 312, 7, hashDuel(d)]);   // helm round 2 §8
         expect(r.helmVent).toEqual({ x: 0, y: 0, boosted: false, turn: 0 });
       } finally { disposeDuel(r); }
     } finally { disposeDuel(d); }
@@ -140,10 +141,27 @@ describe('the fields in the hash, the flatten and the snapshot (spec §7)', () =
     const d = createSeatedDuel(CUTTER, 5);
     try {
       const snap = saveDuelSnapshot(d, DIGEST), at = helmOffset(d);
-      for (const [k, bad, name] of [[2, 1001, 'thrMille'], [2, -251, 'thrMille'], [2, 0.5, 'thrMille']] as const) {
+      for (const [k, bad, name] of [[2, 1001, 'thrMille'], [2, -251, 'thrMille'], [2, 0.5, 'thrMille'],
+        [3, 2, 'thrCut'], [3, 0.5, 'thrCut'], [3, -1, 'thrCut'], [4, 721, 'gas'], [4, -1, 'gas'], [4, 0.5, 'gas'], [5, 31, 'gasIdle'], [5, -1, 'gasIdle'], [5, 1.5, 'gasIdle']] as const) {   // helm round 2 §8
         const s = structuredClone(snap); s.values[at + k] = bad; s.header.hash = hashF64(Float64Array.from(s.values));
         expect(() => validateDuelSnapshot(CUTTER, s, DIGEST), `${name} ${bad}`).toThrow(new RegExp(`${name} ${bad} is invalid`));
       }
+    } finally { disposeDuel(d); }
+  });
+});
+
+describe('helm round 2: the latch and the gas charge in the helm module (spec §2.3, §3.3, §8)', () => {
+  it('are the spec\'s start values', () => {
+    expect([GAS_MAX, GAS_SPEND, GAS_REFILL, GAS_REFILL_DELAY]).toEqual([720, 8, 3, 30]);
+  });
+  it('a fresh duel holds no latch and a full charge idle for the whole delay; a rematch starts them again', () => {
+    const d = createSeatedDuel(CUTTER, 5);
+    try {
+      expect([d.thrCut, d.gas, d.gasIdle]).toEqual([false, GAS_MAX, GAS_REFILL_DELAY]);
+      Object.assign(d, { thrCut: true, gas: 100, gasIdle: 0 });
+      d.tactical.outcome = Outcome.CrewWins; d.decidedTick = d.interior.tick;
+      stepDuelTick(d, { held: [NONE, NONE], commands: [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: d.interior.tick, command: { kind: 'rematch' } }] });
+      expect([d.round, d.thrCut, d.gas, d.gasIdle]).toEqual([1, false, GAS_MAX, GAS_REFILL_DELAY]);
     } finally { disposeDuel(d); }
   });
 });

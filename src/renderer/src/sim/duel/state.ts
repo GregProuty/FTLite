@@ -9,7 +9,7 @@ import { validateMap } from '../tactical/map';
 import { classIndexById, DUEL_CLASSES, ShipClass } from '../tactical/defs';
 import { createTacticalState, Room, type TacticalState } from '../tactical/state';
 import { createPowerState, type PowerState } from './power';
-import { DUEL_REPAIR_POINTS } from './tuning';
+import { DUEL_REPAIR_POINTS, GAS_MAX, GAS_REFILL_DELAY } from './tuning';
 import { noVent, type HelmVent } from './helmFlight';
 
 /** Sci-2 spec §3: a duel crew is 2, 3 or 4 players, fixed for the run. Every value indexed by player is n long. */
@@ -71,6 +71,13 @@ export interface DuelState {
    *  every new round. A class that is not newtonianHelm (the Valkyrn) holds it unused. Owner 2026-11-19: no COMPRESSOR
    *  share and no Helm bar budget (the cap is Engineering's Engines bars), and no cold gas tank (the gas is free). */
   thrMille: number;
+  /** Helm round 2 §2.3 (the helm module): the cut's latch. An applied throttleCut sets it; while it is set the ramp ignores
+   *  the attendant's throttleHeld, and it clears on a tick the Helm is empty or its throttleHeld is 0. False at a round's
+   *  start. */
+  thrCut: boolean;
+  /** Helm round 2 §3.3 (the helm module): the cold gas charge, 0..GAS_MAX (full at a round's start), and the ticks since a
+   *  thruster axis was last held, 0..GAS_REFILL_DELAY (GAS_REFILL_DELAY at a round's start). */
+  gas: number; gasIdle: number;
   /** §4: this tick's vented thruster axes and boost, per-tick scratch for the puffs and the hiss; not state. */
   helmVent: HelmVent;
   /** Valkyrn spec §6.1: the crew slot's class index (SHIP_CLASSES): createDuel's `cls`, else the layout's `shipClass`,
@@ -126,7 +133,7 @@ export function createDuel(layout: ShipLayout, seed: number, helmPlayer = 0, cre
     const systemRooms = [pointRoom(Room.Shields), pointRoom(Room.Weapons), pointRoom(Room.Engines),
       science >= 0 ? interior.derived.stationRoom[science]! : pointRoom(Room.Weapons), ls >= 0 ? interior.derived.stationRoom[ls]! : -1];   // Engineering spike Decision 3
     return { interior, tactical, present: Array<boolean>(crew).fill(true), repair: [0, 0, 0], points, nav, weapons, science, events: [], round: 0, helmPlayer, baseTick: 0, decidedTick: -1, throttle: 0, holdHeading: -1, crewClass,
-      thrMille: 0, helmVent: noVent(),   // playtest2feedback §3, §4
+      thrMille: 0, thrCut: false, gas: GAS_MAX, gasIdle: GAS_REFILL_DELAY, helmVent: noVent(),   // playtest2feedback §3, §4; helm round 2 §2.3, §3.3
       power: createPowerState(), systemRooms };
   } catch (err) {
     disposeSimState(interior);   // release its entities and component storage before rethrowing

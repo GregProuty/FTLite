@@ -56,7 +56,8 @@ const ROUND: ModuleField<DuelState>[] = [
 ];
 
 /** The Helm's throttle (Artemis spec §5.1): one canonical level, set by the `throttle` command (sim/duel/step.ts), and
- *  Feel-ii's held heading (−1 none), set by the `heading` command. */
+ *  Feel-ii's held heading (−1 none), set by the `heading` command; the crew Helm's held throttle (playtest2feedback §7); and
+ *  helm round 2's latch, gas charge and its idle count (spec §8). */
 export const helmModule: SimModule<DuelState> = {
   id: 'helm',
   fields: () => HELM,
@@ -68,7 +69,11 @@ const HELM: ModuleField<DuelState>[] = [
   scalar('throttle', (d) => d.throttle, (d, v) => { d.throttle = v; }),
   scalar('holdHeading', (d) => d.holdHeading, (d, v) => { d.holdHeading = v; }),
   // Playtest2feedback §7: the crew Helm's held throttle (owner 2026-11-19: no COMPRESSOR share and no cold gas tank).
-  scalar('thrMille', (d) => d.thrMille, (d, v) => { d.thrMille = v; })
+  scalar('thrMille', (d) => d.thrMille, (d, v) => { d.thrMille = v; }),
+  // Helm round 2 §8: the cut's latch, the cold gas charge and its idle count, in this order after thrMille.
+  flag('thrCut', (d) => d.thrCut, (d, v) => { d.thrCut = v; }),
+  scalar('gas', (d) => d.gas, (d, v) => { d.gas = v; }),
+  scalar('gasIdle', (d) => d.gasIdle, (d, v) => { d.gasIdle = v; })
 ];
 
 /** The duel ship (the Hound) interior: today's SimState, through the sector snapshot path (flatten / unflatten, validated). */

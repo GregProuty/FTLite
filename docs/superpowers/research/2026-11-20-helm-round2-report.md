@@ -51,6 +51,8 @@ FAIL: median 140.1 s < 180
 
 ## Task 14 re-picks (kind b)
 
+- Task 2: `tests/duelGolden.test.ts` and `tests/duelRematchGolden.test.ts` (the duel hash holds three more values); the known-red window opens. Re-bless in Task 14.
+
 ## Kind (a) rewrites
 
 ## Scripted Helm tuning (spec §5's gate rule)

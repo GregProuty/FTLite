@@ -70,3 +70,13 @@ export const THR_RETURN = 34;
 // whenever the Helm is attended, and the far turn is always gas-boosted (sim/duel/step.ts helmBoost).
 /** §4a: sin 6°: auto-face's turn is far (boosted) while its target lies outside this of the nose (about 4.27 indices). */
 export const BOOST_FACE_SIN = 0.10452846326765347;
+// Helm round 2 (spec 2026-11-19-helm-round2-design §3.3): the crew Helm's cold gas charge, in whole units so every duration
+// is an exact tick count. Start values, tuned in playtest.
+/** §3.3: the charge's top; a round starts full. */
+export const GAS_MAX = 720;
+/** §3.3: what one vented axis spends a tick: a full charge is 90 axis-ticks (1.5 s of one thruster, 0.75 s of two). */
+export const GAS_SPEND = 8;
+/** §3.3: what a refill tick adds (empty to full in 240 refill ticks, 4 s), and the ticks with no thruster axis held before
+ *  the refill starts (0.5 s). */
+export const GAS_REFILL = 3;
+export const GAS_REFILL_DELAY = 30;
