@@ -8,6 +8,8 @@
 // Readers of a rock's position or velocity use rockX / rockY / rockVx / rockVy / rockAt: a Free slot is read as it stands,
 // a rail through railPos at the phase tick, memoised per pool array (s.rocks) in a WeakMap and checked against every input
 // (kind, centre, offset, t and the phase tick), so a stale entry is never returned and the memo is never hashed, snapshotted or copied by a clone.
+// §14 (the cost fix): inside a step the accessors read a per-step rail table first (built at beginRockStep, the same railPos
+// maths), falling back to the memo for a slot written since (writeRock, freeRock, settleRocks unmark it) and outside a step.
 // The phase (§3.3): during stepDuel (beginRockStep .. endRockStep, a step context in a WeakMap, not state) rails are read
 // at tick + 1, because every contact that tick happens after the free rocks move to T + 1; between ticks at tick.
 // Freeing (§3.4): a Rail becomes Free at its rail position and velocity in the free frame (T before this step's free
@@ -63,11 +65,11 @@ export function rockSlots(s: TacticalState): number { return s.rocks.length / RO
 interface RockStep { moved: boolean }
 const steps = new WeakMap<TacticalState, RockStep>();
 /** The start of a stepDuel tick: rails are read at tick + 1 until endRockStep. */
-export function beginRockStep(s: TacticalState): void { steps.set(s, { moved: false }); rebuildRockGrid(s); }
+export function beginRockStep(s: TacticalState): void { steps.set(s, { moved: false }); buildRailTable(s); rebuildRockGrid(s); }
 /** stepRocks' motion pass is over: Free slots now stand at tick + 1 (plan deviation 2). */
 export function rocksMoved(s: TacticalState): void { const c = steps.get(s); if (c) c.moved = true; }
 /** The end of a stepDuel tick (before tick++). */
-export function endRockStep(s: TacticalState): void { steps.delete(s); }
+export function endRockStep(s: TacticalState): void { steps.delete(s); if (liveTable !== null && liveTable.state === s) { liveTable.state = null; liveTable = null; } }
 export function inRockStep(s: TacticalState): boolean { return steps.has(s); }
 /** §3.3: the tick rails are read at: tick + 1 inside a step, tick between ticks. */
 export function rockPhase(s: TacticalState): number { return steps.has(s) ? s.tick + 1 : s.tick; }
@@ -98,10 +100,44 @@ function railOutputs(s: TacticalState, k: number): Float64Array {
   }
   return m.outputs;
 }
-export function rockX(s: TacticalState, k: number): number { const b = k * ROCK_STRIDE; return isRail(s.rocks[b]!) ? railOutputs(s, k)[k * 4]! : s.rocks[b + 1]!; }
-export function rockY(s: TacticalState, k: number): number { const b = k * ROCK_STRIDE; return isRail(s.rocks[b]!) ? railOutputs(s, k)[k * 4 + 1]! : s.rocks[b + 2]!; }
-export function rockVx(s: TacticalState, k: number): number { const b = k * ROCK_STRIDE; return isRail(s.rocks[b]!) ? railOutputs(s, k)[k * 4 + 2]! : s.rocks[b + 3]!; }
-export function rockVy(s: TacticalState, k: number): number { const b = k * ROCK_STRIDE; return isRail(s.rocks[b]!) ? railOutputs(s, k)[k * 4 + 3]! : s.rocks[b + 4]!; }
+// ---- §14 (the cost fix): the per-step rail table ----
+/** Every rail slot's x, y, vx, vy at the phase tick, worked out once at beginRockStep (the same railPos call the memo makes,
+ *  so bit-identical). Read only by the state that began the step, on its pool, at the tick it began on, and only for a
+ *  row still marked: writeRock, freeRock and settleRocks unmark the slot they write (railRowChanged), and the memo answers
+ *  for it. Arrays reused per pool (WeakMap on s.rocks); never hashed, snapshotted or copied. */
+interface RailTable { state: TacticalState | null; rocks: Float64Array; tick: number; ok: Uint8Array; out: Float64Array }
+const tables = new WeakMap<Float64Array, RailTable>();
+let liveTable: RailTable | null = null;
+function buildRailTable(s: TacticalState): void {
+  const n = rockSlots(s), v = s.rocks, T = s.tick + 1;
+  let tb = tables.get(v);
+  if (!tb || tb.ok.length !== n) { tb = { state: null, rocks: v, tick: 0, ok: new Uint8Array(n), out: new Float64Array(n * 4) }; tables.set(v, tb); }
+  const ok = tb.ok, out = tb.out;
+  for (let k = 0; k < n; k++) {
+    const b = k * ROCK_STRIDE, kind = v[b]!;
+    if (!isRail(kind) || v[b + 7]! > T) { ok[k] = 0; continue; }   // a rail anchored after T is left to the memo (it throws there)
+    railPos(v[b + 1]!, v[b + 2]!, v[b + 3]!, v[b + 4]!, v[b + 7]!, T, kind === RockKind.Tumble, scratch);
+    const j = k * 4;
+    out[j] = scratch.x; out[j + 1] = scratch.y; out[j + 2] = scratch.vx; out[j + 3] = scratch.vy; ok[k] = 1;
+  }
+  tb.state = s; tb.tick = s.tick; liveTable = tb;
+}
+/** Slot k's rail inputs were just written: the table's row for it no longer answers (the memo does). */
+export function railRowChanged(s: TacticalState, k: number): void { const tb = liveTable; if (tb !== null && tb.rocks === s.rocks) tb.ok[k] = 0; }
+/** Rail slot k's outputs (x, y, vx, vy at k · 4): the table's while it answers, else the memo's. */
+function railRead(s: TacticalState, k: number): Float64Array {
+  const tb = liveTable;
+  return tb !== null && tb.state === s && tb.rocks === s.rocks && tb.tick === s.tick && tb.ok[k] === 1 ? tb.out : railOutputs(s, k);
+}
+/** Test hook: rail slot k's table row (null when the table does not answer for it) and the memo's outputs. */
+export function railSources(s: TacticalState, k: number): { table: number[] | null; memo: number[] } {
+  const tb = liveTable, on = tb !== null && tb.state === s && tb.rocks === s.rocks && tb.tick === s.tick && tb.ok[k] === 1;
+  return { table: on ? Array.from(tb.out.subarray(k * 4, k * 4 + 4)) : null, memo: Array.from(railOutputs(s, k).subarray(k * 4, k * 4 + 4)) };
+}
+export function rockX(s: TacticalState, k: number): number { const b = k * ROCK_STRIDE; return isRail(s.rocks[b]!) ? railRead(s, k)[k * 4]! : s.rocks[b + 1]!; }
+export function rockY(s: TacticalState, k: number): number { const b = k * ROCK_STRIDE; return isRail(s.rocks[b]!) ? railRead(s, k)[k * 4 + 1]! : s.rocks[b + 2]!; }
+export function rockVx(s: TacticalState, k: number): number { const b = k * ROCK_STRIDE; return isRail(s.rocks[b]!) ? railRead(s, k)[k * 4 + 2]! : s.rocks[b + 3]!; }
+export function rockVy(s: TacticalState, k: number): number { const b = k * ROCK_STRIDE; return isRail(s.rocks[b]!) ? railRead(s, k)[k * 4 + 3]! : s.rocks[b + 4]!; }
 /** Slot k's clock: a rail's anchor tick, a Free rock's last birth, freeing or push. */
 export function rockT(s: TacticalState, k: number): number { return s.rocks[k * ROCK_STRIDE + 7]!; }
 /** §13.1: a rail's ρω, |centre| (constant while it turns). */
@@ -110,7 +146,7 @@ export interface RockView { x: number; y: number; vx: number; vy: number; r: num
 /** Slot k as the accessors read it now. */
 export function rockAt(s: TacticalState, k: number): RockView {
   const v = s.rocks, b = k * ROCK_STRIDE;
-  if (isRail(v[b]!)) { const o = railOutputs(s, k), j = k * 4; return { kind: v[b]!, x: o[j]!, y: o[j + 1]!, vx: o[j + 2]!, vy: o[j + 3]!, r: v[b + 5]!, hp: v[b + 6]! }; }
+  if (isRail(v[b]!)) { const o = railRead(s, k), j = k * 4; return { kind: v[b]!, x: o[j]!, y: o[j + 1]!, vx: o[j + 2]!, vy: o[j + 3]!, r: v[b + 5]!, hp: v[b + 6]! }; }
   return { kind: v[b]!, x: v[b + 1]!, y: v[b + 2]!, vx: v[b + 3]!, vy: v[b + 4]!, r: v[b + 5]!, hp: v[b + 6]! };
 }
 
@@ -126,6 +162,7 @@ export function freeRock(s: TacticalState, k: number): void {
   if (!isRail(v[b]!)) return;
   railPos(v[b + 1]!, v[b + 2]!, v[b + 3]!, v[b + 4]!, v[b + 7]!, freeFrame(s), v[b] === RockKind.Tumble, scratch);
   v[b] = RockKind.Free; v[b + 1] = scratch.x; v[b + 2] = scratch.y; v[b + 3] = scratch.vx; v[b + 4] = scratch.vy; v[b + 7] = rockPhase(s);
+  railRowChanged(s, k);
   markTouched(s, k);
   regridRock(s, k);
 }
@@ -188,6 +225,7 @@ export function rocksNear(s: TacticalState, x: number, y: number, h: number, out
 /** Write slot k's eight values (a rail: its centre in x, y and its offset in vx, vy); t defaults to the phase tick. */
 export function writeRock(s: TacticalState, k: number, kind: number, x: number, y: number, vx: number, vy: number, r: number, hp: number, t: number = rockPhase(s)): void {
   s.rocks.set([kind, x, y, vx, vy, r, hp, t], k * ROCK_STRIDE);
+  railRowChanged(s, k);
 }
 
 /** Where the segment a → b first enters circle (cx, cy, r), as t in [0, 1], or −1 when it never does. Starting inside is 0. */

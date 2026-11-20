@@ -14,8 +14,8 @@
 // centre the cluster's centre at T + 1 (read from its lowest live slot), offset p − centre (at most RAIL_OFFSET_MAX), so its
 // position is unchanged; refused when two clusters sweep it, or when its own sweep as a member would cross another rail's.
 import { laneZone, orbitRate, railPos, SPIN_RATE, targetVelocity, type RailOut } from './rails';
-import { CLUSTER_JOIN_SNAP, LANE_CAPTURE_DR, RAIL_OFFSET_MAX, REJOIN_EDGE_CLEAR, REJOIN_MIN_TICKS, REJOIN_PLANET_CLEAR, REJOIN_SNAP_FACTOR, REJOIN_SNAP_MAX, REJOIN_SPEED } from './rockTuning';
-import { isRail, railCentreRadius, rockPhase, RockKind, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
+import { CLUSTER_JOIN_SNAP, LANE_CAPTURE_DR, RAIL_OFFSET_MAX, REJOIN_EDGE_CLEAR, REJOIN_RECHECK_TICKS, REJOIN_MIN_TICKS, REJOIN_PLANET_CLEAR, REJOIN_SNAP_FACTOR, REJOIN_SNAP_MAX, REJOIN_SPEED } from './rockTuning';
+import { isRail, railCentreRadius, railRowChanged, rockPhase, RockKind, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
 import type { TacticalState } from './state';
 import { ASTEROID_GAP, LANES, PLANET_RADIUS, R_MAP } from './tuning';
 
@@ -113,15 +113,21 @@ function clusterJoin(s: TacticalState, k: number, group: number): RejoinChoice |
   return { rhoW: rc, how: 'cluster', kind, cx, cy };
 }
 
-/** §3.4, §13.2: the end-of-tick rejoin pass, ascending (a rock that rejoins counts as a live rail for the later ones). */
+/** §3.4, §13.2: the end-of-tick rejoin pass, ascending (a rock that rejoins counts as a live rail for the later ones).
+ *  §14 (the cost fix): a Free rock whose clock has run REJOIN_MIN_TICKS + REJOIN_RECHECK_TICKS or more is checked only on
+ *  ticks where (T1 + k) % REJOIN_RECHECK_TICKS is 0 (from the tick and the slot alone, no state); a younger one every tick. */
 export function settleRocks(s: TacticalState): void {
   const v = s.rocks, T1 = rockPhase(s);
   for (let k = 0, n = rockSlots(s); k < n; k++) {
+    const b0 = k * ROCK_STRIDE;
+    if (v[b0] !== RockKind.Free) continue;
+    if (T1 - v[b0 + 7]! >= REJOIN_MIN_TICKS + REJOIN_RECHECK_TICKS && (T1 + k) % REJOIN_RECHECK_TICKS !== 0) continue;
     const c = rejoinChoice(s, k);
     if (!c) continue;
     const b = k * ROCK_STRIDE, x = v[b + 1]!, y = v[b + 2]!, f = c.rhoW / Math.sqrt(x * x + y * y);
     const cx = c.how === 'cluster' ? c.cx! : x * f, cy = c.how === 'cluster' ? c.cy! : y * f;
     v[b] = c.how === 'cluster' ? c.kind! : RockKind.Rail; v[b + 1] = cx; v[b + 2] = cy; v[b + 3] = x - cx; v[b + 4] = y - cy; v[b + 7] = T1;
+    railRowChanged(s, k);
     s.events.push({ kind: 'rock', what: 'rejoin', by: 'settle', rock: k, x, y, r: v[b + 5]!, vx: 0, vy: 0, how: c.how });
   }
 }

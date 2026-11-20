@@ -55,6 +55,8 @@ export const REJOIN_MIN_TICKS = 120, REJOIN_SPEED = 0.5, REJOIN_EDGE_CLEAR = 50,
 export const SETTLE_K_MAX = 0.06, SETTLE_A0 = 20, SETTLE_A1 = 60;
 /** §14 D14: a settled rock in one cluster's sweep joins its group when |v − V_group(p)| is under this (u/s). */
 export const CLUSTER_JOIN_SNAP = 6;
+/** §14 (the cost fix): a Free rock past its first REJOIN_RECHECK_TICKS eligible ticks re-checks rejoin every this many ticks. */
+export const REJOIN_RECHECK_TICKS = 30;
 /** §13.3 (softEdge): the rocks' edge spring (/s²) and the extra drag toward V_c past R_MAP (/s); the far-edge safety slack
  *  past R_MAP: ROCK_EDGE_SLACK_SOFT with the soft edge, ROCK_EDGE_SLACK without (K_EDGE then, as ships). */
 export const K_EDGE_ROCK = 0.25, EDGE_SETTLE_K = 0.3, ROCK_EDGE_SLACK = 400, ROCK_EDGE_SLACK_SOFT = 700;

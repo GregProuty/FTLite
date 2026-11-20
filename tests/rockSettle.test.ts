@@ -176,3 +176,18 @@ describe('joining a tumbling cluster\'s group (spec §14 D14)', () => {
     expect(rejoinChoice(st, 100, why as never)).toBeNull(); expect(why.reason).toBe('sweepCluster');
   });
 });
+
+describe('the staggered rejoin re-check (spec §14, the cost fix)', () => {
+  it('a rock past its first 30 eligible ticks is re-checked only when (T1 + k) % 30 is 0 (T1 the phase tick); one just eligible is checked every tick', () => {
+    const st = arena(); st.tick = 501;                // (501 + 100) % 30 = 1: off the cadence for slot 100
+    settled(st, 100, 0, 1700, 0);                     // 501 ticks old: staggered
+    settled(st, 101, 0, -1700, 501 - 125);            // 125 ticks old: just eligible
+    expect(rejoinChoice(st, 100)).not.toBeNull();
+    settleRocks(st);
+    expect(st.rocks[100 * ROCK_STRIDE]).toBe(RockKind.Free);
+    expect(st.rocks[101 * ROCK_STRIDE]).toBe(RockKind.Rail);
+    st.tick = 530;                                    // (530 + 100) % 30 = 0
+    settleRocks(st);
+    expect(st.rocks[100 * ROCK_STRIDE]).toBe(RockKind.Rail);
+  });
+});
