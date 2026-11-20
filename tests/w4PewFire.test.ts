@@ -32,6 +32,7 @@ const env = (d: DuelState, player: number, command: DuelCommand, seq: number) =>
 describe('pewFire without an aim (W-4 spec §6)', () => {
   it('fires one round along the nose; a second in the tick is a noop; without a third it is unavailable; Helm is not-at-weapons', () => {
     const d = createSeatedDuel(CUTTER, 5), g = 1 - d.helmPlayer;
+    d.tactical.systems[0].pewManual = true;   // W-4 spec §4.3, §6 (W-4b): pewFire needs pew pew on MAN
     try {
       const t = d.tactical, s = t.systems[0]!;
       const r = stepDuelTick(d, { held: [], commands: [env(d, g, { kind: 'pewFire' }, 1), env(d, g, { kind: 'pewFire' }, 2), env(d, d.helmPlayer, { kind: 'pewFire' }, 1)] });
@@ -72,7 +73,8 @@ describe('weaponSel and the trigger (W-4 spec §8)', () => {
     const d = createSeatedDuel(CUTTER, 5), g = 1 - d.helmPlayer;
     try {
       const s = d.tactical.systems[0]!; s.bars[1] = 3; s.weaponPower = [1, 1, 1];
-      const held = (weaponSel: number) => { const h = [{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }]; h[g] = { moveX: 0, moveY: 0, interactHeld: false, gunHeld: true, weaponSel } as never; return h; };
+      s.gunManual = true;   // W-4 spec §4.3 (W-4b): a held trigger fires only the autocannon in hand (MAN and selected)
+      const held =(weaponSel: number) => { const h = [{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }]; h[g] = { moveX: 0, moveY: 0, interactHeld: false, gunHeld: true, weaponSel } as never; return h; };
       for (let k = 0; k < 20; k++) stepDuelTick(d, { held: held(0), commands: [] });
       expect(s.gunShots).toBe(0);
       for (let k = 0; k < 20; k++) stepDuelTick(d, { held: held(1), commands: [] });

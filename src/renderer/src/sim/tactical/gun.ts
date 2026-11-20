@@ -10,7 +10,7 @@ import { hitRock, pushRock } from './rockBreak';
 import { rockAt, rockMass, rocksNear } from './rocks';
 import { classOf, CREW_SLOT, emptyRound, handControl, Room, type GunRound, type TacticalState } from './state';
 import { interceptTime, nearestHeading } from './lead';
-import { AIM_STEPS, DT, HEADING_COUNT } from './tuning';
+import { AIM_STEPS, DT, GUN_AUTO_HEAT_STOP, HEADING_COUNT } from './tuning';
 import type { ShipInput } from './weapons';
 
 /** Put a round in a pool (spec §7.2; W-1: the gun's `state.rounds` by default, or the pew's `state.pew`): the lowest free
@@ -73,19 +73,24 @@ function fireRound(state: TacticalState, i: number, g: GunDef, manual = false): 
  * `coolLocked` while locked; both halved while Weapons is damaged, Decision 7) and a locked gun unlocks at 0; the
  * cooldown counts down; then a round fires when the trigger is held at an attended Weapons station, the gun is not
  * locked, Weapons is below level 2 and the cooldown is 0. A class without a gun does nothing. W-4 spec §5: a turret gun's
- * interval is gunInterval (its bars), and it fires nothing on 0 bars.
+ * interval is gunInterval (its bars), and it fires nothing on 0 bars. W-4 spec §4.3: a turret gun in hand fires on the
+ * trigger, an AUTO-driven one on `auto` (on solution and hostile) below GUN_AUTO_HEAT_STOP.
  */
-export function tickGun(state: TacticalState, i: number, input: ShipInput): void {
+export function tickGun(state: TacticalState, i: number, input: ShipInput, auto = false): void {
   const g = classOf(state, i).slots.gun;
   if (g === null) return;
   const s = state.systems[i]!, cool = s.gunLocked ? g.coolLocked : g.cool;
   s.gunHeat = Math.max(0, s.gunHeat - (s.rooms[Room.Weapons] >= 1 ? cool / 2 : cool));
   if (s.gunLocked && s.gunHeat === 0) s.gunLocked = false;
   if (s.gunCooldown > 0) s.gunCooldown--;
-  if (!input.weapons || !input.gunHeld || s.gunLocked || s.rooms[Room.Weapons] >= 2 || s.gunCooldown > 0) return;
-  const hand = g.turret !== null && handControl(state, i, input.weaponSel, WeaponSlot.Autocannon);   // W-4 spec §3.4, §4.4: the autocannon in hand
-  if (g.turret !== null && gunInterval(state, i, hand) === 0) return;   // W-4 spec §5: a turret gun on 0 bars fires nothing
-  fireRound(state, i, g, hand);
+  if (!input.weapons || s.gunLocked || s.rooms[Room.Weapons] >= 2 || s.gunCooldown > 0) return;
+  if (g.turret === null) { if (input.gunHeld) fireRound(state, i, g); return; }   // the Valkyrn: its trigger, as before
+  const hand = handControl(state, i, input.weaponSel, WeaponSlot.Autocannon);   // W-4 spec §3.4: in hand (its own switch on MAN, and selected), else AUTO-driven
+  if (gunInterval(state, i, hand) === 0) return;   // W-4 spec §5: a turret gun on 0 bars fires nothing
+  // W-4 spec §4.3, §5: in hand it fires on the held trigger (the step sets it only with the autocannon selected); AUTO-driven
+  // (on AUTO, or on MAN but not selected: owner 2026-11-19) it fires on solution once hostile (`auto`, applyWeaponsInput) while
+  // below the 80 % heat stop, so it never locks; no hysteresis. A held trigger does nothing to an AUTO-driven gun.
+  if (hand ? input.gunHeld : auto && s.gunHeat < GUN_AUTO_HEAT_STOP) fireRound(state, i, g, hand);
 }
 
 /** W-1: shared with the pew's rounds (pew.ts). The entry parameter t in [0, 1] of the segment (ox, oy) → (nx, ny) into the circle at (cx, cy) of radius r: 0 when

@@ -19,7 +19,7 @@ import { circularSpeed } from '../tactical/map';
 import { predictPath } from '../tactical/predict';
 import { nearestHeading } from '../tactical/lead';
 import { classOf, missileOf, Room, targetOf, type Axes } from '../tactical/state';
-import { BELT_OUTER, HUNTER_PD_RANGE, LASER_ARC_COS, LASER_RANGE, PEW_ARC_COS, PEW_RANGE, R_MAP, SHIP_RADIUS } from '../tactical/tuning';
+import { AUTOCANNON_ARC_COS, AUTOCANNON_AUTO_RANGE, BELT_OUTER, HUNTER_PD_RANGE, LASER_ARC_COS, LASER_RANGE, PEW_ARC_COS, PEW_RANGE, R_MAP, SHIP_RADIUS } from '../tactical/tuning';
 import { shipSeen } from '../tactical/science';
 import { canLaunch, laserEligible, laserFull } from '../tactical/weapons';
 import { CREW_SPEED, DT, HEALTH_MAX, REACH } from '../tuning';
@@ -153,10 +153,11 @@ function helmAxes(pair: ScriptedPair, d: DuelState): Axes & { face?: boolean; ai
   const ex = e.x - s.x, ey = e.y - s.y;
   if (laserFull(t, 0) && t.systems[0].laserTargeted && ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE && !inArc(s.heading, ex, ey, LASER_ARC_COS))
     return { turn: autoFaceTurn(t, 0), thrust: 0, face: true, aim: -1 };
-  // W-4 spec §12, §19.1 (W-4a): the Hound has no laser, so its Helm lines the guns up instead: auto-face while the target is
-  // seen within PEW_RANGE and outside the nose's ±60° (the stand-in pew's cone; W-4b: the autocannon's 600 u and ±30°).
-  // A turret class only: the Valkyrn and its laser fit take the lines above and below, byte for byte.
-  if (hasTurret(classOf(t, 0)) && e.active && shipSeen(t, targetOf(t, 0)) && ex * ex + ey * ey <= PEW_RANGE * PEW_RANGE && !inArc(s.heading, ex, ey, PEW_ARC_COS))
+  // W-4 spec §12: the Hound has no laser, so its Helm lines the guns up instead: auto-face while the target is seen within
+  // AUTOCANNON_AUTO_RANGE and outside the nose's ±30° (W-4b: inside the autocannon's ±30° both AUTO guns bear, so outside
+  // it, within its 600 u, the Helm turns the nose on). A turret class only: the Valkyrn and its laser fit take the lines
+  // above and below, byte for byte.
+  if (hasTurret(classOf(t, 0)) && e.active && shipSeen(t, targetOf(t, 0)) && ex * ex + ey * ey <= AUTOCANNON_AUTO_RANGE * AUTOCANNON_AUTO_RANGE && !inArc(s.heading, ex, ey, AUTOCANNON_ARC_COS))
     return { turn: autoFaceTurn(t, 0), thrust: 0, face: true, aim: -1 };
   const o = orbitSteer(d, pair.orbitR), aim = nearestHeading(o.dx, o.dy);
   return { turn: crewClass ? aimTurn(s.heading, aim) : o.turn, thrust: o.thrust, aim };
@@ -330,12 +331,12 @@ function gunnerPew(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void {
   pair.lastPew = t.tick;
 }
 
-/** W-4 spec §12, §19.1 (W-4a): the gunner on a turret class (the Hound). Its first seated tick spends the reactor's spare
- *  bar on the autocannon, when the sim would admit both commands (a spare bar, room under the Weapons capacity, the
- *  autocannon at 0 bars), and does nothing else that tick; barMoved makes it once a round either way. Then, while the
- *  target is seen: the stand-in pew (W-4a only: W-4b's AUTO guns replace it): pewFire {} when the Hunter is within
- *  PEW_RANGE inside the nose's ±60° cone, a third is stored and SCRIPTED_PEW_GAP ticks have passed (the round flies along
- *  the nose; no torpedo-first rule, spec §4.2); then the torpedo as today without the laser terms. No laser command. */
+/** W-4 spec §12: the gunner on a turret class (the Hound). Its first seated tick spends the spare bar on the autocannon
+ *  (pre-checked, so both commands are admitted: a spare bar, room under the Weapons capacity, the autocannon at 0 bars) and
+ *  does nothing else that tick; barMoved makes it once a round either way. The guns stay AUTO (no gunMode, no held aim, no
+ *  pewFire, and no laserLock: it never steps the target room, W-4 amendment §3.5): they track and, once the enemy is
+ *  hostile, fire by themselves (applyWeaponsInput). Its torpedo rule (a torpLock while the target is seen, canLaunch and
+ *  the gap) launches the AUTO torpedo, which also ends the 30 s hold if the clock has not. No laser command. */
 function houndGunner(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void {
   const t = d.tactical, target = targetOf(t, 0), sys = t.systems[0];
   if (!pair.barMoved) {
@@ -346,11 +347,6 @@ function houndGunner(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void
     return;
   }
   if (!shipSeen(t, target)) return;   // Engineering spike spec §10.4: a lock on an unseen target is refused
-  const s = t.ships[0], e = t.ships[target]!;
-  if (e.active && pewReady(t, 0) && weaponBars(sys, WeaponSlot.Pew) > 0 && t.tick - pair.lastPew >= SCRIPTED_PEW_GAP) {
-    const dx = e.x - s.x, dy = e.y - s.y;
-    if (dx * dx + dy * dy <= PEW_RANGE * PEW_RANGE && inArc(s.heading, dx, dy, PEW_ARC_COS)) { out.push({ kind: 'pewFire' }); pair.lastPew = t.tick; }
-  }
   if (missileOf(t, 0) || sys.torpLock >= 0) return;
   if (canLaunch(t, 0) && t.tick - pair.lastLaunch >= MISSILE_GAP) { out.push({ kind: 'torpLock', room: t.systems[target]!.shields > 0 ? Room.Shields : Room.Weapons }); pair.lastLaunch = t.tick; }
 }

@@ -369,7 +369,8 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
       if (!canLaunch(d.tactical, 0, torpRock)) { result(e, 'unavailable'); continue; }
       crew.missileLaunch = true;
     }
-    else {   // W-4 spec §6, §19.1 (W-4a): no aim; one round a tick (the first wins), then a pew pew bar and a third stored (pewReady)
+    else {   // W-4 spec §6: no aim; MAN only; one round a tick (the first wins), then a pew pew bar and a third stored (pewReady)
+      if (!sys0.pewManual) { result(e, 'unavailable'); continue; }   // W-4b, amendment §2.3: pew pew's own switch; on AUTO it fires itself
       if (crew.pewTrigger) { result(e, undefined, 'noop'); continue; }
       if (!pewReady(d.tactical, 0)) { result(e, 'unavailable'); continue; }
       crew.pewTrigger = true;

@@ -21,10 +21,11 @@ function hound(bars: number, heading = 0, vx = 0, vy = 0): TacticalState {
   st.events = [];
   return st;
 }
-/** The ticks between successive gunFire events over `ticks` ticks of a held trigger. */
+/** The ticks between successive gunFire events over `ticks` ticks of AUTO on solution (W-4 spec §4.3: tickGun's `auto`;
+ *  a held trigger does nothing to an AUTO-driven gun from W-4b). */
 function gaps(st: TacticalState, ticks: number): number[] {
   const at: number[] = [];
-  for (let k = 0; k < ticks; k++) { st.events = []; tickGun(st, 0, TRIGGER); if (st.events.some((e) => e.kind === 'gunFire')) at.push(k); }
+  for (let k = 0; k < ticks; k++) { st.events = []; tickGun(st, 0, IDLE_INPUT, true); if (st.events.some((e) => e.kind === 'gunFire')) at.push(k); }
   return at.slice(1).map((t, j) => t - at[j]!);
 }
 
@@ -39,17 +40,19 @@ describe('the autocannon (W-4 spec §2, §5)', () => {
     }
     const off = hound(0);
     expect(gunInterval(off, 0)).toBe(0);
-    for (let k = 0; k < 60; k++) tickGun(off, 0, TRIGGER);
+    for (let k = 0; k < 60; k++) tickGun(off, 0, IDLE_INPUT, true);
     expect(off.systems[0]!.gunShots).toBe(0);
   });
   it('heats and locks as the Valkyrn gun, unlocks at 0; Weapons damage halves the cooling', () => {
     const st = hound(3), s = st.systems[0]!;
+    s.gunManual = true;   // W-4 spec §4.3 (W-4b): only the gun in hand can lock (AUTO stops at 80 % heat), so the autocannon is MAN and selected
+    const hand: ShipInput = { ...TRIGGER, weaponSel: 1 };
     let k = 0;
-    for (; k < 2000 && !s.gunLocked; k++) tickGun(st, 0, TRIGGER);
+    for (; k < 2000 && !s.gunLocked; k++) tickGun(st, 0, hand);
     expect(s.gunLocked).toBe(true);
     expect(s.gunHeat).toBe(AUTOCANNON.heatMax);
     const shots = s.gunShots;
-    tickGun(st, 0, TRIGGER);
+    tickGun(st, 0, hand);
     expect(s.gunShots).toBe(shots);   // locked: no round
     expect(s.gunHeat).toBe(AUTOCANNON.heatMax - AUTOCANNON.coolLocked);
     const hurt = hound(3); hurt.systems[0]!.rooms[Room.Weapons] = 1; hurt.systems[0]!.gunHeat = 100;
@@ -59,12 +62,12 @@ describe('the autocannon (W-4 spec §2, §5)', () => {
   it('a round leaves along the aim (the nose in W-4a) at GUN speed plus the ship velocity, from alternating muzzles', () => {
     const st = hound(3, 64, 30, -10), s = st.systems[0]!;
     expect(gunAimFine(st, 0)).toBe(64 * HEADING_COUNT);
-    tickGun(st, 0, TRIGGER);
+    tickGun(st, 0, IDLE_INPUT, true);
     const r = st.rounds.find((e) => e.active)!;
     expect(r.vx).toBeCloseTo(30 + hx(64) * AUTOCANNON.speed, 9);
     expect(r.vy).toBeCloseTo(-10 + hy(64) * AUTOCANNON.speed, 9);
     const muzzles: number[] = [];
-    for (let k = 0; k < 30; k++) { st.events = []; tickGun(st, 0, TRIGGER); for (const e of st.events) if (e.kind === 'gunFire') muzzles.push(e.muzzle); }
+    for (let k = 0; k < 30; k++) { st.events = []; tickGun(st, 0, IDLE_INPUT, true); for (const e of st.events) if (e.kind === 'gunFire') muzzles.push(e.muzzle); }
     expect(muzzles.length).toBeGreaterThanOrEqual(4);
     expect(muzzles.every((m, j) => j === 0 || m !== muzzles[j - 1])).toBe(true);   // the twin muzzles alternate
     expect(s.gunShots).toBe(muzzles.length + 1);
@@ -73,7 +76,7 @@ describe('the autocannon (W-4 spec §2, §5)', () => {
     const st = hound(3, 64, 30, -10);
     st.systems[0]!.gunTurret = -4000;
     expect(gunAimFine(st, 0)).toBe(turretWorldAim(64, -4000));
-    tickGun(st, 0, TRIGGER);
+    tickGun(st, 0, IDLE_INPUT, true);
     const r = st.rounds.find((e) => e.active)!, [ux, uy] = aimDir(turretWorldAim(64, -4000));
     expect(r.vx).toBeCloseTo(30 + ux * AUTOCANNON.speed, 9);
     expect(r.vy).toBeCloseTo(-10 + uy * AUTOCANNON.speed, 9);
@@ -81,10 +84,10 @@ describe('the autocannon (W-4 spec §2, §5)', () => {
   });
   it('the cooldown is the interval of the moment: a bar taken mid-cooldown applies from the next round', () => {
     const st = hound(1), s = st.systems[0]!;
-    tickGun(st, 0, TRIGGER);
+    tickGun(st, 0, IDLE_INPUT, true);
     expect(s.gunCooldown).toBe(10);
     s.weaponPower = [1, 3, 1]; s.bars[1] = 5;
-    for (let k = 0; k < 10; k++) tickGun(st, 0, TRIGGER);
+    for (let k = 0; k < 10; k++) tickGun(st, 0, IDLE_INPUT, true);
     expect(s.gunCooldown).toBe(6);   // the round that left at the end of the 10 restarted the clock at 3 bars' 6
   });
   it('six unshielded hits raise a room a level (gunHit as the Valkyrn\'s)', () => {
@@ -93,7 +96,7 @@ describe('the autocannon (W-4 spec §2, §5)', () => {
     st.systems[1]!.shields = 0;
     let levelled = false;
     for (let k = 0; k < 200 && !levelled; k++) {
-      st.events = []; tickGun(st, 0, TRIGGER); stepRounds(st);
+      st.events = []; tickGun(st, 0, IDLE_INPUT, true); stepRounds(st);
       levelled = st.events.some((e) => e.kind === 'gunHit' && e.level);
     }
     expect(levelled).toBe(true);

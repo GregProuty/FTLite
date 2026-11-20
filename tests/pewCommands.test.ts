@@ -35,6 +35,7 @@ describe('pewFire on the wire (spec §4)', () => {
 describe('pewFire through the duel step (spec §1, §4, §5)', () => {
   it('the gunner\'s shot is applied and fires one round', () => {
     const d = gunnerAtWeapons();
+    d.tactical.systems[0].pewManual = true;   // W-4 spec §4.3, §6 (W-4b): pewFire needs pew pew on MAN
     try {
       expect(why(step(d, [cmd(d, 1, ahead(d))]))).toEqual(['applied']);
       expect(d.tactical.systems[0].pewShots).toBe(1);
@@ -43,6 +44,7 @@ describe('pewFire through the duel step (spec §1, §4, §5)', () => {
   });
   it('several in one tick fire once: the first applies, the rest are noop', () => {
     const d = gunnerAtWeapons();
+    d.tactical.systems[0].pewManual = true;   // W-4 spec §4.3, §6 (W-4b): pewFire needs pew pew on MAN
     try {
       expect(why(step(d, [cmd(d, 1, ahead(d)), cmd(d, 1, ahead(d)), cmd(d, 1, ahead(d))]))).toEqual(['applied', 'noop', 'noop']);
       expect(d.tactical.systems[0].pewShots).toBe(1);

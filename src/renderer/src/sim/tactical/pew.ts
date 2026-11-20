@@ -46,6 +46,14 @@ export function pewReady(state: TacticalState, i: number): boolean {
   return def !== null && state.systems[i]!.pewCharge >= pewThird(def) && pewPowered(state, i);
 }
 
+/** W-4 spec §4.3 (Decision 4): whether ship i's AUTO pew may fire now: pewReady, and either full or a third completed by
+ *  the last tickPew (the charge sits within one tick's gain above a whole third). So AUTO fires one round each time a third
+ *  has charged and never bursts the stored thirds. Integers on AUTO's gains (they divide the third). */
+export function pewAutoReady(state: TacticalState, i: number): boolean {
+  const def = classOf(state, i).slots.pew, c = state.systems[i]!.pewCharge;
+  return def !== null && pewReady(state, i) && (c >= pewFull(def) || c % pewThird(def) < pewGain(state, i));
+}
+
 /** A pewFire command's aim (spec §4): a heading index 0..255 and its fraction aimAcc 0..255, both integers. */
 export function validAim(aim: unknown, aimAcc: unknown): boolean {
   return typeof aim === 'number' && typeof aimAcc === 'number' && Number.isInteger(aim) && Number.isInteger(aimAcc)

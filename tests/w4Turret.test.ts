@@ -191,7 +191,7 @@ describe('rounds along the turrets, and the leads (W-4 spec §3.2, §4.2, §5, �
     firePewTrigger(st, 0);
     const p = st.pew.find((r) => r.active)!, [px, py] = aimDir(turretWorldAim(10, -2000)), pn = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
     expect(p.vx / pn).toBeCloseTo(px, 9); expect(p.vy / pn).toBeCloseTo(py, 9);
-    tickGun(st, 0, { ...IDLE_INPUT, gunHeld: true });
+    tickGun(st, 0, IDLE_INPUT, true);   // W-4 spec §4.3 (W-4b): AUTO on solution; a held trigger does nothing on AUTO
     const g = st.rounds.find((r) => r.active)!, [gx, gy] = aimDir(turretWorldAim(10, 3000));
     expect(g.vx).toBeCloseTo(gx * 700, 9); expect(g.vy).toBeCloseTo(gy * 700, 9);   // still ship: GUN_SPEED along the turret
   });

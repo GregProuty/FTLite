@@ -228,6 +228,8 @@ export const PEW_TURRET_TRAVERSE: readonly [number, number] = [364, 455];
 export const AUTOCANNON_TURRET_TRAVERSE: readonly [number, number] = [273, 341];
 /** W-4 spec §4.2: the autocannon's AUTO range (a round reaches about 607 u at rest). */
 export const AUTOCANNON_AUTO_RANGE = 600;
+/** W-4 spec §12: cos 30°, the autocannon's ±30° arc as inArc's cosine: the scripted Helm lines the guns up outside it. */
+export const AUTOCANNON_ARC_COS = 0.8660254037844386;
 /** W-4 spec §4.3: AUTO stops the autocannon at 80 % heat, so it never locks. */
 export const GUN_AUTO_HEAT_STOP = 800;
 /** W-4 spec §4.2 (owner 2026-11-19): AUTO is on solution when its turret ends the tick within this many fine steps (1.0°)

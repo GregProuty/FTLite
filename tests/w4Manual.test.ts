@@ -100,3 +100,45 @@ describe("the gun in hand's fire rate (W-4 spec §4.4)", () => {
     }
   });
 });
+
+describe('pewFire in AUTO and MAN (W-4 spec §6, amendment §2.3)', () => {
+  it("is unavailable while pew pew is on AUTO; a same-tick gunMode for slot 0 first makes it apply; a second in the tick is a noop; the autocannon's switch does not open it", () => {
+    const d = createSeatedDuel(CUTTER, 5), g = 1 - d.helmPlayer;
+    try {
+      expect(stepDuelTick(d, { held: [], commands: [env(d, g, { kind: 'pewFire' }, 1)] })[0]).toMatchObject({ status: 'rejected', reason: 'unavailable' });
+      const gun = stepDuelTick(d, { held: [], commands: [env(d, g, { kind: 'pewFire' }, 2), env(d, g, { kind: 'gunMode', slot: 1, manual: true }, 3)] });
+      expect(gun.map((x) => [x.id.sequence, x.status, x.reason ?? null])).toEqual([[2, 'rejected', 'unavailable'], [3, 'applied', null]]);   // slot 1 is the autocannon's
+      const r = stepDuelTick(d, { held: [], commands: [env(d, g, { kind: 'pewFire' }, 4), env(d, g, { kind: 'gunMode', slot: 0, manual: true }, 5), env(d, g, { kind: 'pewFire' }, 6)] });
+      expect(r.map((x) => [x.id.sequence, x.status])).toEqual(expect.arrayContaining([[5, 'applied'], [4, 'applied'], [6, 'noop']]));
+    } finally { disposeDuel(d); }
+  });
+  it("reads pew pew's own switch: refused with pewManual false and admitted with it true, whatever gunManual is", () => {
+    for (const gunManual of [false, true]) {
+      const d = createSeatedDuel(CUTTER, 5), g = 1 - d.helmPlayer, s = d.tactical.systems[0];
+      try {
+        s.gunManual = gunManual;
+        expect(stepDuelTick(d, { held: [], commands: [env(d, g, { kind: 'pewFire' }, 1)] })[0], `gunManual ${gunManual}`).toMatchObject({ status: 'rejected', reason: 'unavailable' });
+        s.pewManual = true;
+        expect(stepDuelTick(d, { held: [], commands: [env(d, g, { kind: 'pewFire' }, 2)] })[0], `gunManual ${gunManual}`).toMatchObject({ status: 'applied' });
+      } finally { disposeDuel(d); }
+    }
+  });
+  it('gunHeld fires the autocannon in MAN only with it selected; in AUTO a held trigger fires nothing', () => {
+    const d = createSeatedDuel(CUTTER, 5), g = 1 - d.helmPlayer, s = d.tactical.systems[0];
+    try {
+      s.bars[1] = 3; s.weaponPower = [1, 1, 1];
+      Object.assign(d.tactical.ships[1], { x: 5000, y: 5000 });   // far off: AUTO has no solution
+      const held = (weaponSel: number) => { const h = [{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }]; h[g] = { moveX: 0, moveY: 0, interactHeld: false, gunHeld: true, weaponSel } as never; return h; };
+      for (let k = 0; k < 20; k++) stepDuelTick(d, { held: held(1), commands: [] });
+      expect(s.gunShots).toBe(0);   // AUTO ignores the trigger
+      s.pewManual = true;
+      for (let k = 0; k < 20; k++) stepDuelTick(d, { held: held(1), commands: [] });
+      expect(s.gunShots).toBe(0);   // pew pew's switch is not the autocannon's (amendment §2.3)
+      s.gunManual = true;
+      for (let k = 0; k < 20; k++) stepDuelTick(d, { held: held(0), commands: [] });
+      expect(s.gunShots).toBe(0);
+      for (let k = 0; k < 20; k++) stepDuelTick(d, { held: held(1), commands: [] });
+      expect(s.gunShots).toBeGreaterThan(0);
+    } finally { disposeDuel(d); }
+  });
+});

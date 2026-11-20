@@ -10,9 +10,9 @@ import { laserStrikesRock, rockOnTarget, rockShotLine } from './rockWeapons';
 import { hx, hy } from './direction';
 import { tickGun } from './gun';
 import { BEAM_RATE_BY_BARS, BEAM_SHOTS_BY_BARS, DuelSystem, effectiveBars, MAGAZINE_REGEN_UNITS, SHIELD_LAYERS_BY_BARS, SHIELD_RATE_BY_BARS, TORPEDO_RELOAD_BY_BARS, weaponBars, WeaponSlot } from './bars';
-import { aimDir, clampAim, firePew, firePewTrigger, tickPew } from './pew';
+import { aimDir, clampAim, firePew, firePewTrigger, pewAutoReady, tickPew } from './pew';
 import { classOf, CREW_SLOT, handControl, missileOf, Room, type Axes, type TacticalState } from './state';
-import { shipSeen } from './science';
+import { enemyHostile, shipSeen } from './science';
 import { slewTurrets } from './turret';
 import { AIM_STEPS, LASER_ARC_STEPS } from './tuning';
 
@@ -318,8 +318,9 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
   }
   const torpOnRock = s.torpRock >= 0;   // impl review R1-F3: a shot below that breaks this rock must not turn the launch on the enemy
   stepBurst(state, i);
-  slewTurrets(state, i, input);   // W-4 spec §3.4, §8: the turrets slew before the gun and the pew fire (the pre-move heading)
-  tickGun(state, i, input);   // Valkyrn spec §7.1: before anything moves; its clocks run attended or not (Decision 8)
+  const auto = slewTurrets(state, i, input);   // W-4 spec §3.4, §8: the turrets slew before the gun and the pew fire (the pre-move heading)
+  const hostile = enemyHostile(state);   // W-4 spec §4.3: AUTO tracks in the hold and fires only once hostile
+  tickGun(state, i, input, auto.gun && hostile);   // Valkyrn spec §7.1: before anything moves; its clocks run attended or not (Decision 8)
   if (!input.weapons) { s.fireHeld = false; return; }   // unattended: Fire lets go without firing or discarding
   if (laserOffline(state, i)) { s.laserCharge = 0; s.laserHold = 0; }   // a hit after its clock ran last tick: no shot
   if (armed && input.laserCharge !== null && canCharge(state, i)) {
@@ -344,7 +345,8 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
     }
     if (crew && !s.torpManual && (s.torpLock >= 0 || s.torpRock >= 0) && canLaunch(state, i) && (s.torpRock >= 0 || shipSeen(state, s.target))) launchMissile(state, i);   // auto-launch, once (spike ii: or on a rock target); W-3: never in MANUAL; Task 10: the enemy only when seen
   }
-  if (input.pewTrigger) firePewTrigger(state, i);   // W-4 spec §6, §8: the crew's pewFire, along the turret; last, as before
+  if (input.pewTrigger) firePewTrigger(state, i);   // W-4 spec §6, §8: the crew's MAN pewFire, along the turret; last, as before
+  else if (auto.pew && hostile && pewAutoReady(state, i)) firePewTrigger(state, i);   // W-4 spec §4.3 (Decision 4): AUTO, one round each time a third has charged, never a burst
   else if (input.pewAim >= 0) firePew(state, i, input.pewAim);   // W-1 (pew pew spec §1): the Hunter's aim; attended (above)
 }
 
