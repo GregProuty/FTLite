@@ -5,7 +5,8 @@
 // dim, and no reticle.
 import { describe, expect, it } from 'vitest';
 import { createCamera, worldToScreen, type Camera } from '../src/renderer/src/render/tactical/camera';
-import { createFx } from '../src/renderer/src/render/tactical/fxModel';
+import { createFx, type ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
+import { CALLOUT_COLOUR, hitCallouts, pushHits } from '../src/renderer/src/render/tactical/hitModel';
 import { headingAngle, type PrevBody } from '../src/renderer/src/render/tactical/tacticalModel';
 import { combatModel, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
@@ -96,5 +97,20 @@ describe("the Hound's Weapons map (W-4 spec §10)", () => {
   it("the laser fit's Weapons map draws no muzzle lines (no turret)", () => {
     const { st, cam } = scene(0, ShipClass.ValkyrnLaser);
     expect(combatModel(input(st, cam, 'weapons')).muzzles ?? []).toEqual([]);
+  });
+});
+
+describe('a pew pew room hit on the map (W-4 amendment §3.4)', () => {
+  it('a pewHit with level on the enemy shows the PEW: room callout and flashes the room; one without a room shows neither; the crew is never the struck ship', () => {
+    const st = createTacticalState(5), fx = createFx();
+    const hit = (over: object): ViewEvent => ({ kind: 'pewHit', ship: 1, owner: 0, stripped: false, hull: true, room: -1, level: false, x: 0, y: 0, ...over });
+    expect(hitCallouts([hit({ room: 2, level: true })], st)).toEqual([{ text: 'PEW: ENGINES HIT', colour: CALLOUT_COLOUR.hit, kind: 'hit' }]);
+    expect(hitCallouts([hit({ room: 2 }), hit({}), hit({ ship: 0, owner: 1, room: 2, level: true })], st)).toEqual([]);   // wear without a level; no room; a hit on the crew
+    st.systems[1]!.rooms[2] = 2;
+    expect(hitCallouts([hit({ room: 2, level: true })], st)[0]).toMatchObject({ text: 'PEW: ENGINES OFFLINE', kind: 'offline' });
+    pushHits(fx, [hit({ room: 0 }), hit({})], st);
+    expect(fx.struck.map((s) => [s.ship, s.room])).toEqual([[1, 0]]);   // a room hit by hand flashes its room, level or not; an untagged hit flashes none
+    pushHits(fx, [hit({ ship: 0, owner: 1, room: 1 })], st);
+    expect(fx.struck).toHaveLength(1);   // never the crew's own ship
   });
 });

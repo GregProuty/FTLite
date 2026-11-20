@@ -522,13 +522,20 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
         for (let n = 0; n < Math.abs(dw); n++) queue({ kind: 'weaponPower', slot: weaponSel, delta: Math.sign(dw) });
         const why = weaponPowerRefusal(d, weaponSel, Math.sign(dw)); if (why) refuse('power', why);
       }
-      // E / Q (and E/Q while the torpedo is picked up) step the torpedo's target room, as the Flight seat does (§9).
-      const steps = p.interact - p.prevLock + (requests.torpStep ?? 0);
+      // W-4 amendment §3.6: E / Q step the target room (Weapons → Shields → Engines, wrapping), judged from the latest queued
+      // laserLock, else the sim's lock; a plain room click in the enemy window (the console's lock request) sets it. Neither
+      // makes a torpedo lock (that is only the pick-up click, k.torpTo below), and requests.torpStep is not read here.
+      const steps = p.interact - p.prevLock;
       if (steps !== 0) {
-        const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'torpLock')?.command;
-        const room = stepTorpRoom(last && last.kind === 'torpLock' ? last.room : d.tactical.systems[0].torpLock, steps);
-        queue({ kind: 'torpLock', room });
-        const why = room >= 0 ? lockRefusal(d) : null; if (why) refuse('launch', why);
+        const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'laserLock')?.command;
+        let room = last && last.kind === 'laserLock' && last.room >= 0 ? last.room : d.tactical.systems[0].lock;
+        for (let n = 0; n < Math.abs(steps); n++) room = cycleLock(room, steps > 0 ? 1 : -1);
+        queue({ kind: 'laserLock', room });
+        const why = lockRefusal(d); if (why) refuse('laser', why);   // NO CONTACT: the sim refuses a room on an unseen enemy
+      }
+      if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= 0 && k.lockTo <= 2) {   // a clear (−1) is never sent: the target room has no "none"
+        queue({ kind: 'laserLock', room: k.lockTo });
+        const why = lockRefusal(d); if (why) refuse('laser', why);
       }
       if (k.torpTo !== undefined && k.torpTo !== null && k.torpTo >= -1 && k.torpTo <= 2) queue({ kind: 'torpLock', room: k.torpTo });
       for (const rl of [requests.rockLock, k.rockTo]) if (rl && rl.weapon === 'torpedo') queue({ kind: 'rockLock', weapon: 'torpedo', rock: rl.rock });

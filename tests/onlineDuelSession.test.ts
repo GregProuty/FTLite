@@ -330,6 +330,47 @@ describe('the online Hound Weapons seat (W-4 spec §11)', () => {
     expect(p > 0 && p <= 2000 && (p % 341 === 0 || p === 2000)).toBe(true);   // its own gunMode in flight: MAN's 341 a frame
     r.dispose();
   });
+  it('two E presses before a replica arrives step the target room twice (lockSent); it clears on the result, a new round and a stand', () => {
+    const r = rig(1), c = r.attach(); r.session.frame();
+    const locks = () => c.commands().filter((x) => x.kind === 'laserLock' || x.kind === 'torpLock');
+    const e = (): void => { tapKey(r, 'KeyE'); r.pump(); };
+    e(); e();
+    expect(locks()).toEqual([{ kind: 'laserLock', room: 2 }, { kind: 'laserLock', room: 0 }]);   // from the replica's Shields, then from the room in flight
+    const id = c.ids[c.commands().map((x) => x.kind).lastIndexOf('laserLock')]!;
+    c.results.push({ id, tick: 3, status: 'applied' }); r.pump();
+    e();
+    expect(locks().at(-1)).toEqual({ kind: 'laserLock', room: 2 });   // the result cleared it: the replica's lock (still Shields) is the base again
+    nextRound(r.d); c.publish(r.d); r.pump();
+    e();
+    expect(locks().at(-1)).toEqual({ kind: 'laserLock', room: 2 });   // a new round: from its Shields, not from the room in flight
+    tapKey(r, 'KeyX'); r.pump();   // this seat's stand clears it (the replica still shows the seat)
+    e();
+    expect(locks().at(-1)).toEqual({ kind: 'laserLock', room: 2 });
+    expect(locks().some((x) => x.kind === 'torpLock')).toBe(false);
+    r.dispose();
+  });
+  it('Q steps back, and a plain room click (the console lock request) sends laserLock; neither sends torpLock, and a clear is never sent', () => {
+    const consoles: { lock(room: number): void }[] = [];
+    const r = rig(1, undefined, {}, { setConsole: (i: { lock(room: number): void } | null) => { if (i) consoles.push(i); } }), c = r.attach(); r.session.frame();
+    const locks = () => c.commands().filter((x) => x.kind === 'laserLock' || x.kind === 'torpLock');
+    tapKey(r, 'KeyQ'); r.pump();
+    expect(locks()).toEqual([{ kind: 'laserLock', room: 0 }]);   // Q: Shields → Weapons
+    consoles[0]!.lock(2); r.pump();   // the enemy window's plain room click reaches the session through the console's lock
+    expect(locks().at(-1)).toEqual({ kind: 'laserLock', room: 2 });
+    consoles[0]!.lock(-1); r.pump();
+    expect(locks()).toHaveLength(2);   // the target room has no "none"
+    r.dispose();
+  });
+  it("a gun tag's click (the console's mode(slot)) sends that gun's gunMode, whatever is selected (Task 11 review: the tags reach the wire)", () => {
+    const consoles: ConsoleInput[] = [];
+    const r = rig(1, undefined, {}, { setConsole: (i: ConsoleInput | null) => { if (i) consoles.push(i); } }), c = r.attach(); r.session.frame();
+    const modes = () => c.commands().filter((x) => x.kind === 'gunMode' || x.kind === 'torpMode');
+    consoles[0]!.mode?.(1); r.pump();   // pew pew selected; the autocannon's tag is its own switch
+    expect(modes()).toEqual([{ kind: 'gunMode', slot: 1, manual: true }]);
+    consoles[0]!.mode?.(0); consoles[0]!.mode?.(2); r.pump();
+    expect(modes().slice(1)).toEqual([{ kind: 'gunMode', slot: 0, manual: true }, { kind: 'torpMode', manual: true }]);
+    r.dispose();
+  });
 });
 
 describe('the online manual laser (W-2)', () => {

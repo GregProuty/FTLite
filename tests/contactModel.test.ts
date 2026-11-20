@@ -101,7 +101,7 @@ describe('the enemy below Level 2 (Sci-1 spec §7.2)', () => {
     expect(v.weapons).not.toBeNull(); expect(v.aim).toBe(true);
   });
   it('Level 1: the outline with ? labels and no damage looks, no lock mark; pips, hull, the hostility line; SCAN 2', () => {
-    const st = known(1); st.systems[1].rooms = [2, 2, 2]; st.tick = 600;
+    const st = known(1, LASER_FIT); st.systems[1].rooms = [2, 2, 2]; st.tick = 600;   // the beam's rule, on the laser fit (the Hound always brackets its target room; W-4 amendment §3.6: kind (a))
     st.systems[0].laserTargeted = false;   // no target, no lock mark (a round starts at the Feel-i SHIELDS opener)
     const v = model(st, { station: 'science', weapons: null })!;
     expect(v.rooms.map((r) => r.label)).toEqual(['?', '?', '?']);
@@ -113,6 +113,21 @@ describe('the enemy below Level 2 (Sci-1 spec §7.2)', () => {
   it('null for an inactive enemy', () => {
     const st = known(2); st.ships[1].active = false;
     expect(model(st)).toBeNull();
+  });
+});
+
+describe("the Hound's target room in the enemy window (W-4 amendment §3.6)", () => {
+  it('the bracket is the target room whenever the rooms are drawn, the unknown contact included, at every station; a plain room click is on at Weapons only', () => {
+    for (const level of [0, 1, 2]) {
+      const st = known(level);   // the Hound: laserTargeted stays false
+      expect([st.systems[0].laserTargeted, model(st)!.lockRoom], `level ${level}`).toEqual([false, 1]);   // Shields at a round's start
+      st.systems[0].lock = 2;
+      expect([model(st)!.lockRoom, model(st, { station: 'helm', weapons: null })!.lockRoom, model(st, { station: 'science', weapons: null })!.lockRoom], `level ${level}`).toEqual([2, 2, 2]);
+      expect([model(st)!.roomClick ?? false, model(st, { station: 'helm', weapons: null })!.roomClick ?? false], `level ${level}`).toEqual([true, false]);
+    }
+    const fit = known(2, LASER_FIT);
+    fit.systems[0].laserTargeted = false;
+    expect([model(fit)!.lockRoom, model(fit)!.roomClick ?? false]).toEqual([null, false]);   // a laser class keeps laserTargeted ? lock : null, and no plain click
   });
 });
 

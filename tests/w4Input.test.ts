@@ -179,3 +179,20 @@ describe('the reticle, R and Shift+R (W-4 spec §9, amendment §2.4, W-4b)', () 
     expect(weaponsSeatHeld(1, true, 3.5)).toEqual({ weaponSel: 1, gunHeld: true });   // not an integer: no aim
   });
 });
+
+describe("E / Q with the torpedo picked up (W-4 amendment §3.6)", () => {
+  it("at the Hound's Weapons seat they are not taken and the pick-up stays; the Flight seat and the laser fit's Weapons seat still step the torpedo's room", () => {
+    const hound = createContactController();
+    hound.sync({ shown: true, station: 'weapons', target: 1, active: () => true, epoch: 0, laser: false, turret: true });
+    hound.pickUp('torpedo');
+    expect([hound.intercept('KeyE'), hound.intercept('KeyQ'), hound.aimWeapon(), hound.takeRequests().torpStep]).toEqual([false, false, 'torpedo', undefined]);
+    const flight = createContactController();
+    flight.sync({ shown: true, station: 'flight', target: 1, active: () => true, epoch: 0, laser: false });
+    flight.pickUp('torpedo');
+    expect([flight.intercept('KeyE'), flight.intercept('KeyE'), flight.intercept('KeyQ'), flight.aimWeapon(), flight.takeRequests().torpStep]).toEqual([true, true, true, 'torpedo', 1]);
+    const fit = createContactController();
+    fit.sync({ shown: true, station: 'weapons', target: 1, active: () => true, epoch: 0, laser: true });
+    fit.pickUp('torpedo');
+    expect([fit.intercept('KeyE'), fit.takeRequests().torpStep]).toEqual([true, 1]);
+  });
+});

@@ -7,6 +7,8 @@
 // FTL targeting spec §1: LASER and TORPEDO each pick their weapon up (the Weapons cards do too); a room click sets that
 // weapon's target. Each target room carries its weapon's mark (the laser's corner brackets, the torpedo's diamond); the
 // reticle at the pointer is TargetingLine's, drawn with the line from the card.
+// W-4 amendment §3.6: at the Hound's Weapons seat a plain room click, with nothing picked up, sets the target room, and the
+// laser's corner brackets mark it.
 import { Fragment, memo, useState, type PointerEvent as ReactPointerEvent, type SyntheticEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import type { ContactView } from '../../render/duel/contactModel';
 import { CONTACT } from '../../render/duel/consoleLayout';
@@ -58,9 +60,11 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
   const boxDown = (e: ReactPointerEvent<SVGSVGElement>): void => {
     e.preventDefault();
     if (e.button === 2) { actions.contact.cancelAim(); return; }
-    if (e.button !== 0 || !aiming) return;
+    if (e.button !== 0) return;
     const room = roomAt(toInternal(e));
-    if (room >= 0) actions.contact.pick(room);   // a click on no room does nothing; the aim stays armed
+    if (room < 0) return;   // a click on no room does nothing; the aim stays armed
+    if (aiming) actions.contact.pick(room);
+    else if (contact.roomClick) actions.console.lock(room);   // W-4 amendment §3.6: a plain room click sets the target room
   };
   const boxStyle = { position: 'absolute' as const, ...boxCss(b.x, b.y, b.w, b.h, l), overflow: 'hidden' as const };
   return (

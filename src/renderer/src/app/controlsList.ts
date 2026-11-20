@@ -63,6 +63,7 @@ export function controlSections(): ControlSection[] {
     { keys: `${keyLabel(MOVE_CODES.up)} / ${keyLabel(MOVE_CODES.down)}`, action: 'At Weapons, power the selected weapon (a bar on or off)' },
     { keys: selectKeys(Object.keys(GUN_FREQ_CODES)), action: "At Weapons, tune the guns' shield frequency A / B / C" });
   duel.push({ keys: 'Mouse', action: "At Weapons, the reticle: the selected gun's turret follows it, inside its arc (MAN)" });   // W-4 spec §9
+  duel.push({ keys: `${codesFor('prevLock').map(keyLabel).join('')} / ${codesFor('interact').map(keyLabel).join('')}`, action: 'At Weapons, step the target room (Weapons, Shields, Engines); rounds fired by hand damage it' });   // W-4 amendment §3.6
   // Feel-ii: the ping (G or a middle click), the Helm's right-click heading; W-1: the Weapons map's left click (the pew).
   duel.push({ keys: `${keyLabel(PING_CODE)} / Middle click`, action: 'Ping the map point (or the enemy) for the crew' });
   // Playtest2feedback §6: the crew Helm: W/S throttle · hold LMB steer · RMB set heading · A/D Q/E ←→↑↓ thrusters (owner

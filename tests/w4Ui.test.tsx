@@ -21,6 +21,9 @@ import { controlSections } from '../src/renderer/src/app/controlsList';
 import { autocannonRateText } from '../src/renderer/src/app/duel/weaponsSeat';
 import { freeText, HOUND_PEW_PIPS_X, houndRoomHint } from '../src/renderer/src/ui/duel/WeaponsStation';
 import { makeUi } from './helpers/uiStore';
+import { contactModel, type ContactView } from '../src/renderer/src/render/duel/contactModel';
+import { createContactController } from '../src/renderer/src/app/duel/contactController';
+import { createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 
 afterEach(() => { cleanup(); });
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((c) => c.dataset.text!);
@@ -224,5 +227,45 @@ describe('a switch on each card: the AUTO / MAN / HOLD tags (W-4 spec §4.3, §1
     act(() => duel.frame(view(weapons({ laserTarget: 1, burst: 2, laserManual: false }))));
     fireEvent.pointerDown(q('[data-testid="console-laser-mode"]')!, { button: 0 });
     expect(i.press).toHaveBeenCalledWith('laserMode');
+  });
+});
+
+describe("the enemy window at the Hound's Weapons seat (W-4 amendment §3.6)", () => {
+  const hound = (): TacticalState => { const st = createTacticalState(4); st.known[0] = 2; return st; };
+  const windowOf = (st: TacticalState, aim: boolean): ContactView => contactModel({ state: st, contact: 0, aim, weapon: 'torpedo', station: 'weapons', t: 0, weapons: { charge } })!;
+  const clickRoom = (contact: ContactView, room: number): void => { const c = contact.rooms[room]!.centre; fireEvent.pointerDown(document.querySelector('[data-ui-contact-box]')!, { button: 0, clientX: c.x, clientY: c.y }); };
+  it("a plain room click sets the target room (the console's lock); with the torpedo picked up the click is the torpedo's target, as before", () => {
+    const { ui, duel } = mount(), i = input(), controller = createContactController();
+    ui.actions.setConsole(i); ui.actions.setContact(controller);
+    controller.sync({ shown: true, station: 'weapons', target: 1, active: () => true, epoch: 0, laser: false, turret: true });
+    const plain = windowOf(hound(), false);
+    act(() => duel.frame({ ...view(weapons({ autocannon: AC, selected: 0 })), contact: plain }));
+    clickRoom(plain, 2);
+    expect(i.lock).toHaveBeenCalledWith(2);
+    expect(i.torpLock).not.toHaveBeenCalled();
+    controller.pickUp('torpedo');
+    const armed = windowOf(hound(), true);
+    act(() => duel.frame({ ...view(weapons({ autocannon: AC, selected: 2 })), contact: armed }));
+    clickRoom(armed, 0);
+    expect(i.torpLock).toHaveBeenCalledWith(0);
+    expect(i.lock).toHaveBeenCalledTimes(1);
+  });
+  it('the bracket and the hint row follow lock', () => {
+    const { duel } = mount(), st = hound();
+    st.systems[0].lock = 2;
+    const contact = windowOf(st, false);
+    expect(contact.lockRoom).toBe(2);
+    act(() => duel.frame({ ...view(weapons({ autocannon: AC, selected: 0, lock: st.systems[0].lock })), contact }));
+    expect(document.querySelector('[data-ui-contact-lock]')).not.toBeNull();
+    expect(texts()).toContain('R AUTO/MAN · Q/E ROOM: ENGINES');
+  });
+  it('a refused room (the enemy unseen) reads ROOM: NO CONTACT on the reason row, clear of FREE by 8 px', () => {
+    const { duel } = mount();
+    act(() => duel.frame(view(weapons({ autocannon: AC, selected: 0, refused: { control: 'laser', reason: 'NO CONTACT', flash: true } }))));
+    expect(texts()).toContain('ROOM: NO CONTACT');
+    expect(STATION.x + 8 + textPx('ROOM: NO CONTACT', 1) + 8).toBeLessThanOrEqual(STATION.x + STATION.w - 8 - textPx(freeText(9), 1));
+  });
+  it('the controls list names Q / E at Weapons, from the tables', () => {
+    expect(controlSections()[0]!.rows).toContainEqual({ keys: 'Q / E', action: 'At Weapons, step the target room (Weapons, Shields, Engines); rounds fired by hand damage it' });
   });
 });

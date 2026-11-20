@@ -134,7 +134,7 @@ function HoundWeapons({ weapons, aim }: { weapons: WeaponsPanel; aim: Weapon | n
   const pewHot = selected === 0, edge = pewHot ? hot : crt ? CRT.mid : DIM;
   const select = (slot: 0 | 1 | 2) => (): void => actions.console.select?.(slot);
   const gunTag = (slot: 0 | 1): string => (weapons.gunsHand === slot ? 'MAN' : weapons.gunsHold ? 'HOLD' : 'AUTO');   // amendment §2.5: what the gun does now
-  const who = (c: string): string => (c === 'launch' ? 'TORPEDO' : c === 'pew' ? 'PEW' : c === 'autocannon' ? 'AUTOCANNON' : c === 'power' ? 'POWER' : c === 'laser' ? 'BEAM' : 'FIRE');
+  const who = (c: string): string => (c === 'launch' ? 'TORPEDO' : c === 'pew' ? 'PEW' : c === 'autocannon' ? 'AUTOCANNON' : c === 'power' ? 'POWER' : c === 'laser' ? 'ROOM' : 'FIRE');   // W-4 amendment §3.6: on the Hound the laser control is the target room's refusal
   return (
     <>
       <Panel x={STATION.x} y={top} w={STATION.w} h={STATION.h.weapons} />

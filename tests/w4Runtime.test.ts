@@ -1,11 +1,11 @@
 // W-4 spec §9 (W-4a): Single player at the Hound's Weapons seat: 1/2/3 and A/D select (wrapping), W/S send weaponPower on
 // the selection (and refuse at a range end), 4/5/6 send laserFrequency and 3 sends none, LMB by selection (pewFire, nothing
 // on the autocannon's click, missileLaunch on the torpedo), the held trigger sends gunHeld only with the autocannon
-// selected, Space queues nothing, E/Q step the torpedo's room; the laser fit's Weapons seat keeps Z, Space and 3/4/5.
+// selected, Space queues nothing, E/Q step the target room (W-4 amendment §3.6); the laser fit's Weapons seat keeps Z, Space and 3/4/5.
 import { describe, expect, it } from 'vitest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
-import { emptyPresses, type KeyAction, type KeySample } from '../src/renderer/src/app/duel/input';
+import { createDuelKeyboard, emptyPresses, type DuelKeyboard, type KeyAction, type KeySample } from '../src/renderer/src/app/duel/input';
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import { createContactController } from '../src/renderer/src/app/duel/contactController';
 import { sitDown, standUp } from '../src/renderer/src/sim/stations';
@@ -13,15 +13,15 @@ import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { holdInSight } from './helpers/sensorSight';
 
 const layout = parseShip(cutter), vp = { w: 1280, h: 720 };
-const ONE_FRAME = { presses: emptyPresses(), freqTo: null, freqKeyTo: null, gunFreqKeyTo: null, selectTo: null, modeTaps: [0, 0, 0] } as const;
+const ONE_FRAME = { presses: emptyPresses(), freqTo: null, freqKeyTo: null, gunFreqKeyTo: null, selectTo: null, modeTaps: [0, 0, 0], lockTo: null, torpTo: null } as const;
 
-function rig(cls?: number) {
+function rig(cls?: number, kb?: DuelKeyboard) {   // kb: sample a real keyboard instead of the stub keys
   let now = 0, keys: KeySample = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() }, pew: number | null = null, trigger = false, reticle: number | null = null;
   const tasks: { at: number; cb: () => void }[] = [], contact = createContactController();
   const rt = createDuelRuntime({
     now: () => now, seed: 5, viewport: vp, layout, ...(cls !== undefined ? { cls } : {}),
     scheduler: { schedule(delay, cb) { const t = { at: now + delay, cb }; tasks.push(t); return () => { const i = tasks.indexOf(t); if (i >= 0) tasks.splice(i, 1); }; } },
-    sampleKeys: () => { const k = keys; keys = { ...k, ...ONE_FRAME }; return k; },
+    sampleKeys: () => { if (kb) return kb.sample(); const k = keys; keys = { ...k, ...ONE_FRAME }; return k; },
     samplePointer: () => ({ x: null, y: null, wheel: 0, dragX: 0, dragY: 0 }),
     takeContactRequests: () => contact.takeRequests(),
     takePew: () => { const p = pew; pew = null; return p; },
@@ -40,7 +40,7 @@ function rig(cls?: number) {
   tick();   // the solo start: player 1 goes away on tick 0
   const d = rt.duel;
   sitDown(d.interior, 0, d.weapons); tick();
-  return { rt, d, tick, press, set, click, hold, aim, tap, statuses };
+  return { rt, d, tick, press, set, click, hold, aim, tap, statuses, contact };
 }
 
 describe("Single player at the Hound's Weapons seat (W-4 spec §9)", () => {
@@ -98,13 +98,15 @@ describe("Single player at the Hound's Weapons seat (W-4 spec §9)", () => {
       r.tick(); expect(r.rt.takeRefusals()).toEqual([]);   // only on the press edge
     } finally { r.rt.dispose(); }
   });
-  it("E / Q step the torpedo's target room (no laserLock)", () => {
-    const r = rig();
+  it('E / Q step the target room (laserLock, no torpLock)', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
     try {
+      expect([sys.lock, sys.torpLock]).toEqual([1, -1]);   // Shields at a round's start; no torpedo target
       r.press('interact'); r.tick();
-      expect(r.statuses()).toEqual(['applied']);   // a torpLock (a laserLock would be rejected unavailable on the Hound)
-      r.press('prevLock'); r.tick();
-      expect(r.statuses()).toEqual(['applied']);
+      expect([r.statuses(), sys.lock, sys.torpLock]).toEqual([['applied'], 2, -1]);   // E: Shields → Engines
+      r.press('interact'); r.tick(); expect(sys.lock).toBe(0);   // wraps to Weapons
+      r.press('prevLock'); r.tick(); expect([sys.lock, sys.torpLock]).toEqual([2, -1]);   // Q: back, wrapping
+      r.press('interact', 2); r.tick(); expect([r.statuses(), sys.lock]).toEqual([['applied'], 1]);   // two presses in one frame: one command, two steps
     } finally { r.rt.dispose(); }
   });
   it("A/D's select presses do nothing off the Hound's Weapons seat (on foot, or the laser fit's Weapons seat)", () => {
@@ -170,6 +172,16 @@ describe("the Hound's Weapons seat in W-4b (W-4 spec §4.1, §4.3, §9; amendmen
       r.tap(2); r.tap(0); r.tick(); expect([sys.pewManual, sys.gunManual, sys.torpManual]).toEqual([true, true, true]);
     } finally { r.rt.dispose(); }
   });
+  it("a gun tag's click through the keyboard's console input (ConsoleInput.mode) reaches the sim as that gun's gunMode (Task 11 review)", () => {
+    const noop = (): void => {};
+    const kb = createDuelKeyboard({ addEventListener: noop, removeEventListener: noop } as never), r = rig(undefined, kb), sys = r.d.tactical.systems[0];
+    try {
+      kb.ui.mode?.(1); r.tick();
+      expect([r.statuses(), sys.pewManual, sys.gunManual]).toEqual([['applied'], false, true]);
+      kb.ui.mode?.(0); kb.ui.mode?.(1); r.tick();
+      expect([r.statuses(), sys.pewManual, sys.gunManual]).toEqual([['applied', 'applied'], true, false]);
+    } finally { r.rt.dispose(); kb.destroy(); }
+  });
   it("a left click fires pew pew only while its own switch is MAN, whatever the autocannon's is; on AUTO it queues nothing and refuses nothing", () => {
     const r = rig(), sys = r.d.tactical.systems[0];
     try {
@@ -198,6 +210,48 @@ describe("the Hound's Weapons seat in W-4b (W-4 spec §4.1, §4.3, §9; amendmen
     try {
       r.aim(12000); r.tick(); expect(r.rt.held()[0]!.turretAim).toBe(12000);
       r.aim(null); r.tick(); expect(r.rt.held()[0]!.turretAim).toBeUndefined();
+    } finally { r.rt.dispose(); }
+  });
+});
+
+describe("the target room at the Hound's Weapons seat (W-4 amendment §3.6)", () => {
+  it('two E presses on separate frames before a tick step twice (from the latest queued laserLock)', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      holdInSight(r.d.tactical);
+      r.press('interact'); r.rt.frame(1 / 60); r.press('interact'); r.tick();
+      expect([r.statuses(), sys.lock]).toEqual([['applied', 'applied'], 0]);   // Shields → Engines → Weapons
+    } finally { r.rt.dispose(); }
+  });
+  it("a plain room click (the console's lock request) sets the target room; the torpedo's own target is only its pick-up click; a clear is never sent", () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      r.set({ lockTo: 0 }); r.tick();
+      expect([r.statuses(), sys.lock, sys.torpLock]).toEqual([['applied'], 0, -1]);
+      r.set({ torpTo: 2 }); r.tick();   // the pick-up's room click (contact.pick → the console's torpLock)
+      expect([r.statuses(), sys.lock, sys.torpLock]).toEqual([['applied'], 0, 2]);   // the enemy is 700 u off, out of torpedo range: the lock stands
+      r.set({ lockTo: -1 }); r.tick();
+      expect([r.statuses(), sys.lock]).toEqual([[], 0]);   // the target room has no "none"
+    } finally { r.rt.dispose(); }
+  });
+  it('with the enemy unseen E raises NO CONTACT and the room keeps its value', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      sys.bars[3] = 0;   // Sensors 0: sensor range 300, and the rig holds the enemy 700 u off
+      r.tick(); r.rt.takeRefusals();
+      r.press('interact'); r.tick();
+      expect([r.statuses(), sys.lock]).toEqual([['rejected:unavailable'], 1]);
+      expect(r.rt.takeRefusals()).toContainEqual({ control: 'laser', reason: 'NO CONTACT' });
+    } finally { r.rt.dispose(); }
+  });
+  it('with the torpedo picked up, E still steps the target room: laserLock goes, no torpLock, and the pick-up stays', () => {
+    const r = rig(), sys = r.d.tactical.systems[0];
+    try {
+      r.contact.sync({ shown: true, station: 'weapons', target: 1, active: () => true, epoch: r.rt.epoch(), laser: false, turret: true });
+      r.contact.pickUp('torpedo');
+      expect([r.contact.intercept('KeyE'), r.contact.intercept('KeyQ')]).toEqual([false, false]);   // the keys fall through to the seat
+      r.press('interact'); r.tick();
+      expect([r.statuses(), sys.lock, sys.torpLock, r.contact.aimWeapon()]).toEqual([['applied'], 2, -1, 'torpedo']);
     } finally { r.rt.dispose(); }
   });
 });

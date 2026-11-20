@@ -4,6 +4,7 @@
 // lock room (Level 2) and the Weapons station's weapon list; and the info lines (the hostility line, Level 2's readings,
 // the derelict's loot, trap, range and salvage hint; the unknown enemy's Level 1 scan line). `t` is the scene's presentation clock, so the window blinks with
 // the map frame for frame; React draws only what this returns.
+import { hasTurret } from '../../sim/tactical/defs';
 import { derelictPos } from '../../sim/tactical/science';
 import { classOf, Contact, CREW_SLOT, missileOf, targetOf, type TacticalState } from '../../sim/tactical/state';
 import { HUNTER_MISSILE_COOLDOWN_TICKS, SALVAGE_TICKS, SCAN_UNITS } from '../../sim/tactical/tuning';
@@ -59,7 +60,8 @@ export interface ContactView {
   /** The enemy's outline and rooms at Level 1 or more; empty otherwise. */
   outline: number[];
   rooms: ContactRoom[];
-  /** The crew laser's target room (FTL targeting spec §1: while it has one), at Level 1 or more. */
+  /** The crew laser's target room (FTL targeting spec §1: while it has one), at Level 1 or more; W-4 amendment §3.6: on a
+   *  class with a turret gun, the target room, whenever the rooms are drawn. */
   lockRoom: number | null;
   /** The crew torpedo's target room (FTL targeting spec §1), at Level 1 or more. */
   torpRoom: number | null;
@@ -76,6 +78,9 @@ export interface ContactView {
   flash: { room: number; points: number[]; alpha: number }[];
   /** Feel-i: the drawing is the unknown enemy's "?" silhouette (below Level 1), drawn dashed. */
   unknown?: boolean;
+  /** W-4 amendment §3.6: a plain click on a room, with nothing picked up, sets the crew's target room: the Weapons station
+   *  of a class with a turret gun (the Hound). Absent: no. */
+  roomClick?: boolean;
 }
 export interface ContactModelInput {
   state: TacticalState;
@@ -133,6 +138,10 @@ export function contactModel(i: ContactModelInput): ContactView | null {
   if (!body || !body.active) return null;
   const level = state.known[Contact.Enemy];
   const crewSys = state.systems[CREW_SLOT], weapon = i.weapon ?? 'laser';
+  // W-4 amendment §3.6: on a class with a turret gun (the Hound) the bracket is the target room whenever the rooms are drawn
+  // (laserTargeted stays false there); on any other class it is the laser's target, while it has one.
+  const turretGun = hasTurret(classOf(state, CREW_SLOT)), lockRoom = turretGun ? crewSys.lock : crewSys.laserTargeted ? crewSys.lock : null;
+  const roomClick = turretGun && i.station === 'weapons';
   const weaponRows = (): ContactView['weapons'] => (i.station === 'weapons' || i.station === 'flight') && i.weapons   // Valkyrn spec §5: Flight's rows too
     ? { laser: { label: i.weapons.charge.label, value: i.weapons.charge.value, fill: i.weapons.charge.bar?.fill ?? 0, lit: i.aim && weapon === 'laser', enabled: classOf(state, CREW_SLOT).slots.laser !== null, note: null },
         missile: { magazine: crewSys.magazine, lit: i.aim && weapon === 'torpedo' } }
@@ -156,7 +165,7 @@ export function contactModel(i: ContactModelInput): ContactView | null {
       ? [line(SCANNING_ROOMS, CRT.main, Math.min(1, s.progress / SCAN_UNITS[1]!))]
       : picked ? [line(ROOMS_NEED_SCAN, CRT.mid)] : [];
     return { ...bare(Contact.Enemy, 'UNKNOWN CONTACT', lines), outline: place(UNKNOWN_SHAPE.outline), rooms, unknown: true,
-      lockRoom: crewSys.laserTargeted ? crewSys.lock : null, torpRoom: crewSys.torpLock >= 0 ? crewSys.torpLock : null,
+      lockRoom, roomClick, torpRoom: crewSys.torpLock >= 0 ? crewSys.torpLock : null,
       weapons, aim: picked, aimWeapon: picked ? weapon : null,
       flash: (i.flashes ?? []).flatMap((f) => { const r = rooms[f.room]; return r && f.alpha > 0 ? [{ room: f.room, points: r.points, alpha: f.alpha }] : []; }) };
   }
@@ -188,7 +197,7 @@ export function contactModel(i: ContactModelInput): ContactView | null {
     contact: Contact.Enemy, title: 'ENEMY SHIP',
     shields: { up: sys.shields, of: cls.shields.layers },
     hull: { value: sys.hull, fill: Math.max(0, Math.min(1, sys.hull / cls.hull)) },
-    box, outline: place(shape.outline), rooms, lockRoom: crewSys.laserTargeted ? crewSys.lock : null, torpRoom: crewSys.torpLock >= 0 ? crewSys.torpLock : null,
+    box, outline: place(shape.outline), rooms, lockRoom, roomClick, torpRoom: crewSys.torpLock >= 0 ? crewSys.torpLock : null,
     weapons, aim: i.aim && weapons !== null, aimWeapon: i.aim && weapons !== null ? weapon : null,
     scan: scanButton(state, Contact.Enemy, i.station), lines,
     flash: (i.flashes ?? []).flatMap((f) => { const r = rooms[f.room]; return r && f.alpha > 0 ? [{ room: f.room, points: r.points, alpha: f.alpha }] : []; })

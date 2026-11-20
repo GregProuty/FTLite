@@ -331,7 +331,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const refusedView = refused && nowS - refused.at < REFUSAL_SHOW_S ? { control: refused.control, reason: refused.reason, flash: nowS - refused.at < REFUSAL_FLASH_S } : null;
       const alert = flightAlert(d.tactical, source.helmAxes?.() ?? source.axes());   // Feel-ii §1.2, §1.6: the same words on every seat
       const shown = contact
-        ? contact.sync({ shown: onMap, station, target: d.tactical.systems[CREW_SLOT]!.target, active: (slot) => d.tactical.ships[slot]?.active === true, epoch: source.epoch(), enemyKnown: d.tactical.known[Contact.Enemy], designated: d.tactical.designated, laser: classOf(d.tactical, CREW_SLOT).slots.laser !== null })
+        ? contact.sync({ shown: onMap, station, target: d.tactical.systems[CREW_SLOT]!.target, active: (slot) => d.tactical.ships[slot]?.active === true, epoch: source.epoch(), enemyKnown: d.tactical.known[Contact.Enemy], designated: d.tactical.designated, laser: classOf(d.tactical, CREW_SLOT).slots.laser !== null, turret: hasTurret(classOf(d.tactical, CREW_SLOT)) })
         : false;
       // Valkyrn spec §5.1, §6.2: on the Flight map the nose follows the pointer (its bearing from the own ship's drawn marker,
       // every frame) while it is over the open map; on the ship itself or over a console block the last bearing stands. The
