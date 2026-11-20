@@ -12,7 +12,7 @@ import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type
 import { hullFor, type HullId } from './hullModel';
 import type { HelmVent } from '../../sim/duel/helmFlight';
 import type { FogView, GhostKind } from './fogModel';
-import { DENT_FULL_R, dentOf, WELL_MAX_SHIFT, wellScale, type Dent, type MapGridSetting } from './mapGrid';
+import { DENT_FULL_R, dentEase, dentOf, WELL_MAX_SHIFT, wellScale, type Dent, type MapGridSetting } from './mapGrid';
 
 /** The grid square's half-size: the smallest multiple of 500 that encloses the map circle (plan decision 4). */
 export const GRID_EXTENT = Math.ceil(R_MAP / 500) * 500;
@@ -303,15 +303,19 @@ function gridDraw(cam: Camera, vp: Viewport, well: Point | null, dents: readonly
   return curves ? { spacing, lines, columns, rows, curves } : { spacing, lines, columns, rows };
 }
 
+/** The dent pass's scratch (wellCurves): per point of the line in hand, the summed dent offsets (x, y) and pulls. */
+let dentScratch = new Float64Array(0);
+
 /** The gravity grid's lines (mapGrid.ts): every grid line that can reach the screen, each point scaled toward the planet
- *  by wellScale, then moved by each body's dent that reaches it. A line no dent reaches that runs through the planet, or
+ *  by wellScale, then moved by the bodies' dents that reach it. A line no dent reaches that runs through the planet, or
  *  that the well barely bows, stays two points. Per point: about ten multiplies and one divide for the planet; a dent
- *  costs the same again, but only on the stretch of each line inside its reach. */
+ *  costs the same again, but only on the stretch of each line inside its reach (found by a binary search: a line's
+ *  points run in order along it, bent or not). */
 function wellCurves(cam: Camera, vp: Viewport, well: Point, spacing: number, dents: readonly Dent[]): NonNullable<GridDraw['curves']> {
   const v = visibleWorld(cam, vp), E = GRID_EXTENT, z = cam.zoom, pad = WELL_PAD;
   // The well and the dents only pull points toward them, by at most `pad`, so a line that far outside the view can still be drawn in it.
   const lo = [Math.max(-E, v.x0 - pad), Math.max(-E, v.y0 - pad)], hi = [Math.min(E, v.x1 + pad), Math.min(E, v.y1 + pad)];
-  const ox = vp.w / 2 - cam.centreX * z, oy = vp.h / 2 - cam.centreY * z, centre = [well.x, well.y];
+  const o = [vp.w / 2 - cam.centreX * z, vp.h / 2 - cam.centreY * z], centre = [well.x, well.y], z2 = z * z;
   const curves: NonNullable<GridDraw['curves']> = [];
   for (let axis = 0; axis < 2; axis++) {   // 0: the north-south lines (x fixed, y runs); 1: the east-west lines
     const run = 1 - axis, a = lo[run]!, b = hi[run]!;
@@ -323,25 +327,48 @@ function wellCurves(cam: Camera, vp: Viewport, well: Point, spacing: number, den
       for (let j = 0; !bent && j < dents.length; j++) bent = Math.abs(w - (axis === 0 ? dents[j]!.x : dents[j]!.y)) < dents[j]!.reach;
       const n = bent ? Math.max(1, Math.ceil(((b - a) * z) / WELL_SEG_PX)) : 1, step = (b - a) / n;
       const pts = new Array<number>(2 * (n + 1));
+      let near = Infinity, far = -Infinity;   // the drawn line's extent across itself, in screen px
       for (let i = 0; i <= n; i++) {
         const t = a + step * i, x = axis === 0 ? w : t, y = axis === 0 ? t : w;
         const dx = x - well.x, dy = y - well.y, f = bent ? wellScale(dx * dx + dy * dy) : 1;
-        pts[2 * i] = ox + (well.x + dx * f) * z; pts[2 * i + 1] = oy + (well.y + dy * f) * z;
+        const px = o[0]! + (well.x + dx * f) * z, py = o[1]! + (well.y + dy * f) * z, across = axis === 0 ? px : py;
+        pts[2 * i] = px; pts[2 * i + 1] = py;
+        if (across < near) near = across; if (across > far) far = across;
       }
-      if (bent) for (const dent of dents) {
-        const across = w - (axis === 0 ? dent.x : dent.y), along = axis === 0 ? dent.y : dent.x;
-        if (Math.abs(across) >= dent.reach) continue;
-        // Only the points of this line inside the dent's reach.
-        const i0 = Math.max(0, Math.ceil((along - dent.reach - a) / step)), i1 = Math.min(n, Math.floor((along + dent.reach - a) / step));
-        for (let i = i0; i <= i1; i++) {
-          const far = a + step * i - along, s = dent.c2 / (across * across + far * far + dent.c2), g = dent.pull * s * s * z;
-          pts[2 * i + axis] = pts[2 * i + axis]! - across * g; pts[2 * i + run] = pts[2 * i + run]! - far * g;
-        }
-      }
+      if (bent && dents.length > 0) dentLine(pts, n, axis, near, far, dents, o, z, z2);
       curves.push({ pts, major: (w + E) % GRID_MAJOR === 0 });
     }
   }
   return curves;
+}
+
+/** Moves one drawn line's points (screen px, in order along `1 - axis`) by the dents that reach it: each point by the
+ *  sum of the dents' pulls on it, eased by dentEase so overlapping dents never fold the grid. */
+function dentLine(pts: number[], n: number, axis: number, near: number, far: number, dents: readonly Dent[], o: readonly number[], z: number, z2: number): void {
+  const run = 1 - axis;
+  let first = n + 1, last = -1;
+  for (const dent of dents) {
+    const reach = dent.reach * z, ca = o[axis]! + (axis === 0 ? dent.x : dent.y) * z, cr = o[run]! + (axis === 0 ? dent.y : dent.x) * z;
+    if (ca < near - reach || ca > far + reach) continue;
+    // The first point at or past the dent's near edge along the line; the points run on from there to its far edge.
+    let i = 0, top = n + 1;
+    for (const from = cr - reach; i < top;) { const mid = (i + top) >> 1; if (pts[2 * mid + run]! < from) i = mid + 1; else top = mid; }
+    if (i > n || pts[2 * i + run]! > cr + reach) continue;
+    if (last < 0) { if (dentScratch.length < 3 * (n + 1)) dentScratch = new Float64Array(3 * (n + 1)); dentScratch.fill(0, 0, 3 * (n + 1)); }
+    if (i < first) first = i;
+    const c2 = dent.c2 * z2;
+    for (const to = cr + reach; i <= n && pts[2 * i + run]! <= to; i++) {
+      const da = pts[2 * i + axis]! - ca, dr = pts[2 * i + run]! - cr, s = c2 / (da * da + dr * dr + c2), g = dent.pull * s * s;
+      dentScratch[3 * i] = dentScratch[3 * i]! + da * g; dentScratch[3 * i + 1] = dentScratch[3 * i + 1]! + dr * g; dentScratch[3 * i + 2] = dentScratch[3 * i + 2]! + g;
+    }
+    if (i - 1 > last) last = i - 1;
+  }
+  for (let i = first; i <= last; i++) {
+    const sum = dentScratch[3 * i + 2]!;
+    if (sum === 0) continue;
+    const ease = dentEase(sum);
+    pts[2 * i + axis] = pts[2 * i + axis]! - dentScratch[3 * i]! * ease; pts[2 * i + run] = pts[2 * i + run]! - dentScratch[3 * i + 1]! * ease;
+  }
 }
 
 /** The bearing ring about a screen point: ticks every 10°, labels every 30° (north 0). */
