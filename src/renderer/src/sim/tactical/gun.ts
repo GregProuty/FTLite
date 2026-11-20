@@ -7,7 +7,7 @@ import type { GunDef, GunRockDef } from './defs';
 import { weaponBars, WeaponSlot } from './bars';
 import { dirBetween, hx, hy } from './direction';
 import { hitRock, pushRock } from './rockBreak';
-import { rockAt, rockMassOf, rocksNear } from './rocks';
+import { rockEntry, rockMassOf, rocksNear } from './rocks';
 import { classOf, CREW_SLOT, emptyRound, handControl, Room, roundRoom, type GunRound, type TacticalState } from './state';
 import { interceptTime, nearestHeading } from './lead';
 import { AIM_STEPS, DT, GUN_AUTO_HEAT_STOP, HEADING_COUNT } from './tuning';
@@ -200,7 +200,7 @@ export function stepRounds(state: TacticalState): void {
     for (let ii = 0; ii < nn; ii++) {
       const k = roundNear[ii]!;
       if (state.rockBorn[k] === 1) continue;   // as firstBlocker: a piece made earlier this tick is not in the way
-      const a = rockAt(state, k), t = segmentEntry(ox, oy, r.x, r.y, a.x, a.y, a.r);
+      const t = rockEntry(state, k, ox, oy, r.x, r.y, segmentEntry);
       if (t >= 0 && t < best) { best = t; ship = -1; rock = k; }
     }
     const p = state.map.planet, tp = segmentEntry(ox, oy, r.x, r.y, p.x, p.y, p.r);

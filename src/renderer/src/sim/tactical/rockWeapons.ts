@@ -5,7 +5,9 @@
 import { inArc } from './geometry';
 import { escapeSpeed } from './rails';
 import { hitRock, pushRock } from './rockBreak';
-import { firstBlocker, rockAlive, rockAt, rockMassOf } from './rocks';
+import { firstBlocker, rockAimPoint, rockAlive, rockAt, rockMassOf } from './rocks';
+
+const aimAt = { x: 0, y: 0 };   // rockShotLine's aim-point scratch
 import { LASER_PUSH_CAP, LASER_ROCK_DAMAGE, LASER_ROCK_PUSH } from './rockTuning';
 import { classOf, type TacticalState } from './state';
 
@@ -20,9 +22,11 @@ export function rockOnTarget(state: TacticalState, i: number, k: number): boolea
 /** §6.2: what the line from ship i to rock k's centre meets first, with the impact point: rock −1 the planet, else a rock
  *  slot (k, or one in the way); null when nothing (the line ends inside k, so only a gone k gives null). */
 export function rockShotLine(state: TacticalState, i: number, k: number): { rock: number; x: number; y: number } | null {
-  const a = state.ships[i]!, c = rockAt(state, k), f = firstBlocker(state, a.x, a.y, c.x, c.y);
+  const a = state.ships[i]!;
+  rockAimPoint(state, k, aimAt);
+  const f = firstBlocker(state, a.x, a.y, aimAt.x, aimAt.y);
   if (!f) return null;
-  return { rock: f.rock, x: a.x + (c.x - a.x) * f.t, y: a.y + (c.y - a.y) * f.t };
+  return { rock: f.rock, x: a.x + (aimAt.x - a.x) * f.t, y: a.y + (aimAt.y - a.y) * f.t };
 }
 
 /** §4.1: ship i's laser shot meets rock k at (x, y): push first, then damage (a fan break along the line at hp ≤ 0). */

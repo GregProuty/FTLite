@@ -13,7 +13,7 @@ import { dirBetween, hx, hy } from './direction';
 import { placeRound, segmentEntry } from './gun';
 import { interceptTime, nearestHeading } from './lead';
 import { shootDown } from './missiles';
-import { rockAt, rocksNear } from './rocks';
+import { rockEntry, rocksNear } from './rocks';
 import { classOf, CREW_SLOT, emptyRound, roundRoom, type TacticalState } from './state';
 import { AIM_STEPS, DT, HEADING_COUNT, PEW_ROOM_WEAR } from './tuning';
 
@@ -158,7 +158,7 @@ export function stepPew(state: TacticalState): void {
     for (let ii = 0; ii < nq; ii++) {
       const q = pewNear[ii]!;
       if (state.rockBorn[q] === 1) continue;   // as stepRounds and firstBlocker: a piece made earlier this tick is not in the way
-      const a = rockAt(state, q), t = segmentEntry(ox, oy, r.x, r.y, a.x, a.y, a.r);
+      const t = rockEntry(state, q, ox, oy, r.x, r.y, segmentEntry);
       if (t >= 0 && t < best) { best = t; hit = 'solid'; }
     }
     const p = state.map.planet, tp = segmentEntry(ox, oy, r.x, r.y, p.x, p.y, p.r);

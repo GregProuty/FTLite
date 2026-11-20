@@ -277,6 +277,47 @@ export function segmentEntry(ax: number, ay: number, bx: number, by: number, cx:
   return t <= 1 ? t : -1;
 }
 
+// ---- Asteroids-iv spec §6: thin things meet the cells (hit radius), after the bounding circle ----
+export type CircleEntry = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number, r: number) => number;
+export type CircleNear = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number, r: number) => boolean;
+const hitCells = makeCells();
+/** Where the segment a → b first enters rock k, by the caller's own circle rule `entry` (so each caller keeps its exact
+ *  tie rules): the bounding circle first; a plain rock's answer is that circle's; a cell rock's the least entry over its
+ *  cells, or −1 when the segment passes through a gap. */
+export function rockEntry(s: TacticalState, k: number, ax: number, ay: number, bx: number, by: number, entry: CircleEntry = segmentEntry): number {
+  const t0 = entry(ax, ay, bx, by, rockX(s, k), rockY(s, k), s.rocks[k * ROCK_STRIDE + 5]!);
+  if (t0 < 0 || rockTmpl(s, k) < 0) return t0;
+  rockCellsInto(s, k, hitCells);
+  let best = -1;
+  for (let c = 0; c < hitCells.n; c++) { const t = entry(ax, ay, bx, by, hitCells.x[c]!, hitCells.y[c]!, hitCells.hitR); if (t >= 0 && (best < 0 || t < best)) best = t; }
+  return best;
+}
+/** Whether the segment a → b passes within rock k by the caller's own circle rule `near`: the bounding circle, then any cell. */
+export function rockNear(s: TacticalState, k: number, ax: number, ay: number, bx: number, by: number, near: CircleNear): boolean {
+  if (!near(ax, ay, bx, by, rockX(s, k), rockY(s, k), s.rocks[k * ROCK_STRIDE + 5]!)) return false;
+  if (rockTmpl(s, k) < 0) return true;
+  rockCellsInto(s, k, hitCells);
+  for (let c = 0; c < hitCells.n; c++) if (near(ax, ay, bx, by, hitCells.x[c]!, hitCells.y[c]!, hitCells.hitR)) return true;
+  return false;
+}
+/** Whether a circle of `radius` at (cx, cy) touches rock k: strictly inside radius + r of the bounding circle, then of any cell. */
+export function rockTouch(s: TacticalState, k: number, cx: number, cy: number, radius: number): boolean {
+  const dx0 = cx - rockX(s, k), dy0 = cy - rockY(s, k), rr0 = radius + s.rocks[k * ROCK_STRIDE + 5]!;
+  if (!(dx0 * dx0 + dy0 * dy0 < rr0 * rr0)) return false;
+  if (rockTmpl(s, k) < 0) return true;
+  rockCellsInto(s, k, hitCells);
+  const rr = radius + hitCells.hitR;
+  for (let c = 0; c < hitCells.n; c++) { const dx = cx - hitCells.x[c]!, dy = cy - hitCells.y[c]!; if (dx * dx + dy * dy < rr * rr) return true; }
+  return false;
+}
+/** §6: where a weapon aims at rock k: the centre of its live cell nearest its centre of mass (a plain rock: its centre). */
+export function rockAimPoint(s: TacticalState, k: number, out: { x: number; y: number }): void {
+  const X = rockX(s, k), Y = rockY(s, k), tm = rockTmpl(s, k);
+  if (tm < 0) { out.x = X; out.y = Y; return; }
+  const sh = shapeOf(templateFor(s.map, tm), rockMaskOf(s, k));
+  out.x = X + sh.ox[sh.aim]!; out.y = Y + sh.oy[sh.aim]!;
+}
+
 const blockerNear: number[] = [];   // firstBlocker's rocksNear scratch (one per call site; the loop body never re-enters it)
 /** The first solid body along a → b: the planet (−1), a rock slot (≥ 0), or null; with the entry t. */
 export function firstBlocker(s: TacticalState, ax: number, ay: number, bx: number, by: number): { rock: number; t: number } | null {
@@ -288,7 +329,7 @@ export function firstBlocker(s: TacticalState, ax: number, ay: number, bx: numbe
   for (let i = 0; i < n; i++) {
     const k = blockerNear[i]!;
     if (s.rockBorn[k] === 1) continue;   // spike ii §6.2: a piece made earlier this tick is not in the way
-    const a = rockAt(s, k), t = segmentEntry(ax, ay, bx, by, a.x, a.y, a.r);
+    const t = rockEntry(s, k, ax, ay, bx, by);
     if (t >= 0 && (!best || t < best.t)) best = { rock: k, t };   // ascending k: a tie keeps the lower slot (the planet wins ties)
   }
   return best;

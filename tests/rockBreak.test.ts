@@ -6,7 +6,7 @@ import { hashTactical } from '../src/renderer/src/sim/tactical/hash';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { escapeSpeed } from '../src/renderer/src/sim/tactical/rails';
-import { firstBlocker, rockAlive, rockAt, rockBorn, RockKind } from '../src/renderer/src/sim/tactical/rocks';
+import { firstBlocker, makeCells, rockAlive, rockAt, rockBorn, rockCellsInto, RockKind, segmentEntry } from '../src/renderer/src/sim/tactical/rocks';
 import { breakRock, dustRock, hitRock, kickFraction, pieceCount, pieceKick, pieceOffset, pieceRadius, pushRock } from '../src/renderer/src/sim/tactical/rockBreak';
 import { arena, fillPool, mover, rail, rockEvents, seeded } from './helpers/rockArena';
 
@@ -202,6 +202,10 @@ describe('spike i cases kept: the hash, the clone and firstBlocker', () => {
     const st = createTacticalState(5), a = rockAt(st, 0);
     const hit = firstBlocker(st, a.x - 200, a.y, a.x + 200, a.y);
     expect(hit?.rock).toBe(0);
-    expect(hit!.t).toBeCloseTo((200 - a.r) / 400, 9);
+    // Asteroids-iv §6: a seeded rock has cells now, so the entry is the least entry over its cells (hit radius), not the bounding circle's.
+    const cells = makeCells(); rockCellsInto(st, 0, cells);
+    let want = 2; for (let c = 0; c < cells.n; c++) { const e = segmentEntry(a.x - 200, a.y, a.x + 200, a.y, cells.x[c]!, cells.y[c]!, cells.hitR); if (e >= 0 && e < want) want = e; }
+    expect(hit!.t).toBeCloseTo(want, 9);
+    expect(hit!.t).toBeGreaterThanOrEqual((200 - a.r) / 400);   // never before the bounding circle
   });
 });

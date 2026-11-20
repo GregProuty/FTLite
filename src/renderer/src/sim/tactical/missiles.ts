@@ -6,7 +6,9 @@
 // instead of homing, and strikes the room under its impact point.
 import { hx, hy, wrapHeading } from './direction';
 import { roomAtImpact, sideOf } from './geometry';
-import { rockAlive, rockAt, rocksNear } from './rocks';
+import { rockAimPoint, rockAlive, rockAt, rocksNear, rockTouch } from './rocks';
+
+const aimAt = { x: 0, y: 0 };   // homingTurn's aim-point scratch
 import { detonateTorpedo } from './rockBlast';
 import { gravityAccel } from './physics';
 import { classOf, CREW_SLOT, emptyMissile, missileOf, placeMissile, type DuelEvent, type Missile, type TacticalState } from './state';
@@ -66,7 +68,7 @@ export function homingTurn(state: TacticalState, i: number, m: Missile): number 
   if (fly === -2) return 0;   // spike ii §6.4: its rock broke: unguided
   if (fly >= 0) {             // spike ii §6.4: a rock target: that rock's position and velocity
     if (!rockAlive(state, fly)) return 0;
-    const r = rockAt(state, fly); tx = r.x; ty = r.y; tvx = r.vx; tvy = r.vy;
+    const r = rockAt(state, fly); rockAimPoint(state, fly, aimAt); tx = aimAt.x; ty = aimAt.y; tvx = r.vx; tvy = r.vy;
   } else {
     const k = sys.target, t = state.ships[k];
     if (!t || !t.active || k === i) return 0;
@@ -138,7 +140,7 @@ export function resolveMissiles(state: TacticalState): void {
     if (touches(m, def.radius, p.x, p.y, p.r)) { end(state, m, 'planet'); continue; }
     let rock = -1;
     const nr = rocksNear(state, m.x, m.y, def.radius, missileNear);
-    for (let ii = 0; ii < nr; ii++) { const k = missileNear[ii]!; if (state.rockBorn[k] === 1) continue; const a = rockAt(state, k); if (touches(m, def.radius, a.x, a.y, a.r)) { rock = k; break; } }
+    for (let ii = 0; ii < nr; ii++) { const k = missileNear[ii]!; if (state.rockBorn[k] === 1) continue; if (rockTouch(state, k, m.x, m.y, def.radius)) { rock = k; break; } }
     if (rock >= 0) {   // spike ii §4.2: it detonates on the first rock it touches (on purpose or not)
       detonateTorpedo(state, m.owner, m.x, m.y, m.vx, m.vy, rock); end(state, m, 'asteroid'); continue;
     }
