@@ -65,7 +65,7 @@ describe("laserLock is the target room's command on the Hound (amendment §3.2)"
  *  shields down; no rocks; bars pew pew / autocannon / torpedo. */
 function arena(bars: readonly [number, number, number], ahead = 120): TacticalState {
   const st = houndWeapons(createTacticalState(5), bars);
-  st.rocks.fill(0);
+  st.rocks.fill(0); st.rockCells.fill(0);   // asteroids-iv: an emptied slot holds no cells either
   Object.assign(st.ships[0], { x: 0, y: 1500, vx: 0, vy: 0, heading: 0, headingAcc: 0 });
   Object.assign(st.ships[1], { x: 0, y: 1500 - ahead, vx: 0, vy: 0, heading: 128, headingAcc: 0 });
   st.systems[1]!.shields = 0;
