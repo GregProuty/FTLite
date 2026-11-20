@@ -17,7 +17,7 @@ const layouts = new Map([starter, skiff, cutter, hound].map(json => { const layo
 function resolveLayout(id: string) { const layout = layouts.get(id); if (!layout) throw Error('unknown sector layout'); return layout; }
 
 export const sectorMode: ModeDefinition = defineEncounterMode({
-  modeId: 'sector', schemaVersion: 1, simVersion: SIM_VERSION, rules: sectorRules, resolveLayout,
+  modeId: 'sector', schemaVersion: 2, simVersion: SIM_VERSION, rules: sectorRules, resolveLayout,
   codecs: jsonModeCodecs(sectorRules, resolveLayout, 'sector'),
   producers: ({ authority, init, contentDigest, restoredControllers }) => createSectorProducers({ authority, runId: init.runId, playerCount: init.playerCount,
     contentDigest, resolveLayout, restoredControllers }),

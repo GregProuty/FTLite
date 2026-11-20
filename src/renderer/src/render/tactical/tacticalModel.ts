@@ -46,7 +46,9 @@ export const SCALE_BAR_MAX_PX = 160;
  *  at every zoom (plan decision 8). The ship at 800 u/s drifts the stars by 16 px/s. */
 export const STAR_PARALLAX = 0.02;
 
-export interface PrevBody { x: number; y: number; h: number }
+/** A body at the previous tick. Net-4a §3.8: online while predicting, `ox, oy, oh` are a correction's decaying visual
+ *  offset, added after the blend; absent (Single player, the confirmed view) the blend is unchanged. */
+export interface PrevBody { x: number; y: number; h: number; ox?: number; oy?: number; oh?: number }
 export interface Line { x1: number; y1: number; x2: number; y2: number }
 export interface Label { text: string; x: number; y: number }
 /** `curves` (the gravity grid only; `lines` is then empty): each bent line as a flat x, y, x, y… screen polyline. */
@@ -153,6 +155,9 @@ export interface TacticalModelInput {
   state: TacticalState;
   /** Each ship's position and continuous heading (heading + headingAcc) at the previous tick. */
   prev: readonly PrevBody[];
+  /** Each ship's missile at the previous tick, by owner; here only its correction offset is read (Net-4a §3.8: the own
+   *  torpedo's edge arrow). Absent: no offset. */
+  missilePrev?: readonly (PrevBody | null)[];
   alpha: number;
   camera: Camera;
   viewport: Viewport;
@@ -247,7 +252,7 @@ export function interpolatedShip(state: TacticalState, prev: readonly PrevBody[]
   if (!p) return { x: s.x, y: s.y, h: h1 };
   let dh = h1 - p.h;
   dh -= Math.round(dh / HEADING_COUNT) * HEADING_COUNT;
-  return { x: p.x + (s.x - p.x) * a, y: p.y + (s.y - p.y) * a, h: p.h + dh * a };
+  return { x: p.x + (s.x - p.x) * a + (p.ox ?? 0), y: p.y + (s.y - p.y) * a + (p.oy ?? 0), h: p.h + dh * a + (p.oh ?? 0) };   // Net-4a §3.8: the offset after the blend
 }
 
 /** The followed body's interpolated world position, or null when there is none (the camera then holds still). */
@@ -529,12 +534,20 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   let helm: HelmDraw | null = null;
   if (input.console === 'helm' && input.ships.includes(0)) {
     const s = state.ships[0];
-    const flight = predictFlight(state, 0, input.axes, Math.round(pathSeconds(z) * 60), PATH_STRIDE), path = flight.points.map((q) => toS(q.x, q.y));
+    // Net-4a §3.8: the path is P's, so it moves and turns with the own ship's correction offset (rotated by oh about P's
+    // ship, then shifted by ox, oy), and starts where the smoothed marker is drawn. Without an offset it is unchanged.
+    const o = prev[0], oh = o?.oh ?? 0, ox = o?.ox ?? 0, oy = o?.oy ?? 0, ra = headingAngle(oh), rc = Math.cos(ra), rs = Math.sin(ra);
+    const placed = (q: Point): Point => {
+      if (oh === 0 && ox === 0 && oy === 0) return toS(q.x, q.y);
+      const dx = q.x - s.x, dy = q.y - s.y;
+      return toS(s.x + dx * rc - dy * rs + ox, s.y + dx * rs + dy * rc + oy);
+    };
+    const flight = predictFlight(state, 0, input.axes, Math.round(pathSeconds(z) * 60), PATH_STRIDE), path = flight.points.map(placed);
     const a = headingAngle(own.h), hxs = Math.sin(a), hys = -Math.cos(a), nose = SHIP_RADIUS * 1.3 * drawnScale(z) + 4;
     // Feel-ii §1.2: the contact the path stops at, its last segment drawn hot from the point before it.
     let collision: CollisionDraw | null = null;
     if (flight.contact) {
-      const p = toS(flight.contact.x, flight.contact.y), from = path.length > 1 ? path[path.length - 2]! : ownS, seconds = flight.contact.tick / TICK_HZ;
+      const p = placed(flight.contact), from = path.length > 1 ? path[path.length - 2]! : ownS, seconds = flight.contact.tick / TICK_HZ;
       collision = { x: p.x, y: p.y, from, seconds, label: { text: collisionTag(seconds), x: p.x + 10, y: p.y - 22 } };
     }
     // Feel-ii §1.1: the held heading's chevron on the bearing ring and the dashed line from the nose.
@@ -597,7 +610,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   }
   arrow('planet', map.planet.x, map.planet.y, own.x, own.y);
   const m = missileOf(state, 0);
-  if (m) arrow('missile', m.x, m.y, own.x, own.y);
+  if (m) { const mo = input.missilePrev?.[0]; arrow('missile', m.x + (mo?.ox ?? 0), m.y + (mo?.oy ?? 0), own.x, own.y); }   // Net-4a §3.8: with the torpedo's offset
   if (input.spreadArrows) spreadArrows(arrows, vp, input.reserveRight, input.reserveLeft ?? 0, input.reserveTop ?? 0, input.avoid);
 
   // Sci-1 spec §7.1: the contact marks, the salvage ring and Science's ring, in the duel only.

@@ -1,6 +1,5 @@
-// Playtest2feedback (spec 2026-11-18-playtest2feedback-design §3, §4, §6, Decisions 11 and 14): the online seat's held
-// frame at the crew Helm, and the source's local prediction of thrMille over the unacknowledged held frames, its axes and
-// its vent; away from the Helm the replica's own values.
+// Playtest2feedback (spec 2026-11-18-playtest2feedback-design §3, §4, §6): the online seat's held frame at the crew Helm;
+// Net-4a §3.9: the source's axes are the sim's own on the drawn state, with no local ramp or vent of its own.
 import { describe, expect, it } from 'vitest';
 import { emptyPresses, type KeySample } from '../src/renderer/src/app/duel/input';
 import { sessionHeld } from '../src/renderer/src/app/duel/onlineDuel';
@@ -8,6 +7,7 @@ import { createOnlineDuelSource } from '../src/renderer/src/app/duel/onlineSourc
 import { crewAxes } from '../src/renderer/src/sim/duel/step';
 import { disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
+import { NO_AXES } from '../src/renderer/src/sim/tactical/state';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
 
@@ -28,30 +28,26 @@ describe('the online held frame (spec §3, §4, §4a)', () => {
   });
 });
 
-describe('the online source\'s prediction (spec §3, §6)', () => {
-  it('shows thrMille plus the local ramp over the unacknowledged frames, capped by the ENGINE share; its axes and vent follow', () => {
+describe('the crew Helm online reads the prediction (Net-4a §3.9)', () => {
+  it('thrMille and the vent are the drawn state\'s own fields: no local ramp on top', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
       d.thrMille = 100;
       const s = source(d, 0);
-      s.observe();
-      s.sent({ ...NONE, throttleHeld: 1 }); s.unacked(5);
-      expect(s.thrMille()).toBe(185);   // helm round 2 §2.1: 100 + 5 × 17
-      s.unacked(200);
-      expect(s.thrMille()).toBe(750);   // the cap at Engineering's 3 Engines bars (owner 2026-11-19)
-      s.unacked(5);
-      expect(s.axes()).toEqual(crewAxes(d, { ...NONE, throttleHeld: 1 }, 185));
-      s.sent({ ...NONE, rcsX: 1 }); s.unacked(0);
-      expect([s.thrMille(), s.helmVent()]).toEqual([100, { x: 1, y: 0 }]);   // helm round 2 §3.3: the charge is full here, so it vents (it vents while the charge lasts)
+      s.observe(); s.sent({ ...NONE, throttleHeld: 1, rcsX: 1 });
+      expect((s as { thrMille?: unknown }).thrMille).toBeUndefined();
+      expect((s as { helmVent?: unknown }).helmVent).toBeUndefined();
+      expect(s.axes()).toEqual(crewAxes(d, { ...NONE, throttleHeld: 1, rcsX: 1 }));   // the sim's own function on the drawn state
     } finally { disposeDuel(d); }
   });
-  it('away from the Helm it shows the replica\'s thrMille and no vent', () => {
+  it('away from the Helm the drawn state shows its own thrMille and the seat flies nothing (rewritten from the replica case)', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
       d.thrMille = 300;
       const s = source(d, 1);
-      s.observe(); s.sent({ ...NONE, throttleHeld: 1, rcsX: 1 }); s.unacked(10);
-      expect([s.thrMille(), s.helmVent()]).toEqual([300, { x: 0, y: 0 }]);
+      s.observe(); s.sent({ ...NONE, throttleHeld: 1, rcsX: 1 });
+      expect(s.duel.thrMille).toBe(300);
+      expect(s.axes()).toEqual(NO_AXES);
     } finally { disposeDuel(d); }
   });
 });

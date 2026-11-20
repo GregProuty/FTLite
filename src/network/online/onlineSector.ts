@@ -28,7 +28,7 @@ export function validateSectorMirror(mirror: SessionMirror, capacity?: number): 
 }
 export function sectorCompatibility(capacity: number): RoomCompatibility {
   if (!Number.isInteger(capacity) || capacity < 1 || capacity > 4) throw onlineFault('invalid-request');
-  return { protocolVersion: 2, modeId: 'sector', schemaVersion: 1, simVersion: SIM_VERSION,
+  return { protocolVersion: 2, modeId: 'sector', schemaVersion: 2, simVersion: SIM_VERSION,
     contentDigest: __GAMEPLAY_CONTENT_DIGEST__, layoutHash: deriveLayout(layouts[shipForCrew(capacity)]).layoutHash };
 }
 /** One compatibility per distinct sector layout across crew sizes 1-4 (one today: the Hound flies at every size). */

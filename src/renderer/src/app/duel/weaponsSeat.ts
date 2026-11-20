@@ -1,9 +1,7 @@
 // W-4 spec §9 (W-4a): the Hound's Weapons seat, the rules both runtimes share (app/duel/runtime.ts, onlineDuel.ts): the
 // selection, W/S's power delta, the held fields, the guns' frequency and the autocannon's rate text. Pure.
 import type { HeldInput } from '../../net/contracts';
-import { WeaponSlot, weaponBars } from '../../sim/tactical/bars';
-import { classOf, Outcome, type TacticalState } from '../../sim/tactical/state';
-import { slewTurret } from '../../sim/tactical/turret';
+import { WeaponSlot } from '../../sim/tactical/bars';
 import { frequencyRequest, type KeyAction, type KeySample } from './input';
 
 /** The three weapons, in slot order. */
@@ -59,18 +57,3 @@ export function gunFreqRequest(base: number, k: Pick<KeySample, 'gunFreqKeyTo' |
 export function laserFreqKey(k: Pick<KeySample, 'freqKeyTo' | 'freqTo'>): number | null | undefined { return k.freqKeyTo ?? k.freqTo; }
 /** The AUTOCANNON card's rate: rounds a second at `interval` ticks (`6/S`), OFF at 0. */
 export function autocannonRateText(interval: number): string { return interval > 0 ? `${Math.round(600 / interval) / 10}/S` : 'OFF'; }
-
-/** W-4 spec §11 (the crew Helm throttle's analogue, playtest2feedback Decision 14): the own seat's predicted turret for gun
- *  `slot` (0 pew pew, 1 the autocannon): slewTurret applied `k` times (the unacknowledged held frames) from the replica's
- *  turret, with the replica's heading held fixed, the latest sent reticle and the gun's MAN traverse and arc. The replica's
- *  turret as it is unless `manual` (that gun's own mode, amendment §2.6) is MAN, `slot` is the sent selection, the gun has a turret and a bar, a reticle was sent
- *  and the round runs. Only the drawn muzzle line uses it; rounds always come from the replica. */
-export function predictTurret(t: TacticalState, slot: 0 | 1, held: Pick<HeldInput, 'weaponSel' | 'turretAim'>, manual: boolean, k: number): number {
-  const s = t.systems[0], base = slot === 0 ? s.pewTurret : s.gunTurret, cls = classOf(t, 0), turret = (slot === 0 ? cls.slots.pew : cls.slots.gun)?.turret ?? null;
-  const aim = held.turretAim ?? -1;
-  if (!manual || held.weaponSel !== slot || turret === null || !Number.isInteger(aim) || aim < 0 || t.outcome !== Outcome.Running
-    || weaponBars(s, slot === 0 ? WeaponSlot.Pew : WeaponSlot.Autocannon) < 1) return base;
-  let v = base;
-  for (let n = 0; n < k; n++) v = slewTurret(v, t.ships[0].heading, aim, turret.traverse[1], turret.arcSteps);
-  return v;
-}

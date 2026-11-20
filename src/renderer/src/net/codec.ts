@@ -203,9 +203,10 @@ const payload = z.discriminatedUnion('kind', [
 const state = z.object({
   runId: text, tick: uint, publicationSequence: positive, snapshot, hash: text, phase: z.enum(['running', 'paused', 'ended', 'error']),
   pauseOwner: player.nullable(), controlRevision: uint, pauseReason: text.nullable(), lagTicks: uint, tickTimeMs: seconds.nullable(),
-  commandHighWater: z.array(uint).min(1).max(playerLimit), heldHighWater: z.array(uint).min(1).max(playerLimit), auxiliaryHighWater: z.array(uint).min(1).max(playerLimit), eventSequence: uint
-}).strict().refine((value) => [value.commandHighWater, value.heldHighWater, value.auxiliaryHighWater]
-  .every((water) => water.length === (value as { snapshot: { header: { playerCount: number } } }).snapshot.header.playerCount), 'publication watermarks must cover every player');
+  commandHighWater: z.array(uint).min(1).max(playerLimit), heldHighWater: z.array(uint).min(1).max(playerLimit), auxiliaryHighWater: z.array(uint).min(1).max(playerLimit), eventSequence: uint,
+  held: z.array(held).min(1).max(playerLimit)   // Net-4a §3.2
+}).strict().refine((value) => [value.commandHighWater, value.heldHighWater, value.auxiliaryHighWater, value.held]
+  .every((water) => water.length === (value as { snapshot: { header: { playerCount: number } } }).snapshot.header.playerCount), 'publication watermarks and held input must cover every player');
 const authorityEvent = z.object({ runId: text, eventSequence: positive, tick: uint, payload }).strict();
 const messageSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('held'), frame }).strict(),
