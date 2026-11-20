@@ -3,7 +3,6 @@
 // info line (y 44), clear of the tab strip, the hull bar and the side panels. The notice keeps its place.
 import { memo } from 'react';
 import { INTERNAL_W } from '../../../../shared/resolution';
-import { READOUT_COLUMN } from '../../render/duel/interiorModel';
 import { FONT_NATIVE, FONT_SIZE, TEXT, textPx } from '../../render/theme';
 import { CRT } from '../../render/tactical/crtTheme';
 import { useCrt } from '../stage/CrtContext';
@@ -11,7 +10,7 @@ import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
 import type { Banners as BannerLines } from '../views';
 
-const SIZE = FONT_SIZE * 1.5, PLAY_CX = (INTERNAL_W - READOUT_COLUMN) / 2;
+const SIZE = FONT_SIZE * 1.5, PLAY_CX = INTERNAL_W / 2;
 export const PAUSE_Y = 66, PAUSE_H = 24, PAUSE_PAD = 12;
 /** The pause line's panel for `text`, centred on the screen (its width rounded up to even, so it centres on whole px). */
 export function pauseLineBox(text: string): { x: number; y: number; w: number; h: number } {

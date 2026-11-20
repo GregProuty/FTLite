@@ -11,7 +11,7 @@ vi.mock('../src/renderer/src/app/duel/input', () => ({
 vi.mock('../src/renderer/src/app/duel/runtime', () => ({ createDuelRuntime: () => ({ pause() {}, resume() {}, dispose() {} }) }));
 vi.mock('../src/renderer/src/app/duel/scene', () => ({
   createDuelScene: (_r: unknown, opts: { ui: { frame(v: unknown): void; clear(): void } }) => {
-    opts.ui.frame({ readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null });
+    opts.ui.frame({ end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null });
     return { dispose() { h.disposes++; opts.ui.clear(); } };
   }
 }));

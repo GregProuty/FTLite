@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The CRT screen in the React overlays (CRT map spec sections 1-4): only with `crt` true, on the letterbox rectangle,
-// after the banners and before the end card and the latency overlay; the strength setting from the store; the readout's
-// double border and inverse bars; nothing changes with `crt` false (the interior).
+// after the banners and before the end card and the latency overlay; the strength setting from the store; the panels'
+// double border (UI round §2.2: the readout and its inverse bars are gone); nothing changes with `crt` false (the interior).
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, cleanup, render } from '@testing-library/react';
 import { UiContext } from '../src/renderer/src/ui/context';
@@ -9,18 +9,11 @@ import { UiRoot } from '../src/renderer/src/ui/UiRoot';
 import { createDuelSink, createFlightSink, createLatencySink } from '../src/renderer/src/ui/sinks';
 import { setCrtSetting, setLayout } from '../src/renderer/src/ui/store';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
-import { AMBER, DIM, TEXT, WARN } from '../src/renderer/src/render/theme';
 import { makeUi } from './helpers/uiStore';
 
 afterEach(cleanup);
 const banners = { interior: null, tactical: 'PAUSED', notice: null };
 const view = (patch: Partial<DuelUiView> = {}): DuelUiView => ({
-  readout: { rows: [
-    { label: 'HUNTER', value: '', labelTint: WARN, valueTint: WARN, emphasis: 'enemy' },
-    { label: 'HULL', value: '10/40', labelTint: DIM, valueTint: WARN, emphasis: 'alert' },
-    { label: 'SHIELD', value: '', labelTint: DIM, valueTint: TEXT, pips: { n: 1, max: 2, colour: 0x4fd6e8 }, emphasis: 'crew' },
-    { label: 'CHARGE', value: '40%', labelTint: DIM, valueTint: TEXT, bar: { fill: 0.4, colour: AMBER } }
-  ], help: ['TAB  SWITCH'] },
   end: null, banners, overlay: { zoomText: 'ZOOM 0.50', scaleBar: { px: 80, units: 500 }, snapHint: false }, crt: true, ...patch });
 function mount() {
   const ui = makeUi(); const duel = createDuelSink(ui.store), flight = createFlightSink(ui.store), latency = createLatencySink(ui.store);
@@ -57,11 +50,7 @@ describe('the CRT screen (CRT map spec section 3)', () => {
     const order = all('[data-ui-crt], canvas[data-text="PAUSED"], canvas[data-text="VICTORY"], canvas[data-text="RTT 3 MS"]').map((e) => e.dataset.text ?? 'crt');
     expect(order).toEqual(['PAUSED', 'crt', 'VICTORY', 'RTT 3 MS']);
     const panels = all('[data-ui-panel]').map((p) => p.dataset.uiPanel);
-    expect(panels).toEqual(['crt', 'crt', '']);   // UI round §1.5: the pause line's panel, then the readout on the CRT, the end card as today
-  });
-  it('the readout: the HUNTER heading and the low hull on inverse bars', () => {
-    const { duel } = mount(); act(() => duel.frame(view()));
-    expect(all('[data-ui-inverse]').map((e) => e.dataset.uiInverse)).toEqual(['label', 'value']);
+    expect(panels).toEqual(['crt', '']);   // UI round §1.5: the pause line's panel on the CRT, the end card as today (§2.2: no readout panel)
   });
   it('the flight view is a CRT screen too', () => {
     const { flight } = mount(); act(() => flight.frame({ feel: [['SPEED', '1 u/s']], banners, overlay: null, crt: true }));

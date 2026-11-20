@@ -102,7 +102,7 @@ vi.mock('../src/renderer/src/app/duel/scene', () => ({
         h.source = source as typeof h.source;
         h.sources.push(source as never);
         h.draws.push({ banner: o.banner, notice: o.notice });
-        opts.ui.frame({ readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null });
+        opts.ui.frame({ end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null });
       },
       dispose() { h.disposes.n++; opts.ui.clear(); }
     };

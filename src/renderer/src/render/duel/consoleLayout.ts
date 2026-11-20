@@ -1,12 +1,11 @@
 // The Artemis-style console layout (spec 2026-11-17-artemis-consoles §2), internal 1280×720. Pure: shared by the
 // components, the scene's map reserves and the tests.
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
-import { READOUT_W } from './readoutModel';
 
 export const EDGE = 12;
 export const TABS = { x: 12, y: 8, w: 96, gap: 4, h: 26 } as const;
 export const TABS_RIGHT = TABS.x + 4 * TABS.w + 3 * TABS.gap;   // HELM, WEAPONS, SCIENCE, SHIP (Sci-1)
-export const STATUS = { x: 12, y: 42, w: READOUT_W } as const;
+export const STATUS = { x: 12, y: 42, w: 204 } as const;   // Task 3 of UI round 2a removes it
 export const STATION = { x: 12, w: 300, h: { helm: 200, weapons: 268, science: 96 } } as const;   // the frequency row takes the old steer row's place (Sci-1 spec §7.4); W-1: the PEW row on top (+28); Engineering spike §10.3: the bar pips (+12 on the PEW row, +12 under the cards)
 export function stationTop(s: 'helm' | 'weapons' | 'science'): number { return INTERNAL_H - EDGE - STATION.h[s]; }
 /** W-1 (pew pew spec 1): the PEW row at the top of the Weapons block (its label, three charge pips and the click hint);

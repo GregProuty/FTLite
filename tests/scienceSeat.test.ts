@@ -13,7 +13,7 @@ import { emptyPresses, NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input'
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import { consoleModel, consoleStation, consoleTabs } from '../src/renderer/src/render/duel/consoleModel';
 import { STATION, stationTop, TABS, TABS_RIGHT } from '../src/renderer/src/render/duel/consoleLayout';
-import { crewStatus, readoutHelp, readoutRows } from '../src/renderer/src/render/duel/readoutModel';
+import { crewStatus } from '../src/renderer/src/render/duel/readoutModel';
 import { crtActive } from '../src/renderer/src/render/crt';
 
 const CUTTER = parseShip(cutter), HOUND = parseShip(hound);
@@ -62,13 +62,8 @@ describe('the Science console (spec §7.3)', () => {
     expect(STATION.h.science).toBe(96);
     expect(stationTop('science')).toBe(720 - 12 - 96);
   });
-  it('the readout mode science: a SCIENCE heading off the console, its key help, and the CRT on', () => {
-    const d = createDuel(CUTTER, 5);
-    try {
-      expect(readoutRows({ duel: d, mode: 'science', active: 0 })[0]!.label).toBe('SCIENCE');
-      expect(readoutHelp('science')).toEqual(['S SCAN   T NEXT CONTACT', 'CLICK A CONTACT: DESIGNATE', 'X STAND   TAB SWITCH', 'WHEEL - =  ZOOM   C SNAP', 'ESC PAUSE']);
-      expect(crtActive('science')).toBe(true);
-    } finally { disposeDuel(d); }
+  it('the CRT is on at science (UI round §2.2: the readout heading and help are gone)', () => {
+    expect(crtActive('science')).toBe(true);
   });
 });
 

@@ -19,7 +19,7 @@ const all = (attr: string, v?: string) => Array.from(document.querySelectorAll<H
 const strip = (over: Partial<ConsolePowerStrip> = {}): ConsolePowerStrip => ({ system: 2, name: 'ENG', bars: 2, capacity: 2, slots: 5, max: 4, lost: 3, heat: 60, heatMax: 240, failed: false, overdriven: false, spare: 1, ...over });
 const helm: ConsoleView = { station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
   helm: { heading: 0, speed: 0, held: NO_HELD_FLAGS, throttle: 2, cap: 2 }, weapons: null, science: null, side: null, power: strip() };
-const view = (console: ConsoleView): DuelUiView => ({ readout: { rows: [{ label: 'CREW', value: '2', labelTint: TEXT, valueTint: TEXT }], help: [] }, end: null,
+const view = (console: ConsoleView): DuelUiView => ({ end: null,
   banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store), throttle = vi.fn();

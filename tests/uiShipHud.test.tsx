@@ -30,7 +30,7 @@ const hud: ShipHudView = {
   }
 };
 const view = (h: ShipHudView | null = hud): DuelUiView => ({
-  readout: { rows: [{ label: 'CREW', value: '2', labelTint: TEXT, valueTint: TEXT }], help: [] }, end: null,
+  end: null,
   banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: false, console: shipConsole, hud: h });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store), ship = vi.fn();

@@ -9,10 +9,8 @@ import { UiRoot } from '../src/renderer/src/ui/UiRoot';
 import { createDuelSink, createFlightSink, createLatencySink } from '../src/renderer/src/ui/sinks';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
 import { INTERNAL_H, INTERNAL_W } from '../src/shared/resolution';
-import { READOUT_COLUMN } from '../src/renderer/src/render/duel/interiorModel';
 import { PAUSE_H, PAUSE_Y } from '../src/renderer/src/ui/duel/Banners';
-import { READOUT_MARGIN, READOUT_W } from '../src/renderer/src/render/duel/readoutModel';
-import { AMBER, LINE, PAD, TEXT } from '../src/renderer/src/render/theme';
+import { LINE, PAD } from '../src/renderer/src/render/theme';
 import { FEEL_PANEL_MARGIN, FEEL_PANEL_W } from '../src/renderer/src/render/tactical/feelModel';
 import { makeUi } from './helpers/uiStore';
 
@@ -20,9 +18,9 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((c) => ({ text: c.dataset.text!, x: Number(c.dataset.x), y: Number(c.dataset.y), anchor: c.dataset.anchorx }));
 const find = (t: string) => texts().find((c) => c.text === t);
 const banners = { interior: null, tactical: null, notice: null };
-const view = (patch: Partial<DuelUiView> = {}): DuelUiView => ({
-  readout: { rows: [{ label: 'HULL', value: '10/10', labelTint: TEXT, valueTint: TEXT, pips: { n: 2, max: 3, colour: 0x7cc4ff }, bar: { fill: 0.5, colour: AMBER } }], help: ['TAB  SWITCH'] },
-  end: null, banners, overlay: null, crt: false, ...patch });
+const view = (patch: Partial<DuelUiView> = {}): DuelUiView => ({ end: null, banners, overlay: null, crt: false, ...patch });
+/** UI round §2.2: the readout is gone, so the notice line marks the duel region as drawn. */
+const marked = (patch: Partial<DuelUiView> = {}): DuelUiView => view({ banners: { ...banners, notice: 'YOU: HELM' }, ...patch });
 function mount(menu = false) {
   const ui = makeUi(); const duel = createDuelSink(ui.store), flight = createFlightSink(ui.store);
   render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={menu} /></UiContext.Provider>);
@@ -33,14 +31,14 @@ describe('the render rule', () => {
   it('shows the duel region only while its slice is set', () => {
     const { duel } = mount();
     expect(document.querySelector('[data-ui-stage]')).toBeNull();
-    act(() => duel.frame(view())); expect(find('HULL')).toBeDefined();
-    act(() => duel.clear()); expect(find('HULL')).toBeUndefined();
+    act(() => duel.frame(marked())); expect(find('YOU: HELM')).toBeDefined();
+    act(() => duel.clear()); expect(find('YOU: HELM')).toBeUndefined();
   });
   it('a throwing duel region leaves the menu mounted', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const { duel } = mount(true);
-    act(() => duel.frame(view({ readout: null as never })));
-    expect(document.querySelector('[data-testid="session-menu"]')).not.toBeNull(); expect(find('HULL')).toBeUndefined();
+    act(() => duel.frame(marked({ banners: null as never })));
+    expect(document.querySelector('[data-testid="session-menu"]')).not.toBeNull(); expect(find('YOU: HELM')).toBeUndefined();
   });
 });
 
@@ -48,21 +46,9 @@ describe('the F3 latency overlay (H-2b)', () => {
   it('draws its lines top-left over the duel while set, and nothing without a duel region', () => {
     const { duel, store } = mount(), latency = createLatencySink(store);
     act(() => latency.frame(['LATENCY  LAN   F3: HIDE', 'RTT 3 MS'])); expect(find('RTT 3 MS')).toBeUndefined();
-    act(() => duel.frame(view()));
+    act(() => duel.frame(marked()));
     expect(find('LATENCY  LAN   F3: HIDE')).toMatchObject({ x: 12, y: 12 }); expect(find('RTT 3 MS')).toMatchObject({ x: 12, y: 28 });
-    act(() => latency.clear()); expect(find('RTT 3 MS')).toBeUndefined(); expect(find('HULL')).toBeDefined();
-  });
-});
-
-describe('the readout panel', () => {
-  it('places labels, right-anchored values and help as readoutPanel.ts did', () => {
-    const { duel } = mount(); act(() => duel.frame(view()));
-    const X = INTERNAL_W - READOUT_W - READOUT_MARGIN, Y = READOUT_MARGIN;
-    expect(find('HULL')).toMatchObject({ x: X + PAD, y: Y + PAD - 6 });
-    expect(find('10/10')).toMatchObject({ x: X + READOUT_W - PAD, y: Y + PAD - 6, anchor: '1' });
-    expect(find('TAB  SWITCH')).toMatchObject({ x: X + PAD, y: Y + PAD + LINE + PAD });
-    expect(document.querySelectorAll('[data-ui-pip]').length).toBe(3); expect(document.querySelectorAll('[data-ui-pip="lit"]').length).toBe(2);
-    expect(document.querySelector('[data-ui-bar-fill]')).not.toBeNull();
+    act(() => latency.clear()); expect(find('RTT 3 MS')).toBeUndefined(); expect(find('YOU: HELM')).toBeDefined();
   });
 });
 
@@ -78,7 +64,7 @@ describe('the end card, banners and map overlay', () => {
     const { duel } = mount(); act(() => duel.frame(view({ banners: { interior: 'I', tactical: 'T', notice: 'YOU: HELM' } })));
     expect(find('I')).toBeUndefined();
     expect(find('T')).toMatchObject({ x: INTERNAL_W / 2, y: PAUSE_Y + PAUSE_H / 2 });
-    expect(find('YOU: HELM')).toMatchObject({ x: (INTERNAL_W - READOUT_COLUMN) / 2, y: 130 });
+    expect(find('YOU: HELM')).toMatchObject({ x: INTERNAL_W / 2, y: 130 });   // UI round §2.2: centred on the full width (no readout column)
     act(() => duel.frame(view({ banners: { interior: 'I', tactical: null, notice: null } })));
     expect(find('I')).toMatchObject({ x: INTERNAL_W / 2, y: PAUSE_Y + PAUSE_H / 2 });
   });
@@ -102,7 +88,7 @@ describe('the flight region', () => {
 });
 
 describe('sharing keeps unchanged panels from re-rendering (spec §8)', () => {
-  it('a view whose only change is a readout value leaves the memoised overlay, banners and end props unchanged', () => {
+  it('a view whose only change is the pointer leaves the memoised overlay, banners and end props unchanged', () => {
     const ui = makeUi(), sink = createDuelSink(ui.store), seen = { overlay: vi.fn(), banners: vi.fn(), end: vi.fn() };
     const Overlay = memo(function Overlay(_: { o: unknown }) { seen.overlay(); return null; });
     const Lines = memo(function Lines(_: { b: unknown }) { seen.banners(); return null; });
@@ -111,12 +97,12 @@ describe('sharing keeps unchanged panels from re-rendering (spec §8)', () => {
     render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><Harness /></UiContext.Provider>);
     const overlay = { zoomText: 'ZOOM 1.00', scaleBar: { px: 80, units: 500 }, snapHint: false };
     const end = { title: 'VICTORY', tint: 1, length: 'DUEL LENGTH 0:01', prompt: 'ENTER: REMATCH' };
-    const changed = { rows: [{ label: 'HULL', value: '9/10', labelTint: TEXT, valueTint: TEXT }], help: ['TAB  SWITCH'] };
+    const changed = { x: 9, y: 10 };   // UI round §2.2: the pointer stands in for the gone readout as the changing slice
     act(() => sink.frame(view({ overlay, end })));
-    act(() => sink.frame(view({ overlay: { ...overlay }, end: { ...end }, banners: { ...banners }, readout: changed })));
+    act(() => sink.frame(view({ overlay: { ...overlay }, end: { ...end }, banners: { ...banners }, pointer: changed })));
     expect(seen.overlay).toHaveBeenCalledTimes(1); expect(seen.banners).toHaveBeenCalledTimes(1); expect(seen.end).toHaveBeenCalledTimes(1);
     let commits = 0; const off = ui.store.subscribe(() => { commits++; });
-    act(() => sink.frame(view({ overlay: { ...overlay }, end: { ...end }, banners: { ...banners }, readout: { ...changed } })));
+    act(() => sink.frame(view({ overlay: { ...overlay }, end: { ...end }, banners: { ...banners }, pointer: { ...changed } })));
     expect(commits).toBe(0); off();
   });
 });

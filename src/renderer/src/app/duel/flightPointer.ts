@@ -1,7 +1,6 @@
 // Valkyrn spec §5.1, §6.2: what the pointer does on the Flight map this frame. Pure: the scene feeds it the pointer, the
 // own ship's drawn marker and the right button's press; the tests drive it directly.
-import { CONTACT, FLIGHT, OWN_SHIP, SIDE, SIDE_H, STATION, STATUS, stationTop, TABS, TABS_RIGHT } from '../../render/duel/consoleLayout';
-import { statusPanelHeight } from '../../render/duel/readoutModel';
+import { CONTACT, FLIGHT, OWN_SHIP, SIDE, SIDE_H, STATION, stationTop, TABS, TABS_RIGHT } from '../../render/duel/consoleLayout';
 import { headingOf, pickRadius } from '../../render/tactical/tacticalModel';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 
@@ -25,7 +24,7 @@ export function onFlightMap(p: Point, contactShown: boolean): boolean {
 }
 
 /** The console blocks drawn over the Weapons map: the tab strip, the side column, the Weapons block (its PEW row and cards) and the own ship window.
- *  The status table is not here: its height follows its row count (onWeaponsMap). */
+ *  UI round §2.2: the status table is gone. */
 const WEAPONS_BLOCKS: readonly Rect[] = [
   { x: TABS.x, y: TABS.y, w: TABS_RIGHT - TABS.x, h: TABS.h },
   { x: SIDE.x, y: SIDE.y, w: SIDE.w, h: SIDE_H },
@@ -34,13 +33,11 @@ const WEAPONS_BLOCKS: readonly Rect[] = [
 ];
 
 /** W-1 (pew pew spec §1): whether a screen point (internal pixels) is on the Weapons map's open part: on the screen and clear
- *  of the console blocks, of the status table (`statusRows` rows, sized by statusPanelHeight, the height ReadoutPanel draws) and of
- *  the contact window while it is shown. A click elsewhere is a console click, never a shot. */
-export function onWeaponsMap(p: Point, contactShown: boolean, statusRows: number): boolean {
+ *  of the console blocks and of the contact window while it is shown. A click elsewhere is a console click, never a shot. */
+export function onWeaponsMap(p: Point, contactShown: boolean): boolean {
   if (p.x < 0 || p.y < 0 || p.x >= INTERNAL_W || p.y >= INTERNAL_H) return false;
   if (contactShown && inside(p, CONTACT)) return false;
-  const status: Rect = { x: STATUS.x, y: STATUS.y, w: STATUS.w, h: statusPanelHeight(statusRows) };
-  return !WEAPONS_BLOCKS.some((r) => inside(p, r)) && !inside(p, status);
+  return !WEAPONS_BLOCKS.some((r) => inside(p, r));
 }
 
 export interface FlightPointerInput {
@@ -84,7 +81,7 @@ export function helmSteer(i: { pointer: Point | null; ship: Point; zoom: number;
 /** W-4 spec §7: the bearing the held left button steers the crew's MANUAL torpedo to on the Weapons map: from the torpedo's
  *  drawn marker to the pointer while it is on the open map (onWeaponsMap) and off the marker, else null (send nothing: the
  *  last bearing stands). The Helm's helmSteer, aimed from the torpedo instead of the ship. */
-export function torpedoSteer(i: { pointer: Point | null; torpedo: Point; zoom: number; contactShown: boolean; statusRows: number }): number | null {
+export function torpedoSteer(i: { pointer: Point | null; torpedo: Point; zoom: number; contactShown: boolean }): number | null {
   const p = i.pointer;
-  return p && onWeaponsMap(p, i.contactShown, i.statusRows) && Math.hypot(p.x - i.torpedo.x, p.y - i.torpedo.y) > pickRadius(i.zoom) ? headingOf(p.x - i.torpedo.x, p.y - i.torpedo.y) : null;
+  return p && onWeaponsMap(p, i.contactShown) && Math.hypot(p.x - i.torpedo.x, p.y - i.torpedo.y) > pickRadius(i.zoom) ? headingOf(p.x - i.torpedo.x, p.y - i.torpedo.y) : null;
 }

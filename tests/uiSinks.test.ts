@@ -6,14 +6,14 @@ import { createDuelSink, createFlightSink, createLatencySink } from '../src/rend
 import { mapOverlayOf, type DuelUiView, type FlightUiView } from '../src/renderer/src/ui/views';
 
 const banners = { interior: null, tactical: null, notice: null };
-const duelView = (value: string): DuelUiView => ({ readout: { rows: [{ label: 'HULL', value, labelTint: 1, valueTint: 2 }], help: ['TAB'] }, end: null, banners, overlay: null, crt: false });
+const duelView = (value: string): DuelUiView => ({ end: null, banners, overlay: { zoomText: `ZOOM ${value}`, scaleBar: { px: 90, units: 100 }, snapHint: false }, crt: false });   // UI round §2.2: the overlay, not the gone readout, carries the changing value
 
 describe('the duel sink', () => {
   it('writes a changed view, skips an equal one and keeps unchanged subtrees', () => {
     const store = createUiStore({ onlineAvailable: false }), sink = createDuelSink(store); let writes = 0; store.subscribe(() => { writes++; });
     sink.frame(duelView('10')); expect(writes).toBe(1); const first = store.getState().duel!;
     sink.frame(duelView('10')); expect(writes).toBe(1); expect(store.getState().duel).toBe(first);
-    sink.frame(duelView('9')); expect(writes).toBe(2); expect(store.getState().duel!.readout.help).toBe(first.readout.help);
+    sink.frame(duelView('9')); expect(writes).toBe(2); expect(store.getState().duel!.overlay!.scaleBar).toBe(first.overlay!.scaleBar);
   });
   it('bumps the duel epoch on each null -> non-null and clears to null', () => {
     const store = createUiStore({ onlineAvailable: false }), sink = createDuelSink(store);

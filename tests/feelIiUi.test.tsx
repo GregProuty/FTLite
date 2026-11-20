@@ -28,7 +28,7 @@ const weapons = (over: Partial<NonNullable<ConsoleView['weapons']>>): ConsoleVie
 });
 const helm = (over: Partial<NonNullable<ConsoleView['helm']>> = {}): ConsoleView => ({ ...weapons({}), station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, weapons: null,
   helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 2, ...over }, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } });
-const view = (console: ConsoleView, extra: Partial<DuelUiView> = {}): DuelUiView => ({ readout: { rows: [], help: [] }, end: null,
+const view = (console: ConsoleView, extra: Partial<DuelUiView> = {}): DuelUiView => ({ end: null,
   banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console, ...extra });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store);

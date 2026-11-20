@@ -18,7 +18,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const btn = (name: string) => document.querySelector(`[data-testid="console-${name}"]`) as HTMLElement | null;
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((e) => e.dataset.text);
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
-const frame = (console: ConsoleView | null, contact: ContactView | null): DuelUiView => ({ readout: { rows: [], help: [] }, end: null,
+const frame = (console: ConsoleView | null, contact: ContactView | null): DuelUiView => ({ end: null,
   banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console, contact });
 function mount(view: DuelUiView) {
   const ui = makeUi(), duel = createDuelSink(ui.store);

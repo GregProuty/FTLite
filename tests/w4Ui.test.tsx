@@ -36,7 +36,7 @@ const weapons = (over: Partial<NonNullable<ConsoleView['weapons']>>): ConsoleVie
   helm: null, science: null, side: { zoom: '0.90', free: false, snapLabel: 'CAMERA' },
   weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: false, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: -1, torpTarget: -1, burst: 0, pew: [1, 1, 1], ...over }
 });
-const view = (console: ConsoleView): DuelUiView => ({ readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console });
+const view = (console: ConsoleView): DuelUiView => ({ end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store);
   render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);

@@ -2,8 +2,7 @@
 import { BitmapText, Graphics } from 'pixi.js';
 import { INTERNAL_H, INTERNAL_W } from '../../../shared/resolution';
 import type { Renderer } from '../render/renderer';
-import { AMBER, DIM, GOOD, TEXT } from '../render/theme';
-import { CREW_SHIP } from '../render/tactical/shipColours';
+import { AMBER, GOOD, TEXT } from '../render/theme';
 import type { DuelUiView } from '../ui/views';
 import type { ConsoleView } from '../render/duel/consoleModel';
 import { NO_HELD_FLAGS } from './duel/input';
@@ -20,16 +19,7 @@ function consoleFixture(which: 'helm' | 'weapons'): DuelUiView {
   const cv: ConsoleView = which === 'weapons' ? base : { ...base, station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
     // playtest2feedback §6: the crew Helm
     weapons: null, helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 0, crew: { thrMille: 500, cap: 750, floor: -500, bars: 3, gas: 720, gasMax: 720, gasLow: false, venting: false } }, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } };
-  const row = (label: string, value: string, extra: object = {}) => ({ label, value, labelTint: DIM, valueTint: TEXT, ...extra });
   return {
-    readout: { rows: [
-      { label: 'HOUND', value: '', labelTint: AMBER, valueTint: AMBER },
-      row('HULL', '30/40'), row('SHIELD', '', { pips: { n: 1, max: 2, colour: CREW_SHIP } }),
-      row('WEAPONS', '3/3'), row('SHIELDS', '2/2'), row('ENGINES', '2/2'),
-      { label: 'HUNTER', value: '', labelTint: AMBER, valueTint: AMBER },
-      row('HULL', '22/30'), row('SHIELD', '', { pips: { n: 2, max: 2, colour: CREW_SHIP } }),
-      row('ROOMS', '5/6'), row('OTHER', '1')
-    ], help: [] },
     end: null, banners: { interior: null, tactical: null, notice: null },
     overlay: { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: false }, crt: true, console: cv
   };
@@ -38,12 +28,6 @@ function consoleFixture(which: 'helm' | 'weapons'): DuelUiView {
 export function duelProbeFixture(console?: 'helm' | 'weapons'): DuelUiView {
   if (console) return consoleFixture(console);
   return {
-    readout: { rows: [
-      { label: 'WEAPONS', value: '', labelTint: AMBER, valueTint: AMBER },
-      { label: 'HULL', value: '18/30', labelTint: DIM, valueTint: TEXT },
-      { label: 'SHIELD', value: '', labelTint: DIM, valueTint: TEXT, pips: { n: 1, max: 2, colour: CREW_SHIP } },
-      { label: 'LASER', value: 'READY — 98%', labelTint: DIM, valueTint: GOOD, bar: { fill: 0.6, colour: AMBER } }
-    ], help: ['TAB: SWITCH', 'ENTER: REMATCH…'] },
     end: { title: 'VICTORY', tint: GOOD, length: 'DUEL LENGTH 1:23', prompt: 'ENTER: REMATCH   ESC: LEAVE' },
     banners: { interior: 'PAUSED', tactical: 'PAUSED TACTICAL', notice: 'YOU: HELM' },
     overlay: null,

@@ -15,10 +15,8 @@ import { fireTileOf } from '../../sim/duel/hazards';
 import { LOW_AIR_FRAC } from '../../sim/duel/tuning';
 import { AMBER, WARN } from '../theme';
 
-/** The readout column on the right that the interior leaves clear (spec §8). */
-export const READOUT_COLUMN = 220;
-/** The band the ship is fitted into: the whole screen left of the readout column, below the console tab strip (Artemis spec §2). */
-export const INTERIOR_BAND = { x: 0, y: 42, w: INTERNAL_W - READOUT_COLUMN, h: INTERNAL_H - 42 } as const;
+/** The band the ship is fitted into: the whole screen below the console tab strip (UI round §2.2: no readout column). */
+export const INTERIOR_BAND = { x: 0, y: 42, w: INTERNAL_W, h: INTERNAL_H - 42 } as const;
 
 /** worldFit's rules on the duel's band: never upscaled above 1x, snapped for the stage scale, centred on whole screen pixels (Art-i spec section 4). */
 export function duelFit(widthTiles: number, heightTiles: number, stage: number, rect?: TileRect): Fit {

@@ -50,11 +50,11 @@ describe('the Flight right button (Valkyrn spec §5.1)', () => {
 describe('torpedoSteer (W-4 spec §7)', () => {
   it('the bearing from the torpedo\'s marker to the pointer on the open Weapons map; null on the marker, off the map or over a block', () => {
     const torpedo = { x: 640, y: 300 };
-    expect(torpedoSteer({ pointer: { x: 740, y: 300 }, torpedo, zoom: 1, contactShown: false, statusRows: 0 })).toBe(64);   // east
-    expect(torpedoSteer({ pointer: { x: 640, y: 200 }, torpedo, zoom: 1, contactShown: false, statusRows: 0 })).toBe(0);    // north
-    expect(torpedoSteer({ pointer: torpedo, torpedo, zoom: 1, contactShown: false, statusRows: 0 })).toBeNull();            // on it: the last bearing stands
-    expect(torpedoSteer({ pointer: null, torpedo, zoom: 1, contactShown: false, statusRows: 0 })).toBeNull();
-    expect(torpedoSteer({ pointer: { x: -5, y: 300 }, torpedo, zoom: 1, contactShown: false, statusRows: 0 })).toBeNull();
-    expect(torpedoSteer({ pointer: { x: STATION.x + 20, y: stationTop('weapons') + 10 }, torpedo, zoom: 1, contactShown: false, statusRows: 0 })).toBeNull();   // over the Weapons block
+    expect(torpedoSteer({ pointer: { x: 740, y: 300 }, torpedo, zoom: 1, contactShown: false })).toBe(64);   // east
+    expect(torpedoSteer({ pointer: { x: 640, y: 200 }, torpedo, zoom: 1, contactShown: false })).toBe(0);    // north
+    expect(torpedoSteer({ pointer: torpedo, torpedo, zoom: 1, contactShown: false })).toBeNull();            // on it: the last bearing stands
+    expect(torpedoSteer({ pointer: null, torpedo, zoom: 1, contactShown: false })).toBeNull();
+    expect(torpedoSteer({ pointer: { x: -5, y: 300 }, torpedo, zoom: 1, contactShown: false })).toBeNull();
+    expect(torpedoSteer({ pointer: { x: STATION.x + 20, y: stationTop('weapons') + 10 }, torpedo, zoom: 1, contactShown: false })).toBeNull();   // over the Weapons block
   });
 });

@@ -14,8 +14,7 @@ import { INTERNAL_H, INTERNAL_W } from '../src/shared/resolution';
 import { consoleModel, consoleStation, consoleTabs, type ConsoleModelInput } from '../src/renderer/src/render/duel/consoleModel';
 import { consoleInReach, repairInReach } from '../src/renderer/src/app/duel/controls';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
-import { readoutHelp, readoutRows } from '../src/renderer/src/render/duel/readoutModel';
-import { LINE, PAD } from '../src/renderer/src/render/theme';
+import { chargeRow } from '../src/renderer/src/render/duel/readoutModel';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 
 const layout = parseShip(cutter);
@@ -32,14 +31,6 @@ describe('console layout (spec §2)', () => {
     expect(TABS_RIGHT).toBe(408); expect(CONSOLE_RESERVE).toEqual({ left: 228, right: 156 });
     expect(SIDE.x).toBe(1136); expect(STATUS).toMatchObject({ x: 12, y: 42, w: 204 }); expect(STATION).toMatchObject({ x: 12, w: 300 });
     expect(stationTop('helm')).toBe(508); expect(stationTop('weapons')).toBe(440);   // W-1: the PEW row; merge with the Engineering spike (kind a): the bar pips, +24 (was 464)
-  });
-  it('the status table ends above the station block at its longest (every crew room damaged)', () => {
-    const d = createSeatedDuel(layout, 5); d.tactical.systems[0].rooms = [2, 1, 1];
-    for (const mode of ['helm', 'weapons'] as const) {
-      const rows = readoutRows({ duel: d, mode, active: 0, console: true });
-      expect(STATUS.y + PAD + LINE * rows.length + PAD).toBeLessThanOrEqual(stationTop(mode));
-    }
-    disposeDuel(d);
   });
   it('the contact window (enemy ship window spec §4.1): right edge, below the side column, overlapping nothing', () => {
     expect(SIDE_H).toBe(96);
@@ -64,18 +55,6 @@ describe('console layout (spec §2)', () => {
       ['screen centre ± 80', rect(INTERNAL_W / 2 - 80, INTERNAL_H / 2 - 80, 160, 160)]
     ];
     for (const [name, r] of others) expect(overlap(CONTACT, r), name).toBe(false);
-  });
-});
-
-describe('readout rows on a console (spec §2)', () => {
-  it('drop the view heading and, on Weapons, the LASER block; unchanged without the flag', () => {
-    const d = createSeatedDuel(layout, 5, 0, 2, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's readout, on the laser fit
-    const w = readoutRows({ duel: d, mode: 'weapons', active: 1, console: true }).map((r) => r.label);
-    expect(w[0]).toBe('CUTTER');
-    for (const gone of ['LASER', 'LOCK', 'CHARGE', 'MAG']) expect(w).not.toContain(gone);
-    const plain = readoutRows({ duel: d, mode: 'weapons', active: 1 }).map((r) => r.label);
-    expect(plain[0]).toBe('WEAPONS'); expect(plain).toContain('CHARGE');
-    disposeDuel(d);
   });
 });
 
@@ -116,7 +95,7 @@ describe('station panels', () => {
     const w = model(d, { me: 1 })!.weapons!;
     expect(w.lock).toBe(d.tactical.systems[0].lock); expect(w.canLaunch).toBe(canLaunch(d.tactical, 0)); expect(w.missileFlying).toBe(false);
     expect(w.magazine).toMatch(/^\d+\/\d+$/);
-    expect([w.charge.label, w.charge.value]).toEqual(['CHARGE', readoutRows({ duel: d, mode: 'weapons', active: 1 }).find((r) => r.label === 'CHARGE')!.value]);
+    expect([w.charge.label, w.charge.value]).toEqual(['CHARGE', chargeRow(d).value]);
     while (!canLaunch(d.tactical, 0)) step(d, 1, null);
     step(d, 1, { kind: 'missileLaunch' });
     const after = model(d, { me: 1 })!.weapons!; expect(after.missileFlying).toBe(true); expect(after.canLaunch).toBe(false);
@@ -148,13 +127,12 @@ describe('station panels', () => {
 });
 
 describe('the Helm throttle on the console (Artemis spec §4.2, §6.1)', () => {
-  it('shows the level it is given (the local base), else the duel’s; the paused Helm help names the throttle', () => {
+  it('shows the level it is given (the local base), else the duel’s', () => {
     const d = createSeatedDuel(layout, 5);
     try {
       expect(model(d)!.helm!.throttle).toBe(0);
       d.throttle = 3; expect(model(d)!.helm!.throttle).toBe(3);
       expect(model(d, { throttle: 4 })!.helm!.throttle).toBe(4);
-      expect(readoutHelp('helm')[0]).toBe('W/S THROTTLE   A/D TURN');
     } finally { disposeDuel(d); }
   });
 });

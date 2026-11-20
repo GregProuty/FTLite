@@ -8,8 +8,8 @@ import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
 import type { ConsoleView } from '../src/renderer/src/render/duel/consoleModel';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
-import { STATION, STATUS, stationTop, weaponCard } from '../src/renderer/src/render/duel/consoleLayout';
-import { FONT_NATIVE, PAD, TEXT, textPx } from '../src/renderer/src/render/theme';
+import { STATION, stationTop, weaponCard } from '../src/renderer/src/render/duel/consoleLayout';
+import { FONT_NATIVE, TEXT, textPx } from '../src/renderer/src/render/theme';
 import { makeUi } from './helpers/uiStore';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -25,7 +25,7 @@ const weaponsConsole: ConsoleView = {
 const helmConsole: ConsoleView = { ...weaponsConsole, station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
   weapons: null, helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 2 }, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } };
 const view = (console: ConsoleView | null): DuelUiView => ({
-  readout: { rows: [{ label: 'HULL', value: '10/40', labelTint: TEXT, valueTint: TEXT }], help: ['TAB  SWITCH'] }, end: null,
+  end: null,
   banners: { interior: null, tactical: null, notice: null }, overlay: { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: false }, crt: true, console });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store);
@@ -36,14 +36,12 @@ function mount() {
 }
 
 describe('the console screen (spec §2)', () => {
-  it('without a console: today’s right-hand readout and help', () => {
+  it('without a console: no tab strip (UI round §2.2: and no readout)', () => {
     const { duel } = mount(); act(() => duel.frame(view(null)));
-    expect(find('TAB  SWITCH')).toBeDefined(); expect(btn('tab-helm')).toBeNull();
+    expect(btn('tab-helm')).toBeNull();
   });
-  it('on Weapons: tabs, the status table on the left without help, the station and the side column', () => {
+  it('on Weapons: tabs, the station and the side column', () => {
     const { duel } = mount(); act(() => duel.frame(view(weaponsConsole)));
-    expect(find('HULL')).toMatchObject({ x: STATUS.x + PAD });
-    expect(find('TAB  SWITCH')).toBeUndefined();
     for (const n of ['tab-helm', 'tab-weapons', 'tab-ship', 'fire', 'card-laser', 'card-torpedo', 'launch', 'zoom-in', 'zoom-out', 'snap'])
       expect([n, btn(n)]).not.toEqual([n, null]);
     for (const n of ['lock-0', 'lock-1', 'lock-2']) expect([n, btn(n)]).toEqual([n, null]);   // FTL targeting spec §1: the cards replace the lock row

@@ -22,7 +22,7 @@ const panel: WeaponsPanel = { lock: 1, charge: { label: 'CHARGE', value: '40%', 
   fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: -1, torpTarget: -1, burst: 0, weaponBars: [1, 0, 4], weaponFree: 1, pew: [1, 1, 1] };
 const weapons: ConsoleView = { station: 'weapons', tabs: { helm: 'locked', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
   helm: null, weapons: panel, science: null, side: null };
-const view = (): DuelUiView => ({ readout: { rows: [{ label: 'CREW', value: '2', labelTint: TEXT, valueTint: TEXT }], help: [] }, end: null,
+const view = (): DuelUiView => ({ end: null,
   banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console: weapons });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store), weaponPower = vi.fn(), pickUp = vi.fn();
