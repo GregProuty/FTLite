@@ -45,7 +45,7 @@ export function Settings() {
           onChange={(e) => actions.setLaserFit(e.target.checked)} />
         Valkyrn: fit laser instead of gun
       </label>
-      <label>
+      <label style={{ display: 'block' }}>
         <input type="checkbox" data-testid="fps-counter" aria-label="FPS counter" checked={settings.fpsCounter} disabled={!settings.available}
           onChange={(e) => actions.setFpsCounter(e.target.checked)} />
         FPS counter

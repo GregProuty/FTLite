@@ -164,7 +164,8 @@ export interface TacticalModelInput {
   console: 'helm' | 'weapons' | 'science';
   /** The duel's contacts (Sci-1 spec §7.1): hide an unknown enemy's silhouette and draw the marks. The flight view leaves it off. */
   contacts?: boolean;
-  /** Spike ii §6.5: the rock under the pointer while a weapon is picked up (the scene's pickRock), for its hover bracket. */
+  /** Spike ii §6.5: the rock under the pointer while a weapon is picked up, for its hover bracket. UI round §1.4: the duel
+   *  scene no longer sets it (rocks are not picked from the map); kept for pickRock's tests. */
   rockHover?: { rock: number; weapon: 'laser' | 'torpedo' } | null;
   /** Asteroids-iii §7.1: the scene's rock track (smooth motion); absent: rocks at their tick positions. */
   rockTrack?: RockTrack | null;
