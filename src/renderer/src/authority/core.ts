@@ -326,7 +326,7 @@ function createLiveCore<T extends EncounterTypes>(rules: EncounterRules<T>, deps
     const now = deps.clock.nowMs(), expired: number[] = [];
     for (let p = 0; p < held.length; p++) if (heldReceipts[p] !== null && now - heldReceipts[p]! >= REMOTE_HELD_TIMEOUT_MS) {
       heldReceipts[p] = null;
-      const h = held[p]!;   // Valkyrn spec §6.2: an expired aim clears; W-3: and a torpedo's steering; playtest2feedback §7: and a held throttle or thruster
+      const h = held[p]!;   // Valkyrn spec §6.2: an expired aim clears; W-3: and a torpedo's steering; W-4: and the weapon selection; playtest2feedback §7: and a held throttle or thruster
       if (h.moveX !== 0 || h.moveY !== 0 || h.interactHeld || h.face === true || h.gunHeld === true || h.aim !== undefined || h.torpTurn !== undefined || h.torpHeading !== undefined || h.weaponSel !== undefined || (h.throttleHeld ?? 0) !== 0 || (h.rcsX ?? 0) !== 0 || (h.rcsY ?? 0) !== 0) expired.push(p);
     }
     if (expired.length) neutralizeExpired(expired);

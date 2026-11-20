@@ -118,13 +118,17 @@ describe('weaponSel on the wire (W-4 spec §8)', () => {
     const replay = JSON.parse(JSON.stringify(live.core.replay())) as unknown;
     expect(() => parseEncounterReplay(duelRules, replay, DIGEST, resolveCutter)).not.toThrow();
     expect(JSON.stringify(replay)).toContain('"weaponSel":2');
-    const broken = JSON.parse(JSON.stringify(replay).replaceAll('"weaponSel":2', '"weaponSel":3')) as unknown;
-    expect(() => parseEncounterReplay(duelRules, broken, DIGEST, resolveCutter)).toThrow(/weaponSel/);
+    for (const bad of ['3', '-1']) {
+      const broken = JSON.parse(JSON.stringify(replay).replaceAll('"weaponSel":2', `"weaponSel":${bad}`)) as unknown;
+      expect(() => parseEncounterReplay(duelRules, broken, DIGEST, resolveCutter), bad).toThrow(/weaponSel/);
+    }
     const h = checkpointRig(), scp = JSON.parse(JSON.stringify(h.authority.checkpoint([])));
     scp.held[0] = { ...NONE, weaponSel: 1 };
     expect(() => validateCheckpoint(LAYOUT, scp, DIGEST)).not.toThrow();
-    scp.held[0] = { ...NONE, weaponSel: 3 };
-    expect(() => validateCheckpoint(LAYOUT, scp, DIGEST)).toThrow();
+    for (const bad of [3, -1]) {
+      scp.held[0] = { ...NONE, weaponSel: bad };
+      expect(() => validateCheckpoint(LAYOUT, scp, DIGEST), String(bad)).toThrow();
+    }
   });
   it('the authority expires a frame holding only weaponSel, and a pause deletes it', () => {
     const weaponsDuel = (runId: string) => liveDuel(duelInit(5, runId), (s) => { sitDown(s.duel.interior, 0, s.duel.weapons); });
