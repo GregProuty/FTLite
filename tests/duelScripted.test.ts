@@ -7,13 +7,9 @@ import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import {
-  AVOID_MARGIN, AVOID_TICKS, bfsPath, createScriptedPair, goalTiles, MISSILE_GAP, ORBIT_GAIN, ORBIT_MAX, ORBIT_MIN, predictAxes, SCRIPTED_PEW_GAP, scriptedInput, SPEED_SLACK
+  AVOID_MARGIN, AVOID_TICKS, bfsPath, createScriptedPair, goalTiles, MISSILE_GAP, ORBIT_GAIN, ORBIT_MAX, ORBIT_MIN, predictAxes, scriptedInput, SPEED_SLACK
 } from '../src/renderer/src/sim/duel/scripted';
-import { Outcome, placeMissile, removeMissile, Room } from '../src/renderer/src/sim/tactical/state';
-import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
-import { pewLead } from '../src/renderer/src/sim/tactical/pew';
-import type { DuelState } from '../src/renderer/src/sim/duel/state';
-import type { DuelInput } from '../src/renderer/src/sim/duel/step';
+import { Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { BELT_OUTER, R_MAP } from '../src/renderer/src/sim/tactical/tuning';
 import { RCS_TURN_BOOST } from '../src/renderer/src/sim/tactical/tuning';
 
@@ -113,63 +109,4 @@ describe("the Helm's hazard prediction flies the sim's turn boost (playtest2feed
     expect(boosted).toBeGreaterThan(0);
     disposeDuel(d);
   });
-});
-
-/** The fine aim of the one pewFire command in a tick's input, or −1 when there is none. */
-function pewAimOf(input: DuelInput): number {
-  const fires = input.commands.map((e) => e.command).filter((c) => c.kind === 'pewFire');
-  expect(fires.length).toBeLessThanOrEqual(1);
-  const c = fires[0];
-  return c && c.kind === 'pewFire' ? c.aim * 256 + c.aimAcc : -1;
-}
-
-/** Merge with the Engineering spike (kind a): the gunner moves pew pew's bar to the beam (Decision 20), so its pew fires only
- *  where a test gives pew pew a bar. This one gives the crew the spare reactor bar on Weapons ([1, 1, 1], 3 bars). */
-function givePewBar(d: DuelState): void { const sys = d.tactical.systems[0]; sys.bars[1] = 3; sys.weaponPower = [1, 1, 1]; }
-/** A scripted pair that has made its one bar move already (so it keeps pew pew's bar). */
-const movedPair = (seed: number) => ({ ...createScriptedPair(seed), barMoved: true });
-
-describe("the scripted gunner's pew (W-1 pew pew spec §1; Task 6 review)", () => {
-  /** A seated duel, the crew still with its nose on heading 0; the Hunter 200 ahead, and (when `torp`) the Hunter's torpedo
-   *  150 out, 11° off the nose: both inside the cone and in range. */
-  function setup(torp: boolean): DuelState {
-    const d = createSeatedDuel(layout, 2), t = d.tactical, s = t.ships[0], e = t.ships[1];
-    givePewBar(d);
-    Object.assign(s, { vx: 0, vy: 0, heading: 0, headingAcc: 0 });
-    Object.assign(e, { x: s.x + hx(0) * 200, y: s.y + hy(0) * 200, vx: 0, vy: 0 });
-    if (torp) placeMissile(t, 1, { x: s.x + hx(8) * 150, y: s.y + hy(8) * 150, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });
-    return d;
-  }
-  it("defence first: with the Hunter's torpedo and the Hunter both in the cone it shoots the torpedo, else the Hunter", () => {
-    const d = setup(true), t = d.tactical;
-    try {
-      const torpLead = pewLead(t, 0, t.ships[0].x + hx(8) * 150, t.ships[0].y + hy(8) * 150, 0, 0), shipLead = pewLead(t, 0, t.ships[1].x, t.ships[1].y, 0, 0);
-      expect(torpLead).toBeGreaterThanOrEqual(0); expect(shipLead).toBeGreaterThanOrEqual(0); expect(torpLead).not.toBe(shipLead);
-      expect(pewAimOf(scriptedInput(movedPair(2), d))).toBe(torpLead);
-      removeMissile(t, 1);
-      expect(pewAimOf(scriptedInput(movedPair(2), d))).toBe(shipLead);
-    } finally { disposeDuel(d); }
-  });
-  it('spaces its rounds by at least SCRIPTED_PEW_GAP ticks: in place, and over a whole duel', () => {
-    const d = setup(false), pair = movedPair(2);
-    try {
-      expect(pewAimOf(scriptedInput(pair, d))).toBeGreaterThanOrEqual(0);
-      expect(pewAimOf(scriptedInput(pair, d))).toBe(-1);   // the same tick again: inside the gap, though the charge holds two more thirds
-    } finally { disposeDuel(d); }
-    const gaps: number[] = [];
-    for (const seed of [1, 2, 4]) {   // whole scripted duels: every pair of successive rounds (merge with the Engineering spike: the pew on a bar of its own, givePewBar)
-      const run = createSeatedDuel(layout, seed), p = movedPair(seed);
-      givePewBar(run);
-      let last = -1;
-      try {
-        for (let k = 0; run.tactical.outcome === Outcome.Running; k++) {
-          const input = scriptedInput(p, run);
-          if (pewAimOf(input) >= 0) { if (last >= 0) gaps.push(k - last); last = k; }
-          stepDuelTick(run, input);
-        }
-      } finally { disposeDuel(run); }
-    }
-    expect(gaps.length).toBeGreaterThan(10);
-    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(SCRIPTED_PEW_GAP);
-  }, 60_000);
 });

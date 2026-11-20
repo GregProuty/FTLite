@@ -346,7 +346,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (pew !== null) {
       const why = refusal(d, 'pew');
       if (why && why !== 'NO CHARGE') source?.refuse('pew', why);
-      else { const id = send({ kind: 'pewFire', aim: Math.floor(pew / HEADING_COUNT), aimAcc: pew % HEADING_COUNT }); if (id) pewSent.add(id.sequence); }
+      else { const id = send({ kind: 'pewFire' }); if (id) pewSent.add(id.sequence); }
     }
     if (p.camera > 0 && source) { const cam = source.cameras.weapons; snapBack(cam, missileOf(d.tactical, 0) && cam.follow !== 'missile' ? 'missile' : 'ship'); }
   }

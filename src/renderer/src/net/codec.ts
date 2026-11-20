@@ -124,7 +124,7 @@ export const duelWire: ModeWire<DuelSnapshot> = {
       z.object({ kind: z.literal('contactScan'), contact: z.number().int() }).strict(),
       z.object({ kind: z.literal('designate'), contact: z.number().int() }).strict(),
       z.object({ kind: z.literal('laserFrequency'), freq: z.number().int() }).strict(),
-      z.object({ kind: z.literal('pewFire'), aim: z.number().int(), aimAcc: z.number().int() }).strict(),   // W-1: the pew's aim
+      z.object({ kind: z.literal('pewFire') }).strict(),   // W-4 spec §6: no aim
       z.object({ kind: z.literal('laserMode'), manual: z.boolean() }).strict(),   // W-2: the laser's AUTO / MANUAL mode
       z.object({ kind: z.literal('laserFire'), aim: z.number().int(), aimAcc: z.number().int() }).strict(),   // W-2: the MANUAL laser's aim
       z.object({ kind: z.literal('torpMode'), manual: z.boolean() }).strict(),   // W-3: the torpedo's AUTO / MANUAL mode
@@ -161,8 +161,8 @@ const pingCoord = z.number().finite().min(-1e6).max(1e6);   // Feel-ii §2.7: a 
 const id = z.object({ player, sequence: positive }).strict();
 const heldAxis = z.number().int().min(-1).max(1).optional();   // playtest2feedback §7: absent means 0
 const held = z.object({ moveX: axis, moveY: axis, interactHeld: z.boolean(), face: z.boolean().optional(), aim: z.number().int().min(-1).max(255).optional(), gunHeld: z.boolean().optional(),
-  torpTurn: z.number().int().min(-1).max(1).optional(), torpHeading: z.number().int().min(-1).max(255).optional(),
-  throttleHeld: heldAxis, rcsX: heldAxis, rcsY: heldAxis }).strict();   // face: Feel-i's auto-face; aim, gunHeld: Valkyrn spec §6.2, §7.1; torpTurn, torpHeading: W-3; the crew Helm's throttle and thrusters: playtest2feedback §7
+  torpTurn: z.number().int().min(-1).max(1).optional(), torpHeading: z.number().int().min(-1).max(255).optional(), weaponSel: z.number().int().min(0).max(2).optional(),
+  throttleHeld: heldAxis, rcsX: heldAxis, rcsY: heldAxis }).strict();   // face: Feel-i's auto-face; aim, gunHeld: Valkyrn spec §6.2, §7.1; torpTurn, torpHeading: W-3; weaponSel: W-4; the crew Helm's throttle and thrusters: playtest2feedback §7
 const frame = z.object({ runId: text, player, tick: uint, sequence: positive, held }).strict();
 const commandSchema = z.discriminatedUnion('kind', wire.commands(prims));
 const envelope = z.object({ runId: text, id, requestedTick: uint, command: commandSchema }).strict();

@@ -36,8 +36,9 @@ export interface Session {
  *  absent none). Only the duel reads them: `face` and `aim` from the Helm's attendant (A/D, moveX, overrides both),
  *  `gunHeld`, `torpTurn` and `torpHeading` from Weapons'. Playtest2feedback §7: `throttleHeld` (1 W, −1 S), `rcsX`
  *  (−1 port, 1 starboard) and `rcsY` (−1 aft, 1 forward) are the crew Helm's held throttle and thrusters, each an
- *  integer −1..1; absent means 0. */
-export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean; aim?: number; gunHeld?: boolean; torpTurn?: number; torpHeading?: number; throttleHeld?: number; rcsX?: number; rcsY?: number }
+ *  integer −1..1; absent means 0. W-4 spec §8: `weaponSel` the Weapons seat's selected slot (0 pew pew, 1 the autocannon,
+ *  2 the torpedo; absent none), read from the Weapons attendant; on a turret class `gunHeld` fires the autocannon only with it 1. */
+export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean; aim?: number; gunHeld?: boolean; torpTurn?: number; torpHeading?: number; weaponSel?: number; throttleHeld?: number; rcsX?: number; rcsY?: number }
 export interface HeldFrame { runId: RunId; player: PlayerId; tick: number; sequence: number; held: HeldInput }
 export interface LifecyclePause { paused: boolean; reason: string }
 export interface CommandId { player: PlayerId; sequence: number }
@@ -99,9 +100,8 @@ export type DuelCommand =
   | { kind: 'designate'; contact: number }
   /** Weapons tunes the crew laser to frequency 0..2 (A..C). */
   | { kind: 'laserFrequency'; freq: number }
-  /** W-1 (pew pew spec §1, §4): Weapons fires the pew along heading index `aim` 0..255 plus `aimAcc` 0..255 256ths of a
-   *  step, clamped into the cone by the sim. Any integers pass the codec; the sim answers an out-of-range one malformed. */
-  | { kind: 'pewFire'; aim: number; aimAcc: number }
+  /** W-4 spec §6: Weapons fires pew pew along its turret (W-4a: the nose). No aim: the round goes where the turret points. */
+  | { kind: 'pewFire' }
   /** W-2 (pew pew spec §2, §4): Weapons sets the crew laser's mode: true MANUAL (it fires only on laserFire, along an aim),
    *  false AUTO (it fires at its target by itself, as before). */
   | { kind: 'laserMode'; manual: boolean }

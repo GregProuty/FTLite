@@ -11,7 +11,7 @@ import { roomAt } from '../grid';
 import { fireStep } from '../hazards/fire';
 import { oxygenStep } from '../hazards/oxygen';
 import { movementSystem } from '../movement';
-import { DuelSystem, effectiveBars, throttleAllowed, WEAPON_SLOTS } from '../tactical/bars';
+import { DuelSystem, effectiveBars, throttleAllowed, WeaponSlot, WEAPON_SLOTS } from '../tactical/bars';
 import { applyWeaponPower } from './weaponSlots';
 import { stepDuel } from '../tactical/duel';
 import { autoFacePoint, autoFaceTurn, headingTurn } from '../tactical/hunter';
@@ -121,6 +121,12 @@ export function heldAim(h: HeldInput): number {
 export function heldTorpSteer(h: HeldInput): { turn: number; heading: number } {
   const t = h.torpTurn, a = h.torpHeading;
   return { turn: typeof t === 'number' ? Math.sign(t) || 0 : 0, heading: typeof a === 'number' && Number.isInteger(a) && a >= 0 && a < HEADING_COUNT ? a : -1 };
+}
+
+/** W-4 spec §8: the selected slot in a held frame: an integer 0..2, else −1 (none). */
+export function heldWeaponSel(h: HeldInput): number {
+  const w = h.weaponSel;
+  return typeof w === 'number' && Number.isInteger(w) && w >= 0 && w <= 2 ? w : -1;
 }
 
 /** Valkyrn spec §6.2: the turn from `heading` toward the aim index `aim`. The signed index difference is
@@ -301,8 +307,11 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins. W-1: pewFire last; only the first in a tick fires (the rest noop). W-2: laserMode first, set at once (as laserFrequency is), so a same-tick laserCharge or laserFire is judged in the new mode; laserFire after laserCharge, the first in a tick fires. W-3: torpMode second, set at once, so a same-tick missileLaunch is judged in the new mode.
   const helm = attendant(d, d.nav), gunner = attendant(d, d.weapons);
   const steer = gunner >= 0 ? heldTorpSteer(input.held[gunner] ?? NO_HELD) : { turn: 0, heading: -1 };   // W-3: only Weapons' attendant flies the MANUAL torpedo
+  const gunnerHeld = gunner >= 0 ? input.held[gunner] ?? NO_HELD : NO_HELD, weaponSel = gunner >= 0 ? heldWeaponSel(gunnerHeld) : -1;
+  // W-4 spec §8: on a turret class (the Hound) the trigger fires the autocannon only while it is the selected weapon; elsewhere today's rule.
+  const trigger = gunner >= 0 && gunnerHeld.gunHeld === true && (!hasTurret(classOf(d.tactical, 0)) || weaponSel === WeaponSlot.Autocannon);
   const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false,
-    gunHeld: gunner >= 0 && (input.held[gunner] ?? NO_HELD).gunHeld === true, pewAim: -1, laserFire: -1, torpTurn: steer.turn, torpHeading: steer.heading, scanner: true };   // Valkyrn spec §7.1: the trigger of Weapons' attendant; W-1: pewFire sets pewAim; W-2: laserFire sets laserFire; W-3: the held steering
+    gunHeld: trigger, pewAim: -1, laserFire: -1, torpTurn: steer.turn, torpHeading: steer.heading, weaponSel, pewTrigger: false, scanner: true };   // Valkyrn spec §7.1: the trigger of Weapons' attendant; W-2: laserFire sets laserFire; W-3: the held steering; W-4: pewFire sets pewTrigger
   // Spike ii §6.1: missileLaunch is admitted with this tick's effective torpedo rock target: the last accepted
   // rockLock(torpedo), else −1 after an accepted torpLock (it clears torpRock first), else the stored value.
   let torpRockNext: number | null = null, torpLocked = false;
@@ -348,11 +357,10 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
       if (!canLaunch(d.tactical, 0, torpRock)) { result(e, 'unavailable'); continue; }
       crew.missileLaunch = true;
     }
-    else {   // W-1 (pew pew spec §1, §4): the aim, then one round a tick (the first wins), then a pew pew bar (Engineering spike §11) and a third stored (pewReady)
-      if (!validAim(c.aim, c.aimAcc)) { result(e, 'malformed'); continue; }
-      if (crew.pewAim >= 0) { result(e, undefined, 'noop'); continue; }
+    else {   // W-4 spec §6, §19.1 (W-4a): no aim; one round a tick (the first wins), then a pew pew bar and a third stored (pewReady)
+      if (crew.pewTrigger) { result(e, undefined, 'noop'); continue; }
       if (!pewReady(d.tactical, 0)) { result(e, 'unavailable'); continue; }
-      crew.pewAim = c.aim * HEADING_COUNT + c.aimAcc;
+      crew.pewTrigger = true;
     }
     result(e);
   }

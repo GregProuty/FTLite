@@ -19,7 +19,7 @@ import { circularSpeed } from '../tactical/map';
 import { predictPath } from '../tactical/predict';
 import { nearestHeading } from '../tactical/lead';
 import { classOf, missileOf, Room, targetOf, type Axes } from '../tactical/state';
-import { BELT_OUTER, HEADING_COUNT, HUNTER_PD_RANGE, LASER_ARC_COS, LASER_RANGE, PEW_ARC_COS, PEW_RANGE, R_MAP, SHIP_RADIUS } from '../tactical/tuning';
+import { BELT_OUTER, HUNTER_PD_RANGE, LASER_ARC_COS, LASER_RANGE, PEW_ARC_COS, PEW_RANGE, R_MAP, SHIP_RADIUS } from '../tactical/tuning';
 import { shipSeen } from '../tactical/science';
 import { canLaunch, laserEligible, laserFull } from '../tactical/weapons';
 import { CREW_SPEED, DT, HEALTH_MAX, REACH } from '../tuning';
@@ -320,7 +320,7 @@ function gunnerPew(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void {
     if (dx * dx + dy * dy <= PEW_RANGE * PEW_RANGE && inArc(s.heading, dx, dy, PEW_ARC_COS)) aim = pewLead(t, 0, e.x, e.y, e.vx, e.vy);
   }
   if (aim < 0) return;
-  out.push({ kind: 'pewFire', aim: Math.floor(aim / HEADING_COUNT), aimAcc: aim % HEADING_COUNT });
+  out.push({ kind: 'pewFire' });   // W-4 spec §6: no aim on the wire (the aim above only decides whether to fire)
   pair.lastPew = t.tick;
 }
 

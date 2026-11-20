@@ -10,7 +10,7 @@ import { laserStrikesRock, rockOnTarget, rockShotLine } from './rockWeapons';
 import { hx, hy } from './direction';
 import { tickGun } from './gun';
 import { BEAM_RATE_BY_BARS, BEAM_SHOTS_BY_BARS, DuelSystem, effectiveBars, MAGAZINE_REGEN_UNITS, SHIELD_LAYERS_BY_BARS, SHIELD_RATE_BY_BARS, TORPEDO_RELOAD_BY_BARS, weaponBars, WeaponSlot } from './bars';
-import { aimDir, clampAim, firePew, tickPew } from './pew';
+import { aimDir, clampAim, firePew, firePewTrigger, tickPew } from './pew';
 import { classOf, CREW_SLOT, missileOf, Room, type Axes, type TacticalState } from './state';
 import { shipSeen } from './science';
 import { AIM_STEPS, LASER_ARC_STEPS } from './tuning';
@@ -47,15 +47,19 @@ export interface ShipInput {
    *  0 or 1) and `torpHeading` the heading it holds (a heading index 0..255, −1 none). The duel step reads them from the
    *  held input; every other input sets 0 and −1. Read only while the ship's torpedo in flight is MANUAL (duel.ts). */
   torpTurn: number; torpHeading: number;
+  /** W-4 spec §8: the Weapons attendant's selected slot (0..2), −1 none (every other input). */
+  weaponSel: number;
+  /** W-4 spec §6: an admitted pewFire this tick: the pew fires along its turret (W-4a: the nose). The Hunter uses pewAim. */
+  pewTrigger: boolean;
   /** Sci-1 spec §4.6: whether the station running the ship's scan is attended (true when no scan runs). The duel step
    *  computes it for the crew; every other input sets true. */
   scanner: boolean;
 }
 
 /** A crew that sits at both consoles and does nothing. */
-export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, torpTurn: 0, torpHeading: -1, scanner: true };
+export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, torpTurn: 0, torpHeading: -1, weaponSel: -1, pewTrigger: false, scanner: true };
 /** Nobody at either console: a ship nobody flies. */
-export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, torpTurn: 0, torpHeading: -1, scanner: true };
+export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, torpTurn: 0, torpHeading: -1, weaponSel: -1, pewTrigger: false, scanner: true };
 
 /** Engineering spike spec §10.3: the shots one release of ship i's laser fires: the crew's by the beam's bars (1/2/2,
  *  0 off), any other ship's by its class. 0 without a laser. */
@@ -335,7 +339,8 @@ export function applyWeaponsInput(state: TacticalState, i: number, input: ShipIn
     }
     if (crew && !s.torpManual && (s.torpLock >= 0 || s.torpRock >= 0) && canLaunch(state, i) && (s.torpRock >= 0 || shipSeen(state, s.target))) launchMissile(state, i);   // auto-launch, once (spike ii: or on a rock target); W-3: never in MANUAL; Task 10: the enemy only when seen
   }
-  if (input.pewAim >= 0) firePew(state, i, input.pewAim);   // W-1 (pew pew spec §1): last, as WEAPON_ORDER admits it; attended (above)
+  if (input.pewTrigger) firePewTrigger(state, i);   // W-4 spec §6, §8: the crew's pewFire, along the turret; last, as before
+  else if (input.pewAim >= 0) firePew(state, i, input.pewAim);   // W-1 (pew pew spec §1): the Hunter's aim; attended (above)
 }
 
 /** Advance ship i's laser charge and hold timer, shields and magazine by one tick (spec §5, §7). */

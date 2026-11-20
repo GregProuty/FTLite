@@ -21,14 +21,14 @@ const step = (d: DuelState, commands: DuelEnvelope[] = []) => stepDuelTick(d, { 
 const why = (r: ReturnType<typeof step>) => r.map((x) => x.reason ?? x.status);
 /** A Cutter duel with player 0 standing and player 1 at Weapons. */
 function gunnerAtWeapons(): DuelState { const d = createDuel(CUTTER, 5); sitDown(d.interior, 1, d.weapons); return d; }
-const ahead = (d: DuelState) => ({ kind: 'pewFire' as const, aim: d.tactical.ships[0].heading, aimAcc: 0 });
+const ahead = (_d: DuelState) => ({ kind: 'pewFire' as const });   // W-4 spec §6: no aim
 
 describe('pewFire on the wire (spec §4)', () => {
-  it('round-trips through the duel codec; a non-integer or missing field does not pass', () => {
+  it('round-trips through the duel codec; any aim or extra field is malformed (W-4 spec §6)', () => {
     const codec = duelCodec(2), env = (command: unknown) => ({ kind: 'command' as const, envelope: { runId: 'r', id: { player: 1, sequence: 1 }, requestedTick: 0, command } as CommandEnvelope });
-    const good = env({ kind: 'pewFire', aim: 12, aimAcc: 200 });
+    const good = env({ kind: 'pewFire' });
     expect(codec.decodeMessage(codec.encodeMessage(good))).toEqual(good);
-    for (const bad of [{ kind: 'pewFire', aim: 1.5, aimAcc: 0 }, { kind: 'pewFire', aim: 3 }, { kind: 'pewFire', aim: 3, aimAcc: 0, extra: 1 }]) expect(() => codec.encodeMessage(env(bad))).toThrow();
+    for (const bad of [{ kind: 'pewFire', aim: 0, aimAcc: 0 }, { kind: 'pewFire', aim: 3 }, { kind: 'pewFire', extra: 1 }]) expect(() => codec.encodeMessage(env(bad))).toThrow();
   });
 });
 
@@ -44,16 +44,15 @@ describe('pewFire through the duel step (spec §1, §4, §5)', () => {
   it('several in one tick fire once: the first applies, the rest are noop', () => {
     const d = gunnerAtWeapons();
     try {
-      expect(why(step(d, [cmd(d, 1, ahead(d)), cmd(d, 1, { kind: 'pewFire', aim: 3, aimAcc: 9 }), cmd(d, 1, ahead(d))]))).toEqual(['applied', 'noop', 'noop']);
+      expect(why(step(d, [cmd(d, 1, ahead(d)), cmd(d, 1, ahead(d)), cmd(d, 1, ahead(d))]))).toEqual(['applied', 'noop', 'noop']);
       expect(d.tactical.systems[0].pewShots).toBe(1);
     } finally { disposeDuel(d); }
   });
-  it('rejects a stale tick, a sender away from Weapons, and a malformed aim', () => {
+  it('rejects a stale tick and a sender away from Weapons (W-4 spec §6: the malformed aim is gone, the codec refuses it)', () => {
     const d = gunnerAtWeapons();
     try {
-      const r = step(d, [cmd(d, 1, ahead(d), d.interior.tick + 1), cmd(d, 0, ahead(d)),
-        cmd(d, 1, { kind: 'pewFire', aim: 256, aimAcc: 0 }), cmd(d, 1, { kind: 'pewFire', aim: -1, aimAcc: 0 }), cmd(d, 1, { kind: 'pewFire', aim: 0, aimAcc: 256 }), cmd(d, 1, { kind: 'pewFire', aim: 0, aimAcc: -1 })]);
-      expect(why(r)).toEqual(['not-at-weapons', 'stale-tick', 'malformed', 'malformed', 'malformed', 'malformed']);   // sorted by player, then sequence
+      const r = step(d, [cmd(d, 1, ahead(d), d.interior.tick + 1), cmd(d, 0, ahead(d))]);
+      expect(why(r)).toEqual(['not-at-weapons', 'stale-tick']);   // sorted by player, then sequence
       expect(d.tactical.systems[0].pewShots).toBe(0);
     } finally { disposeDuel(d); }
   });
@@ -75,7 +74,7 @@ describe('pewFire through the duel step (spec §1, §4, §5)', () => {
   });
   it('a class without the pew answers unavailable (the Valkyrn)', () => {
     const d = createSeatedValkyrn(5);
-    try { expect(why(step(d, [cmd(d, 0, { kind: 'pewFire', aim: 0, aimAcc: 0 })]))).toEqual(['unavailable']); } finally { disposeDuel(d); }
+    try { expect(why(step(d, [cmd(d, 0, { kind: 'pewFire' })]))).toEqual(['unavailable']); } finally { disposeDuel(d); }
   });
   it('a pew round that takes the Hunter\'s last hull wins the round with terminal cause pew', () => {
     const d = gunnerAtWeapons(), tel = createTelemetry(d), t = d.tactical, h = t.ships[1];

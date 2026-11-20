@@ -547,7 +547,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     if (pew !== null) {
       const why = refusal(d, 'pew');
       if (why) refuse('pew', why);
-      else queue({ kind: 'pewFire', aim: Math.floor(pew / HEADING_COUNT), aimAcc: pew % HEADING_COUNT });
+      else queue({ kind: 'pewFire' });
     }
     if (p.camera > 0) {
       const cam = cameras.weapons;

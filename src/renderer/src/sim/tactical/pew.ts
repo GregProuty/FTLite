@@ -82,6 +82,11 @@ export function firePew(state: TacticalState, i: number, aim: number): boolean {
   return true;
 }
 
+/** W-4 spec §3.2, §6: ship i's pew turret's world aim, a fine aim 0..AIM_STEPS − 1. W-4a: the nose (W-4b adds pewTurret). */
+export function pewAimFine(state: TacticalState, i: number): number { return state.ships[i]!.heading * HEADING_COUNT; }
+/** W-4 spec §6: an admitted pewFire: a round along the turret (firePew's clamp leaves an aim inside the arc as it is). */
+export function firePewTrigger(state: TacticalState, i: number): boolean { return firePew(state, i, pewAimFine(state, i)); }
+
 /** One tick of ship i's pew recharge (spec §1; Engineering spike §11): pewGain units while below full, to full, every tick. */
 export function tickPew(state: TacticalState, i: number): void {
   const def = classOf(state, i).slots.pew, s = state.systems[i]!;
