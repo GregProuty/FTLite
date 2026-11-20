@@ -665,3 +665,17 @@ The owner decided:
   - **Why this is safe:** rocks in one group co-rotate rigidly and never meet, and the overlap check still applies.
 
 The cost failure is an engineering fix, not an owner decision. The rail positions are worked out once per step phase, and refused rocks re-check rejoin on a staggered cadence. Both are deterministic.
+
+**§14 amendment (controller, 2026-11-19, within D14):** the measure run showed that rocks refused by `sweepCluster` usually settle in the cluster's ring, at another bearing far from its rocks. So D14 has two forms:
+- **Tumble join, near the cluster (D ≤ 200):** the rock joins the cluster's tumble group. This needs the 6 u/s snap and a ring-clearance check. The new member's sweep must cross no rail outside the cluster.
+- **Ring join, far round the ring:** the condition is D > ρo_max + r_max + r + ASTEROID_GAP. The rock joins the cluster's *rotation* as a Rail with ρ_ω = |centre| of the cluster, and keeps a constant distance from the cluster's centre. This needs the same 6 u/s snap, and its sweep must cross no other rail.
+- **Neither:** a rock that meets neither condition stays Free.
+- **Clusters that don't tumble:** with `clusterTumble` off, a tumble join becomes a Rail.
+- **Rejoin events:** they carry `how: 'cluster'` and `join: 'tumble' | 'ring'`.
+
+**Measured results (d86b8740):**
+- **Cost:** p99 0.097 ms flying, 0.143 ms settled.
+- **After-burst:** 8 / 9 / 16 free rocks at 270 s across the three seeds. Seed 3 is belt debris refused by `sweepLane` and `snap`.
+- **Feel:** 6/10. Every failing shot fails only on (b), touches.
+
+The last two are open items for the owner's playtest. `LANE_PULL` and `LANE_CAPTURE_DR` are the owner's knobs.
