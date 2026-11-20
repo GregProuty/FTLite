@@ -110,6 +110,38 @@ describe('the duel predictor (Net-4a §3.3, §3.4)', () => {
     expect(p.stats().correction?.reseated).toBe(false);
     p.dispose();
   });
+  it('a predicted sit the authority refuses or never runs is taken back: the correction reports reseated (plan deviation 3)', () => {
+    // Seat 0 stands from Navigation and the authority runs it; then P predicts a sit at Navigation that the authority
+    // never runs (the command watermark passes it and the character stays standing), so the re-simulation stands P again.
+    const a = authority(), p = predictor(), nav = a.d.nav;
+    p.confirm(a.publication(), a.confirmed());
+    p.tick(entry(1, N(), [cmd(1, { kind: 'stand' })]));
+    a.step([N(), N()], [cmd(1, { kind: 'stand' })]); a.water.held[0] = 1; a.water.command[0] = 1;
+    for (let L = 2; L <= 3; L++) { p.tick(entry(L)); a.step([N(), N()]); a.water.held[0] = L; }
+    p.confirm(a.publication(), a.confirmed());
+    p.tick(entry(4, N(), [cmd(2, { kind: 'sit', station: nav })]));
+    a.step([N(), N()]); a.water.held[0] = 4; a.water.command[0] = 2;
+    for (let L = 5; L <= 6; L++) { p.tick(entry(L)); a.step([N(), N()]); a.water.held[0] = L; }
+    expect(p.confirm(a.publication(), a.confirmed())).toBe('resimulated');
+    expect(p.stats().correction?.reseated).toBe(true);
+    expect(hashDuel(p.state()!)).toBe(hashDuel(a.d));
+    p.dispose();
+  });
+  it('at the cap the view holds: before() is P\'s own bodies, so the blend draws P on every capped tick (I1, §3.5)', () => {
+    const a = authority(), p = predictor(), held = { ...N(), throttleHeld: 1 };
+    p.confirm(a.publication(), a.confirmed());
+    for (let L = 1; L <= PREDICT_MAX_TICKS; L++) expect(p.tick(entry(L, held))).toBe(true);
+    const ship = () => { const s = p.state()!.tactical.ships[0]!; return { x: s.x, y: s.y, h: s.heading + s.headingAcc }; };
+    expect(p.before()!.ships[0]).not.toEqual(ship());   // stepping: before() is the bodies one step back
+    for (let L = PREDICT_MAX_TICKS + 1; L <= PREDICT_MAX_TICKS + 3; L++) {
+      expect(p.tick(entry(L, held))).toBe(false);
+      expect(p.before()!.ships[0]).toEqual(ship());
+    }
+    const held1 = p.before();
+    p.tick(entry(PREDICT_MAX_TICKS + 4, held));
+    expect(p.before()).toBe(held1);   // set once on the cap path, not rebuilt every capped tick
+    p.dispose();
+  });
   it('never stands more than PREDICT_MAX_TICKS past the confirmed tick: tick() is false there and logs the entry', () => {
     const a = authority(), p = predictor();
     p.confirm(a.publication(), a.confirmed());

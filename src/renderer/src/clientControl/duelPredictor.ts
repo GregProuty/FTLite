@@ -69,13 +69,15 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
   const { seat } = options, step = options.step ?? ((d: DuelState, input: DuelInput) => { stepDuelTick(d, input); });
   let p: DuelState | null = null, predicting = false, local = 0, offset = 0, confirmedTick = 0, revision = -1;
   let held: HeldInput[] = [], log: Entry[] = [], waiting: Command[] = [], prior: PredictedBodies | null = null;
+  /** I1 (§3.5): true once a capped tick has set `prior` to P's own bodies, so the view holds at P and nothing is rebuilt per tick. */
+  let holding = false;
   const steps = new Map<number, Step>();
   const stats: PredictionStats = { verified: 0, resimulated: 0, resets: 0, lead: 0, measured: 0, standing: 0, correction: null };
   const withOwn = (own: HeldInput): HeldInput[] => held.map((h, k) => (k === seat ? own : h));
   /** One step of P from its tick with `own` in this seat's slot (§3.3); requestedTick is P's tick, as the authority restamps. */
   function advance(own: HeldInput, commands: readonly Command[]): void {
     const d = p!, at = d.interior.tick, input = withOwn(own), stamped = commands.map((c) => ({ ...c, requestedTick: at }));
-    prior = bodies(d);
+    prior = bodies(d); holding = false;
     step(d, { held: input, commands: stamped });
     const tick = d.interior.tick;
     steps.set(tick, { key: inputKey(input, stamped), hash: tick % PREDICT_HASH_EVERY === 0 ? hashF64(flattenDuel(d)) : null });
@@ -93,7 +95,7 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
     if (p && matches) restoreDuelSnapshot(p, publication.snapshot, options.contentDigest);
     else { if (p) disposeDuel(p); p = null; p = loadDuelSnapshot(options.resolveLayout(h.layoutId), publication.snapshot, options.contentDigest); }
     log = []; waiting = []; steps.clear(); steps.set(publication.tick, { key: '', hash: publication.hash });
-    prior = bodies(p); revision = publication.controlRevision; offset = publication.tick - local;
+    prior = bodies(p); holding = false; revision = publication.controlRevision; offset = publication.tick - local;
     predicting = publication.phase === 'running' && !decided;
     stats.resets++; stats.correction = null; stats.lead = 0; stats.measured = stats.standing = publication.tick;
     return 'reset';
@@ -141,7 +143,7 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
       const ship = d.tactical.ships[CREW_SLOT]!, sx = ship.x, sy = ship.y, eid = d.interior.crew[seat], cx = eid === undefined ? 0 : Position.x[eid]!, cy = eid === undefined ? 0 : Position.y[eid]!, seated = eid === undefined ? -1 : Seated.station[eid]!;
       restoreDuelSnapshot(d, publication.snapshot, options.contentDigest);
       steps.clear(); steps.set(T, { key: '', hash: publication.hash });
-      prior = bodies(d);
+      prior = bodies(d); holding = false;
       for (let k = T + 1; k <= target; k++) { const plan = planned(k); advance(plan.own, plan.commands); }
       const after = d.tactical.ships[CREW_SLOT]!, dx = after.x - sx, dy = after.y - sy;
       const ex = eid === undefined ? 0 : Position.x[eid]! - cx, ey = eid === undefined ? 0 : Position.y[eid]! - cy;
@@ -154,7 +156,11 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
       const e: Entry = { local: ++local, heldSequence: input.heldSequence, held: { ...input.held }, commands: [...waiting.splice(0), ...input.commands] };
       log.push(e);
       if (log.length > PREDICT_LOG_MAX) { const old = log.shift()!; log[0]!.commands = [...old.commands, ...log[0]!.commands]; }
-      if (p.interior.tick >= confirmedTick + PREDICT_MAX_TICKS) return false;
+      if (p.interior.tick >= confirmedTick + PREDICT_MAX_TICKS) {
+        // I1 (§3.5): P does not move, so the view holds at P: the blend from `prior` would otherwise replay the last step.
+        if (!holding) { prior = bodies(p); holding = true; }
+        return false;
+      }
       advance(e.held, e.commands);
       stats.lead = p.interior.tick - confirmedTick;
       return true;
@@ -164,6 +170,6 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
     before: () => (p ? prior : null),
     hashAt: (tick) => steps.get(tick)?.hash ?? null,
     stats: () => ({ ...stats, correction: stats.correction ? { ...stats.correction } : null }),
-    dispose() { if (p) disposeDuel(p); p = null; predicting = false; log = []; waiting = []; steps.clear(); prior = null; }
+    dispose() { if (p) disposeDuel(p); p = null; predicting = false; log = []; waiting = []; steps.clear(); prior = null; holding = false; }
   };
 }

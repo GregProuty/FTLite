@@ -983,6 +983,20 @@ describe('the session predicts (Net-4a §3.3, §3.6)', () => {
     expect(b!.heldSequence).toBeNull();
     r.dispose();
   });
+  it('at the cap the drawn ship holds: prev is P\'s own ship on every capped pump, so no alpha re-blends the last step (I1, §3.5)', () => {
+    const r = rig(0); r.attach();   // seat 0 flies the Cutter's crew Helm: held W thrusts
+    r.key('keydown', 'KeyW');
+    const src = () => h.source as unknown as { duel: DuelState; prev: { x: number; y: number; h: number }[] };
+    const drawn = () => { const s = src().duel.tactical.ships[0]!; return { x: s.x, y: s.y, h: s.heading + s.headingAcc }; };
+    for (let k = 0; k < 10; k++) r.pump();
+    session_frame(r);
+    expect(src().prev[0]).not.toEqual(drawn());   // below the cap: prev is one step back
+    for (let k = 0; k < 30; k++) r.pump();          // no publication: P reaches the cap
+    const held: unknown[] = [];
+    for (let k = 0; k < 3; k++) { r.pump(); r.advance(8); session_frame(r); expect(src().prev[0]).toEqual(drawn()); held.push(drawn()); }
+    expect(held[1]).toEqual(held[0]); expect(held[2]).toEqual(held[0]);
+    r.key('keyup', 'KeyW'); r.dispose();
+  });
   it('a link close drops the prediction: the frozen copy is drawn', () => {
     const r = rig(0); r.attach();
     for (let k = 0; k < 3; k++) r.pump();
