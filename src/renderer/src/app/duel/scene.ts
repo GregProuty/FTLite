@@ -29,7 +29,7 @@ import { DEFAULT_MAP_GRID } from '../../render/tactical/mapGrid';
 import { flashesFor, pushHits } from '../../render/tactical/hitModel';
 import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
 import { createRockTrack, resetRockTrack, updateRockTrack } from '../../render/tactical/rockTrack';
-import { holdFrame, pushRockFx, pushRockShakes } from '../../render/tactical/rockFx';
+import { pushRockFx, pushRockShakes } from '../../render/tactical/rockFx';
 import { hullFor } from '../../render/tactical/hullModel';
 import { interpolatedShip, pickContact, pickRock, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
 import { combatModel } from '../../render/tactical/weaponsModel';
@@ -165,7 +165,7 @@ export function fogEvents(t: TacticalState, events: readonly ViewEvent[]): ViewE
 export function pushMapEffects(fx: FxState, events: readonly ViewEvent[], t: TacticalState): void {
   const shown = fogEvents(t, events);
   pushEvents(fx, shown); pushHits(fx, shown, t); pushGunHits(fx, shown); pushPewHits(fx, shown);   // duel polish i spec §B: the callouts and the struck-room flashes; Valkyrn spec §7.4: the gun's sparks, pops and -1; W-1: the pew's
-  pushRockFx(fx, shown);   // spike ii §7: chips, breaks, blasts, sparks
+  pushRockFx(fx, shown);   // spike ii §7 with the look pass: chips, dim break puffs, blasts
   if (shown.length < events.length && events.some((e) => hitsCrew(e) && !shown.includes(e))) startShake(fx, SHAKE_PX, SHAKE_S);
 }
 
@@ -223,7 +223,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
   const fx = createFx();
   const stageHook = globalThis as unknown as { __FTLITE_STAGE__?: boolean; __spikeAsteroidsFx?: unknown };
   if (stageHook.__FTLITE_STAGE__ === true) stageHook.__spikeAsteroidsFx = fx;   // asteroids-iii: the frame-time check reads the live fx count (a read-only staging hook, behind duelMode's __FTLITE_STAGE__ flag like __spikeAsteroids)
-  const rockTrack = createRockTrack();   // asteroids-iii §7.1: smooth motion and trails
+  const rockTrack = createRockTrack();   // asteroids-iii §7.1: smooth motion
   const sound = options.audio ? createDuelAudio(options.audio) : null;   // Audio-i spec section 4b: both modes, so Single player is no longer silent
   let epoch: number | null = null;
   // Feel-i (console feel spec §1, §3): the seat the local character sat at and when (presentation seconds), whether it has
@@ -382,7 +382,6 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const vent = source.helmVent?.() ?? d.helmVent;   // §6: the puffs and the hiss
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       ({ watch: fires, flashUntil } = fireWatch(fires, d, t, flashUntil));   // own ship window spec §4
-      const holding = holdFrame(fx, dt);   // asteroids-iii §5.6: hit-stop (it holds from the frame after the burst; plan deviation 10)
       const events = source.drainEvents();
       pushMapEffects(fx, events, d.tactical);   // Engineering spike §10.4: under the fog
       if (cam) {   // spike ii §7 item 6: a blast or a break on this screen shakes it
@@ -419,7 +418,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       }
       // Paused, or a frozen online copy (a lost link): the callouts, flashes, heal motes and the charge pulse hold (polish i review).
       const frozen = source.paused() || source.live?.() === false;
-      stepFx(fx, frozen || holding ? 0 : fxDt(fx, dt));   // Feel-i: the kill's slow motion is render time only
+      stepFx(fx, frozen ? 0 : fxDt(fx, dt));   // Feel-i: the kill's slow motion is render time only
       stepPings(pings, frozen ? 0 : dt);
       trackSolution(fx, linedUp(laserSituation(d.tactical, fx.sinceShot, gunnerPresent(d))), frozen ? 0 : dt);
       recordTrails(fx, d.tactical, source.missilePrev, alpha);
@@ -445,7 +444,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting
-        if (!holding) layer.draw(model, combatModel({ ...input, t: frozen ? 0 : t, enemyArrow: model.arrows.find((a) => a.target === 'enemy') ?? null, goal: onConsole && seat === 'helm' && !goalUsed }), t);   // the blinks run on the presentation clock, paused or not
+        layer.draw(model, combatModel({ ...input, t: frozen ? 0 : t, enemyArrow: model.arrows.find((a) => a.target === 'enemy') ?? null, goal: onConsole && seat === 'helm' && !goalUsed }), t);   // the blinks run on the presentation clock, paused or not
         overlayView = mapOverlayOf(model.overlay);
       }
       // Sci-1 spec §7.3: Science's hover readout, from the crew ship's drawn position to the cursor.

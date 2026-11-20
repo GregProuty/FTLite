@@ -1139,3 +1139,17 @@ Spec `docs/superpowers/specs/2026-11-20-crew3d-prerendered-sprites-design.md` (s
   Screenshots: `C:\Users\djuar\FTLite-shots\crew3d\` (`hound-*-on.png` against `hound-*-off.png`; `build\x-zoom-walk.png` zoomed in). Only idle and walking were looked at in the running game; the work, down and boarder poses were checked on the rendered sheets and by the tests. In a duel, `duelWorking` only reports point-room fires and repairs, so fighting a plain room fire or patching a breach there still shows the idle pose (the particles have the same gap).
 
   Does it read as Diablo 2 in space? Things to tune: the size (`CREW3D_SCALE` in `crew3dModel.ts`), the tilt, light and palette (`tools/sprite-render/lookdev.json`, then re-render: about 17 minutes), the two suits and the raider (`figure.py`), and the walk (`anims.py`). The figures are placeholders built from simple shapes; a bought or CC0 model can replace them without touching the game side.
+
+## Asteroids look pass: rocks as background (2026-11-20)
+
+Spec `docs/superpowers/specs/2026-11-20-asteroids-look-design.md`. No plan: a small drawing-only change the owner approved in conversation, built test first.
+
+- [x] Automated (asteroids look): `npx vitest run` passes (518 files, 6225 tests, 3 skipped). This includes the rock body (the same `CRT.dim` fill and 1 px `CRT.mid` outline at wear 0, 0.2, 0.5, 0.8 and 1; the cracks one `CRT.faint` stroke per segment at alpha 0.6 with no highlight; nothing of a rock in `CRT.main` or `CRT.hot`) (`tests/rockLook.test.ts`, `tests/rockCracks.test.ts`), the effects (a split of either pattern or a dust is 6 `CRT.dim` specks and nothing else; a touch, a hard rock-rock bump and a ram draw nothing; the laser's chips and flare, the torpedo's blast and the autocannon's spark are unchanged; `FxState` has no hit-stop fields) (`tests/rockFx.test.ts`), and the track and the model (the history still resets on a jump, an r change, a kind change or a tick going backwards; no trail is kept; a rock draw has no `streak` and no `trail`) (`tests/rockTrack.test.ts`). `npx tsc -b` is clean and `npm run build` passes. Drawing only: no file under `src/renderer/src/sim/`, no wire schema and no golden changed, and SIM_VERSION is untouched.
+- [x] Screenshots (Claude, the built app at Weapons): worn rocks at wear 0.25, 0.5 and 1, and a torpedo's direct hit at 0, 0.5, 2 and 10 s, in `C:\Users\djuar\FTLite-shots\asteroids-look\`. Worn rocks match whole ones but for faint dark cracks; the pieces fly with no trail, streak, ring or shards.
+- [ ] Manual (owner): play a Single player duel and sit at Weapons.
+  1. Shoot a rock with the laser a few times without breaking it. Its outline and fill stay as they were; thin dark cracks appear and nothing on it gets brighter.
+  2. Break one with the laser and one with a torpedo. Each break is a small dim puff. There is no bright ring, no amber shards and no freeze of the picture. The torpedo's own blast still flashes.
+  3. Watch the pieces drift for half a minute. No lines follow them and none streak, however fast they fly.
+  4. Let two free rocks meet. Nothing sparks.
+
+  Do the rocks now read as background? Still as before, and yours to call: the 2 px screen shake when a rock breaks on screen (`BREAK_SHAKE` in `src/renderer/src/render/tactical/rockFx.ts`), the laser's hot chips off a rock, and the dotted predicted path of a targeted rock. The crack strength is `CRACK_ALPHA` in `src/renderer/src/render/tactical/tacticalModel.ts`.
