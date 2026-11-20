@@ -384,6 +384,19 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       // W-2 (pew pew spec §2): the MANUAL laser's aim line, dashed main, while it is charged.
       const la = c?.laserAim ?? null;
       if (la) { line.length = 0; line.push(la.x1, la.y1, la.x2, la.y2); segments(combat, dashLine(line, DASH, GAP, seg), 1, CRT.main); }
+      // W-4 spec §10: the Hound's selected arc edges (dim), its muzzle lines (the selected mid, the other dim), the reticle (a
+      // small cross, main) and AUTO's bracket on the enemy (hot once hostile, dim in the hold).
+      const ta = c?.turretArc ?? null;
+      if (ta) for (const side of [-1, 1]) {
+        const a = ta.angle + side * ta.half;
+        combat.moveTo(ta.x, ta.y).lineTo(ta.x + Math.sin(a) * ta.r, ta.y - Math.cos(a) * ta.r).stroke({ width: 1, color: CRT.dim });
+      }
+      for (const m of c?.muzzles ?? []) combat.moveTo(m.x1, m.y1).lineTo(m.x2, m.y2).stroke({ width: 1, color: m.selected ? CRT.mid : CRT.dim });
+      const rt = c?.reticle ?? null;
+      if (rt) combat.moveTo(rt.x - 6, rt.y).lineTo(rt.x - 2, rt.y).moveTo(rt.x + 2, rt.y).lineTo(rt.x + 6, rt.y).moveTo(rt.x, rt.y - 6).lineTo(rt.x, rt.y - 2).moveTo(rt.x, rt.y + 2).lineTo(rt.x, rt.y + 6).stroke({ width: 1, color: CRT.main });
+      const bk = c?.bracket ?? null;
+      if (bk) for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const)
+        combat.moveTo(bk.x + sx * bk.r, bk.y + sy * (bk.r - 5)).lineTo(bk.x + sx * bk.r, bk.y + sy * bk.r).lineTo(bk.x + sx * (bk.r - 5), bk.y + sy * bk.r).stroke({ width: 2, color: bk.live ? CRT.hot : CRT.dim });
       for (const r of c?.pewRounds ?? []) combat.moveTo(r.x1, r.y1).lineTo(r.x2, r.y2).stroke({ width: 2, color: CRT.hot });
       const gs = c?.gunSight ?? null;
       if (gs) {

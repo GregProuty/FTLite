@@ -30,22 +30,17 @@ describe('fineHeadingOf', () => {
 });
 
 describe('the Weapons map (spec §1)', () => {
-  it('draws the pew cone about the nose at the round reach, on Weapons only', () => {
-    const st = northFacing(), cam = createCamera(st.ships[0].x, st.ships[0].y, 0.5), own = worldToScreen(cam, vp, st.ships[0].x, st.ships[0].y);
-    const c = combatModel(input(st, cam, 'weapons'));
-    expect(c.pewCone).toEqual({ x: own.x, y: own.y, r: PEW_RANGE * 0.5, angle: 0, half: (classOf(st, 0).slots.pew!.arcSteps / AIM_STEPS) * 2 * Math.PI });   // review F5: from the class's arcSteps, as the clamp
+  // W-4 spec §10: the Hound's turreted pew draws no W-1 cone or aim line; the selected arc and the muzzle lines replace them
+  // (tests/w4Map.test.ts). The crew class's pew always has a turret, so no class keeps the cone / aim-line rules: the aim-line
+  // case is deleted and the cone case pins the arc's width and the absence of the cone.
+  it("draws no W-1 cone or aim line on the Hound's Weapons map; the turret arc keeps the pew's width", () => {
+    const st = northFacing(), cam = createCamera(st.ships[0].x, st.ships[0].y, 0.5);
+    const c = combatModel(input(st, cam, 'weapons', { x: 700, y: 300 }));
+    expect([c.pewCone ?? null, c.pewAim ?? null]).toEqual([null, null]);
     expect(PEW_HALF).toBeCloseTo(Math.PI / 3, 12);
-    expect(c.pewCone!.half).toBeCloseTo(PEW_HALF, 3);
-    expect(combatModel(input(st, cam, 'helm')).pewCone ?? null).toBeNull();
-  });
-  it('draws the aim line toward the pointer, clamped into the cone; none without a pointer', () => {
-    const st = northFacing(), cam = createCamera(st.ships[0].x, st.ships[0].y, 1), own = worldToScreen(cam, vp, st.ships[0].x, st.ships[0].y);
-    expect(combatModel(input(st, cam, 'weapons')).pewAim ?? null).toBeNull();
-    const ahead = combatModel(input(st, cam, 'weapons', { x: own.x, y: own.y - 100 })).pewAim!;
-    expect(ahead.x1).toBe(own.x); expect(ahead.x2).toBeCloseTo(own.x, 6); expect(ahead.y2).toBeCloseTo(own.y - PEW_RANGE, 6);
-    const behind = combatModel(input(st, cam, 'weapons', { x: own.x + 1, y: own.y + 100 })).pewAim!;   // just right of astern: the clockwise edge
-    const a = Math.atan2(behind.x2 - own.x, -(behind.y2 - own.y));
-    expect(a).toBeCloseTo(PEW_HALF, 3);
+    expect(c.turretArc!.half).toBeCloseTo(PEW_HALF, 3);
+    expect(c.turretArc!.r).toBe(PEW_RANGE * 0.5);
+    expect(c.turretArc!.half).toBeCloseTo((classOf(st, 0).slots.pew!.arcSteps / AIM_STEPS) * 2 * Math.PI, 12);
   });
   it('draws every pew round as a short streak ending at the round, on any console', () => {
     const st = northFacing(), cam = createCamera(st.ships[0].x, st.ships[0].y, 1);
