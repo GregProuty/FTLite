@@ -93,14 +93,21 @@ Every number is a starting value.
   - nothing else for the enemy: no hull, no heading mark, no torpedo, no rounds (the existing unseen rules).
   - **When it is drawn.** The model carries it as `TacticalDraw.blip?: { x, y, r, alpha } | null` in screen pixels.
     The circle is drawn when its ring crosses the view (`ringCrossesRect`, as the sensor ring's test) or its centre
-    is on screen. The `?` is drawn only when the centre is on screen. The ghosts' own test (a 40 px margin about the
+    is on screen. The `?` is drawn only when the centre is on screen (by the edge arrow's test, below). The ghosts' own test (a 40 px margin about the
     centre) is not used: it would drop a large circle whose centre is just off the view.
   - **The edge arrow.** While the enemy is unseen the scene leaves it out of `ships`, so today's enemy arrow is not
     built, and at the default zoom a blip is usually off the map. So when the ping's centre is off screen, the model
-    builds an edge arrow toward it with the existing `arrow()` helper, as a new `ArrowTarget` `'blip'` named `BLIP`.
-    Its distance is from the crew ship to the ping's centre, rounded to the nearest 100 and shown as `~<n>`. It is
-    not the `'enemy'` arrow, so the goal glow and the FIRING SOLUTION mark, which read the enemy arrow
-    (`weaponsModel.ts`), never attach to it.
+    builds an edge arrow toward it with the existing `arrow()` helper, as a new `ArrowTarget` `'blip'`. It is not the
+    `'enemy'` arrow, so the goal glow and the FIRING SOLUTION mark, which read the enemy arrow (`weaponsModel.ts`),
+    never attach to it.
+    - `ARROW_NAMES` gains `blip: 'BLIP'`.
+    - The helper sets every other arrow's `distance` to the exact rounded length and its label to the name and that
+      number. For `'blip'` it sets `distance = Math.round(d / 100) * 100`, with `d` the length from the crew ship to
+      the ping's centre, and the label `` `BLIP ~${distance}` ``.
+    - The layer's `arrowGlyph` picks its fill by target. A `'blip'` arrow gets its own case: hollow, stroked in
+      `CRT.mid` (the circle's tint) at the ping's alpha, so it does not read as the enemy's or the torpedo's arrow.
+    - "Off screen" is the helper's own test (the one that places an arrow at the edge). The `?` uses the same test,
+      so a ping's centre gets the `?` or the arrow, never both and never neither.
 - **The OUTSIDE readout** (`render/duel/readoutModel.ts`): the row `ENEMY  NO CONTACT` becomes `ENEMY  BLIP ~<n>`, where
   `n` is the distance from the crew ship to the **ping's centre**, rounded to the nearest 100. No bearing row, as
   today. With no blip (no enemy ship) the row is as today.

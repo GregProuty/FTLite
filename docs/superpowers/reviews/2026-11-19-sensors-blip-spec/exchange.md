@@ -105,3 +105,60 @@ Confirmed (`scene.ts` L446 passes the true enemy's `y` against the crew's). §3 
 
 ---
 
+# Round 2 (delta, reviewing 1ac33856, effort medium, 58 s, 242656 in / 209584 cached / 4786 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R2-F1 The 'blip' edge arrow's label and distance do not fit the existing arrow() helper as the spec says they do
+Spec §3 says the arrow is built 'with the existing arrow() helper', named BLIP, with its distance 'rounded to the nearest 100 and shown as ~<n>'. The helper cannot do that unchanged. It always sets `distance` to the exact rounded length and the label to `${ARROW_NAMES[target]} ${distance}`, which gives `BLIP 1760` and not `BLIP ~1800`. The spec does not say whether `ArrowDraw.distance` holds the exact or the rounded value, or how the label is formed. It also does not say how the layer's `arrowGlyph` fills a 'blip' arrow. That function picks its fill by target, and a 'blip' would fall through to CRT.main at full size, the same look as the torpedo's colour. · spec L100-101, L138-139; tacticalModel.ts:L583-584 (exact `distance`, label `${ARROW_NAMES[target]} ${distance}`); tacticalModel.ts:L423 (ARROW_NAMES is a Record<ArrowTarget,string>, so 'blip' must be added); tacticalLayer.ts:L180-186 (arrowGlyph fill by target, no 'blip' case); tacticalLayer.ts:L507 (draws a.label). · Two implementers would give different labels: one would keep the helper's exact number and the other would special-case it. An exact distance on the arrow label would also undo the readout's deliberate rounding, because the distance to the ping centre is otherwise only shown to the nearest 100. The §4 test 'labelled BLIP with ~<n>' fails if the helper is used unchanged. · State in §3: add `blip: 'BLIP'` to ARROW_NAMES. For target 'blip' the helper sets `distance = Math.round(d / 100) * 100` and `label = `BLIP ~${distance}``. Name the glyph, e.g. 'arrowGlyph fills a blip arrow like the enemy's (CRT.glass with a CRT.main stroke) at alpha 0.6', or say it uses the default CRT.main fill.
+
+## Prior findings
+- R1-F1: resolved — §2.3 L47-53 times pings on TacticalState.tick (state.ts:L175, read only) with BLIP_PING_TICKS 120 and index floor(tick/120). Ghosts keep `now`. §4 L132 adds the frozen-tick test. §7 item 5 records the call.
+- R1-F2: resolved — L70-73 define madeAt and age = (tick − madeAt)/((index+1)·120 − madeAt), clamped. The denominator is always ≥ 1 because madeAt < (index+1)·120. The tracker shape at L83 includes madeAt. §4 L131 tests a ping made 78 ticks in.
+- R1-F3: resolved — L98-103 add a separate 'blip' ArrowTarget via arrow(), not 'enemy'. scene.ts:L422 reads only target === 'enemy' for enemyArrow, so the glow and FIRING SOLUTION do not attach. The label and distance format against the helper is raised as a new P2.
+- R1-F4: resolved — L94-97 name TacticalDraw.blip in screen px. The circle draws when ringCrossesRect (tacticalModel.ts:L266) passes or the centre is on screen, and the `?` only when the centre is on screen. The test is at L137-138.
+- R1-F5: resolved — L107-110 make `fog?: FogView | null` optional, give the exact template text and NO CONTACT as the default, and leave the count-only calls and existing tests unchanged. The test is at L140-141.
+- R1-F6: resolved — §2.4 L80-81 make `blip` optional, so the literals compile. §4 L121-123 lists the rewritten enemy-ghost cases and keeps the NO CONTACT case.
+- R1-F7: resolved — L61-64 give a full murmur-style mix with Math.imul and >>>, and how u and v are taken from it. L65 excludes Math.random and the sim RNG. §4 L128-129 pins three pairs. (h & 0xffff)/65536 and (h>>>16)/65536 both fall in [0,1).
+- R1-F8: resolved — L111-113 have the scene use the ping centre's y for the sit card while the enemy is unseen. That replaces the true-y test at scene.ts:L446. fogView is computed earlier in the same frame (scene.ts:L244). The test is at §4 L142.
+
+## Verified
+- TacticalState.tick exists (sim/tactical/state.ts:L175) and starts at 0 each state (L284)
+- stepFog is called each frame with the state and epoch (scene.ts:L244), so the tracker can read t.tick without a signature change; FogTracker already holds epoch (fogModel.ts:L17, L24)
+- arrow() and ARROW_NAMES exist as cited (tacticalModel.ts:L423, L578-588); the enemy arrow is built only for ships in input.ships (L588)
+- enemyArrow is selected by target === 'enemy' only (scene.ts:L422), so a 'blip' arrow cannot pick up the goal glow or FIRING SOLUTION
+- ringCrossesRect exists with signature (x,y,r,w,h) (tacticalModel.ts:L266) and is the sensor ring's test (L654)
+- Hash formula is well-defined in 32-bit JS arithmetic and yields u,v in [0,1)
+- Age denominator is positive for every ping, so no divide-by-zero
+- §5 L149-151 now names the scene edits for the readout and the sit card, consistent with §3
+- §7 items 5 and 6 match the §2.3 and §3 changes; no contradiction with the Fixed decisions (the blip still never fades, 2 s holds, the radius is unchanged)
+
+## Not verified
+- Whether TacticalState.tick can move backward on an online client (a resync or snapshot). The age clamp makes that safe, but a fresh ping would be made. Not traced.
+- Whether edgePoint's 'off screen' (with the reserved areas) matches the `?` test's 'centre on screen'. A centre under a reserved panel might get both a `?` and an arrow, or neither. Not traced.
+- The pinned hash values themselves (no test was run).
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json` against the subject at `1ac33856`. 1 accepted, 0 rejected, 0 deferred. The reviewer confirmed all eight round 1 fixes as resolved (R1-F1 to R1-F8); the verdict is "ready with P2s".
+
+## R2-F1 [P2]: The 'blip' edge arrow's label and distance do not fit the existing arrow() helper as the spec says they do
+
+Confirmed: `tacticalModel.ts` L583-L584 sets every arrow's `distance` to the exact rounded length and its label to the name and that number, `ARROW_NAMES` (L423) is a record over `ArrowTarget`, and the layer's `arrowGlyph` (`tacticalLayer.ts` L180-L186) fills by target with no blip case. §3 now says: `ARROW_NAMES` gains `blip: 'BLIP'`; for `'blip'` the helper sets `distance` to the nearest 100 and the label to `BLIP ~<distance>`; `arrowGlyph` gets its own hollow `CRT.mid` case at the ping's alpha. It also ties the `?` to the same off-screen test the arrow uses, so a centre gets one or the other (the reviewer's second not-verified item).
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-19-sensors-blip-design.md
+
+<!-- end -->
+
+---
+
