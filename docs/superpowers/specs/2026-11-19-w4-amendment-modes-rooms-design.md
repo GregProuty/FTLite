@@ -296,6 +296,16 @@ W-4a is not touched. The W-4b and W-4c plans are amended, and the builder resume
   - Task 7 (the online prediction) takes §2.6;
   - new tasks for §3: the round's `room` and the hit rules (sim); E / Q, the window click, the bracket and the hint row
     (app); the ladder report's room levels (with Task 10).
+- **The smokes.** The duel app smoke (step 5) and the internet smoke launch a MANUAL torpedo with V then F (W-4a).
+    With V retired at the Hound's seat they select the torpedo (3), press R, then F. The task that binds R changes
+    both.
+  - **The copied E / Q block.** W-4a's Hound branch in `runtime.ts` copies the Flight seat's E / Q torpedo-room block
+    (the builder's deferred review note), and `onlineDuel.ts` mirrors it. The task that moves E / Q to the target room
+    (§3.6) removes the copy from the Hound's branch in both files; the Flight seat keeps its own.
+  - **State at the hold** (the builder, 3b2a90c5): W-4b Tasks 1 and 2 are done. `gunsManual` is in the ship tail, the
+    flags list, `validateTacticalValues`' mode check, `tests/w4Turret.test.ts`, the `tacticalDeterminism` flatten key
+    guard and the Valkyrn digest's left-out list. `turretAim` is on every held schema, the authority's lists and
+    `ShipInput`, and nothing reads it yet.
 - **W-4c:** §7's text (§2.6) and its tests' key names. No rule changes.
 - **Gate entries** (`docs/gates.md`): W-4b's manual box gains "R flips the selected weapon's tag, Shift+R both guns;
   Q/E moves the bracket in the enemy window; six autocannon hits or two pew pew hits by hand take the bracketed room
