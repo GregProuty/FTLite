@@ -45,6 +45,11 @@ export function Settings() {
           onChange={(e) => actions.setLaserFit(e.target.checked)} />
         Valkyrn: fit laser instead of gun
       </label>
+      <label>
+        <input type="checkbox" data-testid="fps-counter" aria-label="FPS counter" checked={settings.fpsCounter} disabled={!settings.available}
+          onChange={(e) => actions.setFpsCounter(e.target.checked)} />
+        FPS counter
+      </label>
       <MenuButton id="fullscreen" text={`Fullscreen: ${fullscreen === null ? '…' : fullscreen ? 'On' : 'Off'}`} onClick={actions.toggleFullscreen}
         enabled={settings.fullscreenAvailable && fullscreen !== null} />
       <p data-testid="fullscreen-note">{browser.web ? BROWSER_F11_TEXT : `${FULLSCREEN_KEY} also toggles fullscreen.`}</p>

@@ -21,9 +21,9 @@ export const DEFAULT_THROTTLE_TAP_MS = 200;
 /** Feel-i: `shake`, the console maps' screen shake (off, low, full); a version 2 record without it reads full. Valkyrn spec
  *  §8, §9: `soloShip`, the Single player ship last picked, and `valkyrnLaserFit`, the developer laser fit; a record without
  *  them reads the first solo ship and the gun. `mapGrid` (owner 2026-11-19), the console map's grid; a version 2 record (written with the old default, 'gravity') or a record without
- *  it reads DEFAULT_MAP_GRID ('off'); UI round spec §1.3 made the record version 3 for this. `throttleTapMs` (helm round 2 §6.3): the throttle tap time, one of THROTTLE_TAP_STEPS; a record without it, or with any other value, reads DEFAULT_THROTTLE_TAP_MS. */
-export interface Settings extends Volumes { version: 3; shake: ShakeSetting; soloShip: SoloShipId; valkyrnLaserFit: boolean; mapGrid: MapGridSetting; throttleTapMs: number }
-export const DEFAULT_SETTINGS: Settings = { version: 3, master: 1, music: 0.5, effects: 1, shake: DEFAULT_SHAKE, soloShip: DEFAULT_SOLO_SHIP, valkyrnLaserFit: false, mapGrid: DEFAULT_MAP_GRID, throttleTapMs: DEFAULT_THROTTLE_TAP_MS };   // music at half (owner 2026-11-17)
+ *  it reads DEFAULT_MAP_GRID ('off'); UI round spec §1.3 made the record version 3 for this. `throttleTapMs` (helm round 2 §6.3): the throttle tap time, one of THROTTLE_TAP_STEPS; a record without it, or with any other value, reads DEFAULT_THROTTLE_TAP_MS. `fpsCounter` (UI round §1.7): the FPS readout; a record without it reads on. */
+export interface Settings extends Volumes { version: 3; shake: ShakeSetting; soloShip: SoloShipId; valkyrnLaserFit: boolean; mapGrid: MapGridSetting; throttleTapMs: number; fpsCounter: boolean }
+export const DEFAULT_SETTINGS: Settings = { version: 3, master: 1, music: 0.5, effects: 1, shake: DEFAULT_SHAKE, soloShip: DEFAULT_SOLO_SHIP, valkyrnLaserFit: false, mapGrid: DEFAULT_MAP_GRID, throttleTapMs: DEFAULT_THROTTLE_TAP_MS, fpsCounter: true };   // music at half (owner 2026-11-17)
 
 const step = (v: unknown, fallback: number): number => (typeof v === 'number' && VOLUME_STEPS.includes(v) ? v : fallback);
 
@@ -38,7 +38,8 @@ export function loadSettings(storage: RecordStorage): Settings {
       shake: validShake(r.shake) ? r.shake : DEFAULT_SETTINGS.shake,
       soloShip: isSoloShipId(r.soloShip) ? r.soloShip : DEFAULT_SETTINGS.soloShip, valkyrnLaserFit: r.valkyrnLaserFit === true,
       mapGrid: r.version === 3 && validMapGrid(r.mapGrid) ? r.mapGrid : DEFAULT_SETTINGS.mapGrid,   // UI round §1.3: a v2 record's grid was the old default
-      throttleTapMs: typeof r.throttleTapMs === 'number' && THROTTLE_TAP_STEPS.includes(r.throttleTapMs) ? r.throttleTapMs : DEFAULT_THROTTLE_TAP_MS };   // helm round 2 §6.3
+      throttleTapMs: typeof r.throttleTapMs === 'number' && THROTTLE_TAP_STEPS.includes(r.throttleTapMs) ? r.throttleTapMs : DEFAULT_THROTTLE_TAP_MS,
+      fpsCounter: r.fpsCounter !== false };   // helm round 2 §6.3
   } catch { return { ...DEFAULT_SETTINGS }; }
 }
 

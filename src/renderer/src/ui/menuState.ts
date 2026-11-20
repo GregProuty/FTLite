@@ -29,7 +29,7 @@ export interface ShipChoice { id: string; name: string; line: string }
 /** Valkyrn spec §8, §9: `ships` the picker's list, `soloShip` the remembered choice, `valkyrnLaserFit` the developer switch. */
 export interface SettingsSlice extends Volumes {
   available: boolean; fullscreenAvailable: boolean; controls: readonly ControlSection[]; shake: import('../render/shake').ShakeSetting; mapGrid: import('../render/tactical/mapGrid').MapGridSetting;
-  ships: readonly ShipChoice[]; soloShip: string; valkyrnLaserFit: boolean; throttleTapMs: number;   // helm round 2 §6.3
+  ships: readonly ShipChoice[]; soloShip: string; valkyrnLaserFit: boolean; throttleTapMs: number; fpsCounter: boolean;   // helm round 2 §6.3; UI round §1.7
 }
 /** The canvas's place (React UI spec §4): the strip above it, the letterbox scale and offsets, the device pixel ratio. */
 export interface LayoutSlice { stripHeight: number; scale: number; offsetX: number; offsetY: number; dpr: number }
@@ -48,6 +48,8 @@ export interface UiState {
   hud: import('../render/hudModel').HudModel | null;
   /** The online duel's F3 latency overlay lines (H-2b); null while hidden. */
   latency: readonly string[] | null;
+  /** UI round §1.7: the last FPS reading (main.ts's meter, at most twice a second); null before the first. */
+  fps: number | null;
   /** The CRT strength setting (CRT map spec section 4), written at boot and by the dev F10 cycle (app/crtBoot.ts). */
   crt: import('../render/crt').CrtSetting;
   /** Bumped by a sink each time its slice goes null -> non-null: the regions' error-boundary reset keys (spec §2). */
