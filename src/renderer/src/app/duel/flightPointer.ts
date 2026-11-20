@@ -81,3 +81,10 @@ export function helmSteer(i: { pointer: Point | null; ship: Point; zoom: number;
   const p = i.pointer;
   return p && onHelmMap(p, i.contactShown) && Math.hypot(p.x - i.ship.x, p.y - i.ship.y) > pickRadius(i.zoom) ? headingOf(p.x - i.ship.x, p.y - i.ship.y) : null;
 }
+/** W-4 spec §7: the bearing the held left button steers the crew's MANUAL torpedo to on the Weapons map: from the torpedo's
+ *  drawn marker to the pointer while it is on the open map (onWeaponsMap) and off the marker, else null (send nothing: the
+ *  last bearing stands). The Helm's helmSteer, aimed from the torpedo instead of the ship. */
+export function torpedoSteer(i: { pointer: Point | null; torpedo: Point; zoom: number; contactShown: boolean; statusRows: number }): number | null {
+  const p = i.pointer;
+  return p && onWeaponsMap(p, i.contactShown, i.statusRows) && Math.hypot(p.x - i.torpedo.x, p.y - i.torpedo.y) > pickRadius(i.zoom) ? headingOf(p.x - i.torpedo.x, p.y - i.torpedo.y) : null;
+}

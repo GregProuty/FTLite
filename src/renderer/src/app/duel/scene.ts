@@ -47,7 +47,7 @@ import type { AimSample, HeldFlags } from './input';
 import type { ContactController } from './contactController';
 import type { MapRequests } from './mapRequests';
 import { fineHeadingOf, headingOf, pickRadius } from '../../render/tactical/tacticalModel';
-import { flightPointer, helmSteer, onWeaponsMap } from './flightPointer';
+import { flightPointer, helmSteer, onWeaponsMap, torpedoSteer } from './flightPointer';
 import { flightAlert, type RefusedControl } from '../../render/duel/situationModel';
 import { pingAllowed, pushPing, stepPings, type Ping, type PingRequest } from '../../render/duel/pingModel';
 import type { TorpedoTone } from './duelAudio';
@@ -221,6 +221,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
   const pings: Ping[] = [];
   let lastPing: number | null = null, refused: (Refusal & { at: number }) | null = null;
   let lastAimed: string | null = null;   // the weapon picked up on the last drawn frame (Valkyrn spec §5.1: right button)
+  let manualPrev = false;   // W-4c Decision 14: whether the crew's MANUAL torpedo flew on the last drawn frame
   const fog = createFog();   // Engineering spike §10.4: this screen's ghosts
   // Own ship window spec §4: the fire watch (every drawn frame, whatever the view) and the border flash's end (presentation seconds).
   let fires: FireWatch | null = null, flashUntil = 0;
@@ -301,19 +302,6 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         if (aim.held && !onShip) preview = h;
         if (aim.press || aim.release) options.requests?.heading(h);
       }
-      // W-3 (pew pew spec §3): at Weapons, while the crew's MANUAL torpedo flies, the right button steers it: a press, every
-      // frame of a drag and a release on the open map ask for the bearing from the torpedo's drawn marker to the pointer as
-      // the heading it holds (on the torpedo itself: clear). Not while a weapon is picked up, and not on the frame its right
-      // button cancels the pick-up: the targeting line's own listener has already dropped it, so the last frame's pick-up
-      // counts too (`lastAimed`, as the Flight seat below does).
-      if (aim && onMap && station === 'weapons' && view === 'weapons' && running && !overlay.layerPaused && manualTorpedoFlying(d.tactical) && lastAimed === null && (contact?.aimWeapon() ?? null) === null
-        && onWeaponsMap(aim, contact?.state() != null, readoutRows({ duel: d, mode: 'weapons', active: source.active(), console: onConsole }).length)) {
-        const m = interpolatedMissile(d.tactical, source.missilePrev, alpha, CREW_SLOT);
-        if (m) {
-          const s = worldToScreen(cam!, viewport, m.x, m.y), dx = aim.x - s.x, dy = aim.y - s.y;
-          options.requests?.torpHeading(Math.hypot(dx, dy) <= pickRadius(cam!.zoom) ? -1 : headingOf(dx, dy));
-        }
-      }
       // Feel-ii §2.7: a ping (a middle click, or G at the pointer) on a console map: on the enemy when it is under the
       // pointer, else the map point. Single player shows it at once (one a second); online it goes out and comes back.
       const pingAt = options.takePingAt?.() ?? null, nowS = performance.now() / 1000;
@@ -351,6 +339,23 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), p = options.pointer?.() ?? null;
         const h = helmSteer({ pointer: p, ship: worldToScreen(cam!, viewport, b.x, b.y), zoom: cam!.zoom, contactShown: shown });
         if (h !== null) { options.requests?.steer(h); steerTo = p; }   // final review M1: the marker only while a steer goes out
+      }
+      // W-4c Decision 14: a MANUAL launch drops a weapon pick-up (a TORPEDO card click both selects and picks it up), so the
+      // held left button steers at once instead of belonging to the contact window. Once, on the flight's first drawn frame.
+      const manualNow = manualTorpedoFlying(d.tactical);
+      if (manualNow && !manualPrev && station === 'weapons') contact?.cancelAim();
+      manualPrev = manualNow;
+      // W-4 spec §7 (W-4c): at Weapons, while the crew's MANUAL torpedo flies, the held left button steers it, every frame: the
+      // bearing from the torpedo's drawn marker to the pointer while it is on the open map and off the marker (else the last
+      // bearing stands). Not while a weapon is picked up (the button is the window's then).
+      if (onMap && station === 'weapons' && view === 'weapons' && running && !overlay.layerPaused && manualNow
+        && (contact?.aimWeapon() ?? null) === null && (options.leftHeld?.() ?? false)) {
+        const m = interpolatedMissile(d.tactical, source.missilePrev, alpha, CREW_SLOT);
+        if (m) {
+          const h = torpedoSteer({ pointer: options.pointer?.() ?? null, torpedo: worldToScreen(cam!, viewport, m.x, m.y), zoom: cam!.zoom, contactShown: shown,
+            statusRows: readoutRows({ duel: d, mode: 'weapons', active: source.active(), console: onConsole }).length });
+          if (h !== null) options.requests?.torpHeading(h);
+        }
       }
       const vent = source.helmVent?.() ?? d.helmVent;   // §6: the puffs and the hiss
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame

@@ -679,7 +679,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       pacer.pump();
       frameAlpha = alphaAt(deps.now(), lastTickTime);
       const shown = viewOf(), cam = shown === 'interior' ? null : cameras[viewCamera(shown)];
-      if (cam) cameraInput.apply(cam, k, pointer, shown === 'helm' || shown === 'flight' || (shown === 'weapons' && manualTorpedoFlying(d.tactical)));   // the Flight seat's right button is the torpedo, not a pan; W-3: at Weapons, a MANUAL torpedo's held heading
+      if (cam) cameraInput.apply(cam, k, pointer, shown === 'helm' || shown === 'flight');   // the Flight seat's right button is the torpedo, not a pan; W-4 spec §7: at Weapons it pans again
       else cameraInput.applyInterior(interiorCamera, k, pointer);
       trackManualTorpedo(cameras.weapons, torpFollow, manualTorpedoFlying(d.tactical));   // W-3 (pew pew spec §3): follow a MANUAL torpedo, then go back
       for (const c of [cameras.helm, cameras.weapons, cameras.science]) {

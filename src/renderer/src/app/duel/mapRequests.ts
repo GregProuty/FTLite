@@ -25,8 +25,7 @@ export interface MapRequests {
   reticleAim(): number | null;
   /** W-2: a new round starts with no reticle (the laser then aims along the nose). */
   resetReticle(): void;
-  /** W-3: the right button on the Weapons map while the crew's MANUAL torpedo flies: the bearing (a heading index) from its
-   *  drawn marker to the pointer, or −1 on the torpedo itself (clear the hold). */
+  /** W-3, W-4 spec §7: the MANUAL torpedo's held heading from the Weapons map's LMB steer (a heading index 0..255). */
   torpHeading(h: number): void;
   /** W-3: the latest of those since the last take, or null. */
   takeTorpHeading(): number | null;

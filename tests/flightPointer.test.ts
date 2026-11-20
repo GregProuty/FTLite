@@ -1,7 +1,7 @@
 // Valkyrn spec §5.1, §6.2 (review R1-F1, R1-F3): the Flight map's pointer sends a bearing only over the open map, never
 // over the console blocks or the shown contact window, and the right button launches only when no weapon is picked up.
 import { describe, expect, it } from 'vitest';
-import { flightPointer, onFlightMap } from '../src/renderer/src/app/duel/flightPointer';
+import { flightPointer, onFlightMap, torpedoSteer } from '../src/renderer/src/app/duel/flightPointer';
 import { CONTACT, FLIGHT, OWN_SHIP, SIDE, STATION, stationTop, TABS } from '../src/renderer/src/render/duel/consoleLayout';
 import { headingOf } from '../src/renderer/src/render/tactical/tacticalModel';
 
@@ -44,5 +44,17 @@ describe('the Flight right button (Valkyrn spec §5.1)', () => {
     expect(at(open, false, true, false).launch).toBe(true);
     expect(at(open, false, true, true).launch).toBe(false);
     expect(at(open, false, false, false).launch).toBe(false);
+  });
+});
+
+describe('torpedoSteer (W-4 spec §7)', () => {
+  it('the bearing from the torpedo\'s marker to the pointer on the open Weapons map; null on the marker, off the map or over a block', () => {
+    const torpedo = { x: 640, y: 300 };
+    expect(torpedoSteer({ pointer: { x: 740, y: 300 }, torpedo, zoom: 1, contactShown: false, statusRows: 0 })).toBe(64);   // east
+    expect(torpedoSteer({ pointer: { x: 640, y: 200 }, torpedo, zoom: 1, contactShown: false, statusRows: 0 })).toBe(0);    // north
+    expect(torpedoSteer({ pointer: torpedo, torpedo, zoom: 1, contactShown: false, statusRows: 0 })).toBeNull();            // on it: the last bearing stands
+    expect(torpedoSteer({ pointer: null, torpedo, zoom: 1, contactShown: false, statusRows: 0 })).toBeNull();
+    expect(torpedoSteer({ pointer: { x: -5, y: 300 }, torpedo, zoom: 1, contactShown: false, statusRows: 0 })).toBeNull();
+    expect(torpedoSteer({ pointer: { x: STATION.x + 20, y: stationTop('weapons') + 10 }, torpedo, zoom: 1, contactShown: false, statusRows: 0 })).toBeNull();   // over the Weapons block
   });
 });
