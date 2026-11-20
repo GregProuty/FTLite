@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
 import type { CommandResult, DuelCommand, HeldInput } from '../src/renderer/src/net/contracts';
+import type { DuelPublication } from '../src/renderer/src/clientControl/duelClient';
 import type { DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
@@ -25,26 +26,32 @@ import type { ContactController, ContactSync } from '../src/renderer/src/app/due
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 type Sent = { kind: 'held'; held: HeldInput } | { kind: 'command'; command: DuelCommand };
-interface Pub { publicationSequence: number; tick: number; phase: string; pauseReason: string | null; pauseOwner: number | null; heldHighWater: number[] }
+type Pub = DuelPublication;
 /** A stub of the duel stream client: the test publishes replicas and reads what the session sent. */
 function stubClient() {
   let replica: DuelState | null = null, pub: Pub | null = null, sequence = 0, heldSequence = 0, commandSequence = 0, status = 'pending';
+  let revision = 0, lastPhaseSeen = 'running';
   const sent: Sent[] = [], events: unknown[] = [], neutralized: number[] = [], results: CommandResult[] = [], ids: { player: number; sequence: number }[] = [];
   return {
     sent, events, neutralized, results, ids,
     ready() { status = 'ready'; },
     commands: () => sent.flatMap((s) => (s.kind === 'command' ? [s.command] : [])),
     helds: () => sent.flatMap((s) => (s.kind === 'held' ? [s.held] : [])),
-    publish(d: DuelState, phase = 'running', pause: { reason: string | null; owner: number | null } = { reason: null, owner: null }) {
-      const next = loadDuelSnapshot(CUTTER, saveDuelSnapshot(d, DIGEST), DIGEST);
+    publish(d: DuelState, phase = 'running', pause: { reason: string | null; owner: number | null } = { reason: null, owner: null }, water: { command?: number[]; held?: number[]; heldInput?: HeldInput[] } = {}) {
+      const snapshot = saveDuelSnapshot(d, DIGEST), next = loadDuelSnapshot(CUTTER, snapshot, DIGEST);
       if (replica) disposeDuel(replica);
       replica = next; sequence++;
-      pub = { publicationSequence: sequence, tick: sequence * 3, phase, pauseReason: pause.reason, pauseOwner: pause.owner, heldHighWater: [0, 0] };
+      if (phase !== lastPhaseSeen) { revision++; lastPhaseSeen = phase; }   // a pause or a resume is a control change
+      const n = d.interior.playerCount, zeros = Array<number>(n).fill(0);
+      pub = { runId: 'c'.repeat(32), tick: d.interior.tick, publicationSequence: sequence, snapshot, hash: snapshot.header.hash, phase: phase as Pub['phase'],
+        pauseOwner: pause.owner, controlRevision: revision, pauseReason: pause.reason, lagTicks: 0, tickTimeMs: null,
+        commandHighWater: water.command ?? zeros, heldHighWater: water.held ?? zeros, auxiliaryHighWater: zeros, eventSequence: 0,
+        held: water.heldInput ?? Array.from({ length: n }, () => ({ moveX: 0, moveY: 0, interactHeld: false })) };
     },
     state: () => replica, publication: () => pub,
     command(player: number, command: DuelCommand) { sent.push({ kind: 'command', command }); const id = { player, sequence: ++commandSequence }; ids.push(id); return id; },
     held(_player: number, held: HeldInput) { sent.push({ kind: 'held', held: { ...held } }); return ++heldSequence; },
-    neutralize(player: number) { neutralized.push(player); },
+    neutralize(player: number): number | null { neutralized.push(player); return null; },
     commandStatus: () => ({ state: status }),
     takeResults: () => results.splice(0), takeEvents: () => events.splice(0),
     dispose() { if (replica) disposeDuel(replica); replica = null; pub = null; }
@@ -952,3 +959,49 @@ describe('Science and the frequency online (Sci-1 spec §5, §7.3, §7.4)', () =
   });
 });
 
+describe('the session predicts (Net-4a §3.3, §3.6)', () => {
+  it('one local tick per 1000/60 ms: a 50 ms pump sends three held frames; a 200 ms pump runs at most LOCAL_TICKS_MAX', () => {
+    const r = rig(0), c = r.attach();
+    const before = c.helds().length;
+    r.pump(50);
+    expect(c.helds().length - before).toBe(3);
+    const mid = c.helds().length;
+    r.pump(200);
+    expect(c.helds().length - mid).toBe(4);
+    r.dispose();
+  });
+  it('the first tick of a pump takes the presses; the later ones repeat its held input with no commands', () => {
+    const r = rig(1, undefined, undefined, undefined, ShipClass.ValkyrnLaser), c = r.attach();   // seat 1 at the ValkyrnLaser's Weapons: Space charges the laser (the Cutter's Hound-style Weapons seat ignores Space)
+    const before = c.commands().length;
+    r.key('keydown', 'Space'); r.key('keyup', 'Space'); r.pump(50);
+    expect(c.commands().slice(before).filter((x) => x.kind === 'laserCharge')).toHaveLength(1);
+    r.dispose();
+  });
+  it('the scene draws P ahead of the confirmed replica; confirmed() is the replica', () => {
+    const r = rig(0), c = r.attach();
+    for (let k = 0; k < 5; k++) r.pump();
+    session_frame(r);
+    const src = h.source as unknown as { duel: DuelState; confirmed(): DuelState };
+    expect(src.duel.interior.tick).toBeGreaterThan(c.publication()!.tick);
+    expect(src.confirmed()).toBe(c.state());
+    r.dispose();
+  });
+  it('an unfocused window\'s prediction keeps stepping (its entries are neutral)', () => {
+    const r = rig(0), c = r.attach();
+    r.session.setFocused(false);
+    for (let k = 0; k < 4; k++) r.pump();
+    session_frame(r);
+    expect((h.source as unknown as { duel: DuelState }).duel.interior.tick).toBe(c.publication()!.tick + 5);
+    r.dispose();
+  });
+  it('a link close drops the prediction: the frozen copy is drawn', () => {
+    const r = rig(0); r.attach();
+    for (let k = 0; k < 3; k++) r.pump();
+    r.closeLink(); session_frame(r);
+    const src = h.source as unknown as { duel: DuelState; confirmed(): DuelState };
+    expect(src.duel).toBe(src.confirmed());
+    r.dispose();
+  });
+});
+/** One drawn frame (the mocked scene records the source it was given). */
+function session_frame(r: ReturnType<typeof rig>): void { r.session.frame(); }

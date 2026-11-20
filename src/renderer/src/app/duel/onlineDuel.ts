@@ -10,7 +10,8 @@ import { createPortLink } from '../../../../network/portLink';
 import { browserPortEndpoint } from '../../../../network/transport/bridge';
 import { classifyStreamPacket } from '../../../../network/state/imageCodec';
 import { createDuelRemoteClient } from '../../../../network/modes/duelStream';
-import type { CommandId, DuelCommand, HeldInput, Link, Scheduler, Cue } from '../../net/contracts';
+import type { CommandEnvelope, CommandId, DuelCommand, HeldInput, Link, Scheduler, Cue } from '../../net/contracts';
+import { createDuelPredictor, type DuelPredictor, type LocalInput } from '../../clientControl/duelPredictor';
 import { arrivalJitter, latencyFigure, type DuelPlaytestRecord } from '../../net/duelRecord';
 import type { ShipLayout } from '../../sim/ship/schema';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../../sim/duel/snapshot';
@@ -64,6 +65,9 @@ export const LINK_POLL_MS = 1000, LIVE_SAMPLES = 300;
 const keysOnly = (k: KeySample): KeySample => ({ ...k, presses: { ...emptyPresses(), zoomIn: k.presses.zoomIn, zoomOut: k.presses.zoomOut, camera: k.presses.camera } });
 /** Playtest2feedback Decision 14: the most unacknowledged held frames the local throttle prediction counts. */
 export const UNACKED_MAX = 30;
+/** Net-4a §3.3: the local tick (60 a second, as the authority's tick driver) and the most one pump runs; the rest are dropped. */
+export const LOCAL_TICK_MS = 1000 / 60, LOCAL_TICKS_MAX = 4;
+const neutral = (): HeldInput => ({ moveX: 0, moveY: 0, interactHeld: false });
 /** Playtest2feedback §3, §4, §4a: this seat's held frame. At the crew Helm (a newtonianHelm class): A/D's turn, the held
  *  throttle and thrusters and the left button's steer (crewHelmHeld). Elsewhere, and on any other class: quantised to -1,
  *  0 and 1 (H-2 spec §3), with Space at the Helm as auto-face (Feel-i). W-4 spec §11: at the Hound's Weapons seat,
@@ -157,6 +161,12 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   // and Q step from, so two quick presses step twice before the replica catches up.
   let lockSent: { room: number; sequence: number; round: number } | null = null;
   const torpSent = new Set<number>();
+  // Net-4a §3.3, §3.4: the predictor (owned with the stream client), the last publication it was given, the local tick
+  // clock, this tick's commands (collected by send), a neutralize's held sequence for the next entry, and the timings (§3.10).
+  let predictor: DuelPredictor | null = null, confirmedSequence = 0, clockBase: number | null = null, localDone = 0, lastLocalAt = 0;
+  let collected: CommandEnvelope<DuelCommand>[] | null = null, neutralSequence: number | null = null;
+  const confirmSamples: number[] = [], tickSamples: number[] = [];
+  const keep = (list: number[], ms: number): void => { list.push(ms); if (list.length > LIVE_SAMPLES) list.shift(); };
   const heldStamps: { sequence: number; at: number }[] = [], commandStamps = new Map<number, number>(), pewSent = new Set<number>(), heldSamples: number[] = [], commandSamples: number[] = [], roundGaps: number[] = [];
   // The link (H-2b): the route label and RTT from main, the round's RTT samples; the overlay's recent delays.
   const liveHeld: number[] = [], liveCommand: number[] = [], roundRtt: number[] = [], debug = createKeyToggle(window as unknown as KeyTarget);
@@ -184,20 +194,22 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (!client || !descriptor) return null;
     const id = client.command(descriptor.seatId, command);
     if (id && command.kind !== 'presence') commandStamps.set(id.sequence, deps.now());
+    // Net-4a §3.3: this local tick's commands go into its log entry; setPaused, rematch and presence are never predicted.
+    if (id && collected && command.kind !== 'setPaused' && command.kind !== 'rematch' && command.kind !== 'presence') collected.push({ runId: descriptor.runId, id, requestedTick: 0, command });
     return id;
   }
   /** The authority's held frame is neutral once input stops, so the local prediction (throttle ramp, vent, puffs) drops too. */
   function neutralSource(): void { source?.sent({ moveX: 0, moveY: 0, interactHeld: false }); source?.unacked(0); }
   function stopInput(): void {
     if (client && descriptor && producing) {
-      client.neutralize(descriptor.seatId);   // FTL targeting spec §2: the crew's Space is a single press, so there is no held charge to let go of
+      const s = client.neutralize(descriptor.seatId); if (s !== null) neutralSequence = s;   // Net-4a §3.3: the next entry carries it. FTL targeting spec §2: the crew's Space is a single press, so there is no held charge to let go of
     }
     producing = false; keyboard.clear(); pointer.clear(); crewHelmPrev = false;   // I1: back at the crew Helm, its held keys go stale again
     neutralSource();
   }
   function release(): void {
     stopInput(); offClose(); offClose = () => {};
-    client?.dispose(); client = null; link?.close('renderer-detached'); link = null;
+    client?.dispose(); client = null; predictor?.dispose(); predictor = null; confirmedSequence = 0; link?.close('renderer-detached'); link = null;
   }
   function freeze(): void {
     if (linkClosed) return;   // frozen at the close: the copy is final until the next attach
@@ -222,6 +234,10 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (!client || !descriptor || !source) return;
     const fresh = source.observe(), p = client.publication(), d = client.state();
     if (!p || !d) return;
+    if (predictor && p.publicationSequence !== confirmedSequence) {   // Net-4a §3.4: verify, else re-simulate, else reset
+      confirmedSequence = p.publicationSequence;
+      const t0 = deps.now(); predictor.confirm(p, d); keep(confirmSamples, deps.now() - t0);
+    }
     if (!synced && client.commandStatus(descriptor.seatId).state === 'ready') {
       synced = true; hint('synced');
       if (!presenceSent) { presenceSent = true; send({ kind: 'presence', present: true }); }   // the first command after every attach (spec §6)
@@ -428,9 +444,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     }
     if (p.camera > 0 && source) { const cam = source.cameras.weapons; snapBack(cam, missileOf(d.tactical, 0) && cam.follow !== 'missile' ? 'missile' : 'ship'); }
   }
-  function pump(): void {
-    if (disposed) return;
-    observe(); pollLink();
+  /** Net-4a §3.3: a producing local tick (the first of a pump): the presses, the commands and this seat's held frame. */
+  function produce(): LocalInput {
     let k = keyboard.sample();
     const requests = contact.takeRequests(), heading = requests0(), steerTaken = takeSteer0(), pew = pewRequest(), torpNow = torpRequest();   // drained before any early return, so a steer never goes stale
     const prevHeld = lastFlags; lastFlags = k.held ?? NO_HELD_FLAGS;
@@ -446,7 +461,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (headingSent && d && (d.round !== headingSent.round || (headingSent.sequence === null && d.holdHeading === -1))) headingSent = null;   // a new round holds none; the replica caught up with the local clear
     source?.throttleBase(throttleSent ? throttleSent.level : null);
     for (const slot of [0, 1] as const) source?.gunModeBase(slot, gunModeSent[slot] ? gunModeSent[slot]!.manual : null);   // W-4 spec §11, amendment §2.6
-    if (!client || linkClosed || !d || !p || !descriptor || !synced || !focused || blocked) { if (producing) stopInput(); return; }
+    if (!client || linkClosed || !d || !p || !descriptor || !synced || !focused || blocked) { if (producing) stopInput(); return idle(); }
     const me = descriptor.seatId, decided = d.tactical.outcome !== Outcome.Running;
     // Final review I1: on the pump this seat becomes the crew Helm (the sit's publication arrived), the keys held now are
     // stale until pressed again (E sits and is a thruster; W, A and D walk), and this sample's crew fields are dropped.
@@ -458,8 +473,9 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     leaveConfirm = keys.prompt;
     if (keys.send) send(keys.send);
     if (keys.leave) deps.leave();
-    if (leaveConfirm.open || keys.leave) { producing = true; client.held(me, { moveX: 0, moveY: 0, interactHeld: false }); neutralSource(); return; }
-    if (p.phase !== 'running') { neutralSource(); return; }
+    if (leaveConfirm.open || keys.leave) { producing = true; const s = client.held(me, neutral()); neutralSource(); return s === null ? idle() : { heldSequence: s, held: neutral(), commands: [] }; }
+    if (p.phase !== 'running') { neutralSource(); return idle(); }
+    collected = [];
     if (decided) { if (k.presses.confirm > 0) send({ kind: 'rematch' }); }
     else play(k, d, me, requests, heading, prevHeld, pew, steerTaken);
     // Held input every pump, quantised to −1, 0 and 1 (spec §3); a change is stamped for the held delay.
@@ -472,7 +488,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     const torpSteering = !decided && seatOf(d, me) === 'weapons' && manualTorpedoFlying(d.tactical);
     if (!torpSteering) torpHold = -1; else if (torpNow !== null && torpNow >= 0) torpHold = torpNow;
     const held: HeldInput = { ...sessionHeld(k, d, me, steer, { sel: weaponSel, trigger: triggerLive && (gunModeSent[1] ? gunModeSent[1].manual : d.tactical.systems[0].gunManual), aim: reticleNow() ?? -1 }), ...(torpHold >= 0 ? { torpHeading: torpHold } : {}) };
-    const sequence = client.held(me, decided ? { moveX: 0, moveY: 0, interactHeld: false } : held);
+    const sent = decided ? neutral() : held, sequence = client.held(me, sent);
     if (sequence !== null) lastHeldSequence = sequence;
     source?.unacked(Math.min(UNACKED_MAX, Math.max(0, lastHeldSequence - (p.heldHighWater[me] ?? 0))));   // Decision 14
     if (sequence !== null && !decided && heldChanged(held, lastHeld)) {
@@ -482,6 +498,33 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     source?.throttleBase(throttleSent ? throttleSent.level : null);   // a press this pump shows this pump
     for (const slot of [0, 1] as const) source?.gunModeBase(slot, gunModeSent[slot] ? gunModeSent[slot]!.manual : null);   // W-4 spec §11, amendment §2.6
     producing = true;
+    const commands = collected; collected = null;
+    return sequence === null ? idle() : { heldSequence: sequence, held: sent, commands };
+  }
+  /** Net-4a §3.3: a not-producing local tick: neutral, no commands, and the sequence of a neutralize sent since, if any. */
+  function idle(): LocalInput { const s = neutralSequence; neutralSequence = null; return { heldSequence: s, held: neutral(), commands: [] }; }
+  /** A later local tick of the same pump: the first's held input again, no presses and no commands, its own held frame. */
+  function repeat(first: LocalInput): LocalInput {
+    if (first.heldSequence === null || !client || !descriptor || !producing) return idle();
+    const s = client.held(descriptor.seatId, first.held);
+    return s === null ? idle() : { heldSequence: s, held: first.held, commands: [] };
+  }
+  function pump(): void {
+    if (disposed) return;
+    observe(); pollLink();
+    // Net-4a §3.3: local ticks by elapsed time, 60 a second; the first pump runs one; at most LOCAL_TICKS_MAX per pump.
+    const now = deps.now();
+    if (clockBase === null) { clockBase = now - LOCAL_TICK_MS; localDone = 0; }
+    const due = Math.floor((now - clockBase) / LOCAL_TICK_MS + 1e-6);
+    let n = due - localDone;
+    if (n > LOCAL_TICKS_MAX) { localDone = due - LOCAL_TICKS_MAX; n = LOCAL_TICKS_MAX; }
+    let first: LocalInput | null = null;
+    for (let i = 0; i < n; i++) {
+      localDone++; lastLocalAt = clockBase + localDone * LOCAL_TICK_MS;
+      const entry: LocalInput = first ? repeat(first) : produce();
+      first ??= entry;
+      if (predictor) { const t0 = deps.now(); predictor.tick(entry); keep(tickSamples, deps.now() - t0); }
+    }
   }
   function schedule(): void { cancel = deps.scheduler.schedule(1000 / 60, () => { pump(); if (!disposed) schedule(); }); }
   schedule();
@@ -516,9 +559,12 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
         shipCommand: (c) => { if (focused && !blocked) keyboard.ui.ship?.(c); } });   // Engineering spike §5: as the map click, only while focused
       link = createPortLink(browserPortEndpoint(port), `online:${next.seatId}`, { latestStreamKey: bytes => classifyStreamPacket(bytes).stream });
       // Subscribe before the client, which releases its replica on close: keep the last view frozen.
-      offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; });
+      offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; predictor?.dispose(); predictor = null; confirmedSequence = 0; });   // Net-4a §3.4: no hidden P steps on after a close
       client = createDuelRemoteClient(link, [next.seatId], { runId: next.runId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout, clock: { nowMs: deps.now } });
-      source = createOnlineDuelSource({ client: { state, publication, live }, seat: next.seatId, now: deps.now, viewport: { w: INTERNAL_W, h: INTERNAL_H } });
+      predictor = createDuelPredictor({ seat: next.seatId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout });   // Net-4a §3.4: one per client
+      source = createOnlineDuelSource({ client: { state, publication, live }, seat: next.seatId, now: deps.now, viewport: { w: INTERNAL_W, h: INTERNAL_H },
+        prediction: { active: () => !linkClosed && (predictor?.active() ?? false), state: () => predictor?.state() ?? null, before: () => predictor?.before() ?? null,
+          alpha: () => Math.max(0, Math.min(1, (deps.now() - lastLocalAt) / LOCAL_TICK_MS)) } });
     },
     setStatus(next: OnlineStatus): void {
       status = next;
