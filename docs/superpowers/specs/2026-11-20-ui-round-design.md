@@ -134,6 +134,32 @@ columns: damaged levels shown on the column, FIRE as a blinking inverse label, t
 column's bar. Clicks on the strip work on every view, as they do in ship view today. Terminal panels that sat where the
 HUD now goes shift to clear it, and the own ship window moves below the HUD.
 
+### 2.4a Terminal layout at 1280×720 (decided at planning, 2026-11-20)
+Part 2 is built in two plans: **2a** (§2.2-§2.4, this layout) and **2b** (§2.1, filling the window). 2a keeps the fixed
+1280×720 stage. 2b then turns every rect below into an anchor.
+- **The HUD** stays where the ship view has it: hull bar and shields top left (x 12-330, y 46-114), a health row under
+  them when hurt or downed (y 124-150: HEALTH and a bar, or DOWNED blinking), and the power panel bottom left (x 6-334, y 529-712 with its REACTOR line).
+- **The station blocks** (Helm, Weapons, Science) and the Valkyrn's Flight block move to the right of the power panel,
+  bottom aligned: `STATION.x = 346` (Helm 346-646; Flight beside it at 658-958). The Flight block already sat there.
+- **The own ship window** moves under the HUD: x 12, y 160, 240×170 (to y 330).
+- **The enemy window** moves up to the top-right corner (y 42), where the zoom box was: x 968-1268, y 42-462.
+- **The map's top band** (status sentence, info line) runs from the tab strip to the enemy window's left edge (408-968).
+- **The map's reserves:** left 264 (the own ship window's right edge + 12), right 12, or the enemy window's 324 while
+  it shows.
+- **The console strip** (the WEAP / ENG / SENS POWER strip) goes: the HUD's power panel shows every system. Science's
+  sensor range moves onto the Science block (`SENSOR RANGE n`).
+- **C: SNAP BACK** shows at native size left of the scale bar (bottom right) while the camera is free, on the consoles
+  too, since the zoom box that lit its SNAP button is gone. The `ZOOM 0.50` text goes everywhere.
+- **Room state on the power columns** (WEAP, SHLD, ENG, the three tactical rooms): a damaged room's column name turns
+  hot, an offline room's name sits on an inverse block, a burning room's name blinks inverse, and the repair or
+  extinguish progress is a 2 px bar under the name.
+- **Helm range and bearing:** the Helm map gets the Weapons map's info line (`BRG 074  RNG 728`, no TORP) at y 44, or
+  `NO CONTACT IN SENSOR RANGE`. That is "beside the marker" made consistent with Weapons. The off-screen arrow already
+  carries the range.
+- **Ship view only:** `TORPEDO INBOUND` (the old readout's rule: the enemy torpedo within 600) blinks hot at top centre
+  (y 100, FONT_SIZE). An AWAY player gets an `AWAY` label under their character, the way DOWNED does. An empty Helm or
+  Weapons console's badge blinks WARN.
+
 ### 2.5 Tests and gates
 - Layout unit tests: for viewports of 16:9, 21:9, 32:9, 4:3 and 16:10, no two panels overlap, every panel is inside the
   viewport, and the anchors hold their margins.
