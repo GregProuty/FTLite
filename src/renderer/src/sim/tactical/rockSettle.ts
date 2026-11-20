@@ -128,7 +128,8 @@ function crossesOutside(s: TacticalState, k: number, group: number, lo: number, 
  *  tumbles); D = |p − centre|.
  *  - Near (D ≤ RAIL_OFFSET_MAX): it joins the tumble group, C's kind with centre the centre and offset p − centre, when
  *    |v − V_group(p)| < CLUSTER_JOIN_SNAP (V_group = ω·perp(centre) + ω_s·perp(offset), ω_s = ω + SPIN_RATE for a Tumble),
- *    its member sweep crosses no rail outside C, and its member circle stays clear of C's ring rocks.
+ *    its member sweep crosses no rail outside C, and its member circle stays clear of C's ring rocks; with no member
+ *    tumbling (the clusterTumble switch off) it joins as a Rail, so its padded annulus crosses no rail outside C instead.
  *  - Far (the controller's extension: D > ρo_max + r_max + r + ASTEROID_GAP over C's tumbling members): it joins C's
  *    rotation as a plain Rail at ρω = ρc = |C's stored centre| (centre p · ρc / ρ, offset radial, at most RAIL_OFFSET_MAX)
  *    when |v − ω(ρc)·perp(p)| < CLUSTER_JOIN_SNAP and its annulus crosses no rail outside C: a fixed distance D from the
@@ -158,6 +159,10 @@ function clusterJoin(s: TacticalState, k: number, group: number): RejoinChoice |
   if (D <= RAIL_OFFSET_MAX) {   // near: the tumble group
     const ws = tumbling ? w + SPIN_RATE : w, dvx = v[b + 3]! - (-w * cy - ws * oy), dvy = v[b + 4]! - (w * cx + ws * ox);
     let ok = dvx * dvx + dvy * dvy < CLUSTER_JOIN_SNAP * CLUSTER_JOIN_SNAP;
+    if (ok && !tumbling) {   // a Rail member keeps its |p|: its padded annulus must cross no rail outside C (as the ring join)
+      const rho = Math.sqrt(x * x + y * y);
+      ok = !crossesOutside(s, k, group, rho - r - ASTEROID_GAP, rho + r + ASTEROID_GAP);
+    }
     if (ok && tumbling) {
       const rc = Math.sqrt(cx * cx + cy * cy);
       ok = !crossesOutside(s, k, group, rc - D - r - ASTEROID_GAP, rc + D + r + ASTEROID_GAP);

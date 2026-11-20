@@ -301,6 +301,20 @@ describe('the D14 safety branches and the restore bound (spec §14, Task 13 revi
       expect(worst).toBeLessThan(1e-6);
     });
   });
+  it('(e) with clusterTumble off, a near join whose annulus crosses a rail outside the cluster (its group rail, skipped as the same ω) stays Free', () => {
+    withSwitches({ clusterTumble: false }, () => {
+      const st = arena(); st.tick = 500;
+      const rc = st.map.clusterRho[0]!;
+      writeRock(st, 7, RockKind.Rail, 0, rc, 60, 0, 15, 5, 500);
+      writeRock(st, 8, RockKind.Rail, 0, rc, -60, 0, 15, 5, 500);
+      rail(st, 9, 0, -(rc + 40), 5);                   // a rejoined rail sweeping [ρc + 35, ρc + 45]: the rock's group choice (snap 1.5 · ω · 15 under 2)
+      settled(st, 100, 0, rc + 25, 0);                 // D 25: near; padded annulus [ρc + 5, ρc + 45] crosses the rail's sweep
+      const why: { reason: string | null } = { reason: null };
+      expect(rejoinChoice(st, 100, why as never)).toBeNull(); expect(why.reason).toBe('sweepCluster');
+      st.rocks.fill(0, 9 * ROCK_STRIDE, 10 * ROCK_STRIDE);
+      expect(rejoinChoice(st, 100)).toMatchObject({ how: 'cluster', join: 'tumble', kind: RockKind.Rail });   // the rail alone refused it
+    });
+  });
   it('a ring join right at the offset limit never stores an offset restore would refuse (|offset| ≤ RAIL_OFFSET_MAX)', () => {
     let joined = 0;
     const bad: string[] = [];
