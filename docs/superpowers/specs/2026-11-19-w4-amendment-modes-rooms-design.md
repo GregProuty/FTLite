@@ -1,9 +1,10 @@
 # W-4 amendment: a mode per weapon, and room targeting (design, 2026-11-19)
 
 Ryan's playtest notes, round 2 (`docs/superpowers/research/2026-11-19-ryan-notes-v2.md`, §1 and §4), with the owner's
-calls of 2026-11-19. This spec **amends** the W-4 spec (`2026-11-19-w4-weapons-controls-design.md`): §3.1, §3.4, §4.1,
-§5, §6, §7, §8, §9, §10, §11, §13 and §14, Decision 5, and §17 items 7 and 14. Where they differ, this spec
-wins. Everything else in W-4 stands.
+calls of 2026-11-19. This spec **amends** the W-4 spec (`2026-11-19-w4-weapons-controls-design.md`): §2.1 (the Hound's
+`lock` now moves and `laserLock` is admitted, §3.2), §3.1, §3.4, §4.1, §5, §6, §7, §8, §9, §10, §11, §13, §14 (two of
+its bullets are replaced, §5 here) and §15 (its AUTO / MAN row: a switch per gun on R, not Z for both), Decision 5, and
+§17 items 7 and 14. Where they differ, this spec wins. Everything else in W-4 stands.
 
 The notes this spec answers:
 
@@ -98,13 +99,17 @@ Scope: the Hound only, as W-4. The Hunter, the Valkyrn and the laser fit keep th
 - **The mode the app judges from** is the latest it has sent for that slot, else the state's (`gunModeSent` per slot,
   W-4 §11's pattern). So two quick presses of R flip twice.
 - **`app/duel/input.ts`:** `KeyR` joins `PRESS_CODES` as `weaponMode`. A press with Shift held is `weaponModeAll` (the
-  key handler already sees `shiftKey`, as the Shift+W case does). A press with Ctrl or Meta held is neither, so the
-  browser's reload stays the browser's.
+  key handler already sees `shiftKey`, as the Shift+W case does).
+  - **Ctrl+R and Meta+R are not mode presses.** The handler's `KeyEventLike` carries only `code`, `repeat` and
+    `shiftKey` today, so it gains `ctrlKey?` and `metaKey?`, and `down` counts neither action for KeyR when either is
+    set. The page guards already let Ctrl and Meta chords through to the browser (`pageGuards.ts`), and KeyR is not
+    added to `GUARDED_CODES`: plain R and Shift+R have no browser default.
 - **W-4's rename of KeyZ's action is dropped.** KeyZ stays `laserMode` and KeyV stays `torpMode` in the table. The
-  runtime reads them only where they are read today: the laser fit's Weapons seat and the Flight seat. At the Hound's
-  Weapons seat it reads neither.
-- **Elsewhere** (the laser fit, the Valkyrn's Flight seat) Z and V are unchanged, and R does nothing. Moving those seats
-  to R is not in this build (§7).
+  runtime and online read them only at a laser class's Weapons seat (the laser fit), as today. At the Hound's Weapons
+  seat they read neither. W-4a's Hound branch reads V today (`p.torpMode`, in `runtime.ts` and `onlineDuel.ts`); that
+  read goes.
+- **Elsewhere:** on the laser fit's Weapons seat Z and V are unchanged and R does nothing. The Flight seat reads none of
+  Z, V and R, as today (it has no modes). Moving the laser fit to R is not in this build (§7).
 - **`app/controlsList.ts`:** W-4's "Z: both guns AUTO / MAN" row becomes "R: the selected weapon AUTO / MAN" and
   "Shift+R: both guns AUTO / MAN". The Hound's Z and V rows go. The rows stay built from the input tables.
 
@@ -117,9 +122,14 @@ Scope: the Hound only, as W-4. The Hunter, the Valkyrn and the laser fit keep th
 - **The light** is the gun's own switch: lit when it is set to MAN. So a MAN gun that is not selected reads `AUTO`,
   lit, which tells the gunner it will come to hand when selected.
 - **The torpedo's tag** is unchanged apart from its key hint (R with the torpedo selected).
-- **The hint rows** under the cards: `LMB FIRE · A/D SELECT · W/S POWER`, then `R AUTO/MAN · Q/E ROOM: <name>` (§3.6).
-  `RIGHT-CLICK TORPEDO: CLEAR` moves to a third row. The plan measures each row against the space left of `FREE n` /
-  `ROCKS n`, as W-4 §10 did.
+- **The hint rows** under the cards stay two, at today's places (`y0 + 116` and `y0 + 134` in `WeaponsStation.tsx`;
+  the divider at `y0 + 156` leaves no room for a third):
+  - row 1: `LMB FIRE · A/D SELECT · W/S POWER`, as W-4a;
+  - row 2: `R AUTO/MAN · Q/E ROOM: <NAME>` (§3.6; the name is `WEAPONS`, `SHIELDS` or `ENGINES`, 30 characters);
+  - row 2 while the torpedo has a target (a room or a rock): `Q/E ROOM: <NAME> · RMB TORPEDO: CLEAR` (38
+    characters), so the clear hint shows when there is something to clear and the room name never leaves;
+  - W-4a's `RIGHT-CLICK TORPEDO: CLEAR` row fits left of `ROCKS n` today, and W-4 measured a 39-character row to fit
+    with 8 px to spare. The plan measures both new texts the same way, against the space left of `ROCKS n`.
 
 ### 2.6 Online and the manual torpedo
 
@@ -136,9 +146,12 @@ Scope: the Hound only, as W-4. The Hunter, the Valkyrn and the laser fit keep th
 - The crew's **target room** is `ShipSystems.lock`: a Room (Weapons, Shields or Engines), hashed and bounded today,
   and `Room.Shields` at every round's start on the Hound (W-4 §2.1). It is always one of the three; there is no "none".
 - It is the room that rounds fired by hand damage (§3.4).
-- It is also already the room an AUTO torpedo strikes when it was launched without a torpedo lock (`missiles.ts`:
-  `torpRoom >= 0 ? torpRoom : lock`). So an AUTO torpedo launched by F or the left button now goes for the Q/E room.
-  That rule's code does not change.
+- It is also already the room an AUTO torpedo strikes when it was launched without a torpedo lock (`missiles.ts`
+  `land`: `torpRoom >= 0 ? torpRoom : lock`). So an AUTO torpedo launched by F or the left button now goes for the Q/E
+  room. That rule's code does not change.
+  - `land` reads `lock` **when the torpedo lands**, not at launch (its comment: "the lock room as it lands"). So
+    stepping the room while such a torpedo flies moves its strike. That is kept: the torpedo is guided, a round is not
+    (§3.3). A torpedo launched with a torpedo lock keeps that room, as today.
 
 ### 3.2 The command
 
@@ -150,8 +163,18 @@ Scope: the Hound only, as W-4. The Hunter, the Valkyrn and the laser fit keep th
   - `malformed` for a room outside −1..2 (today's `validTarget`);
   - `unavailable` for −1 (there is nothing to clear);
   - `unavailable` when the enemy ship is not seen (today's fog rule for locks, `step.ts`);
-  - otherwise it sets `lock` to the room.
-- `laserTargeted` stays false on the Hound: `applyWeaponsInput` (`weapons.ts`) sets it only on a class with a laser.
+  - otherwise it is admitted: `crew.laserLock = room`, as today's branch does.
+- **`step.ts` today** answers `laserLock` `unavailable` on any class without a laser, in the no-laser line that runs
+  before the `malformed` check. That line stops catching `laserLock` when the crew class has a turret gun
+  (`hasTurret`, `defs.ts`), and the `laserLock` branch then applies the order above. The other laser commands stay in
+  the line.
+- **The write is new code.** `applyWeaponsInput` (`weapons.ts`) gates its whole `laserLock` block on a laser
+  (`armed`), so today nothing writes `lock` on the Hound. A second branch is added beside it, in the same place (the
+  locks step, first in the tick's order, before `tickGun` and the pew): for the crew slot on a class with no laser and
+  a turret gun, with `input.weapons` and `input.laserLock` a room 0..2 (`validLock`), it sets `s.lock` and nothing
+  else. It does not touch `laserTargeted` (it stays false on the Hound) or `laserRock`.
+- Because the lock is applied first, a `laserLock` and a hand shot in the same tick tag the round with the new room
+  (§3.3).
 - On a class with a laser the command is unchanged. On a class with neither (the Valkyrn) it stays `unavailable`.
 - The other laser commands stay `unavailable` on the Hound (W-4 §2.1).
 
@@ -166,10 +189,21 @@ Scope: the Hound only, as W-4. The Hunter, the Valkyrn and the laser fit keep th
     hand that tick (W-4 §6: online, a held `weaponSel` can trail the command by a frame). The click is a shot by hand;
   - every round fired by AUTO's rules: 0;
   - every round of the Hunter and the Valkyrn: 0.
-- **Hash and bounds:** `roundFields` (`hash.ts`) gains the field for both pools. It is within 0..3, and 0 unless the
-  round is active and its owner is the crew slot of a class with a turret in that pool's weapon.
-- **The Valkyrn identity test** leaves `rounds.*.room` and `pew.*.room` out by name and asserts them 0, as it does the
-  turret fields.
+- **`placeRound` and `emptyRound`** (`gun.ts`, `state.ts`) write it. `placeRound` copies a fixed list of members, so
+  `room` joins the list, or a recycled entry would keep its old tag. Its argument type (`Omit<GunRound, 'active'>`)
+  then makes every caller pass it: the Hunter's and the Valkyrn's pass 0.
+- **Hash** (`hash.ts`): `roundFields` gains a third field of its own per entry, `${pool}.${k}.room`, a scalar after
+  `${pool}.${k}.flight`. It does not join `ROUND_KEYS` (the `flight` vector), so it can be left out by name.
+  `MissingRoundKeys` excludes `'room'` beside `'active'` and `'owner'`. `ROUND_SLOT` becomes 8, and
+  `tests/tacticalDeterminism.test.ts`'s length line follows.
+- **Bounds** (`validateTacticalValues`): the entry's `active` is found for the new field by its back-offset, as the
+  missile's `manual` is. The field is within 0..3, 0 on a free entry, and nonzero only when the entry's owner is
+  `CREW_SLOT`.
+  - The class is not checked. Rounds are in the space module, validated before the ship module where the classes are
+    learned, so a round's owner's class is not known at that point. The sim never tags a round on a class without a
+    turret, and the tests assert it (§5).
+- **The Valkyrn identity test** adds the two pools' `room` fields (`rounds.<k>.room`, `pew.<k>.room`) to its left-out
+  pattern, beside the turret fields and the two flags, and asserts them 0.
 - The room is the one at the moment of firing. Changing the target room does not retarget rounds in flight.
 
 ### 3.4 Hits
@@ -191,8 +225,13 @@ Only the crew's turret weapons change. A shield hit is unchanged for both guns, 
     three autocannon hits by hand also raise it;
   - a class with a turret pew and no gun gets no pew room wear. No such class exists;
   - **a round with no room** (AUTO) is today's hit: hull only.
-- **`pewHit`** (the event) gains `room` (−1 for none or a shield hit) and `level`, as `gunHit` has. The view shows the
-  ROOM HIT / OFFLINE callout from them, as it does for the gun.
+- **`pewHit`** (the event) gains `room` (−1 for none or a shield hit) and `level`, as `gunHit` has.
+  - **The view** (`render/tactical/hitModel.ts`): `hitCallouts` gets a pew branch like the gun's, a room callout with
+    the prefix `PEW: `, only for a `pewHit` on the enemy with `room >= 0` and `level`. `pushHits` flashes the struck
+    room for a `pewHit` on a ship other than the crew's with `room >= 0`, as it does for `gunHit`.
+  - **Online** (`app/duel/onlineSource.ts`) builds `gunHit` and `pewHit` from the replica's counters and names no room
+    today (`room: -1`). Its `pewHit` literal gains `room: -1, level: false`. So online a room hit by either gun shows
+    no callout or flash, as the gun's shows none today; the enemy window's room levels still follow the replica.
 - **The Hunter's pew** has no turret, so it never wears a room. Its repair still zeroes a repaired room's wear
   (`hunter.ts`).
 - **`gunRoomWear`'s bound** (0 to `hitsPerLevel` − 1) holds: the wear resets whenever it reaches the threshold.
@@ -205,8 +244,9 @@ Only the crew's turret weapons change. A shield hit is unchanged for both guns, 
 - **The scripted gunner** (W-4 §12) leaves its guns on AUTO, so the crew bots take rooms only with the torpedo.
   - The per-seed gates must still pass at the end of W-4b.
   - The tuning ladder (W-4 §12) is unchanged. Its report also records, per seed, the enemy room levels the crew raised
-    and by which weapon (`gunHit` and `pewHit` events with `level`, and the torpedo's), so the owner can see what the
-    rule cost the bots.
+    and by which weapon, so the owner can see what the rule cost the bots: one per `gunHit` or `pewHit` event with
+    `level`; and for each of the crew's `missileEnd` events on the enemy with `room >= 0`, that room's level after
+    the tick minus its level before it.
 
 ### 3.6 Controls
 
@@ -219,10 +259,20 @@ Only the crew's turret weapons change. A shield hit is unchanged for both guns, 
 
 - **The step is judged from** the latest queued `laserLock` this frame, else `lock`, as the torpedo's step is judged
   from the latest queued `torpLock` (`runtime.ts`).
+  - **Online** there is no queued list. `onlineDuel.ts` keeps `lockSent {room, sequence, round}`, set when a
+    `laserLock` is sent and cleared on that command's result, a new round, a sit and a stand, as `torpModeSent` is.
+    The step starts from `lockSent.room`, else the replica's `lock`, so two quick presses step twice.
+- **With the torpedo picked up.** Today the contact controller takes E / Q at Weapons while the torpedo is picked up
+  and turns them into `torpStep` (`contactController.ts` `intercept`). At the Hound's Weapons seat it no longer takes
+  them: the controller is told the seat is the Hound's (a flag on `ContactSync`, as `laser` is), and E / Q fall through
+  to the target-room step. The pick-up stays. The Hound's branch never reads `requests.torpStep`. The Flight seat and
+  the laser fit keep today's rule.
 - **Unseen enemy:** the keys and the click raise the `NO CONTACT` refusal, as the lock keys do today. The target room
   keeps its value.
-- **The enemy window** brackets the target room (`hot`) whenever the enemy is seen. The torpedo's own target mark is
-  unchanged.
+- **The enemy window** brackets the target room (`hot`) whenever it draws the enemy's rooms, the unknown-contact
+  drawing included. `contactModel.ts` sets `lockRoom` only while `laserTargeted` today, which stays false on the
+  Hound, so on a class with a turret gun `lockRoom` is `crewSys.lock`; on any other class it stays
+  `laserTargeted ? lock : null`. The torpedo's own target mark is unchanged.
 - **The hint row** names it: `R AUTO/MAN · Q/E ROOM: SHIELDS` (§2.5), so the gunner sees the room with the window
   closed.
 - **W-4 §17 item 14** (E / Q step the torpedo's room on the Hound) is replaced by this section. A torpedo lock is now
@@ -244,7 +294,17 @@ Only the crew's turret weapons change. A shield hit is unchanged for both guns, 
 
 ## 5. Tests
 
-Added to W-4 §14's lists.
+Added to W-4 §14's lists, except where a bullet says it replaces one.
+
+- **Replaced W-4 §14 bullets, and the W-4a tests that pin them** (kind (a) rewrites, each in the task that lands its
+  rule):
+  - Loadout's "every laser command from the Hound except `laserFrequency` is `unavailable`" becomes "except
+    `laserFrequency` and `laserLock`". `tests/w4PewFire.test.ts`'s case of that name drops `laserLock` from its list.
+  - Autocannon's "a room level after 6 unshielded hits" becomes the two Rooms cases below (by hand on the target
+    room; none on AUTO). `tests/w4Autocannon.test.ts`'s "six unshielded hits raise a room a level" is rewritten to
+    fire by hand with a target room.
+  - `tests/w4Runtime.test.ts`'s "E / Q step the torpedo's target room (no laserLock)" becomes "E / Q step the
+    target room (`laserLock`, no `torpLock`)".
 
 - **Modes** (`w4Manual.test.ts`, `w4Turret.test.ts`):
   - `gunMode {slot, manual}` admission: the seat, malformed slot and value, `unavailable` on the Valkyrn and the laser
@@ -256,7 +316,8 @@ Added to W-4 §14's lists.
   - the MAN bonus is the gun in hand's only.
 - **Rooms** (`w4Rooms.test.ts`, new):
   - `laserLock` on the Hound: the seat, malformed, −1 `unavailable`, unseen `unavailable`, sets `lock`, leaves
-    `laserTargeted` false; on the Valkyrn `unavailable`; on the laser fit unchanged;
+    `laserTargeted` and `laserRock` as they were; on the Valkyrn `unavailable`; on the laser fit unchanged;
+  - a `laserLock` and a shot by hand in the same tick: the round carries the new room;
   - a round's `room`: by hand it is `lock + 1` at the moment of firing, and a later change of `lock` leaves it; by AUTO
     it is 0; a `pewFire` admitted with the pew not selected still carries the room;
   - autocannon by hand: six unshielded hits raise the target room's level, whichever part of the ship they land on, and
@@ -267,19 +328,28 @@ Added to W-4 §14's lists.
   - pew pew on AUTO: hull only;
   - shield hits by either gun are unchanged, the weak frequency included;
   - the Hunter's pew and the Valkyrn's gun: their hits are unchanged, with `room` 0 on every round;
-  - an AUTO torpedo launched by F with no torpedo lock strikes the target room.
-- **Hash and snapshot:** the two flags' bounds, the round `room` bound, a snapshot round-trip with tagged rounds in
-  flight, `tests/duelModules.test.ts`'s lists, and the Valkyrn identity test's left-out fields.
+  - an AUTO torpedo launched by F with no torpedo lock strikes the room `lock` names when it lands: stepping the room
+    while it flies moves the strike; one launched with a torpedo lock keeps its room.
+- **Hash and snapshot:** the two flags' bounds; the round `room` bound (0..3, 0 on a free entry, nonzero only on a
+  crew round); a recycled pool entry takes the new round's tag; `ROUND_SLOT` 8 in the determinism length check; a
+  snapshot round-trip with tagged rounds in flight, `tests/duelModules.test.ts`'s lists, and the Valkyrn identity test's left-out fields.
 - **App** (`w4Input.test.ts`, `w4Ui.test.tsx`):
   - R flips the selected gun, and the torpedo when it is selected; Shift+R follows §2.4's rule in all four gun states
-    and never sends `torpMode`; Ctrl+R sends nothing;
-  - Z and V queue nothing at the Hound's Weapons seat, and still work on the laser fit and the Flight seat;
+    and never sends `torpMode`; a KeyR keydown with `ctrlKey` or `metaKey` counts no press (the fake event source);
+  - Z and V queue nothing at the Hound's Weapons seat, and still work on the laser fit's Weapons seat;
   - each tag sends its own weapon's command; the word and the light follow §2.5 in every row of §2.3's table;
   - E / Q send `laserLock` with the stepped room and never `torpLock`; a plain room click sends `laserLock`; a room
     click with the torpedo picked up still sends `torpLock`;
+  - with the torpedo picked up at the Hound's seat, E sends `laserLock`, the pick-up stays and no `torpLock` goes;
+    at the Flight seat E / Q with the torpedo picked up still step its room;
+  - the hint row's two texts (§2.5), by whether the torpedo has a target;
+  - a `pewHit` with `level` on the enemy shows the `PEW: ` room callout and flashes the room; one without a room
+    shows neither;
   - the enemy window's bracket and the hint row's room name follow `lock`;
   - the controls list rows come from the tables.
-- **Online** (`w4Online.test.ts`): `gunModeSent` per slot; the prediction runs on the selected gun's own mode.
+- **Online** (`w4Online.test.ts`): `gunModeSent` per slot; the prediction runs on the selected gun's own mode; two E
+  presses before a replica arrives step the room twice (`lockSent`), and it clears on the result, a new round, a sit
+  and a stand.
 - **Scripted and gates:** the gunner sends no `gunMode` and no `laserLock` on the Hound; the per-seed gates pass; the
   ladder's report has the room levels by weapon (§3.5).
 
@@ -290,12 +360,19 @@ W-4a is not touched. The W-4b and W-4c plans are amended, and the builder resume
 - **W-4b**, from the hold:
   - a new task after Task 2 splits `gunsManual` into `pewManual` and `gunManual` (state, hash, bounds, the identity
     test's list). Task 1's commits stay as they are;
-  - Task 3 (`gunMode`, hand control, the MAN tables) takes §2.2 and §2.3;
+  - **every later mention of `gunsManual` follows:** the plan's header, and Tasks 3, 4, 5, 6, 7, 8 and 9 (their code
+    and their tests);
+  - Task 3 (`gunMode`, hand control, the MAN tables) takes §2.2 and §2.3's `handControl`;
+  - Task 6 (AUTO fires; it owns `pewFire`'s AUTO refusal and `tickGun`'s AUTO branch) takes §2.3's "`pewFire` reads
+    `pewManual`";
   - Task 5 (the reticle, the mode key, the left button by mode) takes §2.4;
   - Task 9 (the tag and the hint row) takes §2.5;
   - Task 7 (the online prediction) takes §2.6;
-  - new tasks for §3: the round's `room` and the hit rules (sim); E / Q, the window click, the bracket and the hint row
-    (app); the ladder report's room levels (with Task 10).
+  - new tasks for §3: the `laserLock` admission and write, the round's `room` and the hit rules (sim); E / Q, the
+    contact controller's fence, the window click, the bracket, `lockSent` and the hint row (app); the ladder report's
+    room levels (with Task 10).
+  - **The §3 sim task comes after Task 6.** Until Task 6 deletes it, W-4a's stand-in in the scripted gunner sends
+    `pewFire`; tagged before then, those rounds would wear rooms and move whole runs an extra time.
 - **The smokes.** The duel app smoke (step 5) and the internet smoke launch a MANUAL torpedo with V then F (W-4a).
     With V retired at the Hound's seat they select the torpedo (3), press R, then F. The task that binds R changes
     both.
@@ -316,7 +393,8 @@ W-4a is not touched. The W-4b and W-4c plans are amended, and the builder resume
 - **Ryan's "auto doesn't lead its shots"** (owner's call 1).
 - **Dropping F** (owner's call 2).
 - **The AUTO torpedo launching on its own while ammo lasts** (W-4 §17 item 16 stands).
-- **R on the laser fit and on the Valkyrn's Flight seat.** They keep Z and V.
+- **R on the laser fit's Weapons seat.** It keeps Z and V. The Flight seat has no modes and reads none of the three.
+- **Room callouts online** for the guns (§3.4): the replica carries no room for a hit.
 - **A target room for the Hunter**, or AUTO room targeting.
 - The rest of round 2 (the Helm, the sensors blip, on foot) has its own specs.
 
@@ -329,9 +407,14 @@ W-4a is not touched. The W-4b and W-4c plans are amended, and the builder resume
 4. **E / Q no longer make a torpedo lock** (§3.6). A torpedo lock arms the AUTO torpedo to launch when it legally can,
    so stepping the guns' room with it would fire torpedoes. The pick-up click still makes one.
 5. **Choosing a room needs the enemy seen** (§3.2), as locks do today.
-6. **A round keeps the room it was fired at** (§3.3).
+6. **A round keeps the room it was fired at** (§3.3). **An AUTO torpedo launched without a lock follows the room until
+   it lands** (§3.1), which is today's code: stepping Q/E while it flies moves its strike.
 7. **A clicked pew pew shot always carries the room,** even when the selection trails the click online (§3.3).
 8. **`PEW_ROOM_WEAR = 3`:** two pew pew hits by hand a room level, sharing the autocannon's wear counter (§3.4). At 3
    bars in MAN that is a level about every 0.9 s of clean hits, on top of pew pew's hull damage.
 9. **The AUTO autocannon loses its room damage** (§3.5), which is Ryan's rule. The bots lose it too.
 10. **A MAN gun's tag reads `AUTO`, lit, while it is not selected** (§2.5).
+11. **With the torpedo picked up, E / Q still step the guns' room** on the Hound (§3.6). The torpedo's own target is
+    set only by the room click.
+12. **The second hint row swaps its text while the torpedo has a target** (§2.5), since only two rows fit.
+13. **Online, a room hit by a gun shows no callout** (§3.4), as the Valkyrn's gun shows none online today.
