@@ -51,9 +51,11 @@ function run(kind: 'pilot' | 'pair', seed: number): string {
 describe('the Valkyrn after the merge (owner 2026-11-19)', () => {
   it('flies and fights as pinned (master 2ced83cf\'s flight and bots, among asteroids-iii\'s orbiting belt): five duels, 3000 ticks each, every tick identical', { timeout: 120_000 }, () => {
     expect([run('pilot', 1), run('pilot', 2), run('pilot', 3), run('pair', 1), run('pair', 2)]).toEqual([
-      'pilot-1:3000:ebade52a9952e496', 'pilot-2:3000:56df6c0cc22dedf6', 'pilot-3:3000:5d30f3e5493bc4b6',
-      'pair-1:3000:1e4c62e39497d371', 'pair-2:3000:1176eae486500499'
-    ]);   // asteroids-iii orbiting belt (SIM_VERSION 60, a deliberate change of the rocks the Valkyrn flies among; kind b): was
+      'pilot-1:3000:39bfd9e47ecb8fbf', 'pilot-2:3000:be8d0e2c30aa73ed', 'pilot-3:3000:76cc78e68d50b24d',
+      'pair-1:3000:6c4a9f01eeb4792a', 'pair-2:3000:6ad96a3d6b7dd6e4'
+    ]);   // UI round (SIM 64), Hunter 95 / Valkyrn thrust 200: was 'pilot-1:3000:ebade52a9952e496', 'pilot-2:3000:56df6c0cc22dedf6',
+    // 'pilot-3:3000:5d30f3e5493bc4b6', 'pair-1:3000:1e4c62e39497d371', 'pair-2:3000:1176eae486500499'
+    // asteroids-iii orbiting belt (SIM_VERSION 60, a deliberate change of the rocks the Valkyrn flies among; kind b): was
     // 'pilot-1:3000:663e629155fe584b', 'pilot-2:3000:113670d9223b854b', 'pilot-3:3000:18e78e4191de122e', 'pair-1:3000:f13a7b16f6e43c4d',
     // 'pair-2:3000:1f4e367769a2700d' (master 2ced83cf, SIM 58)
   });

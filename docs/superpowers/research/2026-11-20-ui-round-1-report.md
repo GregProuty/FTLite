@@ -261,3 +261,30 @@ computed from `HUD`, the status table, the own ship window and the enemy window,
 
 Deviation: `pauseLineBox` rounds the text width up to even so the panel centres on whole pixels (the brief's version
 centred at 640.5 for the longest text, failing its own `toBeCloseTo(640, 6)`).
+
+## Task 8
+
+Same-version bless at SIM_VERSION 64, on HEAD 20fd5255.
+
+- Step 2 canonical proof: `per-tick canonical trace unchanged at sim version 64: golden 7200 ticks, determinism-v2 108000
+  ticks in 13 runs (baseline HEAD e4d25b694f237192286aa742bffeb665dede43e3)`, exit 0.
+- Bless lines (`npm run bless`, exit 0):
+  - `blessed tests/golden/basic.json: 120 checkpoints, final 89001cdd`
+  - `blessed tests/golden/duel-1.json: 14 checkpoints, 8621 ticks, outcome 2, final 7b62377c`
+  - `blessed tests/fixtures/determinism-v2.json: sim version 64, 1800 samples and 330 boundaries re-executed`
+  - `blessed tests/golden/duel-rematch.json: 27 checkpoints, rematch on tick 8621, rounds 8621 ticks outcome 2 then 7891 ticks outcome 2, final 0c7e28ed`
+  - The determinism-v2 line has no `(unchanged)` suffix, but `git status` shows the fixture unmodified (byte-identical);
+    only `basic.json`, `duel-1.json` and `duel-rematch.json` are `M`.
+- `canonical-trace.ts golden`: `tests/golden/basic.json: 4 leaves differ, 0 outside version, digest and hashes`, exit 0.
+- Re-picks (kind b, whole-run pins, each with a `// UI round (SIM 64), Hunter 95 / Valkyrn thrust 200: was …` note):
+  - `tests/w4HunterIdentity.test.ts` DIGESTS: seed 1 `3000:d28638b2cc4b604d` -> `3000:fc7f80b50370e1ad`; seed 2
+    `3000:bc99f85ea5a8593e` -> `3000:213a76173e2cba3e`; seed 3 `3000:d9324c2a0c606026` -> `3000:ae9f3de5ea18c9d4`.
+  - `tests/valkyrnIdentity.test.ts`: pilot-1 `ebade52a9952e496` -> `39bfd9e47ecb8fbf`; pilot-2 `56df6c0cc22dedf6` ->
+    `be8d0e2c30aa73ed`; pilot-3 `5d30f3e5493bc4b6` -> `76cc78e68d50b24d`; pair-1 `1e4c62e39497d371` -> `6c4a9f01eeb4792a`;
+    pair-2 `1176eae486500499` -> `6ad96a3d6b7dd6e4` (all at tick 3000).
+  - No other pin in the Step 4 set went red (12 files, 108 passed, 2 skipped after the re-picks).
+- Full verification: typecheck clean; `electron-vite build` OK; `npx vitest run --maxWorkers=4`: 530 files passed,
+  6310 tests passed, 3 skipped (no flake, power.test.ts passed in the run).
+- Determinism: Node v24.18.0 `1800 canonical samples, 330 result/event boundaries PASS`; Electron 37.10.3 `1800 samples
+  PASS`; Firefox 160.0 `1800 samples PASS`. Durability log folder restored; `git status --short .superpowers/sdd` empty.
+- Duel app smoke: `npm run test:duel-app-runtime` passed with the `ACTUAL DUEL APP` line; `DUEL_TEST_SEED` did not move.
