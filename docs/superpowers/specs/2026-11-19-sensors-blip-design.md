@@ -58,12 +58,12 @@ Every number is a starting value.
   - the offset's length is `0.8 × r × sqrt(u)` and its direction is `2π × v`, with `u` and `v` in 0..1 from the hash
     below, so the enemy is inside the circle when the ping is made, at least `0.2 × r` from its edge, and the centre
     is not a good guess of where it is;
-  - **the hash** of the round (`epoch`) and the ping's `index`, in 32-bit integer arithmetic (`Math.imul`, `>>>`):
-    `h = imul(epoch ^ 0x9e3779b9, 0x85ebca6b) ^ imul(index + 1, 0xc2b2ae35)`; then `h ^= h >>> 16`,
+  - **the hash** of the round's seed (`TacticalState.seed`, the same on every screen and not the sim's random state), the round (`epoch`) and the ping's `index`, in 32-bit integer arithmetic (`Math.imul`, `>>>`):
+    `h = imul(epoch ^ imul(seed, 0x27d4eb2d) ^ 0x9e3779b9, 0x85ebca6b) ^ imul(index + 1, 0xc2b2ae35)`; then `h ^= h >>> 16`,
     `h = imul(h, 0x85ebca6b)`, `h ^= h >>> 13`, `h = imul(h, 0xc2b2ae35)`, `h ^= h >>> 16`; then
     `u = (h & 0xffff) / 65536` and `v = (h >>> 16) / 65536`;
   - it is plain view code. It reads no `Math.random` and none of the sim's random state, so the sim's randomness is
-    untouched. The same round and index give the same offset. Two clients need not agree: the blip is each screen's
+    untouched. The same seed, round and index give the same offset. (Amended 2026-11-20 after the final review: without the seed, round 0's first ping had the same offset in every game.) Two clients need not agree: the blip is each screen's
     own.
 - **Between pings** the circle does not move. The enemy does, so it can leave the circle before the next ping. That is
   the roughness.
@@ -133,7 +133,7 @@ Every number is a starting value.
   - the radius at 0, 1000 and 3000 u beyond range is 150, 400 and 600;
   - the ping's centre is within `0.8 × r` of the enemy's position at the ping's frame;
   - the same `epoch` and ping index give the same centre; another index gives another; the hash's `u` and `v` for
-    three fixed (`epoch`, `index`) pairs equal pinned values;
+    fixed (`seed`, `epoch`, `index`) triples equal pinned values;
   - the circle holds its centre and radius for 120 ticks while the enemy moves, then a new ping is made; `age` runs 0
     to 1 across it; a ping made 78 ticks into a period starts at age 0 and reaches 1 at the period's end;
   - a state whose tick does not advance, stepped across 10 s of the presentation clock, keeps one ping;

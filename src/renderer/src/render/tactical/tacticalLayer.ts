@@ -11,7 +11,7 @@ import type { CrtScale } from '../crt';
 import { createCrtFilters, type CrtFilters } from './crtFilter';
 import { ALERT_BLINK_HZ, blink, CRT, DAMAGE_BLINK_HZ, DASH, ENEMY_BLINK_HZ, GAP, HATCH_ANGLE, HATCH_SPACING, roomLevel, roomLook } from './crtTheme';
 import { dashCircle, dashLine, hatchSegments } from './dashModel';
-import { asteroidShape, CHEVRON_SIZE, crackDraw, type ArrowTarget, type ContactMarkDraw, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
+import { asteroidShape, blipMark, CHEVRON_SIZE, crackDraw, type ArrowTarget, type ContactMarkDraw, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
 import { ENEMY_RING, HULLS } from './hullModel';
 import type { ArcDraw, CombatDraw, MissileDraw } from './weaponsModel';
 import type { Viewport } from './camera';
@@ -26,13 +26,14 @@ export { CREW_SHIP, ENEMY_SHIP, SHIELD_RING } from './shipColours';
 
 export const SPACE = CRT.glass;
 const STAR_COUNT = 220;
-/** Pool sizes: the labels name 500-unit squares (12 per axis at most), the ring has 12 labels, at most 4 arrows. */
+/** Pool sizes: the labels name 500-unit squares (12 per axis at most), the ring has 12 labels, at most 4 arrows (the
+ *  enemy's arrow and the blip's never show together: sensors blip spec §3). */
 const GRID_LABELS = 12, RING_LABELS = 12, ARROWS = 4;
 /** Sci-1: the contact marks (at most the enemy and the derelict); Science's ring turns at this many radians a second;
  *  the designation bracket pulses at this rate. */
 const MARKS = 2, LOCK_RING_SPEED = 0.8, DESIGNATE_PULSE_HZ = 1;
 /** Feel-ii: the pool of small map words (2 gravity labels, COLLISION, SLINGSHOT, EVADE and up to 6 pings, with room), and
- *  the gun's HEAT word (Valkyrn spec §7.4). */
+ *  the gun's HEAT word (Valkyrn spec §7.4) and the blip's ? (sensors blip spec §3): 12 at most. */
 const NOTES = 13;
 /** The enemy's blinking marker ring (moved to hullModel.ts so the pure model and its test need no Pixi). */
 export { ENEMY_RING };
@@ -177,11 +178,12 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
   /** A torpedo (homing torpedo spec §3): a filled dot, the crew's bright `main`, the Hunter's `hot`. */
   function torpedoDot(g: Graphics, m: MissileDraw): void { g.circle(m.x, m.y, m.r).fill(m.crew ? CRT.main : CRT.hot); }
 
-  function arrowGlyph(g: Graphics, x: number, y: number, angle: number, target: ArrowTarget): void {
+  function arrowGlyph(g: Graphics, x: number, y: number, angle: number, target: ArrowTarget, alpha = 1): void {
     const fx = Math.sin(angle), fy = -Math.cos(angle), rx = -fy, ry = fx, s = target === 'missile' ? 7 : 10;
     g.poly([x + fx * s, y + fy * s, x - fx * s * 0.6 + rx * s * 0.7, y - fy * s * 0.6 + ry * s * 0.7, x - fx * s * 0.6 - rx * s * 0.7, y - fy * s * 0.6 - ry * s * 0.7]);
     if (target === 'ship') g.fill(CRT.hot);
     else if (target === 'enemy') g.fill(CRT.glass).stroke({ width: 2, color: CRT.main });
+    else if (target === 'blip') g.stroke({ width: 2, color: CRT.mid, alpha });   // sensors blip spec §3: hollow, the circle's tint, at the ping's alpha
     else g.fill(target === 'planet' ? CRT.dim : CRT.main);
   }
 
@@ -256,6 +258,13 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         contours.poly([g.x + fx * n, g.y + fy * n, g.x - fx * n * 0.8 + rx * n * 0.7, g.y - fy * n * 0.8 + ry * n * 0.7, g.x - fx * n * 0.4, g.y - fy * n * 0.4,
           g.x - fx * n * 0.8 - rx * n * 0.7, g.y - fy * n * 0.8 - ry * n * 0.7]).stroke({ width: 1, color: CRT.mid, alpha: g.alpha });
       }
+
+      // Sensors blip spec §3: the ping of an enemy beyond sensor range: a dotted circle (the sensor ring's 2 px dashes
+      // and 6 px gaps) in CRT.mid, fading from full to 40 % across the ping's age, and a small ? at its centre in the same
+      // tint and alpha while the centre has no edge arrow (blipMark). Nothing else of the enemy is drawn.
+      const bl = d.blip ?? null, bq = blipMark(d);
+      if (bl) segments(contours, dashCircle(bl.x, bl.y, Math.max(1, bl.r), 2, 6, seg), 1, CRT.mid, bl.alpha);
+      if (bq) words.push({ text: '?', x: bq.x - textPx('?', 1) / 2, y: bq.y - 8, tint: CRT.mid, alpha: bq.alpha });
 
       if (d.planet) {
         const p = d.planet;
@@ -507,7 +516,7 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         if (co) { setText(tx, co.text); tx.tint = co.colour; tx.alpha = co.alpha; tx.position.set(Math.round(co.x), Math.round(co.y)); }
       });
 
-      d.arrows.forEach((a) => arrowGlyph(overlay, a.x, a.y, a.angle, a.target));
+      d.arrows.forEach((a) => arrowGlyph(overlay, a.x, a.y, a.angle, a.target, a.alpha ?? 1));
       // Each label sits inward of its arrow, far enough along the arrow's axis to clear the glyph (half its width, plus 14 px).
       fill(arrowText, d.arrows.map((a) => ({ text: a.label, x: a.x - Math.sin(a.angle) * (textPx(a.label, 1) / 2 + 14), y: a.y + Math.cos(a.angle) * 18 })));
     },
