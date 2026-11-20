@@ -7,7 +7,7 @@ import {
 } from '../src/renderer/src/render/tactical/tacticalModel';
 import { OWN_SHIP } from '../src/renderer/src/render/duel/consoleLayout';
 import { HULLS } from '../src/renderer/src/render/tactical/hullModel';
-import { DENT_FULL_R, DENT_PULL_MAX, dentOf, WELL_MAX_SHIFT, WELL_PULL, wellScale } from '../src/renderer/src/render/tactical/mapGrid';
+import { DENT_FULL_R, DENT_PULL_MAX, DENT_SUM_MAX, dentEase, dentOf, WELL_MAX_SHIFT, WELL_PULL, wellScale } from '../src/renderer/src/render/tactical/mapGrid';
 import { RockKind, writeRock } from '../src/renderer/src/sim/tactical/rocks';
 import { gravityAccel, stepSoloFlight } from '../src/renderer/src/sim/tactical/physics';
 import { createTacticalState, type TacticalState } from '../src/renderer/src/sim/tactical/state';
@@ -97,6 +97,33 @@ describe('the gravity grid’s dents (owner 2026-11-19: ships and rocks, by size
     expect(lines(s)).toEqual(none);
     const dead = empty(); writeRock(dead, 0, RockKind.Gone, 2060, 2000, 0, 0, 45, 0);
     expect(lines(dead)).toEqual(none);
+  });
+  it('a dimple sits on its body even deep in the planet’s well: every point it moves goes toward the drawn rock', () => {
+    const near = createCamera(500, 300, 0.5), at = (s: TacticalState) => tacticalModel(input(s, near, { mapGrid: 'gravity', ships: [] })).grid.curves!;
+    const s = empty(); writeRock(s, 0, RockKind.Static, 560, 340, 0, 0, 45, 10);
+    const none = at(empty()), dented = at(s), rock = { x: 640 + 60 * 0.5, y: 360 + 40 * 0.5 };   // the rock's place on screen
+    let moved = 0;
+    dented.forEach((c, k) => { for (let i = 0; i < c.pts.length; i += 2) {
+      if (none[k]!.pts.length !== c.pts.length) return;   // the two lines through the planet: two points without a dent, so not comparable point by point
+      const was = Math.hypot(none[k]!.pts[i]! - rock.x, none[k]!.pts[i + 1]! - rock.y), now = Math.hypot(c.pts[i]! - rock.x, c.pts[i + 1]! - rock.y);
+      expect(now).toBeLessThanOrEqual(was + 1e-9); if (was - now > 1) moved++;
+    } });
+    expect(moved).toBeGreaterThan(20);
+  });
+  it('overlapping dents are eased so a pile of debris never folds the grid', () => {
+    expect(dentEase(0.01)).toBeCloseTo(1, 6); expect(dentEase(DENT_PULL_MAX)).toBeGreaterThan(0.85);   // a lone dent keeps nearly all its pull
+    let last = 0;
+    for (let sum = 0.05; sum < 12; sum += 0.05) { const eased = sum * dentEase(sum); expect(eased).toBeGreaterThan(last); expect(eased).toBeLessThan(DENT_SUM_MAX); last = eased; }
+    const s = empty();   // twelve rocks within 70 units: their plain pulls sum to several times 1
+    for (let k = 0; k < 12; k++) writeRock(s, k, RockKind.Moving, 2000 + 70 * Math.cos(k * 2.4) * (k / 12), 2000 + 70 * Math.sin(k * 2.4) * (k / 12), 0, 0, 20 + 2 * k, 5);
+    const g = tacticalModel(input(s, createCamera(2000, 2000, 1.2), { mapGrid: 'gravity', ships: [] })).grid.curves!;
+    const upright = (c: { pts: number[] }) => Math.abs(c.pts[c.pts.length - 1]! - c.pts[1]!) > Math.abs(c.pts[c.pts.length - 2]! - c.pts[0]!);
+    const vertical = g.filter(upright), horizontal = g.filter((c) => !upright(c));
+    expect(vertical.length).toBeGreaterThan(8); expect(horizontal.length).toBeGreaterThan(5);
+    for (const c of vertical) for (let i = 3; i < c.pts.length; i += 2) expect(c.pts[i]!).toBeGreaterThan(c.pts[i - 2]!);   // each line still runs one way
+    for (const c of horizontal) for (let i = 2; i < c.pts.length; i += 2) expect(c.pts[i]!).toBeGreaterThan(c.pts[i - 2]!);
+    for (let k = 1; k < vertical.length; k++) for (let i = 0; i < vertical[k]!.pts.length; i += 2) expect(vertical[k]!.pts[i]!).toBeGreaterThan(vertical[k - 1]!.pts[i]!);   // and neighbours never cross
+    for (let k = 1; k < horizontal.length; k++) for (let i = 1; i < horizontal[k]!.pts.length; i += 2) expect(horizontal[k]!.pts[i]!).toBeGreaterThan(horizontal[k - 1]!.pts[i]!);
   });
   it('a drawn ship carries a small dent with it; a ship left out of the view (unseen) dents nothing', () => {
     const s = empty(); Object.assign(s.ships[0]!, { x: 2060, y: 2000 });
