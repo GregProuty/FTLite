@@ -1,0 +1,11 @@
+topic=net-4a-prediction-spec
+subject_kind=spec
+subject=docs/superpowers/specs/2026-11-19-net-4a-duel-prediction-design.md
+worktree=C:\Users\djuar\FTLite
+base=main
+cap=3
+effort=high
+confirm=0
+verify=
+created=2026-11-19
+head_at_setup=8e975767
