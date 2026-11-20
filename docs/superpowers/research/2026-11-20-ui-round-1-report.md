@@ -288,3 +288,7 @@ Same-version bless at SIM_VERSION 64, on HEAD 20fd5255.
 - Determinism: Node v24.18.0 `1800 canonical samples, 330 result/event boundaries PASS`; Electron 37.10.3 `1800 samples
   PASS`; Firefox 160.0 `1800 samples PASS`. Durability log folder restored; `git status --short .superpowers/sdd` empty.
 - Duel app smoke: `npm run test:duel-app-runtime` passed with the `ACTUAL DUEL APP` line; `DUEL_TEST_SEED` did not move.
+
+## Task 9
+
+SIM_VERSION 64 -> 65 alone, blessed in 9b14bd7d. Baselines at 94596a71 (post Net-4a merge): canonical trace golden 7200 ticks, determinism-v2 108000 ticks in 13 runs; duel oracle R=21 runs, T=175320 ticks, F=740 fields. Both checks identical per tick. Bless: basic final 4451b91d, duel-1 final 01634e7c, duel-rematch final 19c7dd6d, determinism-v2 unchanged apart from version and hashes. Full suite: 539 files, 6417 passed, 3 skipped.
