@@ -245,10 +245,11 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       let done: { result: ReturnType<DuelPredictor['confirm']>; ms: number; st: PredictionStats } | null = null;
       try {
         // §3.8: P's bodies before the confirm; after a re-simulation (a correction or a retarget) the drawn world keeps
-        // showing them and decays to P over SMOOTH_MS. A reset jumps.
-        const pre = predictor.active() ? predictedBodiesOf(predictor.state()!) : null;
+        // showing them and decays to P over SMOOTH_MS. A reset jumps. Rock jump brief §2: the rocks keep the tick they were
+        // drawn at the same way (the drawn rock tick before minus after: P's tick, the alpha being the same instant's).
+        const pre = predictor.active() ? predictedBodiesOf(predictor.state()!) : null, preTick = predictor.state()?.interior.tick ?? 0;
         const t0 = deps.now(), result = predictor.confirm(p, d); done = { result, ms: deps.now() - t0, st: predictor.stats() };
-        if (result === 'resimulated' && pre) smoother.shift(pre, predictedBodiesOf(predictor.state()!), deps.now()); else if (result === 'reset') smoother.clear();
+        if (result === 'resimulated' && pre) smoother.shift(pre, predictedBodiesOf(predictor.state()!), deps.now(), preTick - predictor.state()!.interior.tick); else if (result === 'reset') smoother.clear();
       } catch (err) { dropPredictor(err); }   // Fable #4
       if (done) {
         // §3.10: the round's figures. A reset (a pause, a new or decided round) is not a prediction.
@@ -566,7 +567,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       predictor = createDuelPredictor({ seat: next.seatId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout }); seenRetargets = 0; capped = false; smoother.clear();   // Net-4a §3.4: one per client
       source = createOnlineDuelSource({ client: { state, publication, live }, seat: next.seatId, now: deps.now, viewport: { w: INTERNAL_W, h: INTERNAL_H },
         prediction: { active: () => !linkClosed && (predictor?.active() ?? false), state: () => predictor?.state() ?? null, before: () => predictor?.before() ?? null,
-          alpha: () => (capped ? 1 : Math.max(0, Math.min(1, (deps.now() - lastLocalAt) / LOCAL_TICK_MS))), offsets: () => smoother.offsets(deps.now()) } });   // §3.8
+          alpha: () => (capped ? 1 : Math.max(0, Math.min(1, (deps.now() - lastLocalAt) / LOCAL_TICK_MS))), offsets: () => smoother.offsets(deps.now()), rockShift: () => smoother.tickOffset(deps.now()) } });   // §3.8; rock jump brief §2
     },
     setStatus(next: OnlineStatus): void {
       status = next;

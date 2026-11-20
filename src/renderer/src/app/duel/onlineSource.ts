@@ -40,6 +40,8 @@ export interface PredictionView {
   active(): boolean; state(): DuelState | null; before(): PredictedBodies | null; alpha(): number;
   /** Net-4a §3.8: the correction smoother's offsets now, added to the drawn ships and missiles; absent, none. */
   offsets?(): SmoothOffsets;
+  /** Rock jump brief §2: the smoother's draw-tick offset now, added to the rocks' draw tick; absent, none. */
+  rockShift?(): number;
 }
 interface Counters { shots: number; laserHits: number; stripped: number; launched: number; ended: number; missileHits: number; gunHits: number; pewShots: number; pewHits: number; contacts: [number, number, number]; rooms: [number, number, number] }
 /** Ship i's cumulative counters, which the snapshot carries. `ended` is every missile that has ended: launched minus the
@@ -199,6 +201,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     weaponSel: (): number => sentHeld.weaponSel ?? 0,   // W-4 spec §10: the selection this seat last sent
     alpha: viewAlpha,
     rockGap: (): number | null => (predicted() ? 1 : null),   // Fable #8: the prediction's alpha spans one local tick
+    rockShift: (): number => (predicted() ? deps.prediction!.rockShift?.() ?? 0 : 0),   // rock jump brief §2
     /** Net-4a §3.6: the confirmed replica (end card, outcome, one-shot sounds). */
     confirmed: (): DuelState => client.state()!,
     /** Net-4a §3.6: every other player's character from the confirmed publications, one gap behind; this seat's slot null. */

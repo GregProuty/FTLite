@@ -25,7 +25,7 @@ import { createUiStore } from '../src/renderer/src/ui/store';
 import type { ConsoleInput } from '../src/renderer/src/app/duel/input';
 import type { ContactController, ContactSync } from '../src/renderer/src/app/duel/contactController';
 import { interpolatedShip } from '../src/renderer/src/render/tactical/tacticalModel';
-import { createRockTrack, rockDrawPos, updateRockTrack } from '../src/renderer/src/render/tactical/rockTrack';
+import { createRockTrack, rockDrawPos, rockDrawTick, updateRockTrack } from '../src/renderer/src/render/tactical/rockTrack';
 import { isRail, rockSlots, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { createRng, nextFloat } from '../src/shared/rng';
 import { SMOOTH_MS } from '../src/renderer/src/render/duel/correctionSmoother';
@@ -1218,6 +1218,65 @@ describe('smooth 60 fps online (Fable #7, #8)', () => {
     expect(drawnMax).toBeLessThanOrEqual(bound);
     for (const q of inFlight) disposeDuel(q.d);
     r.dispose();
+  });
+  /** Rock jump brief: the 60 Hz rig, the authority latching this seat's held frames lag(now) ticks after they are sent,
+   *  optionally a main-thread stall (no pump and no frame for STALL_MS from STALL_AT; the pump is the first callback after
+   *  it). Per drawn frame from 1 s: `raw`, P's drawn tick without any offset (tick − 1 + alpha), and `drawn`, the rail
+   *  rock draw tick through the scene's track (updateRockTrack with the source's rockGap and rockShift, then rockDrawTick). */
+  function rockRun(lag: (now: number) => number, stall?: { at: number; ms: number }) {
+    const r = rig(0), c = r.attach(), TICK = 1000 / 60, track = createRockTrack();
+    let now = 0, nextTick = TICK, nextFrame = 5, nextPump = TICK + 2;
+    const sentAt: { at: number; n: number }[] = [], frames: { at: number; raw: number; drawn: number }[] = [];
+    while (now < 4000) {
+      const at = Math.min(nextTick, nextFrame, nextPump);
+      r.advance(at - now); now = at;
+      const stalled = !!stall && now >= stall.at && now < stall.at + stall.ms;
+      if (at === nextTick) {
+        nextTick += TICK;
+        stepDuelTick(r.d, { held: [], commands: [] });
+        const latched = [...sentAt].reverse().find((e) => e.at <= now - lag(now) * TICK)?.n ?? 0;
+        if (r.d.interior.tick % 3 === 0) c.publish(r.d, 'running', undefined, { held: [latched, 0] });
+      } else if (at === nextPump) {
+        nextPump += TICK;
+        if (stalled) continue;
+        r.pump(0); sentAt.push({ at: now, n: c.helds().length });
+      } else {
+        nextFrame += TICK;
+        if (stalled) continue;
+        r.session.frame();
+        const src = h.source as unknown as { duel: DuelState; alpha(): number; rockGap?(): number | null; rockShift?(): number };
+        updateRockTrack(track, src.duel.tactical, src.rockGap?.() ?? undefined, src.rockShift?.() ?? 0);
+        if (now >= 1000) frames.push({ at: now, raw: src.duel.tactical.tick - 1 + src.alpha(), drawn: rockDrawTick(track, src.duel.tactical, src.alpha()) });
+      }
+    }
+    r.dispose();
+    const steps = (f: 'raw' | 'drawn') => frames.slice(1).map((v, k) => ({ at: v.at, step: v[f] - frames[k]![f], passed: (v.at - frames[k]!.at) / TICK }));
+    return { frames, steps, TICK };
+  }
+  it('a forced 3-tick retarget each way: the drawn rail-rock tick moves at most 1 + 3 × (frame ms / SMOOTH_MS) a frame and is back on P by 100 ms (rock jump brief §2)', () => {
+    // The held frames are latched at once, then from 2 s 3 ticks late (the measured target moves 3 ticks forward),
+    // then from 3 s at once again (3 ticks back).
+    const { frames, steps, TICK } = rockRun((now) => (now >= 2000 && now < 3000 ? 3 : 0));
+    const raw = steps('raw'), drawn = steps('drawn'), bound = 1 + 3 * (TICK / SMOOTH_MS) + 1e-9;
+    const rawMax = Math.max(...raw.map((s) => s.step)), rawMin = Math.min(...raw.map((s) => s.step));
+    const drawnMax = Math.max(...drawn.map((s) => s.step)), drawnMin = Math.min(...drawn.map((s) => s.step));
+    console.log(`rock retarget: raw steps ${rawMin.toFixed(3)}..${rawMax.toFixed(3)} ticks, drawn ${drawnMin.toFixed(3)}..${drawnMax.toFixed(3)}, bound ${bound.toFixed(3)}`);
+    expect(rawMax).toBeGreaterThanOrEqual(4 - 1e-9);   // unsmoothed: 3 ticks forward on top of the frame's one
+    expect(rawMin).toBeLessThanOrEqual(-2 + 1e-9);     // and 3 back
+    expect(drawnMax).toBeLessThanOrEqual(bound);
+    expect(drawnMin).toBeGreaterThan(0);
+    const jumps = raw.filter((s) => Math.abs(s.step - s.passed) > 1).map((s) => s.at);
+    for (const f of frames) if (jumps.every((j) => f.at < j || f.at >= j + SMOOTH_MS)) expect(f.drawn).toBeCloseTo(f.raw, 9);   // converged by 100 ms
+  });
+  for (const lag of [0, 1]) it(`a 100 ms main-thread stall, held frames latched ${lag} tick late: the drawn rail-rock tick never steps back (rock jump brief §1, §2)`, () => {
+    // The stall the frame probe met right after the host's sit (its hook's install): the first anchor after it takes the
+    // last frame sent before the stall as latched at the newest publication, and the catch-up ticks run on top, so P lands
+    // about 3 ticks ahead and the next anchors pull it back (lag 0) or leave it inside the slack (lag 1).
+    const { steps } = rockRun(() => lag, { at: 2000, ms: 100 });
+    const raw = steps('raw'), drawn = steps('drawn');
+    console.log(`stall (lag ${lag}): raw min step ${Math.min(...raw.map((s) => s.step)).toFixed(3)} ticks, drawn min ${Math.min(...drawn.map((s) => s.step)).toFixed(3)}`);
+    if (lag === 0) expect(Math.min(...raw.map((s) => s.step))).toBeLessThan(0);   // unsmoothed it steps back
+    for (const s of drawn) expect(s.step).toBeGreaterThan(0);
   });
   it('while P stands at the cap the drawn rock holds (alpha 1, one-tick gap) and so does the ship (Fable #8)', () => {
     const r = rig(0); r.attach();

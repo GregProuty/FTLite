@@ -231,7 +231,7 @@ async function main() {
     for (const app of apps) await app.probe({ eval: `window.__frameProbe.mark('fly')` });
     await fly(pilot, ms);
     const cpuBusyPct = busySince(cpu0);
-    const recs = [];
+    const recs: any[] = [];
     for (const app of apps) recs.push(await app.probe({ eval: 'window.__frameProbe.stop()', ms: 15000 }));
     const t1 = latest(await status(pilot));
     // F3's prediction line on each window (shown for a moment only: the overlay is a React update every frame).

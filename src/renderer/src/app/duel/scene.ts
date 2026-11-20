@@ -105,6 +105,8 @@ export interface DuelViewSource {
   /** Net-4a (Fable #8): the tick span alpha blends the rocks over: 1 while the online view draws the prediction (its alpha
    *  spans one local tick, as the ships'). Absent or null: the rock track's observed gap (Single player, a replica). */
   rockGap?(): number | null;
+  /** Rock jump brief §2 (online while predicting): the draw-tick offset of a retarget being taken back; absent or 0, none. */
+  rockShift?(): number;
 }
 /** Feel-ii §2.8: a refused console control and the reason the sim would give. */
 export interface Refusal { control: RefusedControl; reason: string }
@@ -383,7 +385,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
           if (h !== null) options.requests?.torpHeading(h);
         }
       }
-      updateRockTrack(rockTrack, d.tactical, source.rockGap?.() ?? undefined);   // every frame, whichever view shows
+      updateRockTrack(rockTrack, d.tactical, source.rockGap?.() ?? undefined, source.rockShift?.() ?? 0);   // every frame, whichever view shows
       const vent = d.helmVent;   // §6: the puffs and the hiss, from the drawn state (online: P's, Net-4a §3.9)
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       ({ watch: fires, flashUntil } = fireWatch(fires, d, t, flashUntil));   // own ship window spec §4

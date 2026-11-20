@@ -62,6 +62,20 @@ describe('correction smoother (Net-4a §3.8)', () => {
     expect(o.ships[1]).toEqual({ x: -150, y: 0, h: 0 });
   });
 
+  it('rock jump brief §2: the draw-tick offset of a retarget (shown minus new) decays linearly over SMOOTH_MS, adds to what is still shown, and clears', () => {
+    const s = createCorrectionSmoother(), none = world([]);
+    expect(s.tickOffset(0)).toBe(0);
+    s.shift(none, none, 1000, 3);   // P moved 3 ticks back: the rocks keep showing 3 ticks ahead of it
+    expect(s.tickOffset(1000)).toBe(3);
+    expect(s.tickOffset(1050)).toBe(1.5);
+    expect(s.tickOffset(1100)).toBe(0);
+    s.shift(none, none, 2000, -3); s.shift(none, none, 2050, 1);   // at 50 ms −1.5 is still shown, then 1 more tick back
+    expect(s.tickOffset(2050)).toBe(-0.5);
+    s.shift(none, none, 2060, 0);   // a correction that leaves the tick keeps the decaying offset
+    expect(s.tickOffset(2060)).toBeCloseTo(-0.45, 12);
+    s.clear();
+    expect(s.tickOffset(2060)).toBe(0);
+  });
   it('clear() drops every offset', () => {
     const s = createCorrectionSmoother();
     s.shift(world([b(10, 0, 0)], [b(1, 0, 0)]), world([b(0, 0, 0)], [b(0, 0, 0)]), 0);

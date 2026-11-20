@@ -1,6 +1,7 @@
 // Net-4a §3.8: correction smoothing. A re-simulation (a correction or a retarget) replaces P at once, so the drawn world
 // would jump. Each ship and missile instead keeps a visual offset, shown minus new, that decays linearly to zero over
-// SMOOTH_MS; a second correction inside it adds to what is still shown. Drawing only: the sim, P and the predictor's
+// SMOOTH_MS; a second correction inside it adds to what is still shown. Rock jump brief §2: the rocks keep one draw-tick
+// offset the same way (P's tick shown minus new, which a retarget moves). Drawing only: the sim, P and the predictor's
 // rules do not change. Pure, with no Pixi; the caller passes the time.
 import type { PredictedBodies, PredictedBody } from '../../clientControl/duelPredictor';
 import { HEADING_COUNT } from '../../sim/tactical/tuning';
@@ -31,17 +32,23 @@ function shifted(was: Held | null, before: PredictedBody | null | undefined, aft
   return dx === 0 && dy === 0 && h === 0 ? null : { x: dx, y: dy, h, at: now };
 }
 
+const tickDecayed = (o: { v: number; at: number } | null, now: number): number => { if (!o) return 0; const k = 1 - (now - o.at) / SMOOTH_MS; return k > 0 ? o.v * k : 0; };
+
 export function createCorrectionSmoother() {
-  let ships: (Held | null)[] = [], missiles: (Held | null)[] = [];
+  let ships: (Held | null)[] = [], missiles: (Held | null)[] = [], tick: { v: number; at: number } | null = null;
   return {
-    /** A re-simulation moved P from `before` to `after` at `now`: each ship and missile keeps showing where it was. */
-    shift(before: PredictedBodies, after: PredictedBodies, now: number): void {
+    /** A re-simulation moved P from `before` to `after` at `now`: each ship and missile keeps showing where it was, and
+     *  the rocks the tick they were drawn at (`ticks`: P's tick before minus after, a retarget's size taken back). */
+    shift(before: PredictedBodies, after: PredictedBodies, now: number, ticks = 0): void {
       ships = after.ships.map((a, i) => shifted(ships[i] ?? null, before.ships[i], a, now));
       missiles = after.missiles.map((a, i) => shifted(missiles[i] ?? null, before.missiles[i], a, now));
+      const v = ticks + tickDecayed(tick, now); tick = v === 0 ? null : { v, at: now };
     },
     /** The offsets to add to the drawn bodies at `now` (null: none), by ship slot; missiles by owner. */
     offsets(now: number): SmoothOffsets { return { ships: ships.map((o) => decayed(o, now)), missiles: missiles.map((o) => decayed(o, now)) }; },
-    clear(): void { ships = []; missiles = []; }
+    /** Rock jump brief §2: the draw-tick offset to add to the rocks at `now` (0: none). */
+    tickOffset: (now: number): number => tickDecayed(tick, now),
+    clear(): void { ships = []; missiles = []; tick = null; }
   };
 }
 export type CorrectionSmoother = ReturnType<typeof createCorrectionSmoother>;

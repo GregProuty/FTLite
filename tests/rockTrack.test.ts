@@ -3,7 +3,8 @@
 // spin, and the predicted path of the Weapons map's rock target.
 import { describe, expect, it } from 'vitest';
 import { createCamera, worldToScreen } from '../src/renderer/src/render/tactical/camera';
-import { createRockTrack, JUMP_RESET_U, rockDrawPos, rockTrail, rockTrailInto, TRAIL_LEN, updateRockTrack } from '../src/renderer/src/render/tactical/rockTrack';
+import { createRockTrack, JUMP_RESET_U, rockDrawPos, rockDrawTick, rockTrail, rockTrailInto, TRAIL_LEN, updateRockTrack } from '../src/renderer/src/render/tactical/rockTrack';
+import { createCorrectionSmoother, SMOOTH_MS } from '../src/renderer/src/render/duel/correctionSmoother';
 import { asteroidSpin, tacticalModel, type TacticalModelInput } from '../src/renderer/src/render/tactical/tacticalModel';
 import { circularVelocity, orbitRate, railPos, type RailOut } from '../src/renderer/src/sim/tactical/rails';
 import { predictRock } from '../src/renderer/src/sim/tactical/predict';
@@ -126,6 +127,37 @@ describe('the rock track (spec §7.1, §13.5)', () => {
     expect(at(given)).toBeCloseTo(st.tick - 0.5, 6);
     expect(at(seen)).toBeCloseTo(st.tick - 1, 6);
     updateRockTrack(given, st, 1); expect(given.gap).toBe(1);   // the same tick again: still one
+  });
+  for (const shift of [3, -3]) it(`rock jump brief §2: a ${shift > 0 ? 'backward' : 'forward'} 3-tick retarget, smoothed: the drawn rail tick moves at most 1 + 3 × (frame ms / SMOOTH_MS) a frame, never back, and is on P by 100 ms; the free rock follows it`, () => {
+    // Online at 60 Hz: one tick, then one frame drawn at alpha 0.4 with the one-tick gap. At frame 30 P is retargeted: back
+    // 3 ticks (restored to the rocks it had 3 ticks ago) or on 3 ticks, and the session's smoother keeps the draw-tick
+    // offset, before minus after, decaying over SMOOTH_MS, which the track takes each frame.
+    const st = arena(), track = createRockTrack(), smoother = createCorrectionSmoother(), none = { ships: [], missiles: [], crew: [] };
+    const [vx, vy] = circularVelocity(0, 1700), TICK = 1000 / 60, A = 0.4;
+    rail(st, 3, 1700, 0, 20); mover(st, 4, 0, 1700, vx, vy + 5, 10);   // a quarter turn apart
+    const saved: { tick: number; rocks: Float64Array }[] = [], frames: { at: number; tick: number; drawn: number; free: { x: number; y: number } }[] = [];
+    let shiftAt = Infinity;
+    for (let f = 0; f < 60; f++) {
+      const now = f * TICK;
+      if (f === 30) {
+        const before = st.tick;
+        if (shift > 0) { const back = saved.at(-shift)!; st.tick = back.tick; st.rocks.set(back.rocks); } else for (let k = 0; k < -shift; k++) stepDuel(st, IDLE_INPUT);
+        smoother.shift(none, none, now, before - st.tick); shiftAt = now;
+      }
+      saved.push({ tick: st.tick, rocks: st.rocks.slice() });
+      stepDuel(st, IDLE_INPUT);
+      updateRockTrack(track, st, 1, smoother.tickOffset(now));
+      if (f >= 5) frames.push({ at: now, tick: st.tick, drawn: rockDrawTick(track, st, A), free: rockDrawPos(track, st, 4, A) });   // from the fifth frame: the free blend is under way
+    }
+    const bound = 1 + 3 * (TICK / SMOOTH_MS) + 1e-9, speed = Math.hypot(vx, vy + 5) / 60;   // the free rock's distance a tick, about
+    for (let k = 1; k < frames.length; k++) {
+      const a = frames[k - 1]!, b = frames[k]!, step = b.drawn - a.drawn, dx = b.free.x - a.free.x, dy = b.free.y - a.free.y;
+      expect(step).toBeGreaterThan(0); expect(step).toBeLessThanOrEqual(bound);
+      expect(Math.hypot(dx, dy)).toBeLessThanOrEqual(bound * speed * 1.01);
+      expect(Math.hypot(dx, dy)).toBeGreaterThan(0.4 * speed);   // it never stalls or turns back
+      if (b.at >= shiftAt + SMOOTH_MS || b.at < shiftAt) expect(b.drawn).toBe(b.tick - (1 - A));   // no offset: exactly the old draw tick
+    }
+    expect(frames.find((f) => f.at === shiftAt)!.drawn - frames.find((f) => f.at === shiftAt - TICK)!.drawn).toBeCloseTo(1, 9);   // the retarget frame moves one tick, like any other
   });
   it('keeps 25 s of 4 Hz samples while a free rock is young and shows 6 s once it is older than 60 s; resets on a kind or r change or a jump', () => {
     const st = arena(), track = createRockTrack(), [vx, vy] = circularVelocity(0, 1700);
