@@ -376,9 +376,13 @@
       "own": 0,
       "cluster": 0
     },
+    "clusterJoins": {
+      "tumble": 0,
+      "ring": 0
+    },
     "stepDuelMs": {
-      "median": 0.0269,
-      "p99": 0.0752
+      "median": 0.0157,
+      "p99": 0.0301
     },
     "freeEvery10sMax": [
       13,
@@ -400,8 +404,8 @@
       "liveMedian": 246,
       "liveMin": 239,
       "stepDuelMs": {
-        "median": 0.0567,
-        "p99": 0.2227
+        "median": 0.0324,
+        "p99": 0.0973
       },
       "p99GateMs": 0.5,
       "p99Pass": true
@@ -413,11 +417,11 @@
         3
       ],
       "ticks": 2000,
-      "liveMedian": 247,
-      "liveMin": 242,
+      "liveMedian": 246,
+      "liveMin": 241,
       "stepDuelMs": {
-        "median": 0.1126,
-        "p99": 0.4706
+        "median": 0.0402,
+        "p99": 0.1426
       },
       "p99GateMs": 0.5,
       "p99Pass": true
@@ -502,25 +506,25 @@
       {
         "seed": 1,
         "peakFree": 55,
-        "backToTenAtS": -1,
-        "freeAt270": 24,
-        "deltaMedian": 2267,
-        "pass": false
+        "backToTenAtS": 187,
+        "freeAt270": 8,
+        "deltaMedian": 1775,
+        "pass": true
       },
       {
         "seed": 2,
         "peakFree": 43,
-        "backToTenAtS": -1,
-        "freeAt270": 25,
-        "deltaMedian": 2303,
-        "pass": false
+        "backToTenAtS": 196,
+        "freeAt270": 9,
+        "deltaMedian": 1739,
+        "pass": true
       },
       {
         "seed": 3,
         "peakFree": 55,
         "backToTenAtS": -1,
-        "freeAt270": 33,
-        "deltaMedian": 2639,
+        "freeAt270": 16,
+        "deltaMedian": 2159,
         "pass": false
       }
     ],
@@ -529,37 +533,37 @@
   "burstWhy": [
     {
       "seed": 1,
-      "freeAtEnd": 24,
+      "freeAtEnd": 8,
       "refusedBy": {
         "overlap": 53,
         "laneFar": 286,
         "sweepLane": 515,
-        "sweepCluster": 2295,
-        "snap": 403,
+        "snap": 277,
+        "sweepCluster": 115,
         "sweepRail": 22
       }
     },
     {
       "seed": 2,
-      "freeAtEnd": 25,
+      "freeAtEnd": 9,
       "refusedBy": {
         "laneFar": 77,
         "sweepLane": 493,
-        "sweepCluster": 2725,
         "overlap": 168,
+        "sweepCluster": 457,
         "snap": 213
       }
     },
     {
       "seed": 3,
-      "freeAtEnd": 33,
+      "freeAtEnd": 16,
       "refusedBy": {
         "laneFar": 218,
         "snap": 600,
-        "sweepCluster": 2210,
         "sweepLane": 804,
         "sweepRail": 157,
-        "overlap": 6
+        "overlap": 6,
+        "sweepCluster": 6
       }
     }
   ]
