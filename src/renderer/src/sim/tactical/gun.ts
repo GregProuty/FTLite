@@ -4,10 +4,11 @@
 // Weapons station. Rounds live in the fixed pool tactical.rounds. stepRounds moves the rounds after the ships fly and
 // contacts resolve and sweeps each as a segment (spec §7.2). Only + − × ÷ and sqrt (the determinism guard).
 import type { GunDef } from './defs';
-import { hx, hy } from './direction';
+import { weaponBars, WeaponSlot } from './bars';
+import { dirBetween, hx, hy } from './direction';
 import { rockAt, rocksNear } from './rocks';
 import { classOf, emptyRound, Room, type GunRound, type TacticalState } from './state';
-import { DT } from './tuning';
+import { DT, HEADING_COUNT } from './tuning';
 import type { ShipInput } from './weapons';
 
 /** Put a round in a pool (spec §7.2; W-1: the gun's `state.rounds` by default, or the pew's `state.pew`): the lowest free
@@ -20,17 +21,31 @@ export function placeRound(state: TacticalState, r: Omit<GunRound, 'active'>, po
   return e;
 }
 
+/** W-4 spec §2, §4.4: ship i's gun interval now: a turret gun's table row by its trimmed slot-1 bars (0: no round), else
+ *  its class's intervalTicks. W-4a: row 0 (AUTO); W-4b reads the mode. */
+export function gunInterval(state: TacticalState, i: number): number {
+  const g = classOf(state, i).slots.gun;
+  if (!g) return 0;
+  if (g.intervalByBars === null) return g.intervalTicks;
+  return g.intervalByBars[0]![weaponBars(state.systems[i]!, WeaponSlot.Autocannon)] ?? 0;
+}
+/** W-4 spec §3.2, §5: ship i's turret gun's world aim, a fine aim 0..AIM_STEPS − 1. W-4a: the nose (W-4b adds gunTurret). */
+export function gunAimFine(state: TacticalState, i: number): number { return state.ships[i]!.heading * HEADING_COUNT; }
+
 /** One round from ship i's next muzzle: `muzzleForward` ahead of the centre and `muzzleLateral` to starboard (90°
  *  clockwise of the nose, (−hy, hx)) or port, at `speed` along the nose plus the ship's velocity; the muzzles alternate,
  *  the cooldown restarts, and the heat rises, locking the gun when it reaches heatMax. */
 function fireRound(state: TacticalState, i: number, g: GunDef): void {
   const ship = state.ships[i]!, s = state.systems[i]!, h0 = hx(ship.heading), h1 = hy(ship.heading), side = s.gunMuzzle === 0 ? 1 : -1;
+  // W-4 spec §5: the muzzles stay on the hull (the nose frame); a turret gun's round flies along its aim (pew.ts aimDir's
+  // arithmetic), the Valkyrn's along the nose as before.
+  const a = g.turret === null ? 0 : gunAimFine(state, i), [ux, uy] = g.turret === null ? [h0, h1] : dirBetween(Math.floor(a / HEADING_COUNT), (a % HEADING_COUNT) / HEADING_COUNT);
   placeRound(state, {
     x: ship.x + h0 * g.muzzleForward - h1 * g.muzzleLateral * side, y: ship.y + h1 * g.muzzleForward + h0 * g.muzzleLateral * side,
-    vx: ship.vx + h0 * g.speed, vy: ship.vy + h1 * g.speed, age: 0, owner: i
+    vx: ship.vx + ux * g.speed, vy: ship.vy + uy * g.speed, age: 0, owner: i
   });
   state.events.push({ kind: 'gunFire', ship: i, muzzle: s.gunMuzzle });
-  s.gunMuzzle = 1 - s.gunMuzzle; s.gunCooldown = g.intervalTicks; s.gunShots++;
+  s.gunMuzzle = 1 - s.gunMuzzle; s.gunCooldown = g.turret === null ? g.intervalTicks : gunInterval(state, i); s.gunShots++;
   s.gunHeat = Math.min(g.heatMax, s.gunHeat + g.heatPerShot);
   if (s.gunHeat >= g.heatMax) s.gunLocked = true;
 }
@@ -39,7 +54,8 @@ function fireRound(state: TacticalState, i: number, g: GunDef): void {
  * One tick of ship i's gun (spec §7.1), every tick whether or not anyone is at Weapons: the heat cools by `cool` (by
  * `coolLocked` while locked; both halved while Weapons is damaged, Decision 7) and a locked gun unlocks at 0; the
  * cooldown counts down; then a round fires when the trigger is held at an attended Weapons station, the gun is not
- * locked, Weapons is below level 2 and the cooldown is 0. A class without a gun does nothing.
+ * locked, Weapons is below level 2 and the cooldown is 0. A class without a gun does nothing. W-4 spec §5: a turret gun's
+ * interval is gunInterval (its bars), and it fires nothing on 0 bars.
  */
 export function tickGun(state: TacticalState, i: number, input: ShipInput): void {
   const g = classOf(state, i).slots.gun;
@@ -49,6 +65,7 @@ export function tickGun(state: TacticalState, i: number, input: ShipInput): void
   if (s.gunLocked && s.gunHeat === 0) s.gunLocked = false;
   if (s.gunCooldown > 0) s.gunCooldown--;
   if (!input.weapons || !input.gunHeld || s.gunLocked || s.rooms[Room.Weapons] >= 2 || s.gunCooldown > 0) return;
+  if (g.turret !== null && gunInterval(state, i) === 0) return;   // W-4 spec §5: a turret gun on 0 bars fires nothing
   fireRound(state, i, g);
 }
 
