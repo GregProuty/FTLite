@@ -2,7 +2,7 @@
 // notches; the set one lit with a `<` pointer, and the notches from 25 up to it filled), heading and speed, and the turn
 // buttons that hold A and D. W and S step the throttle a notch (§5.4); a notch click asks for its level. Feel-i (console
 // feel spec §2): AUTO-FACE holds Space, turning the nose onto the enemy's lead point while held.
-// Playtest2feedback §6: on a newtonianHelm class (helm.crew) the block is CrewHelmStation: the held throttle bar, the Engines cap and the PORT / STBD thrusters (owner 2026-11-19: no HELM POWER split, no PRESSURE gauge).
+// Playtest2feedback §6, helm round 2 §6.1: on a newtonianHelm class (helm.crew) the block is CrewHelmStation: the held throttle bar to REV −50, THR, the Engines cap, the PORT / STBD thrusters and the GAS bar (no AUTO-FACE: helm round 2 §4).
 import { Fragment, memo, useRef } from 'react';
 import { THR_MAX, THR_MIN, type CrewHelmPanel, type HelmPanel } from '../../render/duel/consoleModel';   // the throttle range comes through the model: the UI imports no sim values
 import { STATION, stationTop } from '../../render/duel/consoleLayout';
@@ -76,14 +76,14 @@ const NotchHelmStation = memo(function NotchHelmStation({ helm }: { helm: HelmPa
 });
 
 /** Playtest2feedback §6: the held throttle bar's labels and their per mille, top to bottom. */
-const THR_LABELS: readonly [string, number][] = [['100', 1000], ['75', 750], ['50', 500], ['25', 250], ['0', 0], ['REV', -250]];
+const THR_LABELS: readonly [string, number][] = [['100', 1000], ['75', 750], ['50', 500], ['25', 250], ['0', 0], ['REV', -500]];   // helm round 2 §6.1: full reverse is −500
 const BAR_H = 150, BAR_W = 18;
 
-/** Playtest2feedback §6: the crew Helm's block. On the left, the throttle bar from REV (−25) to 100, filled from 0 to the
- *  shown thrMille. A line marks the Engines cap, and the parts past the cap and the floor are drawn locked (dark). Owner
- *  2026-11-19: no PRESSURE gauge (the cold gas is free). On the right are the heading and speed, and (owner 2026-11-19, in
- *  place of §5's HELM POWER split) the Engines bars and the cap they set; the bars themselves are Engineering's, on the
- *  console's power strip. Below them are PORT and STBD (they hold A and D, the side thrusters), AUTO-FACE, and the key hints. */
+/** Playtest2feedback §6, helm round 2 §6.1: the crew Helm's block. On the left, the throttle bar from REV (−50) to 100, filled
+ *  from 0 to the shown thrMille. A line marks the Engines cap, and the parts past the cap and the floor are drawn locked
+ *  (dark). On the right are the heading and speed, the Engines bars and the cap they set, the set throttle (THR, plan
+ *  Decision 1's row), PORT and STBD (they hold ← and →, the side thrusters), the GAS bar (the charge: hot while venting, dim
+ *  below one spend, flashing on NO GAS; plan Decision 2's row) and the two key hints. Helm round 2 §4: no AUTO-FACE. */
 const CrewHelmStation = memo(function CrewHelmStation({ helm, crew }: { helm: HelmPanel; crew: CrewHelmPanel }) {
   const actions = useActions(), { crt } = useCrt();
   const top = stationTop('helm'), x0 = STATION.x + 8, y0 = top + 6, rx = STATION.x + 140, h = helm.held;
@@ -111,11 +111,16 @@ const CrewHelmStation = memo(function CrewHelmStation({ helm, crew }: { helm: He
       <PixelText text={`SPD ${helm.speed}`} x={rx} y={y0 + 18} size={FONT_SIZE} tint={main} />
       <PixelText text={`ENGINES ${crew.bars}`} x={rx} y={y0 + 40} size={FONT_NATIVE} tint={dim} />
       <PixelText text={`CAP ${crew.cap / 10}%${crew.floor < 0 ? '' : '  NO REV'}`} x={rx} y={y0 + 56} size={FONT_SIZE} tint={crew.cap > 0 ? main : hot} />   {/* owner 2026-11-19: 1 bar = 25 %, reverse needs a bar */}
+      <PixelText text={`THR ${Math.round(crew.thrMille / 10)}%`} x={rx} y={y0 + 78} size={FONT_NATIVE} tint={main} />   {/* helm round 2 §6.1: the set throttle, −50..100; plan Decision 1: y0 + 78 clears CAP's capitals and the buttons */}
       <Button name="rcs-port" label="PORT" hint="Q" x={rx} y={y0 + 90} w={70} h={24} lit={h.port === true} onHold={(on) => actions.console.hold('ArrowLeft', on)} />
       <Button name="rcs-stbd" label="STBD" hint="E" x={rx + 78} y={y0 + 90} w={70} h={24} lit={h.starboard === true} onHold={(on) => actions.console.hold('ArrowRight', on)} />
-      <Button name="auto-face" label="AUTO-FACE" hint="SPC" x={rx} y={y0 + 118} w={148} h={24} lit={h.fire} flash={flash('auto-face')} onHold={(on) => actions.console.hold('Space', on)} />
-      {hint(['throttle'], 'W/S THR  A/D TURN  Q/E GAS', y0 + 150)}
-      {hint(['turn', 'heading', 'auto-face'], 'LMB STEER  RMB HDG', y0 + 170)}   {/* two rows, the lowest at y0 + 170 as the existing block's; RMB HEADING is in the controls list */}
+      {/* Helm round 2 §6.1: the GAS bar in AUTO-FACE's old row (plan Decision 2: the box on the label's line), filled by gas / gasMax */}
+      <PixelText text="GAS" x={rx} y={y0 + 118} size={FONT_NATIVE} tint={flash('gas') ? hot : dim} />
+      <Box x={rx + 32} y={y0 + 121} w={116} h={10} attrs={{ 'data-ui-gas': String(crew.gas), 'data-ui-gas-flash': flash('gas') ? '1' : '0' }} style={{ border: `1px solid ${hex(flash('gas') ? hot : dim)}` }} />
+      {crew.gas > 0 && <Box x={rx + 33} y={y0 + 122} w={Math.max(1, Math.round((crew.gas / crew.gasMax) * 114))} h={8} attrs={{ 'data-ui-gas-fill': crew.venting ? 'hot' : crew.gasLow ? 'dim' : 'main' }}
+        style={{ background: hex(crew.venting ? hot : crew.gasLow ? dim : main) }} />}
+      {hint(['throttle'], 'W/S THR  TAP S CUT  A/D TURN', y0 + 150)}
+      {hint(['turn', 'gas'], 'Q/E GAS  LMB STEER', y0 + 170)}   {/* helm round 2 §6.1: a refusal takes the line that names its control; the crew Helm raises no heading or auto-face */}
     </>
   );
 });

@@ -71,6 +71,8 @@ FAIL: median 140.1 s < 180
 
 - Task 9 (Space, the right-button heading and its pan exemption leave the crew Helm online, §4): `tests/onlineDuelSession.test.ts` 'Feel-i: Space held at the Helm rides the held frame as face …' and 'a clear asked for while a heading is in flight is sent …' move to the Valkyrn class's Helm (bodies unchanged); 'A is a thruster here: it does not clear the held heading, so the same heading asked again is deduped' is replaced by 'helm round 2 §4: the map's heading request sends nothing at the crew Helm, whatever the replica holds' (no class sends a heading from the crew Helm; the Valkyrn's dedupe stays in 'A held at the Helm clears the base …'). `tests/crewHelmOnline.test.ts` 'at the crew Helm: the A/D moveX, the three fields and the steer …': the crew Helm's frame drops `face: true` (the Valkyrn's line keeps it). No kind (b) failures in the Task 9 targeted run.
 
+- Task 10 (the console shows the new rules): `src/renderer/src/app/uiProbe.ts` (the probe's crew literal gains the four gas fields, floor -500; a source fix for the typecheck, not a test). `tests/crewHelmUi.test.tsx` (the `crew` literal and the model's `toEqual` gain the gas fields; the AUTO-FACE and old-hint rules are replaced). No test deleted. No kind (b) failures in the Task 10 run.
+
 ## Scripted Helm tuning (spec §5's gate rule)
 
 - Task 6: none. Every per-seed gate in `tests/duelGates.test.ts` passed with no constant moved (21 passed, the 2 aggregate bands skipped); no crew twin added.

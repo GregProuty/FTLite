@@ -453,7 +453,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const hover = station === 'science' && view !== 'interior'
         ? hoverReadout(cam!, viewport, interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), options.pointer?.() ?? null)
         : null;
-      const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView, throttle: source.throttle(), thrMille: source.thrMille?.() ?? d.thrMille, hover,
+      const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView, throttle: source.throttle(), thrMille: source.thrMille?.() ?? d.thrMille, vent, hover,
         sinceShot: fx.sinceShot, goal: seat === 'weapons' && !goalUsed, t, refused: refusedView, shipView: view === 'interior', weaponSel: source.weaponSel?.() });
       // Step 5: the contact view, only while shown.
       const open = contact?.state() ?? null;

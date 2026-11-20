@@ -156,7 +156,7 @@ export function readoutRows(input: ReadoutInput): ReadoutRow[] {
     const crewed = (pid: number): boolean => pid >= 0 && !!d.present[pid];
     rows.push(heading('OUTSIDE', AMBER));
     rows.push(em(row('HELM', crewed(helm) ? 'CREWED' : 'EMPTY', DIM, crewed(helm) ? TEXT : WARN), crewed(helm) ? null : 'alert'));
-    if (!crewed(helm)) rows.push(em(row('', 'COASTING', DIM, WARN), 'alert'));
+    if (!crewed(helm)) rows.push(em(row('', d.thrMille !== 0 ? `THRUST ${Math.round(d.thrMille / 10)}%` : 'COASTING', DIM, WARN), 'alert'));   // helm round 2 §6.1: an empty Helm keeps its throttle, so say so
     rows.push(em(row('WEAPONS', crewed(gun) ? 'CREWED' : 'EMPTY', DIM, crewed(gun) ? TEXT : WARN), crewed(gun) ? null : 'alert'));
     const dx = enemy.x - crew.x, dy = enemy.y - crew.y;
     if (!shipSeen(t, target)) {   // Engineering spike §10.4: no range or bearing unseen
