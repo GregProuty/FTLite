@@ -14,7 +14,6 @@ import { Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import type { DuelState } from '../src/renderer/src/sim/duel/state';
 import { BELT_OUTER, R_MAP } from '../src/renderer/src/sim/tactical/tuning';
-import { RCS_TURN_BOOST } from '../src/renderer/src/sim/tactical/tuning';
 
 const layout = parseShip(cutter);
 
@@ -175,20 +174,12 @@ describe("the scripted Helm lines the guns up (W-4 spec §12: outside the autoca
   });
 });
 
-describe("the Helm's hazard prediction flies the sim's turn boost (playtest2feedback §4a)", () => {
-  it('on the Cutter, the next tick predicts with exactly the boost the step flew the held input with, and some far turns are boosted', () => {
+describe("the Helm's hazard prediction (spec §3; helm round 2 §3.2: no boost)", () => {
+  it('on the Hound, predictAxes flies the turn of the tick before and the held throttle\'s thrust, with no turn boost', () => {
     const d = createSeatedDuel(layout, 3), pair = createScriptedPair(3);
-    let seated = 0, boosted = 0;
-    for (let k = 0; k < 6000 && d.tactical.outcome === Outcome.Running; k++) {
-      const atHelm = Seated.station[d.interior.crew[0]!]! === d.nav, input = scriptedInput(pair, d);
-      stepDuelTick(d, input);
-      if (!atHelm || Seated.station[d.interior.crew[0]!]! !== d.nav) continue;
-      const flew = d.helmVent.boosted ? RCS_TURN_BOOST : 1, next = predictAxes(pair, d).turnBoost;
-      expect(next).toBe(flew);   // only ever exactly 1 or RCS_TURN_BOOST
-      seated++; if (flew === RCS_TURN_BOOST) boosted++;
-    }
-    expect(seated).toBeGreaterThan(1000);
-    expect(boosted).toBeGreaterThan(0);
-    disposeDuel(d);
+    try {
+      d.thrMille = 400; pair.axes = { turn: 1, thrust: 1 };
+      expect(predictAxes(pair, d)).toEqual({ turn: 1, thrust: 0.4 });
+    } finally { disposeDuel(d); }
   });
 });

@@ -10,7 +10,7 @@ import {
   MISSILE_ARM_TICKS, MISSILE_FUEL_TICKS, MISSILE_HULL, MISSILE_BOOST_TICKS, MISSILE_LAUNCH_SPEED, MISSILE_LIFE_TICKS, MISSILE_RADIUS, MISSILE_RANGE, MISSILE_SPAWN_OFFSET, MISSILE_THRUST,
   MISSILE_TURN_STEPS_PER_TICK, REVERSE_FRACTION, SHIELD_LAYERS, SHIELD_RATE, SHIELD_RECHARGE_UNITS, SHIP_HULL, SHIP_RADIUS, THRUST, TURN_STEPS_PER_TICK, VALKYRN_HULL, VALKYRN_THRUST,
   VALKYRN_TURN_STEPS_PER_TICK, PEW_ARC_STEPS, PEW_HULL, PEW_LIFE, PEW_RECHARGE_TICKS, PEW_CHARGE_SCALE, HUNTER_PEW_RECHARGE_TICKS, PEW_SHOTS, PEW_SPEED,
-  BOOST_FAR, RCS_TURN_BOOST, HOUND_REVERSE_FRACTION, AUTOCANNON_ARC_STEPS, AUTOCANNON_TURRET_TRAVERSE, PEW_TURRET_TRAVERSE, AUTOCANNON_HITS_PER_HULL
+  HOUND_REVERSE_FRACTION, AUTOCANNON_ARC_STEPS, AUTOCANNON_TURRET_TRAVERSE, PEW_TURRET_TRAVERSE, AUTOCANNON_HITS_PER_HULL
 } from './tuning';
 import { AUTOCANNON_INTERVAL_BY_BARS, AUTOCANNON_MAN_INTERVAL_BY_BARS, AUTOCANNON_WEAK_HITS_PER_LAYER } from './bars';   // bars.ts imports only types from state.ts
 import { AUTOCANNON_ROCK_PUSH, AUTOCANNON_ROUNDS_PER_ROCK_HP } from './rockTuning';
@@ -171,7 +171,4 @@ export function classIndexById(id: string): number {
 // Valkyrn spec §6.2: the aim's dead band is three heading indices wide, so a class that turns 3 or more steps a tick
 // could step across it and chatter. Valkyrn spec §7.1: Weapons damage halves the gun's coolings in whole units.
 for (const c of SHIP_CLASSES) if (!(c.turnStepsPerTick < 3)) throw new Error(`ship class ${c.id} turns ${c.turnStepsPerTick} heading steps a tick; the aim band needs fewer than 3`);
-// Playtest2feedback §4a: a boosted turn (RCS_TURN_BOOST × the class turn) must stay inside the far band, so it never
-// steps across the normal turn's own bands and the nose never chatters.
-for (const c of SHIP_CLASSES) if (c.newtonianHelm && !(RCS_TURN_BOOST * c.turnStepsPerTick < BOOST_FAR)) throw new Error(`ship class ${c.id} turns ${RCS_TURN_BOOST * c.turnStepsPerTick} boosted heading steps a tick; the far band needs fewer than ${BOOST_FAR}`);
 if (!Number.isInteger(GUN.cool / 2) || !Number.isInteger(GUN.coolLocked / 2)) throw new Error('the gun\'s coolings must be even, so Weapons damage halves them exactly');

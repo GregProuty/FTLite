@@ -66,10 +66,8 @@ export const THR_MAX = 1000;
 /** Helm round 2 §2.1: per mille a tick while W or S is held: 0 to 1000 in 59 ticks (0.98 s), 0 to −500 in 30 (0.5 s).
  *  Neither held leaves it where it is. */
 export const THR_RAMP = 17;
-// Helm round 2 §3.3 replaces owner 2026-11-19's free cold gas: a vented thruster axis now spends the gas charge below (gasTick,
-// sim/duel/helmFlight.ts). The far turn is still always gas-boosted (sim/duel/step.ts helmBoost) until helm round 2 removes it.
-/** §4a: sin 6°: auto-face's turn is far (boosted) while its target lies outside this of the nose (about 4.27 indices). */
-export const BOOST_FACE_SIN = 0.10452846326765347;
+// Helm round 2 §3.3 replaces the owner's free cold gas with the charge below, spent by gasTick (sim/duel/helmFlight.ts, a
+// later task); until then a held thruster vents for free. §3.2: the turn has no gas boost, so the far-turn constant is gone.
 // Helm round 2 (spec 2026-11-19-helm-round2-design §3.3): the crew Helm's cold gas charge, in whole units so every duration
 // is an exact tick count. Start values, tuned in playtest.
 /** §3.3: the charge's top; a round starts full. */

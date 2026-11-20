@@ -530,15 +530,13 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   }
 
   const own = interpolatedShip(state, prev, alpha, 0), ownS = toS(own.x, own.y);
-  // Playtest2feedback §6: the puffs, at the hull edge opposite each vented push. A boosted turn puffs at the bow on the side
-  // away from the turn and at the stern on the side toward it.
+  // Playtest2feedback §6: the puffs, at the hull edge opposite each vented push (helm round 2 §3.2: no turn-boost puffs).
   const puffs: PuffDraw[] = [], vt = input.vent ?? null;
-  if (vt && input.ships.includes(0) && (vt.x !== 0 || vt.y !== 0 || vt.boosted)) {
+  if (vt && input.ships.includes(0) && (vt.x !== 0 || vt.y !== 0)) {
     const a = headingAngle(own.h), fx = Math.sin(a), fy = -Math.cos(a), rx = -fy, ry = fx, rr = SHIP_RADIUS * 1.3 * drawnScale(z);
     const puff = (ox: number, oy: number, dx: number, dy: number): void => { puffs.push({ x: ownS.x + ox * rr, y: ownS.y + oy * rr, dx, dy }); };
     if (vt.y !== 0) puff(-fx * vt.y, -fy * vt.y, -fx * vt.y, -fy * vt.y);
     if (vt.x !== 0) puff(-rx * vt.x, -ry * vt.x, -rx * vt.x, -ry * vt.x);
-    if (vt.boosted) { const s = vt.turn < 0 ? -1 : 1; puff(fx - rx * s, fy - ry * s, -rx * s, -ry * s); puff(-fx + rx * s, -fy + ry * s, rx * s, ry * s); }   // the vent's own turn (final review M2)
   }
   let helm: HelmDraw | null = null;
   if (input.console === 'helm' && input.ships.includes(0)) {

@@ -6,15 +6,13 @@
 // throttle stays where it is left, reverse reaches −500, and the cold gas is a charge (gasTick).
 import { DuelSystem, effectiveBars } from '../tactical/bars';
 import type { Axes, ShipSystems } from '../tactical/state';
-import { RCS_TURN_BOOST } from '../tactical/tuning';
 import { THR_MIN, THR_RAMP } from './tuning';
 
-/** §4: this tick's vented thruster axes (−1, 0 or 1 each: x port/starboard, y aft/forward), whether the turn was
- *  gas-boosted, and the boosted turn's direction (`turn`: 1 clockwise, −1 anticlockwise, 0 when not boosted; the puffs'
- *  sides, final review M2). Per-tick scratch on DuelState (helmVent), never hashed or snapshotted. */
-export interface HelmVent { x: number; y: number; boosted: boolean; turn: number }
+/** §4, helm round 2 §3.2, §3.3: this tick's vented thruster axes (−1, 0 or 1 each: x port/starboard, y aft/forward): the
+ *  axes that actually vented. Per-tick scratch on DuelState (helmVent), never hashed or snapshotted. */
+export interface HelmVent { x: number; y: number }
 /** A fresh unvented record (a new object each call). */
-export function noVent(): HelmVent { return { x: 0, y: 0, boosted: false, turn: 0 }; }
+export function noVent(): HelmVent { return { x: 0, y: 0 }; }
 
 /** Helm round 2 §2.2: the thrust axis a held throttle flies, in −1..1: −500 is full reverse (the class's reverse fraction of
  *  full thrust), 1000 full forward. */
@@ -45,8 +43,5 @@ export function rampTicks(m: number, held: number, floor: number, cap: number, t
 }
 
 
-/** §4, §6: the vent a set of crew axes shows (the puffs and the hiss): its vented axes, and whether its turn is boosted. */
-export function ventOf(axes: Axes): HelmVent {
-  const boosted = axes.turnBoost === RCS_TURN_BOOST;
-  return { x: axes.rcsX ?? 0, y: axes.rcsY ?? 0, boosted, turn: boosted ? Math.sign(axes.turn) || 0 : 0 };
-}
+/** §4, §6: the vent a set of crew axes shows (the puffs and the hiss): its vented axes. */
+export function ventOf(axes: Axes): HelmVent { return { x: axes.rcsX ?? 0, y: axes.rcsY ?? 0 }; }

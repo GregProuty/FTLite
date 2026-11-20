@@ -42,7 +42,7 @@ describe('the online source\'s prediction (spec §3, §6)', () => {
       s.unacked(5);
       expect(s.axes()).toEqual(crewAxes(d, { ...NONE, throttleHeld: 1 }, 185));
       s.sent({ ...NONE, rcsX: 1 }); s.unacked(0);
-      expect([s.thrMille(), s.helmVent()]).toEqual([100, { x: 1, y: 0, boosted: false, turn: 0 }]);   // owner 2026-11-19: free cold gas, so it always vents
+      expect([s.thrMille(), s.helmVent()]).toEqual([100, { x: 1, y: 0 }]);   // owner 2026-11-19: free cold gas, so it always vents
     } finally { disposeDuel(d); }
   });
   it('away from the Helm it shows the replica\'s thrMille and no vent', () => {
@@ -51,7 +51,7 @@ describe('the online source\'s prediction (spec §3, §6)', () => {
       d.thrMille = 300;
       const s = source(d, 1);
       s.observe(); s.sent({ ...NONE, throttleHeld: 1, rcsX: 1 }); s.unacked(10);
-      expect([s.thrMille(), s.helmVent()]).toEqual([300, { x: 0, y: 0, boosted: false, turn: 0 }]);
+      expect([s.thrMille(), s.helmVent()]).toEqual([300, { x: 0, y: 0 }]);
     } finally { disposeDuel(d); }
   });
 });

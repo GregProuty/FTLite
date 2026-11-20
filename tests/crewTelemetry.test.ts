@@ -1,5 +1,5 @@
 // Playtest2feedback (spec 2026-11-18-playtest2feedback-design §3, Decision 15): telemetry's bait manoeuvre counts the crew
-// Helm acting by a held face or aim, a vented thruster or boost, or a held throttle that is not 0; never by moveX.
+// Helm acting by a held face or aim, a vented thruster, or a held throttle that is not 0; never by moveX.
 import { describe, expect, it } from 'vitest';
 import type { HeldInput } from '../src/renderer/src/net/contracts';
 import { disposeDuel } from '../src/renderer/src/sim/duel/state';

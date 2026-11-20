@@ -9,12 +9,11 @@ import { Seated } from '../src/renderer/src/sim/components';
 import { ventOf } from '../src/renderer/src/sim/duel/helmFlight';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
 import { disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
-import { crewAxes, headingDelta, helmBoost, helmTurn, stepDuelTick } from '../src/renderer/src/sim/duel/step';
-import { DuelSystem } from '../src/renderer/src/sim/duel/power';
+import { crewAxes, headingDelta, helmTurn, stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { classOf, Room } from '../src/renderer/src/sim/tactical/state';
 import { flightFor, flyShip } from '../src/renderer/src/sim/tactical/physics';
-import { RCS_TURN_BOOST, TURN_STEPS_PER_TICK } from '../src/renderer/src/sim/tactical/tuning';
+import { TURN_STEPS_PER_TICK } from '../src/renderer/src/sim/tactical/tuning';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
 
@@ -61,7 +60,6 @@ describe('steering by the held aim (spec §4a)', () => {
       step(d, NONE, [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: d.interior.tick, command: { kind: 'heading', heading: 0 } }]);
       expect(d.holdHeading).toBe(0);
       expect([helmTurn(d, { ...NONE, moveX: -1 }), helmTurn(d, { ...NONE, moveX: 1 })]).toEqual([-1, 1]);
-      expect(helmBoost(d, { ...NONE, moveX: 1 })).toBe(1);
       for (let k = 0; k < 30; k++) step(d, { ...NONE, moveX: 1 });
       expect(d.tactical.ships[0].heading).not.toBe(0);
       expect(d.holdHeading).toBe(-1);
@@ -77,60 +75,20 @@ describe('steering by the held aim (spec §4a)', () => {
       for (let k = 0; k < 10; k++) step(v, { ...NONE, moveX: 1 });
       expect(v.tactical.ships[0].heading).not.toBe(h0);
       step(v, { ...NONE, aim: 40 }); expect(v.holdHeading).toBe(40);
-      expect(helmBoost(v, { ...NONE, aim: 200 })).toBe(1);   // no boost on a class that is not newtonianHelm
     } finally { disposeDuel(v); }
   });
 });
 
-describe('the gas boost (spec §4a; owner 2026-11-19: free)', () => {
-  it('a far turn runs at 2× for free', () => {
+describe('the fixed turn (helm round 2 §3.2, which removes §4a\'s gas boost)', () => {
+  it('a far aim turns at the class rate, never 2×', () => {
     const d = still();
     try {
-      expect(helmBoost(d, { ...NONE, aim: 100 })).toBe(RCS_TURN_BOOST);
       step(d, { ...NONE, aim: 100 });
-      expect(nose(d)).toBeCloseTo(RCS_TURN_BOOST * TURN_STEPS_PER_TICK, 9);
-      expect([d.helmVent.boosted, d.helmVent.turn]).toEqual([true, 1]);   // clockwise (final review M2)
-      expect(Object.keys(d)).not.toContain('rcsGas');
-      const e = still();
-      try { step(e, { ...NONE, aim: 156 }); expect([e.helmVent.boosted, e.helmVent.turn]).toEqual([true, -1]); } finally { disposeDuel(e); }   // anticlockwise
+      expect(nose(d)).toBeCloseTo(TURN_STEPS_PER_TICK, 9);
+      expect(d.helmVent).toEqual({ x: 0, y: 0 });
     } finally { disposeDuel(d); }
   });
-  it('is boosted every far tick for as long as the turn lasts: there is no tank to run dry', () => {
-    const d = still();
-    try {
-      let far = 0, boosted = 0;
-      for (let k = 0; k < 2000; k++) {
-        const aim = Math.floor(k / 60) % 2 === 0 ? 128 : 0, h = { ...NONE, aim, rcsX: 1 };   // a half turn each second, and a thruster held throughout
-        const want = helmBoost(d, h);
-        step(d, h);
-        expect(d.helmVent.boosted, `tick ${k}`).toBe(want === RCS_TURN_BOOST);
-        expect(d.helmVent.x, `tick ${k}`).toBe(1);   // the held thruster always vents
-        if (Math.abs(headingDelta(d.tactical.ships[0].heading, aim)) > 8) far++;
-        if (d.helmVent.boosted) boosted++;
-      }
-      expect(boosted).toBeGreaterThan(600);
-      expect(boosted).toBeGreaterThanOrEqual(far);
-    } finally { disposeDuel(d); }
-  });
-  it('inside the band, with no turn, or with no engine factor (the Engines failed or unpowered) it runs at 1×', () => {
-    const d = still();
-    try {
-      d.holdHeading = -1;
-      const h = d.tactical.ships[0].heading;
-      expect(helmBoost(d, { ...NONE, aim: (h + 4) % 256 })).toBe(1);   // |d| = 4 is inside the band
-      expect(helmBoost(d, { ...NONE, aim: (h + 5) % 256 })).toBe(RCS_TURN_BOOST);
-      expect(helmBoost(d, NONE)).toBe(1);                              // no aim, no held heading: no turn
-      expect(helmBoost(d, { ...NONE, aim: (h + 100) % 256 })).toBe(RCS_TURN_BOOST);
-      d.tactical.systems[0].bars[DuelSystem.Engines] = 0;   // Engineering: no Engines bar, engine factor 0
-      expect(helmBoost(d, { ...NONE, aim: (h + 100) % 256 })).toBe(1);
-      d.tactical.systems[0].bars[DuelSystem.Engines] = 5; d.tactical.systems[0].bars[DuelSystem.Shields] = 0;   // the overdrive bar: factor 1.25
-      expect(helmBoost(d, { ...NONE, aim: (h + 100) % 256 })).toBe(RCS_TURN_BOOST);
-      expect(helmBoost(d, { ...NONE, aim: (h + 4) % 256 })).toBe(1);   // the same far band at any factor
-      d.tactical.systems[0].bars[DuelSystem.Engines] = 3; d.tactical.systems[0].rooms[Room.Engines] = 2;
-      expect(helmBoost(d, { ...NONE, aim: (h + 100) % 256 })).toBe(1);
-    } finally { disposeDuel(d); }
-  });
-  it('a boosted turn settles on an aim, a held heading and the auto-face target without oscillating', () => {
+  it('the turn settles on an aim, a held heading and the auto-face target without oscillating', () => {
     const a = still(), b = still(), c = still(600, 0);
     try {
       settle(a, { ...NONE, aim: 140 });
@@ -138,29 +96,28 @@ describe('the gas boost (spec §4a; owner 2026-11-19: free)', () => {
       step(b, NONE, [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: b.interior.tick, command: { kind: 'heading', heading: 200 } }]);
       settle(b, NONE);
       expect(Math.abs(headingDelta(b.tactical.ships[0].heading, 200))).toBeLessThanOrEqual(2);
-      settle(c, { ...NONE, face: true });
+      settle(c, { ...NONE, face: true });   // the sim keeps face for the scripted Helm (helm round 2 §4)
       expect(Math.abs(headingDelta(c.tactical.ships[0].heading, 64))).toBeLessThanOrEqual(2);   // the Hunter due east
     } finally { disposeDuel(a); disposeDuel(b); disposeDuel(c); }
   });
 });
 
 describe('the app\'s prediction of the axes (spec §6)', () => {
-  it('crewAxes flies the held thrust, every held thruster (free cold gas, owner 2026-11-19), and the boost', () => {
+  it('crewAxes flies the held thrust and every held thruster (helm round 2 §3.2: no boost)', () => {
     const d = still();
     try {
       d.thrMille = 500;   // W not held: helm round 2 §2.1, it stays at 500
-      expect(crewAxes(d, { ...NONE, rcsX: 1, rcsY: -1, aim: 100 })).toEqual({ turn: 1, turnBoost: RCS_TURN_BOOST, thrust: 0.5, rcsX: 1, rcsY: -1 });
-      expect(crewAxes(d, { ...NONE, rcsX: -1, rcsY: 1 })).toEqual({ turn: 0, turnBoost: 1, thrust: 0.5, rcsX: -1, rcsY: 1 });
-      expect(ventOf(crewAxes(d, { ...NONE, rcsY: 1 }))).toEqual({ x: 0, y: 1, boosted: false, turn: 0 });
+      expect(crewAxes(d, { ...NONE, rcsX: 1, rcsY: -1, aim: 100 })).toEqual({ turn: 1, thrust: 0.5, rcsX: 1, rcsY: -1 });
+      expect(crewAxes(d, { ...NONE, rcsX: -1, rcsY: 1 })).toEqual({ turn: 0, thrust: 0.5, rcsX: -1, rcsY: 1 });
+      expect(ventOf(crewAxes(d, { ...NONE, rcsY: 1 }))).toEqual({ x: 0, y: 1 });
     } finally { disposeDuel(d); }
-  });  it('crewAxes from the state before a tick flies exactly the tick the step flies (mid-ramp throttle, thrusters, boost)', () => {
+  });  it('crewAxes from the state before a tick flies exactly the tick the step flies (mid-ramp throttle, thrusters)', () => {
     const d = still();
     try {
       Object.assign(d.tactical.ships[0], { vx: 40, vy: -25 });
       d.thrMille = 500;   // mid-ramp: W held moves it this tick
       const h: HeldInput = { ...NONE, throttleHeld: 1, rcsX: 1, rcsY: -1, aim: 100 };
       const axes = crewAxes(d, h);
-      expect(axes.turnBoost).toBe(RCS_TURN_BOOST);
       const copy = { ...d.tactical.ships[0] };
       flyShip(copy, axes, flightFor(d.tactical, 0), d.tactical.systems[0].rooms[Room.Engines], classOf(d.tactical, 0));
       step(d, h);

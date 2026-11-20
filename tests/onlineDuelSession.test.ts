@@ -54,7 +54,7 @@ type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
   clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null; notice?: string | null }[], overlay: [] as (readonly string[] | null)[],
   sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; reticle(aim: number): void; torpHeading(h: number): void; trigger(held: boolean): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 },
-  source: null as null | { helmVent(): { x: number; y: number; boosted: boolean }; thrMille(): number }
+  source: null as null | { helmVent(): { x: number; y: number }; thrMille(): number }
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
 vi.mock('../src/network/portLink', () => ({
@@ -813,9 +813,9 @@ describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () =>
     const r = rig(0), c = r.attach();
     c.publish(r.d); r.pump(); r.session.frame();
     r.key('keydown', 'ArrowUp'); r.pump(); r.pump();
-    expect(h.source!.helmVent()).not.toEqual({ x: 0, y: 0, boosted: false, turn: 0 });
+    expect(h.source!.helmVent()).not.toEqual({ x: 0, y: 0 });
     r.session.setFocused(false); r.pump();
-    expect(h.source!.helmVent()).toEqual({ x: 0, y: 0, boosted: false, turn: 0 });
+    expect(h.source!.helmVent()).toEqual({ x: 0, y: 0 });
     expect(h.source!.thrMille()).toBe(c.state()!.thrMille);
     r.dispose();
   });

@@ -58,15 +58,14 @@ describe('the duel audio adapter (Audio-i spec section 4)', () => {
   it('the cold gas hiss plays only on a live, unpaused frame that vents (playtest2feedback §6, final review)', () => {
     const d = createDuel(parseShip(hound), 1), r = recorder(), a = createDuelAudio(r.out);
     try {
-      const vent = { x: 1, y: 0, boosted: false, turn: 0 };
+      const vent = { x: 1, y: 0 };
       const hisses = (): number => r.sounds.filter((s) => s.key === 'rcs').length;
       const frame = (o: { live?: boolean; paused?: boolean; vent?: typeof vent }) => { d.tactical.tick += 1; a.frame({ duel: d, events: [], axes: { turn: 0, thrust: 0 }, paused: o.paused ?? false, pan: () => 0, ...OK, ...(o.vent ? { vent: o.vent } : {}), ...(o.live === undefined ? {} : { live: o.live }) }); };
       frame({ vent }); expect(hisses()).toBe(1);   // venting starts: at once
       frame({ vent, paused: true }); expect(hisses()).toBe(1);   // paused: silent
       frame({ vent, live: false }); expect(hisses()).toBe(1);   // a frozen online copy: silent
       frame({ vent, live: true }); expect(hisses()).toBe(2);   // live again: a fresh start plays at once
-      frame({}); frame({ vent: { x: 0, y: 0, boosted: true, turn: 1 } }); expect(hisses()).toBe(3);   // a boosted turn hisses too
-      frame({ vent: { x: 0, y: 0, boosted: false, turn: 0 } }); frame({ vent: { x: 0, y: 0, boosted: false, turn: 0 } }); expect(hisses()).toBe(3);   // nothing vented: none
+      frame({ vent: { x: 0, y: 0 } }); frame({ vent: { x: 0, y: 0 } }); expect(hisses()).toBe(2);   // nothing vented: none (helm round 2 §3.2: no boosted turn)
     } finally { disposeDuel(d); }
   });
   it('the hum thrust follows the magnitude of the axes thrust (a quarter throttle hums a quarter)', () => {

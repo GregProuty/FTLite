@@ -25,7 +25,7 @@ import { CREW_SPEED, DT, HEALTH_MAX, REACH } from '../tuning';
 import { isDowned, medbayOnline, medbayRoom, revivers } from './health';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope } from './commands';
 import type { DuelState } from './state';
-import { aimTurn, helmBoost, type DuelInput } from './step';
+import { aimTurn, type DuelInput } from './step';
 import { THROTTLE_MAX, THROTTLE_MIN, throttleThrust } from './throttle';
 import { crewThrust } from './helmFlight';
 import { capacityOf, sparesOf } from './power';
@@ -79,8 +79,7 @@ export interface ScriptedPair {
   orbitR: number;
   /** Next command sequence per player. */
   seq: [number, number];
-  /** The Helm's axes on the tick before. The avoidance prediction holds their turn and its boost (playtest2feedback §4a:
-   *  helmBoost of the held input it sent, so it predicts the turn the sim flew), and flies the throttle's thrust. */
+  /** The Helm's axes on the tick before. The avoidance prediction holds their turn (helm round 2 §3.2: no boost) and flies the throttle's thrust. */
   axes: Axes;
   /** Tick of the last crew missile launch the pair sent. */
   lastLaunch: number;
@@ -133,13 +132,12 @@ export function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } |
   return null;
 }
 
-/** The axes the Helm's hazard check predicts with (spec §3): the turn of the tick before and, on a newtonianHelm class, its
- *  boost (playtest2feedback §4a: the boost the sim flew it with, so a far turn is predicted at RCS_TURN_BOOST, not 1×), with
- *  the thrust the ship flies at this tick before any new command (the throttle's, Artemis spec §5.5; the held throttle's,
- *  playtest2feedback §7). */
+/** The axes the Helm's hazard check predicts with (spec §3): the turn of the tick before, with the thrust the ship flies at
+ *  this tick before any new command (the throttle's, Artemis spec §5.5; the held throttle's, playtest2feedback §7). Helm
+ *  round 2 §3.2: no turn boost. */
 export function predictAxes(pair: ScriptedPair, d: DuelState): Axes {
   return classOf(d.tactical, 0).newtonianHelm
-    ? { turn: pair.axes.turn, turnBoost: pair.axes.turnBoost ?? 1, thrust: crewThrust(d.thrMille) }
+    ? { turn: pair.axes.turn, thrust: crewThrust(d.thrMille) }
     : { turn: pair.axes.turn, thrust: throttleThrust(d.throttle) };
 }
 
@@ -424,8 +422,6 @@ export function scriptedInput(pair: ScriptedPair, d: DuelState): DuelInput {
       // Playtest2feedback §4a, §7: the crew Helm turns by aim or face, never moveX (the Valkyrn class still turns by moveX).
       held[pid] = axes.face ? { moveX: 0, moveY: 0, interactHeld: false, face: true, ...lever }
         : crewHelm ? { moveX: 0, moveY: 0, interactHeld: false, aim: axes.aim, ...lever } : { moveX: axes.turn, moveY: 0, interactHeld: false, ...lever };
-      // Playtest2feedback §4a: the boost the sim flies this held input with (the step reads the same state), 1 or RCS_TURN_BOOST.
-      if (crewHelm) pair.axes.turnBoost = helmBoost(d, held[pid]!);
     } else if (seat === d.weapons) {
       gunner(pair, d, cmds[pid]!);
     }

@@ -5,7 +5,7 @@ import { hx, hy, wrapHeading } from './direction';
 import { hitStatics, resolveContacts } from './contacts';
 import { classOf, CREW_SLOT, Room, type Axes, type Ship, type TacticalState } from './state';
 import { DuelSystem, effectiveBars, ENGINE_FACTOR_BY_BARS } from './bars';
-import { CREW_FLIGHT, DEFAULT_FLIGHT, DT, GM, GRAVITY_EPS, K_EDGE, MAX_SPEED, R_MAP, RCS_THRUST, RCS_TURN_BOOST, type FlightTuning } from './tuning';
+import { CREW_FLIGHT, DEFAULT_FLIGHT, DT, GM, GRAVITY_EPS, K_EDGE, MAX_SPEED, R_MAP, RCS_THRUST, type FlightTuning } from './tuning';
 
 /** Acceleration toward the planet at the origin: a = −GM · d / (|d|² + ε²)^{3/2}. */
 export function gravityAccel(x: number, y: number): [number, number] {
@@ -28,22 +28,23 @@ export function engineFactor(cls: ShipClassDef, engines: number): number { retur
 /** One tick of one ship's flight, without contacts, at Engines damage level `engines` and with the class's thrust and
  *  turn. Shared by the step and by predictPath, so the prediction is exact. Playtest2feedback §2: a ship flying with
  *  drag 0 caps its thrust at max(MAX_SPEED, its speed before the thrust), then adds gravity and the edge uncapped; a ship
- *  flying with drag runs the arithmetic it always has, bit for bit. */
+ *  flying with drag runs the arithmetic it always has, bit for bit. Helm round 2 §3.1, §3.2: the turn steps the class turn with no boost, and a tuning with stabiliseUnderThrust stabilises under thrust. */
 export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning, engines = 0, cls: ShipClassDef = CUTTER_CLASS, factor = engineFactor(cls, engines)): void {
   // The turn is quantised by sign; the thrust (playtest2feedback §3) is rounded to thousandths and clamped to −1..1, so the
   // crew's held throttle flies smoothly. `|| 0` maps NaN and −0 to 0. Whole axes (the hunter's −1, 0, 1, the Valkyrn's
   // levels −1, ¼, ½, ¾, 1, the flight view) give exactly the quarter-quantised q they always did.
   const turn = Math.sign(axes.turn) || 0, q = Math.max(-1, Math.min(1, Math.round(axes.thrust * 1000) / 1000)) || 0;
-  const boost = axes.turnBoost === RCS_TURN_BOOST ? RCS_TURN_BOOST : 1, rcsX = Math.sign(axes.rcsX ?? 0) || 0, rcsY = Math.sign(axes.rcsY ?? 0) || 0;   // §4, §4a
+  const rcsX = Math.sign(axes.rcsX ?? 0) || 0, rcsY = Math.sign(axes.rcsY ?? 0) || 0;   // §4
   const f = factor;   // Engineering spike Decision 7: flySlot and predictFlight pass shipEngineFactor
-  s.headingAcc += turn * boost * cls.turnStepsPerTick * f;
+  s.headingAcc += turn * cls.turnStepsPerTick * f;   // helm round 2 §3.2: no boost (the boost was 1 on every ship but a gas-boosting Hound, and × 1 is exact)
   while (s.headingAcc >= 1) { s.heading = wrapHeading(s.heading + 1); s.headingAcc -= 1; }
   while (s.headingAcc <= -1) { s.heading = wrapHeading(s.heading - 1); s.headingAcc += 1; }
   const h0 = hx(s.heading), h1 = hy(s.heading);
-  // Stabilise (spec §6): on the tick both axes go to zero, capture the sideways speed (along px, py, 90° clockwise of the
+  // Stabilise (spec §6): on the tick the ship goes idle, capture the sideways speed (along px, py, 90° clockwise of the
   // nose) as the skid to remove; then remove up to STABILISE · dt of it per tick until it is gone. Gravity's later
-  // sideways pull is never captured, so a released ship still falls and orbits. Runs before this tick's forces.
-  const idle = turn === 0 && q === 0 && rcsX === 0 && rcsY === 0, px = -h1, py = h0;
+  // sideways pull is never captured, so a released ship still falls and orbits. Runs before this tick's forces. Idle is
+  // no turn, no thruster and no thrust; helm round 2 §3.1: with stabiliseUnderThrust the thrust does not count.
+  const idle = turn === 0 && rcsX === 0 && rcsY === 0 && (tuning.stabiliseUnderThrust === true || q === 0), px = -h1, py = h0;
   if (idle && !s.released) { const side = s.vx * px + s.vy * py; s.skidBudget = Math.abs(side); s.skidSign = Math.sign(side); }
   if (!idle) { s.skidBudget = 0; s.skidSign = 0; }
   s.released = idle;
@@ -80,8 +81,9 @@ export function flyShip(s: Ship, axes: Axes, tuning: FlightTuning, engines = 0, 
   s.x += s.vx * DT; s.y += s.vy * DT;
 }
 
-/** Playtest2feedback §2: ship slot i's flight tuning. The crew slot flies CREW_FLIGHT (no drag, no stabilise) when its
- *  class is newtonianHelm (the Cutter); every other slot and class keeps DEFAULT_FLIGHT. */
+/** Playtest2feedback §2, helm round 2 §3.1: ship slot i's flight tuning. The crew slot flies CREW_FLIGHT (the Hound's own
+ *  drag and stabilise, stabilising under thrust) when its class is newtonianHelm (the Hound); every other slot and class
+ *  keeps DEFAULT_FLIGHT. */
 export function flightFor(state: TacticalState, i: number): FlightTuning {
   return i === CREW_SLOT && classOf(state, i).newtonianHelm ? CREW_FLIGHT : DEFAULT_FLIGHT;
 }

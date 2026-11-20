@@ -54,8 +54,11 @@ FAIL: median 140.1 s < 180
 - Task 2: `tests/duelGolden.test.ts` and `tests/duelRematchGolden.test.ts` (the duel hash holds three more values); the known-red window opens. Re-bless in Task 14.
 - Task 3: `tests/tacticalSlots.test.ts:162` (seed 1's whole scripted duel length, `expected 10125 to be 7796`; the property `wrong === 0` still passes).
 - Task 3: `tests/duelSnapshot.test.ts` fixture tick (seed 1, tick 6465, picked by "the crew pew turret is slewed there"): its `systems.0.cls = 1` case now reaches `duel slot identity` instead of `pewTurret: out of range`. Re-pick the tick in Task 14 (log `systems.0.pewTurret` to confirm).
+- Task 4: `tests/duelScripted.test.ts:86` ('plays a whole duel with every command admitted'; seed 1 stops sending `sit` once the Hound flies with drag): `expected [ 'shipPower', 'stand', 'torpLock', 'weaponPower' ] to deeply equal [ 'shipPower', 'sit', 'stand', 'torpLock', 'weaponPower' ]`. Re-pick the seed in Task 14 (the lowest seed whose duel uses every kind).
 
 ## Kind (a) rewrites
+
+- Task 4 (the turn boost, the free-flight CREW_FLIGHT and the boosted vent fields are replaced rules): `tests/crewFlight.test.ts` (NO_GRAVITY is the drag-0 branch, DRAG0, CREW_FLIGHT literal, boost-band test deleted because no class keeps a boost, the boost describe is now the fixed turn), `tests/crewSteering.test.ts` (helmBoost reads removed, the gas boost describe is the fixed turn, crewAxes expectations without turnBoost), `tests/crewHelmFx.test.ts` (no boosted-turn puffs), `tests/crewThrusters.test.ts` (the push is flown before drag: × KEEP; helmVent without boosted/turn), `tests/duelAudio.test.ts` (no boosted-turn hiss), `tests/crewHelmOnline.test.ts`, `tests/onlineDuelSession.test.ts`, `tests/helmModule.test.ts` (helmVent literals), `tests/duelScripted.test.ts` (the hazard prediction describe), `tests/crewTelemetry.test.ts` (a comment).
 
 ## Scripted Helm tuning (spec §5's gate rule)
 
