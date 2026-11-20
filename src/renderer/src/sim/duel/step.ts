@@ -25,6 +25,7 @@ import { rockAlive } from '../tactical/rocks';
 import { canCharge, canLaunch, manualLaserReady, validRockLock, validTarget, type ShipInput } from '../tactical/weapons';
 import { pewReady, validAim } from '../tactical/pew';
 import { hasTurret } from '../tactical/defs';
+import { manualTorpedoFlying } from '../tactical/manualTorpedo';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
 import { clampThrottle } from './engines';
 import { extinguishRoomWork, extinguishWork, firePhase, pointBurning } from './fire';
@@ -312,8 +313,10 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins. W-1: pewFire last; only the first in a tick fires (the rest noop). W-2: laserMode first, set at once (as laserFrequency is), so a same-tick laserCharge or laserFire is judged in the new mode; laserFire after laserCharge, the first in a tick fires. W-3: torpMode second, set at once, so a same-tick missileLaunch is judged in the new mode. W-4: gunMode third, set at once, so a same-tick pewFire is judged in the new mode; one gun a command (amendment §2.2).
   const helm = attendant(d, d.nav), gunner = attendant(d, d.weapons);
   const gunnerHeld = gunner >= 0 ? input.held[gunner] ?? NO_HELD : NO_HELD, weaponSel = gunner >= 0 ? heldWeaponSel(gunnerHeld) : -1;
-  // W-4 spec §8: on a turret class (the Hound) the trigger fires the autocannon only while it is the selected weapon; elsewhere today's rule.
-  const trigger = gunner >= 0 && gunnerHeld.gunHeld === true && (!hasTurret(classOf(d.tactical, 0)) || weaponSel === WeaponSlot.Autocannon);
+  // W-4 spec §8: on a turret class (the Hound) the trigger fires the autocannon only while it is the selected weapon, and
+  // (W-4 spec §7) never while the crew's MANUAL torpedo flies as the tick starts; elsewhere today's rule.
+  const turretClass = hasTurret(classOf(d.tactical, 0)), flying = turretClass && manualTorpedoFlying(d.tactical);
+  const trigger = gunner >= 0 && gunnerHeld.gunHeld === true && (!turretClass || (weaponSel === WeaponSlot.Autocannon && !flying));
   const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false,
     gunHeld: trigger, pewAim: -1, laserFire: -1, torpHeading: gunner >= 0 ? heldTorpHeading(gunnerHeld) : -1, weaponSel, pewTrigger: false, turretAim: gunner >= 0 ? heldTurretAim(gunnerHeld) : -1, scanner: true };   // W-4 spec §8: the reticle; Valkyrn spec §7.1: the trigger of Weapons' attendant; W-2: laserFire sets laserFire; W-3: the held steering; W-4: only Weapons' attendant flies the MANUAL torpedo; W-4: pewFire sets pewTrigger
   // Spike ii §6.1: missileLaunch is admitted with this tick's effective torpedo rock target: the last accepted
@@ -376,6 +379,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     }
     else {   // W-4 spec §6: no aim; MAN only; one round a tick (the first wins), then a pew pew bar and a third stored (pewReady)
       if (!sys0.pewManual) { result(e, 'unavailable'); continue; }   // W-4b, amendment §2.3: pew pew's own switch; on AUTO it fires itself
+      if (manualTorpedoFlying(d.tactical)) { result(e, 'missile-in-flight'); continue; }   // W-4 spec §6, §7: no gun is fired by hand while the MANUAL torpedo flies
       if (crew.pewTrigger) { result(e, undefined, 'noop'); continue; }
       if (!pewReady(d.tactical, 0)) { result(e, 'unavailable'); continue; }
       crew.pewTrigger = true;
