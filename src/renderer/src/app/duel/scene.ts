@@ -54,6 +54,7 @@ import type { TorpedoTone } from './duelAudio';
 import { viewCamera, type DuelView } from './runtime';
 import { createFog, stepFog } from '../../render/tactical/fogModel';
 import { weaponBars, WeaponSlot } from '../../sim/tactical/bars';
+import { hasTurret } from '../../sim/tactical/defs';
 
 /** What the scene reads each frame (H-2 spec §3): the duel, its interpolation inputs, the cameras, the view and the readouts. */
 export interface DuelViewSource {
@@ -93,6 +94,8 @@ export interface DuelViewSource {
   helmAxes?(): Axes;
   /** Feel-ii §2.8: the console controls refused since the last take, each with its reason (the duel mode's checks). */
   takeRefusals?(): Refusal[];
+  /** W-4 spec §10: the Hound's selected weapon (0..2) to frame; absent: 0. */
+  weaponSel?(): number;
 }
 /** Feel-ii §2.8: a refused console control and the reason the sim would give. */
 export interface Refusal { control: RefusedControl; reason: string }
@@ -271,6 +274,11 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         const rock = ship === null && contact.aimWeapon() !== null ? pickRock(at, click) : null;
         if (rock !== null) contact.pickRock(rock); else contact.click(ship);
       }
+      // W-4 spec §8, §9: at the Hound's Weapons seat the left button held over the open map is the trigger (the autocannon
+      // fires while it is held and selected); off the map, over a block, with a weapon picked up or paused, it is not.
+      const triggerAt = station === 'weapons' && view === 'weapons' && d.tactical.outcome === Outcome.Running && !overlay.layerPaused && hasTurret(classOf(d.tactical, CREW_SLOT))
+        && (contact?.aimWeapon() ?? null) === null && (options.leftHeld?.() ?? false) ? options.pointer?.() ?? null : null;
+      options.requests?.trigger(triggerAt !== null && onWeaponsMap(triggerAt, contact?.state() != null, readoutRows({ duel: d, mode: 'weapons', active: source.active(), console: onConsole }).length));
       // W-2 (pew pew spec §2): the MANUAL laser's aim follows the pointer while it is on the open Weapons map (its fine bearing
       // from the own ship's drawn marker, in either mode, so it is ready when the mode changes); over a console block or the
       // open window, off the canvas or with no pointer, the last aim stands. The left click stays the pew's.
@@ -411,7 +419,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         ? hoverReadout(cam!, viewport, interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), options.pointer?.() ?? null)
         : null;
       const consoleView = consoleModel({ duel: d, me: source.active(), mode: source.mode, hidden, held: source.uiHeld(), overlay: overlayView, throttle: source.throttle(), thrMille: source.thrMille?.() ?? d.thrMille, hover,
-        sinceShot: fx.sinceShot, goal: seat === 'weapons' && !goalUsed, t, refused: refusedView, shipView: view === 'interior' });
+        sinceShot: fx.sinceShot, goal: seat === 'weapons' && !goalUsed, t, refused: refusedView, shipView: view === 'interior', weaponSel: source.weaponSel?.() });
       // Step 5: the contact view, only while shown.
       const open = contact?.state() ?? null;
       const contactView = shown && station !== null && station !== 'ship'   // Science's window shows with nothing selected

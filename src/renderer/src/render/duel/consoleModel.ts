@@ -103,6 +103,8 @@ export interface ConsoleModelInput {
   refused?: RefusedView | null;
   /** Valkyrn spec §4.4: Tab's ship view while seated (n = 1): the console shows SHIP. */
   shipView?: boolean;
+  /** W-4 spec §10: the Hound's selected weapon. */
+  weaponSel?: number;
 }
 
 /** The tab rule of spec §6.3 on its inputs alone: `reach` is the console `consoleInReach` gives while standing (null

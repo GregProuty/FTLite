@@ -130,14 +130,14 @@ describe('the Flight seat (Valkyrn spec §5, §5.1)', () => {
     sit(); tick(); rt.takeRefusals();
     noLaser = true; tick();
     expect(rt.takeRefusals()).toEqual([{ control: 'laser', reason: 'NO LASER' }]);
-    hold({ freqTo: 1 }); tick(); hold({ freqTo: null });
+    hold({ freqKeyTo: 1 }); tick(); hold({ freqKeyTo: null });   // W-4 spec §9: 3/4/5 is the key field
     expect(rt.takeRefusals()).toContainEqual({ control: 'laser', reason: 'NO LASER' });
     tick();
     expect(rt.takeRefusals()).toEqual([]);
     rt.dispose();
     const fit = rig({ cls: classIndexById(VALKYRN_LASER_CLASS.id) });
     fit.sit(); fit.tick(); fit.rt.takeRefusals();
-    fit.hold({ freqTo: 1 }); fit.tick(); fit.hold({ freqTo: null }); fit.tick();
+    fit.hold({ freqKeyTo: 1 }); fit.tick(); fit.hold({ freqKeyTo: null }); fit.tick();
     expect(fit.rt.takeRefusals().some((r) => r.reason === 'NO LASER')).toBe(false);
     expect(fit.rt.duel.tactical.systems[0].freq).toBe(1);
     fit.rt.dispose();

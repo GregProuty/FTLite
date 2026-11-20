@@ -67,6 +67,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
     scheduler: { schedule(delay, cb) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } },
     sampleKeys: () => keyboard.sample(), samplePointer: () => pointer.sample(),
     takeContactRequests: () => contact.takeRequests(), takeHeading: () => requests.takeHeading(), takePew: () => requests.takePew(), laserAim: () => requests.laserAim(), takeTorpHeading: () => requests.takeTorpHeading(),   // W-2, W-3
+    triggerHeld: () => requests.triggerHeld(),   // W-4 spec §8
     cls: deps.cls, takeSteer: () => requests.takeSteer(), takeLaunches: () => requests.takeLaunches(), gunHeld: () => pointer.leftHeld(), steerHeld: () => pointer.leftHeld(),   // Valkyrn spec §5.1, §8; playtest2feedback §4a
     clearKeys: () => { keyboard.clear(); pointer.clear(); },
     staleKeys: () => keyboard.staleHeld(),   // playtest2feedback final review I1: held keys do not carry onto the crew Helm

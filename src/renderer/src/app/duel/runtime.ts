@@ -9,7 +9,8 @@ import type { HeldInput, Scheduler } from '../../net/contracts';
 import { Position } from '../../sim/components';
 import { LOCAL_DUEL_RUN, type DuelCommand, type DuelEnvelope, type DuelResult } from '../../sim/duel/commands';
 import { rockAlive } from '../../sim/tactical/rocks';
-import { throttleCap } from '../../sim/tactical/bars';
+import { throttleCap, WeaponSlot } from '../../sim/tactical/bars';
+import { weaponPowerRefusal } from '../../sim/duel/weaponSlots';
 import { canCharge, canLaunch, validRockLock, validTarget } from '../../sim/tactical/weapons';
 import { createDuel, disposeDuel, DUEL_CREW_MIN, type DuelState } from '../../sim/duel/state';
 import { crewAxes, helmTurn, stepDuelTick } from '../../sim/duel/step';
@@ -28,7 +29,8 @@ import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxMod
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 import { createTorpedoFollow, trackManualTorpedo } from './torpedoCamera';
-import { consoleInReach, crewHelmSeat, cycleLock, repairInReach, seatOf, stepTorpRoom } from './controls';
+import { consoleInReach, crewHelmSeat, cycleLock, houndWeaponsSeat, repairInReach, seatOf, stepTorpRoom } from './controls';
+import { gunFreqRequest, laserFreqKey, nextWeaponSel, powerDelta, weaponsSeatHeld } from './weaponsSeat';
 import type { ContactRequests } from './contactController';
 import type { Refusal } from './scene';
 import { lockRefusal, NO_LASER, refusal } from '../../render/duel/situationModel';
@@ -199,6 +201,8 @@ export interface DuelRuntimeDeps extends FlightRuntimeDeps {
   /** W-3 (pew pew spec §3): the Weapons map's right button since the last frame while the crew's MANUAL torpedo flies
    *  (mapRequests.ts takeTorpHeading, drained): a heading index to hold, −1 to clear, or null. */
   takeTorpHeading?(): number | null;
+  /** W-4 spec §8, §9: the held left button over the open Weapons map at the Hound's seat (mapRequests.ts triggerHeld). */
+  triggerHeld?(): boolean;
 }
 
 export interface DuelRuntime {
@@ -248,6 +252,8 @@ export interface DuelRuntime {
   throttle(): number;
   /** Playtest2feedback §3, §6: the crew Helm's thrMille the console shows (the sim's: Single player steps it locally). */
   thrMille(): number;
+  /** W-4 spec §10: the Hound's selected weapon (0..2). */
+  weaponSel(): number;
   /** Feel-ii §2.8: the console controls refused since the last take (the scene flashes them). */
   takeRefusals(): Refusal[];
   dispose(): void;
@@ -272,6 +278,8 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
   const idleHeld = (): HeldInput[] => Array.from({ length: crew }, () => NEUTRAL);
   // Valkyrn spec §4.4, §5.1: Tab's ship view while seated (n = 1), the Flight seat's held bearing, and the gun's last frame.
   let shipView = false, steer = -1, gunPrev = false, torpHold = -1;   // W-3: the MANUAL torpedo's held heading (−1 none), re-sent every frame
+  // W-4 spec §9: the Hound's Weapons selection (client state, the pew at a sit), the last gun selected (W-4c) and the trigger's last frame.
+  let weaponSel = 0, lastGunSel = 0, triggerPrev = false;
   // Playtest2feedback §4a: whether this left-button hold has steered yet (the refusal's press edge), and whether the active
   // character flew the crew Helm on the last frame (final review I1).
   let steerPrev = false, crewHelmPrev = false;
@@ -394,6 +402,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     round = d.round; pending = []; switching = false; deferred = [];
     activeHeld = NEUTRAL; sentHeld = idleHeld(); sentAxes = NO_AXES;
     shipView = false; steer = -1; gunPrev = false; torpHold = -1; steerPrev = false; crewHelmPrev = false;
+    weaponSel = 0; lastGunSel = 0; triggerPrev = false;
     events = []; counts = hitCounts(d);
     capture(); freshCameras(); cameraInput.reset(); resetInteriorCamera(interiorCamera);
     deps.clearKeys?.();
@@ -423,6 +432,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       return IDLE_KEYS();
     }
     const seat = seatOf(d, active), p = k.presses;
+    if (!houndWeaponsSeat(d, active)) { weaponSel = 0; lastGunSel = 0; triggerPrev = false; }   // W-4 spec §9: a sit starts on pew pew
     if (seat !== 'flight') gunPrev = false;
     if (seat === 'standing') {
       if (p.interact > 0 && repairInReach(d, active) < 0) { const c = consoleInReach(d, active); if (c >= 0) queue({ kind: 'sit', station: c }); }
@@ -448,9 +458,9 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       for (const rl of [requests.rockLock, k.rockTo]) if (rl && (rl.weapon === 'torpedo' || hasLaser())) queue({ kind: 'rockLock', weapon: rl.weapon, rock: rl.rock });
       if (hasLaser()) {   // §8, the laser fit: the LASER card's room and 3/4/5
         if (k.lockTo !== undefined && k.lockTo !== null && k.lockTo >= -1 && k.lockTo <= 2) queue({ kind: 'laserLock', room: k.lockTo });
-        const freq = frequencyRequest(freqBase(), k.freqTo);
+        const freq = frequencyRequest(freqBase(), laserFreqKey(k));   // W-4 spec §9: 3/4/5 is the key field
         if (freq !== null) queue({ kind: 'laserFrequency', freq });
-      } else if (requests.noLaser || (k.freqTo !== undefined && k.freqTo !== null) || (k.lockTo !== undefined && k.lockTo !== null)) refuse('laser', NO_LASER);   // §6.1: 1 or 3/4/5 on the gun fit
+      } else if (requests.noLaser || (laserFreqKey(k) !== undefined && laserFreqKey(k) !== null) || (k.lockTo !== undefined && k.lockTo !== null)) refuse('laser', NO_LASER);   // §6.1: 1 or 3/4/5 on the gun fit
       if (p.launch + launches > 0) { queue({ kind: 'missileLaunch' }); const why = refusal(d, 'launch'); if (why) refuse('launch', why); }   // F or the right button
       const gun = !shipView && hasGun() && (deps.gunHeld?.() ?? false);
       if (gun && !gunPrev) { const why = refusal(d, 'fire'); if (why) refuse('fire', why); }   // a dead trigger says why (Feel-ii §2.8)
@@ -496,6 +506,40 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       if (p.camera > 0) snapBack(cameras.science);
       return k;
     }
+    if (houndWeaponsSeat(d, active)) {   // W-4 spec §9 (W-4a): the Hound's Weapons seat
+      weaponSel = nextWeaponSel(weaponSel, k, manualTorpedoFlying(d.tactical));   // §19.1: until W-4c, A/D steer a MANUAL torpedo in flight
+      if (weaponSel !== WeaponSlot.Torpedo) lastGunSel = weaponSel;
+      const dw = powerDelta(p);   // W / S: a bar on or off the selected weapon (at Weapons they are not the throttle)
+      if (dw !== 0) {
+        for (let n = 0; n < Math.abs(dw); n++) queue({ kind: 'weaponPower', slot: weaponSel, delta: Math.sign(dw) });
+        const why = weaponPowerRefusal(d, weaponSel, Math.sign(dw)); if (why) refuse('power', why);
+      }
+      // E / Q (and E/Q while the torpedo is picked up) step the torpedo's target room, as the Flight seat does (§9).
+      const steps = p.interact - p.prevLock + (requests.torpStep ?? 0);
+      if (steps !== 0) {
+        const last = [...pending].reverse().find((c) => c.player === active && c.command.kind === 'torpLock')?.command;
+        const room = stepTorpRoom(last && last.kind === 'torpLock' ? last.room : d.tactical.systems[0].torpLock, steps);
+        queue({ kind: 'torpLock', room });
+        const why = room >= 0 ? lockRefusal(d) : null; if (why) refuse('launch', why);
+      }
+      if (k.torpTo !== undefined && k.torpTo !== null && k.torpTo >= -1 && k.torpTo <= 2) queue({ kind: 'torpLock', room: k.torpTo });
+      for (const rl of [requests.rockLock, k.rockTo]) if (rl && rl.weapon === 'torpedo') queue({ kind: 'rockLock', weapon: 'torpedo', rock: rl.rock });
+      const freq = gunFreqRequest(freqBase(), k);   // 4 / 5 / 6 or the row's buttons (§5.2); 3 selects
+      if (freq !== null) queue({ kind: 'laserFrequency', freq });
+      let torpManual = torpModeBase();
+      if (p.torpMode % 2 === 1) { torpManual = !torpManual; queue({ kind: 'torpMode', manual: torpManual }); }
+      const lmbLaunch = pew !== null && weaponSel === WeaponSlot.Torpedo;   // LMB on the map with the torpedo selected launches it, as F
+      if (p.launch > 0 || lmbLaunch) { queue({ kind: 'missileLaunch' }); const why = refusal(d, 'launch', torpManual); if (why) refuse('launch', why); }
+      if (pew !== null && weaponSel === WeaponSlot.Pew) {   // LMB with pew pew selected: one round along its turret (W-4a: the nose)
+        const why = refusal(d, 'pew');
+        if (why) refuse('pew', why); else queue({ kind: 'pewFire' });
+      }
+      const trig = deps.triggerHeld?.() ?? false;   // the autocannon fires while held (the held frame's gunHeld); a dead trigger says why
+      if (trig && !triggerPrev && weaponSel === WeaponSlot.Autocannon) { const why = refusal(d, 'autocannon'); if (why) refuse('autocannon', why); }
+      triggerPrev = trig;
+      if (p.camera > 0) { const cam = cameras.weapons; snapBack(cam, missileOf(d.tactical, 0) && cam.follow !== 'missile' ? 'missile' : 'ship'); }
+      return k;   // Space and Z do nothing here in W-4a (Z's gunMode is W-4b's)
+    }
     // E and Q step the laser's target room (FTL targeting spec §1: a target, so it auto-fires), from the latest queued one.
     const steps = p.interact - p.prevLock;
     if (p.interact + p.prevLock > 0) {
@@ -518,7 +562,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       queue({ kind: 'torpLock', room: stepTorpRoom(from, requests.torpStep) });
       const why = lockRefusal(d); if (why) refuse('launch', why);   // spec §10.4: as the laser's E/Q
     }
-    const freq = frequencyRequest(freqBase(), k.freqTo);   // 3/4/5 or a console button (Sci-1 spec §7.4)
+    const freq = frequencyRequest(freqBase(), laserFreqKey(k));   // 3/4/5 or a console button (Sci-1 spec §7.4; W-4 spec §9: the key field)
     if (freq !== null) queue({ kind: 'laserFrequency', freq });
     // W-2 (pew pew spec §2): Z or the LASER card's AUTO / MAN tag toggles the laser's mode, from the latest queued one (an odd
     // number of presses this frame toggles it).
@@ -610,6 +654,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
         ...(k.fireHeld && !look && (seatNow === 'helm' || seatNow === 'flight') ? { face: true } : {}),
         ...(steer >= 0 ? { aim: steer } : {}), ...(gunNow ? { gunHeld: true } : {}),   // Valkyrn spec §5.1
         ...(torpTurn !== 0 ? { torpTurn } : {}), ...(torpHold >= 0 ? { torpHeading: torpHold } : {}) };   // W-3
+      if (!ended() && houndWeaponsSeat(d, active)) activeHeld = { ...activeHeld, ...weaponsSeatHeld(weaponSel, deps.triggerHeld?.() ?? false) };   // W-4 spec §8
       pacer.sync();   // an Escape this frame pauses before any due tick runs
       pacer.pump();
       frameAlpha = alphaAt(deps.now(), lastTickTime);
@@ -637,6 +682,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     running: () => pacer.reasons.size === 0 && !ended(),
     throttle: throttleBase,
     thrMille: () => d.thrMille,
+    weaponSel: () => weaponSel,   // W-4 spec §10: the selected card
     takeRefusals() { const out = refusals; refusals = []; return out; },
     dispose() { pacer.dispose(); disposeDuel(d); }
   };
