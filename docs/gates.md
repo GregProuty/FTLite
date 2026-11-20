@@ -1121,3 +1121,21 @@ Spec `docs/superpowers/specs/2026-11-19-sensors-blip-design.md`; plan `docs/supe
   5. At Weapons, click the blip and press T: nothing is picked, and a lock still reads NO CONTACT.
 
   Does the blip read as a rough fix on the amber CRT, is the 2 s ping comfortable to watch, and is the circle the right size near and far? The numbers are starting values: `BLIP_R_MIN`, `BLIP_GROW`, `BLIP_R_MAX` and `BLIP_PING_TICKS` in `src/renderer/src/render/tactical/fogModel.ts`.
+
+## Crew3D: pre-rendered 3D crew and boarders (2026-11-20)
+
+Spec `docs/superpowers/specs/2026-11-20-crew3d-prerendered-sprites-design.md` (see "As built"). Render tool `tools/sprite-render/` (`render.py`, `figure.py`, `anims.py`, `post.py`, `lookdev.json`); `npm run art:crew3d` binds the sheets.
+
+- [x] Automated (Crew3D): `npx tsc -b` clean; `npx electron-vite build` succeeds; `npx vitest run --maxWorkers=4` passes (517 files, 6221 tests, 2 skipped). This includes the pose priority (down, working, seated, walk, idle), fire / breach / power / repair to firefight / repair / work / repair aimed at the target, the body and colour per player, the grey dead tint on both layers, every pose name bound for both bodies and all 8 directions, the frame counts (idle 4, walk 8, work 6, repair 6, firefight 6, down 1; boarder idle 4, walk 8, attack 6), the manifest entries equal to the model's sheet blocks, the colour layer covering only pixels of its figure, the crew layer (two sprites per member on one frame, lower on screen in front, the torpedo on top), the fallback to the old art when the sheets are missing or the toggle is off, the boarder attacking a crew member in its room, the F8 toggle in dev builds only, and the render script smoke test (one frame, headless Blender; skipped where Blender is not installed).
+- [x] Licences: the five sheets under `public/assets/art/crew3d/` are licence `original`: the figures are built by `tools/sprite-render/figure.py` from primitives, and the animations are curves in `anims.py`. No downloaded model, texture or clip is in them. The BlendSwap soldier used for look development is not in the repo and nothing rendered from it is committed.
+- [ ] Manual (owner): play Single player on the Hound, on foot (the SHIP tab).
+  1. The crew are small armoured figures in your colour, not round tokens. Walk in all eight directions (WASD): the figure turns and its legs move. Stop: it stands and breathes.
+  2. Zoom in with the wheel: the figure stays sharp-edged, with a flat shadow to its upper right.
+  3. Hold E on a fire, then on a breach: it sprays with an extinguisher, and kneels with a welder, facing the work.
+  4. Get downed (a fire will do it): the figure lies on its back; the DOWNED label still reads.
+  5. In a dev build (`npm run dev`), F8 switches to the old tokens and back.
+  6. In a sector run (couch build), let boarders arrive: red spiked raiders with a health bar over the head; one swings its blade at a crew member in its room.
+
+  Screenshots: `C:\Users\djuar\FTLite-shots\crew3d\` (`hound-*-on.png` against `hound-*-off.png`; `build\x-zoom-walk.png` zoomed in). Only idle and walking were looked at in the running game; the work, down and boarder poses were checked on the rendered sheets and by the tests.
+
+  Does it read as Diablo 2 in space? Things to tune: the size (`CREW3D_SCALE` in `crew3dModel.ts`), the tilt, light and palette (`tools/sprite-render/lookdev.json`, then re-render: about 17 minutes), the two suits and the raider (`figure.py`), and the walk (`anims.py`). The figures are placeholders built from simple shapes; a bought or CC0 model can replace them without touching the game side.

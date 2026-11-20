@@ -1,6 +1,42 @@
 # Crew3D: pre-rendered 3D crew and boarder sprites
 
-Date: 2026-11-20. Status: design approved by the owner in brainstorming; not planned.
+Date: 2026-11-20. Status: built on branch `crew3d` (see "As built" below, which wins where it differs from the
+sections after it).
+
+## As built (2026-11-20, owner order: "take the recommendations and run it until it's in the game")
+
+The owner accepted the Diablo 2 look at a 60 degree tilt after the look-dev rounds, and said to take the
+recommendation at every other choice. What that changed from the design below:
+
+- **Look: Diablo 2 pixel pass, not toon + ink.** Cycles render with one hard warm key light, dark gritty metal, then a
+  pixel pass: hard 1-bit edges, one shared 64-colour palette per character, and the frame's own silhouette sheared
+  along the floor as its shadow (no blob shadow). Tilt 60, 8 directions, 128 px frames rendered at 4x. Every value is
+  in `tools/sprite-render/lookdev.json`.
+- **Models: the project's own, built by the script.** The CC0 packs could not be fetched (the store rate-limited the
+  download), and the BlendSwap soldier used for look development looks like a ripped game asset, so it cannot ship.
+  `tools/sprite-render/figure.py` builds an armoured figure from primitives instead: two crew bodies (a heavy suit
+  with a crested helmet, a light suit with a dome helmet) and a spiked, horned raider with a blade as the boarder.
+  The sheets are licence `original`. No audition gate: there was nothing to audition. Swapping in a bought or CC0
+  model later means a new builder beside `figure.py`; the rig, the pixel pass and the game side stay.
+- **Animations: procedural**, closed-form curves in `tools/sprite-render/anims.py` (no clips to retarget). Frame
+  counts as in section 3. Playback rates differ per animation (idle 4, walk 12, work, repair and firefight 8, attack
+  10 fps) instead of 12 fps for all.
+- **The boarder is a raider, not a robot**, in its own red and black armour; no tint, no colour layer.
+- **Colour layer.** The team-colour plates are rendered neutral grey; the mask sheet holds those pixels as a grey
+  shade, which the game tints with the player colour and draws over the figure. Names: `crew3d.<char>.<anim>.<dir>`
+  and the same with `.mask`.
+- **Files.** PNG, not WebP (a 64-colour sheet is small as PNG, and the manifest tests read PNG sizes). The layout
+  (frame size, cells, the ground row per animation, the head row) is `src/renderer/src/render/crew3d.generated.json`,
+  written by the script and read by `crew3dModel.ts`; `npm run art:crew3d` binds the sheets in the manifest.
+- **Down** is rendered with the camera aimed at the floor, so the lying body fits the frame in every direction; its
+  anchor is the frame centre. It has no shadow.
+- **Determinism is close, not exact.** Seeds and sample counts are fixed, but a re-run differs in a few pixels where
+  the 1-bit edge or the palette sits on a threshold: 0 to about 0.02 % of a sheet, measured on CPU and GPU, with and
+  without the denoiser. The committed sheets are the reference; re-render only when the look or the figures change.
+- **Not built:** the normal-map pass (the North star's lighting spec will need it; the hard-edged palette look has to
+  be decided there first), the audition contact sheet, and a headless-vs-live reproduction check (the live session was
+  only used for the soldier look; the shipped sheets come from headless runs only).
+- **The 3D crew draw on every ship**, the painted Hound and Valkyrn included, ahead of the painted tokens.
 
 ## Goal
 

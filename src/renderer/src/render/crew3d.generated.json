@@ -1,0 +1,157 @@
+{
+  "frame": 128,
+  "columns": 16,
+  "directions": [
+    "n",
+    "ne",
+    "e",
+    "se",
+    "s",
+    "sw",
+    "w",
+    "nw"
+  ],
+  "characters": {
+    "crewA": {
+      "mask": true,
+      "headRow": 16,
+      "cells": 248,
+      "animations": [
+        {
+          "name": "idle",
+          "frames": 4,
+          "fps": 4,
+          "loop": true,
+          "start": 0,
+          "originRow": 93.26
+        },
+        {
+          "name": "walk",
+          "frames": 8,
+          "fps": 12,
+          "loop": true,
+          "start": 32,
+          "originRow": 93.26
+        },
+        {
+          "name": "work",
+          "frames": 6,
+          "fps": 8,
+          "loop": true,
+          "start": 96,
+          "originRow": 93.26
+        },
+        {
+          "name": "repair",
+          "frames": 6,
+          "fps": 8,
+          "loop": true,
+          "start": 144,
+          "originRow": 93.26
+        },
+        {
+          "name": "firefight",
+          "frames": 6,
+          "fps": 8,
+          "loop": true,
+          "start": 192,
+          "originRow": 93.26
+        },
+        {
+          "name": "down",
+          "frames": 1,
+          "fps": 1,
+          "loop": false,
+          "start": 240,
+          "originRow": 64.0
+        }
+      ]
+    },
+    "crewB": {
+      "mask": true,
+      "headRow": 21,
+      "cells": 248,
+      "animations": [
+        {
+          "name": "idle",
+          "frames": 4,
+          "fps": 4,
+          "loop": true,
+          "start": 0,
+          "originRow": 93.26
+        },
+        {
+          "name": "walk",
+          "frames": 8,
+          "fps": 12,
+          "loop": true,
+          "start": 32,
+          "originRow": 93.26
+        },
+        {
+          "name": "work",
+          "frames": 6,
+          "fps": 8,
+          "loop": true,
+          "start": 96,
+          "originRow": 93.26
+        },
+        {
+          "name": "repair",
+          "frames": 6,
+          "fps": 8,
+          "loop": true,
+          "start": 144,
+          "originRow": 93.26
+        },
+        {
+          "name": "firefight",
+          "frames": 6,
+          "fps": 8,
+          "loop": true,
+          "start": 192,
+          "originRow": 93.26
+        },
+        {
+          "name": "down",
+          "frames": 1,
+          "fps": 1,
+          "loop": false,
+          "start": 240,
+          "originRow": 64.0
+        }
+      ]
+    },
+    "boarder": {
+      "mask": false,
+      "headRow": 8,
+      "cells": 144,
+      "animations": [
+        {
+          "name": "idle",
+          "frames": 4,
+          "fps": 4,
+          "loop": true,
+          "start": 0,
+          "originRow": 93.26
+        },
+        {
+          "name": "walk",
+          "frames": 8,
+          "fps": 12,
+          "loop": true,
+          "start": 32,
+          "originRow": 93.26
+        },
+        {
+          "name": "attack",
+          "frames": 6,
+          "fps": 10,
+          "loop": true,
+          "start": 96,
+          "originRow": 93.26
+        }
+      ]
+    }
+  }
+}

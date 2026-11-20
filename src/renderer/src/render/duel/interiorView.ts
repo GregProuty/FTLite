@@ -57,8 +57,9 @@ const TINT: readonly number[] = [0, AMBER, WARN], MARK: readonly number[] = [0, 
 export const HAZARD_LABELS = 16;
 
 /** `stageScale`: the letterbox's stage scale, read every frame so the fit snaps to whole screen pixels per art pixel (Art-i spec section 4); tests leave it at 1.
- *  `feel`: the feel setting (Art-i spec section 7), read every frame; tests leave it at full. */
-export function createInteriorView(assets: GameAssets, stageScale: () => number = () => 1, feel: () => FeelSetting = () => DEFAULT_FEEL): InteriorView {
+ *  `feel`: the feel setting (Art-i spec section 7), read every frame; tests leave it at full.
+ *  `crew3d`: the 3D crew art or the old art (Crew3D spec section 4), read every frame; tests leave it on. */
+export function createInteriorView(assets: GameAssets, stageScale: () => number = () => 1, feel: () => FeelSetting = () => DEFAULT_FEEL, crew3d: () => boolean = () => true): InteriorView {
   const container = new Container(), world = new Container();
   const missing = new Set(assets.missing);
   const fx = createInteriorFeel({   // Art-i spec sections 5-8; Art-ii: the bought consoles and blasts
@@ -72,7 +73,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory), effects = createEffectsLayer(assets, memory), icons = createIconLayer(['navigation', 'medbay']);   // the badges stand in for these two (start-aboard spec §2)
   const props = createPropLayer(assets);   // Art-iii spec section 4: the set dressing, directly over the tiles
-  const desks = createConsoleLayer(assets), crew = createCrewLayer(assets, memory), boarders = createBoarderLayer(assets);
+  const desks = createConsoleLayer(assets), crew = createCrewLayer(assets, memory, crew3d), boarders = createBoarderLayer(assets, crew3d);
   const air = new Graphics(), damage = new Graphics(), marks = new Graphics();   // Engineering spike §6: the air tint under the damage tint
   let last: Placement | null = null;
   const hazardLabels = Array.from({ length: HAZARD_LABELS }, () => {
@@ -205,9 +206,10 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         if (l) { t.alpha = l.alpha; t.position.set(Math.round(l.x), Math.round(l.y)); }
       });
       // Light and feel: the duel's hull alert, a hit flashes the whole interior, sparks at damaged repair rooms, repair work.
-      const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working: duelWorking(d), artPx: 2 * fit.scale, starPx: 2 * fit0.scale }, presentDt, dt);
+      const working = duelWorking(d);
+      const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working, artPx: 2 * fit.scale, starPx: 2 * fit0.scale }, presentDt, dt);
       world.position.set(fit.x + shake.x, fit.y + shake.y);   // only the interior world shakes; the readout column stays still
-      crew.draw(st, alpha, undefined, bob);
+      crew.draw(st, alpha, undefined, bob, working);   // Crew3D spec section 4: the 3D crew pose from the same list
       boarders.draw(st, dt);
     },
     destroy() { memory.reset(); fx.destroy(); container.destroy({ children: true }); }   // the feel first: it frees its shared GraphicsContexts

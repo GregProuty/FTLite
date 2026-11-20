@@ -43,6 +43,7 @@ import { inputBlockedOf } from './ui/menuState';
 import { mountUi } from './ui/mount';
 import { createUiPerf } from './ui/perf';
 import { installFeel } from './app/feelBoot';
+import { installCrew3d } from './app/crew3dBoot';
 import { installCrt } from './app/crtBoot';
 import type { Renderer } from './render/renderer';
 import type { OnlineStatus } from '../../shared/onlineSession';
@@ -66,6 +67,7 @@ ${err instanceof Error ? err.message : String(err)}`;
 /** The feel setting (Art-i spec section 7): read once at boot inside a try/catch (loadFeel), F9 cycles it in dev builds. */
 function bootFeel(renderer: Renderer): void {
   installFeel(renderer, { storage: () => localStorage, keys: window, dev: import.meta.env.DEV, log: (m) => console.info(m) });
+  installCrew3d(renderer, { storage: () => localStorage, keys: window, dev: import.meta.env.DEV, log: (m) => console.info(m) });   // Crew3D spec section 4: F8 in dev
 }
 
 /** The CRT setting (CRT map spec section 4): read once at boot (loadCrt), F10 cycles it in dev builds; it reaches the
