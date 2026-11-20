@@ -29,7 +29,9 @@ export const DUEL_REMATCH_GOLDEN = 'tests/golden/duel-rematch.json';
 
 /** W-4 spec §2.1: the crew's pew and gun rounds (the gates read them; laserReleases is 0 on the Hound), and when and why the
  *  hold ended (the final hostileAt and the `hostile` event's cause; −1 and 'none' if never). */
-export interface DuelRun { seed: number; telemetry: DuelTelemetry; finalHash: string; hashes: string[]; pewShots: number; gunShots: number; holdEndTick: number; holdCause: string }
+/** W-4 amendment §3.5: the enemy room levels the crew raised in one run, by weapon, per Room (Weapons, Shields, Engines). */
+export interface RoomLevels { gun: [number, number, number]; pew: [number, number, number]; torpedo: [number, number, number] }
+export interface DuelRun { seed: number; telemetry: DuelTelemetry; finalHash: string; hashes: string[]; pewShots: number; gunShots: number; holdEndTick: number; holdCause: string; roomLevels: RoomLevels }
 
 /** Both players go away on tick 0, so neither console is attended for the whole duel. */
 export function passiveInput(d: DuelState): DuelInput {
@@ -52,16 +54,23 @@ export function runDuel(seed: number, crew: 'scripted' | 'passive', cap = CAP_TI
   const d = createDuel(CUTTER, seed), pair = createScriptedPair(seed), t = createTelemetry(d), hashes: string[] = [];
   try {
     let holdCause = 'none';
+    const levels: RoomLevels = { gun: [0, 0, 0], pew: [0, 0, 0], torpedo: [0, 0, 0] };
     while (d.tactical.outcome === Outcome.Running && d.interior.tick < cap) {
+      const before = [...d.tactical.systems[1]!.rooms];   // W-4 amendment §3.5: the enemy's room levels before the tick
       const input = crew === 'scripted' ? scriptedInput(pair, d) : passiveInput(d);
       const results = stepDuelTick(d, input);
       if (crew === 'scripted') requireApplied(seed, d, input, results);
       recordTick(t, d, input);
-      for (const e of d.tactical.events) if (e.kind === 'hostile') holdCause = e.cause;
+      for (const e of d.tactical.events) {
+        if (e.kind === 'hostile') holdCause = e.cause;
+        // W-4 amendment §3.5: one per crew gun or pew pew hit that raised an enemy room; a crew torpedo on the enemy: its room's level after the tick less before it.
+        else if ((e.kind === 'gunHit' || e.kind === 'pewHit') && e.ship === 1 && e.room >= 0 && e.level) levels[e.kind === 'gunHit' ? 'gun' : 'pew'][e.room as 0 | 1 | 2]++;
+        else if (e.kind === 'missileEnd' && e.ship === 0 && e.target === 1 && e.room >= 0) levels.torpedo[e.room as 0 | 1 | 2] += d.tactical.systems[1]!.rooms[e.room]! - before[e.room]!;
+      }
       if (hashEvery > 0 && d.interior.tick % hashEvery === 0) hashes.push(hashDuel(d));
     }
     const crewSys = d.tactical.systems[0]!;   // not `crew`: that is the parameter, and a block const would shadow it in the loop above (TDZ)
-    return { seed, telemetry: t, finalHash: hashDuel(d), hashes, pewShots: crewSys.pewShots, gunShots: crewSys.gunShots, holdEndTick: d.tactical.hostileAt, holdCause };
+    return { seed, telemetry: t, finalHash: hashDuel(d), hashes, pewShots: crewSys.pewShots, gunShots: crewSys.gunShots, holdEndTick: d.tactical.hostileAt, holdCause, roomLevels: levels };
   } finally { disposeDuel(d); }
 }
 
@@ -80,6 +89,7 @@ export function telemetryLine(r: DuelRun): string {
     `seed ${r.seed}: ${f(t.ticks)} s, ${OUTCOME_NAMES[t.outcome]}, terminal crew [${t.terminal[0].join(' ')}] enemy [${t.terminal[1].join(' ')}]${endedFromPlanet(t) ? ', PLANET END' : ''}`,
     `  crew  laser ${c.laserReleases} released, ${c.laserHits} hit (${c.layersStripped} stripped), ${c.laserMisses} missed; missiles ${c.missilesLaunched} launched, hits W/S/E ${c.missileHitsByRoom.join('/')}, lost ${losses(c)}; contacts planet ${c.planetContacts}, asteroid ${c.asteroidContacts}`,
     `  crew  pew ${r.pewShots} rounds, gun ${r.gunShots} rounds; hold ended at rt ${r.holdEndTick} (${r.holdCause})`,
+    `  crew  room levels W/S/E: gun ${r.roomLevels.gun.join('/')}, pew ${r.roomLevels.pew.join('/')}, torpedo ${r.roomLevels.torpedo.join('/')}`,   // W-4 amendment §3.5
     `  enemy laser ${e.laserReleases} released, ${e.laserHits} hit (${e.layersStripped} stripped), ${e.laserMisses} missed; missiles ${e.missilesLaunched} launched, hits W/S/E ${e.missileHitsByRoom.join('/')}, lost ${losses(e)}; contacts planet ${e.planetContacts}, asteroid ${e.asteroidContacts}; baits ${t.baits}`,
     `  repairs started/finished P0 ${t.players[0]!.repairsStarted}/${t.players[0]!.repairsFinished}, P1 ${t.players[1]!.repairsStarted}/${t.players[1]!.repairsFinished}; away walking/repairing P0 ${f(t.players[0]!.walkingTicks)}/${f(t.players[0]!.repairingTicks)} s, P1 ${f(t.players[1]!.walkingTicks)}/${f(t.players[1]!.repairingTicks)} s`,
     `  helm empty ${f(t.helmEmptyTicks)} s, weapons empty ${f(t.weaponsEmptyTicks)} s, enemy in arc ${f(t.enemyInArcTicks)} s, weapons idle ${f(t.weaponsIdleTicks)} s, console swaps ${t.consoleSwaps}`

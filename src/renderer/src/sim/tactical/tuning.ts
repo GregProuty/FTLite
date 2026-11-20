@@ -182,6 +182,8 @@ export const GUN_HITS_PER_LAYER = 8;
  *  (tests/duelGates.test.ts): median 229.8 s, 9 crew wins, 1 Hunter win over seeds 1 to 10. At 3 the median was 100.2 s
  *  with 10 crew wins; 9 gave 186.5 s and 11 gave 217.5 s, both with no Hunter win. */
 export const GUN_HITS_PER_HULL = 12;
+/** W-4 spec §12: the autocannon's own copy of the hits a hull point (the tuning ladder's rung 1; GUN keeps GUN_HITS_PER_HULL). */
+export const AUTOCANNON_HITS_PER_HULL = 12;
 /** Valkyrn spec §7.2, §12: gun hits on a Room per damage level. 6, kept at the start value; the Valkyrn gate
  *  (tests/duelGates.test.ts): median 229.8 s, 9 crew wins, 1 Hunter win over seeds 1 to 10. */
 export const GUN_HITS_PER_LEVEL = 6;

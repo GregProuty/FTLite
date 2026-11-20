@@ -6,7 +6,7 @@ import { AUTOCANNON, CUTTER_CLASS, GUN, hasTurret, HOUND_PEW, HUNTER_CLASS, HUNT
 import { AUTOCANNON_ROCK_PUSH, AUTOCANNON_ROUNDS_PER_ROCK_HP } from '../src/renderer/src/sim/tactical/rockTuning';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
 import { validateTacticalValues, flattenTactical } from '../src/renderer/src/sim/tactical/hash';
-import { AUTOCANNON_ARC_STEPS, AUTOCANNON_AUTO_RANGE, AUTOCANNON_TURRET_TRAVERSE, GUN_AUTO_HEAT_STOP, PEW_ARC_STEPS, PEW_TURRET_TRAVERSE } from '../src/renderer/src/sim/tactical/tuning';
+import { AUTOCANNON_ARC_STEPS, AUTOCANNON_AUTO_RANGE, AUTOCANNON_HITS_PER_HULL, AUTOCANNON_TURRET_TRAVERSE, GUN_AUTO_HEAT_STOP, PEW_ARC_STEPS, PEW_TURRET_TRAVERSE } from '../src/renderer/src/sim/tactical/tuning';
 
 describe("the Hound's loadout (W-4 spec §2)", () => {
   it('pew pew with a ±60° turret, the autocannon (the Valkyrn gun) with a ±30° turret, the torpedo, and no laser', () => {
@@ -21,9 +21,10 @@ describe("the Hound's loadout (W-4 spec §2)", () => {
     expect([...AUTOCANNON_INTERVAL_BY_BARS, ...AUTOCANNON_MAN_INTERVAL_BY_BARS, ...PEW_MAN_GAIN_BY_BARS]).toEqual([0, 10, 8, 6, 5, 0, 8, 7, 5, 4, 0, 7, 10, 14, 18]);
     expect(AUTOCANNON.rock).toEqual({ roundsPerHp: AUTOCANNON_ROUNDS_PER_ROCK_HP, pushPerRound: AUTOCANNON_ROCK_PUSH });
     expect([AUTOCANNON_ROUNDS_PER_ROCK_HP, AUTOCANNON_ROCK_PUSH, AUTOCANNON.weakHitsPerLayer, AUTOCANNON_WEAK_HITS_PER_LAYER]).toEqual([4, 500, 4, 4]);
-    const { turret: _t, intervalByBars: _i, rock: _r, weakHitsPerLayer: _w, ...rest } = AUTOCANNON;
-    const { turret: _gt, intervalByBars: _gi, rock: _gr, weakHitsPerLayer: _gw, ...gun } = GUN;
-    expect(rest).toEqual(gun);   // its hit numbers, heat and rounds are the Valkyrn's
+    const { turret: _t, intervalByBars: _i, rock: _r, weakHitsPerLayer: _w, hitsPerHull: _h, ...rest } = AUTOCANNON;
+    const { turret: _gt, intervalByBars: _gi, rock: _gr, weakHitsPerLayer: _gw, hitsPerHull: _gh, ...gun } = GUN;
+    expect(rest).toEqual(gun);   // its other hit numbers, heat and rounds are the Valkyrn's
+    expect(AUTOCANNON.hitsPerHull).toBe(AUTOCANNON_HITS_PER_HULL);   // W-4 spec §12: gate tuning may move the autocannon's own copy
   });
   it('the Valkyrn, its laser fit and the Hunter keep their defs: no turret, no table, no rock, no weak rule', () => {
     expect(GUN).toMatchObject({ turret: null, intervalByBars: null, rock: null, weakHitsPerLayer: null });

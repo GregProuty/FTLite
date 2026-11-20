@@ -4,6 +4,7 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { Seated } from '../src/renderer/src/sim/components';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { createSeatedDuel } from './helpers/duelSeat';
+import { runDuel, telemetryLine } from './helpers/scriptedDuel';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import {
@@ -133,12 +134,17 @@ describe('the scripted gunner on the Hound (W-4 spec §12: AUTO guns)', () => {
       } finally { disposeDuel(d); }
     }
   }, 60_000);
+  it("the run's report names the enemy room levels the crew raised, by weapon: the bots' guns stay on AUTO, so no gun or pew pew hit raises one (W-4 amendment §3.5)", () => {
+    const r = runDuel(1, 'scripted');
+    expect([r.roomLevels.gun, r.roomLevels.pew]).toEqual([[0, 0, 0], [0, 0, 0]]);
+    expect(r.roomLevels.torpedo.every((n) => Number.isInteger(n))).toBe(true);
+    expect(telemetryLine(r)).toContain(`room levels W/S/E: gun 0/0/0, pew 0/0/0, torpedo ${r.roomLevels.torpedo.join('/')}`);
+  }, 60_000);
   it('the Valkyrn pair\'s gunner is today\'s code: it still makes the pew → beam move on the Valkyrn class', () => {
     const d = createSeatedDuel(layout, 2, 0, 2, ShipClass.Valkyrn), pair = createScriptedPair(2);
     try {
       const mine = scriptedInput(pair, d).commands.filter((e) => e.id.player === 1 - d.helmPlayer).map((e) => e.command);
-      expect(mine).toEqual([{ kind: 'weaponPower', slot: 0, delta: -1 }, { kind: 'weaponPower', slot: 1, delta: 1 }]);
-    } finally { disposeDuel(d); }
+      expect(mine).toEqual([{ kind: 'weaponPower', slot: 0, delta: -1 }, { kind: 'weaponPower', slot: 1, delta: 1 }]);    } finally { disposeDuel(d); }
   });
 });
 
