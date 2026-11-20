@@ -13,6 +13,8 @@ Timings are from a desktop with no other deliberate load. Other background proce
 | cost | p99 < 0.6 ms | PASS (worst p99 0.28 ms) |
 | feel | >= 7 of 10 shots pass | FAIL (0 of 10) |
 | feel, after SHATTER_DEPTH 1.5 (SIM 65 code, before the 66 bless) | >= 7 of 10 shots pass | FAIL (0 of 10; pieces median 6, criterion (a) 10 of 10) |
+| feel, after SHATTER_DEPTH 1.6 and the big outer lane (SIM 67) | >= 7 of 10 shots pass | FAIL (2 of 10; pieces median 6, mean 5.8, criterion (a) 10 of 10) |
+| cost, after the big outer lane (SIM 67) | p99 < 0.6 ms | PASS on the first run (young p99 0.26 ms); later runs under outside load 0.82 to 1.02 ms, the same as the pre-change tuning in the same conditions (see Cost) |
 | idle | 0 rocks freed in 600 s; deltas <= master + 64 B | FAIL (294 freed; deltas larger) |
 | burst | free count <= 10 by 270 s; delta median <= 5,500 B | FAIL (free count not back; deltas fine) |
 
@@ -48,6 +50,8 @@ The cost gate passes, so no per-slot memo was added.
 | No shatters | young | 0.0851 | 0.2099 |
 
 The six shatters add no measurable cost: medians and p99 are within run-to-run noise of the no-shatter run. The step is about 0.04 ms median and under 0.3 ms p99 against a 0.6 ms gate.
+
+After the big outer lane (SIM 67, about 252 live rocks): `--only cost` once gave young median 0.108 ms, p99 0.26 ms (PASS; the other variants were not kept from that run). Four later runs, while other work loaded the machine (medians about twice the first run's), gave worst p99 0.94, 0.92, 0.82 and 1.00 ms; an A/B in the same conditions with the pre-change tuning (`tuning.ts`, `rockTuning.ts`, `rails.ts` at ee994435) gave worst p99 1.02 ms, so the five big rocks do not account for it. Rerun on an idle machine before calling the gate.
 
 ## Feel (seed 2026, 10 largest main-lane rocks, one torpedo each)
 
@@ -90,6 +94,25 @@ The direct hit now bursts at the cell nearest the point 1.5 spacings inside the 
 | 33 | 41.7 | 6 | 0 | 1.0 | 3 | yes | no | yes | no |
 
 Pieces per shot after SHATTER_DEPTH 1.5: 6, 3, 6, 6, 6, 3, 3, 6, 3, 6. Median 6, mean 4.8 (was median 3, mean 2.7). Passes: still 0 of 10. Per criterion: a 10, b 4, c 10, d 0 (all switches off: 10, 2, 10, 0). (d) still fails everywhere: no shot turns 4 pieces by 25 degrees in 20 s.
+
+### Feel after SHATTER_DEPTH 1.6 and the big outer lane (SIM 67, owner 2026-11-20)
+
+SHATTER_DEPTH 1.5 -> 1.6 removes the tie between two cells along a hex row. The first three lanes draw exactly as before (the big lane is placed after them), so these are the same ten rocks. Rerun: `npx tsx scripts/spike-asteroids-iii-measure.ts --only feel`.
+
+| Rock | r | Pieces | Touches | Mass share | Turned | a | b | c | d |
+|---|---|---|---|---|---|---|---|---|---|
+| 29 | 44.9 | 6 | 3 | 1.0 | 2 | yes | yes | yes | no |
+| 22 | 44.4 | 5 | 0 | 0.846 | 2 | yes | no | yes | no |
+| 17 | 44.4 | 6 | 5 | 0.926 | 3 | yes | yes | yes | no |
+| 25 | 44.3 | 6 | 6 | 1.0 | 4 | yes | yes | yes | yes |
+| 26 | 44.1 | 6 | 3 | 1.0 | 3 | yes | yes | yes | no |
+| 50 | 44.0 | 6 | 2 | 1.0 | 2 | yes | no | yes | no |
+| 21 | 44.0 | 5 | 1 | 1.0 | 2 | yes | no | yes | no |
+| 19 | 43.5 | 6 | 6 | 1.0 | 4 | yes | yes | yes | yes |
+| 52 | 42.3 | 6 | 2 | 1.0 | 3 | yes | no | yes | no |
+| 33 | 41.7 | 6 | 0 | 1.0 | 3 | yes | no | yes | no |
+
+Pieces per shot after SHATTER_DEPTH 1.6: 6, 5, 6, 6, 6, 6, 5, 6, 6, 6. Median 6, mean 5.8 (1.5: median 6, mean 4.8, never 4 or 5; the 3s are gone). Passes: 2 of 10 (rocks 25 and 19). Per criterion: a 10, b 5, c 10, d 2 (all switches off: 1 pass; 10, 3, 10, 1).
 
 ## Idle (20 seeds, 600 s, no action)
 
