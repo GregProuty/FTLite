@@ -11,7 +11,7 @@
 // Pairs (asteroids-iii §5.4, §13.4): only Free rocks take turns; candidates are every live, unborn rock near the turn's rock, ascending; one that had its turn this tick (rockDone) is skipped. A rail never has rockDone, so a free-rail pair is always checked; a rail freed mid-pass takes its own turn later if its slot is higher.
 import { lanePullOut, type Pair } from './rails';
 import { breakRock, crushDamage, dustRock, wearRock } from './rockBreak';
-import { freeRock, markTouched, regridRock, rockAlive, rockMass, RockKind, rockPhase, rocksMoved, restartClock, rocksNear, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
+import { freeRock, markTouched, regridRock, rockAlive, rockMassOf, RockKind, rockPhase, rocksMoved, restartClock, rocksNear, rockSlots, ROCK_STRIDE, rockX, rockY } from './rocks';
 import { BOUNCE_MIN, E_LOW, E_RAMP, E_SPAN, EDGE_SETTLE_K, FAN_SPLIT_MIN_R, K_EDGE_ROCK, ROCK_CRUSH_SPEED, ROCK_EDGE_SLACK, ROCK_EDGE_SLACK_SOFT, ROCK_GRAVITY, ROCK_MAX_SPEED, ROCHE_MIN_AGE, ROCHE_R, ROCK_SEPARATE_MAX, ROCK_SWITCHES, SETTLE_A0, SETTLE_A1, SETTLE_K_MAX, SEPARATE_SHARE, SEPARATE_SLOP, TOUCH_MIN } from './rockTuning';
 import type { TacticalState } from './state';
 import { DT, GM, GRAVITY_EPS, K_EDGE, R_MAP } from './tuning';
@@ -43,7 +43,7 @@ export function resolveRockPair(s: TacticalState, a: number, b: number): void {
   const dx = v[A + 1]! - v[B + 1]!, dy = v[A + 2]! - v[B + 2]!, d = Math.sqrt(dx * dx + dy * dy);
   const nx = d > 0 ? dx / d : 0, ny = d > 0 ? dy / d : -1;
   const vc = (v[B + 3]! - v[A + 3]!) * nx + (v[B + 4]! - v[A + 4]!) * ny;
-  const ra = v[A + 5]!, rb = v[B + 5]!, ma = rockMass(ra), mb = rockMass(rb), ia = 1 / ma, ib = 1 / mb;
+  const ra = v[A + 5]!, rb = v[B + 5]!, ma = rockMassOf(s, a), mb = rockMassOf(s, b), ia = 1 / ma, ib = 1 / mb;
   const fix = SEPARATE_SHARE * Math.max(0, ra + rb - d - SEPARATE_SLOP);
   if (fix > 0) {
     const sa = Math.min(ROCK_SEPARATE_MAX, (fix * ia) / (ia + ib)), sb = Math.min(ROCK_SEPARATE_MAX, (fix * ib) / (ia + ib));

@@ -12,7 +12,7 @@
 // push frees a rail first, restarts the rock's clock and touches it (§3.4).
 import { escapeSpeed } from './rails';
 import { BURST_4_MIN_R, BURST_6_MIN_R, BURST_8_MIN_R, BURST_KICK_MIN, BURST_KICK_SPAN, BURST_OFFSET, FAN_KICK_MIN, FAN_KICK_SPAN, FAN_OFFSET, FAN_SPLIT_MIN_R, FAN_TRIPLE_MIN_R, GOLDEN_FRAC, ROCK_CRUSH_SPEED, ROCK_CRUSH_STEP, ROCK_MIN_R, TIDAL_KICK_MIN, TIDAL_KICK_SPAN } from './rockTuning';
-import { freeRock, markTouched, regridRock, restartClock, rockAlive, rockAt, rockHp, RockKind, rockSlots, ROCK_STRIDE, writeRock } from './rocks';
+import { CELL_STRIDE, freeRock, markTouched, regridRock, restartClock, rockAlive, rockAt, rockHp, RockKind, rockSlots, ROCK_STRIDE, writeRock } from './rocks';
 import type { RockCause, TacticalState } from './state';
 
 export type BreakPattern = 'fan' | 'burst' | 'tidal';
@@ -50,6 +50,7 @@ export function pieceKick(rho: number, j: number, pattern: BreakPattern): number
 /** Clear slot k and every active ship's rock target that names it (§6.1: laser and torpedo to −1, a flying torpedo's to −2). */
 export function vacate(s: TacticalState, k: number): void {
   s.rocks.fill(0, k * ROCK_STRIDE, (k + 1) * ROCK_STRIDE);
+  s.rockCells[k * CELL_STRIDE] = 0; s.rockCells[k * CELL_STRIDE + 1] = 0;
   s.systems.forEach((sys, i) => {
     if (!s.ships[i]!.active) return;   // an inactive slot's record holds zeros, and keeps them
     if (sys.laserRock === k) sys.laserRock = -1;

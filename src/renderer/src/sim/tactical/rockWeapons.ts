@@ -5,7 +5,7 @@
 import { inArc } from './geometry';
 import { escapeSpeed } from './rails';
 import { hitRock, pushRock } from './rockBreak';
-import { firstBlocker, rockAlive, rockAt, rockMass } from './rocks';
+import { firstBlocker, rockAlive, rockAt, rockMassOf } from './rocks';
 import { LASER_PUSH_CAP, LASER_ROCK_DAMAGE, LASER_ROCK_PUSH } from './rockTuning';
 import { classOf, type TacticalState } from './state';
 
@@ -28,7 +28,7 @@ export function rockShotLine(state: TacticalState, i: number, k: number): { rock
 /** §4.1: ship i's laser shot meets rock k at (x, y): push first, then damage (a fan break along the line at hp ≤ 0). */
 export function laserStrikesRock(state: TacticalState, i: number, k: number, x: number, y: number): void {
   const a = state.ships[i]!, dx = x - a.x, dy = y - a.y, d = Math.sqrt(dx * dx + dy * dy), ux = d > 0 ? dx / d : 0, uy = d > 0 ? dy / d : -1;
-  const r = rockAt(state, k), j = Math.min(LASER_ROCK_PUSH / rockMass(r.r), LASER_PUSH_CAP * escapeSpeed(Math.sqrt(r.x * r.x + r.y * r.y)));   // §5.3: capped
+  const r = rockAt(state, k), j = Math.min(LASER_ROCK_PUSH / rockMassOf(state, k), LASER_PUSH_CAP * escapeSpeed(Math.sqrt(r.x * r.x + r.y * r.y)));   // §5.3: capped
   pushRock(state, k, ux * j, uy * j);
   hitRock(state, k, LASER_ROCK_DAMAGE, ux, uy, 'laser', i);
 }

@@ -2,7 +2,7 @@
 // meets the planet, then asteroids in ascending index, then every later active ship. Push out, bounce keeping
 // RESTITUTION of the normal speed, and cost hull only once per CONTACT_GRACE_TICKS per pair.
 import { breakRock, crushDamage, wearRock } from './rockBreak';
-import { freeRock, isRail, markTouched, regridRock, restartClock, rockAlive, rockAt, rockMass, rocksNear, ROCK_STRIDE, rockX, rockY } from './rocks';
+import { freeRock, isRail, markTouched, regridRock, restartClock, rockAlive, rockAt, rockMassOf, rocksNear, ROCK_STRIDE, rockX, rockY } from './rocks';
 import { RAM_HULL_FREE, RAM_HULL_MAX, RAM_HULL_STEP, RAM_SOFT, ROCK_SEPARATE_MAX, SHIP_MASS } from './rockTuning';
 import { classOf, shipBody, type TacticalState } from './state';
 import { ASTEROID_CONTACT_HULL, CONTACT_GRACE_TICKS, PLANET_CONTACT_HULL, RESTITUTION, SHIP_CONTACT_HULL } from './tuning';
@@ -73,7 +73,7 @@ function shipRock(state: TacticalState, i: number, k: number): void {
   if (d2 >= rr * rr) return;
   freeRock(state, k); markTouched(state, k); restartClock(state, k);
   const d = Math.sqrt(d2), nx = d > 0 ? dx / d : 0, ny = d > 0 ? dy / d : -1, body = k + 1;
-  const vc = (v[b + 3]! - s.vx) * nx + (v[b + 4]! - s.vy) * ny, mk = rockMass(v[b + 5]!);
+  const vc = (v[b + 3]! - s.vx) * nx + (v[b + 4]! - s.vy) * ny, mk = rockMassOf(state, k);
   const is = 1 / SHIP_MASS, ik = 1 / mk, overlap = rr - d, sk = Math.min(ROCK_SEPARATE_MAX, (overlap * ik) / (is + ik)), ss = overlap - sk;
   s.x += nx * ss; s.y += ny * ss; v[b + 1]! -= nx * sk; v[b + 2]! -= ny * sk;
   regridRock(state, k);

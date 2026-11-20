@@ -104,13 +104,15 @@ describe('the asteroids-iii rock pool (spec §3.1)', () => {
 });
 
 describe('the rock targets, the tally and the counters (spec §6.1, §8; asteroids-iii §5.4, §5.5)', () => {
-  it('every ship system has a laser and torpedo rock target and a break tally; the space module closes with nine counters', () => {
+  it('every ship system has a laser and torpedo rock target and a break tally; the space module ends with nine counters, then the cells (asteroids-iv)', () => {
     const st = createTacticalState(3), s = st.systems[0];
     expect([s.laserRock, s.torpRock, s.torpRockFlying, s.rocksBroken]).toEqual([-1, -1, -1, 0]);
     expect([st.rockHits, st.rockSplits, st.rockDust, st.rockBlasts, st.rockCollisions, st.rockEvictions, st.rockTouches, st.rockSlotDust, st.rockCapHits]).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0]);
     const ship = shipModule.fields(st).map((f) => f.name);
     for (const f of ['laserRock', 'torpRock', 'torpRockFlying', 'rocksBroken']) expect(ship).toContain(`systems.0.${f}`);
-    expect(spaceModule.fields(st).map((f) => f.name).slice(-10)).toEqual(['rocks', 'rockHits', 'rockSplits', 'rockDust', 'rockBlasts', 'rockCollisions', 'rockEvictions', 'rockTouches', 'rockSlotDust', 'rockCapHits']);
+    const space = spaceModule.fields(st);
+    expect(space.map((f) => f.name).slice(-11)).toEqual(['rocks', 'rockHits', 'rockSplits', 'rockDust', 'rockBlasts', 'rockCollisions', 'rockEvictions', 'rockTouches', 'rockSlotDust', 'rockCapHits', 'rockCells']);
+    expect(space[space.length - 1]!.count).toBe(rockCapacity(st.map) * 2);   // asteroids-iv §3.3: 2 values a slot, after the nine counters
     const three = createTacticalState(3, 3), off = three.systems[2]!;
     expect([off.laserRock, off.torpRock, off.torpRockFlying, off.rocksBroken]).toEqual([0, 0, 0, 0]);
     expect(() => validateTacticalValues(three, flattenTactical(three))).not.toThrow();

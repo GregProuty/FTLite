@@ -22,6 +22,7 @@ import { clusterOf, type MapDef } from './map';
 import { railPos, type RailOut } from './rails';
 import { emptyRockGrid, linkRock, peekRockGrid, queryRockGrid } from './grid';
 import { ROCK_GRID_PAD, ROCK_HP_PER, ROCK_MASS_DIVISOR, ROCK_R_MAX, ROCK_SWITCHES } from './rockTuning';
+import { popcount, shapeOf, templateFor, CELL_MAX } from './rockCells';
 import type { TacticalState } from './state';
 export type { RockCause } from './state';
 
@@ -55,6 +56,38 @@ export function initRocks(map: MapDef): Float64Array {
   const out = new Float64Array(rockCapacity(map) * ROCK_STRIDE);
   map.asteroids.forEach((a, k) => { const [kind, cx, cy, ox, oy] = seededRail(map, k); out.set([kind, cx, cy, ox, oy, a.r, rockHp(a.r), 0], k * ROCK_STRIDE); });
   return out;
+}
+
+// ---- Asteroids-iv spec §3.3, §10a 2: the cells beside the pool ----
+export const CELL_STRIDE = 2;
+/** Every seeded rock is its own template with every cell; the reserve holds zeros. */
+export function initRockCells(map: MapDef): Float64Array {
+  const out = new Float64Array(rockCapacity(map) * CELL_STRIDE);
+  map.asteroids.forEach((_, k) => { out[k * CELL_STRIDE] = k + 1; out[k * CELL_STRIDE + 1] = templateFor(map, k).full; });
+  return out;
+}
+/** Slot k's template (a seeded asteroid index), or −1 for a plain round rock. */
+export function rockTmpl(s: TacticalState, k: number): number { return s.rockCells[k * CELL_STRIDE]! - 1; }
+export function rockMaskOf(s: TacticalState, k: number): number { return s.rockCells[k * CELL_STRIDE + 1]!; }
+export function setRockCells(s: TacticalState, k: number, tmpl: number, mask: number): void { s.rockCells[k * CELL_STRIDE] = tmpl + 1; s.rockCells[k * CELL_STRIDE + 1] = mask; }
+/** Slot k's mass: a plain rock's rockMass(r); a cell rock's cell count times its template's rockMass(R) / full count. */
+export function rockMassOf(s: TacticalState, k: number): number {
+  const tm = rockTmpl(s, k);
+  if (tm < 0) return rockMass(s.rocks[k * ROCK_STRIDE + 5]!);
+  const t = templateFor(s.map, tm);
+  return (popcount(rockMaskOf(s, k)) * rockMass(t.R)) / t.fullCount;
+}
+/** A rock's cells in the world: n centres and the two radii (§3.1). A caller's scratch, reused. */
+export interface Cells { n: number; x: Float64Array; y: Float64Array; hitR: number; contactR: number }
+export function makeCells(): Cells { return { n: 0, x: new Float64Array(CELL_MAX), y: new Float64Array(CELL_MAX), hitR: 0, contactR: 0 }; }
+/** Slot k's cells at its accessor position: a plain rock is one cell of radius r; a cell rock's are its centre of mass
+ *  plus its shape's offsets (§10a 1: no orientation in iv-a). */
+export function rockCellsInto(s: TacticalState, k: number, out: Cells): void {
+  const X = rockX(s, k), Y = rockY(s, k), tm = rockTmpl(s, k);
+  if (tm < 0) { out.n = 1; out.x[0] = X; out.y[0] = Y; out.hitR = out.contactR = s.rocks[k * ROCK_STRIDE + 5]!; return; }
+  const t = templateFor(s.map, tm), sh = shapeOf(t, rockMaskOf(s, k));
+  out.n = sh.n; out.hitR = t.hitR; out.contactR = t.contactR;
+  for (let i = 0; i < sh.n; i++) { out.x[i] = X + sh.ox[i]!; out.y[i] = Y + sh.oy[i]!; }
 }
 
 export const rockKind = (s: TacticalState, k: number): number => s.rocks[k * ROCK_STRIDE]!;
@@ -222,10 +255,12 @@ export function rocksNear(s: TacticalState, x: number, y: number, h: number, out
   return inRockStep(s) ? rocksNearGrid(s, x, y, h, out) : rocksNearScan(s, x, y, h, out);
 }
 
-/** Write slot k's eight values (a rail: its centre in x, y and its offset in vx, vy); t defaults to the phase tick. */
+/** Write slot k's eight values (a rail: its centre in x, y and its offset in vx, vy); t defaults to the phase tick.
+ *  Asteroids-iv: the slot's cells are cleared (a plain rock); setRockCells after it makes a cell rock. */
 export function writeRock(s: TacticalState, k: number, kind: number, x: number, y: number, vx: number, vy: number, r: number, hp: number, t: number = rockPhase(s)): void {
   const v = s.rocks, b = k * ROCK_STRIDE;   // written in place: no array per birth
   v[b] = kind; v[b + 1] = x; v[b + 2] = y; v[b + 3] = vx; v[b + 4] = vy; v[b + 5] = r; v[b + 6] = hp; v[b + 7] = t;
+  s.rockCells[k * CELL_STRIDE] = 0; s.rockCells[k * CELL_STRIDE + 1] = 0;
   railRowChanged(s, k);
 }
 

@@ -7,7 +7,7 @@ import type { GunDef, GunRockDef } from './defs';
 import { weaponBars, WeaponSlot } from './bars';
 import { dirBetween, hx, hy } from './direction';
 import { hitRock, pushRock } from './rockBreak';
-import { rockAt, rockMass, rocksNear } from './rocks';
+import { rockAt, rockMassOf, rocksNear } from './rocks';
 import { classOf, CREW_SLOT, emptyRound, handControl, Room, roundRoom, type GunRound, type TacticalState } from './state';
 import { interceptTime, nearestHeading } from './lead';
 import { AIM_STEPS, DT, GUN_AUTO_HEAT_STOP, HEADING_COUNT } from './tuning';
@@ -164,7 +164,7 @@ function gunHit(state: TacticalState, owner: number, k: number, ox: number, oy: 
  *  along the round at 0 hp, the owner's rocksBroken), as the laser's laserStrikesRock does: push first, then damage. */
 function roundStrikesRock(state: TacticalState, owner: number, k: number, ox: number, oy: number, nx: number, ny: number, rd: GunRockDef): void {
   const dx = nx - ox, dy = ny - oy, d = Math.sqrt(dx * dx + dy * dy), ux = d > 0 ? dx / d : 0, uy = d > 0 ? dy / d : -1;
-  const j = rd.pushPerRound / rockMass(rockAt(state, k).r);
+  const j = rd.pushPerRound / rockMassOf(state, k);
   pushRock(state, k, ux * j, uy * j);
   hitRock(state, k, 1 / rd.roundsPerHp, ux, uy, 'gun', owner);
 }

@@ -5,7 +5,7 @@
 // is pushed away. The caller ends the torpedo with cause 'asteroid'.
 import { escapeSpeed } from './rails';
 import { breakRock, hitRock, pushRock } from './rockBreak';
-import { rockAlive, rockAt, rockMass, rocksNear } from './rocks';
+import { rockAlive, rockAt, rockMassOf, rocksNear } from './rocks';
 import { BLAST_PUSH, BLAST_PUSH_CAP, BLAST_RADIUS, BLAST_ROCK_DAMAGE_MAX, BLAST_ROCK_DAMAGE_MIN, BLAST_SHIP_PUSH } from './rockTuning';
 import { classOf, type TacticalState } from './state';
 
@@ -30,7 +30,7 @@ export function detonateTorpedo(s: TacticalState, owner: number, x: number, y: n
   for (const k of near) {
     if (!rockAlive(s, k) || s.rockBorn[k] === 1) continue;   // evicted, or reused for a piece of this blast
     const a = rockAt(s, k), dx = a.x - x, dy = a.y - y, dist = Math.sqrt(dx * dx + dy * dy);
-    const fall = blastFall(Math.max(0, dist - a.r)), ux = dist > 0 ? dx / dist : 0, uy = dist > 0 ? dy / dist : -1, dv = Math.min((BLAST_PUSH * fall) / rockMass(a.r), BLAST_PUSH_CAP * escapeSpeed(Math.sqrt(a.x * a.x + a.y * a.y)));
+    const fall = blastFall(Math.max(0, dist - a.r)), ux = dist > 0 ? dx / dist : 0, uy = dist > 0 ? dy / dist : -1, dv = Math.min((BLAST_PUSH * fall) / rockMassOf(s, k), BLAST_PUSH_CAP * escapeSpeed(Math.sqrt(a.x * a.x + a.y * a.y)));
     pushRock(s, k, ux * dv, uy * dv);
     hitRock(s, k, BLAST_ROCK_DAMAGE_MIN + (BLAST_ROCK_DAMAGE_MAX - BLAST_ROCK_DAMAGE_MIN) * fall, ux, uy, 'torpedo', owner);
   }
