@@ -5,7 +5,7 @@ import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { type Axes, cloneTactical, createTacticalState, missileOf, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { stepFlight } from '../src/renderer/src/sim/tactical/physics';
 import { flattenTactical, hashTactical, MISSILE_SLOT, ROUND_SLOT } from '../src/renderer/src/sim/tactical/hash';
-import { ROCK_RESERVE, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
+import { CELL_STRIDE, ROCK_RESERVE, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { predictPath } from '../src/renderer/src/sim/tactical/predict';
 import { GUN_POOL, PEW_POOL, PLANET_RADIUS, SHIP_RADIUS } from '../src/renderer/src/sim/tactical/tuning';
 
@@ -114,7 +114,7 @@ describe('flatten key guard', () => {
     const st = createTacticalState(1);
     expect(Object.keys(st.ships[0]).sort()).toEqual(['active', 'asteroidHits', 'graceUntil', 'heading', 'headingAcc', 'planetHits', 'released', 'shipHits', 'skidBudget', 'skidSign', 'vx', 'vy', 'x', 'y']);
     expect(Object.keys(st.systems[0]).sort()).toEqual(['bars', 'cls', 'fireHeld', 'freq', 'gunCooldown', 'gunHeat', 'gunHits', 'gunHull', 'gunLocked', 'gunManual', 'gunMuzzle', 'gunRoomWear', 'gunShots', 'gunTurret', 'gunWear', 'hull', 'laserAim', 'laserBurst', 'laserBurstClock', 'laserCharge', 'laserHits', 'laserHold', 'laserManual', 'laserRock', 'laserTargeted', 'layersStripped', 'lock', 'magazine', 'magazineClock', 'missileHits', 'missilesLaunched', 'missilesLost', 'pewCharge', 'pewHits', 'pewManual', 'pewShots', 'pewTurret', 'rocksBroken', 'rooms', 'shieldClock', 'shields', 'shots', 'target', 'torpLock', 'torpManual', 'torpRock', 'torpRockFlying', 'torpRoom', 'weaponPower']);
-    expect(Object.keys(st).sort()).toEqual(['derelict', 'designated', 'events', 'hostileAt', 'hunter', 'known', 'map', 'missiles', 'outcome', 'pew', 'rng', 'rockBlasts', 'rockBorn', 'rockCapHits', 'rockCollisions', 'rockDone', 'rockDust', 'rockEvictions', 'rockHits', 'rockSlotDust', 'rockSplits', 'rockTouched', 'rockTouches', 'rocks', 'rounds', 'scan', 'seed', 'ships', 'startTick', 'systems', 'tick', 'weakFreq']);
+    expect(Object.keys(st).sort()).toEqual(['derelict', 'designated', 'events', 'hostileAt', 'hunter', 'known', 'map', 'missiles', 'outcome', 'pew', 'rng', 'rockBlasts', 'rockBorn', 'rockCapHits', 'rockCells', 'rockCollisions', 'rockDone', 'rockDust', 'rockEvictions', 'rockHits', 'rockSlotDust', 'rockSplits', 'rockTouched', 'rockTouches', 'rocks', 'rounds', 'scan', 'seed', 'ships', 'startTick', 'systems', 'tick', 'weakFreq']);
     expect(Object.keys(st.hunter).sort()).toEqual(['fireAt', 'lastLaunch', 'mode', 'pewBurst', 'pewClock', 'room', 'timer', 'trail', 'trailHead', 'working']);
     const launched = createTacticalState(1);
     launchMissile(launched, 0);                                          // a missile as the launcher makes it
@@ -129,6 +129,7 @@ describe('flatten key guard', () => {
     // spike spec §2: per slot the 5 bars and the 3 weaponPower values (spec §10.3). W-4 spec §3.1, §13.1 (W-4b), amendment §2.1: the two
     // turrets and each gun's mode, 4 more per slot. W-4 amendment §3.3: ROUND_SLOT is 8 (each round's room).
     // Asteroids-iii: 8 values a rock slot (ROCK_STRIDE), ROCK_RESERVE 160 in the graceUntil bodies, three more counters (rockTouches, rockSlotDust, rockCapHits).
-    expect(flattenTactical(st).length).toBe(6 + 2 * (13 + st.map.asteroids.length + ROCK_RESERVE + 2) + 2 * MISSILE_SLOT + GUN_POOL * ROUND_SLOT + PEW_POOL * ROUND_SLOT + 9 + st.hunter.trail.length + (st.map.asteroids.length + ROCK_RESERVE) * ROCK_STRIDE + 9 + 2 * 59 + 17);
+    // Asteroids-iv spec §3.3: rockCells, CELL_STRIDE (2) values a rock slot, last in the space module.
+    expect(flattenTactical(st).length).toBe(6 + 2 * (13 + st.map.asteroids.length + ROCK_RESERVE + 2) + 2 * MISSILE_SLOT + GUN_POOL * ROUND_SLOT + PEW_POOL * ROUND_SLOT + 9 + st.hunter.trail.length + (st.map.asteroids.length + ROCK_RESERVE) * ROCK_STRIDE + 9 + (st.map.asteroids.length + ROCK_RESERVE) * CELL_STRIDE + 2 * 59 + 17);
   });
 });
