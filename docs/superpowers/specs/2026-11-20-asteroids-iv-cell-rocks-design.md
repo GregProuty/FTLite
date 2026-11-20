@@ -247,6 +247,22 @@ Each phase ends with the full suite, determinism and the app smoke, and is merge
 The two were first drafted as three, with the pieces arriving before the true shapes. That middle state was dropped: two
 fresh halves' bounding circles overlap deeply, so circle physics would throw them apart on the next tick.
 
+## 10a. Amendments from planning (2026-11-20; these win over the sections above)
+
+1. iv-a stores no `rockTurn`. Orientation is the identity and ω is 0 until iv-b adds the array.
+2. §3.3's two arrays are one: `rockCells: Float64Array`, 2 values a slot (template + 1, then the mask). A gone or plain
+   slot holds zeros.
+3. §3.2's hash salt comes from the asteroid's index and place on the map, not from the seed directly.
+4. §3.2's spacing is fitted after the rim drops: the cells are re-centred on their centre of mass and
+   d = R / (the farthest cell centre in spacings + 0.5773502691896258). The table's divisors are those of a template
+   with no drop.
+5. §5.3's point P is the centre of the cell nearest the torpedo. If the three lines leave one group, it is cut once
+   through its centre of mass along u.
+6. §9's per-slot memo of world cells is built only if the measured cost needs it.
+7. §7's easing of a rim corner (the notch out, the tip in) is decided by the template's own rim, not by the cells a rock
+   has now. A corner's drawn place is then fixed per template, two pieces fit exactly along their cut, and a fresh cut
+   face is jagged where the original rim is smooth.
+
 ## 11. Tests
 
 - **Templates:** deterministic per seed and index, connected, 1 to 31 cells, every contact circle inside R.
