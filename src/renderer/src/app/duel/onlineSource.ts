@@ -140,7 +140,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   const duel = (): DuelState => client.state()!;
   const source: DuelViewSource & {
     observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: HeldInput): void; heldFlags(flags: HeldFlags): void;
-    thrMille(): number; helmVent(): HelmVent; unacked(n: number): void;
+    thrMille(): number; helmVent(): HelmVent; unacked(n: number): void; weaponSel(): number;
     throttleBase(level: number | null): void;
     refuse(control: Refusal['control'], reason: string): void;
     arrivals(): readonly number[]; takeArrivals(): number[]; ready(): boolean;
@@ -168,6 +168,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const e = engineBars(d);
       return rampTicks(d.thrMille, heldAxis(sentHeld.throttleHeld), throttleFloor(e), throttleCap(e), unackedFrames);
     },
+    weaponSel: (): number => sentHeld.weaponSel ?? 0,   // W-4 spec §10: the selection this seat last sent
     /** Playtest2feedback Decision 11: the puffs and the hiss online: this seat's own predicted vent at the crew Helm, else none. */
     helmVent: (): HelmVent => { const d = duel(); return crewHelm(d) ? ventOf(crewAxes(d, sentHeld)) : noVent(); },
     unacked(n) { unackedFrames = Math.max(0, n); },

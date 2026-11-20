@@ -53,7 +53,7 @@ function stubClient() {
 type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
   clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null; notice?: string | null }[], overlay: [] as (readonly string[] | null)[],
-  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void; torpHeading(h: number): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 },
+  sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void; torpHeading(h: number): void; trigger(held: boolean): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 },
   source: null as null | { helmVent(): { x: number; y: number; boosted: boolean }; thrMille(): number }
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
@@ -67,7 +67,7 @@ vi.mock('../src/network/portLink', () => ({
 vi.mock('../src/network/transport/bridge', () => ({ browserPortEndpoint: () => ({}) }));
 vi.mock('../src/renderer/src/app/duel/scene', () => ({
   // Mirrors the real scene: draw hands the UI a frame, dispose clears the sink (scene.ts dispose: options.ui.clear()).
-  createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void; torpHeading(h: number): void } }) => {
+  createDuelScene: (_renderer: unknown, opts: { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; aimLaser(aim: number): void; torpHeading(h: number): void; trigger(held: boolean): void } }) => {
     h.sceneOpts.push(opts);
     return {
       draw: (source: unknown, _dt: number, o: { banner: string | null; notice?: string | null }) => {
@@ -187,6 +187,43 @@ describe('the online pew (W-1 review F2)', () => {
     h0.session.frame(); h.sceneOpts.at(-1)!.requests!.pew(1234); h0.pump();
     expect(pewCommands(c0)).toHaveLength(0);
     h0.dispose();
+  });
+});
+
+describe('the online Hound Weapons seat (W-4 spec §11)', () => {
+  const tapKey = (r: ReturnType<typeof rig>, code: string): void => { r.key('keydown', code); r.key('keyup', code); };
+  it('2 selects the autocannon: the held trigger rides the frame as gunHeld; 1 selects pew pew and drops it', () => {
+    const r = rig(1), c = r.attach();
+    r.session.frame();
+    tapKey(r, 'Digit2'); h.sceneOpts[0]!.requests!.trigger(true); r.pump(); r.session.frame();
+    expect(c.helds().at(-1)).toMatchObject({ weaponSel: 1, gunHeld: true });
+    h.sceneOpts[0]!.requests!.trigger(false); tapKey(r, 'Digit1'); r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ weaponSel: 0 });
+    expect(c.helds().at(-1)).not.toHaveProperty('gunHeld');
+    r.dispose();
+  });
+  it('with pew pew selected (the default) the map click sends pewFire {}; the authority\'s unavailable shows NO CHARGE', () => {
+    const r = rig(1);
+    r.d.tactical.systems[0]!.pewCharge = 0;   // the lagging replica: empty
+    const c = r.attach();
+    r.session.frame();
+    h.sceneOpts[0]!.requests!.pew(1234); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'pewFire')).toEqual([{ kind: 'pewFire' }]);
+    const id = c.ids[c.commands().map((x) => x.kind).lastIndexOf('pewFire')]!;
+    c.results.push({ id, tick: 3, status: 'rejected', reason: 'unavailable' }); r.pump();
+    r.session.frame();
+    expect(h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'pew')).toEqual([{ control: 'pew', reason: 'NO CHARGE' }]);
+    r.dispose();
+  });
+  it('4 tunes the guns to frequency 0; 3 selects the torpedo and sends no frequency', () => {
+    const r = rig(1), c = r.attach();
+    r.session.frame();
+    tapKey(r, 'Digit4'); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'laserFrequency')).toEqual([{ kind: 'laserFrequency', freq: 0 }]);
+    tapKey(r, 'Digit3'); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'laserFrequency')).toHaveLength(1);
+    expect(c.helds().at(-1)).toMatchObject({ weaponSel: 2 });
+    r.dispose();
   });
 });
 
@@ -733,9 +770,9 @@ describe('Science and the frequency online (Sci-1 spec §5, §7.3, §7.4)', () =
     contact.click(0); r.pump(); contact.close(); r.pump();
     expect(c.commands().filter((x) => x.kind === 'designate')).toEqual([{ kind: 'designate', contact: 0 }, { kind: 'designate', contact: -1 }]);
     r.dispose();
-    const w = rig(1), cw = w.attach();
+    const w = rig(1), cw = w.attach();   // W-4 spec §9: on the Hound 4 / 5 / 6 tune the guns (3 selects)
+    w.key('keydown', 'Digit5'); w.key('keyup', 'Digit5'); w.pump();
     w.key('keydown', 'Digit4'); w.key('keyup', 'Digit4'); w.pump();
-    w.key('keydown', 'Digit3'); w.key('keyup', 'Digit3'); w.pump();
     expect(cw.commands().filter((x) => x.kind === 'laserFrequency')).toEqual([{ kind: 'laserFrequency', freq: 1 }, { kind: 'laserFrequency', freq: 0 }]);
     w.dispose();
   });
