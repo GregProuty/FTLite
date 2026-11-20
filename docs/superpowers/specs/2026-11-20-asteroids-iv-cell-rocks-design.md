@@ -256,8 +256,9 @@ fresh halves' bounding circles overlap deeply, so circle physics would throw the
 4. §3.2's spacing is fitted after the rim drops: the cells are re-centred on their centre of mass and
    d = R / (the farthest cell centre in spacings + 0.5773502691896258). The table's divisors are those of a template
    with no drop.
-5. §5.3's point P is the centre of the cell nearest the torpedo. If the three lines leave one group, it is cut once
-   through its centre of mass along u.
+5. §5.3's point P is the centre of the cell nearest the point SHATTER_DEPTH (1.5) spacings inside the rock along the
+   torpedo's relative path from the struck cell (owner 2026-11-20: more destructive torpedoes). The struck cell is the
+   rock's cell nearest the torpedo. If the three lines leave one group, it is cut once through its centre of mass along u.
 6. §9's per-slot memo of world cells is built only if the measured cost needs it.
 7. §7's easing of a rim corner (the notch out, the tip in) is decided by the template's own rim, not by the cells a rock
    has now. A corner's drawn place is then fixed per template, two pieces fit exactly along their cut, and a fresh cut

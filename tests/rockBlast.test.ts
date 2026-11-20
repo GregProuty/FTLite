@@ -25,22 +25,63 @@ function westCell(st: ReturnType<typeof arena>, k: number): { c: number; x: numb
   return { c, x: a.x + t.x[c]! - sh.gx, y: a.y + t.y[c]! - sh.gy, hitR: cells.hitR };
 }
 
+/** Rock k's template cell whose world centre is nearest (x, y) (ties: the lowest index), and that centre. */
+function nearestTmplCell(st: ReturnType<typeof arena>, k: number, x: number, y: number): { c: number; x: number; y: number } {
+  const t = templateFor(st.map, rockTmpl(st, k)), sh = shapeOf(t, rockMaskOf(st, k)), a = rockAt(st, k);
+  let c = -1, bd = Infinity;
+  for (let i = 0; i < t.n; i++) {
+    if (((sh.mask >>> i) & 1) !== 1) continue;
+    const d = Math.hypot(a.x + t.x[i]! - sh.gx - x, a.y + t.y[i]! - sh.gy - y);
+    if (d < bd) { bd = d; c = i; }
+  }
+  return { c, x: a.x + t.x[c]! - sh.gx, y: a.y + t.y[c]! - sh.gy };
+}
+
 describe('the direct hit (spec §4.2 item 1)', () => {
-  it('shatters the touched rock whatever its hp: real chunks of it, the struck cell dust', () => {
-    const st = arena(), tm = tmplOf(st, 31);
+  it('shatters the touched rock whatever its hp: at least 4 real chunks, the crater 1.5 spacings inside along the path (owner 2026-11-20)', () => {
+    const st = arena(), tm = tmplOf(st, 31), d = templateFor(st.map, tm).d;
     shaped(st, 100, tm, -54, 2000, 5, 0);
     st.rocks[100 * ROCK_STRIDE + 6] = 99;   // whatever its hp
     const w = westCell(st, 100);
+    const p = nearestTmplCell(st, 100, w.x + 1.5 * d, w.y);   // P: the cell nearest S + (1, 0) · 1.5 · d
+    expect(p.c).not.toBe(w.c);
     detonateTorpedo(st, 0, w.x - w.hitR, w.y, 300, 0, 100);   // on the westernmost cell's surface, flying east into it
     expect(rockEvents(st, 'blast')).toMatchObject([{ rock: 100, by: 'torpedo', ship: 0, x: w.x - w.hitR, y: w.y, r: 120 }]);
     expect([st.rockBlasts, st.systems[0].rocksBroken]).toEqual([1, 1]);
     const split = rockEvents(st, 'split')[0]!, pieces = split.pieces!;
-    expect(split.burst).toBe(true); expect(pieces.length).toBeGreaterThanOrEqual(2);
+    expect(split.burst).toBe(true); expect(pieces.length).toBeGreaterThanOrEqual(4);
     let all = 0;
-    for (const p of pieces) { const m = rockMaskOf(st, p); expect(rockTmpl(st, p)).toBe(tm); expect(all & m).toBe(0); all |= m; }
-    expect((all >>> w.c) & 1).toBe(0);   // the struck cell is the crater
+    for (const q of pieces) { const m = rockMaskOf(st, q); expect(rockTmpl(st, q)).toBe(tm); expect(all & m).toBe(0); all |= m; }
+    expect((all >>> p.c) & 1).toBe(0);   // the cell at P is the crater
+    const dust = rockEvents(st, 'dust'), crater = dust[dust.length - 1]!;   // the crater is the last dust group
+    // S is not the crater: it flies off in a piece, or (as on this seed's rock, where S + 1.5 d falls exactly midway between
+    // the next two cells of its row, the lower index wins and P is S's neighbour, leaving S alone in its sector) it is a
+    // one-cell group of its own, dust by the rule, distinct from the crater.
+    if (((all >>> w.c) & 1) === 0) expect(dust.slice(0, -1).some((e) => Math.abs(e.x - w.x) < 1e-9 && Math.abs(e.y - w.y) < 1e-9)).toBe(true);
+    expect(crater.x).toBeCloseTo(p.x, 9); expect(crater.y).toBeCloseTo(p.y, 9);
+    expect(Math.hypot(crater.x - w.x, crater.y - w.y)).toBeGreaterThan(d / 2);   // not at S
     const a0 = rockAt(st, pieces[0]!);
     expect(Math.hypot(a0.vx - 5, a0.vy)).toBeCloseTo(0.3 * escapeSpeed(Math.hypot(-54, 2000)), 9);   // piece 0 at v_esc · 0.30 plus the rock
+  });
+  it('over 12 directions round a full 31-cell rock the median shatter is at least 4 pieces', () => {
+    const counts: number[] = [];
+    for (let i = 0; i < 12; i++) {
+      const st = arena(), tm = tmplOf(st, 31), th = (i * Math.PI) / 6, ux = Math.cos(th), uy = Math.sin(th);
+      shaped(st, 100, tm, -54, 2000);
+      const a = rockAt(st, 100);
+      detonateTorpedo(st, 0, a.x - ux * (a.r + 1), a.y - uy * (a.r + 1), ux * 300, uy * 300, 100);   // just outside, flying at its centre of mass
+      counts.push(rockEvents(st, 'split')[0]!.pieces!.length);
+    }
+    counts.sort((x, y) => x - y);
+    expect((counts[5]! + counts[6]!) / 2).toBeGreaterThanOrEqual(4);
+  });
+  it('a plain rock still turns to dust whole', () => {
+    const st = arena();
+    mover(st, 100, -60, 2000, 0, 0, 25, 99);
+    detonateTorpedo(st, 0, -90, 2000, 300, 0, 100);
+    expect(rockAlive(st, 100)).toBe(false);
+    expect(rockEvents(st, 'split')).toEqual([]);
+    expect(rockEvents(st, 'dust')).toMatchObject([{ rock: 100, by: 'torpedo', x: -60, y: 2000, r: 25 }]);
   });
 });
 

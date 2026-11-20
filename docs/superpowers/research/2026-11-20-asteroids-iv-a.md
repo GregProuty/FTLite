@@ -12,6 +12,7 @@ Timings are from a desktop with no other deliberate load. Other background proce
 | stress (20 seeds x 4,000 ticks) | safety, twins, save/restore, grid | PASS (no failures, counters 0) |
 | cost | p99 < 0.6 ms | PASS (worst p99 0.28 ms) |
 | feel | >= 7 of 10 shots pass | FAIL (0 of 10) |
+| feel, after SHATTER_DEPTH 1.5 (SIM 65 code, before the 66 bless) | >= 7 of 10 shots pass | FAIL (0 of 10; pieces median 6, criterion (a) 10 of 10) |
 | idle | 0 rocks freed in 600 s; deltas <= master + 64 B | FAIL (294 freed; deltas larger) |
 | burst | free count <= 10 by 270 s; delta median <= 5,500 B | FAIL (free count not back; deltas fine) |
 
@@ -71,6 +72,25 @@ Pieces per shot: 2, 3, 3, 3, 4, 2, 2, 2, 3, 3. Median 3, mean 2.7. This is below
 
 Criterion (d) cannot pass as written: no shot has more than 3 pieces, and (d) needs 4 pieces turned. (b), (c), (d) are the owner's playtest questions (spec 12), not blockers.
 
+### Feel after SHATTER_DEPTH 1.5 (owner 2026-11-20: more destructive torpedoes)
+
+The direct hit now bursts at the cell nearest the point 1.5 spacings inside the rock along the torpedo's relative path (spec 10a item 5). Rerun: `npx tsx scripts/spike-asteroids-iii-measure.ts --only feel`.
+
+| Rock | r | Pieces | Touches | Mass share | Turned | a | b | c | d |
+|---|---|---|---|---|---|---|---|---|---|
+| 29 | 44.9 | 6 | 1 | 1.0 | 1 | yes | no | yes | no |
+| 22 | 44.4 | 3 | 4 | 0.929 | 0 | yes | yes | yes | no |
+| 17 | 44.4 | 6 | 5 | 0.926 | 3 | yes | yes | yes | no |
+| 25 | 44.3 | 6 | 4 | 1.0 | 2 | yes | yes | yes | no |
+| 26 | 44.1 | 6 | 2 | 1.0 | 3 | yes | no | yes | no |
+| 50 | 44.0 | 3 | 1 | 1.0 | 2 | yes | no | yes | no |
+| 21 | 44.0 | 3 | 1 | 1.0 | 2 | yes | no | yes | no |
+| 19 | 43.5 | 6 | 3 | 1.0 | 3 | yes | yes | yes | no |
+| 52 | 42.3 | 3 | 2 | 1.0 | 3 | yes | no | yes | no |
+| 33 | 41.7 | 6 | 0 | 1.0 | 3 | yes | no | yes | no |
+
+Pieces per shot after SHATTER_DEPTH 1.5: 6, 3, 6, 6, 6, 3, 3, 6, 3, 6. Median 6, mean 4.8 (was median 3, mean 2.7). Passes: still 0 of 10. Per criterion: a 10, b 4, c 10, d 0 (all switches off: 10, 2, 10, 0). (d) still fails everywhere: no shot turns 4 pieces by 25 degrees in 20 s.
+
 ## Idle (20 seeds, 600 s, no action)
 
 Rocks freed: 294 (gate 0). Per seed: 22, 27, 16, 12, 8, 19, 6, 13, 25, 16, 7, 17, 12, 15, 19, 17, 18, 10, 9, 6.
@@ -118,3 +138,5 @@ The idle and burst sections were re-run on the branch point before any cell work
 Both gates already failed before this work, so their failures are not caused by cell rocks. The freeing in a quiet scene comes from changes merged to master after asteroids-iii set the gate. Burst is about the same either way. These belong in a separate look at the idle scene, not in iv-a.
 
 The feel gate's piece count is a real difference from the spec: a shatter gives 2 to 4 pieces (median 3), not "about four to six". That is the owner's call at the playtest. The knob is `CRATER_K` (smaller keeps more cells) and the number of sector lines in `shatterGroups`.
+
+Owner 2026-11-20: "yes to more destructive torpedos". After SHATTER_DEPTH 1.5 the ten shots give 3 or 6 pieces (median 6); see "Feel after SHATTER_DEPTH 1.5" above.

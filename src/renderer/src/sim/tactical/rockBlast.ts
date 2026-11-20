@@ -1,13 +1,16 @@
 // Spike ii §4.2 (asteroids-iii §5.3: the push capped at 0.5 · v_esc(ρ)) (docs/superpowers/specs/2026-11-18-asteroids-ii-design.md): a torpedo that touches a rock detonates. The
 // rocks whose nearest cell's surface lies within BLAST_RADIUS of the blast point are listed once, ascending, before
-// anything changes; then the blast event, the touched rock's shatter at its cell nearest the blast (whatever its hp), each
+// anything changes; then the blast event, the touched rock's shatter (whatever its hp) at P: the centre of the cell nearest the
+// point SHATTER_DEPTH (1.5) spacings inside the rock along the torpedo's relative path from the struck cell (owner 2026-11-20:
+// more destructive torpedoes; a plain rock turns to dust whole), each
 // listed rock in order (skipping any slot now born or gone: push first, then damage, a cut through its nearest cell along
 // the blast-to-cell line), then every active ship in the radius is pushed away. The caller ends the torpedo with cause 'asteroid'.
 import { escapeSpeed } from './rails';
 import { breakRock, hitRock, pushRock } from './rockBreak';
-import { rockAlive, rockAt, rockMassOf, rocksNear } from './rocks';
+import { rockAlive, rockAt, rockMassOf, rocksNear, rockTmpl } from './rocks';
+import { templateFor } from './rockCells';
 import { rockNearestCell, rockSurfaceDistance, type NearCell } from './rockShape';
-import { BLAST_PUSH, BLAST_PUSH_CAP, BLAST_RADIUS, BLAST_ROCK_DAMAGE_MAX, BLAST_ROCK_DAMAGE_MIN, BLAST_SHIP_PUSH } from './rockTuning';
+import { BLAST_PUSH, BLAST_PUSH_CAP, BLAST_RADIUS, BLAST_ROCK_DAMAGE_MAX, BLAST_ROCK_DAMAGE_MIN, BLAST_SHIP_PUSH, SHATTER_DEPTH } from './rockTuning';
 import { classOf, type TacticalState } from './state';
 
 /** §4.2: the fall-off for a surface distance d: 1 − d / BLAST_RADIUS inside the radius, 0 at and beyond it. */
@@ -27,7 +30,13 @@ export function detonateTorpedo(s: TacticalState, owner: number, x: number, y: n
   s.rockBlasts++;
   s.events.push({ kind: 'rock', what: 'blast', by: 'torpedo', rock, x, y, r: BLAST_RADIUS, vx: mvx, vy: mvy, ship: owner });
   const t = rockAt(s, rock);
-  rockNearestCell(s, rock, x, y, cell);   // §10a 5: the shatter's point is the struck cell's centre
+  rockNearestCell(s, rock, x, y, cell);   // S: the struck cell's centre
+  const tm = rockTmpl(s, rock);
+  if (tm >= 0) {   // §10a 5 (owner 2026-11-20): P, the cell nearest S + u · SHATTER_DEPTH · d, u the relative path (zero: north)
+    const rvx = mvx - t.vx, rvy = mvy - t.vy, len = Math.sqrt(rvx * rvx + rvy * rvy), ux = len > 0 ? rvx / len : 0, uy = len > 0 ? rvy / len : -1;
+    const reach = SHATTER_DEPTH * templateFor(s.map, tm).d;
+    rockNearestCell(s, rock, cell.x + ux * reach, cell.y + uy * reach, cell);
+  }
   breakRock(s, rock, cell.x, cell.y, mvx - t.vx, mvy - t.vy, 'torpedo', owner, 'shatter');
   for (const k of near) {
     if (!rockAlive(s, k) || s.rockBorn[k] === 1) continue;   // evicted, or reused for a piece of this blast
