@@ -2,12 +2,13 @@ import { Fragment } from 'react';
 import { FULLSCREEN_KEY } from '../../../../shared/onlineSession';
 import { VOLUME_CHANNELS, VOLUME_LABELS, VOLUME_STEPS } from '../../app/settingsStore';
 import { SHAKE_LABELS, SHAKE_SETTINGS, validShake } from '../../render/shake';
+import { MAP_GRID_LABELS, MAP_GRID_SETTINGS, validMapGrid } from '../../render/tactical/mapGrid';
 import { useActions, useUi } from '../context';
 import { BROWSER_F11_TEXT } from '../menuState';
 import { MenuButton } from './MenuButton';
 import { ACTION, KEYS, TABLE, VOLUME } from './styles';
 
-/** The Master, Music and Effects volumes (Audio-i spec section 6), the screen shake (Feel-i), the live fullscreen toggle
+/** The Master, Music and Effects volumes (Audio-i spec section 6), the screen shake (Feel-i), the map grid, the live fullscreen toggle
  *  and the read-only controls list (main menu spec decision 4). */
 export function Settings() {
   const settings = useUi((s) => s.settings), fullscreen = useUi((s) => s.menu.fullscreen), browser = useUi((s) => s.browser), actions = useActions();
@@ -25,6 +26,12 @@ export function Settings() {
         <select data-testid="shake" aria-label="Screen shake" style={VOLUME} value={settings.shake} disabled={!settings.available}
           onChange={(e) => { if (validShake(e.target.value)) actions.setShake(e.target.value); }}>
           {SHAKE_SETTINGS.map((s) => <option key={s} value={s}>{SHAKE_LABELS[s]}</option>)}
+        </select>
+      </label>
+      <label>Map grid
+        <select data-testid="map-grid" aria-label="Map grid" style={VOLUME} value={settings.mapGrid} disabled={!settings.available}
+          onChange={(e) => { if (validMapGrid(e.target.value)) actions.setMapGrid(e.target.value); }}>
+          {MAP_GRID_SETTINGS.map((s) => <option key={s} value={s}>{MAP_GRID_LABELS[s]}</option>)}
         </select>
       </label>
       <label>

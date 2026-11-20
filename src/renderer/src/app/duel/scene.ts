@@ -25,6 +25,7 @@ import { createFx, fxDt, hitsCrew, interpolatedMissile, pushEvents, pushGunHits,
 import { gunnerPresent, laserSituation, linedUp } from '../../render/duel/situationModel';
 import { countSit, createSitTracker, frameZoom, sitCard, trackSit, type SitSeat } from '../../render/duel/sitModel';
 import { shakeScale } from '../../render/shake';
+import { DEFAULT_MAP_GRID } from '../../render/tactical/mapGrid';
 import { flashesFor, pushHits } from '../../render/tactical/hitModel';
 import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
 import { pushRockFx, pushRockShakes } from '../../render/tactical/rockFx';
@@ -399,7 +400,8 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
           pewPointer: station === 'weapons' && view === 'weapons' ? options.pointer?.() ?? null : null,   // W-1: the pew's aim line follows the pointer on the Weapons map
           laserAim: station === 'weapons' && view === 'weapons' ? options.requests?.laserAim() ?? null : null,   // W-2: the MANUAL laser's aim (the model aims along the nose without one)
           rockHover: hoverRock !== null && aimed !== null ? { rock: hoverRock, weapon: aimed } : null,
-          vent, steerTo   // playtest2feedback §6: the puffs and the steering marker
+          vent, steerTo,   // playtest2feedback §6: the puffs and the steering marker
+          mapGrid: renderer.mapGrid?.() ?? DEFAULT_MAP_GRID   // Settings: the gravity grid or the square one
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting

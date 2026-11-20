@@ -35,6 +35,16 @@ describe('the ship picker (Valkyrn spec §9)', () => {
     expect(setLaserFit).toHaveBeenCalledWith(true);
     expect(store.getState().settings.valkyrnLaserFit).toBe(true);
   });
+  it('the Settings map grid starts on the gravity well and switches to the square grid (owner 2026-11-19)', () => {
+    const setMapGrid = vi.fn(), { store } = renderUi({ deps: { setMapGrid } });
+    click('settings');
+    const pick = screen.getByTestId('map-grid') as HTMLSelectElement;
+    expect(pick.value).toBe('gravity');
+    expect(Array.from(pick.options).map((o) => o.textContent)).toEqual(['Gravity well', 'Square']);
+    act(() => { fireEvent.change(pick, { target: { value: 'square' } }); });
+    expect(setMapGrid).toHaveBeenCalledWith('square');
+    expect(store.getState().settings.mapGrid).toBe('square');
+  });
 });
 
 describe('the settings record (Valkyrn spec §9)', () => {
