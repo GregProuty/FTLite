@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createTacticalState, type Ship } from '../src/renderer/src/sim/tactical/state';
+import { CUTTER_CLASS, HUNTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
 import { edgeAccel, flyShip, gravityAccel } from '../src/renderer/src/sim/tactical/physics';
 import { circularSpeed } from '../src/renderer/src/sim/tactical/map';
 import { DEFAULT_FLIGHT, DT, GM, GRAVITY_EPS, R_MAP, THRUST, TURN_STEPS_PER_TICK, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
@@ -62,12 +63,14 @@ describe('flight configuration (spec §4 tests, §6)', () => {
     for (let t = 0; t < 60; t++) flyShip(l, { turn: -1, thrust: 0 }, FLIGHT_NO_FIELD);
     expect(l.heading).toBe(256 - 106);
   });
-  it('reverse thrust is 40% of forward', () => {
-    const f = ship({}), r = ship({});
-    flyShip(f, { turn: 0, thrust: 1 }, { ...FLIGHT_NO_FIELD, drag: 0 });
-    flyShip(r, { turn: 0, thrust: -1 }, { ...FLIGHT_NO_FIELD, drag: 0 });
+  it('reverse thrust is 40% of forward on every class but the Hound, and 50% on the Hound (helm round 2 §2.2)', () => {
+    const f = ship({}), r = ship({}), hound = ship({});
+    flyShip(f, { turn: 0, thrust: 1 }, { ...FLIGHT_NO_FIELD, drag: 0 }, 0, HUNTER_CLASS);
+    flyShip(r, { turn: 0, thrust: -1 }, { ...FLIGHT_NO_FIELD, drag: 0 }, 0, HUNTER_CLASS);
+    flyShip(hound, { turn: 0, thrust: -1 }, { ...FLIGHT_NO_FIELD, drag: 0 }, 0, CUTTER_CLASS);
     expect(f.vy).toBeCloseTo(-THRUST * DT, 12);
     expect(r.vy).toBeCloseTo(0.4 * THRUST * DT, 12);
+    expect(hound.vy).toBeCloseTo(0.5 * THRUST * DT, 12);
   });
   it('scales thrust and turn by the Engines factor 1 / 0.6 / 0 (level 2 is off, owner 2026-11-17)', () => {
     for (const [level, factor] of [[0, 1], [1, 0.6], [2, 0]] as const) {

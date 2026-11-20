@@ -10,7 +10,7 @@ import {
   MISSILE_ARM_TICKS, MISSILE_FUEL_TICKS, MISSILE_HULL, MISSILE_BOOST_TICKS, MISSILE_LAUNCH_SPEED, MISSILE_LIFE_TICKS, MISSILE_RADIUS, MISSILE_RANGE, MISSILE_SPAWN_OFFSET, MISSILE_THRUST,
   MISSILE_TURN_STEPS_PER_TICK, REVERSE_FRACTION, SHIELD_LAYERS, SHIELD_RATE, SHIELD_RECHARGE_UNITS, SHIP_HULL, SHIP_RADIUS, THRUST, TURN_STEPS_PER_TICK, VALKYRN_HULL, VALKYRN_THRUST,
   VALKYRN_TURN_STEPS_PER_TICK, PEW_ARC_STEPS, PEW_HULL, PEW_LIFE, PEW_RECHARGE_TICKS, PEW_CHARGE_SCALE, HUNTER_PEW_RECHARGE_TICKS, PEW_SHOTS, PEW_SPEED,
-  BOOST_FAR, RCS_TURN_BOOST, AUTOCANNON_ARC_STEPS, AUTOCANNON_TURRET_TRAVERSE, PEW_TURRET_TRAVERSE, AUTOCANNON_HITS_PER_HULL
+  BOOST_FAR, RCS_TURN_BOOST, HOUND_REVERSE_FRACTION, AUTOCANNON_ARC_STEPS, AUTOCANNON_TURRET_TRAVERSE, PEW_TURRET_TRAVERSE, AUTOCANNON_HITS_PER_HULL
 } from './tuning';
 import { AUTOCANNON_INTERVAL_BY_BARS, AUTOCANNON_MAN_INTERVAL_BY_BARS, AUTOCANNON_WEAK_HITS_PER_LAYER } from './bars';   // bars.ts imports only types from state.ts
 import { AUTOCANNON_ROCK_PUSH, AUTOCANNON_ROUNDS_PER_ROCK_HP } from './rockTuning';
@@ -149,7 +149,7 @@ function shipClass(id: string, ai: ShipClassDef['ai'], hull: number, laser: Lase
  *  keeps its single laser and the pew pew (refilling slower, HUNTER_PEW); the Hound has no laser.
  *  W-4 spec §2: the Hound: pew pew and the autocannon on turrets and the torpedo; its laser slot is null (the beam left;
  *  every slots.laser reader already guards null, Valkyrn spec §6.1). Playtest2feedback §1: the crew Helm's Newtonian flight. */
-export const CUTTER_CLASS: ShipClassDef = Object.freeze({ ...shipClass('cutter', 'crew', SHIP_HULL, null, AUTOCANNON, STANDARD, HOUND_PEW), newtonianHelm: true });
+export const CUTTER_CLASS: ShipClassDef = Object.freeze({ ...shipClass('cutter', 'crew', SHIP_HULL, null, AUTOCANNON, STANDARD, HOUND_PEW), newtonianHelm: true, reverseFraction: HOUND_REVERSE_FRACTION });   // helm round 2 §2.2
 export const HUNTER_CLASS = shipClass('hunter', 'hunter', HUNTER_HULL, HUNTER_LASER, null, STANDARD, HUNTER_PEW);
 /** Valkyrn spec §6.1, §8: the solo fighter (the gun and the torpedo, no laser) and its developer laser fit (the Cutter's
  *  double laser and torpedo on the Valkyrn's hull and flight). */

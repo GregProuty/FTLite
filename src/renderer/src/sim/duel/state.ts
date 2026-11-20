@@ -67,9 +67,10 @@ export interface DuelState {
   /** The helm module (Feel-ii spec §1.1): the heading index 0..255 the Helm holds (click-to-heading), or −1 for none.
    *  Set by the `heading` command; A/D or auto-face held at the Helm clears it. −1 in a fresh duel and every new round. */
   holdHeading: number;
-  /** Playtest2feedback §3 (the helm module): the crew Helm's held throttle in per mille, −250..1000; 0 in a fresh duel and
-   *  every new round. A class that is not newtonianHelm (the Valkyrn) holds it unused. Owner 2026-11-19: no COMPRESSOR
-   *  share and no Helm bar budget (the cap is Engineering's Engines bars), and no cold gas tank (the gas is free). */
+  /** Playtest2feedback §3, helm round 2 §2 (the helm module): the crew Helm's held throttle in per mille, −500..1000; it
+   *  stays where it is left, attended or not; 0 in a fresh duel and every new round. A class that is not newtonianHelm (the
+   *  Valkyrn) holds it unused. Owner 2026-11-19: no COMPRESSOR share and no Helm bar budget (the cap is Engineering's
+   *  Engines bars). The cold gas is a charge, `gas` below (helm round 2 §3.3). */
   thrMille: number;
   /** Helm round 2 §2.3 (the helm module): the cut's latch. An applied throttleCut sets it; while it is set the ramp ignores
    *  the attendant's throttleHeld, and it clears on a tick the Helm is empty or its throttleHeld is 0. False at a round's

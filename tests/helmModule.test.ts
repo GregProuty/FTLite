@@ -13,7 +13,7 @@ import { loadDuelSnapshot, saveDuelSnapshot, validateDuelSnapshot } from '../src
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import * as duelTuning from '../src/renderer/src/sim/duel/tuning';
-import { GAS_MAX, GAS_REFILL, GAS_REFILL_DELAY, GAS_SPEND, THR_MAX, THR_MIN, THR_RAMP, THR_RETURN } from '../src/renderer/src/sim/duel/tuning';
+import { GAS_MAX, GAS_REFILL, GAS_REFILL_DELAY, GAS_SPEND, THR_MAX, THR_MIN, THR_RAMP } from '../src/renderer/src/sim/duel/tuning';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import { createSeatedDuel } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
@@ -29,8 +29,8 @@ function helmOffset(d: DuelState): number {
 
 describe('the numbers (spec §3, §4, §5)', () => {
   it('are the spec\'s start values', () => {
-    expect([THR_MIN, THR_MAX, THR_RAMP, THR_RETURN]).toEqual([-250, 1000, 7, 34]);
-    for (const gone of ['RCS_TANK', 'RCS_GAS_PER_TICK', 'RCS_TURN_GAS', 'COMPRESSOR_RATE', 'COMPRESSOR_MAX', 'HELM_BARS', 'HELM_BARS_MAX']) expect(Object.keys(duelTuning), gone).not.toContain(gone);   // owner 2026-11-19
+    expect([THR_MIN, THR_MAX, THR_RAMP]).toEqual([-500, 1000, 17]);   // helm round 2 §2.1, §2.2
+    for (const gone of ['THR_RETURN', 'RCS_TANK', 'RCS_GAS_PER_TICK', 'RCS_TURN_GAS', 'COMPRESSOR_RATE', 'COMPRESSOR_MAX', 'HELM_BARS', 'HELM_BARS_MAX']) expect(Object.keys(duelTuning), gone).not.toContain(gone);   // owner 2026-11-19
   });
 });
 
@@ -58,15 +58,15 @@ describe('a fresh duel (spec §4; owner 2026-11-19)', () => {
 });
 
 describe('the pure rules (spec §3, §4, §5)', () => {
-  it('crewThrust is a quarter per 250 in reverse and a thousandth per mille forward', () => {
-    expect([-250, -125, 0, 250, 500, 1000].map(crewThrust)).toEqual([-1, -0.5, 0, 0.25, 0.5, 1]);
+  it('crewThrust is a five-hundredth per mille in reverse and a thousandth forward (helm round 2 §2.2)', () => {
+    expect([-500, -250, 0, 250, 500, 1000].map(crewThrust)).toEqual([-1, -0.5, 0, 0.25, 0.5, 1]);
   });
   it('heldAxis reads 1 and −1, and anything else as 0', () => {
     expect([1, -1, 0, undefined, 2, 0.5, '1', true].map(heldAxis)).toEqual([1, -1, 0, 0, 0, 0, 0, 0]);
   });
-  it('the cap is min(Engines bars, 4) × 250 and the floor −250 from 1 Engines bar (owner 2026-11-19)', () => {
+  it('the cap is min(Engines bars, 4) × 250 and the floor −500 from 1 Engines bar (owner 2026-11-19; helm round 2 §2.2)', () => {
     expect([0, 1, 2, 3, 4, 5].map(throttleCap)).toEqual([0, 250, 500, 750, 1000, 1000]);
-    expect([0, 1, 4, 5].map(throttleFloor)).toEqual([0, -250, -250, -250]);
+    expect([0, 1, 4, 5].map(throttleFloor)).toEqual([0, -500, -500, -500]);
   });
   it('engineBars reads Engineering\'s effective Engines bars: the powered bars less the Engines Room\'s damage', () => {
     const d = createDuel(CUTTER, 5);
@@ -77,20 +77,16 @@ describe('the pure rules (spec §3, §4, §5)', () => {
       sys.rooms[2] = 2; expect(engineBars(d)).toBe(0);
     } finally { disposeDuel(d); }
   });
-  it('held W reaches 1000 in 143 ticks at cap 1000 and stops at 750 at cap 750; held S reaches −250 in 36', () => {
-    expect(rampTicks(0, 1, -250, 1000, 142)).toBe(994); expect(rampTicks(0, 1, -250, 1000, 143)).toBe(1000);
-    expect(rampTicks(0, 1, -250, 750, 200)).toBe(750);
-    expect(rampTicks(0, -1, -250, 1000, 35)).toBe(-245); expect(rampTicks(0, -1, -250, 1000, 36)).toBe(-250); expect(rampTicks(0, -1, -250, 1000, 99)).toBe(-250);
+  it('held W reaches 1000 in 59 ticks at cap 1000 and stops at 750 at cap 750; held S reaches −500 in 30 (helm round 2 §2.1)', () => {
+    expect(rampTicks(0, 1, -500, 1000, 58)).toBe(986); expect(rampTicks(0, 1, -500, 1000, 59)).toBe(1000);
+    expect(rampTicks(0, 1, -500, 750, 200)).toBe(750);
+    expect(rampTicks(0, -1, -500, 1000, 29)).toBe(-493); expect(rampTicks(0, -1, -500, 1000, 30)).toBe(-500); expect(rampTicks(0, -1, -500, 1000, 99)).toBe(-500);
   });
-  it('let go, it returns to 0 by 34 a tick from either side and stops there', () => {
-    const down: number[] = [];
-    for (let m = 1000, k = 0; k < 31; k++) { m = rampThrottle(m, 0, -250, 1000); down.push(m); }
-    expect(down.slice(0, 3)).toEqual([966, 932, 898]); expect(down[28]).toBe(14); expect(down[29]).toBe(0); expect(down[30]).toBe(0);
-    expect(down.every((m) => m >= 0)).toBe(true);
-    expect(rampTicks(-250, 0, -250, 1000, 7)).toBe(-12); expect(rampTicks(-250, 0, -250, 1000, 8)).toBe(0);
+  it('let go, it stays where it is, on either side (helm round 2 §2.1)', () => {
+    expect([rampThrottle(1000, 0, -500, 1000), rampThrottle(-321, 0, -500, 1000), rampTicks(470, 0, -500, 1000, 600)]).toEqual([1000, -321, 470]);
   });
   it('the clamp holds the cap and the floor: 0 Engines bars hold it at 0 whatever is held', () => {
-    expect(rampThrottle(1000, 0, -250, 750)).toBe(750);   // a cap that drops clamps the same tick
+    expect(rampThrottle(1000, 0, -500, 750)).toBe(750);   // a cap that drops clamps the same tick
     expect([rampTicks(0, 1, 0, 0, 10), rampTicks(0, -1, 0, 0, 10)]).toEqual([0, 0]);
   });
   it('noVent is a fresh unvented record each call', () => {
@@ -141,7 +137,7 @@ describe('the fields in the hash, the flatten and the snapshot (spec §7)', () =
     const d = createSeatedDuel(CUTTER, 5);
     try {
       const snap = saveDuelSnapshot(d, DIGEST), at = helmOffset(d);
-      for (const [k, bad, name] of [[2, 1001, 'thrMille'], [2, -251, 'thrMille'], [2, 0.5, 'thrMille'],
+      for (const [k, bad, name] of [[2, 1001, 'thrMille'], [2, -501, 'thrMille'], [2, 0.5, 'thrMille'],
         [3, 2, 'thrCut'], [3, 0.5, 'thrCut'], [3, -1, 'thrCut'], [4, 721, 'gas'], [4, -1, 'gas'], [4, 0.5, 'gas'], [5, 31, 'gasIdle'], [5, -1, 'gasIdle'], [5, 1.5, 'gasIdle']] as const) {   // helm round 2 §8
         const s = structuredClone(snap); s.values[at + k] = bad; s.header.hash = hashF64(Float64Array.from(s.values));
         expect(() => validateDuelSnapshot(CUTTER, s, DIGEST), `${name} ${bad}`).toThrow(new RegExp(`${name} ${bad} is invalid`));

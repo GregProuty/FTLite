@@ -39,31 +39,28 @@ describe('the held throttle (spec §3, §8; owner 2026-11-19: the cap from the E
     });
     expect(caps).toEqual([0, 250, 500, 750, 1000, 1000]);
   });
-  it('reverse needs a bar: the floor is 0 at 0 Engines bars and −250 at 1 to 5', () => {
+  it('reverse needs a bar: the floor is 0 at 0 Engines bars and −500 at 1 to 5 (helm round 2 §2.2)', () => {
     const floors = [0, 1, 2, 3, 4, 5].map((n) => {
       const d = createSeatedDuel(CUTTER, 5);
       try { engines(d, n); return hold(d, S, 40).at(-1); } finally { disposeDuel(d); }
     });
-    expect(floors).toEqual([0, -250, -250, -250, -250, -250]);
+    expect(floors).toEqual([0, -500, -500, -500, -500, -500]);
   });
-  it('at 4 bars held W reaches 1000 in 143 ticks; from the round start (Engineering\'s 3 bars, cap 750) it stops at 750', () => {
+  it('at 4 bars held W reaches 1000 in 59 ticks (helm round 2 §2.1); from the round start (Engineering\'s 3 bars, cap 750) it stops at 750', () => {
     const d = createSeatedDuel(CUTTER, 5), e = createSeatedDuel(CUTTER, 5);
     try {
       expect(e.tactical.systems[0].bars[DuelSystem.Engines]).toBe(3);
       engines(d, 4);
-      const up = hold(d, W, 143);
-      expect([up[0], up[141], up[142]]).toEqual([7, 994, 1000]);
+      const up = hold(d, W, 59);
+      expect([up[0], up[57], up[58]]).toEqual([17, 986, 1000]);
       expect(hold(e, W, 200).at(-1)).toBe(750);
     } finally { disposeDuel(d); disposeDuel(e); }
   });
-  it('held S reaches −250; let go, it returns to 0 at 34 a tick with no overshoot', () => {
+  it('held S reaches −500; let go, it stays (helm round 2 §2.1: no return)', () => {
     const d = createSeatedDuel(CUTTER, 5);
     try {
-      expect(hold(d, S, 36).at(-1)).toBe(-250);
-      engines(d, 4); hold(d, W, 200);
-      const down = hold(d, NONE, 31);
-      expect([down[0], down[28], down[29], down[30]]).toEqual([966, 14, 0, 0]);
-      expect(down.every((m) => m >= 0)).toBe(true);
+      expect(hold(d, S, 36).at(-1)).toBe(-500);
+      expect(hold(d, NONE, 31).every((m) => m === -500)).toBe(true);
     } finally { disposeDuel(d); }
   });
   it('Engineering taking an Engines bar (shipPower) clamps thrMille that same tick', () => {
@@ -79,7 +76,7 @@ describe('the held throttle (spec §3, §8; owner 2026-11-19: the cap from the E
     const d = createSeatedDuel(CUTTER, 5);
     try {
       engines(d, 1); hold(d, S, 40);
-      expect(d.thrMille).toBe(-250);
+      expect(d.thrMille).toBe(-500);   // helm round 2 §2.2
       expect(statuses(step(d, [cmd(d, 1, { kind: 'shipPower', system: DuelSystem.Engines, delta: -1 })], [S, NONE]))).toEqual(['applied']);
       expect(d.thrMille).toBe(0);
       expect(hold(d, S, 20).at(-1)).toBe(0);
@@ -100,22 +97,18 @@ describe('the held throttle (spec §3, §8; owner 2026-11-19: the cap from the E
   });
 });
 
-describe('the unattended crew Helm (spec §3)', () => {
-  it('returns to 0; a Helm that stands at 1000 thrusts down the 30-tick return and turns onto its held heading', () => {
-    const d = createSeatedDuel(CUTTER, 5), twin = createSeatedDuel(CUTTER, 5);
+describe('the unattended crew Helm (spec §3; helm round 2 §2.1)', () => {
+  it('keeps its throttle: a Helm that stands at 1000 thrusts on at 1000 and turns onto its held heading', () => {
+    const d = createSeatedDuel(CUTTER, 5);
     try {
-      for (const x of [d, twin]) { engines(x, 4); hold(x, W, 143); }
-      for (const x of [d, twin]) expect(statuses(step(x, [cmd(x, 0, { kind: 'heading', heading: 64 })], [W, NONE]))).toEqual(['applied']);
-      twin.thrMille = 0;   // the twin stands with its throttle already at 0
-      for (const x of [d, twin]) expect(statuses(step(x, [cmd(x, 0, { kind: 'stand' })]))).toEqual(['applied']);
-      expect([d.thrMille, twin.thrMille]).toEqual([966, 0]);
-      expect([d.tactical.ships[0].vx, d.tactical.ships[0].vy]).not.toEqual([twin.tactical.ships[0].vx, twin.tactical.ships[0].vy]);   // it thrust while standing
-      const down = hold(d, NONE, 29);
-      expect([down[27], down[28]]).toEqual([14, 0]);
+      engines(d, 4); hold(d, W, 143);
+      expect(statuses(step(d, [cmd(d, 0, { kind: 'heading', heading: 64 })], [W, NONE]))).toEqual(['applied']);
+      expect(statuses(step(d, [cmd(d, 0, { kind: 'stand' })]))).toEqual(['applied']);
+      expect(hold(d, NONE, 29).every((m) => m === 1000)).toBe(true);   // helm round 2 §2.1: a set throttle is a lever
       for (let k = 0; k < 120; k++) step(d);
       const diff = ((64 - d.tactical.ships[0].heading + 384) % 256) - 128;
       expect(Math.abs(diff)).toBeLessThanOrEqual(4);
-    } finally { disposeDuel(d); disposeDuel(twin); }
+    } finally { disposeDuel(d); }
   });
 });
 
@@ -133,8 +126,8 @@ describe('the throttle command (spec §3)', () => {
 });
 
 describe('no helmPower (owner 2026-11-19, replacing spec §5)', () => {
-  it('the helm module owns only throttle and heading', () => {
-    expect([helmModule.commands, helmModule.reasons]).toEqual([['throttle', 'heading'], ['invalid-seat', 'malformed', 'stale-tick', 'unavailable']]);
+  it('the helm module owns throttle, heading and throttleCut (helm round 2 §2.3)', () => {
+    expect([helmModule.commands, helmModule.reasons]).toEqual([['throttle', 'heading', 'throttleCut'], ['invalid-seat', 'malformed', 'stale-tick', 'unavailable']]);
   });
   it('the duel codec refuses a helmPower command', () => {
     const codec = duelCodec(DUEL_CREW_MAX), envelope = (command: unknown) => ({ kind: 'command' as const, envelope: { runId: 'r', id: { player: 0, sequence: 1 }, requestedTick: 0, command } as CommandEnvelope });

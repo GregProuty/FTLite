@@ -73,6 +73,9 @@ export const TURN_DEG_PER_S = 150;
 export const TURN_STEPS_PER_TICK = (TURN_DEG_PER_S / 360) * HEADING_COUNT * DT;   // about 1.78
 export const THRUST = 120;                     // u/s²
 export const REVERSE_FRACTION = 0.4;
+/** Helm round 2 §2.2: the Hound's (CUTTER_CLASS's) full reverse, half its full thrust (60 u/s²). REVERSE_FRACTION stays
+ *  every other class's, so the Hunter still brakes at 40 %. */
+export const HOUND_REVERSE_FRACTION = 0.5;
 export const DRAG = 0.15;                      // velocity × (1 − DRAG · dt) per tick
 export const STABILISE = 80;                   // u/s² of sideways velocity removed while both axes are zero
 

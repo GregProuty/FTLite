@@ -44,7 +44,7 @@ const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 /** The fixed order weapon commands take effect in within one tick (W-1: the pew last, as applyWeaponsInput fires it). */
 const WEAPON_ORDER = ['laserMode', 'torpMode', 'gunMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire'] as const;
 /** Every duel command kind the step handles; any other kind is rejected not-in-duel. */
-const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserMode', 'torpMode', 'gunMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire', 'rematch', 'throttle', 'heading', 'contactScan', 'designate', 'laserFrequency',
+const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserMode', 'torpMode', 'gunMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire', 'rematch', 'throttle', 'heading', 'throttleCut', 'contactScan', 'designate', 'laserFrequency',
   'shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock', 'weaponPower'];   // Engineering spike spec §7, §10.3
 /** Engineering spike spec §7: the ship-view commands. */
 const SHIP_KINDS = new Set(['shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock']);
@@ -190,11 +190,14 @@ export function helmBoost(d: DuelState, h: HeldInput): number {
  *  - the turn and its boost (helmTurn, helmBoost);
  *  - the thrust of one ramp step on the held throttle from `thrMille` (the duel's by default, or the app's local
  *    prediction of it), clamped to the Engines bars' floor and cap as the step clamps it (owner 2026-11-19);
+ *  - helm round 2 §2.3: with the latch (`cut`, the state's by default; online, the seat's predicted one) that step holds still;
  *  - the held thrusters, every one of which vents (owner 2026-11-19: free cold gas).
  *  Pure. */
-export function crewAxes(d: DuelState, h: HeldInput, thrMille: number = d.thrMille): Axes {
+export function crewAxes(d: DuelState, h: HeldInput, thrMille: number = d.thrMille, cut: boolean = d.thrCut): Axes {
   const boost = helmBoost(d, h), y = heldAxis(h.rcsY), x = heldAxis(h.rcsX), engine = engineBars(d);
-  const thrust = crewThrust(rampThrottle(thrMille, heldAxis(h.throttleHeld), throttleFloor(engine), throttleCap(engine)));
+  // Helm round 2 §2.3, §7 (Decision 6): while the latch holds the ramp ignores throttleHeld; a latch that clears this tick
+  // does so only when throttleHeld is 0, so `cut ? 0 : held` is crewHelm's clear-then-ramp.
+  const thrust = crewThrust(rampThrottle(thrMille, cut ? 0 : heldAxis(h.throttleHeld), throttleFloor(engine), throttleCap(engine)));
   return { turn: helmTurn(d, h), turnBoost: boost, thrust, rcsX: x, rcsY: y };   // owner 2026-11-19: every held thruster vents
 }
 
@@ -202,7 +205,7 @@ export function crewAxes(d: DuelState, h: HeldInput, thrMille: number = d.thrMil
  *  attended (`h` is the attendant's held input) or not (null). In order:
  *  - the turn and its boost, from the state before the step;
  *  - a held aim becomes the held heading, and A/D or auto-face clears it (owner 2026-11-19, as the other classes);
- *  - the throttle ramp on the attendant's throttleHeld (0 with no attendant), clamped to the Engines bars' floor and cap
+ *  - helm round 2 §2.3: the cut's latch clears on a tick with no attendant or throttleHeld 0; then the throttle ramp on the attendant's throttleHeld (0 while the latch holds or with no attendant; no return to 0, §2.1), clamped to the Engines bars' floor and cap
  *    (owner 2026-11-19: Engineering's effective Engines bars, after this tick's ship commands);
  *  - the fore/aft and the side thruster, each venting whenever the attendant holds it (owner 2026-11-19: free cold gas, so
  *    no tank, no spend and no compressor);
@@ -216,7 +219,12 @@ function crewHelm(d: DuelState, h: HeldInput | null, crew: ShipInput): void {
     else if (heldAim(h) >= 0) d.holdHeading = heldAim(h);
   }
   const engine = engineBars(d);
-  d.thrMille = rampThrottle(d.thrMille, h ? heldAxis(h.throttleHeld) : 0, throttleFloor(engine), throttleCap(engine));
+  // Helm round 2 §2.3: the latch first (cleared once the Helm is empty or its throttleHeld is 0), then the ramp on the held
+  // value (0 while the latch holds, 0 with no attendant), then the clamp. A cut that arrives with the key up clears here on
+  // its own tick.
+  const lever = h ? heldAxis(h.throttleHeld) : 0;
+  if (d.thrCut && lever === 0) d.thrCut = false;
+  d.thrMille = rampThrottle(d.thrMille, d.thrCut ? 0 : lever, throttleFloor(engine), throttleCap(engine));
   const rcsY = h ? heldAxis(h.rcsY) : 0, rcsX = h ? heldAxis(h.rcsX) : 0;   // owner 2026-11-19: free cold gas, no tank
   d.helmVent = { x: rcsX, y: rcsY, boosted: boost === RCS_TURN_BOOST, turn: boost === RCS_TURN_BOOST ? Math.sign(turn) || 0 : 0 };
   crew.helm = true;
@@ -409,6 +417,16 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (!validHoldHeading(h)) { result(e, 'malformed'); continue; }
     if (h === d.holdHeading) { result(e, undefined, 'noop'); continue; }
     d.holdHeading = h; result(e);
+  }
+  // Helm round 2 §2.3: the tap's cut, checked like the heading against the seats as they now stand: stale, the Helm
+  // attendant, the class, then noop at 0. It zeroes the throttle and sets the latch, which crewHelm (later this tick)
+  // clears once the key is up.
+  for (const e of input.commands) if (e.command.kind === 'throttleCut') {
+    if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
+    if (helm < 0 || e.id.player !== helm) { result(e, 'invalid-seat'); continue; }
+    if (!classOf(d.tactical, 0).newtonianHelm) { result(e, 'unavailable'); continue; }
+    if (d.thrMille === 0) { result(e, undefined, 'noop'); continue; }
+    d.thrMille = 0; d.thrCut = true; result(e);
   }
   // Sci-1 (spec §5), against the seats as they now stand: every laserFrequency in envelope order, then every designate,
   // then every contactScan; each is checked for stale-tick first, and within a kind the last applied wins.

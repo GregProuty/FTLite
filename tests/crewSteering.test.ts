@@ -148,9 +148,9 @@ describe('the app\'s prediction of the axes (spec §6)', () => {
   it('crewAxes flies the held thrust, every held thruster (free cold gas, owner 2026-11-19), and the boost', () => {
     const d = still();
     try {
-      d.thrMille = 500;   // W not held: the next tick's ramp returns it by THR_RETURN (34), so it flies 466
-      expect(crewAxes(d, { ...NONE, rcsX: 1, rcsY: -1, aim: 100 })).toEqual({ turn: 1, turnBoost: RCS_TURN_BOOST, thrust: 0.466, rcsX: 1, rcsY: -1 });
-      expect(crewAxes(d, { ...NONE, rcsX: -1, rcsY: 1 })).toEqual({ turn: 0, turnBoost: 1, thrust: 0.466, rcsX: -1, rcsY: 1 });
+      d.thrMille = 500;   // W not held: helm round 2 §2.1, it stays at 500
+      expect(crewAxes(d, { ...NONE, rcsX: 1, rcsY: -1, aim: 100 })).toEqual({ turn: 1, turnBoost: RCS_TURN_BOOST, thrust: 0.5, rcsX: 1, rcsY: -1 });
+      expect(crewAxes(d, { ...NONE, rcsX: -1, rcsY: 1 })).toEqual({ turn: 0, turnBoost: 1, thrust: 0.5, rcsX: -1, rcsY: 1 });
       expect(ventOf(crewAxes(d, { ...NONE, rcsY: 1 }))).toEqual({ x: 0, y: 1, boosted: false, turn: 0 });
     } finally { disposeDuel(d); }
   });  it('crewAxes from the state before a tick flies exactly the tick the step flies (mid-ramp throttle, thrusters, boost)', () => {

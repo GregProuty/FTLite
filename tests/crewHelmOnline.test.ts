@@ -36,11 +36,11 @@ describe('the online source\'s prediction (spec §3, §6)', () => {
       const s = source(d, 0);
       s.observe();
       s.sent({ ...NONE, throttleHeld: 1 }); s.unacked(5);
-      expect(s.thrMille()).toBe(135);
+      expect(s.thrMille()).toBe(185);   // helm round 2 §2.1: 100 + 5 × 17
       s.unacked(200);
       expect(s.thrMille()).toBe(750);   // the cap at Engineering's 3 Engines bars (owner 2026-11-19)
       s.unacked(5);
-      expect(s.axes()).toEqual(crewAxes(d, { ...NONE, throttleHeld: 1 }, 135));
+      expect(s.axes()).toEqual(crewAxes(d, { ...NONE, throttleHeld: 1 }, 185));
       s.sent({ ...NONE, rcsX: 1 }); s.unacked(0);
       expect([s.thrMille(), s.helmVent()]).toEqual([100, { x: 1, y: 0, boosted: false, turn: 0 }]);   // owner 2026-11-19: free cold gas, so it always vents
     } finally { disposeDuel(d); }

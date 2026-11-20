@@ -13,7 +13,6 @@ import { OWN_SHIP } from '../src/renderer/src/render/duel/consoleLayout';
 import { refusal, stateAxes } from '../src/renderer/src/render/duel/situationModel';
 import { crewAxes } from '../src/renderer/src/sim/duel/step';
 import { crewThrust } from '../src/renderer/src/sim/duel/helmFlight';
-import { THR_RETURN } from '../src/renderer/src/sim/duel/tuning';
 import { disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { Room } from '../src/renderer/src/sim/tactical/state';
 import { seatDuelCrew, createSeatedDuel, standAtStation } from './helpers/duelSeat';
@@ -206,12 +205,12 @@ describe('held keys do not carry onto the crew Helm (final review I1)', () => {
 });
 
 describe('the duel state alone (spec §3)', () => {
-  it('stateAxes flies an unattended crew Helm: the throttle\'s return and the held heading', () => {
+  it('stateAxes flies an unattended crew Helm: the held throttle (it stays, helm round 2 §2.1) and the held heading', () => {
     const d = createSeatedDuel(layout, 5);
     try {
       Object.assign(d, { thrMille: 400, holdHeading: 100 });
       expect(stateAxes(d)).toEqual(crewAxes(d, NONE));
-      expect(stateAxes(d).thrust).toBe(crewThrust(400 - THR_RETURN));   // the next tick's return (final review M3)
+      expect(stateAxes(d).thrust).toBe(crewThrust(400));
     } finally { disposeDuel(d); }
   });
 });

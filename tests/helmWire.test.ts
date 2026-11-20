@@ -10,6 +10,7 @@ import { duelCodec } from '../src/renderer/src/net/codec';
 import type { HeldInput } from '../src/renderer/src/net/contracts';
 import { REMOTE_HELD_TIMEOUT_MS } from '../src/renderer/src/net/receivePolicy';
 import { DUEL_CREW_MAX } from '../src/renderer/src/sim/duel/state';
+import { THR_RAMP } from '../src/renderer/src/sim/duel/tuning';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { checkpointRig } from './helpers/checkpointRig';
 import { duelInit, resolveCutter } from './helpers/duelAuthority';
@@ -62,15 +63,16 @@ describe('the held fields in the checkpoints and the replay (spec §7)', () => {
 describe('the authority clears them (spec §7)', () => {
   const helmDuel = (runId: string) => liveDuel(duelInit(5, runId), (s) => { sitDown(s.duel.interior, 0, s.duel.nav); });
   const heldOf = (l: ReturnType<typeof helmDuel>) => (JSON.parse(JSON.stringify(l.core.captureCheckpoint())) as DuelCheckpoint).held[0]!;
-  it('an expired held frame holding only throttleHeld is expired, and the throttle returns to 0', () => {
+  it('an expired held frame holding only throttleHeld is expired, and the throttle then stays where the stale W left it (helm round 2 §2.1)', () => {
     const l = helmDuel('thr-expire');
     l.held(0, { ...NONE, throttleHeld: 1 }); l.tick();
     expect(heldOf(l)).toMatchObject({ throttleHeld: 1 });
     l.tick(TIMEOUT_TICKS + 2);
     expect(heldOf(l).throttleHeld).toBeUndefined();
-    expect(l.state.duel.thrMille).toBeLessThanOrEqual(7 * (TIMEOUT_TICKS + 3));   // a stale W adds at most a timeout's ramp
+    const m = l.state.duel.thrMille;
+    expect(m).toBeLessThanOrEqual(THR_RAMP * (TIMEOUT_TICKS + 3));   // a stale W adds at most a timeout's ramp
     l.tick(10);
-    expect(l.state.duel.thrMille).toBe(0);
+    expect(l.state.duel.thrMille).toBe(m);
   });
   it('an expired frame holding only rcsX or only rcsY is expired too', () => {
     for (const held of [{ rcsX: -1 }, { rcsY: 1 }]) {

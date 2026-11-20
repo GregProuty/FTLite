@@ -114,8 +114,8 @@ describe('the thrust axis (spec §3)', () => {
   it('is no longer quantised to quarters, and reverse is proportional', () => {
     expect(push(0.3)).toBeCloseTo(-0.3 * THRUST * DT, 12);
     expect(push(0.007)).toBeCloseTo(-0.007 * THRUST * DT, 12);
-    expect(push(-0.5)).toBeCloseTo(0.5 * 0.4 * THRUST * DT, 12);
-    expect(push(-1)).toBeCloseTo(0.4 * THRUST * DT, 12);
+    expect(push(-0.5)).toBeCloseTo(0.5 * 0.5 * THRUST * DT, 12);
+    expect(push(-1)).toBeCloseTo(0.5 * THRUST * DT, 12);   // helm round 2 §2.2
     expect(push(2)).toBe(push(1)); expect(push(-3)).toBe(push(-1));
     expect(push(Number.NaN)).toBe(0); expect(Object.is(push(-0), 0) || push(-0) === 0).toBe(true);
   });

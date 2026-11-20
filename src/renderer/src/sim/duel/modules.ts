@@ -62,7 +62,7 @@ export const helmModule: SimModule<DuelState> = {
   id: 'helm',
   fields: () => HELM,
   notSnapshotted: {},
-  commands: ['throttle', 'heading'],   // owner 2026-11-19: no helmPower (the crew Helm's cap is Engineering's Engines bars)
+  commands: ['throttle', 'heading', 'throttleCut'],   // owner 2026-11-19: no helmPower (the crew Helm's cap is Engineering's Engines bars); helm round 2 §2.3: the tap's cut
   reasons: ['invalid-seat', 'malformed', 'stale-tick', 'unavailable']   // playtest2feedback §3: throttle on the crew Helm's class; Engineering spike §10.2: above the Engines cap
 };
 const HELM: ModuleField<DuelState>[] = [

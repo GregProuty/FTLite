@@ -21,7 +21,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((c) => c.dataset.text!);
 const btn = (name: string) => document.querySelector(`[data-testid="console-${name}"]`) as HTMLElement | null;
 const attr = (name: string) => (document.querySelector(`[${name}]`) as HTMLElement | null)?.getAttribute(name) ?? null;
-const crew = { thrMille: 300, cap: 750, floor: -250, bars: 3 };
+const crew = { thrMille: 300, cap: 750, floor: -500, bars: 3 };
 const helmView = (over: Partial<NonNullable<ConsoleView['helm']>> = {}): ConsoleView => ({
   station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
   helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 0, crew, ...over }, weapons: null, science: null, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } });
@@ -39,10 +39,10 @@ describe('the console model (spec §5, §6)', () => {
     const d = createSeatedDuel(CUTTER, 5), v = createSeatedDuel(CUTTER, 5, 0, 2, ShipClass.Valkyrn);
     try {
       const m = consoleModel({ duel: d, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null, thrMille: 120 });
-      expect(m?.helm?.crew).toEqual({ thrMille: 120, cap: 750, floor: -250, bars: 3 });
+      expect(m?.helm?.crew).toEqual({ thrMille: 120, cap: 750, floor: -500, bars: 3 });
       expect(m?.power?.system).toBe(DuelSystem.Engines);   // Engineering spike §9.3: the Helm's own power strip is the Engines'
       d.tactical.systems[0].bars[DuelSystem.Engines] = 1;
-      expect(consoleModel({ duel: d, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null })?.helm?.crew).toMatchObject({ thrMille: 0, cap: 250, floor: -250, bars: 1 });
+      expect(consoleModel({ duel: d, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null })?.helm?.crew).toMatchObject({ thrMille: 0, cap: 250, floor: -500, bars: 1 });
       d.tactical.systems[0].bars[DuelSystem.Engines] = 0;
       expect(consoleModel({ duel: d, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null })?.helm?.crew).toMatchObject({ cap: 0, floor: 0, bars: 0 });
       expect(consoleModel({ duel: v, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null })?.helm?.crew).toBeUndefined();
