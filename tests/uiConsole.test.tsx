@@ -8,8 +8,7 @@ import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
 import type { ConsoleView } from '../src/renderer/src/render/duel/consoleModel';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
-import { CONSOLE_RESERVE, STATION, stationTop, weaponCard } from '../src/renderer/src/render/duel/consoleLayout';
-import { INTERNAL_W } from '../src/shared/resolution';
+import { STATION, stationTop, weaponCard } from '../src/renderer/src/render/duel/consoleLayout';
 import { FONT_NATIVE, TEXT, textPx } from '../src/renderer/src/render/theme';
 import { makeUi } from './helpers/uiStore';
 
@@ -101,7 +100,7 @@ describe('the Weapons block layout', () => {
   it('the online notice centres on the console map span, not the old play centre', () => {
     const { duel } = mount();
     act(() => duel.frame({ ...view(weaponsConsole), banners: { interior: null, tactical: null, notice: 'YOU: WEAPONS' } }));
-    expect(find('YOU: WEAPONS')!.x).toBe((CONSOLE_RESERVE.left + INTERNAL_W - CONSOLE_RESERVE.right) / 2);   // 766 (UI round §2.4a)
+    expect(find('YOU: WEAPONS')!.x).toBe(688);   // the top band's centre (INFO_BAND 408-968, UI round §2.4a)
   });
   it('FLYING ends before the LAUNCH button starts', () => {
     const { duel } = mount();

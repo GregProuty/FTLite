@@ -273,7 +273,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       // W-1 (pew pew spec §1): at the Weapons seat a left click on the open map fires the pew at the map point (the bearing from
       // the own ship's drawn marker, a fine heading), unless a weapon card is picked up (then the click is the window's, as
       // before). At Weapons the contact window opens by T and the weapon cards; Helm and Science keep the map click. A click
-      // over a console block (tab strip, side column, the Weapons block with its PEW row and cards) or the open
+      // over a console block (tab strip, the HUD's two blocks, the Weapons block with its PEW row and cards) or the open
       // window is not the map's and falls through to today's contact.click path: the canvas hears every press (the Stage root
       // has pointer-events none; only Buttons, the card hit boxes, the throttle box and the window take their own).
       const pewClick = click !== null && onMap && station === 'weapons' && view === 'weapons' && d.tactical.outcome === Outcome.Running && !overlay.layerPaused
@@ -401,6 +401,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       if (sat && sitSeat) {
         seat = sitSeat; sitAt = t; sitThrottle = shownThrottle(); acted = false; goalUsed = false; carded = countSit(sitSeat);
         const own = d.tactical.ships[CREW_SLOT], e = d.tactical.ships[enemySlot];
+        // UI round §2.4a: OWN_SHIP sits inside the 264 left reserve now, so this avoid is a guard, not a change
         if (e?.active && fogView.seen.enemy) zoomTo(source.cameras[viewCamera(sitSeat)], frameZoom(e.x - own.x, e.y - own.y, viewport, CONSOLE_RESERVE.left, CONSOLE_RESERVE.right, OWN_SHIP));
       } else if (sitSeat !== seat) { seat = sitSeat; carded = false; }   // a Tab, a stand or Science: no new sit
       const held = source.uiHeld(), aimed = contact?.aimWeapon() ?? null;
@@ -429,6 +430,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         // Step 4: the map keeps its arrows and info line clear of the window while it is shown.
         const input = {
           rockTrack, state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, console: camKey!, axes: source.axes(),
+          // UI round §2.4a: OWN_SHIP sits inside the 264 left reserve now, so this avoid is a guard, not a change
           ships: fx.kill || !fogView.seen.enemy ? [0] : [0, 1], fog: fogView, paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: INFO_BAND } : { reserveRight: EDGE }), ...(onMap ? { avoid: OWN_SHIP } : {}), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
           holdHeading: view === 'flight' ? -1 : preview ?? d.holdHeading, holdPreview: preview !== null, crewHull: hullFor(true, d.interior.layout.hull), gravity: camKey === 'helm', flight: view === 'flight', alert, pings,   // Feel-ii; Valkyrn spec §4.5: the crew hull
           laserAim: station === 'weapons' && view === 'weapons' ? options.requests?.reticleAim() ?? null : null,   // W-2: the MANUAL laser's aim (the reticle) (the model aims along the nose without one)

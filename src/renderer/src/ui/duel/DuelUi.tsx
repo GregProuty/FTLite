@@ -17,8 +17,7 @@ import { EndCard } from './EndCard';
 import { LatencyOverlay } from './LatencyOverlay';
 import { MapOverlay } from './MapOverlay';
 import { HelmStation } from './HelmStation';
-import { INTERNAL_W } from '../../../../shared/resolution';
-import { CONSOLE_RESERVE, flightCard } from '../../render/duel/consoleLayout';
+import { INFO_BAND, flightCard } from '../../render/duel/consoleLayout';
 import { TabStrip } from './TabStrip';
 import { ScienceStation } from './ScienceStation';
 import { WeaponsStation } from './WeaponsStation';
@@ -48,7 +47,7 @@ export function DuelUi() {
           {duel.contact?.aimWeapon && (duel.console?.weapons || duel.console?.flight) && <TargetingLine contact={duel.contact} seed={duel.pointer ?? null}
             from={duel.console?.flight ? flightCard(duel.contact.aimWeapon === 'torpedo' ? 1 : 0).anchor : undefined} />}
           {duel.sitCard && <SitCard card={duel.sitCard} />}
-          <Banners banners={duel.banners} cx={duel.console && duel.console.station !== 'ship' ? (CONSOLE_RESERVE.left + INTERNAL_W - CONSOLE_RESERVE.right) / 2 : undefined} />
+          <Banners banners={duel.banners} cx={duel.console && duel.console.station !== 'ship' ? (INFO_BAND.left + INFO_BAND.right) / 2 : undefined} />
         </CrtGlow>
         <CrtScreen />
       </CrtProvider>

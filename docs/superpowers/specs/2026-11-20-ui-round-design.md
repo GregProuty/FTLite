@@ -144,6 +144,7 @@ Part 2 is built in two plans: **2a** (§2.2-§2.4, this layout) and **2b** (§2.
 - **The own ship window** moves under the HUD: x 12, y 160, 240×170 (to y 330).
 - **The enemy window** moves up to the top-right corner (y 42), where the zoom box was: x 968-1268, y 42-462.
 - **The map's top band** (status sentence, info line) runs from the tab strip to the enemy window's left edge (408-968).
+- **The sit card** draws at the top (y 100, or 156 under the online notice), centred on the top band (x 688), clamped left so a wide card ends 8 px before the enemy window.
 - **The map's reserves:** left 264 (the own ship window's right edge + 12), right 12, or the enemy window's 324 while
   it shows.
 - **The console strip** (the WEAP / ENG / SENS POWER strip) goes: the HUD's power panel shows every system. Science's

@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { INTERNAL_H, INTERNAL_W } from '../src/shared/resolution';
 import * as L from '../src/renderer/src/render/duel/consoleLayout';
 import { HUD, hullSegX, powerPanel } from '../src/renderer/src/render/duel/shipHudModel';
+import { sitCardBox } from '../src/renderer/src/ui/duel/SitCard';
+import { SIT_CARDS } from '../src/renderer/src/render/duel/sitModel';
 import { pauseLineBox } from '../src/renderer/src/ui/duel/Banners';
 
 type R = { x: number; y: number; w: number; h: number };
@@ -25,6 +27,15 @@ describe('the terminal layout (spec §2.4a)', () => {
     expect(hullSegX(19) + HUD.hull.segW).toBe(330);
     expect('SIDE' in L || 'STATUS' in L || 'POWER_STRIP' in L).toBe(false);
     expect(existsSync('src/renderer/src/ui/duel/SideColumn.tsx') || existsSync('src/renderer/src/ui/duel/PowerStrip.tsx')).toBe(false);
+  });
+  it('every sit card sits between the HUD and the enemy window, clear of the own ship window and the pause line', () => {
+    const pause = pauseLineBox('PAUSED   ESC: RESUME   F11: FULLSCREEN   M: MAIN MENU');
+    for (const [seat, c] of Object.entries(SIT_CARDS)) for (const under of [false, true]) {
+      const b = sitCardBox({ ...c, under });
+      expect(b.x, seat).toBeGreaterThanOrEqual(L.HUD_TOP.x + L.HUD_TOP.w);
+      expect(b.x + b.w, seat).toBeLessThanOrEqual(L.CONTACT.x);
+      for (const r of [L.CONTACT, L.OWN_SHIP, pause]) expect(overlaps(b, r), `${seat} ${under}`).toBe(false);
+    }
   });
   it('no two blocks overlap, and all sit on the stage, for every station', () => {
     const tabs = { x: L.TABS.x, y: L.TABS.y, w: L.TABS_RIGHT - L.TABS.x, h: L.TABS.h };
