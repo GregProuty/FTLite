@@ -121,11 +121,11 @@ export function heldTurretAim(h: HeldInput): number {
   const a = h.turretAim;
   return typeof a === 'number' && Number.isInteger(a) && a >= 0 && a < AIM_STEPS ? a : -1;
 }
-/** W-3 (pew pew spec §3): the MANUAL torpedo's steering in a held input: `turn` the sign of torpTurn (absent or NaN: 0) and
- *  `heading` torpHeading, a heading index 0..255 (absent, −1, a non-integer or out of range: −1, none). */
-export function heldTorpSteer(h: HeldInput): { turn: number; heading: number } {
-  const t = h.torpTurn, a = h.torpHeading;
-  return { turn: typeof t === 'number' ? Math.sign(t) || 0 : 0, heading: typeof a === 'number' && Number.isInteger(a) && a >= 0 && a < HEADING_COUNT ? a : -1 };
+/** W-3 (pew pew spec §3), W-4 spec §7: the heading a held frame's torpHeading asks a MANUAL torpedo to hold: a heading index
+ *  0..255 (absent, −1, a non-integer or out of range: −1, none). */
+export function heldTorpHeading(h: HeldInput): number {
+  const a = h.torpHeading;
+  return typeof a === 'number' && Number.isInteger(a) && a >= 0 && a < HEADING_COUNT ? a : -1;
 }
 
 /** W-4 spec §8: the selected slot in a held frame: an integer 0..2, else −1 (none). */
@@ -311,12 +311,11 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   // the torpedo's target (FTL targeting spec §2), then the rock target (rockLock), then charge, then launch (the order applyWeaponsInput applies them), whatever their envelope order; admission is checked
   // in that same order so every result matches what happens. Within one kind, envelope order holds and the last wins. W-1: pewFire last; only the first in a tick fires (the rest noop). W-2: laserMode first, set at once (as laserFrequency is), so a same-tick laserCharge or laserFire is judged in the new mode; laserFire after laserCharge, the first in a tick fires. W-3: torpMode second, set at once, so a same-tick missileLaunch is judged in the new mode. W-4: gunMode third, set at once, so a same-tick pewFire is judged in the new mode; one gun a command (amendment §2.2).
   const helm = attendant(d, d.nav), gunner = attendant(d, d.weapons);
-  const steer = gunner >= 0 ? heldTorpSteer(input.held[gunner] ?? NO_HELD) : { turn: 0, heading: -1 };   // W-3: only Weapons' attendant flies the MANUAL torpedo
   const gunnerHeld = gunner >= 0 ? input.held[gunner] ?? NO_HELD : NO_HELD, weaponSel = gunner >= 0 ? heldWeaponSel(gunnerHeld) : -1;
   // W-4 spec §8: on a turret class (the Hound) the trigger fires the autocannon only while it is the selected weapon; elsewhere today's rule.
   const trigger = gunner >= 0 && gunnerHeld.gunHeld === true && (!hasTurret(classOf(d.tactical, 0)) || weaponSel === WeaponSlot.Autocannon);
   const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false,
-    gunHeld: trigger, pewAim: -1, laserFire: -1, torpTurn: steer.turn, torpHeading: steer.heading, weaponSel, pewTrigger: false, turretAim: gunner >= 0 ? heldTurretAim(gunnerHeld) : -1, scanner: true };   // W-4 spec §8: the reticle; Valkyrn spec §7.1: the trigger of Weapons' attendant; W-2: laserFire sets laserFire; W-3: the held steering; W-4: pewFire sets pewTrigger
+    gunHeld: trigger, pewAim: -1, laserFire: -1, torpHeading: gunner >= 0 ? heldTorpHeading(gunnerHeld) : -1, weaponSel, pewTrigger: false, turretAim: gunner >= 0 ? heldTurretAim(gunnerHeld) : -1, scanner: true };   // W-4 spec §8: the reticle; Valkyrn spec §7.1: the trigger of Weapons' attendant; W-2: laserFire sets laserFire; W-3: the held steering; W-4: only Weapons' attendant flies the MANUAL torpedo; W-4: pewFire sets pewTrigger
   // Spike ii §6.1: missileLaunch is admitted with this tick's effective torpedo rock target: the last accepted
   // rockLock(torpedo), else −1 after an accepted torpLock (it clears torpRock first), else the stored value.
   let torpRockNext: number | null = null, torpLocked = false;

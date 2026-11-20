@@ -665,15 +665,15 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       else if (seatNow !== 'flight') steer = -1; else if (steerNow !== null && !shipView) steer = steerNow;   // the last bearing holds over the side tools
       const gunNow = seatNow === 'flight' && !shipView && hasGun() && (deps.gunHeld?.() ?? false);
       const look = seatNow === 'flight' && shipView;   // Decision 11: the ship view keeps the course (no turn keys, no face)
-      // W-3 (pew pew spec §3): at Weapons, while the crew's MANUAL torpedo flies, A/D turn it (torpTurn) and the map's right
-      // button gives it a heading to hold (torpHold, re-sent every frame) until A or D, a right click on it or the flight's end clears it.
-      const torpSteering = seatNow === 'weapons' && !ended() && manualTorpedoFlying(d.tactical), torpTurn = torpSteering ? Math.sign(k.moveX) || 0 : 0;
-      if (!torpSteering || torpTurn !== 0) torpHold = -1; else if (torpNow !== null) torpHold = torpNow;
+      // W-3 (pew pew spec §3), W-4 spec §7: at Weapons, while the crew's MANUAL torpedo flies, the map's LMB steer gives it a heading
+      // to hold (torpHold, re-sent every frame; letting go keeps the last one) until the flight ends. A/D no longer steer it.
+      const torpSteering = seatNow === 'weapons' && !ended() && manualTorpedoFlying(d.tactical);
+      if (!torpSteering) torpHold = -1; else if (torpNow !== null && torpNow >= 0) torpHold = torpNow;
       activeHeld = ended() ? NEUTRAL : { moveX: look || crewHelmNow ? 0 : Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld,   // playtest2feedback §4: A/D are thrusters at the crew Helm
         ...(crewHelmNow ? crewHelmHeld(k, -1) : {}),
         ...(k.fireHeld && !look && (seatNow === 'helm' || seatNow === 'flight') ? { face: true } : {}),
         ...(steer >= 0 ? { aim: steer } : {}), ...(gunNow ? { gunHeld: true } : {}),   // Valkyrn spec §5.1
-        ...(torpTurn !== 0 ? { torpTurn } : {}), ...(torpHold >= 0 ? { torpHeading: torpHold } : {}) };   // W-3
+        ...(torpHold >= 0 ? { torpHeading: torpHold } : {}) };   // W-3, W-4 spec §7
       if (!ended() && houndWeaponsSeat(d, active)) activeHeld = { ...activeHeld, ...weaponsSeatHeld(weaponSel, (deps.triggerHeld?.() ?? false) && gunModeBase(1), deps.reticleAim?.() ?? -1) };   // W-4 spec §8
       pacer.sync();   // an Escape this frame pauses before any due tick runs
       pacer.pump();

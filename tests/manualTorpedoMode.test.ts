@@ -36,7 +36,7 @@ describe('the torpedo mode (spec §3)', () => {
   it('every slot starts AUTO; a free pool entry is not manual; the ship inputs steer nothing', () => {
     const st = createTacticalState(5);
     expect([st.systems[0].torpManual, st.systems[1].torpManual, st.missiles[0].manual, st.missiles[1].manual]).toEqual([false, false, false, false]);
-    for (const input of [IDLE_INPUT, UNCREWED_INPUT]) expect([input.torpTurn, input.torpHeading]).toEqual([0, -1]);
+    for (const input of [IDLE_INPUT, UNCREWED_INPUT]) expect(['torpTurn' in input, input.torpHeading]).toEqual([false, -1]);   // W-4 spec §7
     expect(placeMissile(st, 0, flight).manual).toBe(false);   // the default: an AUTO torpedo
   });
   it('the launch copies the mode onto the torpedo; a later toggle does not change it', () => {

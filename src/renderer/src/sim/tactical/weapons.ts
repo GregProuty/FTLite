@@ -45,10 +45,10 @@ export interface ShipInput {
   /** W-2 (pew pew spec §2, §4): the MANUAL laser's fine aim this tick (pewAim's format, 0..65535), or −1 for no shot. Read
    *  only by the crew's laser in MANUAL; the duel step admits the first laserFire, the Hunter never sends one. */
   laserFire: number;
-  /** W-3 (pew pew spec §3): the Weapons attendant's steering of a MANUAL torpedo in flight this tick: `torpTurn` A/D (−1,
-   *  0 or 1) and `torpHeading` the heading it holds (a heading index 0..255, −1 none). The duel step reads them from the
-   *  held input; every other input sets 0 and −1. Read only while the ship's torpedo in flight is MANUAL (duel.ts). */
-  torpTurn: number; torpHeading: number;
+  /** W-3 (pew pew spec §3), W-4 spec §7: the heading the Weapons attendant's MANUAL torpedo in flight holds this tick (a
+   *  heading index 0..255, −1 none), from the held frame's torpHeading (the LMB steer). Every other input sets −1. Read
+   *  only while the ship's torpedo in flight is MANUAL (duel.ts). */
+  torpHeading: number;
   /** W-4 spec §8: the Weapons attendant's selected slot (0..2), −1 none (every other input). */
   weaponSel: number;
   /** W-4 spec §8: the Weapons attendant's reticle, a fine aim 0..65535, −1 none (every other input). The selected MAN gun's
@@ -62,9 +62,9 @@ export interface ShipInput {
 }
 
 /** A crew that sits at both consoles and does nothing. */
-export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, torpTurn: 0, torpHeading: -1, weaponSel: -1, turretAim: -1, pewTrigger: false, scanner: true };
+export const IDLE_INPUT: ShipInput = { helm: true, weapons: true, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, torpHeading: -1, weaponSel: -1, turretAim: -1, pewTrigger: false, scanner: true };
 /** Nobody at either console: a ship nobody flies. */
-export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, torpTurn: 0, torpHeading: -1, weaponSel: -1, turretAim: -1, pewTrigger: false, scanner: true };
+export const UNCREWED_INPUT: ShipInput = { helm: false, weapons: false, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false, gunHeld: false, pewAim: -1, laserFire: -1, torpHeading: -1, weaponSel: -1, turretAim: -1, pewTrigger: false, scanner: true };
 
 /** Engineering spike spec §10.3: the shots one release of ship i's laser fires: the crew's by the beam's bars (1/2/2,
  *  0 off), any other ship's by its class. 0 without a laser. */

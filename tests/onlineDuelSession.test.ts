@@ -444,7 +444,7 @@ describe('the online manual torpedo (W-3)', () => {
     expect(launchRefusals()).toEqual([{ control: 'launch', reason: 'OUT OF RANGE' }]);
     r.dispose();
   });
-  it('while the replica shows the MANUAL torpedo flying, A/D are torpTurn and the right button\'s heading is torpHeading', () => {
+  it('while the replica shows the MANUAL torpedo flying, the map\'s steer is torpHeading and A/D send nothing for it (W-4 spec §7)', () => {
     const r = rig(1);
     apart(r.d);
     r.d.tactical.systems[0]!.torpManual = true;
@@ -452,16 +452,14 @@ describe('the online manual torpedo (W-3)', () => {
     const c = r.attach();
     r.session.frame();
     r.key('keydown', 'KeyD'); r.pump();
-    expect(c.helds().at(-1)).toMatchObject({ torpTurn: 1 });
+    expect('torpTurn' in c.helds().at(-1)!).toBe(false);   // W-4 spec §7: A/D no longer steer
     r.key('keyup', 'KeyD');
     h.sceneOpts[0]!.requests!.torpHeading(40); r.pump();
     expect(c.helds().at(-1)).toMatchObject({ torpHeading: 40 });
-    expect('torpTurn' in c.helds().at(-1)!).toBe(false);
     r.pump();
     expect(c.helds().at(-1)).toMatchObject({ torpHeading: 40 });   // re-sent while it holds
     r.key('keydown', 'KeyA'); r.pump();
-    expect(c.helds().at(-1)).toMatchObject({ torpTurn: -1 });
-    expect('torpHeading' in c.helds().at(-1)!).toBe(false);
+    expect(c.helds().at(-1)).toMatchObject({ torpHeading: 40 });   // A no longer clears it
     r.dispose();
   });
 });

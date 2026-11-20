@@ -76,7 +76,7 @@ export function sessionHeld(k: KeySample, d: DuelState, me: number, steer: numbe
 }
 /** Whether two held frames differ (a change is stamped for the held delay). */
 export const heldChanged = (a: HeldInput, b: HeldInput): boolean => a.moveX !== b.moveX || a.moveY !== b.moveY || a.interactHeld !== b.interactHeld || a.face !== b.face
-  || a.aim !== b.aim || a.torpTurn !== b.torpTurn || a.torpHeading !== b.torpHeading || a.throttleHeld !== b.throttleHeld || a.rcsX !== b.rcsX || a.rcsY !== b.rcsY   // W-3; playtest2feedback §7
+  || a.aim !== b.aim || a.torpHeading !== b.torpHeading || a.throttleHeld !== b.throttleHeld || a.rcsX !== b.rcsX || a.rcsY !== b.rcsY   // W-3; playtest2feedback §7
   || a.weaponSel !== b.weaponSel || a.gunHeld !== b.gunHeld   // W-4
   || a.turretAim !== b.turretAim;   // W-4b
 /** The session phases a Leave passes through, which show "LEAVING…" over the frozen view rather than CONNECTION LOST. */
@@ -464,11 +464,11 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     // Playtest2feedback §4a: the crew Helm steers by the map's bearing only while the left button is held (Decision 9's rule
     // for the player: let go, no aim goes out and the sim holds the last one).
     steer = crewHelmNow && pointer.leftHeld() ? steerTaken ?? steer : -1;
-    // W-3 (pew pew spec §3): at Weapons, while the replica shows the crew's MANUAL torpedo flying, A/D turn it (torpTurn) and the
-    // map's right button gives it a heading to hold (torpHold, re-sent every pump) until A or D, a click on it or the flight's end clears it.
-    const torpSteering = !decided && seatOf(d, me) === 'weapons' && manualTorpedoFlying(d.tactical), torpTurn = torpSteering ? Math.sign(k.moveX) || 0 : 0;
-    if (!torpSteering || torpTurn !== 0) torpHold = -1; else if (torpNow !== null) torpHold = torpNow;
-    const held: HeldInput = { ...sessionHeld(k, d, me, steer, { sel: weaponSel, trigger: triggerNow() && (gunModeSent[1] ? gunModeSent[1].manual : d.tactical.systems[0].gunManual), aim: reticleNow() ?? -1 }), ...(torpTurn !== 0 ? { torpTurn } : {}), ...(torpHold >= 0 ? { torpHeading: torpHold } : {}) };
+    // W-3 (pew pew spec §3), W-4 spec §7: at Weapons, while the replica shows the crew's MANUAL torpedo flying, the map's LMB steer
+    // gives it a heading to hold (torpHold, re-sent every pump; letting go keeps the last one) until the flight ends.
+    const torpSteering = !decided && seatOf(d, me) === 'weapons' && manualTorpedoFlying(d.tactical);
+    if (!torpSteering) torpHold = -1; else if (torpNow !== null && torpNow >= 0) torpHold = torpNow;
+    const held: HeldInput = { ...sessionHeld(k, d, me, steer, { sel: weaponSel, trigger: triggerNow() && (gunModeSent[1] ? gunModeSent[1].manual : d.tactical.systems[0].gunManual), aim: reticleNow() ?? -1 }), ...(torpHold >= 0 ? { torpHeading: torpHold } : {}) };
     const sequence = client.held(me, decided ? { moveX: 0, moveY: 0, interactHeld: false } : held);
     if (sequence !== null) lastHeldSequence = sequence;
     source?.unacked(Math.min(UNACKED_MAX, Math.max(0, lastHeldSequence - (p.heldHighWater[me] ?? 0))));   // Decision 14

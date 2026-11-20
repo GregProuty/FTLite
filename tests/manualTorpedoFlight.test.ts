@@ -1,7 +1,7 @@
 // W-3 manual torpedo (spec 2026-11-18-pew-pew-weapons-design §3, §5): the MANUAL flight and hit. It leaves the tube as
 // today (straight for its boost). It thrusts at full thrust every tick while its fuel lasts, then coasts. It never
-// homes. A and D turn it at the torpedo's turn rate, and a held heading turns it by the Helm's hold law until the nose is
-// on it. It flies only with its ship's Weapons input. On a ship it strikes the room under its impact point for its hull,
+// homes. A held heading turns it by the Helm's hold law until the nose is on it (W-4 spec §7: the LMB steer sets it; A/D
+// steering is gone). It flies only with its ship's Weapons input. On a ship it strikes the room under its impact point for its hull,
 // whatever the lock. Every collision rule is unchanged. The mode is the one it launched with.
 import { describe, expect, it } from 'vitest';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
@@ -69,15 +69,15 @@ describe('thrust (spec §3, §5)', () => {
 describe('the held heading (spec §3, §5)', () => {
   it('converges on the heading and holds it, by the Helm\'s hold law', () => {
     const st = open(), m = flying(st, 0, 30);
-    for (let k = 0; k < 120; k++) flyMissile(st, 0, manualTorpTurn(m, 0, 64));
+    for (let k = 0; k < 120; k++) flyMissile(st, 0, manualTorpTurn(m, 64));
     expect(apart(m.heading, 64)).toBeLessThanOrEqual(2);
-    for (let k = 0; k < 30; k++) { flyMissile(st, 0, manualTorpTurn(m, 0, 64)); expect(apart(m.heading, 64)).toBeLessThanOrEqual(2); }
+    for (let k = 0; k < 30; k++) { flyMissile(st, 0, manualTorpTurn(m, 64)); expect(apart(m.heading, 64)).toBeLessThanOrEqual(2); }
   });
-  it('manualTorpTurn: A/D wins over the held heading; a bad heading is none; holdTurn is the Helm\'s law', () => {
+  it('manualTorpTurn: the held heading only; a bad heading is none; holdTurn is the Helm\'s law (W-4 spec §7)', () => {
     const st = open(), m = flying(st, 0, 30);
-    expect([manualTorpTurn(m, -1, 64), manualTorpTurn(m, 1, 192), manualTorpTurn(m, 0.4, 192)]).toEqual([-1, 1, 1]);
-    expect([manualTorpTurn(m, 0, 64), manualTorpTurn(m, 0, 192), manualTorpTurn(m, 0, 0)]).toEqual([1, -1, 0]);
-    expect([manualTorpTurn(m, 0, -1), manualTorpTurn(m, 0, 256), manualTorpTurn(m, 0, 1.5), manualTorpTurn(m, Number.NaN, -1)]).toEqual([0, 0, 0, 0]);
+    // W-4 spec §7: A/D steering is gone; only the held heading turns it (holdTurn, W-3's band).
+    expect([manualTorpTurn(m, 64), manualTorpTurn(m, 192), manualTorpTurn(m, 0)]).toEqual([1, -1, 0]);
+    expect([manualTorpTurn(m, -1), manualTorpTurn(m, 256), manualTorpTurn(m, 1.5), manualTorpTurn(m, Number.NaN)]).toEqual([0, 0, 0, 0]);
     for (const [heading, h] of [[0, 64], [10, 200], [128, 130], [250, 3]] as const) {
       st.ships[0].heading = heading;
       expect(holdTurn(heading, h), `${heading} → ${h}`).toBe(headingTurn(st, 0, h));
@@ -88,10 +88,10 @@ describe('the held heading (spec §3, §5)', () => {
 describe('the duel tick (spec §3)', () => {
   it('flies a MANUAL torpedo by its ship\'s Weapons input only', () => {
     const st = open(), m = flying(st, 0, 30);
-    for (let k = 0; k < 10; k++) stepDuel(st, { ...IDLE_INPUT, torpTurn: 1 });
+    for (let k = 0; k < 10; k++) stepDuel(st, { ...IDLE_INPUT, torpHeading: 64 });   // W-4 spec §7: the held heading steers
     expect(m.heading).toBe(Math.floor(10 * classOf(st, 0).slots.missile.turnStepsPerTick));
     const away = open(), a = flying(away, 0, 30);
-    for (let k = 0; k < 10; k++) stepDuel(away, { ...IDLE_INPUT, weapons: false, torpTurn: 1, torpHeading: 64 });
+    for (let k = 0; k < 10; k++) stepDuel(away, { ...IDLE_INPUT, weapons: false, torpHeading: 64 });
     expect(a.heading).toBe(0);
     expect(manualTorpedoFlying(st)).toBe(true);
     expect(manualTorpedoFlying(st, 1)).toBe(false);
@@ -102,7 +102,7 @@ describe('the duel tick (spec §3)', () => {
     launchMissile(st, 0);
     st.systems[0].torpManual = false;   // V during the flight
     const m = missileOf(st, 0)!, def = classOf(st, 0).slots.missile;
-    for (let k = 0; k < def.boostTicks + 10; k++) stepDuel(st, { ...IDLE_INPUT, torpTurn: 1 });
+    for (let k = 0; k < def.boostTicks + 10; k++) stepDuel(st, { ...IDLE_INPUT, torpHeading: 64 });   // W-4 spec §7
     expect(missileOf(st, 0)).toBe(m);
     expect([m.manual, m.heading]).toEqual([true, Math.floor(10 * def.turnStepsPerTick)]);
     const auto = open();
@@ -110,7 +110,7 @@ describe('the duel tick (spec §3)', () => {
     launchMissile(auto, 0);
     const twin = cloneTactical(auto);
     auto.systems[0].torpManual = true;   // V during the flight
-    for (let k = 0; k < 40; k++) { stepDuel(auto, { ...IDLE_INPUT, torpTurn: 1 }); stepDuel(twin, IDLE_INPUT); }
+    for (let k = 0; k < 40; k++) { stepDuel(auto, { ...IDLE_INPUT, torpHeading: 64 }); stepDuel(twin, IDLE_INPUT); }
     expect(missileOf(auto, 0)?.manual).toBe(false);
     expect(missileOf(auto, 0)?.heading).toBe(missileOf(twin, 0)?.heading);   // it homed exactly as the untoggled twin
   });
