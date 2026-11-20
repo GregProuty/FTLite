@@ -42,7 +42,6 @@ import { crewLife } from '../../render/duel/healFxModel';
 import type { DuelSink } from '../../ui/sinks';
 import { mapOverlayOf, type Banners, type MapOverlayView } from '../../ui/views';
 import type { DuelState } from '../../sim/duel/state';
-import type { HelmVent } from '../../sim/duel/helmFlight';
 import { crewHelmSeat } from './controls';
 import { classOf, Contact, CREW_SLOT, missileOf, Outcome, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
 import type { InteriorCamera } from '../../render/duel/interiorCamera';
@@ -90,8 +89,6 @@ export interface DuelViewSource {
   throttle(): number;
   /** Playtest2feedback §3, §6: the crew Helm's thrMille to show (online, the local prediction). Absent: the duel's. */
   thrMille?(): number;
-  /** Playtest2feedback §6, Decision 11: the crew ship's vent this frame (online: this seat's own prediction). Absent: the duel's helmVent. */
-  helmVent?(): HelmVent;
   /** Feel-ii §1.2: the Helm's axes as this screen best knows them, for the COLLISION words on every seat (Single player:
    *  axes(); online away from the Helm: the state's, stateAxes). Absent: axes(). */
   helmAxes?(): Axes;
@@ -384,7 +381,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         }
       }
       updateRockTrack(rockTrack, d.tactical);   // every frame, whichever view shows
-      const vent = source.helmVent?.() ?? d.helmVent;   // §6: the puffs and the hiss
+      const vent = d.helmVent;   // §6: the puffs and the hiss, from the drawn state (online: P's, Net-4a §3.9)
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       ({ watch: fires, flashUntil } = fireWatch(fires, d, t, flashUntil));   // own ship window spec §4
       const holding = holdFrame(fx, dt);   // asteroids-iii §5.6: hit-stop (it holds from the frame after the burst; plan deviation 10)

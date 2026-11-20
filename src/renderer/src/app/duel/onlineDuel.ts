@@ -124,7 +124,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   let lastHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false }, lastFlags: HeldFlags = NO_HELD_FLAGS;
   // Playtest2feedback §4a: the crew Helm's held steer and its left button on the last pump.
   let steer = -1, steerPrev = false;
-  let crewHelmPrev = false;   // final review I1: this seat flew the crew Helm on the last pump that saw the replica
+  let crewHelmPrev = false;   // final review I1: this seat flew the crew Helm on the last producing pump (in P, Net-4a §3.9)
   const requests0 = (): number | null => requests.takeHeading();   // Feel-ii §1.1: drained every pump
   // Playtest2feedback §4a: the map's steer bearing, drained every pump beside the heading. Inside pump the name `requests`
   // is shadowed by contact.takeRequests() (a ContactRequests, which has no takeSteer), so it is read through this closure.
@@ -304,7 +304,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     }
     if (houndWeaponsSeat(d, me)) {   // W-4 spec §9, §11 (W-4a): the Hound's Weapons seat, as Single player's
       const sys0 = d.tactical.systems[0];
-      const ff = flightFrame(flight, manualTorpedoFlying(d.tactical), weaponSel, lastGunSel, triggerNow(), pointer.leftHeld());   // W-4 spec §7: the replica's flight; the raw left button (Decision 7)
+      const ff = flightFrame(flight, manualTorpedoFlying(d.tactical), weaponSel, lastGunSel, triggerNow(), pointer.leftHeld());   // W-4 spec §7: P's flight (Net-4a §3.9); the raw left button (Decision 7)
       flight = ff.latch; triggerLive = ff.trigger;
       weaponSel = nextWeaponSel(ff.sel, k);   // W-4 spec §7: A/D select during a flight too
       if (weaponSel !== WeaponSlot.Torpedo) lastGunSel = weaponSel;
@@ -357,7 +357,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       if (p.camera > 0 && source) { const cam = source.cameras.weapons; snapBack(cam, missileOf(d.tactical, 0) && cam.follow !== 'missile' ? 'missile' : 'ship'); }
       return;   // Space, Z and V do nothing here (W-4 amendment §2.4)
     }
-    // E and Q step the laser's target room from the replica's lock (FTL targeting spec §1: a target, so it auto-fires).
+    // E and Q step the laser's target room from P's lock (FTL targeting spec §1: a target, so it auto-fires; Net-4a §3.9).
     const steps = p.interact - p.prevLock, sys = d.tactical.systems[0];
     if (p.interact + p.prevLock > 0 && steps !== 0) {
       let room = sys.lock;
@@ -421,7 +421,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   }
   /** Net-4a §3.3: a producing local tick (the first of a pump): the presses, the commands and this seat's held frame. */
   function produce(): LocalInput {
-    collected = null; gunManualNow = null;   // a throw in play() on an earlier tick leaves no stale list
+    collected = null; gunManualNow = null;   // a throw in play() on an earlier tick leaves no stale list, and no stale gunManualNow
     let k = keyboard.sample();
     const requests = contact.takeRequests(), heading = requests0(), steerTaken = takeSteer0(), pew = pewRequest(), torpNow = torpRequest();   // drained before any early return, so a steer never goes stale
     const prevHeld = lastFlags; lastFlags = k.held ?? NO_HELD_FLAGS;
@@ -434,7 +434,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (d && d.round !== selRound) { selRound = d.round; weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; }   // W-4 spec §9: every round starts on pew pew
     if (!client || linkClosed || !c || !d || !p || !descriptor || !synced || !focused || blocked) { if (producing) stopInput(); return idle(); }
     const me = descriptor.seatId, decided = c.tactical.outcome !== Outcome.Running;
-    // Final review I1: on the pump this seat becomes the crew Helm (the sit's publication arrived), the keys held now are
+    // Final review I1: on the pump this seat becomes the crew Helm (P's predicted sit, Net-4a §3.9), the keys held now are
     // stale until pressed again (E sits and is a thruster; W, A and D walk), and this sample's crew fields are dropped.
     const crewHelmNow = crewHelmSeat(d, me);
     if (crewHelmNow && !crewHelmPrev) { keyboard.staleHeld(); k = { ...k, throttleHeld: 0, rcsX: 0, rcsY: 0 }; }
@@ -454,7 +454,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     // Playtest2feedback §4a: the crew Helm steers by the map's bearing only while the left button is held (Decision 9's rule
     // for the player: let go, no aim goes out and the sim holds the last one).
     steer = crewHelmNow && pointer.leftHeld() ? steerTaken ?? steer : -1;
-    // W-3 (pew pew spec §3), W-4 spec §7: at Weapons, while the replica shows the crew's MANUAL torpedo flying, the map's LMB steer
+    // W-3 (pew pew spec §3), W-4 spec §7: at Weapons, while P shows the crew's MANUAL torpedo flying, the map's LMB steer
     // gives it a heading to hold (torpHold, re-sent every pump; letting go keeps the last one) until the flight ends.
     const torpSteering = !decided && seatOf(d, me) === 'weapons' && manualTorpedoFlying(d.tactical);
     if (!torpSteering) torpHold = -1; else if (torpNow !== null && torpNow >= 0) torpHold = torpNow;
@@ -553,10 +553,11 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       const ticks = (d.decidedTick >= 0 ? d.decidedTick : d.tactical.tick) - d.baseTick;
       const station = scene.draw(source, dt, { banner: bannerText(), layerPaused: false, end: endModel(d.tactical.outcome, ticks, 'ENTER: REMATCH   ESC: LEAVE'), notice: now < noticeUntil ? notice : null });
       trackConsole(station);
-      const ps = predictor?.stats(), checked = ps ? ps.verified + ps.resimulated : 0;
-      if (debug.on()) deps.latency?.frame(latencyOverlayLines({ transport: transport(), held: latencyFigure(liveHeld), command: latencyFigure(liveCommand), rttMs,
-        prediction: ps ? { leadTicks: ps.lead, verifiedShare: checked ? ps.verified / checked : null, resimP99Ms: p99(liveResim), correction: ps.correction?.ship ?? null } : null }));
-      else deps.latency?.clear();
+      if (debug.on()) {
+        const ps = predictor?.stats(), checked = ps ? ps.verified + ps.resimulated : 0;   // only while F3 shows: stats() copies
+        deps.latency?.frame(latencyOverlayLines({ transport: transport(), held: latencyFigure(liveHeld), command: latencyFigure(liveCommand), rttMs,
+          prediction: ps ? { leadTicks: ps.lead, verifiedShare: checked ? ps.verified / checked : null, resimP99Ms: p99(liveResim), correction: ps.correction?.ship ?? null } : null }));
+      } else deps.latency?.clear();
     },
     dispose(): void {
       if (disposed) return; disposed = true; cancel(); release();
