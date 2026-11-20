@@ -27,7 +27,9 @@ export const DUEL_GOLDEN_EVERY = 600;
 /** The rematch golden (H-2 spec §7): seed 1, the scripted pair, one rematch, round 2 to its outcome, a hash every 600 ticks. */
 export const DUEL_REMATCH_GOLDEN = 'tests/golden/duel-rematch.json';
 
-export interface DuelRun { seed: number; telemetry: DuelTelemetry; finalHash: string; hashes: string[] }
+/** W-4 spec §2.1: the crew's pew and gun rounds (the gates read them; laserReleases is 0 on the Hound), and when and why the
+ *  hold ended (the final hostileAt and the `hostile` event's cause; −1 and 'none' if never). */
+export interface DuelRun { seed: number; telemetry: DuelTelemetry; finalHash: string; hashes: string[]; pewShots: number; gunShots: number; holdEndTick: number; holdCause: string }
 
 /** Both players go away on tick 0, so neither console is attended for the whole duel. */
 export function passiveInput(d: DuelState): DuelInput {
@@ -49,14 +51,17 @@ export function requireApplied(seed: number, d: DuelState, input: DuelInput, res
 export function runDuel(seed: number, crew: 'scripted' | 'passive', cap = CAP_TICKS, hashEvery = 0): DuelRun {
   const d = createDuel(CUTTER, seed), pair = createScriptedPair(seed), t = createTelemetry(d), hashes: string[] = [];
   try {
+    let holdCause = 'none';
     while (d.tactical.outcome === Outcome.Running && d.interior.tick < cap) {
       const input = crew === 'scripted' ? scriptedInput(pair, d) : passiveInput(d);
       const results = stepDuelTick(d, input);
       if (crew === 'scripted') requireApplied(seed, d, input, results);
       recordTick(t, d, input);
+      for (const e of d.tactical.events) if (e.kind === 'hostile') holdCause = e.cause;
       if (hashEvery > 0 && d.interior.tick % hashEvery === 0) hashes.push(hashDuel(d));
     }
-    return { seed, telemetry: t, finalHash: hashDuel(d), hashes };
+    const crewSys = d.tactical.systems[0]!;   // not `crew`: that is the parameter, and a block const would shadow it in the loop above (TDZ)
+    return { seed, telemetry: t, finalHash: hashDuel(d), hashes, pewShots: crewSys.pewShots, gunShots: crewSys.gunShots, holdEndTick: d.tactical.hostileAt, holdCause };
   } finally { disposeDuel(d); }
 }
 
@@ -74,6 +79,7 @@ export function telemetryLine(r: DuelRun): string {
   return [
     `seed ${r.seed}: ${f(t.ticks)} s, ${OUTCOME_NAMES[t.outcome]}, terminal crew [${t.terminal[0].join(' ')}] enemy [${t.terminal[1].join(' ')}]${endedFromPlanet(t) ? ', PLANET END' : ''}`,
     `  crew  laser ${c.laserReleases} released, ${c.laserHits} hit (${c.layersStripped} stripped), ${c.laserMisses} missed; missiles ${c.missilesLaunched} launched, hits W/S/E ${c.missileHitsByRoom.join('/')}, lost ${losses(c)}; contacts planet ${c.planetContacts}, asteroid ${c.asteroidContacts}`,
+    `  crew  pew ${r.pewShots} rounds, gun ${r.gunShots} rounds; hold ended at rt ${r.holdEndTick} (${r.holdCause})`,
     `  enemy laser ${e.laserReleases} released, ${e.laserHits} hit (${e.layersStripped} stripped), ${e.laserMisses} missed; missiles ${e.missilesLaunched} launched, hits W/S/E ${e.missileHitsByRoom.join('/')}, lost ${losses(e)}; contacts planet ${e.planetContacts}, asteroid ${e.asteroidContacts}; baits ${t.baits}`,
     `  repairs started/finished P0 ${t.players[0]!.repairsStarted}/${t.players[0]!.repairsFinished}, P1 ${t.players[1]!.repairsStarted}/${t.players[1]!.repairsFinished}; away walking/repairing P0 ${f(t.players[0]!.walkingTicks)}/${f(t.players[0]!.repairingTicks)} s, P1 ${f(t.players[1]!.walkingTicks)}/${f(t.players[1]!.repairingTicks)} s`,
     `  helm empty ${f(t.helmEmptyTicks)} s, weapons empty ${f(t.weaponsEmptyTicks)} s, enemy in arc ${f(t.enemyInArcTicks)} s, weapons idle ${f(t.weaponsIdleTicks)} s, console swaps ${t.consoleSwaps}`
@@ -86,7 +92,7 @@ export function gateSummary(runs: readonly DuelRun[]): string {
   return [
     `median length ${(median(ts.map((t) => t.ticks)) / TICK_HZ).toFixed(1)} s (gate 180 to 300)`,
     `crew wins ${wins}, crew losses ${losses}, draws ${ts.filter((t) => t.outcome === Outcome.Draw).length}, at the cap ${ts.filter((t) => t.outcome === Outcome.Running).length} (gate: a win and a loss, none at the cap)`,
-    `every duel with a crew laser release and missile launch: ${ts.every((t) => t.ships[0].laserReleases > 0 && t.ships[0].missilesLaunched > 0)}`,
+    `every duel with a crew pew or gun round and a missile launch: ${runs.every((r) => r.pewShots + r.gunShots > 0 && r.telemetry.ships[0].missilesLaunched > 0)}`,   // W-4 spec §14
     `planet-contact ends under 30 s: ${ts.filter((t) => endedFromPlanet(t) && t.ticks < PLANET_END_MIN_TICKS).length} (gate 0)`
   ].join('\n');
 }

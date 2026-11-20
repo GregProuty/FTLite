@@ -16,7 +16,7 @@ describe('the H-0 telemetry gates: scripted pair against the hunter, seeds 1 to 
     runs.set(seed, r);
     expect(t.outcome, telemetryLine(r)).not.toBe(Outcome.Running);
     expect(t.ticks).toBeLessThan(CAP_TICKS);
-    expect(t.ships[0].laserReleases, telemetryLine(r)).toBeGreaterThanOrEqual(1);
+    expect(r.pewShots + r.gunShots, telemetryLine(r)).toBeGreaterThanOrEqual(1);   // W-4 spec §14 (kind a): the Hound's guns, not the beam
     expect(t.ships[0].missilesLaunched, telemetryLine(r)).toBeGreaterThanOrEqual(1);
     expect(endedFromPlanet(t) && t.ticks < PLANET_END_MIN_TICKS, telemetryLine(r)).toBe(false);
   }, 60_000);

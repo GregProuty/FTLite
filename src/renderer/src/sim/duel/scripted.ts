@@ -8,7 +8,7 @@ import { Health, Life, LifeState, Position, Seated } from '../components';
 import { roomAt, solidAt } from '../grid';
 import { inReachOfTile } from '../interact';
 import { stationOnline } from '../stations';
-import { levelWithinCap, weaponBars, WeaponSlot } from '../tactical/bars';
+import { DuelSystem, levelWithinCap, weaponBars, WeaponSlot } from '../tactical/bars';
 import { hasTurret } from '../tactical/defs';
 import { hx, hy } from '../tactical/direction';
 import { inArc, sideOf } from '../tactical/geometry';
@@ -29,6 +29,7 @@ import type { DuelState } from './state';
 import { aimTurn, helmBoost, type DuelInput } from './step';
 import { THROTTLE_MAX, THROTTLE_MIN, throttleThrust } from './throttle';
 import { crewThrust } from './helmFlight';
+import { capacityOf, sparesOf } from './power';
 
 // The pair's own numbers (spec §3 "Tunable"), separate from the game tuning.
 /** Ticks of predicted path the Helm checks for hazards, and the clearance it keeps from them (u). */
@@ -128,7 +129,7 @@ export function predictAxes(pair: ScriptedPair, d: DuelState): Axes {
 }
 
 /** The Helm's axes (spec §3): avoid, then dodge an inbound torpedo, then line up (a full laser with a target, FTL targeting
- *  spec §3; Feel-i: by holding auto-face, as a player would, so `face` is set and `turn` is the turn it will make), then orbit. The hazard check predicts with the thrust the ship flies
+ *  spec §3; on a turret class the guns, W-4 spec §12; Feel-i: by holding auto-face, as a player would, so `face` is set and `turn` is the turn it will make), then orbit. The hazard check predicts with the thrust the ship flies
  *  at this tick before any new command (the throttle's, Artemis spec §5.5; the held throttle's, playtest2feedback §7).
  *  Playtest2feedback §4a (Decision 9): every branch but auto-face names its heading as `aim` (the hazard's, the dodge's
  *  and the orbit's, nearest index). On a newtonianHelm class (the Cutter) `turn` is the turn that aim flies (aimTurn); a
@@ -151,6 +152,11 @@ function helmAxes(pair: ScriptedPair, d: DuelState): Axes & { face?: boolean; ai
   }
   const ex = e.x - s.x, ey = e.y - s.y;
   if (laserFull(t, 0) && t.systems[0].laserTargeted && ex * ex + ey * ey <= LASER_RANGE * LASER_RANGE && !inArc(s.heading, ex, ey, LASER_ARC_COS))
+    return { turn: autoFaceTurn(t, 0), thrust: 0, face: true, aim: -1 };
+  // W-4 spec §12, §19.1 (W-4a): the Hound has no laser, so its Helm lines the guns up instead: auto-face while the target is
+  // seen within PEW_RANGE and outside the nose's ±60° (the stand-in pew's cone; W-4b: the autocannon's 600 u and ±30°).
+  // A turret class only: the Valkyrn and its laser fit take the lines above and below, byte for byte.
+  if (hasTurret(classOf(t, 0)) && e.active && shipSeen(t, targetOf(t, 0)) && ex * ex + ey * ey <= PEW_RANGE * PEW_RANGE && !inArc(s.heading, ex, ey, PEW_ARC_COS))
     return { turn: autoFaceTurn(t, 0), thrust: 0, face: true, aim: -1 };
   const o = orbitSteer(d, pair.orbitR), aim = nearestHeading(o.dx, o.dy);
   return { turn: crewClass ? aimTurn(s.heading, aim) : o.turn, thrust: o.thrust, aim };
@@ -324,12 +330,37 @@ function gunnerPew(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void {
   pair.lastPew = t.tick;
 }
 
+/** W-4 spec §12, §19.1 (W-4a): the gunner on a turret class (the Hound). Its first seated tick spends the reactor's spare
+ *  bar on the autocannon, when the sim would admit both commands (a spare bar, room under the Weapons capacity, the
+ *  autocannon at 0 bars), and does nothing else that tick; barMoved makes it once a round either way. Then, while the
+ *  target is seen: the stand-in pew (W-4a only: W-4b's AUTO guns replace it): pewFire {} when the Hunter is within
+ *  PEW_RANGE inside the nose's ±60° cone, a third is stored and SCRIPTED_PEW_GAP ticks have passed (the round flies along
+ *  the nose; no torpedo-first rule, spec §4.2); then the torpedo as today without the laser terms. No laser command. */
+function houndGunner(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void {
+  const t = d.tactical, target = targetOf(t, 0), sys = t.systems[0];
+  if (!pair.barMoved) {
+    pair.barMoved = true;
+    const w = DuelSystem.Weapons;
+    if (sparesOf(d) >= 1 && capacityOf(d, w) > sys.bars[w]! && weaponBars(sys, WeaponSlot.Autocannon) === 0)
+      out.push({ kind: 'shipPower', system: w, delta: 1 }, { kind: 'weaponPower', slot: WeaponSlot.Autocannon, delta: 1 });
+    return;
+  }
+  if (!shipSeen(t, target)) return;   // Engineering spike spec §10.4: a lock on an unseen target is refused
+  const s = t.ships[0], e = t.ships[target]!;
+  if (e.active && pewReady(t, 0) && weaponBars(sys, WeaponSlot.Pew) > 0 && t.tick - pair.lastPew >= SCRIPTED_PEW_GAP) {
+    const dx = e.x - s.x, dy = e.y - s.y;
+    if (dx * dx + dy * dy <= PEW_RANGE * PEW_RANGE && inArc(s.heading, dx, dy, PEW_ARC_COS)) { out.push({ kind: 'pewFire' }); pair.lastPew = t.tick; }
+  }
+  if (missileOf(t, 0) || sys.torpLock >= 0) return;
+  if (canLaunch(t, 0) && t.tick - pair.lastLaunch >= MISSILE_GAP) { out.push({ kind: 'torpLock', room: t.systems[target]!.shields > 0 ? Room.Shields : Room.Weapons }); pair.lastLaunch = t.tick; }
+}
+
 /** The gunner's commands while seated at Weapons (spec §3; FTL targeting spec §3: it uses targets). The laser targets the
  *  enemy's Shields while they are up, else its Weapons, and auto-fires; its missile homes by itself (homing torpedo spec),
  *  so the gunner holds nothing. W-1: it fires the pew by gunnerPew. */
 function gunner(pair: ScriptedPair, d: DuelState, out: DuelCommand[]): void {
   const t = d.tactical, target = targetOf(t, 0), sys = t.systems[0];
-  if (hasTurret(classOf(t, 0))) { pair.barMoved = true; return; }   // W-4a: the Hound's gunner is built in Task 8 (houndGunner); until then it sends nothing
+  if (hasTurret(classOf(d.tactical, 0))) { houndGunner(pair, d, out); return; }   // W-4 spec §12: the Hound; every other class keeps the code below, byte for byte
   // Engineering spike Decision 20 (spec §11), kept at the merge with W-1 (merge brief decision 2): the beam starts dark and
   // the gunner's laser is AUTO (a laserLock it fires on), and the gates need it to fire, so on its first seated tick the
   // gunner moves pew pew's bar to the beam (−1 then +1, applied in sequence order), then fights with the beam and the

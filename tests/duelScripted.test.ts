@@ -7,9 +7,12 @@ import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import {
-  AVOID_MARGIN, AVOID_TICKS, bfsPath, createScriptedPair, goalTiles, MISSILE_GAP, ORBIT_GAIN, ORBIT_MAX, ORBIT_MIN, predictAxes, scriptedInput, SPEED_SLACK
+  AVOID_MARGIN, AVOID_TICKS, bfsPath, createScriptedPair, goalTiles, MISSILE_GAP, ORBIT_GAIN, ORBIT_MAX, ORBIT_MIN, predictAxes, SCRIPTED_PEW_GAP, scriptedInput, SPEED_SLACK
 } from '../src/renderer/src/sim/duel/scripted';
-import { Outcome, Room } from '../src/renderer/src/sim/tactical/state';
+import { Outcome, placeMissile, removeMissile, Room } from '../src/renderer/src/sim/tactical/state';
+import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
+import type { DuelState } from '../src/renderer/src/sim/duel/state';
+import type { DuelInput } from '../src/renderer/src/sim/duel/step';
 import { BELT_OUTER, R_MAP } from '../src/renderer/src/sim/tactical/tuning';
 import { RCS_TURN_BOOST } from '../src/renderer/src/sim/tactical/tuning';
 
@@ -88,8 +91,100 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
       for (const e of input.commands) { kinds.add(e.command.kind); expect(e.requestedTick).toBe(d.interior.tick); }
       expect(stepDuelTick(d, input).every((r) => r.status === 'applied')).toBe(true);
     }
-    expect([...kinds].sort()).toEqual(['laserLock', 'sit', 'stand', 'torpLock', 'weaponPower']);   // FTL targeting spec §3: the gunner fires by targets; Engineering spike Decision 20 (kept at the merge, brief decision 2): it moves pew pew's bar to the beam, so no pewFire (W-1 gave the gunner pewFire: kind a, replaced rule); playtest2feedback: no throttle commands on the Cutter; owner 2026-11-19: no helmPower (the Task 8 gate's knob 0, the compressor bar to ENGINE, has no split to move)
+    expect([...kinds].sort()).toEqual(['pewFire', 'shipPower', 'sit', 'stand', 'torpLock', 'weaponPower']);   // W-4 spec §12, §14 (kind a): shipPower in, laserLock out; W-4a's stand-in pewFire (W-4b removes it); playtest2feedback: no throttle commands on the Cutter; owner 2026-11-19: no helmPower
     disposeDuel(d);
+  });
+});
+
+/** Whether a tick's input carries a pewFire (W-4 spec §6: it has no aim). At most one a tick. */
+function pewFires(input: DuelInput): boolean {
+  const fires = input.commands.filter((e) => e.command.kind === 'pewFire');
+  expect(fires.length).toBeLessThanOrEqual(1);
+  return fires.length === 1;
+}
+/** A scripted pair that has made its one bar move already. */
+const movedPair = (seed: number) => ({ ...createScriptedPair(seed), barMoved: true });
+
+describe("the scripted gunner on the Hound (W-4 spec §12, §19.1: W-4a's stand-in pew)", () => {
+  it('its first seated tick sends shipPower Weapons +1 then weaponPower Autocannon +1, both applied: pew 1, autocannon 1, torpedo 1', () => {
+    const d = createSeatedDuel(layout, 2), pair = createScriptedPair(2);
+    try {
+      const input = scriptedInput(pair, d), gunner = 1 - d.helmPlayer;
+      const mine = input.commands.filter((e) => e.id.player === gunner).map((e) => e.command);
+      expect(mine).toEqual([{ kind: 'shipPower', system: 1, delta: 1 }, { kind: 'weaponPower', slot: 1, delta: 1 }]);
+      expect(stepDuelTick(d, input).every((r) => r.status === 'applied')).toBe(true);
+      expect(d.tactical.systems[0].weaponPower).toEqual([1, 1, 1]);
+      expect(scriptedInput(pair, d).commands.some((e) => e.command.kind === 'weaponPower' || e.command.kind === 'shipPower')).toBe(false);   // once a round
+    } finally { disposeDuel(d); }
+  });
+  it('moves nothing when no spare bar is left', () => {
+    const d = createSeatedDuel(layout, 2), pair = createScriptedPair(2);
+    try {
+      const b = d.tactical.systems[0].bars; b[0] = b[0]! + 1;   // the spare bar spent on Shields
+      expect(scriptedInput(pair, d).commands.filter((e) => e.command.kind === 'shipPower' || e.command.kind === 'weaponPower')).toEqual([]);
+    } finally { disposeDuel(d); }
+  });
+  it('the stand-in pew: with the Hunter 200 ahead it fires pewFire {}; with only the Hunter\'s torpedo in the cone it fires nothing (ship only)', () => {
+    const d = createSeatedDuel(layout, 2), t = d.tactical, s = t.ships[0], e = t.ships[1];
+    try {
+      Object.assign(s, { vx: 0, vy: 0, heading: 0, headingAcc: 0 });
+      Object.assign(e, { x: s.x + hx(0) * 200, y: s.y + hy(0) * 200, vx: 0, vy: 0 });
+      t.known[0] = 2;
+      expect(pewFires(scriptedInput(movedPair(2), d))).toBe(true);
+      Object.assign(e, { x: s.x + 600, y: s.y });   // seen (Sensors 1 bar: 900) but outside PEW_RANGE 450 and off the nose
+      placeMissile(t, 1, { x: s.x + hx(8) * 150, y: s.y + hy(8) * 150, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 0 });
+      expect(pewFires(scriptedInput(movedPair(2), d))).toBe(false);
+      removeMissile(t, 1);
+    } finally { disposeDuel(d); }
+  });
+  it('spaces its rounds by at least SCRIPTED_PEW_GAP ticks over whole duels, and never sends a laser command', () => {
+    const gaps: number[] = [];
+    for (const seed of [1, 2, 4]) {
+      const run = createSeatedDuel(layout, seed), p = createScriptedPair(seed);
+      let last = -1;
+      try {
+        for (let k = 0; run.tactical.outcome === Outcome.Running; k++) {
+          const input = scriptedInput(p, run);
+          expect(input.commands.some((e) => e.command.kind.startsWith('laser') && e.command.kind !== 'laserFrequency')).toBe(false);
+          if (pewFires(input)) { if (last >= 0) gaps.push(k - last); last = k; }
+          stepDuelTick(run, input);
+        }
+      } finally { disposeDuel(run); }
+    }
+    expect(gaps.length).toBeGreaterThan(10);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(SCRIPTED_PEW_GAP);
+  }, 60_000);
+  it('the Valkyrn pair\'s gunner is today\'s code: it still makes the pew → beam move on the Valkyrn class', () => {
+    const d = createSeatedDuel(layout, 2, 0, 2, ShipClass.Valkyrn), pair = createScriptedPair(2);
+    try {
+      const mine = scriptedInput(pair, d).commands.filter((e) => e.id.player === 1 - d.helmPlayer).map((e) => e.command);
+      expect(mine).toEqual([{ kind: 'weaponPower', slot: 0, delta: -1 }, { kind: 'weaponPower', slot: 1, delta: 1 }]);
+    } finally { disposeDuel(d); }
+  });
+});
+
+describe("the scripted Helm lines the guns up (W-4 spec §12, §19.1: W-4a's ±60° stand-in)", () => {
+  /** Whether the pair's Helm (player 0) holds auto-face this tick. */
+  const faces = (d: DuelState): boolean => scriptedInput(movedPair(2), d).held[d.helmPlayer]!.face === true;
+  /** The Hunter `ahead` u from the still Hound on heading index `bearing` (the Hound's nose is 0); no rocks. */
+  const place = (d: DuelState, bearing: number, ahead: number): void => {
+    const t = d.tactical, s = t.ships[0];
+    t.rocks.fill(0); t.known[0] = 2;
+    Object.assign(s, { vx: 0, vy: 0, heading: 0, headingAcc: 0 });
+    Object.assign(t.ships[1], { x: s.x + hx(bearing) * ahead, y: s.y + hy(bearing) * ahead, vx: 0, vy: 0 });
+  };
+  it('on the Hound: face while the Hunter is seen within PEW_RANGE outside the nose\'s ±60°; not inside the cone, not beyond the range', () => {
+    const d = createSeatedDuel(layout, 2);
+    try {
+      expect(d.helmPlayer).toBe(0);
+      place(d, 64, 300); expect(faces(d)).toBe(true);    // 90° right, 300 u
+      place(d, 16, 300); expect(faces(d)).toBe(false);   // 22.5° right: inside the cone, so it orbits
+      place(d, 64, 600); expect(faces(d)).toBe(false);   // beyond PEW_RANGE 450
+    } finally { disposeDuel(d); }
+  });
+  it("the Valkyrn's Helm never lines up a gun (no turret: today's branch, byte for byte)", () => {
+    const v = createSeatedDuel(layout, 2, 0, 2, ShipClass.Valkyrn);
+    try { place(v, 64, 300); expect(faces(v)).toBe(false); } finally { disposeDuel(v); }
   });
 });
 
