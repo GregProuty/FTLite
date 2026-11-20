@@ -136,6 +136,13 @@ describe('the Roche break (spec §13.3)', () => {
       along.push(((a.vx - vx) * nx + (a.vy - vy) * ny) / escapeSpeed(160));
     }
     expect(Math.max(...along) - Math.min(...along)).toBeCloseTo(0.04, 9);   // the two sides part at 0.04 · v_esc
+    const four = (() => { let m = 1; for (let c = 1; c < t.n && popcount(m) < 4; c++) if ((t.nb[0]! >>> c) & 1) m |= 1 << c; return m; })();
+    expect(popcount(four)).toBe(4);   // TIDAL_MIN_CELLS exactly, connected through cell 0
+    const st4 = arena(); st4.tick = 100;
+    shaped(st4, 103, tm, 0, 160, vx, vy, four); st4.rocks[103 * ROCK_STRIDE + 7] = 0;
+    stepRocks(st4);
+    const broke = [...rockEvents(st4, 'split'), ...rockEvents(st4, 'dust')].filter((e) => e.rock === 103);
+    expect(broke).toHaveLength(1); expect(broke[0]!.by).toBe('tidal');
     withSwitches({ rocheBreak: false }, () => {
       const off = arena(); off.tick = 100;
       shaped(off, 100, tm, 0, 160, vx, vy); off.rocks[100 * ROCK_STRIDE + 7] = 0;

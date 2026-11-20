@@ -8,10 +8,10 @@ import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { escapeSpeed } from '../src/renderer/src/sim/tactical/rails';
 import { popcount, shapeOf, templateFor } from '../src/renderer/src/sim/tactical/rockCells';
-import { firstBlocker, makeCells, rockAlive, rockAt, rockBorn, rockCellsInto, rockHp, RockKind, rockMaskOf, rockMassOf, rockTmpl } from '../src/renderer/src/sim/tactical/rocks';
+import { beginRockTick, firstBlocker, makeCells, rockAlive, rockAt, rockBorn, rockCellsInto, rockHp, RockKind, rockMaskOf, rockMassOf, rockTmpl, segmentEntry } from '../src/renderer/src/sim/tactical/rocks';
 import { breakRock, dustRock, hitRock, kickFraction, pushRock } from '../src/renderer/src/sim/tactical/rockBreak';
 import { CUT_KICK, TIDAL_CUT_KICK } from '../src/renderer/src/sim/tactical/rockTuning';
-import { arena, fillPool, mover, rockEvents, seeded, shaped, tmplOf } from './helpers/rockArena';
+import { arena, fillPool, mover, rail, rockEvents, seeded, shaped, tmplOf } from './helpers/rockArena';
 
 const ve = escapeSpeed(2000), cells = makeCells();
 /** A template x between two columns of cells near the middle: a vertical cut there has no cell on the line. */
@@ -42,6 +42,17 @@ describe('the cut (spec §5.2, §5.4)', () => {
       expect(popcount(rockMaskOf(st, pieces[0]!))).toBe(Math.max(...pieces.map((p) => popcount(rockMaskOf(st, p)))));   // the largest keeps the slot
       expect([st.rockSplits, st.systems[0].rocksBroken]).toEqual([1, 1]);
     }
+  });
+  it('the struck point matters, not the centre: the same direction through the middle and near the east edge gives different pieces', () => {
+    const masks = (px: (t: ReturnType<typeof templateFor>) => number): string => {
+      const st = arena(), tm = tmplOf(st, 31), t = templateFor(st.map, tm);
+      shaped(st, 100, tm, 0, 2000);
+      breakRock(st, 100, px(t), 2000, 0, 1, 'laser', 0, 'cut');
+      const pieces = rockEvents(st, 'split')[0]!.pieces!;
+      return pieces.map((p) => rockMaskOf(st, p)).sort((a, b) => a - b).join(',');
+    };
+    const mid = masks((t) => midX(t)), edge = masks((t) => Math.max(...Array.from(t.x)) - t.d * 0.75);
+    expect(edge).not.toBe(mid);
   });
   it('the sides part along the line\'s normal at v_esc · CUT_KICK, shared by inverse cell count; a tidal cut at TIDAL_CUT_KICK', () => {
     for (const [pattern, kick] of [['cut', CUT_KICK], ['tidal', TIDAL_CUT_KICK]] as const) {
@@ -103,6 +114,21 @@ describe('the shatter (spec §5.3, §5.4)', () => {
     });
     expect(rockEvents(st, 'dust').every((e) => e.rock === -1)).toBe(true);
   });
+  it('the crater is a dust group: a dust event at its centre with the parent velocity, counted in rockDust, and every cell is a piece or dust', () => {
+    const st = arena(), tm = tmplOf(st, 31), t = templateFor(st.map, tm);
+    shaped(st, 100, tm, 0, 2000, 5, 0);
+    const px = t.x[3]!, py = 2000 + t.y[3]!;
+    breakRock(st, 100, px, py, -1, 0, 'torpedo', 0, 'shatter');
+    const dust = rockEvents(st, 'dust'), pieces = rockEvents(st, 'split')[0]!.pieces!;
+    const crater = dust.find((e) => e.rock === -1 && Math.abs(e.x - px) < 1e-9 && Math.abs(e.y - py) < 1e-9);
+    expect(crater).toBeDefined();
+    expect([crater!.vx, crater!.vy, crater!.by, crater!.ship]).toEqual([5, 0, 'torpedo', 0]);
+    expect(st.rockDust).toBe(dust.length);
+    let kept = 0, union = 0; for (const p of pieces) { kept += popcount(rockMaskOf(st, p)); union |= rockMaskOf(st, p); }
+    expect(((t.full & ~union) >>> 3) & 1).toBe(1);
+    expect(kept + popcount(t.full & ~union)).toBe(t.n);
+    expect(dust.length).toBeGreaterThanOrEqual(1);
+  });
 });
 
 describe('slot use and eviction (spec §5.4)', () => {
@@ -127,13 +153,30 @@ describe('slot use and eviction (spec §5.4)', () => {
       expect(rockTmpl(st, evicted)).toBe(tmplOf(st, 31));
     }
   });
+  it('a Rail can be evicted too: the smallest rock in a full pool, its slot reused for a piece', () => {
+    const st = arena();
+    shaped(st, 0, tmplOf(st, 31), 0, 2000);
+    fillPool(st, 9, [50]);
+    rail(st, 50, -1500, 1200, 8.2);
+    breakRock(st, 0, 0, 2000, 0, 1, 'collision', -1, 'cut');
+    expect(rockEvents(st, 'split')[0]!.pieces!.slice(0, 2)).toEqual([0, 50]);
+    expect(rockEvents(st, 'dust').find((e) => e.evicted)).toMatchObject({ rock: 50, r: 8.2 });
+    expect(rockAt(st, 50).kind).toBe(RockKind.Free);
+  });
   it('with nothing smaller a piece is dust with an event (rock −1) and rockSlotDust counts it; the break still counts once', () => {
     const st = arena();
     shaped(st, 0, tmplOf(st, 31), 0, 2000);
     fillPool(st, 60);
     breakRock(st, 0, 0, 2000, 0, 1, 'laser', 0, 'cut');
     expect(rockEvents(st, 'split')[0]!.pieces).toEqual([0]);
-    expect(st.rockSlotDust).toBeGreaterThanOrEqual(1);
+    const roomy = arena();   // the same cut with room: how many groups were pieces
+    shaped(roomy, 0, tmplOf(roomy, 31), 0, 2000);
+    breakRock(roomy, 0, 0, 2000, 0, 1, 'laser', 0, 'cut');
+    const groups = rockEvents(roomy, 'split')[0]!.pieces!.length;
+    expect(groups).toBeGreaterThanOrEqual(2);
+    expect(st.rockSlotDust).toBe(groups - 1);
+    expect(st.rockDust).toBe(rockEvents(st, 'dust').length);
+    expect(rockEvents(st, 'dust').filter((e) => e.rock === -1).length).toBe(st.rockDust);
     expect([st.rockSplits, st.rockEvictions, st.systems[0].rocksBroken]).toEqual([1, 0, 1]);
   });
 });
@@ -145,6 +188,19 @@ describe('a rock target clears itself (spec §6.1 of spike ii)', () => {
     s.laserRock = 0; s.torpRock = 0; s.torpRockFlying = 0; st.systems[1].laserRock = 0;
     breakRock(st, 0, 0, 2000, 1, 0, 'laser', 0, 'cut');
     expect([s.laserRock, s.torpRock, s.torpRockFlying, st.systems[1].laserRock]).toEqual([-1, -1, -2, 0]);
+  });
+});
+
+describe('a rock target clears itself when its slot is reused', () => {
+  it('when its slot is evicted and reused for a piece: laser and torpedo targets to -1, a flying torpedo to -2', () => {
+    const st = arena(), s = st.systems[0];
+    shaped(st, 0, tmplOf(st, 31), 0, 2000);
+    fillPool(st, 9);
+    mover(st, 7, -1000, 1000, 0, 0, 8);
+    s.laserRock = 7; s.torpRock = 7; s.torpRockFlying = 7;
+    breakRock(st, 0, 0, 2000, 0, 1, 'laser', 0, 'cut');
+    expect(rockEvents(st, 'split')[0]!.pieces).toContain(7);
+    expect([s.laserRock, s.torpRock, s.torpRockFlying]).toEqual([-1, -1, -2]);
   });
 });
 
@@ -194,10 +250,36 @@ describe('spike i cases kept: the hash, the clone and firstBlocker', () => {
     for (let i = 0; i < 30; i++) { stepDuel(st, IDLE_INPUT); stepDuel(copy, IDLE_INPUT); }
     expect(hashTactical(copy)).toBe(hashTactical(st));
   });
+  it('after a cut and a shatter of large seeded rocks the hash changed, and a clone runs on 600 ticks identically, cells and all', () => {
+    const st = createTacticalState(11), h0 = hashTactical(st);
+    const big = st.map.asteroids.map((a, i) => [a.r, i] as const).filter(([r]) => r >= 40).map(([, i]) => i);
+    expect(big.length).toBeGreaterThanOrEqual(2);
+    beginRockTick(st);
+    const a = rockAt(st, big[0]!); breakRock(st, big[0]!, a.x, a.y, 1, 0, 'laser', 0, 'cut');
+    beginRockTick(st);
+    const b = rockAt(st, big[1]!); breakRock(st, big[1]!, b.x, b.y, 1, 0, 'torpedo', 0, 'shatter');
+    beginRockTick(st);
+    expect(st.rockSplits).toBe(2);
+    expect(hashTactical(st)).not.toBe(h0);
+    const copy = cloneTactical(st);
+    expect(copy.rockCells).not.toBe(st.rockCells); expect(copy.rockCells).toEqual(st.rockCells);
+    for (let i = 0; i < 600; i++) { stepDuel(st, IDLE_INPUT); stepDuel(copy, IDLE_INPUT); }
+    expect(hashTactical(copy)).toBe(hashTactical(st));
+    expect(copy.rockCells).toEqual(st.rockCells);
+  });
   it('firstBlocker finds the nearest rock along a segment', () => {
     const st = arena();
     mover(st, 5, 300, 2000, 0, 0, 20); mover(st, 2, 600, 2000, 0, 0, 20);
     expect(firstBlocker(st, 0, 2000, 900, 2000)).toMatchObject({ rock: 5 });
     expect(firstBlocker(st, 0, 2000, 900, 2000)!.t).toBeCloseTo(280 / 900, 12);
+  });
+  it('on a seeded cell rock the entry is the least entry over its cells by the hit radius, never before the bounding circle', () => {
+    const st = createTacticalState(5), a = rockAt(st, 0);
+    const hit = firstBlocker(st, a.x - 200, a.y, a.x + 200, a.y);
+    expect(hit?.rock).toBe(0);
+    rockCellsInto(st, 0, cells);
+    let want = 2; for (let c = 0; c < cells.n; c++) { const e = segmentEntry(a.x - 200, a.y, a.x + 200, a.y, cells.x[c]!, cells.y[c]!, cells.hitR); if (e >= 0 && e < want) want = e; }
+    expect(hit!.t).toBeCloseTo(want, 9);
+    expect(hit!.t).toBeGreaterThanOrEqual((200 - a.r) / 400);
   });
 });

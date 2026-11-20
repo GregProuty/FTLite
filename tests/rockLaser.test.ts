@@ -11,6 +11,7 @@ import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { laserCardReason, laserSituation, statusSentence } from '../src/renderer/src/render/duel/situationModel';
 import { escapeSpeed } from '../src/renderer/src/sim/tactical/rails';
+import { shapeOf, templateFor } from '../src/renderer/src/sim/tactical/rockCells';
 import { arena, mover, rail, rockEvents, seeded, shaped, tmplOf, withSwitches } from './helpers/rockArena';
 import { lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
 
@@ -73,6 +74,26 @@ describe('a laser shot on a rock (spec §4.1)', () => {
       }
       expect([st.systems[0].laserRock, st.systems[0].rocksBroken]).toEqual([-1, 1]);
     }
+  });
+});
+
+describe('a laser cut passes through the impact point', () => {
+  it('a shot that strikes off-centre divides the rock by the line through its impact point: no piece lies on both sides', () => {
+    const st = east(), tm = tmplOf(st, 31), t = templateFor(st.map, tm), sh = shapeOf(t, t.full);
+    shaped(st, 100, tm, 200, -2470); st.rocks[100 * ROCK_STRIDE + 6] = 2;   // its centre 30 south of the ship's line; the beam runs at the rock and strikes its near surface
+    const world = Array.from({ length: t.n }, (_, c) => ({ x: 200 + t.x[c]! - sh.gx, y: -2470 + t.y[c]! - sh.gy }));   // before the break: pieces keep their cells in place
+    st.systems[0].laserRock = 100;
+    applyWeaponsInput(st, 0, IDLE_INPUT);
+    const shot = laserEvent(st)!, split = rockEvents(st, 'split')[0]!;
+    expect(split).toBeDefined();
+    const len = Math.hypot(shot.x2 - shot.x1, shot.y2 - shot.y1), ux = (shot.x2 - shot.x1) / len, uy = (shot.y2 - shot.y1) / len;
+    const sides = split.pieces!.map((p) => {
+      const m = rockMaskOf(st, p); let pos = 0, neg = 0;
+      for (let c = 0; c < t.n; c++) if ((m >>> c) & 1) { const cr = ux * (world[c]!.y - shot.y2) - uy * (world[c]!.x - shot.x2); if (cr > 1e-6) pos++; if (cr < -1e-6) neg++; }   // cross(u, cell - impact), u the beam's direction
+      return { pos, neg };
+    });
+    for (const q of sides) expect(q.pos === 0 || q.neg === 0).toBe(true);
+    expect(sides.some((q) => q.pos > 0)).toBe(true); expect(sides.some((q) => q.neg > 0)).toBe(true);
   });
 });
 

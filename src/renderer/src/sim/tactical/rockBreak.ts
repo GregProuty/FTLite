@@ -92,7 +92,7 @@ const groupScratch: number[] = [], cutOut: CutOut = { left: 0, right: 0, ux: 0, 
  * side (cross(u, cell − P) ≥ 0) takes +n · S · (right cells) / (all cells) and the right −n · S · (left cells) / (all), n =
  * (−uy, ux) of the direction used and S = v_esc(ρ) · CUT_KICK (tidal: TIDAL_CUT_KICK). 'shatter': shatterGroups; piece j
  * (largest first) flies from the point toward its centre of mass at v_esc(ρ) · (BURST_KICK_MIN + BURST_KICK_SPAN · f_j).
- * Then one split event naming the slots written (`burst: true` for a shatter), and a dust event (rock −1) per dust group.
+ * Then one split event naming the slots written (`burst: true` for a shatter), and a dust event (rock −1) per dust group (a shatter's crater is one).
  */
 export function breakRock(s: TacticalState, k: number, px: number, py: number, ux: number, uy: number, by: RockCause, ship: number, pattern: BreakPattern, exclude: readonly number[] = []): void {
   if (!rockAlive(s, k) || s.rockBorn[k] === 1) return;
@@ -103,18 +103,21 @@ export function breakRock(s: TacticalState, k: number, px: number, py: number, u
   const len = Math.sqrt(ux * ux + uy * uy), hx = len > 0 ? ux / len : 0, hy = len > 0 ? uy / len : -1;
   const lx = px - a.x + parent.gx, ly = py - a.y + parent.gy, ve = escapeSpeed(Math.sqrt(a.x * a.x + a.y * a.y));
   const pieces: Group[] = [], dust: Group[] = [];
-  const sort = (g: number, kx: number, ky: number): void => { const n = popcount(g); (n >= 2 && shapeOf(t, g).r >= ROCK_MIN_R ? pieces : dust).push({ mask: g, n, kx, ky }); };
+  const classify = (g: number, kx: number, ky: number): void => { const n = popcount(g); (n >= 2 && shapeOf(t, g).r >= ROCK_MIN_R ? pieces : dust).push({ mask: g, n, kx, ky }); };
   if (pattern === 'shatter') {
     const count = shatterGroups(t, mask, lx, ly, hx, hy, groupScratch);
-    for (let i = 0; i < count; i++) sort(groupScratch[i]!, 0, 0);
+    let grouped = 0;
+    for (let i = 0; i < count; i++) { grouped |= groupScratch[i]!; classify(groupScratch[i]!, 0, 0); }
+    const crater = mask & ~grouped;   // the struck cell and what the sectors dropped: one more dust group
+    if (crater !== 0) dust.push({ mask: crater, n: popcount(crater), kx: 0, ky: 0 });
   } else {
     cutSides(t, mask, lx, ly, hx, hy, cutOut);
     const nl = popcount(cutOut.left), nr = popcount(cutOut.right), sp = ve * (pattern === 'tidal' ? TIDAL_CUT_KICK : CUT_KICK), nx = -cutOut.uy, ny = cutOut.ux;
     const kl = (sp * nr) / (nl + nr), kr = (sp * nl) / (nl + nr), right = cutOut.right;
     let count = components(t, cutOut.left, groupScratch);
-    for (let i = 0; i < count; i++) sort(groupScratch[i]!, nx * kl, ny * kl);
+    for (let i = 0; i < count; i++) classify(groupScratch[i]!, nx * kl, ny * kl);
     count = components(t, right, groupScratch);
-    for (let i = 0; i < count; i++) sort(groupScratch[i]!, -nx * kr, -ny * kr);
+    for (let i = 0; i < count; i++) classify(groupScratch[i]!, -nx * kr, -ny * kr);
   }
   if (pieces.length === 0) { dustRock(s, k, by, ship); return; }
   pieces.sort((p, q) => q.n - p.n || (p.mask & -p.mask) - (q.mask & -q.mask));
