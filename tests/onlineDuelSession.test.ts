@@ -1172,6 +1172,53 @@ describe('smooth 60 fps online (Fable #7, #8)', () => {
     for (const f of settled) expect(Math.abs(wrap(f.drawn - f.raw))).toBeLessThan(1e-9);   // converged to P's heading by 100 ms
     r.dispose();
   });
+  it('the Weapons seat while the partner turns: the drawn own-ship heading stays within the same per-frame bound (§3.8)', () => {
+    // Seat 1 sits at Weapons; the authority's player 0 (the Helm) holds A/D on and off every 300 ms. The Weapons seat
+    // carries the partner's held input forward from the last publication, so each start and stop of the turn is a
+    // heading correction when the next publication arrives. A 100 ms round trip: each publication is delivered 50 ms after
+    // the authority's tick, and latches the held frames this seat sent 50 ms before it.
+    const r = rig(1), c = r.attach(), TICK = 1000 / 60, FORCED = 40, HALF_RTT = 50;
+    const inFlight: { at: number; d: DuelState; partner: HeldInput }[] = [], sentAt: { at: number; n: number }[] = [];
+    const wrap = (d: number): number => d - Math.round(d / HEADING_COUNT) * HEADING_COUNT;
+    let now = 0, nextTick = TICK, nextFrame = 5, nextPump = TICK + 2, simTurn = 0, lastAuth: number | null = null;
+    const frames: { drawn: number; raw: number }[] = [], neutral: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
+    while (now < 4000) {
+      const at = Math.min(nextTick, nextFrame, nextPump);
+      r.advance(at - now); now = at;
+      if (at === nextTick) {
+        nextTick += TICK;
+        const partner: HeldInput = Math.floor(now / 300) % 2 === 1 ? { ...neutral, moveX: 1 } : neutral;
+        stepDuelTick(r.d, { held: [partner, neutral], commands: [] });
+        const s = r.d.tactical.ships[0]!, ah = s.heading + s.headingAcc;
+        if (lastAuth !== null) simTurn = Math.max(simTurn, Math.abs(wrap(ah - lastAuth)));
+        lastAuth = ah;
+        if (r.d.interior.tick % 3 === 0) inFlight.push({ at: now + HALF_RTT, d: loadDuelSnapshot(CUTTER, saveDuelSnapshot(r.d, DIGEST), DIGEST), partner });
+        while (inFlight.length && inFlight[0]!.at <= now) {
+          const q = inFlight.shift()!, latched = [...sentAt].reverse().find((e) => e.at <= q.at - 2 * HALF_RTT)?.n ?? 0;
+          c.publish(q.d, 'running', undefined, { held: [0, latched], heldInput: [q.partner, neutral] }); disposeDuel(q.d);
+        }
+      } else if (at === nextPump) {
+        nextPump += TICK;
+        r.pump(0);
+        sentAt.push({ at: now, n: c.helds().length });
+      } else {
+        nextFrame += TICK;
+        r.session.frame();
+        if (now < 1000) continue;   // warm-up: the lead is built
+        const src = h.source as unknown as { duel: DuelState; prev: { x: number; y: number; h: number; ox?: number; oy?: number; oh?: number }[]; alpha(): number };
+        const bare = src.prev.map(({ x, y, h: hh }) => ({ x, y, h: hh }));
+        frames.push({ drawn: interpolatedShip(src.duel.tactical, src.prev, src.alpha(), 0).h, raw: interpolatedShip(src.duel.tactical, bare, src.alpha(), 0).h });
+      }
+    }
+    const steps = (f: 'drawn' | 'raw'): number[] => frames.slice(1).map((v, k) => Math.abs(wrap(v[f] - frames[k]![f])));
+    const drawnMax = Math.max(...steps('drawn')), rawMax = Math.max(...steps('raw')), bound = simTurn + FORCED * (TICK / SMOOTH_MS) + 1;
+    console.log(`smooth heading (Weapons seat, partner turning): sim turn ${simTurn.toFixed(3)} steps/tick, raw max ${rawMax.toFixed(3)}, drawn max ${drawnMax.toFixed(3)}, bound ${bound.toFixed(3)}`);
+    expect(simTurn).toBeGreaterThan(0);   // the partner did turn the ship
+    expect(rawMax).toBeGreaterThan(bound);   // unsmoothed, the corrections jump past the bound
+    expect(drawnMax).toBeLessThanOrEqual(bound);
+    for (const q of inFlight) disposeDuel(q.d);
+    r.dispose();
+  });
   it('while P stands at the cap the drawn rock holds (alpha 1, one-tick gap) and so does the ship (Fable #8)', () => {
     const r = rig(0); r.attach();
     const track = createRockTrack(), rail = Array.from({ length: rockSlots(r.d.tactical) }, (_, k) => k).find((k) => isRail(r.d.tactical.rocks[k * ROCK_STRIDE]!))!;
