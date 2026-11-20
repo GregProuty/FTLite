@@ -213,3 +213,60 @@ Confirmed. Step 1's trim now runs whether or not an anchor was found: entries at
 
 ---
 
+# Round 3 (delta, reviewing 4912030e, effort medium, 85 s, 89093 in / 59464 cached / 8193 out)
+
+Verdict: ready with P2s
+
+## Findings
+
+### [P2] R3-F1 Commands 'kept for tick T + 1' are lost when P already stands at T, because the live tick runs only its own entry's commands
+Step 1 now keeps a pending command (sequence > c) 'for tick T + 1' when no entry follows local tick T - offset, and step 2 says those commands 'run there'. But no entry following the anchor means the measured target is T: the newest local tick minus (T - offset) is 0. If P stands at T, the re-simulation (or the verify) runs no tick after T, so the kept commands are never applied. The next local tick then steps P to T + 1 through `tick`, which per §3.3 uses 'this entry's commands' only, and the new entry does not hold the kept ones. P therefore lacks the pending command until the next publication carries it forward again. With a near-zero lead (the anchor is the newest entry, for example at the 0 ms row of G1, or right after local ticks stalled), that repeats on every publication. The result is the toggle flicker that the new sentence 'a toggle does not flicker' rules out. When P stands at T + 1 or T + 2, the input comparison in step 4 fails and step 5 does apply them, so only the P-at-T case breaks. · spec L97 ('or kept for tick `T + 1` when there is none'); spec L98 ('Commands step 1 kept for tick `T + 1` run there'); spec L99 (target = T + newest local tick − (T − offset), so it is T when no entry follows the anchor; P within 2 keeps its own tick); spec L87 (`tick` steps with 'this entry's commands'); spec L105 ('A command the authority has not run yet stays in `P` throughout (step 1), so a toggle does not flicker'); src/renderer/src/clientControl/streamClient.ts:L209-L214 (commands wait in the receive-time outbox, so a command can still be pending after its held frame is acknowledged) · Two implementers would differ on where the kept commands live and who consumes them. A literal build reintroduces the flicker that R2-F3 was fixed to remove, in the case with no entry after the anchor. · Hold the kept commands in a pending list on the predictor. Prepend them to the commands of the next log entry, whether that entry is one step 2 replays or the next one `tick` appends (§3.3). State in §3.3 that `tick` runs any pending kept commands with this entry's own. Optionally, when P stands at T, have step 5 apply them by stepping P to T + 1.
+
+### [P3] R3-F2 G5 says 'Three cases' but lists four, and whether (d) has the 10% loss is unclear
+The G5 cell opens with 'Three cases, each with 10% loss of publications except…' and then lists (a), (b), (c) and (d). Case (d), the 500 ms over-cap case, comes after the 'In each…' sentence. So it is unclear whether the 10% loss and the delivered publications beside the outage apply to it. · spec L213 · This is a small ambiguity in a gate the implementer has to script. · Write 'Four cases'. Either say that (d) also has the 10% loss with the publications beside the outage delivered, or say that (d) has no random loss.
+
+## Prior findings
+- R2-F1: resolved — G5 now fits under the cap with margin. (a) 50 ms: about 3 ticks of lead + 18 of outage + 3 of cadence + 1 of pump ≈ 25. (b) 150 ms: 9 + 12 + 3 + 1 ≈ 25. (c) 50 ms, both directions out 200 ms: ≈ 19. All are under 30, and the publications beside the outage are delivered, so the seed cannot push a case over. Case (d) states the over-cap bound consistently with L109. §3.5's arithmetic (21 ticks, 350 ms, six lost updates) is now right. The only leftover is the three/four case count, raised as a new P3.
+- R2-F2: resolved — G1(a) now requires the property itself: the hash recorded at every confirmed tick equals the publication's. It allows a re-simulation only on a target shift of more than 2 ticks, which covers the lead being built after a reset and held frames lost in a row, and it reports the counts. This matches step 3 and step 5 (L99-L101) and the reset rule (L97, L111).
+- R2-F3: resolved — Step 1 now removes commands only by c and carries the pending ones forward. The estimate paragraph (L105) states the command-channel split, which matches streamClient.ts:L208-L214. The risk row at L227 stays consistent: commands still leave the log by c. One gap remains in the 'kept for T + 1' branch when no entry follows the anchor, raised as a new P2. It does not affect the main case, where an entry after the anchor exists.
+- R2-F4: resolved — L97: 'the log is trimmed, whether or not an anchor was found'. Entries at or before local tick T - offset and records of ticks before T are dropped. Step 2 reads from T + 1 - offset onward, so nothing it needs is trimmed.
+
+## Verified
+- Step 1's trim threshold, local tick T - offset, equals the anchor's local tick when an anchor is found (offset = T − anchor local tick, L97). The 'first entry after it' therefore maps to tick T + 1 under step 2's mapping (L98), so a moved command runs at T + 1 in the ordinary case.
+- The moved commands cannot double-apply a relative command: they leave the log only by c, and c arrives with the state that holds their effect (L97, L227).
+- When a command moves to T + 1, P's recorded inputs differ from step 2's, so step 4 fails and step 5 re-simulates from C, which lacks the command, then applies it at T + 1. The behaviour is correct and the cost is bounded (L100-L101).
+- §3.5's lead and cap arithmetic (L121) agrees with PREDICT_MAX_TICKS = 30 (L109) and STATE_CADENCE_TICKS = 3.
+- The wording of G5(d) agrees with L109: tick returns false only at T + PREDICT_MAX_TICKS.
+- The G1(a) rewording is consistent with step 3's 2-tick allowance and with the reset rule that the lead starts at 0 (L97, L99, L111).
+- The estimate paragraph's channel description matches streamClient.ts:L208 (held frames on unreliable-latest) and L209-L214 (commands through the receive-time outbox).
+
+## Not verified
+- Whether G1(a) at 0 ms round trip can hit 'no hash recorded for T' with P one tick below T, because of pump ordering in the rig. Step 3 (L99, unchanged) lets P's tick be the target even when that is below T. I did not trace the rig's ordering, so this is not raised.
+- Whether a seeded 10% loss run in G5 can, away from the outage, lose six or seven publications in a row at 150 ms and reach the cap. The probability is negligible per position, but it depends on the length of the run, which the spec does not state.
+
+---
+
+# Round 3 response (spec revised)
+
+Reviewed `round-3.json` against the subject at `4912030e`. 2 accepted, 0 rejected, 0 deferred. The reviewer confirmed R2-F1 to R2-F4 resolved; verdict "ready with P2s".
+
+## R3-F1 [P2]: Commands "kept for tick T + 1" are lost when P already stands at T
+
+Confirmed: with no entry after the anchor the target is `T`, no tick after `T` runs in step 5, and `tick` ran only its own entry's commands, so the kept commands had no consumer. Step 1 now moves pending commands to the front of the first entry after the anchor and, when there is none, leaves them waiting on the predictor for the next entry `tick` appends. §3.3's `tick` runs any waiting commands before the entry's own. Step 2's extra sentence is removed, since the commands now always sit on an entry.
+
+## R3-F2 [P3]: G5 says "Three cases" but lists four
+
+Confirmed. G5 now says four cases, each a 20 s run under the same loss rule, which also applies to (d).
+
+## Also changed
+
+- From the reviewer's `not_verified` list: step 3 now says the target is at least `T`, so `P` is never left behind the confirmed tick; and G5's loss rule caps random losses at three in a row, so a long run cannot reach the cap by chance.
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-19-net-4a-duel-prediction-design.md
+
+<!-- end -->
+
+---
+
