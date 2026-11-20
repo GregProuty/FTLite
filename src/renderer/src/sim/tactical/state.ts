@@ -166,7 +166,7 @@ export type DuelEvent =
    *  §5.4: `touch`, two rocks of different clocks met closing above TOUCH_MIN (`other`, the contact point, `speed` the
    *  closing speed); §13.2: `rejoin`, a free rock went back on a rail (`how`: a lane capture, a rigid group or its own orbit;
    *  by 'settle'). `ship`: the ship whose weapon, ram or break caused it (absent for collisions, eviction and lost pieces). */
-  | { kind: 'rock'; what: 'hit' | 'split' | 'dust' | 'blast' | 'bump' | 'touch' | 'rejoin'; by: RockCause; rock: number; x: number; y: number; r: number; vx: number; vy: number; ship?: number; pieces?: number[]; other?: number; evicted?: true; burst?: true; speed?: number; how?: 'lane' | 'group' | 'own' };
+  | { kind: 'rock'; what: 'hit' | 'split' | 'dust' | 'blast' | 'bump' | 'touch' | 'rejoin'; by: RockCause; rock: number; x: number; y: number; r: number; vx: number; vy: number; ship?: number; pieces?: number[]; other?: number; evicted?: true; burst?: true; speed?: number; how?: 'lane' | 'group' | 'own' | 'cluster' };
 
 /** Spike ii §8: what caused a rock event. */
 export type RockCause = 'laser' | 'torpedo' | 'collision' | 'ram' | 'planet' | 'edge' | 'tidal' | 'settle';

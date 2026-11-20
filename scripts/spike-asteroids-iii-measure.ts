@@ -98,7 +98,7 @@ const feel = want('feel') ? { seed: 2026, allOn: switches(true, feelRun), allOff
 const stress = want('stress') ? (() => {
   const times: number[] = [], failures: string[] = [], freeEvery10s: number[][] = [];
   let edgeDust = 0, tidalBreaks = 0, tidalPieces = 0, slotDust = 0, capHits = 0, gridChecks = 0;
-  const rejoins = { lane: 0, group: 0, own: 0 }, refused: Record<string, number> = {}, gridWrong: string[] = [];
+  const rejoins = { lane: 0, group: 0, own: 0, cluster: 0 }, refused: Record<string, number> = {}, gridWrong: string[] = [];
   for (let seed = 1; seed <= 20; seed++) {
     const a = createTacticalState(seed), b = createTacticalState(seed), marks: number[] = [];
     switchOff(a, 1); switchOff(b, 1);
