@@ -90,7 +90,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
       for (const e of input.commands) { kinds.add(e.command.kind); expect(e.requestedTick).toBe(d.interior.tick); }
       expect(stepDuelTick(d, input).every((r) => r.status === 'applied')).toBe(true);
     }
-    expect([...kinds].sort()).toEqual(['shipPower', 'sit', 'stand', 'torpLock', 'weaponPower']);   // W-4 spec §12, §14 (kind a): shipPower in, laserLock out; AUTO guns, so no pewFire (W-4b removed W-4a's stand-in); playtest2feedback: no throttle commands on the Cutter; owner 2026-11-19: no helmPower
+    expect([...kinds].sort()).toEqual(['shipPower', 'sit', 'stand', 'throttleCut', 'torpLock', 'weaponPower']);   // W-4 spec §12, §14 (kind a): shipPower in, laserLock out; AUTO guns, so no pewFire (W-4b removed W-4a's stand-in); playtest2feedback: no throttle commands on the Cutter; owner 2026-11-19: no helmPower; helm round 2 §5: throttleCut
     disposeDuel(d);
   });
 });
@@ -172,6 +172,49 @@ describe("the scripted Helm lines the guns up (W-4 spec §12: outside the autoca
     const v = createSeatedDuel(layout, 2, 0, 2, ShipClass.Valkyrn);
     try { place(v, 64, 300); expect(faces(v)).toBe(false); } finally { disposeDuel(v); }
   });
+  it('helm round 2 §5: wanting no thrust with the throttle set, it sends throttleCut and holds no throttle; its face still goes out', () => {
+    const d = createSeatedDuel(layout, 2);
+    try {
+      place(d, 32, 300);   // the line-up: face, thrust 0
+      d.thrMille = 400;
+      const input = scriptedInput(movedPair(2), d);
+      expect(input.commands.filter((e) => e.id.player === 0).map((e) => e.command)).toEqual([{ kind: 'throttleCut' }]);
+      expect(input.held[0]).toEqual({ moveX: 0, moveY: 0, interactHeld: false, face: true });
+      expect(stepDuelTick(d, input).every((r) => r.status === 'applied')).toBe(true);
+      expect(d.thrMille).toBe(0);
+      expect(scriptedInput(movedPair(2), d).commands.filter((e) => e.command.kind === 'throttleCut')).toEqual([]);   // at 0: no second cut
+    } finally { disposeDuel(d); }
+  });
+});
+
+describe('the scripted Helm never leaves the seat with the throttle set (helm round 2 §5)', () => {
+  it('wanting to stand (here, for a repair) with the throttle set, it cuts and stays seated; it stands on a later tick at 0', () => {
+    const d = createSeatedDuel(layout, 2), pair = movedPair(2), rooms = d.tactical.systems[0].rooms;
+    try {
+      d.thrMille = 400;
+      rooms[Room.Weapons] = 1; rooms[Room.Engines] = 1;   // the gunner takes Weapons (it sits there), so the Helm gets Engines
+      const input = scriptedInput(pair, d);
+      expect(pair.task).toEqual([Room.Engines, Room.Weapons]);
+      expect(input.commands.filter((e) => e.id.player === 0).map((e) => e.command)).toEqual([{ kind: 'throttleCut' }]);
+      expect(stepDuelTick(d, input).every((r) => r.status === 'applied')).toBe(true);
+      expect([d.thrMille, Seated.station[d.interior.crew[0]!]]).toEqual([0, d.nav]);
+      expect(scriptedInput(pair, d).commands.filter((e) => e.id.player === 0).map((e) => e.command)).toEqual([{ kind: 'stand' }]);
+    } finally { disposeDuel(d); }
+  });
+  it('over whole scripted duels it never stands from the Helm with thrMille not 0, and every command it sends is admitted', () => {
+    let stands = 0;
+    for (const seed of [1, 2, 3]) {
+      const d = createSeatedDuel(layout, seed), p = createScriptedPair(seed);
+      try {
+        while (d.tactical.outcome === Outcome.Running) {
+          const atHelm = Seated.station[d.interior.crew[0]!] === d.nav, input = scriptedInput(p, d);
+          if (atHelm && input.commands.some((e) => e.id.player === 0 && e.command.kind === 'stand')) { expect(d.thrMille, `seed ${seed} tick ${d.interior.tick}`).toBe(0); stands++; }
+          expect(stepDuelTick(d, input).every((r) => r.status === 'applied'), `seed ${seed} tick ${d.interior.tick}`).toBe(true);
+        }
+      } finally { disposeDuel(d); }
+    }
+    expect(stands).toBeGreaterThan(0);   // the rule was exercised
+  }, 120_000);
 });
 
 describe("the Helm's hazard prediction (spec §3; helm round 2 §3.2: no boost)", () => {

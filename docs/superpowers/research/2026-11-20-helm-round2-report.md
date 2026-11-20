@@ -55,6 +55,11 @@ FAIL: median 140.1 s < 180
 - Task 3: `tests/tacticalSlots.test.ts:162` (seed 1's whole scripted duel length, `expected 10125 to be 7796`; the property `wrong === 0` still passes).
 - Task 3: `tests/duelSnapshot.test.ts` fixture tick (seed 1, tick 6465, picked by "the crew pew turret is slewed there"): its `systems.0.cls = 1` case now reaches `duel slot identity` instead of `pewTurret: out of range`. Re-pick the tick in Task 14 (log `systems.0.pewTurret` to confirm).
 - Task 4: `tests/duelScripted.test.ts:86` ('plays a whole duel with every command admitted'; seed 1 stops sending `sit` once the Hound flies with drag): `expected [ 'shipPower', 'stand', 'torpLock', 'weaponPower' ] to deeply equal [ 'shipPower', 'sit', 'stand', 'torpLock', 'weaponPower' ]`. Re-pick the seed in Task 14 (the lowest seed whose duel uses every kind).
+- Task 6: that `tests/duelScripted.test.ts` 'plays a whole duel' is green again at seed 1 with the new kinds list (`throttleCut` added, kind a): seed 1 sits again once the Helm cuts. No re-pick needed unless a later task turns it red.
+- Task 6 (first seen in Task 6's full suite; already red before Task 6, so from Task 3 to 5, not run in their targeted runs): `tests/duelCheckpoint.test.ts:51` ('continuation proof'; the split tick is picked by "a missile in flight at the split": `expected false to be true`). Re-pick the split in Task 14.
+- Task 6 (same, already red before Task 6): `tests/duelOracle.test.ts:85` (the first-difference line of scripted-3 under a swapped alias: now `first difference at tick 265` where the test pins `tick 1`; with drag the Hound no longer drifts from tick 1, so the first difference is the Helm's first thrust again, as at SIM 54). Re-pick the line in Task 14.
+- Task 6 (new with the scripted Helm's cut): `tests/duelModules.test.ts:90` ('a missile pool entry is walked against its fields'; the tick is picked by "seed 6 tick 2746 has a missile in flight": `expected false to be true`). Re-pick the tick in Task 14.
+- Task 6: `tests/tacticalSlots.test.ts:162` now reads `expected 7303 to be 7796`; `tests/duelSnapshot.test.ts`'s fixture now fails its precondition "one missile in flight at seed 1 tick 6465" (`expected -1 to be greater than or equal to 0`). Both already listed above.
 
 ## Kind (a) rewrites
 
@@ -63,4 +68,24 @@ FAIL: median 140.1 s < 180
 - Task 5 (the free cold gas is replaced by the charge): `tests/crewThrusters.test.ts` (the describe renamed, the 3000-tick free-gas test deleted because no class keeps free gas, the header line), covered instead by `tests/helmGas.test.ts`. No kind (b) failures in the Task 5 targeted run.
 
 ## Scripted Helm tuning (spec §5's gate rule)
+
+- Task 6: none. Every per-seed gate in `tests/duelGates.test.ts` passed with no constant moved (21 passed, the 2 aggregate bands skipped); no crew twin added.
+
+## Gates after Task 6
+
+`npx tsx scripts/duel-telemetry.ts` (the aggregate was already red at the base; the per-seed gates pass):
+
+```
+median length 136.7 s (gate 180 to 300)
+crew wins 0, crew losses 10, draws 0, at the cap 0 (gate: a win and a loss, none at the cap)
+every duel with a crew pew or gun round and a missile launch: true
+planet-contact ends under 30 s: 0 (gate 0)
+
+passive crew (nobody at either console), not gated: seed 1 127.2 s crew loss; seed 2 146.5 s crew loss; seed 3 85.1 s crew loss; seed 4 132.5 s crew loss; seed 5 139.6 s crew loss; seed 6 103.2 s crew loss; seed 7 114.5 s crew loss; seed 8 138.1 s crew loss; seed 9 113.7 s crew loss; seed 10 170.8 s crew loss
+passive median 129.9 s, shortest 85.1 s
+```
+
+`npx tsx scripts/valkyrn-telemetry.ts`: all 25 lines identical, character for character, to the Base section (checked with `diff`), ending `FAIL: median 140.1 s < 180` as at the base.
+
+Full suite after Task 6 (typecheck clean, electron-vite build ok): 519 files, 6217 passed, 7 failed, 2 skipped. All 7 failures are kind (b) in the known-red window and listed above: `duelGolden`, `duelRematchGolden`, `tacticalSlots:162`, `duelSnapshot` fixture, `duelCheckpoint:51`, `duelOracle:85`, `duelModules:90`. No timeouts.
 
