@@ -37,6 +37,8 @@ function run(o: { seed?: number; rttMs: number; loss?: number; jitterMs?: number
  *  link seeds: 67–75% (even pump) and 64–75% (uneven pump); the branch before it, 29% and 39%. The floor sits 9 points
  *  under the lowest seed and 16 over the branch's higher figure (see the research note's "Fable fixes"). */
 const B2_FLOOR = 0.55, B3_FLOOR = 0.55;
+/** The checked confirms whose measured target was past the slack from where P stood (Fable #2's retargets, unclamped). */
+const retargets = (c: readonly Confirm[]) => c.filter((x) => Math.abs(x.standing - x.measured) > 2).length;
 const confirms = (r: ReturnType<typeof run>) => r.steps.flatMap((s) => s.confirms).filter((c) => c.tick % 3 === 0);
 // Each run is seconds of synchronous CPU on the full stack (R1-F10): yield a macrotask before each so vitest's worker RPC
 // is answered (as tests/duelOnline.test.ts does), and give every case 120 s.
@@ -71,7 +73,7 @@ describe('G1: exact when inputs are known (Net-4a §6)', SLOW, () => {
     // (33% on the reviewer's run). With them kept, 71% (B2_FLOOR's comment has the spread).
     const r = run({ rttMs: 100, jitterMs: 5, ticks: 600, me: changing, partner: constant(N()) });
     const c = confirms(r).filter((x) => x.result !== 'reset'), share = c.filter((x) => x.result === 'verified').length / c.length;
-    console.log(`G1b2 100 ms ±5 ms changing: verified ${(share * 100).toFixed(1)}% of ${c.length}`);
+    console.log(`G1b2 100 ms ±5 ms changing: verified ${(share * 100).toFixed(1)}% of ${c.length}, retargets ${retargets(c)}`);
     expect(c.length).toBeGreaterThan(150);
     for (const x of c) if (x.hashBefore !== null && x.result === 'verified') expect(x.hashBefore).toBe(x.hash);
     expect(share).toBeGreaterThanOrEqual(B2_FLOOR);
@@ -81,7 +83,7 @@ describe('G1: exact when inputs are known (Net-4a §6)', SLOW, () => {
     // world tick runs none and the next runs two (the local clock catches up at once, as the pump does).
     const r = run({ rttMs: 100, jitterMs: 5, ticks: 600, me: changing, partner: constant(N()), pump: (k) => (k % 5 === 0 ? 0 : k % 5 === 1 ? 2 : 1) });
     const c = confirms(r).filter((x) => x.result !== 'reset'), share = c.filter((x) => x.result === 'verified').length / c.length;
-    console.log(`G1b3 100 ms ±5 ms changing, uneven pump: verified ${(share * 100).toFixed(1)}% of ${c.length}`);
+    console.log(`G1b3 100 ms ±5 ms changing, uneven pump: verified ${(share * 100).toFixed(1)}% of ${c.length}, retargets ${retargets(c)}`);
     expect(c.length).toBeGreaterThan(150);
     expect(share).toBeGreaterThanOrEqual(B3_FLOOR);
   });

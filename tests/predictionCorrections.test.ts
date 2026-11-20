@@ -34,7 +34,8 @@ function scriptedRun(rttMs: number, jitterMs: number) {
 const HELM_HEADING_P95 = 8;
 describe('G4: small corrections (Net-4a §6)', { timeout: 300_000 }, () => {
   for (const rttMs of [50, 100, 200]) it(`scripted pair at ${rttMs} ms: own ship p95 <= 1 u, max <= 5 u; character <= 0.5 tile; reseats <= 3 per seat and <= 2 tiles; the Helm seat's heading p95 <= ${HELM_HEADING_P95} steps`, () => {
-    const { w, seats } = scriptedRun(rttMs, 5);
+    const { w, seats, warm } = scriptedRun(rttMs, 5);
+    console.log(`G4 ${rttMs} ms retargets after the first second: ${seats.map((s, k) => s.predictor.stats().retargets - warm[k]!).join(', ')}`);
     for (const s of seats) {
       // Plan deviation 3: a correction that changes this seat's seated station takes back a refused (or moved) sit or
       // stand (§3.7); the half-tile bound is for position error, so it applies to the rest; reseats are counted and bounded apart.
