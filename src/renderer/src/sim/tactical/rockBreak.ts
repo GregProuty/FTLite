@@ -3,7 +3,7 @@
 // (parent r ≥ 40, ≥ 30, ≥ 20; else dust) evenly round the hit direction, born 0.85, 0.80 or 0.70 r out so no two siblings
 // overlap; any other break fans 3 or 2 pieces across the 120° ahead, born 0.6 r out; a tidal break (the Roche rule) is a
 // fan with a tiny kick. Piece j leaves at the parent's velocity plus its direction times k_j = v_esc(ρ_parent) · (MIN +
-// SPAN · f_j), f_j the fractional part of j · GOLDEN_FRAC: burst 0.15 + 0.25 f, fan 0.10 + 0.15 f, tidal 0.03 + 0.05 f.
+// SPAN · f_j), f_j the fractional part of j · GOLDEN_FRAC: burst 0.30 + 0.30 f (§14 D13), fan 0.10 + 0.15 f, tidal 0.03 + 0.05 f.
 // Directions come from literal cos/sin tables turned onto the hit direction by multiplication. Piece 0 keeps the broken
 // rock's slot, the others take the lowest empty slots, else evict the smallest rock (any live kind) smaller than the
 // piece that is not born this tick and not in `exclude` (ties: the lowest slot), else the piece is dust (rockSlotDust + 1).

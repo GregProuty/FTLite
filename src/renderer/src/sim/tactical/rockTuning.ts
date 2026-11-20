@@ -78,8 +78,8 @@ export const RAM_SOFT = 15;
 export const BURST_8_MIN_R = 40, BURST_6_MIN_R = 30, BURST_4_MIN_R = 20;
 export const BURST_OFFSET: Readonly<Record<4 | 6 | 8, number>> = { 8: 0.85, 6: 0.8, 4: 0.7 };
 export const FAN_OFFSET = 0.6;
-/** §13.6, §5.2: piece j's kick is v_esc(ρ) · (MIN + SPAN · f_j), f_j the fractional part of j · GOLDEN_FRAC. */
-export const BURST_KICK_MIN = 0.15, BURST_KICK_SPAN = 0.25, FAN_KICK_MIN = 0.1, FAN_KICK_SPAN = 0.15;
+/** §13.6, §5.2, §14 D13 (burst back to medium, 0.30 + 0.30 f): piece j's kick is v_esc(ρ) · (MIN + SPAN · f_j), f_j the fractional part of j · GOLDEN_FRAC. */
+export const BURST_KICK_MIN = 0.3, BURST_KICK_SPAN = 0.3, FAN_KICK_MIN = 0.1, FAN_KICK_SPAN = 0.15;
 export const GOLDEN_FRAC = 0.6180339887498949;
 /** §5.3: a blast's push on a rock is at most BLAST_PUSH_CAP · v_esc(ρ), a laser's at most LASER_PUSH_CAP · v_esc(ρ). */
 export const BLAST_PUSH_CAP = 0.5, LASER_PUSH_CAP = 0.25;

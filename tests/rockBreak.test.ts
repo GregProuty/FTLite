@@ -49,7 +49,7 @@ describe('the fan (laser, blast-secondary, collision, ram; spec §3.4, §5.2)', 
 });
 
 describe('the burst (a torpedo direct hit; spec §5.1, §13.6)', () => {
-  it('r 50 and r 40 give 8 pieces, r 35 and r 30 give 6, r 20 gives 4, r 19 dust; a full circle from u, born 0.85/0.80/0.70 r out at v_esc · (0.15 + 0.25 f_j)', () => {
+  it('r 50 and r 40 give 8 pieces, r 35 and r 30 give 6, r 20 gives 4, r 19 dust; a full circle from u, born 0.85/0.80/0.70 r out at v_esc · (0.30 + 0.30 f_j) (D13)', () => {
     for (const [r, n] of [[50, 8], [40, 8], [35, 6], [30, 6], [20, 4], [19, 0]] as const) {
       const st = arena();
       mover(st, 100, 0, 2000, 0, 0, r);
@@ -61,7 +61,7 @@ describe('the burst (a torpedo direct hit; spec §5.1, §13.6)', () => {
       expect(pieces).toHaveLength(n);
       expect(pieceOffset('burst', n)).toBe(n === 8 ? 0.85 : n === 6 ? 0.8 : 0.7);
       pieces.forEach((slot, j) => {
-        const p = rockAt(st, slot), a = deg((360 * j) / n), k = ve * (0.15 + 0.25 * kickFraction(j));   // from u = (0, −1): (sin θ, −cos θ)
+        const p = rockAt(st, slot), a = deg((360 * j) / n), k = ve * (0.3 + 0.3 * kickFraction(j));   // from u = (0, −1): (sin θ, −cos θ)
         expect(p.r).toBeCloseTo(rp, 12);
         expect(p.x).toBeCloseTo(off * Math.sin(a), 9);
         expect(p.y).toBeCloseTo(2000 - off * Math.cos(a), 9);
@@ -79,10 +79,10 @@ describe('the burst (a torpedo direct hit; spec §5.1, §13.6)', () => {
       }
     }
   });
-  it('every kick is in its band: burst 0.15 to 0.40, fan 0.10 to 0.25, tidal 0.03 to 0.08 of v_esc', () => {
+  it('every kick is in its band: burst 0.30 to 0.60 (D13), fan 0.10 to 0.25, tidal 0.03 to 0.08 of v_esc', () => {
     for (let j = 0; j < 8; j++) {
       const b = pieceKick(1200, j, 'burst') / escapeSpeed(1200), f = pieceKick(1200, j, 'fan') / escapeSpeed(1200), t = pieceKick(150, j, 'tidal') / escapeSpeed(150);
-      expect(b).toBeGreaterThanOrEqual(0.15); expect(b).toBeLessThan(0.4);
+      expect(b).toBeGreaterThanOrEqual(0.3); expect(b).toBeLessThan(0.6);
       expect(f).toBeGreaterThanOrEqual(0.1); expect(f).toBeLessThan(0.25);
       expect(t).toBeGreaterThanOrEqual(0.03); expect(t).toBeLessThan(0.08);
     }

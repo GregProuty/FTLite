@@ -14,7 +14,7 @@ import { blastFall, detonateTorpedo } from '../src/renderer/src/sim/tactical/roc
 import { arena, fillPool, mover, rockEvents, withSwitches } from './helpers/rockArena';
 
 describe('the direct hit (spec §4.2 item 1)', () => {
-  it('bursts the touched rock whatever its hp: r 50 gives 8, r 35 and r 30 give 6, r 20 gives 4, r 19 dust; piece 0 straight on at v_esc · 0.15 plus the rock', () => {
+  it('bursts the touched rock whatever its hp: r 50 gives 8, r 35 and r 30 give 6, r 20 gives 4, r 19 dust; piece 0 straight on at v_esc · 0.30 plus the rock', () => {
     for (const [r, n] of [[50, 8], [35, 6], [30, 6], [20, 4], [19, 0]] as const) {
       const st = arena();
       mover(st, 100, -54, 2000, 5, 0, r, 99);
@@ -24,7 +24,7 @@ describe('the direct hit (spec §4.2 item 1)', () => {
       if (n === 0) { expect(rockEvents(st, 'dust')).toMatchObject([{ rock: 100, by: 'torpedo', ship: 0 }]); continue; }
       const pieces = rockEvents(st, 'split')[0]!.pieces!;
       expect(pieces).toHaveLength(n);
-      expect(rockAt(st, pieces[0]!).vx).toBeCloseTo(5 - 0.15 * escapeSpeed(Math.hypot(-54, 2000)), 9);   // u: the torpedo's velocity relative to the rock (west)
+      expect(rockAt(st, pieces[0]!).vx).toBeCloseTo(5 - 0.3 * escapeSpeed(Math.hypot(-54, 2000)), 9);   // u: the torpedo's velocity relative to the rock (west)
       expect(rockAt(st, pieces[0]!).vy).toBeCloseTo(0, 9);
     }
   });
@@ -69,7 +69,7 @@ describe('the blast (spec §4.2 items 2 and 3, asteroids-iii §5.3)', () => {
     fillPool(st, 9);
     mover(st, 120, 60, 2000, 0, 0, 8.5, 5);   // in the radius and the smallest: evicted first
     detonateTorpedo(st, 0, 0, 2000, -200, 0, 100);
-    const pieces = rockEvents(st, 'split')[0]!.pieces!, p = rockAt(st, 120), k1 = escapeSpeed(Math.hypot(-54, 2000)) * (0.15 + 0.25 * kickFraction(1));
+    const pieces = rockEvents(st, 'split')[0]!.pieces!, p = rockAt(st, 120), k1 = escapeSpeed(Math.hypot(-54, 2000)) * (0.3 + 0.3 * kickFraction(1));
     expect(pieces).toHaveLength(8);
     expect(pieces[1]).toBe(120);
     expect(p.r).toBeCloseTo((0.9 * 50) / Math.sqrt(8), 12);
