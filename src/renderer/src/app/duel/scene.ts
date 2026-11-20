@@ -25,9 +25,11 @@ import { createFx, fxDt, hitsCrew, interpolatedMissile, pushEvents, pushGunHits,
 import { gunnerPresent, laserSituation, linedUp } from '../../render/duel/situationModel';
 import { countSit, createSitTracker, frameZoom, sitCard, trackSit, type SitSeat } from '../../render/duel/sitModel';
 import { shakeScale } from '../../render/shake';
+import { DEFAULT_MAP_GRID } from '../../render/tactical/mapGrid';
 import { flashesFor, pushHits } from '../../render/tactical/hitModel';
 import { createTacticalLayer } from '../../render/tactical/tacticalLayer';
-import { pushRockFx, pushRockShakes } from '../../render/tactical/rockFx';
+import { createRockTrack, resetRockTrack, updateRockTrack } from '../../render/tactical/rockTrack';
+import { holdFrame, pushRockFx, pushRockShakes } from '../../render/tactical/rockFx';
 import { hullFor } from '../../render/tactical/hullModel';
 import { interpolatedShip, pickContact, pickRock, tacticalModel, type PrevBody } from '../../render/tactical/tacticalModel';
 import { combatModel } from '../../render/tactical/weaponsModel';
@@ -47,7 +49,7 @@ import type { AimSample, HeldFlags } from './input';
 import type { ContactController } from './contactController';
 import type { MapRequests } from './mapRequests';
 import { fineHeadingOf, headingOf, pickRadius } from '../../render/tactical/tacticalModel';
-import { flightPointer, helmSteer, onWeaponsMap, torpedoSteer } from './flightPointer';
+import { flightPointer, helmSteer, onHelmMap, onWeaponsMap, torpedoSteer } from './flightPointer';
 import { flightAlert, type RefusedControl } from '../../render/duel/situationModel';
 import { pingAllowed, pushPing, stepPings, type Ping, type PingRequest } from '../../render/duel/pingModel';
 import type { TorpedoTone } from './duelAudio';
@@ -211,6 +213,9 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
   root.addChild(scene);
   renderer.app.stage.addChild(root);
   const fx = createFx();
+  const stageHook = globalThis as unknown as { __FTLITE_STAGE__?: boolean; __spikeAsteroidsFx?: unknown };
+  if (stageHook.__FTLITE_STAGE__ === true) stageHook.__spikeAsteroidsFx = fx;   // asteroids-iii: the frame-time check reads the live fx count (a read-only staging hook, behind duelMode's __FTLITE_STAGE__ flag like __spikeAsteroids)
+  const rockTrack = createRockTrack();   // asteroids-iii §7.1: smooth motion and trails
   const sound = options.audio ? createDuelAudio(options.audio) : null;   // Audio-i spec section 4b: both modes, so Single player is no longer silent
   let epoch: number | null = null;
   // Feel-i (console feel spec §1, §3): the seat the local character sat at and when (presentation seconds), whether it has
@@ -220,6 +225,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
   // Feel-ii: the pings on show (§2.7) and this screen's last own ping (ms, Single player's one-a-second), the latest refusal (§2.8).
   const pings: Ping[] = [];
   let lastPing: number | null = null, refused: (Refusal & { at: number }) | null = null;
+  let helmPick = false;   // owner 2026-11-19: the crew Helm's left press landed on a ship contact; no steer until it is let go
   let lastAimed: string | null = null;   // the weapon picked up on the last drawn frame (Valkyrn spec §5.1: right button)
   let manualPrev = false;   // W-4c Decision 14: whether the crew's MANUAL torpedo flew on the last drawn frame
   const fog = createFog();   // Engineering spike §10.4: this screen's ghosts
@@ -232,7 +238,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       if (epoch === null) { epoch = source.epoch(); lastOutcome = source.duel.tactical.outcome; if (source.seed !== options.seed) layer.reseed(source.seed); }   // the online duel learns its seed from the first publication; a round already decided on attach is no kill to show
       if (source.epoch() !== epoch) {   // a new round (a restart before H-2): every view-owned cache starts again
         epoch = source.epoch();
-        resetFx(fx); layer.reset(); layer.reseed(source.seed); sound?.reset();   // the next round's star field; a fresh audio baseline
+        resetFx(fx); resetRockTrack(rockTrack); layer.reset(); layer.reseed(source.seed); sound?.reset();   // the next round's star field; a fresh audio baseline
         lastOutcome = Outcome.Running; pings.length = 0; refused = null;
         fires = null; flashUntil = 0;
         options.requests?.resetReticle();   // W-2, W-4 spec §10: a new round's reticle aim starts empty (the MANUAL laser aims along the nose, the Hound's reticle waits for the pointer)
@@ -268,7 +274,12 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       if (pewClick && click) {
         const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), w = screenToWorld(cam!, viewport, click.x, click.y);
         if (Math.hypot(w.x - b.x, w.y - b.y) > 0) options.requests?.pew(fineHeadingOf(w.x - b.x, w.y - b.y));
-      } else if (contact && click && onMap && station !== 'flight' && !crewHelmMap   // Valkyrn spec §5.1: on the Flight seat the left button is the gun; playtest2feedback §4a: on the crew Helm it only steers
+      } else if (contact && click && crewHelmMap && onHelmMap(click, contact.state() != null)) {
+        // Owner 2026-11-19: on the crew Helm a left press on a ship contact opens (or switches, or closes) its window, as on the
+        // other Helm, and steers nothing until the button is let go; a press anywhere else only steers (playtest2feedback §4a).
+        const ship = pickContact({ state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, fog: fogView }, click);
+        if (ship !== null) { contact.click(ship); helmPick = true; }
+      } else if (contact && click && onMap && station !== 'flight' && !crewHelmMap   // Valkyrn spec §5.1: on the Flight seat the left button is the gun
         // W-1 review F4: at Weapons the window's own click is only a picked-up card's, or a click inside the shown window; any other
         // click (over a console block, empty map the pew declined) is dropped, so a block never opens or closes the window.
         && !(station === 'weapons' && view === 'weapons' && (contact.aimWeapon() ?? null) === null && !(contact.state() != null && click.x >= CONTACT.x && click.x < CONTACT.x + CONTACT.w && click.y >= CONTACT.y && click.y < CONTACT.y + CONTACT.h))) {
@@ -335,7 +346,9 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       // Playtest2feedback §4a: on the crew Helm's map the held left button steers, every frame: the bearing from the own ship's
       // drawn marker to the pointer while it is on the open map and off the ship (else the last bearing stands).
       let steerTo: { x: number; y: number } | null = null;   // §6: the steering marker's end while the left button steers
-      if (onMap && crewHelmMap && running && !overlay.layerPaused && (options.leftHeld?.() ?? false)) {
+      const leftHeld = options.leftHeld?.() ?? false;
+      if (!leftHeld) helmPick = false;
+      if (onMap && crewHelmMap && running && !overlay.layerPaused && leftHeld && !helmPick) {
         const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), p = options.pointer?.() ?? null;
         const h = helmSteer({ pointer: p, ship: worldToScreen(cam!, viewport, b.x, b.y), zoom: cam!.zoom, contactShown: shown });
         if (h !== null) { options.requests?.steer(h); steerTo = p; }   // final review M1: the marker only while a steer goes out
@@ -357,9 +370,11 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
           if (h !== null) options.requests?.torpHeading(h);
         }
       }
+      updateRockTrack(rockTrack, d.tactical);   // every frame, whichever view shows
       const vent = source.helmVent?.() ?? d.helmVent;   // §6: the puffs and the hiss
       const t = performance.now() / 1000;   // the presentation clock: the map's blinks and the window's, frame for frame
       ({ watch: fires, flashUntil } = fireWatch(fires, d, t, flashUntil));   // own ship window spec §4
+      const holding = holdFrame(fx, dt);   // asteroids-iii §5.6: hit-stop (it holds from the frame after the burst; plan deviation 10)
       const events = source.drainEvents();
       pushMapEffects(fx, events, d.tactical);   // Engineering spike §10.4: under the fog
       if (cam) {   // spike ii §7 item 6: a blast or a break on this screen shakes it
@@ -384,8 +399,8 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       } else if (sitSeat !== seat) { seat = sitSeat; carded = false; }   // a Tab, a stand or Science: no new sit
       const held = source.uiHeld(), aimed = contact?.aimWeapon() ?? null;
       lastAimed = aimed;
-      // Final review: at the crew Helm A/D are thrusters, so the goal is used by the steer or auto-face; else A/D or auto-face.
-      if (seat === 'helm' && (crewSeat ? steerTo !== null || held.fire : held.left || held.right || held.fire)) goalUsed = true;
+      // The Helm goal is used by A/D or auto-face, and at the crew Helm by the steer too (owner 2026-11-19: A/D turn there again).
+      if (seat === 'helm' && (held.left || held.right || held.fire || (crewSeat && steerTo !== null))) goalUsed = true;
       if (seat === 'weapons' && aimed === 'laser') goalUsed = true;
       if (seat !== null && (held.left || held.right || held.fire || held.up || held.down || aimed !== null || shownThrottle() !== sitThrottle)) acted = true;
       if (sound) {   // Audio-i spec section 4: the same events the effects use; pan from the screen on a map view, crew-relative inside
@@ -396,7 +411,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       }
       // Paused, or a frozen online copy (a lost link): the callouts, flashes, heal motes and the charge pulse hold (polish i review).
       const frozen = source.paused() || source.live?.() === false;
-      stepFx(fx, frozen ? 0 : fxDt(fx, dt));   // Feel-i: the kill's slow motion is render time only
+      stepFx(fx, frozen || holding ? 0 : fxDt(fx, dt));   // Feel-i: the kill's slow motion is render time only
       stepPings(pings, frozen ? 0 : dt);
       trackSolution(fx, linedUp(laserSituation(d.tactical, fx.sinceShot, gunnerPresent(d))), frozen ? 0 : dt);
       recordTrails(fx, d.tactical, source.missilePrev, alpha);
@@ -409,7 +424,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         const hoverRock = point ? rockHoverAt(pickAt, point) : null;
         // Step 4: the map keeps its arrows and info line clear of the window while it is shown.
         const input = {
-          state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, console: camKey!, axes: source.axes(),
+          rockTrack, state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, console: camKey!, axes: source.axes(),
           ships: fx.kill || !fogView.seen.enemy ? [0] : [0, 1], fog: fogView, paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: { left: TABS_RIGHT, right: SIDE.x } } : { reserveRight: READOUT_COLUMN }), ...(onMap ? { avoid: OWN_SHIP } : {}), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
           holdHeading: view === 'flight' ? -1 : preview ?? d.holdHeading, holdPreview: preview !== null, crewHull: hullFor(true, d.interior.layout.hull), gravity: camKey === 'helm', flight: view === 'flight', alert, pings,   // Feel-ii; Valkyrn spec §4.5: the crew hull
           laserAim: station === 'weapons' && view === 'weapons' ? options.requests?.reticleAim() ?? null : null,   // W-2: the MANUAL laser's aim (the reticle) (the model aims along the nose without one)
@@ -417,11 +432,12 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
           weaponSel: source.weaponSel?.() ?? 0,
           reticle: station === 'weapons' && view === 'weapons' && reticleOnMap ? reticlePointer : null,   // W-4 spec §10: the cross at the pointer
           rockHover: hoverRock !== null && aimed !== null ? { rock: hoverRock, weapon: aimed } : null,
-          vent, steerTo   // playtest2feedback §6: the puffs and the steering marker
+          vent, steerTo,   // playtest2feedback §6: the puffs and the steering marker
+          mapGrid: renderer.mapGrid?.() ?? DEFAULT_MAP_GRID   // Settings: the gravity grid or the square one
         } as const;
         const model = tacticalModel(input);
         layer.setCrt(crtScale(renderer.crt()));   // CRT map spec sections 3-4: the filter strength follows the setting
-        layer.draw(model, combatModel({ ...input, t: frozen ? 0 : t, enemyArrow: model.arrows.find((a) => a.target === 'enemy') ?? null, goal: onConsole && seat === 'helm' && !goalUsed }), t);   // the blinks run on the presentation clock, paused or not
+        if (!holding) layer.draw(model, combatModel({ ...input, t: frozen ? 0 : t, enemyArrow: model.arrows.find((a) => a.target === 'enemy') ?? null, goal: onConsole && seat === 'helm' && !goalUsed }), t);   // the blinks run on the presentation clock, paused or not
         overlayView = mapOverlayOf(model.overlay);
       }
       // Sci-1 spec §7.3: Science's hover readout, from the crew ship's drawn position to the cursor.

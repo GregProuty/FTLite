@@ -1,0 +1,11 @@
+topic=helm-round2-spec
+subject_kind=spec
+subject=docs/superpowers/specs/2026-11-19-helm-round2-design.md
+worktree=C:\Users\djuar\FTLite
+base=main
+cap=10
+effort=high
+confirm=0
+verify=
+created=2026-11-19
+head_at_setup=8670f6ce

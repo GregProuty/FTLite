@@ -18,12 +18,15 @@ export function segmentNear(ax: number, ay: number, bx: number, by: number, cx: 
   return px * px + py * py < r * r;
 }
 
+const sightNear: number[] = [];   // lineOfSight's rocksNear scratch
 /** True when nothing solid (the planet or any asteroid) lies across the segment (spec §7a line of sight). */
 export function lineOfSight(state: TacticalState, ax: number, ay: number, bx: number, by: number): boolean {
   const p = state.map.planet;
   if (segmentNear(ax, ay, bx, by, p.x, p.y, p.r)) return false;
   const half = Math.max(Math.abs(bx - ax), Math.abs(by - ay)) / 2;
-  for (const k of rocksNear(state, (ax + bx) / 2, (ay + by) / 2, half)) {
+  const n = rocksNear(state, (ax + bx) / 2, (ay + by) / 2, half, sightNear);
+  for (let i = 0; i < n; i++) {
+    const k = sightNear[i]!;
     if (state.rockBorn[k] === 1) continue;   // spike ii §6.2: as firstBlocker, a piece made this tick is not in the way
     const a = rockAt(state, k);
     if (segmentNear(ax, ay, bx, by, a.x, a.y, a.r)) return false;

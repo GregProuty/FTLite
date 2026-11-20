@@ -1,4 +1,4 @@
-// W-4 spec §5.1: an autocannon round meeting a rock pushes it 500 / m along the round (waking a static rock), wears it
+// W-4 spec §5.1: an autocannon round meeting a rock pushes it 500 / m along the round (freeing a rail rock), wears it
 // 1/4 hp with a rock `hit` event by 'gun' and the owner, and breaks it in the fan pattern at 0 hp; the ties stay
 // stepRounds' (ship, then rocks, then the planet); pew pew rounds and the Valkyrn's rounds still stop with no effect; a
 // MAN round at a rock ends the hold; the view sparks on a gun hit and plays no sound for it.
@@ -32,15 +32,14 @@ describe('autocannon rounds and rocks (W-4 spec §5.1)', () => {
     expect(hits[0]).toMatchObject({ by: 'gun', rock: 100, ship: 0 });
     expect(st.rockHits).toBe(1);
   });
-  it('a static rock wakes on the push', () => {
-    // A Static rock is found only through the broad-phase grid, built from the map's asteroids at their seeded places
-    // (rocks.ts rocksNear), so the test puts seeded asteroid 0 back in its own slot (rockArena seeded).
+  it('a rail rock comes off its rail on the push', () => {
+    // Asteroids-iii: a seeded asteroid rides its rail (kind Rail) until something pushes it; the push frees it.
     const st = arena(5, ShipClass.Cutter);
     seeded(st, 0);
-    const a = st.map.asteroids[0]!;
+    const a = rockAt(st, 0), vx0 = a.vx;
     R(st, a.x - a.r - 5, a.y); stepRounds(st);
-    expect(st.rocks[0 * ROCK_STRIDE]).toBe(RockKind.Moving);
-    expect(rockAt(st, 0).vx).toBeGreaterThan(0);
+    expect(st.rocks[0 * ROCK_STRIDE]).toBe(RockKind.Free);
+    expect(rockAt(st, 0).vx).toBeGreaterThan(vx0);
   });
   it('an r 15 rock (2 hp) breaks on the 8th round, in the fan pattern, and the owner\'s rocksBroken rises by 1', () => {
     const st = arena(5, ShipClass.Cutter);
@@ -71,7 +70,7 @@ describe('autocannon rounds and rocks (W-4 spec §5.1)', () => {
     expect(rockAt(st, 100).hp).toBe(2);
     expect(st.systems[0]!.gunHits).toBe(1);
     const p = arena(5, ShipClass.Cutter), planet = p.map.planet;
-    writeRock(p, 100, RockKind.Moving, planet.x, planet.y, 0, 0, planet.r, 2);   // the planet's circle exactly
+    writeRock(p, 100, RockKind.Free, planet.x, planet.y, 0, 0, planet.r, 2);   // the planet's circle exactly
     placeRound(p, { x: planet.x - planet.r - 5, y: planet.y, vx: 700, vy: 0, age: 0, owner: 0 });
     stepRounds(p);
     expect(rockAt(p, 100).hp).toBe(1.75);

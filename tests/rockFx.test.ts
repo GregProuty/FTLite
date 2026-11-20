@@ -4,7 +4,7 @@
 // growth, the moving-rock streaks and the cracks from hp / hpMax.
 import { describe, expect, it } from 'vitest';
 import { createFx, type FxItem, type ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
-import { BLAST_SHAKE, CHIP_MIN_PX, CHIP_S, CHIP_TAIL_MIN_PX, CORE_FLASH_S, CORE_MIN_PX, FLARE_MIN_PX, pushRockFx, pushRockShakes, rockEffectDraw, SHOCK_S, SPECK_MIN_PX, SPECK_S } from '../src/renderer/src/render/tactical/rockFx';
+import { BLAST_SHAKE, CHIP_MIN_PX, CHIP_S, CHIP_TAIL_MIN_PX, CORE_FLASH_S, CORE_MIN_PX, FLARE_MIN_PX, holdFrame, HIT_STOP_S, PUFF_COUNT, pushRockFx, pushRockShakes, rockEffectDraw, SHARD_COUNT, SHOCK_S, SPECK_MIN_PX, SPECK_S, TOUCH_SPARK_S } from '../src/renderer/src/render/tactical/rockFx';
 import { CRT, CRT_RAMP } from '../src/renderer/src/render/tactical/crtTheme';
 import { createCamera } from '../src/renderer/src/render/tactical/camera';
 import { tacticalModel, type TacticalModelInput } from '../src/renderer/src/render/tactical/tacticalModel';
@@ -31,16 +31,61 @@ describe('rock fx (spec §7)', () => {
     const again = createFx(); pushRockFx(again, [{ kind: 'laser', ship: 0, hit: false, stripped: false, room: -1, x1: 0, y1: 0, x2: 100, y2: 0, rock: 3 }]);
     expect(of(again.items, 'chip').length).toBe(chips.length);   // seeded: the same frame gives the same spray
   });
-  it('a break: a burst sized by the rock and 10 to 16 specks; dust: a burst and a puff; a hit alone: nothing', () => {
+  it('a burst split: a burst sized by the rock and 16 shards at 150 to 250 u/s fading over 1 to 2 s, and the hit-stop', () => {
     const fx = createFx();
-    pushRockFx(fx, [rock('split')]);
+    pushRockFx(fx, [{ ...rock('split', 'torpedo'), burst: true } as ViewEvent]);
     expect(of(fx.items, 'burst')).toMatchObject([{ size: 30 }]);
-    expect(of(fx.items, 'speck').length).toBeGreaterThanOrEqual(10); expect(of(fx.items, 'speck').length).toBeLessThanOrEqual(16);
-    const dust = createFx(); pushRockFx(dust, [rock('dust')]);
-    expect(of(dust.items, 'burst')).toHaveLength(1);
-    expect(of(dust.items, 'speck').length).toBeGreaterThanOrEqual(6);
+    const shards = of(fx.items, 'speck');
+    expect(shards).toHaveLength(16); expect(SHARD_COUNT).toBe(16);
+    for (const s of shards) {
+      const sp = Math.hypot(s.vx! - 20, s.vy!);
+      expect(sp).toBeGreaterThanOrEqual(150); expect(sp).toBeLessThanOrEqual(250);
+      expect(s.life).toBeGreaterThanOrEqual(1); expect(s.life).toBeLessThanOrEqual(2);
+    }
+    expect(fx.hold).toBe(HIT_STOP_S);
+  });
+  it('a fan split or a dust: a burst and a puff of 6 shards, no hit-stop; a hit alone: nothing', () => {
+    for (const what of ['split', 'dust'] as const) {
+      const fx = createFx(); pushRockFx(fx, [rock(what)]);
+      expect(of(fx.items, 'burst')).toHaveLength(1);
+      expect(of(fx.items, 'speck')).toHaveLength(PUFF_COUNT);
+      expect(fx.hold).toBe(0);
+    }
     const hit = createFx(); pushRockFx(hit, [rock('hit')]);
     expect(hit.items).toEqual([]);
+  });
+  it('a touch: a small spark (a slow billiard\'s cue)', () => {
+    const fx = createFx();
+    pushRockFx(fx, [{ kind: 'rock', what: 'touch', by: 'collision', rock: 1, other: 2, x: 5, y: 6, r: 10, vx: 0, vy: 0, speed: 9 } as ViewEvent]);
+    expect(fx.items).toMatchObject([{ kind: 'spark', life: TOUCH_SPARK_S, x1: 5, y1: 6 }]);
+  });
+  it('hit-stop: holdFrame holds while fx.hold lasts, then lets drawing go on', () => {
+    const fx = createFx();
+    expect(holdFrame(fx, 1 / 60)).toBe(false);
+    fx.hold = HIT_STOP_S;
+    let held = 0;
+    for (let k = 0; k < 20; k++) if (holdFrame(fx, 1 / 60)) held++;
+    expect(held / 60).toBeGreaterThanOrEqual(HIT_STOP_S - 1 / 60); expect(held / 60).toBeLessThanOrEqual(HIT_STOP_S + 1 / 60);
+    expect(fx.hold).toBe(0);
+  });
+  it('a chain of bursts gives at most one 80 ms hold per 330 ms', () => {
+    const fx = createFx(), burst = { ...rock('split', 'torpedo'), burst: true } as ViewEvent;
+    let held = 0, starts = 0, prev = false;
+    for (let k = 0; k < 120; k++) {   // two seconds at 60 Hz, a burst every 5 frames
+      if (k % 5 === 0) pushRockFx(fx, [burst]);
+      const h = holdFrame(fx, 1 / 60); if (h) held++; if (h && !prev) starts++; prev = h;
+    }
+    expect(starts).toBeLessThanOrEqual(Math.ceil(2 / 0.33)); expect(starts).toBeGreaterThan(1);
+    expect(held / 60).toBeLessThan(2 * (HIT_STOP_S / (HIT_STOP_S + 0.25)) + 0.2);
+  });
+  it('a soft cap: over 300 items the oldest specks go first, other kinds stay', () => {
+    const fx = createFx();
+    fx.items.push({ kind: 'shock', age: 0, life: 1, x1: 0, y1: 0, x2: 0, y2: 0, colour: 0 });
+    for (let k = 0; k < 400; k++) fx.items.push({ kind: 'speck', age: 0, life: 1, x1: k, y1: 0, x2: k, y2: 0, colour: 0 });
+    pushRockFx(fx, []);
+    expect(fx.items).toHaveLength(300);
+    expect(of(fx.items, 'shock')).toHaveLength(1);
+    expect(of(fx.items, 'speck')[0]!.x1).toBe(101);
   });
   it('a blast: a shockwave to its radius over 0.35 s, a core flash, 18 to 24 specks; a damaging rock-rock bump: one spark; a ram: none', () => {
     const fx = createFx();
@@ -115,14 +160,6 @@ describe('rock fx (spec §7)', () => {
 describe('streaks and cracks in the map model (spec §7 items 2, 3)', () => {
   const model = (st: ReturnType<typeof arena>) => tacticalModel({ state: st, prev: st.ships.map((s) => ({ x: s.x, y: s.y, h: s.heading })), alpha: 1, camera: createCamera(0, 2000, 1),
     viewport: { w: 1280, h: 720 }, console: 'weapons', axes: NO_AXES, ships: [0], paused: false, reserveRight: 0 } as TacticalModelInput);
-  it('a rock faster than 20 u/s streaks behind it (length with speed); slower or static rocks do not', () => {
-    const st = arena();
-    mover(st, 10, 0, 2000, 100, 0, 10); mover(st, 11, 100, 2000, 10, 0, 10); seeded(st, 0);
-    const m = model(st), fast = m.asteroids.find((a) => a.index === 10)!, slow = m.asteroids.find((a) => a.index === 11)!;
-    expect(fast.streak).toMatchObject({ x: 640 - 25, y: 360 });
-    expect(fast.streak!.alpha).toBeCloseTo(80 / 120, 9);
-    expect(slow.streak).toBeUndefined();
-  });
   it('wear is 1 − hp / hpMax', () => {
     const st = arena();
     mover(st, 10, 0, 2000, 0, 0, 30, 1.5);

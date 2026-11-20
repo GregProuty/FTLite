@@ -7,6 +7,7 @@ import { hx, hy } from './direction';
 import { inArc, segmentNear, sideOf } from './geometry';
 import { pewFull, pewLead, pewReady } from './pew';
 import { rockAt, rocksNear } from './rocks';
+import { ROCK_MAX_SPEED } from './rockTuning';
 import { classOf, HunterMode, missileOf, Room, type TacticalState } from './state';
 import {
   AIM_STEPS, AUTO_FACE_SIN, HUNTER_AVOID_MARGIN, HUNTER_BRAKE_SPEED, HUNTER_JITTER_TICKS, HUNTER_LEAD_S, HUNTER_LOOKAHEAD_S, HUNTER_MISSILE_COOLDOWN_TICKS,
@@ -62,14 +63,18 @@ function faceTurn(heading: number, dx: number, dy: number): number {
   return pursuitTurn(heading, dx, dy);
 }
 
-/** The first solid body ship i's straight-line path over the lookahead comes within its radius + margin of, or null. */
-function threatAhead(state: TacticalState, i: number): { x: number; y: number } | null {
-  const s = state.ships[i]!, ex = s.x + s.vx * HUNTER_LOOKAHEAD_S, ey = s.y + s.vy * HUNTER_LOOKAHEAD_S, p = state.map.planet;
+const threatNear: number[] = [];   // threatAhead's rocksNear scratch
+/** The first solid body ship i's straight-line path over the lookahead comes within its radius + margin of, or null.
+ *  Asteroids-iii 6.3: against a rock the sweep is the ship's velocity relative to the rock's, so a co-orbiting rock is no
+ *  threat. Exported for the tests. */
+export function threatAhead(state: TacticalState, i: number): { x: number; y: number } | null {
+  const s = state.ships[i]!, L = HUNTER_LOOKAHEAD_S, ex = s.x + s.vx * L, ey = s.y + s.vy * L, p = state.map.planet;
   if (segmentNear(s.x, s.y, ex, ey, p.x, p.y, p.r + HUNTER_AVOID_MARGIN)) return p;
-  const half = Math.max(Math.abs(ex - s.x), Math.abs(ey - s.y)) / 2 + HUNTER_AVOID_MARGIN;
-  for (const k of rocksNear(state, (s.x + ex) / 2, (s.y + ey) / 2, half)) {
-    const a = rockAt(state, k);
-    if (segmentNear(s.x, s.y, ex, ey, a.x, a.y, a.r + HUNTER_AVOID_MARGIN)) return a;
+  const reach = (Math.sqrt(s.vx * s.vx + s.vy * s.vy) + ROCK_MAX_SPEED) * L + HUNTER_AVOID_MARGIN;
+  const n = rocksNear(state, s.x, s.y, reach, threatNear);
+  for (let j = 0; j < n; j++) {
+    const a = rockAt(state, threatNear[j]!), rx = s.x + (s.vx - a.vx) * L, ry = s.y + (s.vy - a.vy) * L;
+    if (segmentNear(s.x, s.y, rx, ry, a.x, a.y, a.r + HUNTER_AVOID_MARGIN)) return a;
   }
   return null;
 }

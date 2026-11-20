@@ -37,12 +37,12 @@ describe('the duel snapshot (spec §6)', () => {
       } finally { disposeDuel(r); }
     } finally { disposeDuel(d); }
   });
-  it('regenerates the map, grid, repair points and Derived; never stores events', () => {
+  it('regenerates the map, repair points and Derived; never stores events', () => {
     const { d } = scriptedDuel(3, 300);
     try {
       const r = loadDuelSnapshot(CUTTER, saveDuelSnapshot(d, DIGEST), DIGEST);
       try {
-        expect(r.tactical.map).toEqual(d.tactical.map); expect(r.tactical.grid).toEqual(d.tactical.grid);
+        expect(r.tactical.map).toEqual(d.tactical.map);
         expect(r.points).toEqual(d.points); expect(r.interior.derived.layoutHash).toBe(d.interior.derived.layoutHash);
         expect(r.events).toEqual([]); expect(r.tactical.events).toEqual([]);
       } finally { disposeDuel(r); }
@@ -67,14 +67,14 @@ describe('the duel snapshot (spec §6)', () => {
     } finally { disposeDuel(d); }
   });
   it('rejects tactical, presence and repair values the module writers would refuse, even rehashed, before allocating', () => {
-    const { d } = scriptedDuel(4, 5657);   // a missile in flight, a damaged crew room and a repair in progress: the first such tick from 5000 on (W-4b (SIM 60): was seed 4 tick 6406; seed 1 6325, seeds 2 and 6 none, seed 3 5034, seed 5 6192, seed 7 6343, seed 8 6671, seed 9 6237, seed 10 6234; W-4a (SIM 60): was seed 4 tick 8456; the merge with the Engineering spike and owner 2026-11-19 (playtest2feedback merge, SIM 59): seed 4 tick 8456, was 5050; merge of the Engineering spike with W-1, W-2 and W-3: seed 4 tick 5050; the spike alone at SIM 55: seed 4 tick 6276; still seed 4 tick 6156 at SIM_VERSION 55 on master, W-1's pew merged with asteroids-ii; seed 6 tick 5000 on the W-1 branch, SIM_VERSION 54; SIM_VERSION 53, spike ii with the fan split at r 13: seed 4 tick 6156; seeds 1 to 3, 5 and 7 to 10 have none, seed 6 does at 6055; seed 1 tick 6472 before, SIM_VERSION 53 with the fan split at r 25, when seeds 2 to 5 and 7 to 10 had none and seed 6 did at 9888; seed 5 tick 7011 before, SIM_VERSION 50; seed 3 tick 5395 before FTL targeting, SIM_VERSION 49; seed 6 tick 6249 before the weapons update, SIM_VERSION 48; seed 9 tick 5108 before Sci-1's merge, SIM_VERSION 47; seed 4 tick 5193 before homing torpedoes, SIM_VERSION 46)
+    const { d } = scriptedDuel(1, 6465);   // a missile in flight, a damaged crew room and a repair in progress: the first such tick from 5000 on, on the lowest seed whose crew pew turret is slewed there (the W-4 merge with asteroids-iii, SIM 62: seed 4's first is 6308 with the turret at 0; was seed 4 tick 5657 on W-4 and 6649 on master; W-4b (SIM 60): was seed 4 tick 6406; seed 1 6325, seeds 2 and 6 none, seed 3 5034, seed 5 6192, seed 7 6343, seed 8 6671, seed 9 6237, seed 10 6234; W-4a (SIM 60): was seed 4 tick 8456; the merge with the Engineering spike and owner 2026-11-19 (playtest2feedback merge, SIM 59): seed 4 tick 8456, was 5050; merge of the Engineering spike with W-1, W-2 and W-3: seed 4 tick 5050; the spike alone at SIM 55: seed 4 tick 6276; still seed 4 tick 6156 at SIM_VERSION 55 on master, W-1's pew merged with asteroids-ii; seed 6 tick 5000 on the W-1 branch, SIM_VERSION 54; SIM_VERSION 53, spike ii with the fan split at r 13: seed 4 tick 6156; seeds 1 to 3, 5 and 7 to 10 have none, seed 6 does at 6055; seed 1 tick 6472 before, SIM_VERSION 53 with the fan split at r 25, when seeds 2 to 5 and 7 to 10 had none and seed 6 did at 9888; seed 5 tick 7011 before, SIM_VERSION 50; seed 3 tick 5395 before FTL targeting, SIM_VERSION 49; seed 6 tick 6249 before the weapons update, SIM_VERSION 48; seed 9 tick 5108 before Sci-1's merge, SIM_VERSION 47; seed 4 tick 5193 before homing torpedoes, SIM_VERSION 46)
     try {
       // The fixture's precondition first, so a trajectory change fails here by name rather than further down.
       const flying = d.tactical.missiles.findIndex((m) => m.active);
-      expect(flying, 'one missile in flight at seed 4 tick 5657').toBeGreaterThanOrEqual(0);
-      expect(d.tactical.missiles[1 - flying]!.active, 'only one missile in flight at seed 4 tick 5657').toBe(false);
-      expect(d.tactical.systems[0].rooms.some((r) => r > 0), 'a damaged crew room at seed 4 tick 5657').toBe(true);
-      expect(d.repair.some((r) => r > 0), 'a repair in progress at seed 4 tick 5657').toBe(true);
+      expect(flying, 'one missile in flight at seed 1 tick 6465').toBeGreaterThanOrEqual(0);
+      expect(d.tactical.missiles[1 - flying]!.active, 'only one missile in flight at seed 1 tick 6465').toBe(false);
+      expect(d.tactical.systems[0].rooms.some((r) => r > 0), 'a damaged crew room at seed 1 tick 6465').toBe(true);
+      expect(d.repair.some((r) => r > 0), 'a repair in progress at seed 1 tick 6465').toBe(true);
       const good = saveDuelSnapshot(d, DIGEST), names = new Map<string, number>();
       let at = 1;
       for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) { names.set(f.name, at); at += f.count; }
@@ -92,7 +92,7 @@ describe('the duel snapshot (spec §6)', () => {
         [`${free}.flight`, 2, 0.25, /a free entry holds values/], [`${free}.owner`, 0, 1, /a free entry holds values/],
         ['ships.0.headingAcc', 0, 1e300, /ships\.0\.headingAcc/], ['ships.1.headingAcc', 0, -1, /ships\.1\.headingAcc/],
         ['ships.1.skidBudget', 0, -0.5, /ships\.1\.skidBudget/], ['ships.0.graceUntil', 0, 2147483648, /ships\.0\.graceUntil/],
-        ['systems.0.cls', 0, 1, /systems\.0\.pewTurret: out of range/],   // W-4 spec §13.1: the crew's slewed pew turret (6144 here) is bounded by the claimed class first, and the Hunter has no turret; the identity case alone is below
+        ['systems.0.cls', 0, 1, /systems\.0\.pewTurret: out of range/],   // W-4 spec §13.1: the crew's slewed pew turret (5288 here) is bounded by the claimed class first, and the Hunter has no turret; the identity case alone is below
         ['systems.1.cls', 0, 0, /systems\.1\.pewCharge: out of range/],   // Task 6 review: the Hunter's charge (above the Cutter's full 180) is now bounded by the claimed class first; the identity case alone is below
         ['systems.1.laserManual', 0, 1, /systems\.1\.laserManual: only the crew laser has a manual mode/],   // W-2: the Hunter is always AUTO
         ['systems.0.laserAim', 0, 65536, /systems\.0\.laserAim: out of range/],   // W-2: a fine aim 0..65535, or −1

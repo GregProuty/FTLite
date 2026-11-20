@@ -1,7 +1,7 @@
 // `npm run test:duel-app-runtime` (H-2 spec §10): the online duel through the real application. Two Electron processes
 // with separate temporary userData, against local workerd through Net-3d's harness and driver entry. Through the menu,
 // Multiplayer → Host, Join by the displayed code, ready, start. Round 1 is the forced round end: a
-// test-only first seed (FTLITE_DUEL_TEST_SEED) whose round is decided on tick 3979 when nobody flies or fires, so in it
+// test-only first seed (FTLITE_DUEL_TEST_SEED) whose round is decided on tick 4199 when nobody flies or fires, so in it
 // both players only stand up and sit down again (their records' command samples); then Enter starts round 2 on both,
 // and a duel-*.jsonl with latency figures is on both machines. In round 2 the Helm (the guest) holds W for 2 s and the
 // ship's speed rises on both screens; Weapons (the host) presses Space with the beam unpowered (Engineering spike §10.3: nothing fires), clicks the beam's pips for a bar, presses Space again and a beam fires on both; both
@@ -19,8 +19,10 @@ import { build } from 'vite';
 import { computeContentDigest } from '../../build/contentDigest';
 import { startOnlineAppRuntime } from './online-app-runtime';
 
-/** The test-only first seed: with no flight or weapon input its first round is decided on tick 3979, about 66 s of play
- *  (the Hunter's 30 s grace included), a crew loss, whoever is seated or away (found by search over seeds 1-8000 at
+/** The test-only first seed: with no flight or weapon input its first round is decided on tick 4199, about 70 s of play
+ *  (the Hunter's 30 s grace included), a crew win (SIM_VERSION 60/61, identical per tick, asteroids-iii: found by search over seeds 1-300 before
+ *  tick 4500, none, then 301-4000 before tick 5000, 423 the earliest). Seed 6626 before: decided on tick 3979, a crew loss,
+ *  whoever is seated or away (7381 at SIM 60/61, identical per tick, past the step's 90 s; found by search over seeds 1-8000 at
  *  SIM_VERSION 59, the playtest2feedback merge: the crew Helm's Newtonian flight has no drag, so the unflown Hound
  *  drifts; 6626 is the earliest, then 5400 at 4172 and 2952 at 4230, a crew win; no seed in 1-8000 is decided before
  *  tick 3979). Seed 1980 before: decided on tick 3472 (SIM_VERSION 53 to 58; 8271 at 59, past the step's 90 s), found
@@ -31,7 +33,7 @@ import { startOnlineAppRuntime } from './online-app-runtime';
  *  planet dive. Seed 351 before that: decided on tick 4453 (SIM_VERSION 52; 7531, a crew loss, at 53); 3423 before the
  *  weapons update, SIM_VERSION 48; found by search over seeds 1-1500 at SIM_VERSION 45; 2277, decided on tick 1471,
  *  before the grace. */
-export const DUEL_TEST_SEED = 6626;
+export const DUEL_TEST_SEED = 423;
 const delay = (ms: number) => new Promise(done => setTimeout(done, ms));
 const assert = (value: unknown, message: string) => { if (!value) throw Error(message); };
 type Application = { child: ChildProcess; pid: number; profile: string; exited: boolean; exitCode?: number | null; exit: Promise<void>; request(command: string, data?: object): Promise<any> };

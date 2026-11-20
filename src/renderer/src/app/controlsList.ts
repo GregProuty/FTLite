@@ -69,11 +69,12 @@ export function controlSections(): ControlSection[] {
   duel.push({ keys: `${codesFor('prevLock').map(keyLabel).join('')} / ${codesFor('interact').map(keyLabel).join('')}`, action: 'At Weapons, step the target room (Weapons, Shields, Engines); rounds fired by hand damage it' });   // W-4 amendment §3.6
   // Feel-ii: the ping (G or a middle click), the Helm's right-click heading; W-1: the Weapons map's left click (the pew).
   duel.push({ keys: `${keyLabel(PING_CODE)} / Middle click`, action: 'Ping the map point (or the enemy) for the crew' });
-  // Playtest2feedback §6: the crew Helm: W/S throttle · hold LMB steer · RMB set heading · A/D Q/E ←→↑↓ thrusters (owner
+  // Playtest2feedback §6: the crew Helm: W/S throttle · hold LMB steer · RMB set heading · A/D turn · Q/E ←→↑↓ thrusters (owner
   // 2026-11-19: no 1/2 power keys; the throttle's cap is Engineering's Engines bars).
   duel.push({ keys: `Hold ${keyLabel(MOVE_CODES.up)} / ${keyLabel(MOVE_CODES.down)}`, action: 'At the Helm, push the throttle up or down; let go and it returns to 0' },
+    { keys: `Hold ${keyLabel(MOVE_CODES.left)} / ${keyLabel(MOVE_CODES.right)}`, action: 'At the Helm, turn the nose to port or to starboard' },
     { keys: 'Hold left mouse', action: 'At the Helm, steer: the nose turns toward the pointer' },
-    { keys: `${RCS_CODES.port.slice(0, 2).map(keyLabel).join(' ')} / ${RCS_CODES.starboard.slice(0, 2).map(keyLabel).join(' ')} / ← →`, action: 'At the Helm, cold gas thrusters to port and to starboard' },
+    { keys: `${keyLabel(RCS_CODES.port[0])} / ${keyLabel(RCS_CODES.starboard[0])} / ← →`, action: 'At the Helm, cold gas thrusters to port and to starboard' },
     { keys: '↑ ↓', action: 'At the Helm, cold gas thrusters fore and aft' });
   duel.push({ keys: 'Mouse wheel', action: 'Zoom (the maps and the ship)' },
     { keys: 'Left click', action: 'At Weapons, fire the selected weapon: pew pew one round, the autocannon while held, the torpedo launches' },

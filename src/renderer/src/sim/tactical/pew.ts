@@ -134,6 +134,7 @@ function pewHit(state: TacticalState, owner: number, k: number, x: number, y: nu
   state.events.push({ kind: 'pewHit', ship: k, owner, stripped, hull: !stripped, room, level, x, y });
 }
 
+const pewNear: number[] = [];   // stepPew rocksNear scratch
 /**
  * Every pew round in flight, in pool order (spec §1): it flies straight one tick (no gravity, no drag; it also moves on its
  * spawn tick) and ages; its segment from the old to the new position is swept (gun.ts segmentEntry) against the live rocks
@@ -153,7 +154,9 @@ export function stepPew(state: TacticalState): void {
     // Merge with asteroids-ii (spike ii §8; owner decision): the rocks are the live pool `state.rocks` as it stands when this
     // runs (after stepRocks moved them this tick), found with rocksNear as gun.ts stepRounds does, and a piece born this tick
     // is not in the way. A pew round that meets a rock stops on it with no effect on the rock (no chip, split, push or event).
-    for (const q of rocksNear(state, (ox + r.x) / 2, (oy + r.y) / 2, half)) {
+    const nq = rocksNear(state, (ox + r.x) / 2, (oy + r.y) / 2, half, pewNear);
+    for (let ii = 0; ii < nq; ii++) {
+      const q = pewNear[ii]!;
       if (state.rockBorn[q] === 1) continue;   // as stepRounds and firstBlocker: a piece made earlier this tick is not in the way
       const a = rockAt(state, q), t = segmentEntry(ox, oy, r.x, r.y, a.x, a.y, a.r);
       if (t >= 0 && t < best) { best = t; hit = 'solid'; }

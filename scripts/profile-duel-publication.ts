@@ -44,11 +44,11 @@ try {
   for (let k = 0; k < WARM; k++) stepDuelTick(d, scriptedInput(pair, d));
   // Spike ii §9.5: `--movers N` breaks static rocks (fan) until N rocks move, then samples (they decay while sampling).
   const moversAt = process.argv.indexOf('--movers'), movers = moversAt > 0 ? Number(process.argv[moversAt + 1]) : 0;
-  const moving = (): number => { let n = 0; for (let k = 0; k < d.tactical.rocks.length; k += ROCK_STRIDE) if (d.tactical.rocks[k] === RockKind.Moving) n++; return n; };
+  const moving = (): number => { let n = 0; for (let k = 0; k < d.tactical.rocks.length; k += ROCK_STRIDE) if (d.tactical.rocks[k] === RockKind.Free) n++; return n; };
   if (movers > 0) {
     beginRockTick(d.tactical);
     for (let k = 0; k < d.tactical.map.asteroids.length && moving() < movers; k++)
-      if (d.tactical.rocks[k * ROCK_STRIDE] === RockKind.Static && d.tactical.rocks[k * ROCK_STRIDE + 5]! >= 25) breakRock(d.tactical, k, 1, 0, 'collision', -1, 'fan');
+      if (d.tactical.rocks[k * ROCK_STRIDE] === RockKind.Rail && d.tactical.rocks[k * ROCK_STRIDE + 5]! >= 25) breakRock(d.tactical, k, 1, 0, 'collision', -1, 'fan');
   }
   const moversAtStart = moving();
   const host: number[] = [], client: number[] = [];

@@ -1,7 +1,7 @@
 // Playtest2feedback final review (M1 and the scene's steer gating): the real runtime and scene in node, as
 // ownShipScene.test.ts does. The crew Helm's map steers only while the left button is held at the crew Helm; the steering
-// marker shows only on a frame a steer goes out (never over a console block); and the Helm goal is used by the steer or
-// auto-face, not by A/D (the crew's thrusters).
+// marker shows only on a frame a steer goes out (never over a console block); and the Helm goal is used by the steer, A/D
+// or auto-face (owner 2026-11-19: A/D turn the crew Helm again).
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Container } from 'pixi.js';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
@@ -92,20 +92,28 @@ describe('the crew Helm map\'s steer (spec §4a, §6; final review M1)', () => {
       expect(r.draw()).toEqual({ steer: null, marker: null });   // over the own ship window: no steer, so no marker either
     } finally { r.dispose(); }
   });
-  it('the Helm goal is used by the steer, not by A/D (the crew\'s thrusters)', () => {
+  it('the Helm goal is used by the steer', () => {
     const r = rig();
     try {
       r.draw();
       sitDown(r.rt.duel.interior, r.rt.active(), r.rt.duel.nav);
       r.draw();
       expect(r.goal()).toBe(true);   // a new sit lights it
-      r.keys.held = { ...NO_HELD_FLAGS, left: true, right: true }; r.frame();
-      r.draw();
-      expect(r.goal()).toBe(true);   // A/D are thrusters here: still lit
-      r.keys.held = NO_HELD_FLAGS; r.frame();
       r.set({ left: true, pointer: OPEN });
       r.draw();
       expect(r.goal()).toBe(false);   // the steer used it
+    } finally { r.dispose(); }
+  });
+  it('A/D use the Helm goal at the crew Helm (owner 2026-11-19: they turn again)', () => {
+    const r = rig();
+    try {
+      r.draw();
+      sitDown(r.rt.duel.interior, r.rt.active(), r.rt.duel.nav);
+      r.draw();
+      expect(r.goal()).toBe(true);
+      r.keys.held = { ...NO_HELD_FLAGS, left: true }; r.frame();
+      r.draw();
+      expect(r.goal()).toBe(false);   // A turned the nose
     } finally { r.dispose(); }
   });
 });

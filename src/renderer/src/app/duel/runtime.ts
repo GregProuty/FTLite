@@ -674,7 +674,7 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
       // to hold (torpHold, re-sent every frame; letting go keeps the last one) until the flight ends. A/D no longer steer it.
       const torpSteering = seatNow === 'weapons' && !ended() && manualTorpedoFlying(d.tactical);
       if (!torpSteering) torpHold = -1; else if (torpNow !== null && torpNow >= 0) torpHold = torpNow;
-      activeHeld = ended() ? NEUTRAL : { moveX: look || crewHelmNow ? 0 : Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld,   // playtest2feedback §4: A/D are thrusters at the crew Helm
+      activeHeld = ended() ? NEUTRAL : { moveX: look ? 0 : Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld,   // owner 2026-11-19: A/D turn at the crew Helm too
         ...(crewHelmNow ? crewHelmHeld(k, -1) : {}),
         ...(k.fireHeld && !look && (seatNow === 'helm' || seatNow === 'flight') ? { face: true } : {}),
         ...(steer >= 0 ? { aim: steer } : {}), ...(gunNow ? { gunHeld: true } : {}),   // Valkyrn spec §5.1

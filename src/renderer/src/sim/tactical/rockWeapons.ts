@@ -1,11 +1,12 @@
-// Spike ii §4.1, §6.2 (docs/superpowers/specs/2026-11-18-asteroids-ii-design.md): the laser and rocks. A rock target is
+// Spike ii §4.1, §6.2 (asteroids-iii §5.3: the push capped at 0.25 · v_esc(ρ); a rail is freed first) (docs/superpowers/specs/2026-11-18-asteroids-ii-design.md): the laser and rocks. A rock target is
 // on target when its centre is inside the laser's arc and its surface within range. The shot's line runs to the rock's
 // centre and firstBlocker decides what it meets: the planet (a miss), another rock (an accident) or the target. A shot
 // that meets a rock pushes it LASER_ROCK_PUSH along the line (Δv = J / m, waking a static rock), then does LASER_ROCK_DAMAGE.
 import { inArc } from './geometry';
+import { escapeSpeed } from './rails';
 import { hitRock, pushRock } from './rockBreak';
 import { firstBlocker, rockAlive, rockAt, rockMass } from './rocks';
-import { LASER_ROCK_DAMAGE, LASER_ROCK_PUSH } from './rockTuning';
+import { LASER_PUSH_CAP, LASER_ROCK_DAMAGE, LASER_ROCK_PUSH } from './rockTuning';
 import { classOf, type TacticalState } from './state';
 
 /** §6.2: whether rock k is alive with its centre in ship i's laser arc and its surface within the laser's range. */
@@ -27,7 +28,7 @@ export function rockShotLine(state: TacticalState, i: number, k: number): { rock
 /** §4.1: ship i's laser shot meets rock k at (x, y): push first, then damage (a fan break along the line at hp ≤ 0). */
 export function laserStrikesRock(state: TacticalState, i: number, k: number, x: number, y: number): void {
   const a = state.ships[i]!, dx = x - a.x, dy = y - a.y, d = Math.sqrt(dx * dx + dy * dy), ux = d > 0 ? dx / d : 0, uy = d > 0 ? dy / d : -1;
-  const j = LASER_ROCK_PUSH / rockMass(rockAt(state, k).r);
+  const r = rockAt(state, k), j = Math.min(LASER_ROCK_PUSH / rockMass(r.r), LASER_PUSH_CAP * escapeSpeed(Math.sqrt(r.x * r.x + r.y * r.y)));   // §5.3: capped
   pushRock(state, k, ux * j, uy * j);
   hitRock(state, k, LASER_ROCK_DAMAGE, ux, uy, 'laser', i);
 }

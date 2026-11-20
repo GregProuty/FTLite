@@ -52,14 +52,18 @@ export interface FxState {
   shakePx: number; shakeLife: number; floats: FloatItem[]; sinceShot: number; solutionAge: number; kill: KillFx | null; slowmo: number; beamSide: number;
   /** Spike ii: the view's own seeded random (fxRandom), for the rock sprays. */
   seed: number;
+  /** Asteroids-iii §5.6: seconds of hit-stop left (the tactical layer holds its last drawing). */
+  hold: number;
+  /** Seconds left of the refractory gap after a hit-stop ends (no new hold while it runs). */
+  holdGap: number;
 }
 
 export function createFx(): FxState {
-  return { items: [], shake: 0, shakeT: 0, trails: [[], []], callouts: [], struck: [], shakePx: SHAKE_PX, shakeLife: SHAKE_S, floats: [], sinceShot: Infinity, solutionAge: -1, kill: null, slowmo: 0, beamSide: 1, seed: 1 };
+  return { items: [], shake: 0, shakeT: 0, trails: [[], []], callouts: [], struck: [], shakePx: SHAKE_PX, shakeLife: SHAKE_S, floats: [], sinceShot: Infinity, solutionAge: -1, kill: null, slowmo: 0, beamSide: 1, seed: 1, hold: 0, holdGap: 0 };
 }
 export function resetFx(fx: FxState): void {
   fx.items.length = 0; fx.shake = 0; fx.shakeT = 0; fx.trails[0].length = 0; fx.trails[1].length = 0; fx.callouts.length = 0; fx.struck.length = 0;
-  fx.shakePx = SHAKE_PX; fx.shakeLife = SHAKE_S; fx.floats.length = 0; fx.sinceShot = Infinity; fx.solutionAge = -1; fx.kill = null; fx.slowmo = 0; fx.beamSide = 1; fx.seed = 1;
+  fx.shakePx = SHAKE_PX; fx.shakeLife = SHAKE_S; fx.floats.length = 0; fx.sinceShot = Infinity; fx.solutionAge = -1; fx.kill = null; fx.slowmo = 0; fx.beamSide = 1; fx.seed = 1; fx.hold = 0; fx.holdGap = 0;
 }
 
 /** Start a shake of `px` for `s` seconds unless a stronger one is still running. */

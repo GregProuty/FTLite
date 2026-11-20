@@ -2,16 +2,19 @@
 // the interpolation alpha, the console's camera and the current Helm axes into screen-space draw lists. The Pixi layer
 // (tacticalLayer.ts) only draws what this returns. Render code, so it may use any Math (not under the determinism guard).
 import { gravityAccel } from '../../sim/tactical/physics';
-import { predictFlight } from '../../sim/tactical/predict';
+import { predictFlight, predictRock } from '../../sim/tactical/predict';
 import { derelictPos } from '../../sim/tactical/science';
 import { classOf, Contact, CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
+import { circularVelocity } from '../../sim/tactical/rails';
 import { rockAlive, rockAt, rockHpMax, RockKind, rockSlots } from '../../sim/tactical/rocks';
 import { AIM_STEPS, HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
+import { rockDrawPos, rockDrawTick, rockTrailInto, type RockTrack } from './rockTrack';
 import { hullFor, type HullId } from './hullModel';
 import type { HelmVent } from '../../sim/duel/helmFlight';
 import type { FogView, GhostKind } from './fogModel';
+import { DENT_FULL_R, dentEase, dentOf, WELL_MAX_SHIFT, wellScale, type Dent, type MapGridSetting } from './mapGrid';
 
 /** The grid square's half-size: the smallest multiple of 500 that encloses the map circle (plan decision 4). */
 export const GRID_EXTENT = Math.ceil(R_MAP / 500) * 500;
@@ -47,13 +50,26 @@ export const STAR_PARALLAX = 0.02;
 export interface PrevBody { x: number; y: number; h: number }
 export interface Line { x1: number; y1: number; x2: number; y2: number }
 export interface Label { text: string; x: number; y: number }
-export interface GridDraw { spacing: number; lines: (Line & { major: boolean })[]; columns: Label[]; rows: Label[] }
+/** `curves` (the gravity grid only; `lines` is then empty): each bent line as a flat x, y, x, y… screen polyline. */
+export interface GridDraw { spacing: number; lines: (Line & { major: boolean })[]; columns: Label[]; rows: Label[]; curves?: { pts: number[]; major: boolean }[] }
+/** The gravity grid: a bent line gets a point about every WELL_SEG_PX screen pixels; a line the well bows by less than
+ *  WELL_STRAIGHT_PX is drawn straight (two points). */
+export const WELL_SEG_PX = 14, WELL_STRAIGHT_PX = 0.5;
+/** The gravity grid draws this many lines per square-grid line, so the well's shape reads; every 500 units stays major. */
+export const WELL_DENSITY = 2;
+/** A body's dent is drawn only where it moves the grid by at least this many screen pixels. */
+export const DENT_MIN_PX = 0.75;
+/** How far outside the view a grid line is still worked out: the well's farthest shift plus a large body's (the same
+ *  whatever is on the map, so the lines' points do not jump as bodies come and go). */
+export const WELL_PAD = WELL_MAX_SHIFT + dentOf(0, 0, 2 * DENT_FULL_R).shift;
 export interface CircleDraw { x: number; y: number; r: number }
 /** Spike ii: `wear` 0 (whole) .. 1 from hp / hpMax, drawn as cracks and a dimmer fill; `streak` (§7 item 3) the screen end of
  *  a moving rock's fading streak behind it, with its alpha. */
-export interface AsteroidDraw extends CircleDraw { index: number; dot: boolean; wear?: number; streak?: { x: number; y: number; alpha: number } }
-/** Spike ii §7 item 3: rocks faster than STREAK_MIN_SPEED (u/s) streak STREAK_S seconds of their motion, at most STREAK_MAX_U. */
-export const STREAK_MIN_SPEED = 20, STREAK_S = 0.25, STREAK_MAX_U = 90;
+export interface AsteroidDraw extends CircleDraw { index: number; dot: boolean; wear?: number; streak?: { x: number; y: number; alpha: number }; spin?: number; trail?: number[] }
+/** Asteroids-iii §7.1: a free rock streaks along its velocity relative to V_c(p) when that is above STREAK_MIN_REL (u/s), for STREAK_S seconds of that motion, at most STREAK_MAX_U (plan deviation 12). */
+export const STREAK_MIN_REL = 8, STREAK_S = 1, STREAK_MAX_U = 90;
+/** §7.2: the predicted path of the Weapons map's rock target: ticks and the dot spacing (20 s, a dot every 0.5 s). */
+export const ROCK_PATH_TICKS = 1200, ROCK_PATH_EVERY = 30;
 export interface ShipDraw {
   index: number; x: number; y: number;
   /** Radians clockwise from north (the screen's up). */
@@ -117,6 +133,8 @@ export interface TacticalDraw {
   sensor?: CircleDraw | null; ghosts?: GhostDraw[];
   /** Spike ii §6.5 (only with contacts): the rock brackets. */
   rockMarks?: RockMarkDraw[];
+  /** Asteroids-iii §7.2: the Weapons map's rock target's predicted path (screen px). */
+  rockPath?: Point[];
   /** Playtest2feedback §6: the crew ship's cold gas puffs this frame. */
   puffs?: PuffDraw[];
 }
@@ -133,6 +151,8 @@ export interface TacticalModelInput {
   contacts?: boolean;
   /** Spike ii §6.5: the rock under the pointer while a weapon is picked up (the scene's pickRock), for its hover bracket. */
   rockHover?: { rock: number; weapon: 'laser' | 'torpedo' } | null;
+  /** Asteroids-iii §7.1: the scene's rock track (smooth motion and trails); absent: rocks at their tick positions. */
+  rockTrack?: RockTrack | null;
   /** The Helm's effective axes the runtime last sent to the sim. */
   axes: Axes;
   /** Ships to draw (the flight view draws only ship 0). The crew ship is index 0. */
@@ -163,6 +183,8 @@ export interface TacticalModelInput {
   fog?: FogView | null;
   /** Own ship window spec §3: a console window the off-screen arrows go around (OWN_SHIP); absent: none. */
   avoid?: { x: number; y: number; w: number; h: number };
+  /** The grid's style (Settings, mapGrid.ts); absent: the square grid. */
+  mapGrid?: MapGridSetting;
 }
 
 /** Radius at which the planet's pull is `accel`, by bisection on the falling side of gravityAccel (startup only). */
@@ -248,7 +270,7 @@ export function ringCrossesRect(x: number, y: number, r: number, w: number, h: n
   return fx * fx + fy * fy >= r * r;
 }
 
-function gridDraw(cam: Camera, vp: Viewport): GridDraw {
+function gridDraw(cam: Camera, vp: Viewport, well: Point | null, dents: readonly Dent[] = []): GridDraw {
   const spacing = cam.zoom > GRID_MINOR_ZOOM ? GRID_MINOR : GRID_MAJOR;
   const v = visibleWorld(cam, vp), E = GRID_EXTENT;
   const x0 = Math.max(-E, v.x0), x1 = Math.min(E, v.x1), y0 = Math.max(-E, v.y0), y1 = Math.min(E, v.y1);
@@ -256,28 +278,105 @@ function gridDraw(cam: Camera, vp: Viewport): GridDraw {
   if (x0 > x1 || y0 > y1) return { spacing, lines, columns, rows };
   const sy0 = worldToScreen(cam, vp, 0, y0).y, sy1 = worldToScreen(cam, vp, 0, y1).y;
   const sx0 = worldToScreen(cam, vp, x0, 0).x, sx1 = worldToScreen(cam, vp, x1, 0).x;
-  for (let k = Math.ceil((x0 + E) / spacing); -E + k * spacing <= x1; k++) {
-    const wx = -E + k * spacing, sx = worldToScreen(cam, vp, wx, 0).x;
-    lines.push({ x1: sx, y1: sy0, x2: sx, y2: sy1, major: (wx + E) % GRID_MAJOR === 0 });
-  }
-  for (let k = Math.ceil((y0 + E) / spacing); -E + k * spacing <= y1; k++) {
-    const wy = -E + k * spacing, sy = worldToScreen(cam, vp, 0, wy).y;
-    lines.push({ x1: sx0, y1: sy, x2: sx1, y2: sy, major: (wy + E) % GRID_MAJOR === 0 });
+  const curves = well ? wellCurves(cam, vp, well, spacing / WELL_DENSITY, dents) : undefined;
+  if (!well) {
+    for (let k = Math.ceil((x0 + E) / spacing); -E + k * spacing <= x1; k++) {
+      const wx = -E + k * spacing, sx = worldToScreen(cam, vp, wx, 0).x;
+      lines.push({ x1: sx, y1: sy0, x2: sx, y2: sy1, major: (wx + E) % GRID_MAJOR === 0 });
+    }
+    for (let k = Math.ceil((y0 + E) / spacing); -E + k * spacing <= y1; k++) {
+      const wy = -E + k * spacing, sy = worldToScreen(cam, vp, 0, wy).y;
+      lines.push({ x1: sx0, y1: sy, x2: sx1, y2: sy, major: (wy + E) % GRID_MAJOR === 0 });
+    }
   }
   // Labels name the 500-unit squares at every zoom, so a square keeps its name (plan decision 4); each sits in the middle
   // of the square's visible part, along the top and left edges of the screen (or of the grid, when that edge is on screen).
+  // On the gravity grid a label is pulled toward the planet as the lines beside it are, so it stays between them.
   const n = (2 * E) / GRID_MAJOR, top = Math.max(4, sy0 + 4), left = Math.max(4, sx0 + 4);
+  const pulled = (x: number, y: number): Point => {
+    if (!well) return worldToScreen(cam, vp, x, y);
+    const dx = x - well.x, dy = y - well.y, f = wellScale(dx * dx + dy * dy);
+    return worldToScreen(cam, vp, well.x + dx * f, well.y + dy * f);
+  };
   for (let k = 0; k < n; k++) {
     const a = Math.max(x0, -E + k * GRID_MAJOR), b = Math.min(x1, -E + (k + 1) * GRID_MAJOR);
     if (b <= a || (b - a) * cam.zoom < 24) continue;
-    columns.push({ text: columnName(k), x: worldToScreen(cam, vp, (a + b) / 2, 0).x, y: top });
+    columns.push({ text: columnName(k), x: pulled((a + b) / 2, y0).x, y: top });
   }
   for (let k = 0; k < n; k++) {
     const a = Math.max(y0, -E + k * GRID_MAJOR), b = Math.min(y1, -E + (k + 1) * GRID_MAJOR);
     if (b <= a || (b - a) * cam.zoom < 24) continue;
-    rows.push({ text: String(k + 1), x: left, y: worldToScreen(cam, vp, 0, (a + b) / 2).y });
+    rows.push({ text: String(k + 1), x: left, y: pulled(x0, (a + b) / 2).y });
   }
-  return { spacing, lines, columns, rows };
+  return curves ? { spacing, lines, columns, rows, curves } : { spacing, lines, columns, rows };
+}
+
+/** The dent pass's scratch (wellCurves): per point of the line in hand, the summed dent offsets (x, y) and pulls. */
+let dentScratch = new Float64Array(0);
+
+/** The gravity grid's lines (mapGrid.ts): every grid line that can reach the screen, each point scaled toward the planet
+ *  by wellScale, then moved by the bodies' dents that reach it. A line no dent reaches that runs through the planet, or
+ *  that the well barely bows, stays two points. Per point: about ten multiplies and one divide for the planet; a dent
+ *  costs the same again, but only on the stretch of each line inside its reach (found by a binary search: a line's
+ *  points run in order along it, bent or not). */
+function wellCurves(cam: Camera, vp: Viewport, well: Point, spacing: number, dents: readonly Dent[]): NonNullable<GridDraw['curves']> {
+  const v = visibleWorld(cam, vp), E = GRID_EXTENT, z = cam.zoom, pad = WELL_PAD;
+  // The well and the dents only pull points toward them, by at most `pad`, so a line that far outside the view can still be drawn in it.
+  const lo = [Math.max(-E, v.x0 - pad), Math.max(-E, v.y0 - pad)], hi = [Math.min(E, v.x1 + pad), Math.min(E, v.y1 + pad)];
+  const o = [vp.w / 2 - cam.centreX * z, vp.h / 2 - cam.centreY * z], centre = [well.x, well.y], z2 = z * z;
+  const curves: NonNullable<GridDraw['curves']> = [];
+  for (let axis = 0; axis < 2; axis++) {   // 0: the north-south lines (x fixed, y runs); 1: the east-west lines
+    const run = 1 - axis, a = lo[run]!, b = hi[run]!;
+    if (a >= b) continue;
+    for (let k = Math.ceil((lo[axis]! + E) / spacing); -E + k * spacing <= hi[axis]!; k++) {
+      const w = -E + k * spacing, d = w - centre[axis]!;
+      // The line's nearest point to the planet moves the most: that is how far the line bows.
+      let bent = Math.abs(d) * (1 - wellScale(d * d)) * z >= WELL_STRAIGHT_PX;
+      for (let j = 0; !bent && j < dents.length; j++) bent = Math.abs(w - (axis === 0 ? dents[j]!.x : dents[j]!.y)) < dents[j]!.reach;
+      const n = bent ? Math.max(1, Math.ceil(((b - a) * z) / WELL_SEG_PX)) : 1, step = (b - a) / n;
+      const pts = new Array<number>(2 * (n + 1));
+      let near = Infinity, far = -Infinity;   // the drawn line's extent across itself, in screen px
+      for (let i = 0; i <= n; i++) {
+        const t = a + step * i, x = axis === 0 ? w : t, y = axis === 0 ? t : w;
+        const dx = x - well.x, dy = y - well.y, f = bent ? wellScale(dx * dx + dy * dy) : 1;
+        const px = o[0]! + (well.x + dx * f) * z, py = o[1]! + (well.y + dy * f) * z, across = axis === 0 ? px : py;
+        pts[2 * i] = px; pts[2 * i + 1] = py;
+        if (across < near) near = across; if (across > far) far = across;
+      }
+      if (bent && dents.length > 0) dentLine(pts, n, axis, near, far, dents, o, z, z2);
+      curves.push({ pts, major: (w + E) % GRID_MAJOR === 0 });
+    }
+  }
+  return curves;
+}
+
+/** Moves one drawn line's points (screen px, in order along `1 - axis`) by the dents that reach it: each point by the
+ *  sum of the dents' pulls on it, eased by dentEase so overlapping dents never fold the grid. */
+function dentLine(pts: number[], n: number, axis: number, near: number, far: number, dents: readonly Dent[], o: readonly number[], z: number, z2: number): void {
+  const run = 1 - axis;
+  let first = n + 1, last = -1;
+  for (const dent of dents) {
+    const reach = dent.reach * z, ca = o[axis]! + (axis === 0 ? dent.x : dent.y) * z, cr = o[run]! + (axis === 0 ? dent.y : dent.x) * z;
+    if (ca < near - reach || ca > far + reach) continue;
+    // The first point at or past the dent's near edge along the line; the points run on from there to its far edge.
+    let i = 0, top = n + 1;
+    for (const from = cr - reach; i < top;) { const mid = (i + top) >> 1; if (pts[2 * mid + run]! < from) i = mid + 1; else top = mid; }
+    if (i > n || pts[2 * i + run]! > cr + reach) continue;
+    if (last < 0) { if (dentScratch.length < 3 * (n + 1)) dentScratch = new Float64Array(3 * (n + 1)); dentScratch.fill(0, 0, 3 * (n + 1)); }
+    if (i < first) first = i;
+    const c2 = dent.c2 * z2;
+    for (const to = cr + reach; i <= n && pts[2 * i + run]! <= to; i++) {
+      const da = pts[2 * i + axis]! - ca, dr = pts[2 * i + run]! - cr, s = c2 / (da * da + dr * dr + c2), g = dent.pull * s * s;
+      dentScratch[3 * i] = dentScratch[3 * i]! + da * g; dentScratch[3 * i + 1] = dentScratch[3 * i + 1]! + dr * g; dentScratch[3 * i + 2] = dentScratch[3 * i + 2]! + g;
+    }
+    if (i - 1 > last) last = i - 1;
+  }
+  for (let i = first; i <= last; i++) {
+    const sum = dentScratch[3 * i + 2]!;
+    if (sum === 0) continue;
+    const ease = dentEase(sum);
+    pts[2 * i + axis] = pts[2 * i + axis]! - dentScratch[3 * i]! * ease; pts[2 * i + run] = pts[2 * i + run]! - dentScratch[3 * i + 1]! * ease;
+  }
 }
 
 /** The bearing ring about a screen point: ticks every 10°, labels every 30° (north 0). */
@@ -385,12 +484,24 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   const asteroids: AsteroidDraw[] = [];
   for (let index = 0, n = rockSlots(state); index < n; index++) {   // SPIKE: the live rock pool, not the seeded map
     if (!rockAlive(state, index)) continue;
-    const a = rockAt(state, index), r = a.r * z;
-    if (r < DOT_MIN_PX || !onScreen(a.x, a.y, a.r)) continue;
-    const p = toS(a.x, a.y), speed = Math.hypot(a.vx, a.vy);
-    const tail = a.kind === RockKind.Moving && speed > STREAK_MIN_SPEED ? Math.min(STREAK_MAX_U, speed * STREAK_S) / speed : 0;
-    const streak = tail > 0 ? { ...toS(a.x - a.vx * tail, a.y - a.vy * tail), alpha: Math.min(1, (speed - STREAK_MIN_SPEED) / 120) } : null;
-    asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX, wear: Math.max(0, Math.min(1, 1 - a.hp / rockHpMax(a.r))), ...(streak ? { streak } : {}) });
+    const a = rockAt(state, index), r = a.r * z, w = rockDrawPos(input.rockTrack ?? null, state, index, alpha);
+    if (r < DOT_MIN_PX || !onScreen(w.x, w.y, a.r)) continue;
+    const p = toS(w.x, w.y);
+    let streak: { x: number; y: number; alpha: number } | null = null;
+    if (a.kind === RockKind.Free) {   // §7.1: by its speed relative to the circular orbit there, never its absolute speed
+      const [cx, cy] = circularVelocity(a.x, a.y), ux = a.vx - cx, uy = a.vy - cy, rel = Math.hypot(ux, uy);
+      if (rel > STREAK_MIN_REL) { const tail = Math.min(STREAK_MAX_U, rel * STREAK_S) / rel; streak = { ...toS(w.x - ux * tail, w.y - uy * tail), alpha: Math.min(1, (rel - STREAK_MIN_REL) / 40) }; }
+    }
+    let trail: number[] | null = null;   // flat screen x, y pairs from the slot's scratch, the rock's draw position last so the trail meets it
+    if (input.rockTrack && a.kind === RockKind.Free) {
+      const buf = trailBuf[index] ?? (trailBuf[index] = []), m = rockTrailInto(input.rockTrack, state, index, buf);
+      if (m > 0) {
+        for (let i = 0; i < m; i++) { buf[i * 2] = vp.w / 2 + (buf[i * 2]! - cam.centreX) * z; buf[i * 2 + 1] = vp.h / 2 + (buf[i * 2 + 1]! - cam.centreY) * z; }
+        buf[m * 2] = p.x; buf[m * 2 + 1] = p.y; buf.length = (m + 1) * 2; trail = buf;
+      }
+    }
+    asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX, wear: Math.max(0, Math.min(1, 1 - a.hp / rockHpMax(a.r))), spin: (asteroidSpin(index) * rockDrawTick(input.rockTrack ?? null, state, alpha)) / TICK_HZ,
+      ...(streak ? { streak } : {}), ...(trail ? { trail } : {}) });
   }
 
   const ships: ShipDraw[] = [];
@@ -400,6 +511,14 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     if (!onScreen(b.x, b.y, Math.max(SHIP_RADIUS * 2, (SHIP_RADIUS * 1.9 * drawnScale(z)) / z))) continue;   // the drawn rings reach 1.9 units
     const p = toS(b.x, b.y);
     ships.push({ index: i, x: p.x, y: p.y, angle: headingAngle(b.h), scale: drawnScale(z), chevron: 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, crew: i === 0, hull: i === 0 ? input.crewHull ?? hullFor(true) : hullFor(false), rooms: s.rooms, shields: s.shields });
+  }
+
+  // The gravity grid's dents (mapGrid.ts): every drawn ship and live rock whose dent reaches the view and shows there.
+  const dents: Dent[] = [];
+  if (input.mapGrid === 'gravity') {
+    const add = (x: number, y: number, r: number): void => { const d = dentOf(x, y, r); if (d.shift * z >= DENT_MIN_PX && onScreen(x, y, d.reach)) dents.push(d); };
+    for (let k = 0, n = rockSlots(state); k < n; k++) if (rockAlive(state, k)) { const w = rockDrawPos(input.rockTrack ?? null, state, k, alpha); add(w.x, w.y, rockAt(state, k).r); }   // where the rock is drawn
+    for (const i of input.ships) { const b = interpolatedShip(state, prev, alpha, i); add(b.x, b.y, SHIP_RADIUS); }
   }
 
   const own = interpolatedShip(state, prev, alpha, 0), ownS = toS(own.x, own.y);
@@ -521,6 +640,13 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     if (input.rockHover) mark(input.rockHover.rock, input.rockHover.weapon, true);
   }
 
+  // Asteroids-iii §7.2: the Weapons map's rock target (the laser's, else the torpedo's, else the flying torpedo's) and its next 20 s.
+  let rockPath: Point[] | undefined;
+  if (input.contacts && input.console === 'weapons') {
+    const sys = state.systems[CREW_SLOT]!, k = sys.laserRock >= 0 ? sys.laserRock : sys.torpRock >= 0 ? sys.torpRock : sys.torpRockFlying;
+    if (k >= 0 && rockAlive(state, k)) rockPath = cachedRockPath(state, k).map((q) => toS(q.x, q.y));
+  }
+
   // Engineering spike §10.4: the sensor range ring and the ghosts of contacts last seen.
   let sensor: CircleDraw | null = null, ghosts: GhostDraw[] = [];
   if (input.fog) {
@@ -530,11 +656,12 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
   }
   const units = [...SCALE_STEPS].reverse().find((u) => u * z <= SCALE_BAR_MAX_PX) ?? SCALE_STEPS[0]!;
   return {
-    grid: gridDraw(cam, vp), contours, edge, planet, asteroids, ships, helm, arrows,
+    grid: gridDraw(cam, vp, input.mapGrid === 'gravity' ? map.planet : null, dents), contours, edge, planet, asteroids, ships, helm, arrows,
     ...(marks ? { marks, salvage, lockRing } : {}),
     ...(gravity ? { gravity } : {}),
     ...(input.fog ? { sensor, ghosts } : {}),
     ...(rockMarks ? { rockMarks } : {}),
+    ...(rockPath ? { rockPath } : {}),
     ...(puffs.length > 0 ? { puffs } : {}),
     overlay: { zoomText: `ZOOM ${z.toFixed(2)}`, scaleBar: { px: units * z, units }, snapHint: cam.follow === 'free', paused: input.paused },
     stars: starOffset(cam.centreX, cam.centreY, vp)
@@ -589,7 +716,19 @@ export function pickRock(input: Pick<TacticalModelInput, 'state' | 'camera' | 'v
   return best;
 }
 
+/** §7.2: the target's predicted path in world units, kept for the tick and rock it was made for (the frames between two ticks reuse it). */
+let pathCache: { state: WeakRef<TacticalState>; tick: number; k: number; pts: Point[] } | null = null;   // a WeakRef: the cache never keeps an old state alive
+export function cachedRockPath(state: TacticalState, k: number): Point[] {
+  if (!pathCache || pathCache.state.deref() !== state || pathCache.tick !== state.tick || pathCache.k !== k) pathCache = { state: new WeakRef(state), tick: state.tick, k, pts: predictRock(state, k, ROCK_PATH_TICKS, ROCK_PATH_EVERY) };
+  return pathCache.pts;
+}
+const trailBuf: number[][] = [];   // per rock slot: the draw list's trail scratch (the model builds one frame at a time)
 const shapeCache = new Map<number, number[]>();
+/** Asteroids-iii §13.5: rock `index`'s outline spin, a hashed ±0.1 to 0.5 rad/s (drawing only; the cracks turn with it). */
+export function asteroidSpin(index: number): number {
+  const h = Math.imul((((index + 1) * 2654435761) >>> 0) ^ 0x9e3779b9, 2246822519) >>> 0, f = (h % 10000) / 10000;
+  return (h & 1 ? 1 : -1) * (0.1 + 0.4 * f);
+}
 /** A rough asteroid outline as radius multipliers (9 vertices, 0.72..1.08), seeded by the asteroid's index. Render-only randomness. */
 export function asteroidShape(index: number): number[] {
   let out = shapeCache.get(index);
@@ -599,4 +738,114 @@ export function asteroidShape(index: number): number[] {
   for (let k = 0; k < 9; k++) { h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0; out.push(0.72 + ((h % 1000) / 1000) * 0.36); }
   shapeCache.set(index, out);
   return out;
+}
+/** Asteroids-iii §7.3 (D10): four fixed cracks per rock, revealed by wear and drawn inside the outline. */
+export const CRACK_COUNT = 4, CRACK_INSET = 0.88, CRACK_MIN_PX = 6;
+/** A crack polyline in rock-local units (unit radius; multiply by r and add the centre to draw). */
+export type CrackLine = Point[];
+const CRACK_TAU = Math.PI * 2, CRACK_DEG = Math.PI / 180;
+/** §7.3 step 2: the outline's radius along the ray at `angle`: where the ray meets the polygon edge between the two
+ *  neighbouring vertices (never one vertex's multiplier). */
+export function outlineRadius(shape: readonly number[], angle: number): number {
+  const n = shape.length, a = ((angle % CRACK_TAU) + CRACK_TAU) % CRACK_TAU, k = Math.min(n - 1, Math.floor(a / (CRACK_TAU / n))), k1 = (k + 1) % n;
+  const a0 = (k * CRACK_TAU) / n, a1 = ((k + 1) * CRACK_TAU) / n;
+  const px = shape[k]! * Math.cos(a0), py = shape[k]! * Math.sin(a0), qx = shape[k1]! * Math.cos(a1), qy = shape[k1]! * Math.sin(a1);
+  const ex = qx - px, ey = qy - py, dx = Math.cos(a), dy = Math.sin(a);
+  return (px * ey - py * ex) / (dx * ey - dy * ex);
+}
+/** The crack set's own generator (§7.3 step 1: the asteroidShape hash, salt 17), fresh per rock. */
+function crackRandom(index: number): () => number {
+  let h = ((((index + 1) * 2654435761) >>> 0) ^ 17) >>> 0;
+  return () => { h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0; return (h % 100000) / 100000; };
+}
+/** §7.3 step 3: a point pulled back inside CRACK_INSET of the outline along its own ray. */
+function clampInside(shape: readonly number[], x: number, y: number): Point {
+  const d = Math.hypot(x, y);
+  if (d === 0) return { x, y };
+  const lim = CRACK_INSET * outlineRadius(shape, Math.atan2(y, x));
+  return d > lim ? { x: (x * lim) / d, y: (y * lim) / d } : { x, y };
+}
+function lineLength(line: CrackLine): number {
+  let t = 0;
+  for (let i = 1; i < line.length; i++) t += Math.hypot(line[i]!.x - line[i - 1]!.x, line[i]!.y - line[i - 1]!.y);
+  return t;
+}
+interface FullCrack { main: CrackLine; branch: CrackLine | null; forkAt: number }
+const crackCache = new Map<number, FullCrack[]>();
+/** §7.3 steps 1–4: crack i starts at a_i = (i + h)·2π/4 at CRACK_INSET of the outline and runs inward as 4 segments of
+ *  0.16–0.22, each aimed at the centre ± 35° and clamped inside after the step; cracks 1 and 3 fork once at the end of
+ *  segment 2 into a 2-segment branch of 0.12 per segment at ±40° (the second segment turns a further ±15°). */
+function fullCracks(index: number): FullCrack[] {
+  const cached = crackCache.get(index);
+  if (cached) return cached;
+  const shape = asteroidShape(index), rnd = crackRandom(index), h = rnd(), out: FullCrack[] = [];
+  for (let i = 0; i < CRACK_COUNT; i++) {
+    const a = ((i + h) * CRACK_TAU) / CRACK_COUNT, r0 = CRACK_INSET * outlineRadius(shape, a);
+    let p: Point = { x: Math.cos(a) * r0, y: Math.sin(a) * r0 }, dir = a + Math.PI, branch: CrackLine | null = null, forkAt = 0;
+    const main: CrackLine = [p];
+    for (let s = 0; s < 4; s++) {
+      const toCentre = Math.hypot(p.x, p.y) > 1e-9 ? Math.atan2(-p.y, -p.x) : dir;
+      dir = toCentre + (rnd() * 2 - 1) * 35 * CRACK_DEG;
+      const len = 0.16 + 0.06 * rnd();
+      p = clampInside(shape, p.x + Math.cos(dir) * len, p.y + Math.sin(dir) * len);
+      main.push(p);
+      if (s === 1 && (i === 1 || i === 3)) {
+        let q = p, bd = dir + (i === 1 ? 40 : -40) * CRACK_DEG;
+        forkAt = lineLength(main);
+        branch = [q];
+        for (let b = 0; b < 2; b++) {
+          if (b === 1) bd += (rnd() * 2 - 1) * 15 * CRACK_DEG;
+          q = clampInside(shape, q.x + Math.cos(bd) * 0.12, q.y + Math.sin(bd) * 0.12);
+          branch.push(q);
+        }
+      }
+    }
+    out.push({ main, branch, forkAt });
+  }
+  crackCache.set(index, out);
+  return out;
+}
+/** The prefix of `line` of arc length `len`. */
+function cutLine(line: CrackLine, len: number): CrackLine {
+  const out: CrackLine = [line[0]!];
+  let left = len;
+  for (let i = 1; i < line.length && left > 0; i++) {
+    const a = line[i - 1]!, b = line[i]!, seg = Math.hypot(b.x - a.x, b.y - a.y);
+    if (seg <= left) { out.push(b); left -= seg; continue; }
+    const t = left / seg;
+    out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    left = 0;
+  }
+  return out;
+}
+/** §7.3 step 5: wear (0 whole .. 1) shows ceil(wear · 4) of the fixed cracks, each cut to (0.35 + 0.45 · wear) of its
+ *  length; a fork's branch shows once the main cut passes the fork, cut to the same share of its own length. Higher wear
+ *  always holds lower wear as a prefix. Rock-local units. */
+export function crackPaths(index: number, wear: number): CrackLine[] {
+  if (!(wear > 0)) return [];
+  const w = Math.min(1, wear), n = Math.ceil(w * CRACK_COUNT), share = 0.35 + 0.45 * w, out: CrackLine[] = [], full = fullCracks(index);
+  for (let i = 0; i < n; i++) {
+    const c = full[i]!, main = share * lineLength(c.main);
+    out.push(cutLine(c.main, main));
+    if (c.branch && main > c.forkAt) out.push(cutLine(c.branch, share * lineLength(c.branch)));
+  }
+  return out;
+}
+/** One crack stroke in screen px: a cut segment, or its highlight (`light`) 0.6 px off along the segment's normal. */
+export interface CrackSegDraw { x1: number; y1: number; x2: number; y2: number; light: boolean }
+/** §7.3 steps 6–7: the screen strokes of a rock's cracks at centre (cx, cy) and screen radius r: every cut segment, then
+ *  every highlight; none when r < CRACK_MIN_PX. `spin`: the outline's turn (§13.5). */
+export function crackDraw(index: number, wear: number, cx: number, cy: number, r: number, spin = 0): CrackSegDraw[] {
+  if (r < CRACK_MIN_PX) return [];
+  const cuts: CrackSegDraw[] = [], lights: CrackSegDraw[] = [], c = Math.cos(spin), sn = Math.sin(spin);
+  for (const line of crackPaths(index, wear)) for (let i = 1; i < line.length; i++) {
+    const lx0 = line[i - 1]!.x * c - line[i - 1]!.y * sn, ly0 = line[i - 1]!.x * sn + line[i - 1]!.y * c, lx1 = line[i]!.x * c - line[i]!.y * sn, ly1 = line[i]!.x * sn + line[i]!.y * c;
+    const x1 = cx + lx0 * r, y1 = cy + ly0 * r, x2 = cx + lx1 * r, y2 = cy + ly1 * r;
+    const len = Math.hypot(x2 - x1, y2 - y1);
+    if (len === 0) continue;
+    const ox = (-(y2 - y1) / len) * 0.6, oy = ((x2 - x1) / len) * 0.6;
+    cuts.push({ x1, y1, x2, y2, light: false });
+    lights.push({ x1: x1 + ox, y1: y1 + oy, x2: x2 + ox, y2: y2 + oy, light: true });
+  }
+  return [...cuts, ...lights];
 }

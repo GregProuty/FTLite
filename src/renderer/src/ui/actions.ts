@@ -25,6 +25,8 @@ export interface UiActionDeps {
   setVolume?(channel: VolumeChannel, volume: number): void;
   /** Feel-i: the screen shake setting changed (main saves it and hands it to the renderer). */
   setShake?(shake: import('../render/shake').ShakeSetting): void;
+  /** The map grid setting changed (main saves it and hands it to the renderer). */
+  setMapGrid?(grid: import('../render/tactical/mapGrid').MapGridSetting): void;
   fullscreen?: { get(): Promise<boolean>; set(on: boolean): Promise<boolean> };
   /** performance.now(), injectable for tests. */
   perfNow?(): number;
@@ -168,6 +170,7 @@ export function createUiActions(deps: UiActionDeps) {
     pause(): void { deps.pause(); },
     setVolume(channel: VolumeChannel, volume: number): void { store.setState((s) => ({ settings: { ...s.settings, [channel]: volume } })); deps.setVolume?.(channel, volume); },
     setShake(shake: import('../render/shake').ShakeSetting): void { store.setState((s) => ({ settings: { ...s.settings, shake } })); deps.setShake?.(shake); },
+    setMapGrid(mapGrid: import('../render/tactical/mapGrid').MapGridSetting): void { store.setState((s) => ({ settings: { ...s.settings, mapGrid } })); deps.setMapGrid?.(mapGrid); },
     toggleFullscreen(): void {
       const on = menu().fullscreen;
       if (!deps.fullscreen || on === null) return;

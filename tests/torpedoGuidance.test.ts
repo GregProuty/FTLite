@@ -6,7 +6,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRng, nextFloat } from '../src/shared/rng';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
-import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
 import { flyMissile, homingTurn, launchMissile, resolveMissiles } from '../src/renderer/src/sim/tactical/missiles';
 import { flySlot } from '../src/renderer/src/sim/tactical/physics';
 import { createTacticalState, missileOf, NO_AXES, type Axes, type TacticalState } from '../src/renderer/src/sim/tactical/state';
@@ -23,7 +22,8 @@ function headingOf(dx: number, dy: number): number {
 function openSpace(seed: number): TacticalState {
   const st = createTacticalState(seed);
   st.map = { ...st.map, asteroids: [] };
-  st.grid = buildGrid([], st.map.rMap);
+ 
+  st.rocks.fill(0);   // asteroids-iii: the pool too (every slot Gone), so no seeded rock orbits into open space
   return st;
 }
 

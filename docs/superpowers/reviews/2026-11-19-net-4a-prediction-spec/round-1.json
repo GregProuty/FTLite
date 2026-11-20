@@ -1,0 +1,123 @@
+{
+  "verdict": "changes requested",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "G1 cannot pass at 2 or 5% loss, because this seat's own input reaches the authority's ticks only approximately",
+      "claim": "G1 asks that, with only the partner's input held constant, every confirmed tick hashes equal to P at 2% and 5% loss. The authority does not apply held frames by tick. It latches the newest frame that has arrived. A lost unreliable held frame, or two authority ticks run in one pump, means the authority runs a tick with a different own input from the one \u00a73.4 step 2 assigns to tick T + j. Whenever this seat's own input changes at that frame, the hash differs. Step 2 is never called an estimate. \u00a72's 'wrong only when the partner changed an input' came from a method that placed the seat's own inputs exactly, so it does not carry over to a real link.",
+      "evidence": "spec L163 (G1), L87 (step 2), L17 and L34 (\u00a72 method: 'its own inputs on every tick'), L159 (the rig drops unreliable packets); core.ts:L314-L316 (acceptHeld latches the newest sequence, no tick mapping), core.ts:L446 (a tick uses the latched `held`), tickDriver.ts:L30 and L37 (an 8.3 ms idle reschedule, and up to 120 ticks in one pump on debt), receivePolicy.ts:L6 (receive-time accepts any frame tick at or before the current tick)",
+      "why": "A gate that cannot pass as written ends in one of two ways: implementers weaken the test until it means nothing, or the task stalls. The spec's accuracy figures will also overstate what a real link achieves.",
+      "fix": "State in \u00a73.4 step 2 that the j-th-entry mapping is an estimate, and list what breaks it: a lost held frame, a frame arriving between pumps, several authority ticks in one pump, and commands arriving apart from their held frame. Rewrite G1 as two checks. (a) With both seats' inputs constant, or 0% held-frame loss and constant delay, every confirmed tick verifies. (b) With loss and jitter, every mismatch is corrected at the next publication, and the verified share is reported, not required to be 100%. Add a note to \u00a72 that own-input placement was exact in the measurement."
+    },
+    {
+      "severity": "P1",
+      "title": "G3 at 500 ms round trip contradicts PREDICT_MAX_TICKS = 30",
+      "claim": "At a 500 ms round trip the lead N is 30 ticks plus up to 3 ticks of publication wait. That is at or above the cap, so `tick` returns false and P does not step. Step 4 then re-simulates only to T + 30 using the first 30 entries, so the newest input is not in P. 'A change in this seat's held input is in P on the next local tick at every round trip up to 500 ms' therefore fails at the top of its own range.",
+      "evidence": "spec L165 (G3: 'every round trip up to 500 ms'), L91 (`PREDICT_MAX_TICKS = 30` (500 ms), 'never more than that many ticks past'), L89 (step to T + min(N, 30)), L55 and L102 (false at the cap; the view holds)",
+      "why": "The gate contradicts a fixed starting constant, so one of them has to give way during implementation.",
+      "fix": "Limit G3 to round trips whose lead stays under the cap (for example up to 400 ms). Alternatively, state that above the cap the input appears only after the lead falls below 30, and test that instead."
+    },
+    {
+      "severity": "P1",
+      "title": "The watermark rules in \u00a73.2 and \u00a73.4 hold only for publications made right after a tick; attach and control publications break them",
+      "claim": "Two claims are false for publications made between ticks. Claim 1: 'entries with heldSequence <= h are in the confirmed state', and 'commands with sequence <= c have their effect or refusal in the confirmed state'. Claim 2: `held` 'is what its last tick used'. Here is why. The pump drains ingress before the driver runs ticks. That drain latches new held frames, advances `heldSequences`, and admits commands. The ledger moves the command high water at admission, not at execution. The driver often runs zero ticks in a pump. An attach publication, which goes to every binding when any seat attaches or reconnects, made after such a pump carries frames and commands that no tick has executed yet. Its phase is `running` and its controlRevision is unchanged, so \u00a73.4's reset does not catch it. The client trims those commands and that frame, and P drops them until the next tick publication. A pause publication also clears `held` before it publishes, so its `held` is not what the last tick used. (The pause publication is reset by \u00a73.4, so only the wording is wrong there.)",
+      "evidence": "spec L65, L86, L181; core.ts:L483 then L489 (drain, then driver.pump), ledger.ts:L78 (water = sequence at admit), core.ts:L564 with L289 (attach publishes to every binding), core.ts:L436-L437 (held cleared, then published), tickDriver.ts:L30 (idle pumps run no tick), core.ts:L446-L468 (a tick publication: copy held, step, publish, no drain between, so the claims do hold there)",
+      "why": "The partner reconnecting is ordinary online play. Each time it happens, the other seat's own command or frame disappears from P for one publication, and the spec states as fact something the source does not do.",
+      "fix": "Limit the \u00a73.2 and \u00a73.4 claims to publications made right after `executeTick` (every cadence publication is one). Add the case that fails: a reliable publication made between ticks, of which the attach broadcast is the running example, may count admitted but unexecuted commands and frames. Then define the predictor's response. Option 1: treat a running publication whose tick is off the cadence as a re-simulation that keeps commands with sequence <= c whose results have not arrived. Option 2: accept a one-publication error and state it. Correct \u00a73.2's 'what its last tick used' for control publications."
+    },
+    {
+      "severity": "P1",
+      "title": "The local tick and P are undefined whenever the session is not producing input: focus loss, blocked input, the leave prompt, before sync, and waiting-state",
+      "claim": "Today's pump returns before sending a held frame when the window is unfocused or blocked, the session is not synced, or the phase is not running. The leave prompt sends a neutral frame. `stopInput` sends `neutralize`: a reliable held frame with a new sequence that no log entry carries. `client.held` returns null in waiting-state. \u00a73.3 says only that each local tick samples, sends, appends and steps. It does not say whether local ticks, and so P, keep running in these states, what `heldSequence` an entry has when `held` returns null, or what the own slot uses when trimming by the neutralize sequence empties the log (N = 0). If P stops, an unfocused window's world freezes: today it keeps drawing C. If P steps without entries, each publication re-simulates P to T + 0, so it jumps back to C, then runs ahead again, a sawtooth.",
+      "evidence": "spec L75-L78, L87 ('past the last entry' assumes one exists); onlineDuel.ts:L367 (early return when not focused, blocked or synced), L379 (leave prompt), L380 (not running), L171-L177 (stopInput, neutralize); streamClient.ts:L196-L205 (neutralize allocates a held sequence); duelClient.ts:L72 (held is null in waiting-state)",
+      "why": "Focus loss happens all the time on a two-PC desk, and on the host's own window when the host alt-tabs. Two implementers would build different behaviour, and one of the two obvious choices freezes the world.",
+      "fix": "Add a rule: local ticks and P keep running whenever a running publication exists. When the seat is not producing, each tick appends an entry with neutral held input, the last sent sequence and no commands. Treat a `neutralize` frame as an entry. When the log is empty, the own slot uses `publication.held[seat]`. Also state that the leave prompt's neutral frame goes through the same path."
+    },
+    {
+      "severity": "P1",
+      "title": "DuelViewSource cannot draw other players' characters from C while the world comes from P; the interface change is unnamed",
+      "claim": "The scene takes one `duel`, one `crewPrev` and one `alpha` from the source. The interior view reads every character's position as `Position.x[eid]` from that one state's crew entities, blended with that one alpha. \u00a73.6 draws this seat's character from P, blended over local ticks, and the others from C, interpolated one gap behind. That needs a second state's entity ids, or per-character positions, plus a second alpha, and the spec names no new member on `DuelViewSource` or the interior view. It also does not say what `prev` and `crewPrev` are after a re-simulation: P's state before the correction, or P's state one tick before the end of the re-simulation.",
+      "evidence": "spec L108, L111, L117; scene.ts:L61-L66 (one duel, crewPrev, alpha), scene.ts:L241 and L404 (interior.draw(d, source.crewPrev, alpha, \u2026)); interiorView.ts:L118, L180 (positions from d's eids, one alpha); onlineSource.ts:L130, L152 (crewPrev from the confirmed replica); runtime.ts:L294-L298 (Single player captures prev before each tick)",
+      "why": "This is an interface the spec relies on that does not exist. Two implementers would solve it differently, for example a second source, an overridden crew position, or drawing everyone from P.",
+      "fix": "Name the interface. For example, add `others(): { positions: readonly {x,y}[]; prev: readonly {x,y}[]; alpha: number }` to DuelViewSource for characters other than `active()`, and have interiorView take per-character positions. State that `prev`, `missilePrev` and the own character's `crewPrev` are captured before every P step, including the last step of a re-simulation."
+    },
+    {
+      "severity": "P2",
+      "title": "The reset rules contradict each other on a decided round and leave the reconnect undefined",
+      "claim": "The reset preamble says 'no stepping until a running publication'. A decided duel round keeps publishing with phase `running`, because the duel's `terminal` is always false. So the next publication would restart stepping, against bullet 3's 'P is C until the rematch'. A re-attach creates a new stream client and sequences, but the list does not say the predictor is disposed and rebuilt; it covers only 'the link closed'.",
+      "evidence": "spec L93-L98; duelRules.ts:L47 (terminal never ends, so phase stays running), onlineDuel.ts:L421-L438 (attach builds a new client and source), step.ts:L272 (a decided state takes stepDecided)",
+      "why": "The end card and reconnects come up in every session, and as written each can be built two ways.",
+      "fix": "Say that stepping resumes at the first running publication whose round is undecided (outcome Running), and that P is not stepped while C is decided. Add 'a new attach: dispose the predictor and build it at the new client's first publication'."
+    },
+    {
+      "severity": "P2",
+      "title": "The predictor's timing figures need a clock that the determinism guard forbids in clientControl",
+      "claim": "`duelPredictor.ts` lives in `clientControl`, which is a root of the deterministic module graph. There `performance` and `Date` are rejected. \u00a73.10 and G6 need the re-simulation time (p99) from `stats()`, but the interface takes no clock. One implementer will put `performance.now()` in the predictor and fail the boundary test; another will time it in the session.",
+      "evidence": "spec L46, L57, L137-L138, L168; tests/boundary.test.ts:L12 (clientControl is a guarded root), tests/helpers/determinismGuard.ts:L33 (platform globals rejected)",
+      "why": "This is an unstated assumption about the codebase, and it produces a guaranteed test failure or a split design.",
+      "fix": "Inject a clock, `createDuelPredictor({ now(): number, \u2026 })`, or state that the session times `confirm` and `tick` and that `PredictionStats` holds only counts and correction sizes."
+    },
+    {
+      "severity": "P2",
+      "title": "The wire change does not name the four schema-version constants, or the host identity check that compares them",
+      "claim": "\u00a73.2 says the duel goes 2 to 3 and the sector 1 to 2. The versions live in four places: the mode definitions, and the online compatibility records (`DUEL_SCHEMA_VERSION`, and a literal in onlineSector). `createHostRuntime` refuses to start when the identity's schemaVersion differs from the definition's. Bumping one of a pair and not the other breaks hosting rather than refusing mixed builds. \u00a73.1 also says 'nothing about accepting, checking \u2026 publications changes', while \u00a73.2 changes the strict publication schema and its watermark-length refine.",
+      "evidence": "spec L45, L67-L69; src/network/modes/duel.ts:L19, src/network/online/onlineDuel.ts:L19, src/network/modes/sector.ts:L20, src/network/online/onlineSector.ts:L31, src/network/hostRuntime.ts:L10-L11; codec.ts:L201-L206 (strict state schema; the refine checks only the three watermarks)",
+      "why": "A missed constant fails at the handshake or at host start, which only shows up in a real two-machine run.",
+      "fix": "List the four constants. Add `held: z.array(held)` to the shared publication schema and check that its length equals playerCount in the refine. Reword \u00a73.1 to 'the acceptance logic is unchanged; the schema gains `held`'."
+    },
+    {
+      "severity": "P2",
+      "title": "Your own shot's damage shows from P before its beam shows from C, and 'drawn at the ship's predicted position' is not defined for each effect kind",
+      "claim": "Hull, shields and room levels are read from P, but beams and hit flashes come from C's counters a lead later. A predicted own `laserFire`, `pewFire` or `missileLaunch` that hits therefore lowers the target's shields and hull about 150 to 300 ms before its beam is drawn. If the authority refuses the shot, the damage shows and then reverts. The \u00a73.7 rule also does not settle each `gapEvents` kind. A laser miss ends at range along the firing ship's heading: P's heading or C's? A `missileEnd` is placed at the old missile's confirmed position, not at a ship. `gunHit` and `pewHit` are placed at the target.",
+      "evidence": "spec L110, L113, L121-L123; onlineSource.ts:L77-L78 (laser x1/y1 from the ship, x2/y2 from the target or the heading), L82-L85 (missileEnd at the previous missile body), L89-L95 (gun, pew and contact positions at the ship or target)",
+      "why": "Effect follows cause by the lead on the seat that matters most (Weapons), and two implementers would place the effects differently.",
+      "fix": "Choose one. (a) Draw your own ship's offensive outcomes, meaning the target's shields, hull and rooms, from C until Net-4b. (b) Accept the effect-before-cause gap explicitly in \u00a73.7. Then give a per-kind table: laser endpoints from P's firing ship and P's target or P's heading; missileEnd at C's missile position moved by the target's P minus C offset (or left at C); gun, pew and contact at the P position of the named ship."
+    },
+    {
+      "severity": "P2",
+      "title": "The departures from the Net-0 decision record are not stated as departures",
+      "claim": "Net-0 \u00a73.4 says the client 'replays its own unacknowledged inputs' and that 'sounds and effects fire once per authoritative event, keyed by event ID'. The subject also carries the partner's ship forward from published held input, and keeps effects on confirmed counters (`gapEvents`) instead of event IDs. It argues for both choices but never says it is departing from the record.",
+      "evidence": "spec L117, L121, L152; docs/superpowers/specs/2026-11-13-networking-decision.md:L39",
+      "why": "The brief requires departures to be stated, so that later milestones know the record has been amended.",
+      "fix": "Add a short 'Departures from Net-0' paragraph to \u00a73.6 or \u00a78. (1) The ship world predicts the partner from carried held input, not only this seat's inputs. (2) Effects stay on confirmed counters until Net-4b moves them to per-tick events."
+    },
+    {
+      "severity": "P2",
+      "title": "G5 does not state its round trip, and does not account for the authority's 250 ms held expiry during a 300 ms outage",
+      "claim": "Whether P 'never stops while within the cap' through a 300 ms outage depends on the lead: 9 ticks at 150 ms plus 18 is under 30, but 18 at 300 ms plus 18 is over it. G5 names no round trip. An upstream outage longer than `REMOTE_HELD_TIMEOUT_MS` also makes the authority neutralize this seat's held input without a new sequence. The first publication after the outage then holds neutral ticks that P predicted as held, and G5 still expects the correction to stay within G4's bound.",
+      "evidence": "spec L167, L102 (the 150 ms worked example); receivePolicy.ts:L4; core.ts:L324-L332 (expiry neutralizes without a held sequence)",
+      "why": "As written the gate is ambiguous, and whether it passes depends on parameters it does not name.",
+      "fix": "Give G5 a round trip (for example 50 to 200 ms), say which direction the outage covers, and state that an outage over 250 ms neutralizes this seat at the authority, so the correction bound covers the neutral ticks. Alternatively, test an outage under 250 ms."
+    },
+    {
+      "severity": "P3",
+      "title": "\u00a73.9's removals have readers in tests that the spec does not name",
+      "claim": "Removing `unacked`, `thrMille`, `helmVent`, `throttleBase` and `UNACKED_MAX` from the source and the session breaks existing tests the spec does not list. The scene's readers are optional and fall back to the duel's own values, so those are safe.",
+      "evidence": "spec L131; tests/crewHelmOnline.test.ts:L38-L54, tests/duelOnlineView.test.ts:L199-L201, tests/onlineDuelSession.test.ts:L57, L614-L617; scene.ts:L90, L92 (optional thrMille, helmVent)",
+      "why": "These are planning inputs. A subagent will meet them as unexplained failures.",
+      "fix": "List these tests in \u00a73.9 as being rewritten against P, and note that the scene's optional readers fall back to P's own fields."
+    }
+  ],
+  "prior": [],
+  "verified": [
+    "For a tick publication, the held input the tick used equals `held` at that publication, and `heldHighWater` equals the latched sequence: executeTick copies `held`, steps and publishes with no drain in between (core.ts:L446-L468). Ticks within one pump drain only in beforeTick, and no new ingress arrives during a synchronous pump (core.ts:L502-L506).",
+    "For a tick publication, every command with sequence <= commandHighWater has been executed or refused. The high water moves at admission (ledger.ts:L73, L78), and executeTick freezes and runs all pending commands (core.ts:L445-L450). A command can never be both in C and still in the log, so the 'applied twice' risk row (spec L181) holds.",
+    "The authority restamps receive-time commands with its own tick (core.ts:L450), and stepDuelTick rejects most kinds whose requestedTick differs from the tick (step.ts:L295, L313, L364, L376, L421, L438), so \u00a73.3's restamping in P is needed and correct. Clients stamp commands and held frames with the confirmed tick (duelClient.ts:L66, L76), which receive-time accepts (receivePolicy.ts:L6).",
+    "The online duel client, the host's own window included, is always receive-time with remote streaming (duelStream.ts:L66-L67), so the host's window follows the same rules as a guest. The strict policy is not used online.",
+    "The publication hash equals hashF64(flattenDuel(state)): duelRules.snapshot is saveDuelSnapshot, which uses Array.from(flattenDuel(d)) (duelRules.ts:L66, snapshot.ts:L114-L117), and the core hashes snapshot.values (core.ts:L280-L282).",
+    "Two live DuelStates can coexist and be disposed independently: every world shares one entity index, so entity ids never collide in the module-level component arrays (sim/state.ts:L72-L76, L106-L108), and disposeDuel releases only its own world (state.ts:L138). The seed and layout caches in snapshot.ts are read-only validation memos (snapshot.ts:L60-L95). restoreDuelSnapshot clears per-tick events and helmVent (snapshot.ts:L226). Telemetry lives outside DuelState (duelRules.ts:L21, L42).",
+    "In-place restore requires the same seed and layout (snapshot.ts:L223-L224), so a new round needs a reload. That matches the subject's 'replica replaced' reset (L95) and the stream client's matches/load (duelClient.ts:L42-L43).",
+    "Asteroids-iii's rail memo and per-step table are keyed by the pool array, check every input, and are live only inside one synchronous step (rocks.ts:L66-L72, L84-L101, L108-L131), so stepping P and C alternately and restoring in place is safe, as \u00a74.1 says. Rail slots do not change while on the rail (rocks.ts:L3-L5), which supports \u00a72.1 and \u00a74.3.",
+    "Publications reach the client at cadence ticks (tick % 3 === 0) or as reliable immediates (sender.ts:L13-L16, L50-L52; perf-i L25-L27). P's tick and the authority's share one numbering (the snapshot header tick is the interior tick, core.ts:L52), so 'every third tick' lines up. Off-cadence full images fall under step 4's 'no hash recorded'. No rule forbids clientControl importing network/state, and the boundary test follows the import into its graph (boundary.test.ts:L15-L20); imageCodec uses only Math.imul.",
+    "The checkpoint already holds `held` and `heldHighWater` (core.ts:L182). Both modes' publication schemas come from one messageSchemaFor (codec.ts:L201-L206, L254, L257), so one schema edit covers both. The image metadata limit of 16 KB (imageCodec.ts:L9) easily holds four held inputs.",
+    "\u00a74.3 and \u00a75 state nothing about Asteroids-iv as existing fact: they set requirements for future rock work. That fits Asteroids-iii's out-of-scope list (asteroids-iii spec L412-L419: rock effects for guests, quantised deltas)."
+  ],
+  "not_verified": [
+    "Whether a cross-engine (Chromium and Firefox) restore-then-step harness exists that G2 can extend. Not searched; outside the manifest.",
+    "Whether the sector's local strict JSON publication sits close to MAX_MESSAGE_BYTES (65,536) with up to MAX_PLAYERS held entries added (codec.ts:L10). Sector publication sizes were not measured.",
+    "Whether delta state packets really resend the full metadata JSON in every packet, as \u00a73.2 says; imageCodec's encodeDelta was not read.",
+    "The \u00a72 numbers (accuracy, timings, packet sizes): they are estimates from a scripted run and were not reproduced. Per the fixed decisions they are taken as given.",
+    "Whether duelAudio derives any one-shot sound from state (for example a hull alarm or a fire start), which would play from P against \u00a73.7's 'nothing irreversible from P'. The scene's audio paths were not read.",
+    "The runtime.ts ranges beyond L285-L324 (Single player's alpha accumulator and event gathering) were only partly read. 'Blended between its last two local ticks, as Single player draws' was checked against capture() only."
+  ]
+}

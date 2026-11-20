@@ -17,6 +17,9 @@ import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import type { SimModule } from '../src/renderer/src/sim/module';
 import { canonicalFields } from '../src/renderer/src/sim/canonicalFields';
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
+import { beginRockTick, isRail, rockKind, RockKind, rockSlots, ROCK_STRIDE, rockX, rockY } from '../src/renderer/src/sim/tactical/rocks';
+import { breakRock } from '../src/renderer/src/sim/tactical/rockBreak';
+import { switchOff } from './helpers/rockStress';
 import { CUTTER } from './helpers/scriptedDuel';
 import { duelInit, resolveCutter, throughBytes } from './helpers/duelAuthority';
 import { hunterDown, liveDuel } from './helpers/liveDuel';
@@ -121,7 +124,9 @@ describe('a decided round and the rematch (spec §7)', () => {
           for (const [name, values] of a) {
             if (name.startsWith('round.')) continue;
             const want = b.get(name)!, shift = stamps.test(name) ? T : (name === fireAt || name === lsStamp) && want[0]! >= 0 ? T : 0;   // Engineering spike spec §4: lsStamp
-            expect(values, `${name} at round tick ${k}`).toEqual(want.map((v) => v + shift));
+            // Asteroids-iii §3.1: a live rock slot's clock t (value 7 of each ROCK_STRIDE) is a tick stamp too.
+            const rockShift = (j: number): number => (name === 'space.rocks' && j % ROCK_STRIDE === 7 && want[j - 7] !== RockKind.Gone ? T : 0);
+            expect(values, `${name} at round tick ${k}`).toEqual(want.map((v, j) => v + shift + rockShift(j)));
           }
           if (d.tactical.outcome !== Outcome.Running) break;
           stepDuelTick(d, scriptedInput(pa, d)); stepDuelTick(fresh, scriptedInput(pb, fresh));
@@ -130,6 +135,49 @@ describe('a decided round and the rematch (spec §7)', () => {
       } finally { disposeDuel(fresh); }
     } finally { disposeDuel(d); }
   }, 60_000);
+  it('a round started at T reads its rails as a fresh duel does the same number of ticks in (asteroids-iii §3.1: the belt starts unturned)', () => {
+    const d = decided(4);
+    try {
+      for (let k = 0; k < 255; k++) step(d);
+      step(d, [env(d, 0, { kind: 'rematch' })]);
+      const fresh = createDuel(CUTTER, d.tactical.seed);
+      try {
+        const rails = Array.from({ length: rockSlots(fresh.tactical) }, (_, k) => k).filter((k) => isRail(rockKind(fresh.tactical, k)));
+        expect(rails.length).toBeGreaterThan(0);
+        for (let k = 0; k < 30; k++) {
+          for (const j of rails) expect([rockX(d.tactical, j), rockY(d.tactical, j)], `slot ${j} at round tick ${k}`).toEqual([rockX(fresh.tactical, j), rockY(fresh.tactical, j)]);
+          step(d); step(fresh);
+        }
+      } finally { disposeDuel(fresh); }
+    } finally { disposeDuel(d); }
+  });
+  it('a round started at T = 1234 (not a multiple of the 30-tick re-check) settles burst debris onto its rails on the same round ticks as a fresh duel (asteroids-iii §14: the staggered re-check is round-relative)', () => {
+    const d = decided(4);
+    try {
+      for (let k = 0; k < 1232; k++) step(d);
+      step(d, [env(d, 0, { kind: 'rematch' })]);
+      const T = d.baseTick, fresh = createDuel(CUTTER, d.tactical.seed);
+      expect(T).toBe(1234);
+      try {
+        for (const x of [d, fresh]) {   // the Hunter off and a burst of every fifth belt rock: identical script-side writes
+          switchOff(x.tactical, 1);
+          for (let k = 0; k < 70; k += 5) { beginRockTick(x.tactical); breakRock(x.tactical, k, 1, 0, 'laser', -1, 'burst'); }
+          beginRockTick(x.tactical);
+        }
+        let rejoins = 0;
+        for (let i = 0; i < 4200 && d.tactical.outcome === Outcome.Running; i++) {
+          step(d); step(fresh);
+          for (const e of fresh.tactical.events) if (e.kind === 'rock' && e.what === 'rejoin') rejoins++;
+          const a = d.tactical.rocks, b = fresh.tactical.rocks;
+          for (let j = 0; j < b.length; j++) {
+            const want = b[j]! + (j % ROCK_STRIDE === 7 && b[j - 7] !== RockKind.Gone ? T : 0);
+            if (!Object.is(a[j], want)) expect(a[j], `slot ${Math.floor(j / ROCK_STRIDE)} value ${j % ROCK_STRIDE} at round tick ${i + 1}`).toBe(want);
+          }
+        }
+        expect(rejoins).toBeGreaterThan(0);   // debris did settle onto rails: the comparison covers the staggered path
+      } finally { disposeDuel(fresh); }
+    } finally { disposeDuel(d); }
+  }, 120_000);
   it('after a rematch, the stepped duel hashes as its saved-and-loaded copy at every tick for 600 ticks', () => {
     const d = decided(6);
     try {

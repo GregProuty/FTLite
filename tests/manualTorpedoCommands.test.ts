@@ -18,6 +18,7 @@ import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim
 import { heldTorpHeading, stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { classOf, missileOf, placeMissile, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { RockKind, rockSlots, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { torpedoInRange } from '../src/renderer/src/sim/tactical/weapons';
 import { duelInit, resolveCutter } from './helpers/duelAuthority';
 import { liveDuel } from './helpers/liveDuel';
@@ -106,6 +107,9 @@ describe('the held steering through the duel step (spec §3)', () => {
     const d = gunnerAtWeapons(), turn = classOf(d.tactical, 0).slots.missile.turnStepsPerTick;
     try {
       apart(d.tactical);
+      // Asteroids-iii (SIM_VERSION 60, lanes): the spot at ρ 1300 lies on the outer lane, where seeded rock 60 took the
+      // torpedo; no rock is in the way, so the test measures only the steering.
+      for (let k = 0; k < rockSlots(d.tactical); k++) d.tactical.rocks[k * ROCK_STRIDE] = RockKind.Gone;
       const m = flying(d.tactical);
       for (let k = 0; k < 10; k++) step(d, [], NONE, { ...NONE, torpHeading: 64 });   // player 0 stands: not Weapons
       expect(m.heading).toBe(0);

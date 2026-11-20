@@ -1,7 +1,8 @@
 // W-4 spec §13.4: the Hunter's own play is unchanged by W-4. A duel against a crew parked still at its spawn (its body
 // written every tick, nobody at its consoles), on the Valkyrn class (W-4 leaves it bit-identical by its fences), hashed
 // per tick on the Hunter's body, weapons and brain and on the crew ship's hull, shields and rooms only, so the new crew
-// fields cannot reach the digest. The digests were recorded on the branch at W4_BASE (master's code, SIM V).
+// fields cannot reach the digest. The digests were recorded on the branch at W4_BASE (master's code, SIM V); re-recorded on master d2eb6377
+// (SIM 62, after Asteroids-iii's rocks) at the W-4 merge, where the merged tree gives the same three.
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
@@ -10,7 +11,7 @@ import { createTacticalState, Outcome } from '../src/renderer/src/sim/tactical/s
 import { UNCREWED_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 
 const TICKS = 3000;
-const DIGESTS: Readonly<Record<number, string>> = { 1: '3000:61ca03abd1e4c5ff', 2: '3000:02c8a171796eeea4', 3: '3000:4dba895027c7c347' };
+const DIGESTS: Readonly<Record<number, string>> = { 1: '3000:d28638b2cc4b604d', 2: '3000:bc99f85ea5a8593e', 3: '3000:d9324c2a0c606026' };
 
 function run(seed: number): string {
   const st = createTacticalState(seed, 2, ShipClass.Valkyrn), h = createHash('sha256'), c = st.ships[0]!;

@@ -13,9 +13,9 @@ import { hasTurret } from '../tactical/defs';
 import { hx, hy } from '../tactical/direction';
 import { inArc, sideOf } from '../tactical/geometry';
 import { autoFaceTurn } from '../tactical/hunter';
-import { rockAt, rocksNear } from '../tactical/rocks';
+import { rockAlive, rockSlots, rockVx, rockVy, rockX, rockY, ROCK_STRIDE } from '../tactical/rocks';
 import { circularSpeed } from '../tactical/map';
-import { predictPath } from '../tactical/predict';
+import { predictFlight } from '../tactical/predict';
 import { nearestHeading } from '../tactical/lead';
 import { classOf, missileOf, Room, targetOf, type Axes } from '../tactical/state';
 import { AUTOCANNON_ARC_COS, AUTOCANNON_AUTO_RANGE, BELT_OUTER, LASER_ARC_COS, LASER_RANGE, R_MAP, SHIP_RADIUS } from '../tactical/tuning';
@@ -103,18 +103,32 @@ function turnToward(heading: number, dx: number, dy: number): number { return si
 
 function len(x: number, y: number): number { return Math.sqrt(x * x + y * y); }
 
-/** Rule 1 (spec §3): the heading away from the first hazard on the predicted path, as a direction, or null. */
+const avoidRocks: number[] = [];   // hazardAway's live-rock scratch: slot, r, x, y, vx, vy
+/** Rule 1 (spec 3; asteroids-iii 6.3): the heading away from the first hazard on the predicted path, as a direction, or
+ *  null. Each path point (taken every 4 ticks, the last at the first contact) is tested against each rock moved along its
+ *  own velocity to that tick, so the sweep is relative to the rock: a co-orbiting belt is no hazard, a crossing rock is.
+ *  Rails are extrapolated in a straight line on purpose (at most 2 u of error over the 1.5 s look); predictFlight's own
+ *  contact test uses railPos. */
 export function hazardAway(d: DuelState, axes: Axes): { x: number; y: number } | null {
-  const t = d.tactical, s = t.ships[0], p = t.map.planet, keep = SHIP_RADIUS + AVOID_MARGIN;
-  for (const q of predictPath(t, 0, axes, AVOID_TICKS, 4)) {
+  const t = d.tactical, s = t.ships[0], p = t.map.planet, keep = SHIP_RADIUS + AVOID_MARGIN, every = 4;
+  const flight = predictFlight(t, 0, axes, AVOID_TICKS, every), pts = flight.points;
+  let live = 0;   // the live rocks' state once, not per path point
+  for (let k = 0, m = rockSlots(t); k < m; k++) {
+    if (!rockAlive(t, k)) continue;
+    const o = live * 6; if (avoidRocks.length < o + 6) avoidRocks.length = o + 6;
+    avoidRocks[o] = k; avoidRocks[o + 1] = t.rocks[k * ROCK_STRIDE + 5]!; avoidRocks[o + 2] = rockX(t, k); avoidRocks[o + 3] = rockY(t, k); avoidRocks[o + 4] = rockVx(t, k); avoidRocks[o + 5] = rockVy(t, k);
+    live++;
+  }
+  for (let j = 0; j < pts.length; j++) {
+    const q = pts[j]!, n = flight.contact && j === pts.length - 1 ? flight.contact.tick : (j + 1) * every;
     if (len(q.x - p.x, q.y - p.y) < p.r + keep) return { x: s.x - p.x, y: s.y - p.y };
     if (len(q.x, q.y) > t.map.rMap - AVOID_MARGIN) return { x: -s.x, y: -s.y };
     let best = -1, bestClear = 0;
-    for (const k of rocksNear(t, q.x, q.y, keep)) {
-      const a = rockAt(t, k), dist = len(q.x - a.x, q.y - a.y);
-      if (dist < a.r + keep && (best < 0 || dist - a.r < bestClear)) { best = k; bestClear = dist - a.r; }   // ascending k: ties keep the lower index
+    for (let i = 0; i < live; i++) {   // ascending k
+      const o = i * 6, k = avoidRocks[o]!, r = avoidRocks[o + 1]!, ax = avoidRocks[o + 2]! + avoidRocks[o + 4]! * n * DT, ay = avoidRocks[o + 3]! + avoidRocks[o + 5]! * n * DT, dist = len(q.x - ax, q.y - ay);
+      if (dist < r + keep && (best < 0 || dist - r < bestClear)) { best = k; bestClear = dist - r; }   // ascending k: ties keep the lower index
     }
-    if (best >= 0) { const a = rockAt(t, best); return { x: s.x - a.x, y: s.y - a.y }; }
+    if (best >= 0) return { x: s.x - rockX(t, best), y: s.y - rockY(t, best) };
   }
   return null;
 }

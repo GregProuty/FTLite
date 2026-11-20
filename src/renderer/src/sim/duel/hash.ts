@@ -30,7 +30,7 @@ export function mapHash(map: MapDef): string {
   if (h === undefined) {
     const v: number[] = [map.planet.x, map.planet.y, map.planet.r];
     for (const a of map.asteroids) v.push(a.x, a.y, a.r);
-    v.push(map.beltCount, ...map.clusterSizes, ...map.gaps);
+    v.push(map.beltCount, ...map.clusterSizes, ...map.laneSizes, ...map.clusterRho, ...map.clusterCentres.flatMap((c) => [c.x, c.y]), ...map.gaps);
     for (const s of map.spawns) v.push(s.x, s.y, s.vx, s.vy, s.heading);
     h = hashF64(Float64Array.from(v, (x) => (x === 0 ? 0 : x)));
     mapHashes.set(map, h);

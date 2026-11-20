@@ -1,12 +1,12 @@
 // Spike ii §5.1, §9.3: the duel's ship-rock contact: a moving rock is a second body (momentum, hull cost by impact),
-// a static rock that does not wake is today's infinitely heavy contact, a hard ram wakes it, ram damage can break a
+// a rail rock is freed first and is then a second body, ram damage can break a
 // rock, the pair's grace holds both, born slots are skipped, and the single-ship flight keeps today's contact.
 import { describe, expect, it } from 'vitest';
 import { ramHull, resolveContacts } from '../src/renderer/src/sim/tactical/contacts';
 import { stepSoloFlight } from '../src/renderer/src/sim/tactical/physics';
-import { rockAlive, rockAt, RockKind } from '../src/renderer/src/sim/tactical/rocks';
-import { SHIP_MASS } from '../src/renderer/src/sim/tactical/rockTuning';
-import { arena, mover, rockEvents, seeded } from './helpers/rockArena';
+import { rockAlive, rockAt, rockMass, RockKind, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
+import { RAM_SOFT, ROCK_SEPARATE_MAX, SHIP_MASS } from '../src/renderer/src/sim/tactical/rockTuning';
+import { arena, mover, rail, rockEvents, seeded, withSwitches } from './helpers/rockArena';
 
 /** A moving rock of radius r touching the crew ship (at rest at (0, −2500), radius 20) from the east, closing at `speed`. */
 function incoming(r: number, speed: number, hp = 99) { const st = arena(); mover(st, 100, 20 + r - 1, -2500, -speed, 0, r, hp); return st; }
@@ -28,15 +28,15 @@ describe('a moving rock is a second body (spec §5.1 case 3)', () => {
     expect(Math.abs(after - before)).toBeLessThanOrEqual(1e-9 * Math.abs(before));
     expect(st.ships[0].vx).toBeLessThan(0);   // thrown west, away from the rock
   });
-  it('shares the impulse by inverse mass: r 15 (m 225) against the ship (m 900) at 200 u/s', () => {
+  it('shares the impulse by inverse mass: r 15 (m 225) against the ship (m 900) at 200 u/s', () => withSwitches({ massCube: false }, () => {
     // n from the rock to the ship is west (−x), vc 200; each body's change is (1 + 0.5)·vc·(1/m) / (1/ms + 1/mk).
     const st = incoming(15, 200), ms = SHIP_MASS, mk = 225, vc = 200, share = (m: number): number => (1.5 * vc * (1 / m)) / (1 / ms + 1 / mk);
     resolveContacts(st, true);
     expect(st.ships[0].vx).toBeCloseTo(0 - share(ms), 9);          // −60: thrown west
     expect(rockAt(st, 100).vx).toBeCloseTo(-200 + share(mk), 9);   // +40: the light rock rebounds east
     expect([share(ms), share(mk)]).toEqual([60, 240].map((x) => expect.closeTo(x, 9)));
-  });
-  it('ram damage (vc − 30) / 40 · 2·900 / (900 + m) can break a rock: a bump then the break, both named for the ship', () => {
+  }));
+  it('ram damage (vc − 30) / 40 · 2·900 / (900 + m) can break a rock: a bump then the break, both named for the ship', () => withSwitches({ massCube: false }, () => {
     const st = incoming(15, 200, 99);
     resolveContacts(st, true);
     expect(rockAt(st, 100).hp).toBeCloseTo(99 - (170 / 40) * 1800 / 1125, 12);
@@ -49,7 +49,7 @@ describe('a moving rock is a second body (spec §5.1 case 3)', () => {
     resolveContacts(tiny, true);
     expect(rockEvents(tiny).map((e) => [e.what, e.by, e.ship])).toEqual([['bump', 'ram', 0], ['dust', 'ram', 0]]);
     expect([rockAlive(tiny, 100), tiny.systems[0].rocksBroken]).toEqual([false, 1]);
-  });
+  }));
   it('inside the pair\'s grace there is no hull cost and no ram damage', () => {
     const st = incoming(30, 200);
     resolveContacts(st, true);
@@ -66,37 +66,55 @@ describe('a moving rock is a second body (spec §5.1 case 3)', () => {
   });
 });
 
-describe('a static rock (spec §5.1 cases 1 and 2)', () => {
-  it('rammed at 40 u/s stays static and unmoved: today\'s push-out, restitution 0.5, hull 1', () => {
+describe('a rail rock (asteroids-iii §6.2): freed first, then two bodies', () => {
+  it('rammed at 200 u/s relative: freed at its rail position and velocity, then the two-body contact (r 44.6: impact about 138, hull 3)', () => {
     const st = arena();
-    seeded(st, 5);
-    const a = st.map.asteroids[5]!, before = rockAt(st, 5), hull = st.systems[0].hull;
-    Object.assign(st.ships[0], { x: a.x - (20 + a.r) + 1, y: a.y, vx: 40, vy: 0, heading: 64 });
+    rail(st, 100, 20 + 44.6 - 1, -2500, 44.6);
+    const before = rockAt(st, 100), hull = st.systems[0].hull;
+    Object.assign(st.ships[0], { vx: before.vx + 200, vy: before.vy });
     resolveContacts(st, true);
-    const after = rockAt(st, 5);
-    expect([after.kind, after.x, after.y, after.vx, after.vy]).toEqual([RockKind.Static, before.x, before.y, 0, 0]);
-    expect(st.ships[0].x).toBeCloseTo(a.x - (20 + a.r), 9);
-    expect(st.ships[0].vx).toBeCloseTo(-20, 9);
-    expect(hull - st.systems[0].hull).toBe(1);
-    expect(before.hp - after.hp).toBeCloseTo(((40 - 30) / 40) * (2 * 900) / (900 + a.r * a.r), 12);   // ram damage in case 2 as well
-  });
-  it('rammed at 200 u/s wakes and becomes a two-body contact: r 44.6, impact about 138, hull 3', () => {
-    const st = arena();
-    seeded(st, 5);
-    const a = st.map.asteroids[5]!, hull = st.systems[0].hull;
-    Object.assign(st.ships[0], { x: a.x - (20 + a.r) + 1, y: a.y, vx: 200, vy: 0, heading: 64 });
-    resolveContacts(st, true);
-    expect(rockAt(st, 5).kind).toBe(RockKind.Moving);
-    expect(rockAt(st, 5).vx).toBeGreaterThan(0);
+    expect(rockAt(st, 100).kind).toBe(RockKind.Free);
+    expect(rockAt(st, 100).vx).toBeGreaterThan(before.vx);   // thrown east, ahead of the ship
     expect(hull - st.systems[0].hull).toBe(3);
+    expect(st.rockTouched[100]).toBe(1);
   });
-  it('the single-ship flight keeps today\'s contact: no wake, hull 1', () => {
+  it('the single-ship flight never writes the pool: the rail rock keeps its slot, the ship pays today\'s hull 1', () => {
     const st = arena();
     seeded(st, 5);
-    const a = st.map.asteroids[5]!, hull = st.systems[0].hull;
+    const a = rockAt(st, 5), slot = Array.from(st.rocks.subarray(5 * ROCK_STRIDE, 6 * ROCK_STRIDE)), hull = st.systems[0].hull;
     Object.assign(st.ships[0], { x: a.x - (20 + a.r) - 1, y: a.y, vx: 200, vy: 0, heading: 64 });
     stepSoloFlight(st, { turn: 0, thrust: 0 });
-    expect(rockAt(st, 5)).toMatchObject({ kind: RockKind.Static, vx: 0, vy: 0, x: a.x, y: a.y });
+    expect(Array.from(st.rocks.subarray(5 * ROCK_STRIDE, 6 * ROCK_STRIDE))).toEqual(slot);
     expect(hull - st.systems[0].hull).toBe(1);
+  });
+});
+
+describe('soft ship contacts (asteroids-iii §6.2)', () => {
+  it('a ship co-orbiting at under 15 u/s relative pushes a rail rock free and loses no hull, counts no hit and stamps no grace', () => {
+    const st = arena();
+    rail(st, 100, 20 + 30 - 1, -2500, 30);
+    const a = rockAt(st, 100), hull = st.systems[0].hull;
+    Object.assign(st.ships[0], { vx: a.vx + 10, vy: a.vy });
+    resolveContacts(st, true);
+    expect(rockAt(st, 100).kind).toBe(RockKind.Free);
+    expect(rockAt(st, 100).vx).toBeGreaterThan(a.vx);   // pushed
+    expect([st.systems[0].hull, st.ships[0].asteroidHits, st.ships[0].graceUntil[101]]).toEqual([hull, 0, 0]);
+  });
+  it('a deep overlap moves the rock at most ROCK_SEPARATE_MAX; the ship takes the rest (plan deviation 7)', () => {
+    const st = arena();
+    mover(st, 100, 20 + 15 - 25, -2500, 0, 0, 15);   // overlap 25 with a light rock
+    resolveContacts(st, true);
+    expect(rockAt(st, 100).x).toBeCloseTo(10 + ROCK_SEPARATE_MAX, 9);
+    expect(rockAt(st, 100).x - st.ships[0].x).toBeCloseTo(35, 9);   // fully separated
+  });
+  it('pins the boundary on the mass-weighted impact: just under RAM_SOFT is soft, RAM_SOFT itself costs hull and stamps grace', () => {
+    const mk = rockMass(15), speedFor = (impact: number) => (impact * (mk + SHIP_MASS)) / mk;
+    for (const [impact, soft] of [[RAM_SOFT - 0.1, true], [RAM_SOFT, false], [RAM_SOFT + 0.1, false]] as const) {
+      const st = incoming(15, speedFor(impact)), hull = st.systems[0].hull;
+      resolveContacts(st, true);
+      expect(hull - st.systems[0].hull, `impact ${impact}`).toBe(soft ? 0 : ramHull(impact));
+      expect(st.ships[0].asteroidHits, `impact ${impact}`).toBe(soft ? 0 : 1);
+      expect(st.ships[0].graceUntil[101]! > 0, `impact ${impact}`).toBe(!soft);
+    }
   });
 });

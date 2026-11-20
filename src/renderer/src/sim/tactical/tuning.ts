@@ -33,6 +33,20 @@ export const EDGE_MARGIN = 100;                // no asteroid surface within thi
 export const ASTEROID_GAP = 10;                // minimum clear space between asteroid surfaces
 export const SPAWN_RADIUS = 2000;
 export const SPAWN_CLEARANCE = 300;            // no asteroid surface within this of a spawn point
+/** Asteroids-iii §3.5: the belt as three lanes (inner, main, outer): each lane's orbital radius, its rock-radius band and
+ *  its count (17 + 36 + 17 = BELT_COUNT). Lanes are 78 apart; the largest cross-lane radius sum plus ASTEROID_GAP is 75. */
+export interface Lane { rho: number; rMin: number; rMax: number; count: number }
+export const LANES: readonly Lane[] = [
+  { rho: 1122, rMin: 15, rMax: 20, count: 17 },
+  { rho: 1200, rMin: 25, rMax: 45, count: 36 },
+  { rho: 1278, rMin: 15, rMax: 20, count: 17 }
+];
+/** §13.2: the lane zones: [1092, 1161) inner, [1161, 1239) main, [1239, 1308] outer (the part of the belt nearest each lane). */
+export const LANE_ZONE_EDGES: readonly number[] = [1092, 1161, 1239, 1308];
+/** §3.5: cluster centres' orbital radii differ by at least 2·(CLUSTER_RADIUS + CLUSTER_R_MAX) + ASTEROID_GAP (420), so
+ *  clusters never meet each other or the belt; and the slack CLUSTER_CENTRE_MIN..MAX leaves for three of them (160). */
+export const CLUSTER_RHO_SEPARATION = 2 * (CLUSTER_RADIUS + CLUSTER_R_MAX) + ASTEROID_GAP;
+export const CLUSTER_RHO_SLACK = CLUSTER_CENTRE_MAX - CLUSTER_CENTRE_MIN - (CLUSTER_COUNT - 1) * CLUSTER_RHO_SEPARATION;
 
 // Ships (§5)
 export const SHIP_RADIUS = 20;
@@ -61,9 +75,6 @@ export const THRUST = 120;                     // u/s²
 export const REVERSE_FRACTION = 0.4;
 export const DRAG = 0.15;                      // velocity × (1 − DRAG · dt) per tick
 export const STABILISE = 80;                   // u/s² of sideways velocity removed while both axes are zero
-
-// Broad phase (§4)
-export const BROAD_CELL = 200;
 
 /** Switches for the §4 test configurations. The game flies each slot's flightFor (physics.ts): CREW_FLIGHT for a
  *  newtonianHelm crew class (playtest2feedback §2), else DEFAULT_FLIGHT. */

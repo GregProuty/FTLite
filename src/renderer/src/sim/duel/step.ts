@@ -21,7 +21,7 @@ import { classOf, CONTACT_MAX_LEVEL, Outcome, type Axes } from '../tactical/stat
 import { hx, hy } from '../tactical/direction';
 import { shipEngineFactor } from '../tactical/physics';
 import { HAZARD_EVERY } from '../tuning';
-import { rockAlive } from '../tactical/rocks';
+import { rockAlive, rockSlots, ROCK_STRIDE } from '../tactical/rocks';
 import { canCharge, canLaunch, manualLaserReady, validRockLock, validTarget, type ShipInput } from '../tactical/weapons';
 import { pewReady, validAim } from '../tactical/pew';
 import { hasTurret } from '../tactical/defs';
@@ -145,11 +145,11 @@ export function aimTurn(heading: number, aim: number): number {
 }
 
 /** The turn the Helm attendant's held input flies this tick (Artemis spec §5.3, Feel-i, Feel-ii spec §1.1, Valkyrn spec
- *  §6.2): A/D (not on a newtonianHelm class, playtest2feedback §4a), else auto-face's turn, else the aim's, else the held heading's, else none. Pure; reads the state before
+ *  §6.2): A/D (on every class, owner 2026-11-19), else auto-face's turn, else the aim's, else the held heading's, else none. Pure; reads the state before
  *  the step (the app's predicted path calls it too). */
 export function helmTurn(d: DuelState, h: HeldInput): number {
-  // Playtest2feedback §4a: an authority rule: moveX turns only a class that is not newtonianHelm (the crew's A/D are thrusters).
-  if (!classOf(d.tactical, 0).newtonianHelm && (Math.sign(h.moveX) || 0) !== 0) return h.moveX;
+  // Owner 2026-11-19: A/D turn every class again (playtest2feedback §4a had made them thrusters on a newtonianHelm class).
+  if ((Math.sign(h.moveX) || 0) !== 0) return Math.sign(h.moveX);
   if (d.tactical.outcome !== Outcome.Running) return 0;
   if (h.face === true) return autoFaceTurn(d.tactical, 0);
   const aim = heldAim(h);
@@ -174,6 +174,7 @@ export function headingDelta(heading: number, target: number): number {
 export function helmBoost(d: DuelState, h: HeldInput): number {
   const t = d.tactical, cls = classOf(t, 0);
   if (!cls.newtonianHelm || helmTurn(d, h) === 0 || shipEngineFactor(t, 0) <= 0) return 1;   // owner 2026-11-19: the gas is free
+  if ((Math.sign(h.moveX) || 0) !== 0) return 1;   // owner 2026-11-19: A/D turn at the normal rate, unboosted
   const heading = t.ships[0].heading;
   if (h.face === true) {
     const p = autoFacePoint(t, 0), dist = Math.sqrt(p.x * p.x + p.y * p.y), h0 = hx(heading), h1 = hy(heading);
@@ -200,7 +201,7 @@ export function crewAxes(d: DuelState, h: HeldInput, thrMille: number = d.thrMil
 /** Playtest2feedback (spec §3, §4, §4a, §5, §7's step order 2 to 7): the crew Helm's tick on a newtonianHelm class,
  *  attended (`h` is the attendant's held input) or not (null). In order:
  *  - the turn and its boost, from the state before the step;
- *  - a held aim becomes the held heading, and auto-face clears it (moveX never touches it on this class);
+ *  - a held aim becomes the held heading, and A/D or auto-face clears it (owner 2026-11-19, as the other classes);
  *  - the throttle ramp on the attendant's throttleHeld (0 with no attendant), clamped to the Engines bars' floor and cap
  *    (owner 2026-11-19: Engineering's effective Engines bars, after this tick's ship commands);
  *  - the fore/aft and the side thruster, each venting whenever the attendant holds it (owner 2026-11-19: free cold gas, so
@@ -211,7 +212,7 @@ export function crewAxes(d: DuelState, h: HeldInput, thrMille: number = d.thrMil
 function crewHelm(d: DuelState, h: HeldInput | null, crew: ShipInput): void {
   const held = h ?? NO_HELD, turn = helmTurn(d, held), boost = helmBoost(d, held);
   if (h) {
-    if (h.face === true) d.holdHeading = -1;
+    if ((Math.sign(h.moveX) || 0) !== 0 || h.face === true) d.holdHeading = -1;
     else if (heldAim(h) >= 0) d.holdHeading = heldAim(h);
   }
   const engine = engineBars(d);
@@ -225,8 +226,8 @@ function crewHelm(d: DuelState, h: HeldInput | null, crew: ShipInput): void {
 /**
  * The next round (H-2 spec §7), built in place in `d` so every holder of the duel keeps it: a fresh duel (a fresh
  * interior world) from the round seed after this one, with the same Helm player and presence, whose every tick stamp
- * is moved to the encounter tick `tick`: the interior and tactical ticks, each ship's graceUntil and the hunter's last
- * launch. A round started at `tick` behaves as a fresh duel started at 0 (tests/duelRounds.test.ts).
+ * is moved to the encounter tick `tick`: the interior and tactical ticks, each ship's graceUntil, the hunter's last
+ * launch and each live rock's clock t. A round started at `tick` behaves as a fresh duel started at 0 (tests/duelRounds.test.ts).
  */
 function startRound(d: DuelState, tick: number): void {
   const next = createDuel(d.interior.layout, followingSeed(d.tactical.seed), d.helmPlayer, d.interior.playerCount, d.crewClass);   // Valkyrn spec §6.1: the class carries over
@@ -234,6 +235,7 @@ function startRound(d: DuelState, tick: number): void {
   next.round = d.round + 1; next.baseTick = tick; next.decidedTick = -1;
   next.interior.tick = tick; next.tactical.tick = tick;
   for (const ship of next.tactical.ships) ship.graceUntil.fill(tick);
+  for (let k = 0; k < rockSlots(next.tactical); k++) if (rockAlive(next.tactical, k)) next.tactical.rocks[k * ROCK_STRIDE + 7] = tick;   // asteroids-iii §3.1: each rock's clock t, so the belt starts unturned
   next.tactical.hunter.lastLaunch += tick;
   next.tactical.startTick = tick;   // Sci-1 spec §4.1: the round's rules read rt = tick − startTick; hostileAt is round-relative
   disposeDuel(d);

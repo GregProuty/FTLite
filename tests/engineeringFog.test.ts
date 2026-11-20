@@ -11,7 +11,6 @@ import { contactModel } from '../src/renderer/src/render/duel/contactModel';
 import { pickContact } from '../src/renderer/src/render/tactical/tacticalModel';
 import { laserSituation } from '../src/renderer/src/render/duel/situationModel';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
-import { buildGrid } from '../src/renderer/src/sim/tactical/grid';
 import { initRocks } from '../src/renderer/src/sim/tactical/rocks';
 import { Container } from 'pixi.js';
 import hound from '../src/renderer/src/sim/ship/hound.json';
@@ -118,7 +117,7 @@ describe('no fog leaks (spec §10.4)', () => {
   });
   it('the laser\'s words say nothing of an unseen enemy (no OUT OF RANGE n/450)', () => {
     const t = createTacticalState(5, 2, ShipClass.ValkyrnLaser), sys = t.systems[0], me = t.ships[0]!, e = t.ships[1]!;   // W-4 spec §14.1: the beam's rule, on the laser fit
-    t.map = { ...t.map, asteroids: [] }; t.grid = buildGrid([], t.map.rMap); t.rocks = initRocks(t.map);   // a clear line
+    t.map = { ...t.map, asteroids: [] }; t.rocks = initRocks(t.map);   // a clear line
     sys.bars[1] = 4; sys.weaponPower.splice(0, 3, 0, 2, 2);   // the beam powered
     e.x = me.x + hx(me.heading) * 1200; e.y = me.y + hy(me.heading) * 1200; e.active = true;   // ahead, beyond the 900 start range
     expect(laserSituation(t).kind).toBe('none');

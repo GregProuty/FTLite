@@ -157,7 +157,7 @@ describe('the scene and the contact window (spec §6.5)', () => {
       expect(r.requests.takePew()).toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
-  it('W-1: at the crew Helm a map click over the enemy asks for no pew; it steers and leaves the window shut (playtest2feedback §4a, kind a)', () => {
+  it('W-1: at the crew Helm a map click over the enemy asks for no pew and opens its window (owner 2026-11-19: the Helm scans it)', () => {
     const r = rig();
     try {
       r.press('switch'); r.tick(); r.tick();
@@ -165,7 +165,7 @@ describe('the scene and the contact window (spec §6.5)', () => {
       r.scene.draw(r.rt, 1 / 60, LIVE);
       const b = interpolatedShip(r.rt.duel.tactical, r.rt.prev, r.rt.alpha(), 1);
       r.clicks.push(worldToScreen(r.rt.cameras.helm, vp, b.x, b.y)); r.scene.draw(r.rt, 1 / 60, LIVE);
-      expect(r.contact.state()).toBeNull();   // the merge with W-1: on the Cutter's Newtonian Helm the left button only steers (T opens the window)
+      expect(r.contact.state()).toEqual({ contact: 0, aim: false });   // owner 2026-11-19: a press on a contact is the window's, not a steer
       expect(r.requests.takePew()).toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
@@ -192,7 +192,7 @@ describe('the scene and the contact window (spec §6.5)', () => {
     const r = rig();
     try {
       const t = r.rt.duel.tactical, me = t.ships[0], slot = rockSlots(t) - 1;
-      writeRock(t, slot, RockKind.Moving, me.x + 150, me.y, 0, 0, 25, 3);
+      writeRock(t, slot, RockKind.Free, me.x + 150, me.y, 0, 0, 25, 3);
       r.contact.pickUp('laser'); r.scene.draw(r.rt, 1 / 60, LIVE);
       r.clicks.push(worldToScreen(r.rt.cameras.weapons, vp, me.x + 150, me.y)); r.scene.draw(r.rt, 1 / 60, LIVE);
       expect(r.contact.takeRequests().rockLock).toEqual({ weapon: 'laser', rock: slot });
