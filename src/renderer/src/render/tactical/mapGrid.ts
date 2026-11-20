@@ -1,10 +1,11 @@
 // The console map's grid (owner 2026-11-19): 'gravity' bends the grid toward the planet, like a rubber sheet seen from
-// above; 'square' is the plain lettered grid. Saved with the volumes (app/settingsStore.ts) and read by the duel scene
-// each frame through the renderer. Drawing only: ships, rocks, contours and the squares' names keep their true places.
-export const MAP_GRID_SETTINGS = ['gravity', 'square'] as const;
+// above; 'square' is the plain lettered grid; 'off' (UI round spec §1.3, the default) draws no lines, only the squares'
+// names. Saved with the volumes (app/settingsStore.ts) and read by the duel scene each frame through the renderer.
+// Drawing only: ships, rocks, contours and the squares' names keep their true places.
+export const MAP_GRID_SETTINGS = ['off', 'gravity', 'square'] as const;
 export type MapGridSetting = (typeof MAP_GRID_SETTINGS)[number];
-export const DEFAULT_MAP_GRID: MapGridSetting = 'gravity';
-export const MAP_GRID_LABELS: Readonly<Record<MapGridSetting, string>> = { gravity: 'Gravity well', square: 'Square' };
+export const DEFAULT_MAP_GRID: MapGridSetting = 'off';
+export const MAP_GRID_LABELS: Readonly<Record<MapGridSetting, string>> = { off: 'Off', gravity: 'Gravity well', square: 'Square' };
 export function validMapGrid(v: unknown): v is MapGridSetting { return typeof v === 'string' && (MAP_GRID_SETTINGS as readonly string[]).includes(v); }
 
 /** The well's shape: a point r from the planet is drawn at r · (1 − WELL_PULL · (c² / (r² + c²))²), c = WELL_CORE (world
