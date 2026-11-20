@@ -69,6 +69,9 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
   const { seat } = options, step = options.step ?? ((d: DuelState, input: DuelInput) => { stepDuelTick(d, input); });
   let p: DuelState | null = null, predicting = false, local = 0, offset = 0, confirmedTick = 0, revision = -1;
   let held: HeldInput[] = [], log: Entry[] = [], waiting: Command[] = [], prior: PredictedBodies | null = null;
+  /** Fable #3: the newest held sequence an anchor used and its local tick. An entry kept past its acknowledgement never
+   *  anchors again (only a newer sequence does), and an entry leaves the log at or before both it and the confirmed tick. */
+  let ackedSequence = 0, ackedLocal = -Infinity;
   /** I1 (§3.5): true once a capped tick has set `prior` to P's own bodies, so the view holds at P and nothing is rebuilt per tick. */
   let holding = false;
   const steps = new Map<number, Step>();
@@ -94,7 +97,7 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
     const matches = !!p && h.layoutId === p.interior.layout.id && h.layoutHash === p.interior.derived.layoutHash && h.seed === p.tactical.seed && h.playerCount === p.interior.playerCount && h.crewClass === p.crewClass;
     if (p && matches) restoreDuelSnapshot(p, publication.snapshot, options.contentDigest);
     else { if (p) disposeDuel(p); p = null; p = loadDuelSnapshot(options.resolveLayout(h.layoutId), publication.snapshot, options.contentDigest); }
-    log = []; waiting = []; steps.clear(); steps.set(publication.tick, { key: '', hash: publication.hash });
+    log = []; waiting = []; ackedSequence = 0; ackedLocal = -Infinity; steps.clear(); steps.set(publication.tick, { key: '', hash: publication.hash });
     prior = bodies(p); holding = false; revision = publication.controlRevision; offset = publication.tick - local;
     predicting = publication.phase === 'running' && !decided;
     stats.resets++; stats.correction = null; stats.lead = 0; stats.measured = stats.standing = publication.tick;
@@ -109,10 +112,14 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
       if (replaced || !predicting || decided || publication.phase !== 'running' || publication.controlRevision !== revision) return reset(publication, decided);
       const d = p!;
       // Step 1: the anchor (the newest entry whose held frame the authority has latched) gives the measured offset;
-      // with none, the last mapping is kept. Commands leave the log only by the command watermark.
+      // with none, or none newer than the last anchor's (Fable #3: an entry kept past its acknowledgement), the last
+      // mapping is kept. Commands leave the log only by the command watermark.
       const hw = publication.heldHighWater[seat] ?? 0, cw = publication.commandHighWater[seat] ?? 0;
-      let anchored = offset, anchor = -1;
-      for (let i = log.length - 1; i >= 0; i--) { const s = log[i]!.heldSequence; if (s !== null && s <= hw) { anchored = T - log[i]!.local; anchor = i; break; } }
+      let anchored = offset;
+      for (let i = log.length - 1; i >= 0; i--) {
+        const s = log[i]!.heldSequence;
+        if (s !== null && s <= hw) { if (s > ackedSequence) { anchored = T - log[i]!.local; ackedSequence = s; ackedLocal = log[i]!.local; } break; }
+      }
       for (const e of log) e.commands = e.commands.filter((c) => c.id.sequence > cw);
       waiting = waiting.filter((c) => c.id.sequence > cw);
       // Step 3: the target: T plus the local ticks after the anchor's; P's own tick when within the slack; clamped.
@@ -123,11 +130,13 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
       // The mapping from now on: the newest local tick is the target (plan deviation 1). It is the anchor's offset unless
       // the slack or the cap applied; tick() steps entry L to L + offset, so verify and tick() always agree.
       offset = target - local;
-      // Plan deviation 2: an entry leaves the log only once acknowledged (at or before the anchor), so a later held
-      // watermark can still anchor on it; entries the mapping puts at or before T stay with their command lists emptied.
-      // Either way their commands not yet run move to the first entry after T in the mapping, or wait for the next one.
-      const cut = T - offset, carried: Command[] = [];
-      if (anchor >= 0) for (const e of log.splice(0, anchor + 1)) carried.push(...e.commands);
+      // Plan deviation 2, Fable #3: an entry leaves the log only once acknowledged (at or before the last anchor) and
+      // mapped at or before T: P standing ahead of the measured target inside the slack still steps the acknowledged
+      // entries after T, so they stay for planned(). Unacknowledged entries the mapping puts at or before T stay with their
+      // command lists emptied. Either way their commands not yet run move to the first entry after T, or wait for the next one.
+      const cut = T - offset, drop = Math.min(ackedLocal, cut), carried: Command[] = [];
+      let n = 0; while (n < log.length && log[n]!.local <= drop) n++;
+      for (const e of log.splice(0, n)) carried.push(...e.commands);
       for (const e of log) if (e.local <= cut) { carried.push(...e.commands); e.commands = []; }
       if (carried.length) {
         const next = log.find((e) => e.local > cut);

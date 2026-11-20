@@ -67,6 +67,50 @@ describe('the duel predictor (Net-4a §3.3, §3.4)', () => {
     expect(p.stats().lead).toBe(6);
     p.dispose();
   });
+  it('P one tick ahead of the measured target, inside the slack, keeps verifying while this seat\'s input changes (Fable #3)', () => {
+    // The authority runs local tick L − 6's frame on its tick; from L 30 its held watermark also counts the next frame,
+    // latched between ticks but not yet run, so the measured target is one tick short of where P stands (inside the
+    // slack: P keeps its tick). The acknowledged entry that P's next tick maps to must stay in the log, or planned()
+    // substitutes the newest held input and every publication re-simulates while the input changes.
+    const a = authority(), p = predictor(), D = 6, results: string[] = [];
+    const input = (L: number): HeldInput => (L <= 0 ? N() : { ...N(), throttleHeld: L % 8 < 4 ? 1 : -1, rcsX: L % 5 < 2 ? 1 : 0 });
+    p.confirm(a.publication(), a.confirmed());
+    for (let L = 1; L <= 90; L++) {
+      p.tick(entry(L, input(L)));
+      a.step([input(L - D), N()]);
+      a.water.held[0] = Math.max(0, L - D + (L > 30 ? 1 : 0));
+      if (a.d.interior.tick % 3 === 0) { const r = p.confirm(a.publication(), a.confirmed()); if (L > 36) results.push(r); }
+    }
+    expect(p.stats().standing - p.stats().measured).toBe(1);
+    expect(results.length).toBeGreaterThan(15);
+    expect(results).toEqual(Array(results.length).fill('verified'));
+    p.dispose();
+  });
+  it('an acknowledged entry kept in the log does not anchor again while the held watermark stands still (an upstream outage)', () => {
+    // As above, but P stands two ticks ahead (from L 30 the watermark counts two frames not yet run), and from the first
+    // publication after L 40 the watermark stops (no frame reaches the authority; it runs the newest it has, then repeats
+    // it). The two acknowledged entries kept because P stands ahead must not anchor again on the next, newer T, which
+    // would move the measured target forward with T. With no newer held sequence the last mapping is kept, so the
+    // measured target is P's own tick on every publication of the outage.
+    const a = authority(), p = predictor(), D = 6, gaps: number[] = [];
+    const input = (L: number): HeldInput => (L <= 0 ? N() : { ...N(), throttleHeld: L % 8 < 4 ? 1 : -1 });
+    let cap = Infinity;
+    p.confirm(a.publication(), a.confirmed());
+    for (let L = 1; L <= 60; L++) {
+      p.tick(entry(L, input(L)));
+      const latched = L > 30 ? Math.min(L - D + 2, cap) : L - D;
+      a.step([input(Math.min(L - D, latched)), N()]);
+      a.water.held[0] = Math.max(0, latched);
+      if (a.d.interior.tick % 3 === 0) {
+        p.confirm(a.publication(), a.confirmed());
+        if (cap < Infinity) gaps.push(p.stats().measured - p.stats().standing);
+        else if (L > 40) { cap = latched; expect(p.stats().standing - p.stats().measured).toBe(2); }
+      }
+    }
+    expect(gaps.length).toBeGreaterThan(3);
+    expect(gaps).toEqual(Array(gaps.length).fill(0));   // the mapping kept: the measured target is where P stands
+    p.dispose();
+  });
   it('re-simulates when the partner\'s held input changed inside the window, and lands on the authority\'s state', () => {
     // The partner stands up first (at L 5, a command P never predicts): seated at Weapons, its moveX moves nothing.
     const a = authority(), p = predictor(), stand: CommandEnvelope<DuelCommand> = { runId: 'r', id: { player: 1, sequence: 1 }, requestedTick: 0, command: { kind: 'stand' } };
