@@ -3,7 +3,9 @@
 // ticks between the last two observed ticks (1 on a host, about 3 on a guest, whose α spans the publication gap); a free
 // rock is lerped from its last observed position. Free rocks keep a ring of TRAIL_LEN samples at TRAIL_HZ: a rock younger than YOUNG_AGE_S
 // shows TRAIL_YOUNG_S of it, an older one TRAIL_OLD_S. A slot's history resets when its kind or r changes or it jumps more
-// than JUMP_RESET_U between ticks, which covers slot reuse on guests (who get no rock events).
+// than JUMP_RESET_U between ticks, which covers slot reuse on guests (who get no rock events). Net-4a (Fable #8): online
+// while predicting the caller gives the gap (1: α spans one local tick, as the ships' blend), and a backward tick of at
+// most RESYNC_BACK_TICKS (a prediction retarget) re-syncs the positions without wiping the trails.
 import { isRail, RockKind, rockSlots, ROCK_STRIDE, rockT, rockX, rockY } from '../../sim/tactical/rocks';
 import { orbitRate, SPIN_RATE } from '../../sim/tactical/rails';
 import type { TacticalState } from '../../sim/tactical/state';
@@ -12,6 +14,8 @@ import type { Point } from './camera';
 
 export const TRAIL_HZ = 4, TRAIL_YOUNG_S = 25, TRAIL_OLD_S = 6, YOUNG_AGE_S = 60, JUMP_RESET_U = 50;
 export const TRAIL_LEN = TRAIL_YOUNG_S * TRAIL_HZ;
+/** Fable #8: the furthest back a prediction retarget moves the drawn tick (PREDICT_MAX_TICKS); further back is a new history. */
+export const RESYNC_BACK_TICKS = 30;
 const TRAIL_EVERY = TICK_HZ / TRAIL_HZ;
 export interface RockTrack { tick: number; gap: number; n: number; kind: Float64Array; r: Float64Array; px: Float64Array; py: Float64Array; cx: Float64Array; cy: Float64Array; trail: Float64Array; head: Int32Array; len: Int32Array }
 
@@ -22,20 +26,21 @@ export function resetRockTrack(t: RockTrack): void { t.tick = -1; t.gap = 1; t.l
 function sized(t: RockTrack, n: number): void {
   Object.assign(t, { n, tick: -1, gap: 1, kind: new Float64Array(n), r: new Float64Array(n), px: new Float64Array(n), py: new Float64Array(n), cx: new Float64Array(n), cy: new Float64Array(n), trail: new Float64Array(n * TRAIL_LEN * 2), head: new Int32Array(n), len: new Int32Array(n) });
 }
-/** Once per frame: on a new tick, record the tick gap (the ticks since the last one seen, at least 1), shift each slot's
- *  positions, reset what changed, and sample the free rocks' trails. */
-export function updateRockTrack(t: RockTrack, s: TacticalState): void {
+/** Once per frame: on a new tick, record the tick gap (the ticks since the last one seen, at least 1, or `gap` when given),
+ *  shift each slot's positions, reset what changed, and sample the free rocks' trails. A small step back re-syncs. */
+export function updateRockTrack(t: RockTrack, s: TacticalState, gap?: number): void {
   const n = rockSlots(s);
   if (t.n !== n) sized(t, n);
-  if (s.tick === t.tick) return;
-  const first = t.tick < 0 || s.tick < t.tick, sample = first || Math.floor(s.tick / TRAIL_EVERY) !== Math.floor(t.tick / TRAIL_EVERY);
-  t.gap = first ? 1 : Math.max(1, s.tick - t.tick);
+  if (s.tick === t.tick) { if (gap !== undefined) t.gap = gap; return; }
+  const back = t.tick >= 0 && s.tick < t.tick, first = t.tick < 0 || t.tick - s.tick > RESYNC_BACK_TICKS, resync = back && !first;
+  const sample = first || (!resync && Math.floor(s.tick / TRAIL_EVERY) !== Math.floor(t.tick / TRAIL_EVERY));   // a re-sync samples nothing: those ticks are in the trail
+  t.gap = gap ?? (first || resync ? 1 : Math.max(1, s.tick - t.tick));
   for (let k = 0; k < n; k++) {
     const kind = s.rocks[k * ROCK_STRIDE]!;
     if (kind === RockKind.Gone) { t.kind[k] = 0; t.len[k] = 0; continue; }
     const x = rockX(s, k), y = rockY(s, k), r = s.rocks[k * ROCK_STRIDE + 5]!;
     const reset = first || t.kind[k] !== kind || t.r[k] !== r || Math.hypot(x - t.cx[k]!, y - t.cy[k]!) > JUMP_RESET_U;
-    if (reset) { t.px[k] = x; t.py[k] = y; t.len[k] = 0; t.head[k] = 0; } else { t.px[k] = t.cx[k]!; t.py[k] = t.cy[k]!; }
+    if (reset) { t.px[k] = x; t.py[k] = y; t.len[k] = 0; t.head[k] = 0; } else if (resync) { t.px[k] = x; t.py[k] = y; } else { t.px[k] = t.cx[k]!; t.py[k] = t.cy[k]!; }
     t.cx[k] = x; t.cy[k] = y; t.kind[k] = kind; t.r[k] = r;
     if (kind === RockKind.Free && (reset || sample)) {
       const at = (k * TRAIL_LEN + t.head[k]!) * 2;

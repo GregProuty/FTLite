@@ -150,6 +150,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   // Net-4a §3.3, §3.4: the predictor (owned with the stream client), the last publication it was given, the local tick
   // clock, this tick's commands (collected by send), a neutralize's held sequence for the next entry, and the timings (§3.10).
   let predictor: DuelPredictor | null = null, confirmedSequence = 0, clockBase: number | null = null, localDone = 0, lastLocalAt = 0;
+  let capped = false;   // Fable #8: the last local tick left P at the cap (it did not step), so the view holds at alpha 1
   let collected: CommandEnvelope<DuelCommand>[] | null = null, neutralSequence: number | null = null;
   const keep = (list: number[], ms: number): void => { list.push(ms); if (list.length > LIVE_SAMPLES) list.shift(); };
   const p99 = (xs: readonly number[]): number | null => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return Math.round(s[Math.min(s.length - 1, Math.ceil(0.99 * s.length) - 1)]! * 1000) / 1000; };
@@ -495,10 +496,10 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     const s = client.held(descriptor.seatId, first.held);
     return s === null ? idle() : { heldSequence: s, held: first.held, commands: [] };
   }
-  function pump(): void {
-    if (disposed) return;
-    observe(); pollLink();
-    // Net-4a §3.3: local ticks by elapsed time, 60 a second; the first pump runs one; at most LOCAL_TICKS_MAX per pump.
+  /** Net-4a §3.3: the local ticks due by elapsed time, 60 a second; the first call runs one; at most LOCAL_TICKS_MAX a
+   *  call. One call samples input once (Task 7): its first tick produces, the rest repeat it. Fable #7: the pump and every
+   *  drawn frame call it, so a frame drawn after a tick boundary but before the late timer fires is never behind. */
+  function runLocalTicks(): void {
     const now = deps.now();
     if (clockBase === null) { clockBase = now - LOCAL_TICK_MS; localDone = 0; }
     const due = Math.floor((now - clockBase) / LOCAL_TICK_MS + 1e-6);
@@ -509,8 +510,13 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       localDone++; lastLocalAt = clockBase + localDone * LOCAL_TICK_MS;
       const entry: LocalInput = first ? repeat(first) : produce();
       first ??= entry;
-      if (predictor) try { predictor.tick(entry); } catch (err) { dropPredictor(err); }
+      if (predictor) try { capped = !predictor.tick(entry); } catch (err) { dropPredictor(err); }
     }
+  }
+  function pump(): void {
+    if (disposed) return;
+    observe(); pollLink();
+    runLocalTicks();
   }
   // Fable #4: a throw in one pump must not stop the session: the next pump is scheduled whatever happens.
   function schedule(): void { cancel = deps.scheduler.schedule(1000 / 60, () => { try { pump(); } finally { if (!disposed) schedule(); } }); }
@@ -548,10 +554,10 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       // Subscribe before the client, which releases its replica on close: keep the last view frozen.
       offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; predictor?.dispose(); predictor = null; confirmedSequence = 0; });   // Net-4a §3.4: no hidden P steps on after a close
       client = createDuelRemoteClient(link, [next.seatId], { runId: next.runId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout, clock: { nowMs: deps.now } });
-      predictor = createDuelPredictor({ seat: next.seatId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout }); seenRetargets = 0;   // Net-4a §3.4: one per client
+      predictor = createDuelPredictor({ seat: next.seatId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout }); seenRetargets = 0; capped = false;   // Net-4a §3.4: one per client
       source = createOnlineDuelSource({ client: { state, publication, live }, seat: next.seatId, now: deps.now, viewport: { w: INTERNAL_W, h: INTERNAL_H },
         prediction: { active: () => !linkClosed && (predictor?.active() ?? false), state: () => predictor?.state() ?? null, before: () => predictor?.before() ?? null,
-          alpha: () => Math.max(0, Math.min(1, (deps.now() - lastLocalAt) / LOCAL_TICK_MS)) } });
+          alpha: () => (capped ? 1 : Math.max(0, Math.min(1, (deps.now() - lastLocalAt) / LOCAL_TICK_MS))) } });
     },
     setStatus(next: OnlineStatus): void {
       status = next;
@@ -564,6 +570,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       if (disposed) return;
       // Nothing to draw: hide the overlay rather than freeze it.
       if (!scene || !source) { deps.latency?.clear(); return; }
+      if (client && !linkClosed) runLocalTicks();   // Fable #7: the ticks due by now, so alpha stays in [0, 1] without a clamp
       const now = deps.now(), dt = lastFrame ? Math.min(0.1, (now - lastFrame) / 1000) : 1 / 60; lastFrame = now;
       const d = state(); if (!d) { deps.latency?.clear(); return; }
       source.frame(dt, focused && !blocked ? cameraKeys : null, focused && !blocked ? pointer.sample() : null);

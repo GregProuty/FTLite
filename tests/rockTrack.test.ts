@@ -105,6 +105,28 @@ describe('the rock track (spec §7.1, §13.5)', () => {
     st.tick = 3; updateRockTrack(track, st);
     expect(track.len[4]).toBe(1);
   });
+  it('a small backward tick (a prediction retarget, Fable #8) re-syncs: the trails stay, the free rock does not lerp across it', () => {
+    const st = arena(), track = createRockTrack();
+    mover(st, 4, 0, 1700, 1, 1, 10); rail(st, 3, 0, 1700, 20); updateRockTrack(track, st);
+    for (let i = 0; i < 120; i++) { stepDuel(st, IDLE_INPUT); updateRockTrack(track, st); }
+    const len = track.len[4]!;
+    expect(len).toBeGreaterThan(3);
+    st.tick -= 4; updateRockTrack(track, st);
+    expect(track.len[4]).toBe(len);
+    expect(track.gap).toBe(1);
+    expect(track.px[4]).toBe(track.cx[4]);
+    expect(rockDrawPos(track, st, 4, 0.3)).toEqual({ x: track.cx[4], y: track.cy[4] });
+  });
+  it('online while predicting the blend spans one tick (Fable #8): a gap given to the track wins over the ticks seen; none keeps the observed gap', () => {
+    const st = arena(), given = createRockTrack(), seen = createRockTrack();
+    rail(st, 3, 0, 1700, 20); updateRockTrack(given, st, 1); updateRockTrack(seen, st);
+    stepDuel(st, IDLE_INPUT); stepDuel(st, IDLE_INPUT); updateRockTrack(given, st, 1); updateRockTrack(seen, st);
+    expect([given.gap, seen.gap]).toEqual([1, 2]);   // Single player and the guest's replica keep the observed gap
+    const at = (t: typeof given) => { const p = rockDrawPos(t, st, 3, 0.5), a = Math.atan2(-p.x, p.y); return a * 60 / orbitRate(1700); };
+    expect(at(given)).toBeCloseTo(st.tick - 0.5, 6);
+    expect(at(seen)).toBeCloseTo(st.tick - 1, 6);
+    updateRockTrack(given, st, 1); expect(given.gap).toBe(1);   // the same tick again: still one
+  });
   it('keeps 25 s of 4 Hz samples while a free rock is young and shows 6 s once it is older than 60 s; resets on a kind or r change or a jump', () => {
     const st = arena(), track = createRockTrack(), [vx, vy] = circularVelocity(0, 1700);
     mover(st, 4, 0, 1700, vx, vy + 5, 10);   // 5 u/s off circular, so it does not settle onto a rail within the test

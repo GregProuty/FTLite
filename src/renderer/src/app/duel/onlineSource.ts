@@ -186,6 +186,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     turret: (slot: 0 | 1): number => { const s = duel().tactical.systems[0]; return slot === 0 ? s.pewTurret : s.gunTurret; },   // Net-4a §3.9: P's turret
     weaponSel: (): number => sentHeld.weaponSel ?? 0,   // W-4 spec §10: the selection this seat last sent
     alpha: viewAlpha,
+    rockGap: (): number | null => (predicted() ? 1 : null),   // Fable #8: the prediction's alpha spans one local tick
     /** Net-4a §3.6: the confirmed replica (end card, outcome, one-shot sounds). */
     confirmed: (): DuelState => client.state()!,
     /** Net-4a §3.6: every other player's character from the confirmed publications, one gap behind; this seat's slot null. */

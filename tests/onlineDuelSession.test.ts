@@ -24,6 +24,10 @@ import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import { createUiStore } from '../src/renderer/src/ui/store';
 import type { ConsoleInput } from '../src/renderer/src/app/duel/input';
 import type { ContactController, ContactSync } from '../src/renderer/src/app/duel/contactController';
+import { interpolatedShip } from '../src/renderer/src/render/tactical/tacticalModel';
+import { createRockTrack, rockDrawPos, updateRockTrack } from '../src/renderer/src/render/tactical/rockTrack';
+import { isRail, rockSlots, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
+import { createRng, nextFloat } from '../src/shared/rng';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 type Sent = { kind: 'held'; held: HeldInput } | { kind: 'command'; command: DuelCommand };
@@ -1077,6 +1081,66 @@ describe('prediction figures (Net-4a §3.10)', () => {
     expect(rec.prediction!.retargetsPerMin === null || rec.prediction!.retargetsPerMin >= 0).toBe(true);
     expect(rec.prediction!.heading).toBeDefined();
     expect(() => duelRecordSchema.shape.prediction.unwrap().parse(rec.prediction)).not.toThrow();   // roundEvent's summary is partial, so only the new block is validated
+    r.dispose();
+  });
+});
+describe('smooth 60 fps online (Fable #7, #8)', () => {
+  it('a 60 Hz display with a late pump: the own ship and a rail rock advance every frame, never back, never more than 1.5x the median', () => {
+    // The authority ticks at 60 Hz on the rig's clock, runs every frame this seat has sent (all neutral: the Cutter coasts
+    // in its orbit) and publishes every third tick. The pump's timer fires 0 to 12 ms late (seeded); the display draws a
+    // frame every 1000/60 ms, 5 ms off the tick boundaries. The rock blend is the scene's: updateRockTrack, then rockDrawPos.
+    const r = rig(0), c = r.attach(), rng = createRng(17), TICK = 1000 / 60, track = createRockTrack();
+    const rail = Array.from({ length: rockSlots(r.d.tactical) }, (_, k) => k).find((k) => isRail(r.d.tactical.rocks[k * ROCK_STRIDE]!))!;
+    expect(rail).toBeGreaterThanOrEqual(0);
+    let now = 0, nextTick = TICK, nextFrame = 5, nextPump = TICK + nextFloat(rng) * 12;
+    const ship: { x: number; y: number }[] = [], rock: { x: number; y: number }[] = [];
+    while (now < 4000) {
+      const at = Math.min(nextTick, nextFrame, nextPump);
+      r.advance(at - now); now = at;
+      if (at === nextTick) {
+        nextTick += TICK;
+        stepDuelTick(r.d, { held: [], commands: [] });
+        if (r.d.interior.tick % 3 === 0) c.publish(r.d, 'running', undefined, { held: [c.helds().length, 0] });
+      } else if (at === nextPump) {
+        nextPump += TICK + nextFloat(rng) * 12;
+        r.pump(0);
+      } else {
+        nextFrame += TICK;
+        r.session.frame();
+        const src = h.source as unknown as { duel: DuelState; prev: { x: number; y: number; h: number }[]; alpha(): number; rockGap?(): number | null };
+        if (now < 1000) continue;   // warm-up: the lead is built
+        const own = interpolatedShip(src.duel.tactical, src.prev, src.alpha(), 0);
+        ship.push({ x: own.x, y: own.y });
+        updateRockTrack(track, src.duel.tactical, src.rockGap?.() ?? undefined);
+        rock.push(rockDrawPos(track, src.duel.tactical, rail, src.alpha()));
+      }
+    }
+    for (const [name, path] of [['ship', ship], ['rock', rock]] as const) {
+      const steps = path.slice(1).map((p, k) => ({ dx: p.x - path[k]!.x, dy: p.y - path[k]!.y }));
+      const len = steps.map((v) => Math.hypot(v.dx, v.dy)), median = [...len].sort((a, b) => a - b)[len.length >> 1]!;
+      const back = steps.slice(1).filter((v, k) => v.dx * steps[k]!.dx + v.dy * steps[k]!.dy <= 0).length;
+      console.log(`smooth ${name}: ${len.length} frames, median ${median.toFixed(4)} u, min ${Math.min(...len).toFixed(4)}, max ${Math.max(...len).toFixed(4)}, back ${back}`);
+      expect(Math.min(...len)).toBeGreaterThan(0);
+      expect(back).toBe(0);
+      expect(Math.max(...len)).toBeLessThanOrEqual(1.5 * median);
+    }
+    r.dispose();
+  });
+  it('while P stands at the cap the drawn rock holds (alpha 1, one-tick gap) and so does the ship (Fable #8)', () => {
+    const r = rig(0); r.attach();
+    const track = createRockTrack(), rail = Array.from({ length: rockSlots(r.d.tactical) }, (_, k) => k).find((k) => isRail(r.d.tactical.rocks[k * ROCK_STRIDE]!))!;
+    for (let k = 0; k < 40; k++) r.pump();   // no publication: P reaches T + PREDICT_MAX_TICKS
+    const drawn: string[] = [];
+    for (let k = 0; k < 4; k++) {
+      r.advance(5); r.session.frame();
+      const src = h.source as unknown as { duel: DuelState; prev: { x: number; y: number; h: number }[]; alpha(): number; rockGap?(): number | null };
+      expect(src.rockGap?.()).toBe(1);
+      expect(src.alpha()).toBe(1);
+      updateRockTrack(track, src.duel.tactical, src.rockGap?.() ?? undefined);
+      drawn.push(JSON.stringify([rockDrawPos(track, src.duel.tactical, rail, src.alpha()), interpolatedShip(src.duel.tactical, src.prev, src.alpha(), 0)]));
+      r.pump();
+    }
+    expect(new Set(drawn).size).toBe(1);
     r.dispose();
   });
 });
