@@ -13,6 +13,10 @@ export const VOLUME_STEPS: readonly number[] = [0, 0.25, 0.5, 0.75, 1];
 export const VOLUME_CHANNELS = ['master', 'music', 'effects'] as const;
 export type VolumeChannel = (typeof VOLUME_CHANNELS)[number];
 export const VOLUME_LABELS: Readonly<Record<VolumeChannel, string>> = { master: 'Master volume', music: 'Music', effects: 'Effects' };
+/** Helm round 2 §2.3, §6.3: the throttle tap time's choices in ms (a W or S press shorter than it is a tap), and the
+ *  default. Task 12 of the plan adds the Settings record's field. */
+export const THROTTLE_TAP_STEPS: readonly number[] = [150, 200, 250, 300];
+export const DEFAULT_THROTTLE_TAP_MS = 200;
 
 /** Feel-i: `shake`, the console maps' screen shake (off, low, full); a version 2 record without it reads full. Valkyrn spec
  *  §8, §9: `soloShip`, the Single player ship last picked, and `valkyrnLaserFit`, the developer laser fit; a record without

@@ -5,6 +5,7 @@ import type { Axes } from '../../sim/tactical/state';
 import { clampThrottle, THROTTLE_MAX } from '../../sim/duel/throttle';
 import type { HeldInput } from '../../net/contracts';
 import type { ShipCommand } from '../../render/duel/shipControls';
+import { DEFAULT_THROTTLE_TAP_MS } from '../settingsStore';
 
 /** Press-edge actions (spec §5 table). H-1a uses pause, camera and the zoom keys; H-1b adds the duel ones; Artemis-ii
  *  adds the Helm's throttle notches on W and S (spec 2026-11-17-artemis-consoles §5.4); W-2 adds Z, the laser's AUTO / MANUAL toggle at Weapons (pew pew spec §2);
@@ -94,6 +95,13 @@ export interface KeySample {
   /** Playtest2feedback §3, §4: the crew Helm's held throttle (1 W, −1 S, 0 both or neither) and thrusters (rcsX −1 port,
    *  1 starboard; rcsY −1 aft, 1 forward; opposite keys cancel). createDuelKeyboard always sets them. */
   throttleHeld?: number; rcsX?: number; rcsY?: number;
+  /** Helm round 2 §2.3: one-shot. A fresh (non-repeat) keydown of W (1) or S (−1) since the previous sample, Shift held or
+   *  not; 0 for none. (Not `presses.throttleDown`, the notch Helm's S edge.) The runtime records the throttle on the sample
+   *  that carries it. createDuelKeyboard always sets it. */
+  throttleDown?: number;
+  /** Helm round 2 §2.3: one-shot. A W (1) or S (−1) keyup since the previous sample whose press, timed from its fresh
+   *  keydown, was shorter than the tap time; 0 for none. createDuelKeyboard always sets it. */
+  throttleTap?: number;
   /** Engineering spike §7: the ship-view commands clicked since the previous sample, oldest first; absent or empty for none. */
   ship?: ShipCommand[];
 }
@@ -143,12 +151,17 @@ interface KeyEventLike { code: string; repeat: boolean; shiftKey?: boolean; ctrl
 export interface DuelKeyboard { sample(): KeySample; clear(): void; clearUi(): void; destroy(): void; readonly ui: ConsoleInput;
   /** Playtest2feedback (final review I1): every key held now stops counting for the crew Helm's held fields (throttleHeld,
    *  rcsX, rcsY) until it is released and pressed again. The modes call it as their seat becomes the crew Helm, so a key
-   *  held while sitting (E sits and is a thruster) or walking up (W, A, D) never drifts a ship with no drag. */
+   *  held while sitting (E sits and is a thruster) or walking up (W, A, D) never drifts a ship with no drag. Helm round 2 §2.3: it also drops the W and S down times, so a key held across the sit gives no tap. */
   staleHeld(): void }
 
 /** Options (enemy ship window spec §6.2): `intercept` sees each non-repeat keydown's code before PRESS_CODES; returning
  *  true takes the key, so it adds no press edge and is not held (PREVENT's keys still have their default prevented). */
-export interface DuelKeyboardOptions { intercept?: (code: string) => boolean }
+export interface DuelKeyboardOptions { intercept?: (code: string) => boolean;
+  /** Helm round 2 §2.3: the tap's clock in ms (default performance.now), read on each W / S keydown and keyup. */
+  now?: () => number;
+  /** Helm round 2 §2.3, §6.3: the tap time in ms (default DEFAULT_THROTTLE_TAP_MS), read live on each W / S keyup, so a
+   *  Settings change needs no new keyboard. */
+  tapMs?: () => number }
 
 /** Held keys are cleared on blur so nothing sticks after alt-tab; `clear` does the same for Tab and restart (spec §4, §5).
  *  Console clicks (Artemis spec §6.2) are a second held set and extra press edges: a code is held when either set holds
@@ -160,6 +173,11 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
   let modeTaps = [0, 0, 0];   // W-4 amendment §2.5: the tags' clicks per weapon
   let ship: ShipCommand[] = [];   // Engineering spike §7: kept by clearUi, dropped by clear
   const has = (code: string): boolean => keys.has(code) || ui.has(code);
+  // Helm round 2 §2.3: the throttle tap: each W / S fresh keydown's time, and this sample's one-shot fields.
+  const now = opts.now ?? ((): number => performance.now()), tapMs = opts.tapMs ?? ((): number => DEFAULT_THROTTLE_TAP_MS);
+  const THROTTLE_KEYS: Readonly<Record<string, number>> = { [MOVE_CODES.up]: 1, [MOVE_CODES.down]: -1 };
+  const downAt = new Map<string, number>();
+  let throttleDown = 0, throttleTap = 0;
   /** I1: held for the crew Helm's fields: a console button's hold, or a key pressed since it went stale. */
   const live = (code: string): boolean => ui.has(code) || (keys.has(code) && !stale.has(code));
   const down = (e: KeyEventLike): void => {
@@ -167,6 +185,7 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     if (!e.repeat) stale.delete(e.code);   // I1: a fresh press counts again (its keyup may have been lost); a repeat stays stale
     if (e.repeat) { if (taken.has(e.code)) return; }   // an OS repeat of a taken key stays taken
     else if (opts.intercept?.(e.code)) { taken.add(e.code); return; }   // taken (the contact window's Esc and T): no edge, not held
+    if (!e.repeat && THROTTLE_KEYS[e.code] !== undefined) { downAt.set(e.code, now()); throttleDown = THROTTLE_KEYS[e.code]!; }   // helm round 2 §2.3: before the Shift+W branch, so Shift makes no difference
     if (!e.repeat && FREQ_CODES[e.code] !== undefined) freqKeyTo = FREQ_CODES[e.code]!;   // W-4 spec §9: by class, in the runtime
     if (!e.repeat && GUN_FREQ_CODES[e.code] !== undefined) gunFreqKeyTo = GUN_FREQ_CODES[e.code]!;
     if (!e.repeat && WEAPON_SELECT_CODES[e.code] !== undefined) selectTo = WEAPON_SELECT_CODES[e.code]!;
@@ -182,10 +201,12 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
     taken.delete(e.code);
     keys.delete(e.code);
     stale.delete(e.code);
+    const at = downAt.get(e.code);   // helm round 2 §2.3: a press shorter than the tap time is a tap; the down time goes either way
+    if (at !== undefined) { downAt.delete(e.code); if (now() - at < tapMs()) throttleTap = THROTTLE_KEYS[e.code]!; }
     if (e.code === FIRE_HELD && was && !has(FIRE_HELD)) presses.fireUp++;
   };
-  const clearUi = (): void => { ui.clear(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; freqKeyTo = null; gunFreqKeyTo = null; selectTo = null; modeTaps = [0, 0, 0]; };
-  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); stale.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; freqKeyTo = null; gunFreqKeyTo = null; selectTo = null; modeTaps = [0, 0, 0]; ship = []; };
+  const clearUi = (): void => { ui.clear(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; freqKeyTo = null; gunFreqKeyTo = null; selectTo = null; modeTaps = [0, 0, 0]; throttleDown = 0; throttleTap = 0; };
+  const clear = (): void => { keys.clear(); taken.clear(); ui.clear(); stale.clear(); downAt.clear(); presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; freqKeyTo = null; gunFreqKeyTo = null; selectTo = null; modeTaps = [0, 0, 0]; ship = []; throttleDown = 0; throttleTap = 0; };
   target.addEventListener('keydown', down as (e: never) => void);
   target.addEventListener('keyup', up as (e: never) => void);
   target.addEventListener('blur', clear as (e: never) => void);
@@ -218,13 +239,13 @@ export function createDuelKeyboard(target: EventSource, opts: DuelKeyboardOption
       const any = (codes: readonly string[]): number => (codes.some(live) ? 1 : 0);
       const rcsX = any(RCS_CODES.starboard) - any(RCS_CODES.port), rcsY = any(RCS_CODES.fore) - any(RCS_CODES.aft);
       const throttleHeld = (live(MOVE_CODES.up) ? 1 : 0) - (live(MOVE_CODES.down) ? 1 : 0);
-      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, torpTo, rockTo, throttleTo, freqTo, freqKeyTo, gunFreqKeyTo, selectTo, modeTaps, throttleHeld, rcsX, rcsY, ...(ship.length > 0 ? { ship } : {}) };
-      presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; freqKeyTo = null; gunFreqKeyTo = null; selectTo = null; modeTaps = [0, 0, 0]; ship = [];
+      const out: KeySample = { moveX: x / len, moveY: y / len, interactHeld: has(INTERACT_HELD), fireHeld: held.fire, presses, held, lockTo, torpTo, rockTo, throttleTo, freqTo, freqKeyTo, gunFreqKeyTo, selectTo, modeTaps, throttleHeld, rcsX, rcsY, throttleDown, throttleTap, ...(ship.length > 0 ? { ship } : {}) };
+      presses = emptyPresses(); lockTo = null; torpTo = null; rockTo = null; throttleTo = null; freqTo = null; freqKeyTo = null; gunFreqKeyTo = null; selectTo = null; modeTaps = [0, 0, 0]; ship = []; throttleDown = 0; throttleTap = 0;
       return out;
     },
     clear,
     clearUi,
-    staleHeld(): void { for (const code of keys) stale.add(code); },
+    staleHeld(): void { for (const code of keys) stale.add(code); downAt.clear(); },   // helm round 2 §2.3: no tap from a key held across the sit
     destroy(): void {
       target.removeEventListener('keydown', down as (e: never) => void);
       target.removeEventListener('keyup', up as (e: never) => void);
