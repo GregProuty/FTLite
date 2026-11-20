@@ -611,8 +611,8 @@ export function createDuelRuntime(deps: DuelRuntimeDeps): DuelRuntime {
     const fireWhy = p.fireDown > 0 && !manual ? refusal(d, 'fire', false) : null, launchWhy = p.launch > 0 ? refusal(d, 'launch', torpManual) : null;
     if (fireWhy) refuse('fire', fireWhy);
     if (launchWhy) refuse('launch', launchWhy);
-    // W-1 (pew pew spec §1): a left click on the Weapons map fires the pew along its aim; with less than a third stored it
-    // says NO CHARGE and nothing is queued.
+    // W-1 (pew pew spec §1): a left click on the Weapons map fires the pew (no aim since W-4 spec §6); on a class with no
+    // pew, or with less than a third stored, it says why (NO PEW, NO CHARGE) and nothing is queued.
     if (pew !== null) {
       const why = refusal(d, 'pew');
       if (why) refuse('pew', why);
