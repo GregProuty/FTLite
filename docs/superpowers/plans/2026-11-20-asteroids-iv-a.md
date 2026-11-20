@@ -508,7 +508,7 @@ describe('mass and world cells (spec §3.3)', () => {
     for (let c = 0; c < cells.n; c++) { expect(cells.x[c]).toBe(300 + sh.ox[c]!); expect(cells.y[c]).toBe(2000 + sh.oy[c]!); }
     seeded(st, 7); rockCellsInto(st, 7, cells);   // a rail: read at its accessor place
     expect(cells.x[0]! - shapeOf(templateFor(st.map, 7), templateFor(st.map, 7).full).ox[0]!).toBeCloseTo(rockX(st, 7), 9);
-    expect(rockY(st, 7)).toBeDefined();
+    expect(cells.y[0]! - shapeOf(templateFor(st.map, 7), templateFor(st.map, 7).full).oy[0]!).toBeCloseTo(rockY(st, 7), 9);
   });
 });
 ```
@@ -712,6 +712,7 @@ import { lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
 import { homingTurn } from '../src/renderer/src/sim/tactical/missiles';
 import { shapeOf, templateFor } from '../src/renderer/src/sim/tactical/rockCells';
 import { firstBlocker, makeCells, rockAimPoint, rockCellsInto, rockEntry, rockTouch, segmentEntry } from '../src/renderer/src/sim/tactical/rocks';
+import { placeMissile } from '../src/renderer/src/sim/tactical/state';
 import { rockShotLine } from '../src/renderer/src/sim/tactical/rockWeapons';
 import { arena, mover, shaped, tmplOf } from './helpers/rockArena';
 
@@ -767,7 +768,16 @@ describe('the aim point (spec §6)', () => {
     Object.assign(st.ships[0], { x: 0, y: 2600 });                                      // south of the rock: the planet is not on the line
     expect(rockShotLine(st, 0, 3)!.rock).toBe(3);                                       // the laser's line ends in a cell
     mover(st, 4, 500, 2000, 0, 0, 20); rockAimPoint(st, 4, p); expect(p).toEqual({ x: 500, y: 2000 });
-    expect(typeof homingTurn).toBe('function');
+  });
+  it('a rock-targeted torpedo homes on the aim point: it steers as it would at a plain rock standing there', () => {
+    const st = arena(), tm = tmplOf(st, 31), t = templateFor(st.map, tm), p = { x: 0, y: 0 };
+    let ring = t.full; for (let c = 0; c < t.n; c++) if (Math.hypot(t.x[c]!, t.y[c]!) < t.d * 1.2) ring &= ~(1 << c);
+    shaped(st, 3, tm, 0, 2000, 0, 0, ring); rockAimPoint(st, 3, p);
+    // Fly at the centre of mass from the side the aim cell is not on, so the aim cell lies well off the nose.
+    const sh = shapeOf(t, ring), north = Math.abs(sh.ox[sh.aim]!) >= Math.abs(sh.oy[sh.aim]!);
+    const flight = north ? { x: 0, y: 2150, vx: 0, vy: -60, heading: 0, headingAcc: 0, age: 30 } : { x: -150, y: 2000, vx: 60, vy: 0, heading: 64, headingAcc: 0, age: 30 };
+    const turn = (setup: (s: ReturnType<typeof arena>) => void): number => { const s = arena(); setup(s); s.systems[0].torpRockFlying = 3; return homingTurn(s, 0, placeMissile(s, 0, flight)); };
+    expect(turn((s) => shaped(s, 3, tm, 0, 2000, 0, 0, ring))).toBe(turn((s) => mover(s, 3, p.x, p.y, 0, 0, 10)));
   });
 });
 ```
