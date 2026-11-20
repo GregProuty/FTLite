@@ -120,7 +120,7 @@ async function startApp(): Promise<void> {
   // Web build spec §7.2: no preload window API in the browser, so the Fullscreen API with the keyboard-lock rule.
   const pageFullscreen = window.ftlite ? null : createBrowserFullscreen({ document,
     keyboard: (navigator as Navigator & { keyboard?: KeyboardLockApi }).keyboard,
-    window: { addEventListener: (type, fn, capture) => window.addEventListener(type, fn as (e: KeyboardEvent) => void, capture),
+    window: { preventF11: true, addEventListener: (type, fn, capture) => window.addEventListener(type, fn as (e: KeyboardEvent) => void, capture),
       removeEventListener: (type, fn, capture) => window.removeEventListener(type, fn as (e: KeyboardEvent) => void, capture),
       dispatchEscape: () => { for (const type of ['keydown', 'keyup']) window.dispatchEvent(new KeyboardEvent(type, { code: 'Escape', key: 'Escape', bubbles: true })); } },
     matchRunning: () => inMatch(store.getState().menu), now: () => performance.now(), onChange: () => actions.windowResized() });

@@ -40,8 +40,8 @@ export interface LayoutSlice { stripHeight: number; scale: number; offsetX: numb
 export interface BrowserSlice { web: boolean; update: boolean; unsupported: string | null; note: string | null; onlineBlocked: string | null; playtestLog: boolean; playtestLogText: string }
 export const INITIAL_BROWSER: BrowserSlice = { web: false, update: false, unsupported: null, note: null, onlineBlocked: null, playtestLog: false, playtestLogText: '' };
 export const NO_PLAYTEST_RECORDS_TEXT = 'No playtest records yet.', PLAYTEST_LOG_FAILED_TEXT = 'The playtest log could not be read.';
-/** Settings' fullscreen note in a browser (R1-F7): F11 there is the browser's fullscreen, which the toggle cannot see. */
-export const BROWSER_F11_TEXT = "F11 is the browser's own fullscreen; this switch does not follow it.";
+/** Settings' fullscreen note in a browser: UI round §1.6 made F11 the page's, so the switch follows it. */
+export const BROWSER_F11_TEXT = 'F11 also toggles fullscreen.';
 export interface UiState {
   menu: MenuState; online: OnlineSlice; settings: SettingsSlice; layout: LayoutSlice; browser: BrowserSlice;
   duel: import('./views').DuelUiView | null; flight: import('./views').FlightUiView | null;
