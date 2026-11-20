@@ -56,7 +56,7 @@ export const SHIP_HULL = 70;                  // H-0c-ii-a: 30 → 40 so the scr
 /** Weapons update spec §3: the Hunter's hull, raised so the scripted duels still last 3 to 5 minutes against the crew's
  *  double laser (tests/duelGates.test.ts). W-1: duel hull ×1.75 to hold the 180 s floor with the pew (70 → 123, 122.5
  *  rounded up). */
-export const HUNTER_HULL = 123;
+export const HUNTER_HULL = 95;   // UI round (SIM 64 → 65): 123 → 95 (spec §1.1, owner 2026-11-19 "Hunter should have less health").
 /** Engines damage level 0 / 1 / 2 scales thrust and turn rate (§5). Level 2 shuts the Engines off (owner 2026-11-17,
  *  FTL-style): no thrust, no turning; the ship drifts under gravity, drag and the idle stabilise. */
 export const ENGINE_FACTOR: readonly number[] = [1, 0.6, 0];
@@ -172,7 +172,7 @@ export const DERELICT_SPAWN_CLEAR = 600, DERELICT_PHASE_DRAWS = 16;
  *  5 Hunter wins and a 162.9 s median. W-1: duel hull ×1.75 to hold the 180 s floor with the pew (30 → 53, 52.5 rounded
  *  up): with the Hunter's pew at hull 30 the Valkyrn median was 109.7 s, 10 Hunter wins. */
 export const VALKYRN_HULL = 53;
-export const VALKYRN_THRUST = 160;                 // u/s²
+export const VALKYRN_THRUST = 200;                 // u/s²; UI round (SIM 64 → 65): 160 → 200, +25% acceleration and top speed (spec §1.2, owner "Valkyrn needs to be faster")
 export const VALKYRN_TURN_DEG_PER_S = 200;
 export const VALKYRN_TURN_STEPS_PER_TICK = (VALKYRN_TURN_DEG_PER_S / 360) * HEADING_COUNT * DT;   // about 2.37
 /** The gun (spec §7.1): a round every GUN_INTERVAL_TICKS (10 a second) at GUN_SPEED along the nose plus the ship's
