@@ -1,4 +1,4 @@
-// UI round spec §1.3: the 'off' grid draws no lines but keeps the square names; it is the default; a version 2 settings
+// UI round spec §1.3: the 'off' grid draws no lines and no square names (owner 2026-11-20); it is the default; a version 2 settings
 // record (the old default 'gravity' was saved on every first save) reads 'off'.
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_MAP_GRID, MAP_GRID_LABELS, MAP_GRID_SETTINGS, validMapGrid } from '../src/renderer/src/render/tactical/mapGrid';
@@ -20,12 +20,13 @@ describe('the off grid (spec §1.3)', () => {
     expect(MAP_GRID_LABELS.off).toBe('Off');
     expect(validMapGrid('off')).toBe(true);
   });
-  it('draws no lines or curves, but keeps the column and row names', () => {
+  it('draws no lines, curves or column and row names (owner 2026-11-20)', () => {
     const g = model('off').grid;
     expect(g.lines).toEqual([]);
     expect(g.curves).toBeUndefined();
-    expect(g.columns.length).toBeGreaterThan(0);
-    expect(g.rows.length).toBeGreaterThan(0);
+    expect(g.columns).toEqual([]);
+    expect(g.rows).toEqual([]);
+    expect(model('square').grid.columns.length).toBeGreaterThan(0);
     expect(model('square').grid.lines.length).toBeGreaterThan(0);
     expect(model('gravity').grid.curves!.length).toBeGreaterThan(0);
   });

@@ -16,10 +16,10 @@ import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { clampThrottle, THROTTLE_MAX, THROTTLE_MIN, throttleThrust, validThrottle } from '../src/renderer/src/sim/duel/throttle';
 import { createTacticalState, Outcome, type Axes, type Ship } from '../src/renderer/src/sim/tactical/state';
 import { predictPath } from '../src/renderer/src/sim/tactical/predict';
-import { edgeAccel, engineFactor, flyShip, gravityAccel } from '../src/renderer/src/sim/tactical/physics';
+import { edgeAccel, engineFactor, flyShip, gravityAccel, shipGravityAccel, slingDragShare } from '../src/renderer/src/sim/tactical/physics';
 import { hx, hy, wrapHeading } from '../src/renderer/src/sim/tactical/direction';
 import { CUTTER_CLASS, HUNTER_CLASS, ShipClass, type ShipClassDef } from '../src/renderer/src/sim/tactical/defs';
-import { DEFAULT_FLIGHT, DT, THRUST, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
+import { DEFAULT_FLIGHT, DT, SLING_MIN_SPEED, SLING_OUT_CUT, THRUST, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
 import { aliasPlan, duelSchema, MIGRATIONS } from '../scripts/golden/duelOracle';
 import { CUTTER } from './helpers/scriptedDuel';
 
@@ -177,12 +177,15 @@ function flyShipBySign(s: Ship, axes: Axes, tuning: FlightTuning, engines = 0, c
     s.vx -= s.skidSign * cut * px; s.vy -= s.skidSign * cut * py; s.skidBudget -= cut;
   }
   let ax = 0, ay = 0;
-  if (tuning.gravity) { const [gx, gy] = gravityAccel(s.x, s.y); ax += gx; ay += gy; }
+  if (tuning.gravity) {   // the slingshot (SIM 66): the ship's pull, cut on the way out above SLING_MIN_SPEED
+    const [gx, gy] = shipGravityAccel(s.x, s.y), out = s.vx * s.vx + s.vy * s.vy > SLING_MIN_SPEED * SLING_MIN_SPEED && s.x * s.vx + s.y * s.vy > 0 ? 1 - SLING_OUT_CUT : 1;
+    ax += gx * out; ay += gy * out;
+  }
   if (tuning.edge) { const [ex, ey] = edgeAccel(s.x, s.y); ax += ex; ay += ey; }
   if (thrust > 0) { ax += h0 * cls.thrust * f; ay += h1 * cls.thrust * f; }
   else if (thrust < 0) { ax -= h0 * cls.thrust * cls.reverseFraction * f; ay -= h1 * cls.thrust * cls.reverseFraction * f; }
   s.vx += ax * DT; s.vy += ay * DT;
-  const keep = 1 - tuning.drag * DT;
+  const keep = 1 - tuning.drag * (tuning.gravity ? slingDragShare(s.x, s.y) : 1) * DT;   // the slingshot (SIM 66)
   s.vx *= keep; s.vy *= keep;
   s.skidBudget *= keep;
   s.x += s.vx * DT; s.y += s.vy * DT;

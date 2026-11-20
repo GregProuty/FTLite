@@ -1,50 +1,44 @@
 {
-  "simVersion": 65,
+  "simVersion": 66,
   "seed": 1,
   "every": 600,
-  "rematchTick": 8621,
+  "rematchTick": 6697,
   "rounds": [
     {
       "seed": 1,
       "baseTick": 0,
       "outcome": 2,
-      "ticks": 8621
+      "ticks": 6697
     },
     {
       "seed": 2,
-      "baseTick": 8622,
+      "baseTick": 6698,
       "outcome": 2,
-      "ticks": 7891
+      "ticks": 6456
     }
   ],
-  "finalHash": "19c7dd6d",
+  "finalHash": "171112de",
   "hashes": [
-    "e60ca102",
-    "324c3f44",
-    "424dcd9f",
-    "c2d08d38",
-    "86fcaafd",
-    "9ac7d5eb",
-    "4685f65a",
-    "9b46ef0a",
-    "cb436b71",
-    "a2eb0b19",
-    "89cef92e",
-    "6c665567",
-    "751eb34f",
-    "51cbd3da",
-    "d9110ccd",
-    "12fd554c",
-    "db85c3bd",
-    "719857ec",
-    "bc7ed2be",
-    "9a70bd66",
-    "044f4883",
-    "5a197db1",
-    "9b0abbdb",
-    "0ce9cea8",
-    "6bf7127f",
-    "df0c0968",
-    "fd8c20c6"
+    "6c8dcaa2",
+    "1973aa65",
+    "38ac1efb",
+    "3c88a4ae",
+    "9e50f0da",
+    "04576618",
+    "758d560d",
+    "5afe4fe5",
+    "db0095d3",
+    "f22853c2",
+    "1be893e0",
+    "5cdbd220",
+    "607f5345",
+    "981bb72c",
+    "9667e81d",
+    "4a76b466",
+    "37a5b77f",
+    "b3e48dd9",
+    "2263f42f",
+    "c91e2581",
+    "fc2e2aba"
   ]
 }

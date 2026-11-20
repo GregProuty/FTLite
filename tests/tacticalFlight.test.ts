@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createTacticalState, type Ship } from '../src/renderer/src/sim/tactical/state';
 import { CUTTER_CLASS, HUNTER_CLASS } from '../src/renderer/src/sim/tactical/defs';
 import { edgeAccel, flyShip, gravityAccel } from '../src/renderer/src/sim/tactical/physics';
-import { circularSpeed } from '../src/renderer/src/sim/tactical/map';
-import { DEFAULT_FLIGHT, DT, GM, GRAVITY_EPS, R_MAP, THRUST, TURN_STEPS_PER_TICK, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
+import { shipCircularSpeed as circularSpeed } from '../src/renderer/src/sim/tactical/map';   // the slingshot: ships feel SHIP_GRAVITY
+import { DEFAULT_FLIGHT, DT, GM, GRAVITY_EPS, SHIP_GRAVITY, R_MAP, THRUST, TURN_STEPS_PER_TICK, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
 
 const GRAVITY_ONLY: FlightTuning = { gravity: true, edge: false, drag: 0, stabilise: 0 };
 const FLIGHT_NO_FIELD: FlightTuning = { gravity: false, edge: false, drag: DEFAULT_FLIGHT.drag, stabilise: DEFAULT_FLIGHT.stabilise };
@@ -11,7 +11,7 @@ const FLIGHT_NO_FIELD: FlightTuning = { gravity: false, edge: false, drag: DEFAU
 function ship(over: Partial<Ship>): Ship {
   return { ...createTacticalState(1).ships[0], x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, ...over };
 }
-const energy = (s: Ship): number => (s.vx * s.vx + s.vy * s.vy) / 2 - GM / Math.sqrt(s.x * s.x + s.y * s.y + GRAVITY_EPS * GRAVITY_EPS);
+const energy = (s: Ship): number => (s.vx * s.vx + s.vy * s.vy) / 2 - (GM * SHIP_GRAVITY) / Math.sqrt(s.x * s.x + s.y * s.y + GRAVITY_EPS * GRAVITY_EPS);
 
 describe('gravity-only configuration (spec §4 tests)', () => {
   it('holds a circular orbit at r = 250 within 2% for 60 s', () => {
