@@ -1045,3 +1045,22 @@ Spec `docs/superpowers/specs/2026-11-18-pew-pew-weapons-design.md` §3; plan `do
   5. Esc pauses the music; back to the menu returns to calm.
 
   Is each track good, does it fit its mood, and are the five at a comfortable level against each other and the effects? To swap a track or tune one, see `MUSIC` in `src/renderer/src/audio/soundBank.ts` (file, start, loop points, level). The other candidates are in `C:\Users\djuar\FTLite-assets\music-spike\audition.html`.
+
+## W-4a: the Hound's guns (2026-11-19)
+
+Spec `docs/superpowers/specs/2026-11-19-w4-weapons-controls-design.md` §2, §5, §6, §9, §10, §12, §19; plan `docs/superpowers/plans/2026-11-19-w4a-loadout.md`.
+
+- [x] Automated (W-4a): `npx vitest run` passes (492 files, 5896 tests). This includes the loadout (pew pew, the autocannon, the torpedo; no beam; start 1 / 0 / 1), the autocannon's interval by bars and its heat and lock, its rounds wearing and breaking rocks (the Valkyrn's still absorbed), the weak frequency's 2-layer pew strip and 4-hit autocannon layer, `pewFire` without an aim, `weaponSel` in every held schema, the trigger only with the autocannon selected, the keys (1 / 2 / 3, A / D, W / S, 4 / 5 / 6), the cards, the scripted gunner's bar move and the gates on pew and gun rounds (`tests/w4*.test.ts`). `npx tsc -b` is clean; SIM_VERSION 60, goldens blessed at 60; `tests/valkyrnIdentity.test.ts` and `tests/w4HunterIdentity.test.ts` unchanged; determinism passes on Node, Electron and Firefox.
+- [ ] Manual (owner): play a Single player duel at the Hound's Weapons seat.
+  1. The block shows PEW PEW, AUTOCANNON and TORPEDO, with the selected one framed. 1 / 2 / 3 and A / D move the frame.
+  2. W / S add and remove bars on the selected weapon; at an end the pips flash and the row says why.
+  3. Select the autocannon, give it a bar, and hold the left button on the map: it fires, the heat bar rises, and held long enough it reads OVERHEAT and stops.
+  4. Hold it on a rock: the rock chips and breaks.
+  5. After a Level 2 scan, tune with 4 / 5 / 6 to the weak frequency (the diamond): a pew pew round takes 2 shield layers.
+
+  Screenshots for the look gate:
+  1. The three cards.
+  2. The autocannon firing, with its heat bar.
+  3. A rock breaking under autocannon fire.
+
+  Do the cards read on the amber CRT, and does holding the autocannon feel like the Valkyrn's gun?
