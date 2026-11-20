@@ -6,7 +6,6 @@
 import { Position } from '../../sim/components';
 import type { DuelState } from '../../sim/duel/state';
 import { throttleThrust } from '../../sim/duel/throttle';
-import { engineBars, heldAxis, noVent, rampTicks, throttleCap, throttleFloor, ventOf, type HelmVent } from '../../sim/duel/helmFlight';
 import { crewAxes } from '../../sim/duel/step';
 import { hx, hy } from '../../sim/tactical/direction';
 import { CREW_SLOT, missileOf, NO_AXES, Outcome, type Axes, type DuelEvent, type Missile, type TacticalState } from '../../sim/tactical/state';
@@ -16,8 +15,10 @@ import { createCamera, followBody, updateCamera, type Camera, type Viewport } fr
 import { createInteriorCamera, resetInteriorCamera } from '../../render/duel/interiorCamera';
 import { interpolatedMissile, type ViewEvent } from '../../render/tactical/fxModel';
 import { followTarget, type PrevBody } from '../../render/tactical/tacticalModel';
-import { crewHelmSeat, houndWeaponsSeat, seatOf } from './controls';
-import { predictTurret } from './weaponsSeat';
+import type { PredictedBodies } from '../../clientControl/duelPredictor';
+import type { BodyOffset, SmoothOffsets } from '../../render/duel/correctionSmoother';
+import type { CrewOverride } from '../../render/duel/crewOverride';
+import { crewHelmSeat, seatOf } from './controls';
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 import { createTorpedoFollow, trackManualTorpedo } from './torpedoCamera';
 import { NO_HELD_FLAGS, type HeldFlags, type KeySample, type PointerSample } from './input';
@@ -33,6 +34,15 @@ export interface ConfirmedDuel {
    *  across it. Absent means always live. */
   live?(): boolean;
 }
+/** Net-4a §3.6: the session's prediction. While active() the source draws state() blended from before() by alpha(); otherwise
+ *  (no running undecided round, no predictor) it draws the confirmed replica, one gap behind, as before. */
+export interface PredictionView {
+  active(): boolean; state(): DuelState | null; before(): PredictedBodies | null; alpha(): number;
+  /** Net-4a §3.8: the correction smoother's offsets now, added to the drawn ships and missiles; absent, none. */
+  offsets?(): SmoothOffsets;
+  /** Rock jump brief §2: the smoother's draw-tick offset now, added to the rocks' draw tick; absent, none. */
+  rockShift?(): number;
+}
 interface Counters { shots: number; laserHits: number; stripped: number; launched: number; ended: number; missileHits: number; gunHits: number; pewShots: number; pewHits: number; contacts: [number, number, number]; rooms: [number, number, number] }
 /** Ship i's cumulative counters, which the snapshot carries. `ended` is every missile that has ended: launched minus the
  *  one in flight, which also counts a self-hit (neither a hit nor a loss); never fewer than hits plus losses. */
@@ -42,6 +52,9 @@ export const duelCounters = (t: TacticalState, i: number): Counters => {
 };
 const body = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
 const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null);
+/** Net-4a §3.8: a predicted before-body with the smoother's offset attached (interpolatedShip and interpolatedMissile add it
+ *  after the blend). */
+const withOffset = (b: PrevBody, o: BodyOffset | null | undefined): PrevBody => (o ? { ...b, ox: o.x, oy: o.y, oh: o.h } : b);
 
 /**
  * The events of one publication gap (spec §3): each `shots` increment is a beam to the target (a hit when `laserHits`
@@ -100,22 +113,31 @@ export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: r
   return out;
 }
 
-export interface OnlineDuelSourceDeps { client: ConfirmedDuel; seat: number; now(): number; viewport: Viewport }
+/** Net-4a §3.7: each effect from the confirmed counters, drawn at the prediction's positions (§3.8: P's, without the
+ *  correction smoother's offsets; effects are brief): a beam from the firing ship in
+ *  P to its target in P (a hit) or to range along its heading in P (a miss); a round fired, or a contact, at the named ship;
+ *  a gun or pew hit at the target (the event's ship); a missile ending where the missile last was. */
+export function placeEvents(events: readonly ViewEvent[], t: TacticalState): ViewEvent[] {
+  return events.map((e): ViewEvent => {
+    if (e.kind === 'laser') {
+      const s = t.ships[e.ship]!;
+      if (e.hit) { const g = t.ships[t.systems[e.ship]!.target]!; return { ...e, x1: s.x, y1: s.y, x2: g.x, y2: g.y }; }
+      return { ...e, x1: s.x, y1: s.y, x2: s.x + hx(s.heading) * LASER_RANGE, y2: s.y + hy(s.heading) * LASER_RANGE };
+    }
+    if (e.kind === 'pewFire' || e.kind === 'contact' || e.kind === 'gunHit' || e.kind === 'pewHit') { const s = t.ships[e.ship]!; return { ...e, x: s.x, y: s.y }; }
+    return e;
+  });
+}
+
+export interface OnlineDuelSourceDeps { client: ConfirmedDuel; seat: number; now(): number; viewport: Viewport; prediction?: PredictionView }
 export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
   const { client, seat } = deps;
   let seen = 0, lastTick = -1, gap = 3, receivedAt = 0, round = -1, frameAlpha = 1;
-  let prev: PrevBody[] = [], missilePrev: (PrevBody | null)[] = [], crewPrev: { x: number; y: number }[] = [];
+  let cPrev: PrevBody[] = [], cMissilePrev: (PrevBody | null)[] = [], cCrewPrev: { x: number; y: number }[] = [];
   let latest: { bodies: PrevBody[]; missiles: (PrevBody | null)[]; crew: { x: number; y: number }[]; counters: Counters[] } | null = null;
   let events: ViewEvent[] = [], sentHeld: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
   let cameras = { helm: createCamera(), weapons: createCamera(), science: createCamera() }, torpFollow = createTorpedoFollow();
-  let uiHeld: HeldFlags = NO_HELD_FLAGS, shownThrottle: number | null = null, refusals: Refusal[] = [];
-  let gunModeShown: [boolean | null, boolean | null] = [null, null];   // W-4 amendment §2.6: each gun's mode in flight, [pew pew, the autocannon]
-  let unackedFrames = 0;   // playtest2feedback Decision 14: this seat's held frames the replica has not taken yet
-  // Helm round 2 §7 (plan Decision 7): this seat's cut in flight (onlineDuel's cutSent, handed over by cutBase), whether its
-  // sent throttleHeld has been 0 since the latch began (then the ramp is free again), and the replica's latch last seen.
-  let cutInFlight = false, cutReleased = false, replicaCut = false;
-  /** The latch this seat predicts: the replica's or a cut in flight, until throttleHeld has been 0 on a sent frame since. */
-  const latched = (d: DuelState): boolean => (cutInFlight || d.thrCut) && !cutReleased;
+  let uiHeld: HeldFlags = NO_HELD_FLAGS, refusals: Refusal[] = [];
   /** Playtest2feedback §3: this seat flies the crew Helm (a newtonianHelm class) in a running round. */
   const crewHelm = (d: DuelState): boolean => crewHelmSeat(d, seat) && d.tactical.outcome === Outcome.Running;
   const cameraInput = createCameraInput(deps.now, deps.viewport), interiorCamera = createInteriorCamera();
@@ -126,18 +148,16 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
     if (!p || !d || p.publicationSequence === seen) return false;
     seen = p.publicationSequence;
     const t = d.tactical, now = deps.now();
-    if (d.thrCut && !replicaCut && !cutInFlight) cutReleased = false;   // helm round 2 §7: the replica's latch first seen set, with no cut in flight
-    replicaCut = d.thrCut;
     if (d.round !== round) {   // the first publication or a new round: no interpolation across it, fresh cameras
       round = d.round; latest = null; lastTick = -1;
       const s = t.ships[0]; cameras = { helm: createCamera(s.x, s.y), weapons: createCamera(s.x, s.y), science: createCamera(s.x, s.y) }; torpFollow = createTorpedoFollow(); cameraInput.reset(); resetInteriorCamera(interiorCamera);
     }
     if (latest) events.push(...gapEvents(latest.counters, latest.missiles, t));
-    prev = latest ? latest.bodies : t.ships.map(body);
-    missilePrev = latest ? latest.missiles : t.ships.map((_, i) => missileBody(missileOf(t, i)));
+    cPrev = latest ? latest.bodies : t.ships.map(body);
+    cMissilePrev = latest ? latest.missiles : t.ships.map((_, i) => missileBody(missileOf(t, i)));
     // An ending and a relaunch in one gap: the new missile's trail starts where it is now, not at the old one.
-    if (latest) t.ships.forEach((_, i) => { const was = latest!.counters[i]; if (was && duelCounters(t, i).ended > was.ended && missileOf(t, i)) missilePrev[i] = missileBody(missileOf(t, i)); });
-    crewPrev = latest ? latest.crew : d.interior.crew.map((eid) => ({ x: Position.x[eid]!, y: Position.y[eid]! }));
+    if (latest) t.ships.forEach((_, i) => { const was = latest!.counters[i]; if (was && duelCounters(t, i).ended > was.ended && missileOf(t, i)) cMissilePrev[i] = missileBody(missileOf(t, i)); });
+    cCrewPrev = latest ? latest.crew : d.interior.crew.map((eid) => ({ x: Position.x[eid]!, y: Position.y[eid]! }));
     gap = lastTick >= 0 ? Math.max(1, p.tick - lastTick) : 3;
     // The record's jitter is live inter-arrival only: no gap is timed to or from the frozen copy (the reconnect time).
     const live = client.live?.() ?? true;
@@ -147,96 +167,80 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       counters: t.ships.map((_, i) => duelCounters(t, i)) };
     return true;
   }
-  const duel = (): DuelState => client.state()!;
+  const predicted = (): DuelState | null => (deps.prediction?.active() ? deps.prediction.state() : null);
+  const predictedBodies = (): PredictedBodies | null => (predicted() ? deps.prediction!.before() : null);
+  /** Net-4a §3.6, §3.9: the drawn state: P while predicting, else the confirmed replica. */
+  const duel = (): DuelState => predicted() ?? client.state()!;
+  const viewAlpha = (): number => (predicted() ? deps.prediction!.alpha() : frameAlpha);
   const source: DuelViewSource & {
     observe(): boolean; frame(dt: number, keys: KeySample | null, pointer: PointerSample | null): void; sent(held: HeldInput): void; heldFlags(flags: HeldFlags): void;
-    thrMille(): number; helmVent(): HelmVent; unacked(n: number): void; weaponSel(): number;
-    throttleBase(level: number | null): void;
-    cutBase(inFlight: boolean): void;
-    turret(slot: 0 | 1): number; gunModeBase(slot: 0 | 1, manual: boolean | null): void;
+    confirmed(): DuelState; crewOverride(): CrewOverride | undefined;
+    weaponSel(): number; turret(slot: 0 | 1): number;
     refuse(control: Refusal['control'], reason: string): void;
     arrivals(): readonly number[]; takeArrivals(): number[]; ready(): boolean;
   } = {
     get duel() { return duel(); },
     get seed() { return duel().tactical.seed; },
-    get prev() { return prev; },
-    get missilePrev() { return missilePrev; },
-    get crewPrev() { return crewPrev; },
+    // Net-4a §3.8: while predicting, the before-bodies carry the correction smoother's offsets, so every ship and missile
+    // drawn, picked or followed through interpolatedShip / interpolatedMissile is smoothed. Effects placed by placeEvents
+    // stay at P's positions, unsmoothed: they are brief.
+    get prev() { const b = predictedBodies(); if (!b) return cPrev; const o = deps.prediction!.offsets?.(); return o ? b.ships.map((s, i) => withOffset(s, o.ships[i])) : b.ships; },
+    get missilePrev() { const b = predictedBodies(); if (!b) return cMissilePrev; const o = deps.prediction!.offsets?.(); return o ? b.missiles.map((m, i) => (m ? withOffset(m, o.missiles[i]) : null)) : b.missiles; },
+    get crewPrev() { return predictedBodies()?.crew ?? cCrewPrev; },
     get cameras() { return cameras; },
     interiorCamera,
     epoch: () => duel().round,
     active: () => seat,
     view: (): DuelView => { const s = seatOf(duel(), seat); return s === 'standing' ? 'interior' : s; },
-    axes: (): Axes => {   // Artemis spec §5.3: the held turn and the replica's throttle, while this seat flies a running round
+    axes: (): Axes => {   // Artemis spec §5.3; Net-4a §3.9: the sim's own axes for this seat's held input, on the drawn state
       const d = duel();
-      if (crewHelm(d)) return crewAxes(d, sentHeld, source.thrMille(), latched(d));   // playtest2feedback §3, §6: the local prediction; helm round 2 §7: with the predicted latch
+      if (crewHelm(d)) return crewAxes(d, sentHeld);
       return seatOf(d, seat) === 'helm' && d.tactical.outcome === Outcome.Running ? { turn: heldTurn(d, sentHeld), thrust: throttleThrust(d.throttle) } : NO_AXES;
     },
-    /** Playtest2feedback §3: the crew Helm's thrMille: the replica's plus the ramp this seat's held W/S adds over its
-     *  unacknowledged frames (the sim's rule); away from the Helm, the replica's. Helm round 2 §7: 0 is the base while this
-     *  seat's cut is in flight, and no ramp while the latch is predicted. */
-    thrMille: (): number => {
-      const d = duel();
-      if (!crewHelm(d)) return d.thrMille;
-      const e = engineBars(d);
-      return rampTicks(cutInFlight ? 0 : d.thrMille, latched(d) ? 0 : heldAxis(sentHeld.throttleHeld), throttleFloor(e), throttleCap(e), unackedFrames);
-    },
-    /** Helm round 2 §7: whether this seat's throttleCut is in flight (onlineDuel's cutSent). A change starts the latch's record again. */
-    cutBase(inFlight) { if (inFlight !== cutInFlight) { cutInFlight = inFlight; cutReleased = false; } },
-    /** W-4 spec §11: gun slot's turret: at the Hound's Weapons seat the own selected one predicted over the unacknowledged
-     *  frames (predictTurret, the mode in flight first), else the replica's. */
-    turret: (slot: 0 | 1): number => {
-      const d = duel();
-      if (!houndWeaponsSeat(d, seat)) return slot === 0 ? d.tactical.systems[0].pewTurret : d.tactical.systems[0].gunTurret;
-      const sys = d.tactical.systems[0];
-      return predictTurret(d.tactical, slot, sentHeld, gunModeShown[slot] ?? (slot === 0 ? sys.pewManual : sys.gunManual),   // W-4 amendment §2.6: that gun's own mode
-        manualTorpedoFlying(d.tactical) ? 0 : unackedFrames);   // W-4 spec §11: (from W-4c) no MANUAL torpedo flies
-    },
-    /** Gun `slot`'s mode in flight (onlineDuel's gunModeSent for it), or null: the replica's flag is the base. */
-    gunModeBase(slot, manual) { gunModeShown[slot] = manual; },
+    turret: (slot: 0 | 1): number => { const s = duel().tactical.systems[0]; return slot === 0 ? s.pewTurret : s.gunTurret; },   // Net-4a §3.9: P's turret
     weaponSel: (): number => sentHeld.weaponSel ?? 0,   // W-4 spec §10: the selection this seat last sent
-    /** Playtest2feedback Decision 11: the puffs and the hiss online: this seat's own predicted vent at the crew Helm, else none. */
-    helmVent: (): HelmVent => { const d = duel(); return crewHelm(d) ? ventOf(crewAxes(d, sentHeld)) : noVent(); },
-    unacked(n) { unackedFrames = Math.max(0, n); },
-    alpha: () => frameAlpha,
+    alpha: viewAlpha,
+    rockGap: (): number | null => (predicted() ? 1 : null),   // Fable #8: the prediction's alpha spans one local tick
+    rockShift: (): number => (predicted() ? deps.prediction!.rockShift?.() ?? 0 : 0),   // rock jump brief §2
+    /** Net-4a §3.6: the confirmed replica (end card, outcome, one-shot sounds). */
+    confirmed: (): DuelState => client.state()!,
+    /** Net-4a §3.6: every other player's character from the confirmed publications, one gap behind; this seat's slot null. */
+    crewOverride: (): CrewOverride | undefined => (predicted() && latest
+      ? { at: latest.crew.map((c, pid) => (pid === seat ? null : c)), prev: cCrewPrev.map((c, pid) => (pid === seat ? null : c)), alpha: frameAlpha }
+      : undefined),
     paused: () => client.publication()?.phase === 'paused',
     live: () => client.live?.() ?? true,
     mode: 'online' as const,
     uiHeld: () => uiHeld,
     /** Only the publication phase 'running' shows the console (Artemis deviation 5). */
     running: () => client.publication()?.phase === 'running',
-    /** The level the console shows (Artemis spec §6.1): the session's level in flight, else the replica's. */
-    throttle: () => shownThrottle ?? duel().throttle,
-    /** The session's level in flight (spec §5.4's throttleSent), or null. */
-    throttleBase(level) { shownThrottle = level; },
-    /** Feel-ii §1.2: this seat's own axes at the Helm, else what the replica alone tells (no partner's A/D or Space). */
+    /** The level the console shows (Artemis spec §6.1; Net-4a §3.9: the drawn state's). */
+    throttle: () => duel().throttle,
+    /** Feel-ii §1.2: this seat's own axes at the Helm, else what the drawn state alone tells (no partner's A/D or Space). */
     helmAxes: (): Axes => (seatOf(duel(), seat) === 'helm' ? source.axes() : stateAxes(duel())),
     /** Feel-ii §2.8: the session's refused controls, drained by the scene. */
     refuse(control, reason) { refusals.push({ control, reason }); },
     takeRefusals() { const out = refusals; refusals = []; return out; },
-    drainEvents() { const out = events; events = []; return out; },
+    drainEvents() { const out = events; events = []; const p = predicted(); return p ? placeEvents(out, p.tactical) : out; },
     observe,
     ready: () => !!client.state() && !!client.publication(),
     /** The time since the latest publication over its tick gap, clamped to 0..1 (spec §3: one gap behind, no more). */
     frame(dt, keys, pointer) {
       observe();
-      const d = client.state(); if (!d) return;
+      if (!client.state()) return;
+      const d = duel();   // Net-4a §3.6, §3.9: the seat, the torpedo flag and the cameras' follow read the drawn state
       frameAlpha = Math.max(0, Math.min(1, (deps.now() - receivedAt) * TICK_HZ / (1000 * gap)));
       const view = seatOf(d, seat), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : view === 'science' ? cameras.science : null;
       if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer, view === 'helm' && !crewHelmSeat(d, seat)); else cameraInput.applyInterior(interiorCamera, keys, pointer); }   // W-4 spec §7: at Weapons the right button pans again; helm round 2 §4: so does the crew Helm's
       trackManualTorpedo(cameras.weapons, torpFollow, manualTorpedoFlying(d.tactical));   // W-3 (pew pew spec §3): follow a MANUAL torpedo, then go back
       for (const c of [cameras.helm, cameras.weapons, cameras.science]) {
         if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');
-        const target = c.follow === 'missile' ? interpolatedMissile(d.tactical, missilePrev, frameAlpha, 0) : followTarget(d.tactical, prev, frameAlpha, c.follow);
+        const target = c.follow === 'missile' ? interpolatedMissile(d.tactical, source.missilePrev, viewAlpha(), 0) : followTarget(d.tactical, source.prev, viewAlpha(), c.follow);
         updateCamera(c, deps.viewport, dt, target);
       }
     },
     /** The held axes this seat last sent (its own console's predicted path). */
-    sent(held) {
-      sentHeld = { ...held, interactHeld: false };   // playtest2feedback: the crew Helm's fields and aim too
-      const d = client.state();
-      if (d && (cutInFlight || d.thrCut) && heldAxis(held.throttleHeld) === 0) cutReleased = true;   // helm round 2 §7: the key came up since the latch began
-    },
+    sent(held) { sentHeld = { ...held, interactHeld: false }; },   // playtest2feedback: the crew Helm's fields and aim too
     /** The last pump's merged held keys and console holds (Artemis spec §6.1). */
     heldFlags(flags) { uiHeld = flags; },
     /** Publication inter-arrival gaps in milliseconds, for the record's jitter. */

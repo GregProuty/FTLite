@@ -103,7 +103,7 @@ describe('transactional snapshot format 2', () => {
       const water = Array.from({ length: state.playerCount }, () => 0);
       pair.authorityLink.send('reliable-ordered', encodeMessage({ kind: 'state', state: { runId: 'snapshot-v2', tick: snap.header.tick,
         publicationSequence: sequence, snapshot: snap, hash: hashF64(Float64Array.from(snap.values)), phase: 'running', pauseOwner: null,
-        pauseReason: null, controlRevision: 0, lagTicks: 0, tickTimeMs: null, commandHighWater: water, heldHighWater: water, auxiliaryHighWater: water, eventSequence: 0 } }));
+        pauseReason: null, controlRevision: 0, lagTicks: 0, tickTimeMs: null, commandHighWater: water, heldHighWater: water, auxiliaryHighWater: water, eventSequence: 0, held: water.map(() => ({ moveX: 0, moveY: 0, interactHeld: false })) } }));
       transport.drain();
     };
     publish(initial, saveSnapshot(initial), 1);

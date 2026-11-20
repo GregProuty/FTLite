@@ -1,5 +1,6 @@
 import { executeFixture, unpackFixture } from './fixture';
 import { compareReports } from './protocol';
+import { duelRestoreCheck } from './duelRestore';
 declare global { interface Window { determinism?: { engine: string; report(value: unknown): void } } }
 const token = new URLSearchParams(location.search).get('token');
 let sent = false;
@@ -15,6 +16,7 @@ async function main() {
   const fixture = unpackFixture(await (await fetch('/fixture.json')).json());
   const actual = executeFixture(fixture, __GAMEPLAY_CONTENT_DIGEST__);
   compareReports(fixture.expected, actual);
-  report({ engine: window.determinism?.engine ?? navigator.userAgent, report: actual });
+  const duelRestore = duelRestoreCheck(__GAMEPLAY_CONTENT_DIGEST__, { seed: 2, ticks: 1800, bursts: true });   // Net-4a G2
+  report({ engine: window.determinism?.engine ?? navigator.userAgent, report: actual, duelRestore });
 }
 void main().catch(error => report({ error: String(error.stack ?? error) }));

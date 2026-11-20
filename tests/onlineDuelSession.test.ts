@@ -6,7 +6,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { todaysCrewWeapons } from './helpers/crewWeapons';
 import type { CommandResult, DuelCommand, HeldInput } from '../src/renderer/src/net/contracts';
-import type { DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
+import type { DuelPublication } from '../src/renderer/src/clientControl/duelClient';
+import { duelRecordSchema, latencyFigure, type DuelPlaytestRecord } from '../src/renderer/src/net/duelRecord';
+import { latencyOverlayLines } from '../src/renderer/src/render/duel/latencyOverlay';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { createSeatedDuel } from './helpers/duelSeat';
@@ -22,29 +24,41 @@ import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import { createUiStore } from '../src/renderer/src/ui/store';
 import type { ConsoleInput } from '../src/renderer/src/app/duel/input';
 import type { ContactController, ContactSync } from '../src/renderer/src/app/duel/contactController';
+import { interpolatedShip } from '../src/renderer/src/render/tactical/tacticalModel';
+import { createRockTrack, rockDrawPos, rockDrawTick, updateRockTrack } from '../src/renderer/src/render/tactical/rockTrack';
+import { isRail, rockSlots, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
+import { createRng, nextFloat } from '../src/shared/rng';
+import { SMOOTH_MS } from '../src/renderer/src/render/duel/correctionSmoother';
+import { HEADING_COUNT } from '../src/renderer/src/sim/tactical/tuning';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 type Sent = { kind: 'held'; held: HeldInput } | { kind: 'command'; command: DuelCommand };
-interface Pub { publicationSequence: number; tick: number; phase: string; pauseReason: string | null; pauseOwner: number | null; heldHighWater: number[] }
+type Pub = DuelPublication;
 /** A stub of the duel stream client: the test publishes replicas and reads what the session sent. */
 function stubClient() {
   let replica: DuelState | null = null, pub: Pub | null = null, sequence = 0, heldSequence = 0, commandSequence = 0, status = 'pending';
+  let revision = 0, lastPhaseSeen = 'running';
   const sent: Sent[] = [], events: unknown[] = [], neutralized: number[] = [], results: CommandResult[] = [], ids: { player: number; sequence: number }[] = [];
   return {
     sent, events, neutralized, results, ids,
     ready() { status = 'ready'; },
     commands: () => sent.flatMap((s) => (s.kind === 'command' ? [s.command] : [])),
     helds: () => sent.flatMap((s) => (s.kind === 'held' ? [s.held] : [])),
-    publish(d: DuelState, phase = 'running', pause: { reason: string | null; owner: number | null } = { reason: null, owner: null }) {
-      const next = loadDuelSnapshot(CUTTER, saveDuelSnapshot(d, DIGEST), DIGEST);
+    publish(d: DuelState, phase = 'running', pause: { reason: string | null; owner: number | null } = { reason: null, owner: null }, water: { command?: number[]; held?: number[]; heldInput?: HeldInput[] } = {}) {
+      const snapshot = saveDuelSnapshot(d, DIGEST), next = loadDuelSnapshot(CUTTER, snapshot, DIGEST);
       if (replica) disposeDuel(replica);
       replica = next; sequence++;
-      pub = { publicationSequence: sequence, tick: sequence * 3, phase, pauseReason: pause.reason, pauseOwner: pause.owner, heldHighWater: [0, 0] };
+      if (phase !== lastPhaseSeen) { revision++; lastPhaseSeen = phase; }   // a pause or a resume is a control change
+      const n = d.interior.playerCount, zeros = Array<number>(n).fill(0);
+      pub = { runId: 'c'.repeat(32), tick: d.interior.tick, publicationSequence: sequence, snapshot, hash: snapshot.header.hash, phase: phase as Pub['phase'],
+        pauseOwner: pause.owner, controlRevision: revision, pauseReason: pause.reason, lagTicks: 0, tickTimeMs: null,
+        commandHighWater: water.command ?? zeros, heldHighWater: water.held ?? zeros, auxiliaryHighWater: zeros, eventSequence: 0,
+        held: water.heldInput ?? Array.from({ length: n }, () => ({ moveX: 0, moveY: 0, interactHeld: false })) };
     },
     state: () => replica, publication: () => pub,
     command(player: number, command: DuelCommand) { sent.push({ kind: 'command', command }); const id = { player, sequence: ++commandSequence }; ids.push(id); return id; },
     held(_player: number, held: HeldInput) { sent.push({ kind: 'held', held: { ...held } }); return ++heldSequence; },
-    neutralize(player: number) { neutralized.push(player); },
+    neutralize(player: number): number | null { neutralized.push(player); return ++heldSequence; },   // as the real client: a neutral held frame, its sequence
     commandStatus: () => ({ state: status }),
     takeResults: () => results.splice(0), takeEvents: () => events.splice(0),
     dispose() { if (replica) disposeDuel(replica); replica = null; pub = null; }
@@ -54,7 +68,11 @@ type Stub = ReturnType<typeof stubClient>;
 const h = vi.hoisted(() => ({
   clients: [] as unknown[], closers: [] as (() => void)[], draws: [] as { banner: string | null; notice?: string | null }[], overlay: [] as (readonly string[] | null)[],
   sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; reticle(aim: number): void; torpHeading(h: number): void; trigger(held: boolean): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 },
-  source: null as null | { helmVent(): { x: number; y: number }; thrMille(): number }
+  source: null as unknown,
+  /** Net-4a: each predictor the session made, its dispose count and the entries it was ticked with. */
+  predictors: [] as { disposed: number; ticks: { heldSequence: number | null; held: HeldInput; commands: readonly unknown[] }[] }[],
+  /** Fable #4: how many of the next confirm calls throw. */
+  confirmThrows: { n: 0 }
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
 vi.mock('../src/network/portLink', () => ({
@@ -64,6 +82,16 @@ vi.mock('../src/network/portLink', () => ({
     return { onClose(cb: () => void) { listeners.push(cb); return () => { const i = listeners.indexOf(cb); if (i >= 0) listeners.splice(i, 1); }; }, close() {}, send() {}, onMessage: () => () => {} };
   }
 }));
+// Net-4a: the real predictor, spied on (its dispose and every entry it is ticked with).
+vi.mock('../src/renderer/src/clientControl/duelPredictor', async (importOriginal) => {
+  const m = await importOriginal<typeof import('../src/renderer/src/clientControl/duelPredictor')>();
+  return { ...m, createDuelPredictor: (o: Parameters<typeof m.createDuelPredictor>[0]) => {
+    const real = m.createDuelPredictor(o), rec = { disposed: 0, ticks: [] as { heldSequence: number | null; held: HeldInput; commands: readonly unknown[] }[] };
+    h.predictors.push(rec);
+    return { ...real, confirm(...a: Parameters<typeof real.confirm>) { if (h.confirmThrows.n > 0) { h.confirmThrows.n--; throw Error('predictor fault'); } return real.confirm(...a); },
+      tick(e: Parameters<typeof real.tick>[0]) { rec.ticks.push({ ...e, held: { ...e.held } }); return real.tick(e); }, dispose() { rec.disposed++; real.dispose(); } };
+  } };
+});
 vi.mock('../src/network/transport/bridge', () => ({ browserPortEndpoint: () => ({}) }));
 vi.mock('../src/renderer/src/app/duel/scene', () => ({
   // Mirrors the real scene: draw hands the UI a frame, dispose clears the sink (scene.ts dispose: options.ui.clear()).
@@ -104,7 +132,7 @@ const nextRound = (d: DuelState): void => {
 };
 
 let win: ReturnType<typeof target>;
-beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; h.sceneOpts.length = 0; h.sources.length = 0; h.disposes.n = 0; });
+beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; h.sceneOpts.length = 0; h.sources.length = 0; h.disposes.n = 0; h.predictors.length = 0; h.confirmThrows.n = 0; });
 afterEach(() => { delete (globalThis as { window?: unknown }).window; });
 
 function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame() {}, clear() {} }, api: object = {}, extra: object = {}, cls?: number) {   // playtest2feedback Decision 17: cls picks the Valkyrn for the client's throttle prediction tests
@@ -250,7 +278,7 @@ describe('the online Hound Weapons seat (W-4 spec §11)', () => {
     expect(c.helds().at(-1)).toMatchObject({ weaponSel: 2 });
     r.dispose();
   });
-  it('R sends gunMode for the selected gun; a second R before the result flips back (from gunModeSent for that slot)', () => {
+  it('R sends gunMode for the selected gun; a second R before the result flips back (from P)', () => {
     const r = rig(1), c = r.attach(); r.session.frame();
     const modes = () => c.commands().filter((x) => x.kind === 'gunMode' || x.kind === 'torpMode');
     tapKey(r, 'KeyR'); r.pump(); tapKey(r, 'KeyR'); r.pump();
@@ -299,53 +327,53 @@ describe('the online Hound Weapons seat (W-4 spec §11)', () => {
     expect(c.helds().at(-1)).toMatchObject({ turretAim: 5000 });
     r.dispose();
   });
-  it("the source's turret(0) follows the reticle at MAN traverse while gunMode is in flight, then the replica's again", () => {
+  it("R puts pew pew on MAN in P at once, so its turret slews toward the reticle; a publication that ran the gunMode with the gun still AUTO takes it back", () => {
     const r = rig(1), c = r.attach(); r.session.frame();
-    const src = () => h.sources.at(-1) as unknown as { turret(slot: 0 | 1): number };
-    // turretAim is a world fine aim and the spawn heading depends on the seed (map.ts spawnAt): aim 2000 steps right of the
-    // replica's nose, inside the pew's ±10922 arc.
+    const src = () => h.sources.at(-1) as unknown as { turret(slot: 0 | 1): number; duel: DuelState };
     const h0 = c.state()!.tactical.ships[0].heading, want = (h0 * 256 + 2000) % 65536;
     h.sceneOpts[0]!.requests!.reticle(want); r.pump(); r.session.frame();
-    expect(src().turret(0)).toBe(0);   // AUTO: the replica's
-    r.key('keydown', 'KeyR'); r.key('keyup', 'KeyR'); r.pump(); r.pump(); r.session.frame();   // R with pew pew selected: its gunMode {slot: 0} is in flight
-    const p = src().turret(0);
-    expect(p > 0 && p <= 2000 && (p % 455 === 0 || p === 2000)).toBe(true);   // k unacknowledged frames of MAN's 455 a frame toward +2000
+    expect(src().turret(0)).toBe(0);   // AUTO
+    r.key('keydown', 'KeyR'); r.key('keyup', 'KeyR'); r.pump(); r.pump(); r.pump(); r.session.frame();
+    expect(src().duel.tactical.systems[0].pewManual).toBe(true);   // P holds the gunMode
+    expect(src().turret(0)).toBeGreaterThan(0);   // and slews toward +2000 (MAN traverse)
     const id = c.ids[c.commands().map((x) => x.kind).lastIndexOf('gunMode')]!;
-    c.results.push({ id, tick: 3, status: 'applied' }); r.pump(); r.session.frame();
-    expect(src().turret(0)).toBe(0);   // gunModeSent[0] cleared: the replica's mode (AUTO) is the base again
+    c.publish(r.d, 'running', undefined, { command: [0, id.sequence] }); r.pump(); r.session.frame();   // run and refused: the replica is still AUTO
+    expect(src().duel.tactical.systems[0].pewManual).toBe(false);
     r.dispose();
   });
-  it("the prediction reads the selected gun's own mode: pew pew's MAN in flight does not move the autocannon's turret (amendment §2.6)", () => {
+  it("the prediction reads the selected gun's own mode: pew pew's MAN in P does not move the autocannon's turret (amendment §2.6)", () => {
     const r = rig(1), sys = r.d.tactical.systems[0]!;
-    sys.bars[1] = 3; sys.weaponPower = [1, 1, 1];   // the autocannon powered on the replica (an unpowered gun is never predicted)
+    sys.bars[1] = 3; sys.weaponPower = [1, 1, 1];   // the autocannon powered on the replica (an unpowered gun never slews)
     const c = r.attach(); r.session.frame();
-    const src = () => h.sources.at(-1) as unknown as { turret(slot: 0 | 1): number };
+    const src = () => h.sources.at(-1) as unknown as { turret(slot: 0 | 1): number; duel: DuelState };
     const h0 = c.state()!.tactical.ships[0].heading, want = (h0 * 256 + 2000) % 65536;
     h.sceneOpts[0]!.requests!.reticle(want);
-    tapKey(r, 'KeyR'); r.pump();   // pew pew, the selected weapon, to MAN (in flight)
+    tapKey(r, 'KeyR'); r.pump();   // pew pew, the selected weapon, to MAN (in P)
     tapKey(r, 'Digit2'); r.pump(); r.pump(); r.session.frame();
-    expect(src().turret(1)).toBe(0);   // the autocannon is selected and its own switch is AUTO: the replica's turret
-    tapKey(r, 'KeyR'); r.pump(); r.pump(); r.session.frame();
-    const p = src().turret(1);
-    expect(p > 0 && p <= 2000 && (p % 341 === 0 || p === 2000)).toBe(true);   // its own gunMode in flight: MAN's 341 a frame
+    expect(src().duel.tactical.systems[0].gunManual).toBe(false);   // the autocannon is selected and its own switch is AUTO
+    tapKey(r, 'KeyR'); r.pump(); r.session.frame();
+    expect(src().duel.tactical.systems[0].gunManual).toBe(true);   // its own gunMode in P
+    r.pump(); r.pump(); r.session.frame();
+    expect(src().turret(1)).toBeGreaterThan(0);   // the sim's slew moves P's turret
     r.dispose();
   });
-  it('two E presses before a replica arrives step the target room twice (lockSent); it clears on the result, a new round and a stand', () => {
-    const r = rig(1), c = r.attach(); r.session.frame();
+  it('two E presses before a replica arrives step the target room twice (P holds the first); a refused lock, a new round and a stand', () => {
+    const r = rig(1), s0 = r.d.tactical.ships[0];
+    Object.assign(r.d.tactical.ships[1], { x: s0.x + 300, y: s0.y, vx: 0, vy: 0 });   // in sensor range: the sim (and so P) takes a lock only on a seen enemy
+    const c = r.attach(); r.session.frame();
     const locks = () => c.commands().filter((x) => x.kind === 'laserLock' || x.kind === 'torpLock');
+    const lastLock = () => c.ids[c.commands().map((x) => x.kind).lastIndexOf('laserLock')]!.sequence;
     const e = (): void => { tapKey(r, 'KeyE'); r.pump(); };
     e(); e();
-    expect(locks()).toEqual([{ kind: 'laserLock', room: 2 }, { kind: 'laserLock', room: 0 }]);   // from the replica's Shields, then from the room in flight
-    const id = c.ids[c.commands().map((x) => x.kind).lastIndexOf('laserLock')]!;
-    c.results.push({ id, tick: 3, status: 'applied' }); r.pump();
+    expect(locks()).toEqual([{ kind: 'laserLock', room: 2 }, { kind: 'laserLock', room: 0 }]);   // from the replica's lock, then from P's
+    c.publish(r.d, 'running', undefined, { command: [0, lastLock()] }); r.pump();   // both run, the state keeps the replica's lock: refused
     e();
-    expect(locks().at(-1)).toEqual({ kind: 'laserLock', room: 2 });   // the result cleared it: the replica's lock (still Shields) is the base again
-    nextRound(r.d); c.publish(r.d); r.pump();
+    expect(locks().at(-1)).toEqual({ kind: 'laserLock', room: 2 });   // from the replica's lock again
+    nextRound(r.d); c.publish(r.d, 'running', undefined, { command: [0, lastLock()] }); r.pump();
     e();
-    expect(locks().at(-1)).toEqual({ kind: 'laserLock', room: 2 });   // a new round: from its Shields, not from the room in flight
-    tapKey(r, 'KeyX'); r.pump();   // this seat's stand clears it (the replica still shows the seat)
-    e();
-    expect(locks().at(-1)).toEqual({ kind: 'laserLock', room: 2 });
+    expect(locks().at(-1)).toEqual({ kind: 'laserLock', room: 2 });   // a new round: from its lock, not from the room in P
+    const n = locks().length; tapKey(r, 'KeyX'); r.pump(); e();
+    expect(locks()).toHaveLength(n);   // in P the seat has already stood: E sends no lock (R2-F2)
     expect(locks().some((x) => x.kind === 'torpLock')).toBe(false);
     r.dispose();
   });
@@ -371,16 +399,14 @@ describe('the online Hound Weapons seat (W-4 spec §11)', () => {
     expect(modes().slice(1)).toEqual([{ kind: 'gunMode', slot: 0, manual: true }, { kind: 'torpMode', manual: true }]);
     r.dispose();
   });
-  it('a MANUAL flight: no gunHeld, no pewFire, then the selection returns; the turret is not predicted while it flies (W-4 spec §7, §11)', () => {
+  it('a MANUAL flight: no gunHeld, no pewFire, then the selection returns (W-4 spec §7, §11)', () => {
     const r = rig(1);
     placeMissile(r.d.tactical, 0, { x: 0, y: 1300, vx: 0, vy: 0, heading: 0, headingAcc: 0, age: 30 }, true);
     const c = r.attach(); r.session.frame();
-    const src = () => h.sources.at(-1) as unknown as { turret(slot: 0 | 1): number };
     const key = (code: string): void => { r.key('keydown', code); r.key('keyup', code); r.pump(); };
     r.key('keydown', 'KeyR', { shiftKey: true }); r.key('keyup', 'KeyR', { shiftKey: true }); r.pump();   // Shift+R: both guns to MAN (the rig's key takes the modifiers since W-4b)
     const want = (c.state()!.tactical.ships[0].heading * 256 + 2000) % 65536;
     h.sceneOpts[0]!.requests!.reticle(want); r.pump(); r.pump(); r.session.frame();
-    expect(src().turret(0)).toBe(0);   // k = 0 while it flies
     key('Digit2'); h.sceneOpts[0]!.requests!.trigger(true); r.pump();
     expect(c.helds().at(-1)).not.toHaveProperty('gunHeld');
     h.sceneOpts[0]!.requests!.trigger(false); key('Digit1');
@@ -389,7 +415,6 @@ describe('the online Hound Weapons seat (W-4 spec §11)', () => {
     key('Digit3');
     removeMissile(r.d.tactical, 0); r.client().publish(r.d); r.pump(); r.session.frame();
     expect(c.helds().at(-1)).toMatchObject({ weaponSel: 0 });   // back to the last gun
-    expect(src().turret(0)).toBeGreaterThan(0);   // predicted again
     r.dispose();
   });
 });
@@ -397,7 +422,7 @@ describe('the online Hound Weapons seat (W-4 spec §11)', () => {
 describe('the online manual laser (W-2)', () => {
   const sent = (c: Stub, kind: string) => c.commands().filter((x) => x.kind === kind);
   const fireRefusals = () => h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'fire');
-  it('Z sends laserMode from the mode in flight, else the replica\'s', () => {
+  it('Z sends laserMode from P\'s mode', () => {
     const r = rig(1, undefined, undefined, undefined, ShipClass.ValkyrnLaser), c = r.attach();   // W-4 spec §14.1: the beam's rule, on the laser fit
     r.session.frame();
     r.key('keydown', 'KeyZ'); r.key('keyup', 'KeyZ'); r.pump();
@@ -430,7 +455,7 @@ describe('the online manual torpedo (W-3)', () => {
   const launchRefusals = () => h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'launch');
   /** The crew far from the enemy (out of torpedo range). */
   const apart = (d: DuelState): void => { Object.assign(d.tactical.ships[0], { x: 0, y: 1500, vx: 0, vy: 0 }); Object.assign(d.tactical.ships[1], { x: 0, y: -1500, vx: 0, vy: 0 }); };
-  it('V sends torpMode from the mode in flight, else the replica\'s', () => {
+  it('V sends torpMode from P\'s mode', () => {
     const r = rig(1, undefined, undefined, undefined, ShipClass.ValkyrnLaser), c = r.attach();   // W-4 amendment §2.4 (kind (a)): V is not read at the Hound's Weapons seat; it stays the laser fit's
     r.session.frame();
     r.key('keydown', 'KeyV'); r.key('keyup', 'KeyV'); r.pump();
@@ -672,7 +697,7 @@ describe('the Artemis console clicks online (Artemis spec §4.1, §6.2)', () => 
     expect(contact.aimWeapon()).toBe('torpedo');                         // still picked up
     r.key('keydown', 'KeyQ'); r.key('keyup', 'KeyQ'); r.pump();
     expect(targets().at(-1)).toEqual({ kind: 'torpLock', room: 2 });   // the replica still has none: Q starts at Room 2
-    r.d.tactical.systems[0].torpLock = 1; c.publish(r.d);
+    r.d.tactical.systems[0].torpLock = 1; c.publish(r.d, 'running', undefined, { command: [0, c.ids[c.commands().map((x) => x.kind).lastIndexOf('torpLock')]!.sequence] });   // Net-4a §3.9: the torpLocks acknowledged, the state at 1
     r.key('keydown', 'KeyE'); r.key('keyup', 'KeyE'); r.pump();
     expect(targets().at(-1)).toEqual({ kind: 'torpLock', room: 2 });   // from its own target (1)
     expect(c.commands().filter((x) => x.kind === 'laserLock')).toHaveLength(1);    // E and Q were taken: no laser lock step
@@ -699,77 +724,40 @@ describe('the Artemis console clicks online (Artemis spec §4.1, §6.2)', () => 
   });
 });
 
-describe('the online Helm throttle (Artemis spec §5.4)', () => {
+describe('the online Helm throttle reads the prediction (Artemis spec §5.4, Net-4a §3.9)', () => {
   const tap = (r: ReturnType<typeof rig>, code: string): void => { r.key('keydown', code); r.key('keyup', code); r.pump(); };
   const throttles = (c: Stub) => c.commands().filter((x) => x.kind === 'throttle');
-  const lastThrottleId = (c: Stub) => c.ids[c.commands().map((x) => x.kind).lastIndexOf('throttle')]!;
-  it('two W presses inside one round trip move two notches; S steps down from the level in flight', () => {
-    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();   // seat 0 flies the Helm
+  it('two W presses inside one round trip move two notches (P holds the first); S steps down from P; a notch click asks for its level', () => {
+    let input: ConsoleInput | null = null;
+    const r = rig(0, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }, ShipClass.Valkyrn), c = r.attach();
     tap(r, 'KeyW'); tap(r, 'KeyW');
     expect(throttles(c)).toEqual([{ kind: 'throttle', level: 1 }, { kind: 'throttle', level: 2 }]);
     tap(r, 'KeyS');
     expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 1 });
-    r.dispose();
-  });
-  it('a rejected throttle drops back to the replica level', () => {
-    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();
-    tap(r, 'KeyW'); tap(r, 'KeyW');   // 1, then 2 on top of it
-    c.results.push({ id: lastThrottleId(c), tick: 3, status: 'rejected', reason: 'invalid-seat' }); r.pump();
-    tap(r, 'KeyW');
-    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 1 });   // from the replica's 0, not from 2
-    r.dispose();
-  });
-  it('only the result for the level in flight hands the base back to the replica; a notch click asks for its level', () => {
-    let input: ConsoleInput | null = null;
-    const r = rig(0, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }, ShipClass.Valkyrn), c = r.attach();
-    tap(r, 'KeyW');
-    const first = lastThrottleId(c);
-    tap(r, 'KeyW');                                                       // 2 in flight
-    c.results.push({ id: first, tick: 3, status: 'applied' }); r.d.throttle = 1; c.publish(r.d); r.pump();
-    tap(r, 'KeyW');
-    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 3 });   // still built on the 2 in flight
-    c.results.push({ id: lastThrottleId(c), tick: 4, status: 'applied' }); r.d.throttle = 4; c.publish(r.d); r.pump();
-    tap(r, 'KeyS');
-    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 3 });   // from the replica's 4
-    input!.throttle(-1); r.pump();
+    input!.throttle(-1); r.pump();   // Artemis spec §6.2: the console's reverse notch
     expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: -1 });
     r.dispose();
   });
-  it('a stand and a new round clear the level in flight', () => {
+  it('a throttle the authority ran and refused (the watermark passed it, the state without it) falls back to the replica level', () => {
     const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();
-    tap(r, 'KeyW');                                                       // 1 in flight
-    tap(r, 'KeyX');                                                       // the stand clears it (the replica still shows the seat)
+    tap(r, 'KeyW'); tap(r, 'KeyW');                                       // 1, then 2, both in P
+    c.publish(r.d, 'running', undefined, { command: [c.ids.at(-1)!.sequence, 0] }); r.pump();   // both run, both refused: throttle still 0
     tap(r, 'KeyW');
     expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 1 });
-    tap(r, 'KeyW');                                                       // 2 in flight
-    nextRound(r.d); c.publish(r.d); r.pump();
-    tap(r, 'KeyW');
-    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 1 });   // the new round starts from the replica's 0
     r.dispose();
   });
-  it('a sit, a re-attach and a noop result each clear the level in flight (the base falls back to the replica)', () => {
+  it('a new round starts from the replica\'s throttle', () => {
     const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();
-    tap(r, 'KeyW');                                                       // 1 in flight
-    stepDuelTick(r.d, { held: [], commands: [{ runId: 'duel', id: { player: 0, sequence: 1 }, requestedTick: r.d.interior.tick, command: { kind: 'stand' } }] });
-    c.publish(r.d); r.pump();
-    tap(r, 'KeyE');                                                       // the sit clears it
-    stepDuelTick(r.d, { held: [], commands: [{ runId: 'duel', id: { player: 0, sequence: 2 }, requestedTick: r.d.interior.tick, command: { kind: 'sit', station: r.d.nav } }] });
-    c.publish(r.d); r.pump();
+    tap(r, 'KeyW'); tap(r, 'KeyW');
+    nextRound(r.d); c.publish(r.d, 'running', undefined, { command: [c.ids.at(-1)!.sequence, 0] }); r.pump();
     tap(r, 'KeyW');
-    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 1 });   // from the replica's 0, not from 2
-    tap(r, 'KeyW');                                                       // 2 in flight
-    const c2 = r.attach();                                                // a re-attach clears it
-    tap(r, 'KeyW');
-    expect(throttles(c2).at(-1)).toEqual({ kind: 'throttle', level: 1 });
-    tap(r, 'KeyW');                                                       // 2 in flight on c2
-    c2.results.push({ id: lastThrottleId(c2), tick: 3, status: 'noop' } as never); r.pump();
-    tap(r, 'KeyW');
-    expect(throttles(c2).at(-1)).toEqual({ kind: 'throttle', level: 1 });   // a noop hands the base back too
+    expect(throttles(c).at(-1)).toEqual({ kind: 'throttle', level: 1 });
     r.dispose();
   });
 });
 
 describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () => {
+  const drawn = (): DuelState => (h.source as unknown as { duel: DuelState }).duel;   // Net-4a §3.9: the drawn state, P
   const headings = (c: Stub) => c.commands().filter((x) => x.kind === 'heading');
   const ask = (r: ReturnType<typeof rig>, heading: number): void => { (h.sceneOpts.at(-1) as unknown as { requests: { heading(n: number): void } }).requests.heading(heading); r.pump(); };
   it('held W rides the frame as throttleHeld and a Digit1 press sends no helmPower (owner 2026-11-19)', () => {
@@ -796,15 +784,17 @@ describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () =>
     expect(h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'auto-face')).toEqual([]);
     r.dispose();
   });
-  it('helm round 2 §2.3, §7: a tap of S with the predicted throttle above 0 sends one throttleCut, and the source shows 0 until its result', () => {
+  it('helm round 2 §2.3, §7: a tap of S with the predicted throttle above 0 sends one throttleCut; P shows 0 at once, and a publication that ran it refused takes it back (Net-4a §3.9)', () => {
     const r = rig(0), c = r.attach(), cuts = () => c.commands().filter((x) => x.kind === 'throttleCut');
     r.d.thrMille = 400; c.publish(r.d); r.pump();
     r.key('keydown', 'KeyS'); r.pump(); r.advance(80); r.key('keyup', 'KeyS'); r.pump();
     expect(cuts()).toEqual([{ kind: 'throttleCut' }]);
     r.session.frame();
-    expect(h.source!.thrMille()).toBe(0);   // the cut in flight
-    c.results.push({ id: c.ids[c.commands().map((x) => x.kind).lastIndexOf('throttleCut')]!, tick: 3, status: 'applied' }); r.pump(); r.session.frame();
-    expect(h.source!.thrMille()).toBe(c.state()!.thrMille);   // the result: the replica is the base again
+    expect(drawn().thrMille).toBe(0);   // the cut is in P (it holds every unacknowledged command)
+    expect(h.predictors.at(-1)!.ticks.some((e) => e.commands.some((x) => (x as { command: DuelCommand }).command.kind === 'throttleCut'))).toBe(true);   // collected into its log entry
+    const cut = c.ids[c.commands().map((x) => x.kind).lastIndexOf('throttleCut')]!.sequence;
+    c.publish(r.d, 'running', undefined, { command: [cut, 0], held: [c.helds().length, 0] }); r.pump(); r.session.frame();   // ran, the state still at 400: refused
+    expect(drawn().thrMille).toBe(c.state()!.thrMille);   // the replica is P's base again
     r.dispose();
   });
   it('helm round 2 §2.3: a tap of S at 0 and a 250 ms press of S send no cut', () => {
@@ -824,7 +814,7 @@ describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () =>
     r.key('keydown', 'KeyW'); r.pump(); r.advance(80); r.key('keyup', 'KeyW'); r.pump();
     expect(c.commands().filter((x) => x.kind === 'throttleCut')).toEqual([{ kind: 'throttleCut' }]);
     r.session.frame();
-    expect(h.source!.thrMille()).toBe(0);   // the cut in flight
+    expect(drawn().thrMille).toBe(0);   // the cut is in P
     r.dispose();
   });
   it('helm round 2 §3.3: a PORT / STBD button press on the replica\'s empty charge says NO GAS once a press', () => {
@@ -838,34 +828,25 @@ describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () =>
     expect(gas()).toEqual([{ control: 'gas', reason: 'NO GAS' }]);   // a new press
     r.dispose();
   });
-  it('helm round 2 §7: a new round, a stand, a sit and a re-attach each clear the cut in flight (the prediction no longer reads 0 from it)', () => {
+  it('helm round 2 §7, Net-4a §3.9: the cut is in P, not an in-flight copy: the publication of a new round and a re-attach show the replica throttle; a stand after it keeps P at 0 (the authority runs the cut first)', () => {
     const r = rig(0);
     let c = r.attach();
-    const stepOne = (command: DuelCommand, sequence: number): void => {
-      stepDuelTick(r.d, { held: [], commands: [{ runId: 'duel', id: { player: 0, sequence }, requestedTick: r.d.interior.tick, command }] });
-    };
-    /** A tap of S at 400 with no result: the cut is in flight and the prediction reads 0. */
-    const cutInFlight = (why: string): void => {
+    /** A tap of S at 400: the cut is in P, which reads 0. */
+    const cutInP = (why: string): void => {
       r.d.thrMille = 400; c.publish(r.d); r.pump();
       const before = c.commands().filter((x) => x.kind === 'throttleCut').length;
       r.key('keydown', 'KeyS'); r.pump(); r.advance(80); r.key('keyup', 'KeyS'); r.pump();
       expect(c.commands().filter((x) => x.kind === 'throttleCut').length, why).toBe(before + 1);
-      r.session.frame(); expect(h.source!.thrMille(), `${why}: in flight`).toBe(0);
+      r.session.frame(); expect(drawn().thrMille, `${why}: in P`).toBe(0);
     };
-    const replica = (why: string): void => { r.session.frame(); expect(h.source!.thrMille(), `${why}: cleared`).toBe(400); };
-    cutInFlight('new round');
-    nextRound(r.d); r.d.thrMille = 400; c.publish(r.d); r.pump();
+    const replica = (why: string): void => { r.session.frame(); expect(drawn().thrMille, `${why}: the replica's`).toBe(400); };
+    const water = () => ({ command: [c.ids.at(-1)!.sequence, 0], held: [c.helds().length, 0] });
+    cutInP('new round');
+    nextRound(r.d); r.d.thrMille = 400; c.publish(r.d, 'running', undefined, water()); r.pump();
     replica('new round');
-    cutInFlight('stand');
-    r.key('keydown', 'KeyX'); r.key('keyup', 'KeyX'); r.pump();   // this seat's stand (the replica still shows the seat)
-    replica('stand');
-    cutInFlight('sit');
-    stepOne({ kind: 'stand' }, 1); c.publish(r.d); r.pump();
-    r.key('keydown', 'KeyE'); r.key('keyup', 'KeyE'); r.pump();   // this seat's sit
-    expect(c.commands().at(-1)).toEqual({ kind: 'sit', station: r.d.nav });
-    stepOne({ kind: 'sit', station: r.d.nav }, 2); c.publish(r.d); r.pump();
-    replica('sit');
-    cutInFlight('re-attach');
+    cutInP('stand');
+    r.key('keydown', 'KeyX'); r.key('keyup', 'KeyX'); r.pump();   // this seat's stand, after the cut
+    r.session.frame(); expect(drawn().thrMille, 'stand: the cut ran first').toBe(0);
     c = r.attach();
     replica('re-attach');
     r.dispose();
@@ -895,14 +876,14 @@ describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () =>
     expect([c.helds().at(-1)!.rcsX, c.helds().at(-1)!.throttleHeld]).toEqual([1, 1]);
     r.dispose();
   });
-  it('blur drops the local prediction: the vent and thrMille fall back to the replica state', () => {
+  it('blur neutralises the held frame P steps on: the crew Helm thrusters stop venting in P (rewritten from the local-vent case)', () => {
     const r = rig(0), c = r.attach();
     c.publish(r.d); r.pump(); r.session.frame();
     r.key('keydown', 'ArrowUp'); r.pump(); r.pump();
-    expect(h.source!.helmVent()).not.toEqual({ x: 0, y: 0 });
-    r.session.setFocused(false); r.pump();
-    expect(h.source!.helmVent()).toEqual({ x: 0, y: 0 });
-    expect(h.source!.thrMille()).toBe(c.state()!.thrMille);
+    expect(h.predictors.at(-1)!.ticks.at(-1)!.held.rcsY).not.toBeUndefined();   // the thruster rides P's entry
+    r.session.setFocused(false); r.pump(); r.pump();
+    const last = h.predictors.at(-1)!.ticks.at(-1)!.held;
+    expect([last.rcsX, last.rcsY, last.throttleHeld]).toEqual([undefined, undefined, undefined]);   // neutral: P vents nothing
     r.dispose();
   });
 });
@@ -910,18 +891,18 @@ describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () =>
 describe('the online Helm heading (Feel-ii §1.1)', () => {
   const headings = (c: Stub) => c.commands().filter((x) => x.kind === 'heading');
   const ask = (r: ReturnType<typeof rig>, heading: number): void => { (h.sceneOpts.at(-1) as unknown as { requests: { heading(n: number): void } }).requests.heading(heading); r.pump(); };
-  it('a clear asked for while a heading is in flight is sent, not deduped against the lagging replica', () => {
-    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();   // the Valkyrn class's Helm: helm round 2 §4 takes the heading off the crew Helm
+  it('a clear asked for while a heading is in P is sent, not deduped against the lagging replica (from P)', () => {
+    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();   // the replica holds no heading (−1); the Valkyrn class's Helm: helm round 2 §4 takes the heading off the crew Helm
     ask(r, 77); ask(r, -1);
     expect(headings(c)).toEqual([{ kind: 'heading', heading: 77 }, { kind: 'heading', heading: -1 }]);
-    ask(r, -1);   // the clear is in flight now: deduped against it
+    ask(r, -1);   // P holds the clear now: deduped against it
     expect(headings(c)).toHaveLength(2);
-    c.results.push({ id: c.ids[c.commands().map((x) => x.kind).lastIndexOf('heading')]!, tick: 3, status: 'applied' }); r.pump();
-    ask(r, -1);   // the result hands the base back to the replica (−1)
+    c.publish(r.d, 'running', undefined, { command: [c.ids[c.commands().map((x) => x.kind).lastIndexOf('heading')]!.sequence, 0] }); r.pump();
+    ask(r, -1);   // both acknowledged by a publication holding none (−1): P is the replica again
     expect(headings(c)).toHaveLength(2);
     r.dispose();
   });
-  it('A held at the Helm clears the base: the same heading asked for again is sent while the replica still shows the old hold', () => {
+  it('A held at the Helm clears the hold in P: the same heading asked for again is sent while the replica still shows the old hold', () => {
     const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();
     r.d.holdHeading = 77; c.publish(r.d); r.pump();
     ask(r, 77);
@@ -1038,3 +1019,372 @@ describe('Science and the frequency online (Sci-1 spec §5, §7.3, §7.4)', () =
   });
 });
 
+describe('the session predicts (Net-4a §3.3, §3.6)', () => {
+  it('one local tick per 1000/60 ms: a 50 ms pump sends three held frames; a 200 ms pump runs at most LOCAL_TICKS_MAX', () => {
+    const r = rig(0), c = r.attach();
+    const before = c.helds().length;
+    r.pump(50);
+    expect(c.helds().length - before).toBe(3);
+    const mid = c.helds().length;
+    r.pump(200);
+    expect(c.helds().length - mid).toBe(4);
+    r.dispose();
+  });
+  it('the first tick of a pump takes the presses; the later ones repeat its held input with no commands', () => {
+    const r = rig(1, undefined, undefined, undefined, ShipClass.ValkyrnLaser), c = r.attach();   // seat 1 at the ValkyrnLaser's Weapons: Space charges the laser (the Cutter's Hound-style Weapons seat ignores Space)
+    const before = c.commands().length;
+    const heldBefore = c.helds().length;
+    r.key('keydown', 'Space'); r.key('keyup', 'Space'); r.pump(50);
+    expect(c.commands().slice(before).filter((x) => x.kind === 'laserCharge')).toHaveLength(1);
+    const frames = c.helds().slice(heldBefore);
+    expect(frames).toHaveLength(3);
+    for (const f of frames) expect(f).toEqual(frames[0]);   // the later ticks repeat the first's held input
+    const entries = h.predictors.at(-1)!.ticks.slice(-3);
+    expect(entries.map((e) => e.commands.length)).toEqual([1, 0, 0]);   // the press is the first tick's only
+    r.dispose();
+  });
+  it('the scene draws P ahead of the confirmed replica; confirmed() is the replica', () => {
+    const r = rig(0), c = r.attach();
+    for (let k = 0; k < 5; k++) r.pump();
+    session_frame(r);
+    const src = h.source as unknown as { duel: DuelState; confirmed(): DuelState };
+    expect(src.duel.interior.tick).toBeGreaterThan(c.publication()!.tick);
+    expect(src.confirmed()).toBe(c.state());
+    r.dispose();
+  });
+  it('an unfocused window\'s prediction keeps stepping (its entries are neutral)', () => {
+    const r = rig(0), c = r.attach();
+    r.session.setFocused(false);
+    for (let k = 0; k < 4; k++) r.pump();
+    session_frame(r);
+    expect((h.source as unknown as { duel: DuelState }).duel.interior.tick).toBe(c.publication()!.tick + 5);
+    r.dispose();
+  });
+  it('a link close disposes the predictor: it is ticked no more', () => {
+    const r = rig(0); r.attach();
+    for (let k = 0; k < 3; k++) r.pump();
+    const pr = h.predictors.at(-1)!, ticked = pr.ticks.length;
+    expect(pr.disposed).toBe(0);
+    r.closeLink();
+    expect(pr.disposed).toBe(1);
+    for (let k = 0; k < 3; k++) r.pump();
+    expect(pr.ticks.length).toBe(ticked);
+    r.dispose();
+  });
+  it('a neutralize\'s held sequence rides the next local tick\'s entry, and only that one', () => {
+    const r = rig(0), c = r.attach();
+    for (let k = 0; k < 2; k++) r.pump();
+    const pr = h.predictors.at(-1)!, n = c.neutralized.length;
+    r.session.setFocused(false);
+    expect(c.neutralized.length).toBe(n + 1);
+    const from = pr.ticks.length;
+    r.pump(); r.pump();
+    const [a, b] = pr.ticks.slice(from);
+    expect(a!.heldSequence).toBe(c.helds().length + 1);   // the stub's neutralize took the sequence after the last held frame
+    expect(a!.held).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
+    expect(b!.heldSequence).toBeNull();
+    r.dispose();
+  });
+  it('at the cap the drawn ship holds: prev is P\'s own ship on every capped pump, so no alpha re-blends the last step (I1, §3.5)', () => {
+    const r = rig(0); r.attach();   // seat 0 flies the Cutter's crew Helm: held W thrusts
+    r.key('keydown', 'KeyW');
+    const src = () => h.source as unknown as { duel: DuelState; prev: { x: number; y: number; h: number }[] };
+    const drawn = () => { const s = src().duel.tactical.ships[0]!; return { x: s.x, y: s.y, h: s.heading + s.headingAcc }; };
+    for (let k = 0; k < 10; k++) r.pump();
+    session_frame(r);
+    expect(src().prev[0]).not.toEqual(drawn());   // below the cap: prev is one step back
+    for (let k = 0; k < 30; k++) r.pump();          // no publication: P reaches the cap
+    const held: unknown[] = [];
+    for (let k = 0; k < 3; k++) { r.pump(); r.advance(8); session_frame(r); expect(src().prev[0]).toEqual(drawn()); held.push(drawn()); }
+    expect(held[1]).toEqual(held[0]); expect(held[2]).toEqual(held[0]);
+    r.key('keyup', 'KeyW'); r.dispose();
+  });
+  it('a predictor that throws is dropped: the session keeps pumping and draws the confirmed replica (Fable #4)', () => {
+    const r = rig(0), c = r.attach();
+    for (let k = 0; k < 3; k++) r.pump();
+    const pr = h.predictors.at(-1)!;
+    h.confirmThrows.n = 1; c.publish(r.d);
+    expect(() => r.pump()).not.toThrow();
+    expect(pr.disposed).toBe(1);
+    const helds = c.helds().length, ticked = pr.ticks.length;
+    for (let k = 0; k < 3; k++) r.pump();
+    expect(c.helds().length).toBe(helds + 3);   // the pump is still scheduled: held frames still go out
+    expect(pr.ticks.length).toBe(ticked);       // and the dropped predictor is ticked no more
+    c.publish(r.d); r.pump(); session_frame(r);
+    const src = h.source as unknown as { duel: DuelState; confirmed(): DuelState };
+    expect(src.duel).toBe(src.confirmed());
+    expect(src.duel).toBe(c.state());
+    r.dispose();
+  });
+  it("a predictor whose tick() throws is dropped too, and the pump goes on", () => {
+    const r = rig(0), c = r.attach(), pr = h.predictors.at(-1)!, real = pr.ticks.push.bind(pr.ticks);
+    let once = true;
+    pr.ticks.push = (...a) => { if (once) { once = false; throw Error('tick fault'); } return real(...a); };   // the spied tick() throws once
+    r.pump();
+    const helds = c.helds().length;
+    r.pump();
+    expect(c.helds().length).toBe(helds + 1);
+    expect(pr.disposed).toBe(1);
+    r.dispose();
+  });
+  it('a throw elsewhere in the pump leaves the next pump scheduled (try/finally)', async () => {
+    let fault = false;
+    const r = rig(0, undefined, { linkStats: () => { if (fault) throw Error('link fault'); return Promise.resolve(null); } }), c = r.attach();
+    await new Promise<void>((resolve) => setImmediate(resolve));   // the first poll settles
+    fault = true; r.advance(1000);
+    expect(() => r.pump()).toThrow('link fault');   // pollLink's call throws out of the pump
+    fault = false;
+    const helds = c.helds().length;
+    r.pump();
+    expect(c.helds().length).toBe(helds + 4);   // the throw did not unschedule the pump (which catches up LOCAL_TICKS_MAX ticks of the 1 s)
+    r.dispose();
+  });
+  it('a link close drops the prediction: the frozen copy is drawn', () => {
+    const r = rig(0); r.attach();
+    for (let k = 0; k < 3; k++) r.pump();
+    r.closeLink(); session_frame(r);
+    const src = h.source as unknown as { duel: DuelState; confirmed(): DuelState };
+    expect(src.duel).toBe(src.confirmed());
+    r.dispose();
+  });
+});
+describe('prediction figures (Net-4a §3.10)', () => {
+  it('F3 shows the prediction line: lead in ticks and ms, the verified share, re-simulation p99, the last correction and its heading steps, and the retargets of the last minute', () => {
+    expect(latencyOverlayLines({ transport: 'internet', held: latencyFigure([]), command: latencyFigure([]), rttMs: 80,
+      prediction: { leadTicks: 9, verifiedShare: 0.966, resimP99Ms: 0.84, correction: 0.12, heading: 3.5, retargetsPerMin: 2 } }).at(-1))
+      .toBe('PRED LEAD 9 (150 MS)  OK 97%  RESIM 0.84 MS  FIX 0.12 U  HDG 3.50  RT 2/MIN');
+    expect(latencyOverlayLines({ transport: 'internet', held: latencyFigure([]), command: latencyFigure([]), rttMs: 80,
+      prediction: { leadTicks: 0, verifiedShare: null, resimP99Ms: null, correction: null, heading: null, retargetsPerMin: 0 } }).at(-1))
+      .toBe('PRED LEAD 0 (0 MS)  OK ?  RESIM ? MS  FIX 0 U  HDG 0  RT 0/MIN');
+    expect(latencyOverlayLines({ transport: 'lan', held: latencyFigure([]), command: latencyFigure([]), rttMs: null }).some((l) => l.startsWith('PRED'))).toBe(false);
+  });
+  it("a round's record carries the prediction block, validated, version still 1", async () => {
+    const r = rig(0), c = r.attach();
+    for (let k = 0; k < 9; k++) r.pump();
+    c.publish(r.d, 'running', undefined, { held: [c.helds().length, 0] }); r.pump();   // every frame sent acknowledged: the target is T
+    c.events.push(roundEvent(0)); r.pump();
+    const rec = r.records.at(-1)!;
+    expect(rec.version).toBe(1);
+    expect(rec.prediction).toBeDefined();
+    expect(rec.prediction!.lead.count).toBeGreaterThan(0);
+    // Fable #1, #2: P stood about ten ticks past T, so that confirm moved the target back to T: one retarget.
+    expect(rec.prediction!.retarget.count).toBe(1);
+    expect(rec.prediction!.retarget.max).toBeGreaterThanOrEqual(9);
+    expect(rec.prediction!.retargetsPerMin === null || rec.prediction!.retargetsPerMin >= 0).toBe(true);
+    expect(rec.prediction!.heading).toBeDefined();
+    expect(() => duelRecordSchema.shape.prediction.unwrap().parse(rec.prediction)).not.toThrow();   // roundEvent's summary is partial, so only the new block is validated
+    r.dispose();
+  });
+});
+describe('smooth 60 fps online (Fable #7, #8)', () => {
+  it('a 60 Hz display with a late pump: the own ship and a rail rock advance every frame, never back, never more than 1.5x the median', () => {
+    // The authority ticks at 60 Hz on the rig's clock, runs every frame this seat has sent (all neutral: the Cutter coasts
+    // in its orbit) and publishes every third tick. The pump's timer fires 0 to 12 ms late (seeded); the display draws a
+    // frame every 1000/60 ms, 5 ms off the tick boundaries. The rock blend is the scene's: updateRockTrack, then rockDrawPos.
+    const r = rig(0), c = r.attach(), rng = createRng(17), TICK = 1000 / 60, track = createRockTrack();
+    const rail = Array.from({ length: rockSlots(r.d.tactical) }, (_, k) => k).find((k) => isRail(r.d.tactical.rocks[k * ROCK_STRIDE]!))!;
+    expect(rail).toBeGreaterThanOrEqual(0);
+    let now = 0, nextTick = TICK, nextFrame = 5, nextPump = TICK + nextFloat(rng) * 12;
+    const ship: { x: number; y: number }[] = [], rock: { x: number; y: number }[] = [];
+    while (now < 4000) {
+      const at = Math.min(nextTick, nextFrame, nextPump);
+      r.advance(at - now); now = at;
+      if (at === nextTick) {
+        nextTick += TICK;
+        stepDuelTick(r.d, { held: [], commands: [] });
+        if (r.d.interior.tick % 3 === 0) c.publish(r.d, 'running', undefined, { held: [c.helds().length, 0] });
+      } else if (at === nextPump) {
+        nextPump += TICK + nextFloat(rng) * 12;
+        r.pump(0);
+      } else {
+        nextFrame += TICK;
+        r.session.frame();
+        const src = h.source as unknown as { duel: DuelState; prev: { x: number; y: number; h: number }[]; alpha(): number; rockGap?(): number | null };
+        if (now < 1000) continue;   // warm-up: the lead is built
+        const own = interpolatedShip(src.duel.tactical, src.prev, src.alpha(), 0);
+        ship.push({ x: own.x, y: own.y });
+        updateRockTrack(track, src.duel.tactical, src.rockGap?.() ?? undefined);
+        rock.push(rockDrawPos(track, src.duel.tactical, rail, src.alpha()));
+      }
+    }
+    for (const [name, path] of [['ship', ship], ['rock', rock]] as const) {
+      const steps = path.slice(1).map((p, k) => ({ dx: p.x - path[k]!.x, dy: p.y - path[k]!.y }));
+      const len = steps.map((v) => Math.hypot(v.dx, v.dy)), median = [...len].sort((a, b) => a - b)[len.length >> 1]!;
+      const back = steps.slice(1).filter((v, k) => v.dx * steps[k]!.dx + v.dy * steps[k]!.dy <= 0).length;
+      console.log(`smooth ${name}: ${len.length} frames, median ${median.toFixed(4)} u, min ${Math.min(...len).toFixed(4)}, max ${Math.max(...len).toFixed(4)}, back ${back}`);
+      expect(Math.min(...len)).toBeGreaterThan(0);
+      expect(back).toBe(0);
+      expect(Math.max(...len)).toBeLessThanOrEqual(1.5 * median);
+    }
+    r.dispose();
+  });
+  it('a 40-step heading correction is smoothed over SMOOTH_MS: the drawn heading never jumps, and it reaches P by 100 ms (§3.8)', () => {
+    // The 60 Hz rig above without the late pump. At 1.5 s the authority's crew ship is turned 40 heading steps before a
+    // publication, so the confirm re-simulates and P's heading jumps by 40. `raw` is the drawn heading without the
+    // smoother's offsets (P blended from before()); `drawn` is what interpolatedShip draws from the source's prev.
+    const r = rig(0), c = r.attach(), TICK = 1000 / 60, FORCED = 40;
+    const wrap = (d: number): number => d - Math.round(d / HEADING_COUNT) * HEADING_COUNT;
+    let now = 0, nextTick = TICK, nextFrame = 5, nextPump = TICK + 2, forced = false, forcedAt = Infinity, correctedAt = Infinity, simTurn = 0, lastAuth: number | null = null;
+    const frames: { at: number; drawn: number; raw: number }[] = [];
+    while (now < 2500) {
+      const at = Math.min(nextTick, nextFrame, nextPump);
+      r.advance(at - now); now = at;
+      if (at === nextTick) {
+        nextTick += TICK;
+        stepDuelTick(r.d, { held: [], commands: [] });
+        const s = r.d.tactical.ships[0]!, ah = s.heading + s.headingAcc;
+        if (lastAuth !== null) simTurn = Math.max(simTurn, Math.abs(wrap(ah - lastAuth)));
+        if (!forced && now >= 1500 && r.d.interior.tick % 3 === 0) { s.heading = (s.heading + FORCED) % HEADING_COUNT; forced = true; forcedAt = now; }
+        lastAuth = s.heading + s.headingAcc;
+        if (r.d.interior.tick % 3 === 0) c.publish(r.d, 'running', undefined, { held: [c.helds().length, 0] });
+      } else if (at === nextPump) {
+        nextPump += TICK;
+        r.pump(0);
+        if (correctedAt === Infinity && now > forcedAt) correctedAt = now;   // this pump's observe confirms the forced publication
+      } else {
+        nextFrame += TICK;
+        r.session.frame();
+        if (now < 1000) continue;   // warm-up: the lead is built
+        const src = h.source as unknown as { duel: DuelState; prev: { x: number; y: number; h: number; ox?: number; oy?: number; oh?: number }[]; alpha(): number };
+        const bare = src.prev.map(({ x, y, h: hh }) => ({ x, y, h: hh }));
+        frames.push({ at: now, drawn: interpolatedShip(src.duel.tactical, src.prev, src.alpha(), 0).h, raw: interpolatedShip(src.duel.tactical, bare, src.alpha(), 0).h });
+      }
+    }
+    const step = (k: number, f: 'drawn' | 'raw'): number => Math.abs(wrap(frames[k + 1]![f] - frames[k]![f]));
+    const drawnMax = Math.max(...frames.slice(1).map((_, k) => step(k, 'drawn'))), rawMax = Math.max(...frames.slice(1).map((_, k) => step(k, 'raw')));
+    const bound = simTurn + FORCED * (TICK / SMOOTH_MS) + 1;
+    console.log(`smooth heading: sim turn ${simTurn.toFixed(3)} steps/frame, raw max ${rawMax.toFixed(3)}, drawn max ${drawnMax.toFixed(3)}, bound ${bound.toFixed(3)}`);
+    expect(forced && correctedAt < Infinity).toBe(true);
+    expect(rawMax).toBeGreaterThanOrEqual(FORCED);   // the correction happened, and unsmoothed it is a 40-step jump
+    expect(drawnMax).toBeLessThanOrEqual(bound);
+    const settled = frames.filter((f) => f.at >= correctedAt + SMOOTH_MS);
+    expect(settled.length).toBeGreaterThan(0);
+    for (const f of settled) expect(Math.abs(wrap(f.drawn - f.raw))).toBeLessThan(1e-9);   // converged to P's heading by 100 ms
+    r.dispose();
+  });
+  it('the Weapons seat while the partner turns: the drawn own-ship heading stays within the same per-frame bound (§3.8)', () => {
+    // Seat 1 sits at Weapons; the authority's player 0 (the Helm) holds A/D on and off every 300 ms. The Weapons seat
+    // carries the partner's held input forward from the last publication, so each start and stop of the turn is a
+    // heading correction when the next publication arrives. A 100 ms round trip: each publication is delivered 50 ms after
+    // the authority's tick, and latches the held frames this seat sent 50 ms before it.
+    const r = rig(1), c = r.attach(), TICK = 1000 / 60, FORCED = 40, HALF_RTT = 50;
+    const inFlight: { at: number; d: DuelState; partner: HeldInput }[] = [], sentAt: { at: number; n: number }[] = [];
+    const wrap = (d: number): number => d - Math.round(d / HEADING_COUNT) * HEADING_COUNT;
+    let now = 0, nextTick = TICK, nextFrame = 5, nextPump = TICK + 2, simTurn = 0, lastAuth: number | null = null;
+    const frames: { drawn: number; raw: number }[] = [], neutral: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
+    while (now < 4000) {
+      const at = Math.min(nextTick, nextFrame, nextPump);
+      r.advance(at - now); now = at;
+      if (at === nextTick) {
+        nextTick += TICK;
+        const partner: HeldInput = Math.floor(now / 300) % 2 === 1 ? { ...neutral, moveX: 1 } : neutral;
+        stepDuelTick(r.d, { held: [partner, neutral], commands: [] });
+        const s = r.d.tactical.ships[0]!, ah = s.heading + s.headingAcc;
+        if (lastAuth !== null) simTurn = Math.max(simTurn, Math.abs(wrap(ah - lastAuth)));
+        lastAuth = ah;
+        if (r.d.interior.tick % 3 === 0) inFlight.push({ at: now + HALF_RTT, d: loadDuelSnapshot(CUTTER, saveDuelSnapshot(r.d, DIGEST), DIGEST), partner });
+        while (inFlight.length && inFlight[0]!.at <= now) {
+          const q = inFlight.shift()!, latched = [...sentAt].reverse().find((e) => e.at <= q.at - 2 * HALF_RTT)?.n ?? 0;
+          c.publish(q.d, 'running', undefined, { held: [0, latched], heldInput: [q.partner, neutral] }); disposeDuel(q.d);
+        }
+      } else if (at === nextPump) {
+        nextPump += TICK;
+        r.pump(0);
+        sentAt.push({ at: now, n: c.helds().length });
+      } else {
+        nextFrame += TICK;
+        r.session.frame();
+        if (now < 1000) continue;   // warm-up: the lead is built
+        const src = h.source as unknown as { duel: DuelState; prev: { x: number; y: number; h: number; ox?: number; oy?: number; oh?: number }[]; alpha(): number };
+        const bare = src.prev.map(({ x, y, h: hh }) => ({ x, y, h: hh }));
+        frames.push({ drawn: interpolatedShip(src.duel.tactical, src.prev, src.alpha(), 0).h, raw: interpolatedShip(src.duel.tactical, bare, src.alpha(), 0).h });
+      }
+    }
+    const steps = (f: 'drawn' | 'raw'): number[] => frames.slice(1).map((v, k) => Math.abs(wrap(v[f] - frames[k]![f])));
+    const drawnMax = Math.max(...steps('drawn')), rawMax = Math.max(...steps('raw')), bound = simTurn + FORCED * (TICK / SMOOTH_MS) + 1;
+    console.log(`smooth heading (Weapons seat, partner turning): sim turn ${simTurn.toFixed(3)} steps/tick, raw max ${rawMax.toFixed(3)}, drawn max ${drawnMax.toFixed(3)}, bound ${bound.toFixed(3)}`);
+    expect(simTurn).toBeGreaterThan(0);   // the partner did turn the ship
+    expect(rawMax).toBeGreaterThan(bound);   // unsmoothed, the corrections jump past the bound
+    expect(drawnMax).toBeLessThanOrEqual(bound);
+    for (const q of inFlight) disposeDuel(q.d);
+    r.dispose();
+  });
+  /** Rock jump brief: the 60 Hz rig, the authority latching this seat's held frames lag(now) ticks after they are sent,
+   *  optionally a main-thread stall (no pump and no frame for STALL_MS from STALL_AT; the pump is the first callback after
+   *  it). Per drawn frame from 1 s: `raw`, P's drawn tick without any offset (tick − 1 + alpha), and `drawn`, the rail
+   *  rock draw tick through the scene's track (updateRockTrack with the source's rockGap and rockShift, then rockDrawTick). */
+  function rockRun(lag: (now: number) => number, stall?: { at: number; ms: number }) {
+    const r = rig(0), c = r.attach(), TICK = 1000 / 60, track = createRockTrack();
+    let now = 0, nextTick = TICK, nextFrame = 5, nextPump = TICK + 2;
+    const sentAt: { at: number; n: number }[] = [], frames: { at: number; raw: number; drawn: number }[] = [];
+    while (now < 4000) {
+      const at = Math.min(nextTick, nextFrame, nextPump);
+      r.advance(at - now); now = at;
+      const stalled = !!stall && now >= stall.at && now < stall.at + stall.ms;
+      if (at === nextTick) {
+        nextTick += TICK;
+        stepDuelTick(r.d, { held: [], commands: [] });
+        const latched = [...sentAt].reverse().find((e) => e.at <= now - lag(now) * TICK)?.n ?? 0;
+        if (r.d.interior.tick % 3 === 0) c.publish(r.d, 'running', undefined, { held: [latched, 0] });
+      } else if (at === nextPump) {
+        nextPump += TICK;
+        if (stalled) continue;
+        r.pump(0); sentAt.push({ at: now, n: c.helds().length });
+      } else {
+        nextFrame += TICK;
+        if (stalled) continue;
+        r.session.frame();
+        const src = h.source as unknown as { duel: DuelState; alpha(): number; rockGap?(): number | null; rockShift?(): number };
+        updateRockTrack(track, src.duel.tactical, src.rockGap?.() ?? undefined, src.rockShift?.() ?? 0);
+        if (now >= 1000) frames.push({ at: now, raw: src.duel.tactical.tick - 1 + src.alpha(), drawn: rockDrawTick(track, src.duel.tactical, src.alpha()) });
+      }
+    }
+    r.dispose();
+    const steps = (f: 'raw' | 'drawn') => frames.slice(1).map((v, k) => ({ at: v.at, step: v[f] - frames[k]![f], passed: (v.at - frames[k]!.at) / TICK }));
+    return { frames, steps, TICK };
+  }
+  it('a forced 3-tick retarget each way: the drawn rail-rock tick moves at most 1 + 3 × (frame ms / SMOOTH_MS) a frame and is back on P by 100 ms (rock jump brief §2)', () => {
+    // The held frames are latched at once, then from 2 s 3 ticks late (the measured target moves 3 ticks forward),
+    // then from 3 s at once again (3 ticks back).
+    const { frames, steps, TICK } = rockRun((now) => (now >= 2000 && now < 3000 ? 3 : 0));
+    const raw = steps('raw'), drawn = steps('drawn'), bound = 1 + 3 * (TICK / SMOOTH_MS) + 1e-9;
+    const rawMax = Math.max(...raw.map((s) => s.step)), rawMin = Math.min(...raw.map((s) => s.step));
+    const drawnMax = Math.max(...drawn.map((s) => s.step)), drawnMin = Math.min(...drawn.map((s) => s.step));
+    console.log(`rock retarget: raw steps ${rawMin.toFixed(3)}..${rawMax.toFixed(3)} ticks, drawn ${drawnMin.toFixed(3)}..${drawnMax.toFixed(3)}, bound ${bound.toFixed(3)}`);
+    expect(rawMax).toBeGreaterThanOrEqual(4 - 1e-9);   // unsmoothed: 3 ticks forward on top of the frame's one
+    expect(rawMin).toBeLessThanOrEqual(-2 + 1e-9);     // and 3 back
+    expect(drawnMax).toBeLessThanOrEqual(bound);
+    expect(drawnMin).toBeGreaterThan(0);
+    const jumps = raw.filter((s) => Math.abs(s.step - s.passed) > 1).map((s) => s.at);
+    for (const f of frames) if (jumps.every((j) => f.at < j || f.at >= j + SMOOTH_MS)) expect(f.drawn).toBeCloseTo(f.raw, 9);   // converged by 100 ms
+  });
+  for (const lag of [0, 1]) it(`a 100 ms main-thread stall, held frames latched ${lag} tick late: the drawn rail-rock tick never steps back (rock jump brief §1, §2)`, () => {
+    // The stall the frame probe met right after the host's sit (its hook's install): the first anchor after it takes the
+    // last frame sent before the stall as latched at the newest publication, and the catch-up ticks run on top, so P lands
+    // about 3 ticks ahead and the next anchors pull it back (lag 0) or leave it inside the slack (lag 1).
+    const { steps } = rockRun(() => lag, { at: 2000, ms: 100 });
+    const raw = steps('raw'), drawn = steps('drawn');
+    console.log(`stall (lag ${lag}): raw min step ${Math.min(...raw.map((s) => s.step)).toFixed(3)} ticks, drawn min ${Math.min(...drawn.map((s) => s.step)).toFixed(3)}`);
+    if (lag === 0) expect(Math.min(...raw.map((s) => s.step))).toBeLessThan(0);   // unsmoothed it steps back
+    for (const s of drawn) expect(s.step).toBeGreaterThan(0);
+  });
+  it('while P stands at the cap the drawn rock holds (alpha 1, one-tick gap) and so does the ship (Fable #8)', () => {
+    const r = rig(0); r.attach();
+    const track = createRockTrack(), rail = Array.from({ length: rockSlots(r.d.tactical) }, (_, k) => k).find((k) => isRail(r.d.tactical.rocks[k * ROCK_STRIDE]!))!;
+    for (let k = 0; k < 40; k++) r.pump();   // no publication: P reaches T + PREDICT_MAX_TICKS
+    const drawn: string[] = [];
+    for (let k = 0; k < 4; k++) {
+      r.advance(5); r.session.frame();
+      const src = h.source as unknown as { duel: DuelState; prev: { x: number; y: number; h: number }[]; alpha(): number; rockGap?(): number | null };
+      expect(src.rockGap?.()).toBe(1);
+      expect(src.alpha()).toBe(1);
+      updateRockTrack(track, src.duel.tactical, src.rockGap?.() ?? undefined);
+      drawn.push(JSON.stringify([rockDrawPos(track, src.duel.tactical, rail, src.alpha()), interpolatedShip(src.duel.tactical, src.prev, src.alpha(), 0)]));
+      r.pump();
+    }
+    expect(new Set(drawn).size).toBe(1);
+    r.dispose();
+  });
+});
+/** One drawn frame (the mocked scene records the source it was given). */
+function session_frame(r: ReturnType<typeof rig>): void { r.session.frame(); }

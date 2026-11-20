@@ -37,6 +37,15 @@ describe('the MANUAL laser\'s aim line (spec §2)', () => {
     const nose = combatModel(input(st, cam, 'weapons', null)).laserAim!;
     expect(nose.x2).toBeCloseTo(own.x, 6); expect(nose.y2).toBeCloseTo(own.y - LASER_RANGE * 0.5, 6);
   });
+  it("turns with the own ship's correction offset (Net-4a §3.8): along the drawn nose, and clamped about it", () => {
+    const st = northFacing(), cam = createCamera(st.ships[0].x, st.ships[0].y, 0.5), own = worldToScreen(cam, vp, st.ships[0].x, st.ships[0].y);
+    st.systems[0].laserManual = true;
+    const withOh = (aim: number | null) => { const i = input(st, cam, 'weapons', aim), prev = [...i.prev]; prev[0] = { ...prev[0]!, oh: 64 }; return combatModel({ ...i, prev }).laserAim!; };
+    const nose = withOh(null);   // the drawn nose points east
+    expect(nose.x2).toBeCloseTo(own.x + LASER_RANGE * 0.5, 6); expect(nose.y2).toBeCloseTo(own.y, 6);
+    const east = withOh(64 * HEADING_COUNT);   // inside the arc about the drawn nose: not clamped
+    expect(east.x2).toBeCloseTo(own.x + LASER_RANGE * 0.5, 6); expect(east.y2).toBeCloseTo(own.y, 6);
+  });
   it('shows only at Weapons while Space would fire: not on the Helm, uncharged, with a burst pending or the own torpedo flying', () => {
     const st = northFacing(), cam = createCamera(st.ships[0].x, st.ships[0].y, 1);
     st.systems[0].laserManual = true;

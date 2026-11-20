@@ -182,6 +182,9 @@ export interface PublishedState<S = Snapshot> {
   pauseReason: string | null; lagTicks: number; tickTimeMs: number | null;
   // Highest admitted per-player IDs; zero means no input in that stream yet.
   commandHighWater: readonly number[]; heldHighWater: readonly number[]; auxiliaryHighWater: readonly number[]; eventSequence: number;
+  /** Net-4a §3.2: each player's held input as the authority has latched it when the publication is made, one per player.
+   *  On a publication made right after a tick (every cadence one) it is what that tick used. */
+  held: readonly HeldInput[];
 }
 export type ClientMessage = { kind: 'held'; frame: HeldFrame } | { kind: 'command'; envelope: CommandEnvelope } | ClientAuxMessage;
 export type AuthorityMessage<S = Snapshot> =

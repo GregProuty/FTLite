@@ -310,7 +310,8 @@ export function combatModel(input: CombatModelInput): CombatDraw {
   // flight), the laser's aim line: from the own ship's drawn marker along the aim clamped as the sim clamps it, to its reach.
   let laserAim: Segment | null = null;
   if (input.console === 'weapons' && cls.slots.laser && input.ships.includes(0) && state.systems[0]!.laserManual && manualLaserReady(state, 0) && missileOf(state, 0) === null) {
-    const heading = state.ships[0].heading, r = LASER_RANGE * z, aim = input.laserAim ?? heading * HEADING_COUNT;
+    // Net-4a §3.8: about the drawn nose, so the line turns with the own ship's correction offset (none: P's heading).
+    const heading = (((state.ships[0].heading + (prev[0]?.oh ?? 0)) % HEADING_COUNT) + HEADING_COUNT) % HEADING_COUNT, r = LASER_RANGE * z, aim = input.laserAim ?? heading * HEADING_COUNT;
     const a = (clampAim(heading, aim, LASER_ARC_STEPS) / AIM_STEPS) * 2 * Math.PI;
     laserAim = { x1: ownS.x, y1: ownS.y, x2: ownS.x + Math.sin(a) * r, y2: ownS.y - Math.cos(a) * r };
   }

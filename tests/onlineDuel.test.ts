@@ -22,7 +22,7 @@ const commit = (snapshot: RoomSnapshot, value: unknown) => { const bytes = Buffe
 
 describe('the duel online mode in main (spec §2)', () => {
   it('a duel room is the Hound at duel schema version 2, round 0 seeded from its runId', () => {
-    expect(duelCompatibility()).toMatchObject({ protocolVersion: 2, modeId: 'duel', schemaVersion: 2 });
+    expect(duelCompatibility()).toMatchObject({ protocolVersion: 2, modeId: 'duel', schemaVersion: 3 });
     expect(duelJoinCompatibilities()).toEqual([duelCompatibility()]);
     const snapshot = room();
     expect(duelInit(snapshot)).toMatchObject({ runId: snapshot.runId, layoutId: 'hound', playerCount: 2, helmPlayer: 0, seed: seedFromRunId(snapshot.runId) });

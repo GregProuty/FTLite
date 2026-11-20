@@ -97,7 +97,7 @@ describe('the away steward and the peer-lost pause (spec §6)', () => {
     steward.onMessage((_k, bytes) => { const m = codec.decodeMessage(bytes); if (m.kind === 'command') commands.push(m.envelope); });
     const s = duelRules.create(duelInit(4, 'r'), resolveCutter), snapshot = saveDuelSnapshot(s.duel, DIGEST); duelRules.dispose(s);
     steward.send('reliable-ordered', codec.encodeMessage({ kind: 'state', state: { runId: 'r', tick: 0, publicationSequence: 1, snapshot, hash: hashF64(Float64Array.from(snapshot.values)),
-      phase: 'running', pauseOwner: null, pauseReason: null, controlRevision: 0, lagTicks: 0, tickTimeMs: null, commandHighWater: [0, 3], heldHighWater: [0, 0], auxiliaryHighWater: [0, 0], eventSequence: 0 } }));
+      phase: 'running', pauseOwner: null, pauseReason: null, controlRevision: 0, lagTicks: 0, tickTimeMs: null, commandHighWater: [0, 3], heldHighWater: [0, 0], auxiliaryHighWater: [0, 0], eventSequence: 0, held: [{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }] } }));
     const reject = () => steward.send('reliable-ordered', codec.encodeMessage({ kind: 'result', runId: 'r', result: { id: commands.at(-1)!.id, tick: 1, status: 'rejected', reason: 'stale-tick' } }));
     producers.beforeControls();
     expect(commands.map((c) => [c.id, c.command])).toEqual([[{ player: 1, sequence: 4 }, { kind: 'presence', present: false }]]);
@@ -124,7 +124,7 @@ describe('the away steward and the peer-lost pause (spec §6)', () => {
     const s = duelRules.create(duelInit(4, 'r'), resolveCutter), snapshot = saveDuelSnapshot(s.duel, DIGEST); duelRules.dispose(s);
     const state = (phase: 'running' | 'paused', publicationSequence: number) => codec.encodeMessage({ kind: 'state', state: { runId: 'r', tick: 0, publicationSequence, snapshot,
       hash: hashF64(Float64Array.from(snapshot.values)), phase, pauseOwner: phase === 'paused' ? 0 : null, pauseReason: phase === 'paused' ? 'player' : null, controlRevision: 0, lagTicks: 0,
-      tickTimeMs: null, commandHighWater: [0, 0], heldHighWater: [0, 0], auxiliaryHighWater: [0, 0], eventSequence: 0 } });
+      tickTimeMs: null, commandHighWater: [0, 0], heldHighWater: [0, 0], auxiliaryHighWater: [0, 0], eventSequence: 0, held: [{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }] } });
     steward.send('reliable-ordered', state('running', 1));
     producers.beforeControls();
     expect(commands).toHaveLength(1);   // the presence is in flight
@@ -157,7 +157,7 @@ describe('the away steward and the peer-lost pause (spec §6)', () => {
     steward.onMessage((_k, bytes) => { const m = codec.decodeMessage(bytes); if (m.kind === 'command') commands.push(m.envelope); });
     const s = duelRules.create(duelInit(4, 'r'), resolveCutter), snapshot = saveDuelSnapshot(s.duel, DIGEST); duelRules.dispose(s);
     steward.send('reliable-ordered', codec.encodeMessage({ kind: 'state', state: { runId: 'r', tick: 0, publicationSequence: 1, snapshot, hash: hashF64(Float64Array.from(snapshot.values)),
-      phase: 'running', pauseOwner: null, pauseReason: null, controlRevision: 0, lagTicks: 0, tickTimeMs: null, commandHighWater: [0, 0], heldHighWater: [0, 0], auxiliaryHighWater: [0, 0], eventSequence: 0 } }));
+      phase: 'running', pauseOwner: null, pauseReason: null, controlRevision: 0, lagTicks: 0, tickTimeMs: null, commandHighWater: [0, 0], heldHighWater: [0, 0], auxiliaryHighWater: [0, 0], eventSequence: 0, held: [{ moveX: 0, moveY: 0, interactHeld: false }, { moveX: 0, moveY: 0, interactHeld: false }] } }));
     producers.beforeControls();
     steward.send('reliable-ordered', codec.encodeMessage({ kind: 'result', runId: 'r', result: { id: commands.at(-1)!.id, tick: 1, status: 'applied' } }));
     producers.beforeControls();
