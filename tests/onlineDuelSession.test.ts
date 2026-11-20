@@ -64,7 +64,9 @@ const h = vi.hoisted(() => ({
   sceneOpts: [] as { ui: { frame(v: unknown): void; clear(): void }; requests?: { pew(aim: number): void; reticle(aim: number): void; torpHeading(h: number): void; trigger(held: boolean): void } }[], sources: [] as { takeRefusals(): { control: string; reason: string }[] }[], disposes: { n: 0 },
   source: null as unknown,
   /** Net-4a: each predictor the session made, its dispose count and the entries it was ticked with. */
-  predictors: [] as { disposed: number; ticks: { heldSequence: number | null; held: HeldInput; commands: readonly unknown[] }[] }[]
+  predictors: [] as { disposed: number; ticks: { heldSequence: number | null; held: HeldInput; commands: readonly unknown[] }[] }[],
+  /** Fable #4: how many of the next confirm calls throw. */
+  confirmThrows: { n: 0 }
 }));
 vi.mock('../src/network/modes/duelStream', () => ({ createDuelRemoteClient: () => { const c = stubClient(); h.clients.push(c); return c; } }));
 vi.mock('../src/network/portLink', () => ({
@@ -80,7 +82,8 @@ vi.mock('../src/renderer/src/clientControl/duelPredictor', async (importOriginal
   return { ...m, createDuelPredictor: (o: Parameters<typeof m.createDuelPredictor>[0]) => {
     const real = m.createDuelPredictor(o), rec = { disposed: 0, ticks: [] as { heldSequence: number | null; held: HeldInput; commands: readonly unknown[] }[] };
     h.predictors.push(rec);
-    return { ...real, tick(e: Parameters<typeof real.tick>[0]) { rec.ticks.push({ ...e, held: { ...e.held } }); return real.tick(e); }, dispose() { rec.disposed++; real.dispose(); } };
+    return { ...real, confirm(...a: Parameters<typeof real.confirm>) { if (h.confirmThrows.n > 0) { h.confirmThrows.n--; throw Error('predictor fault'); } return real.confirm(...a); },
+      tick(e: Parameters<typeof real.tick>[0]) { rec.ticks.push({ ...e, held: { ...e.held } }); return real.tick(e); }, dispose() { rec.disposed++; real.dispose(); } };
   } };
 });
 vi.mock('../src/network/transport/bridge', () => ({ browserPortEndpoint: () => ({}) }));
@@ -123,7 +126,7 @@ const nextRound = (d: DuelState): void => {
 };
 
 let win: ReturnType<typeof target>;
-beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; h.sceneOpts.length = 0; h.sources.length = 0; h.disposes.n = 0; h.predictors.length = 0; });
+beforeEach(() => { win = target(); (globalThis as { window?: unknown }).window = win; h.clients.length = 0; h.closers.length = 0; h.draws.length = 0; h.overlay.length = 0; h.sceneOpts.length = 0; h.sources.length = 0; h.disposes.n = 0; h.predictors.length = 0; h.confirmThrows.n = 0; });
 afterEach(() => { delete (globalThis as { window?: unknown }).window; });
 
 function rig(seat: 0 | 1, ui: { frame(v: never): void; clear(): void } = { frame() {}, clear() {} }, api: object = {}, extra: object = {}, cls?: number) {   // playtest2feedback Decision 17: cls picks the Valkyrn for the client's throttle prediction tests
@@ -999,6 +1002,46 @@ describe('the session predicts (Net-4a §3.3, §3.6)', () => {
     for (let k = 0; k < 3; k++) { r.pump(); r.advance(8); session_frame(r); expect(src().prev[0]).toEqual(drawn()); held.push(drawn()); }
     expect(held[1]).toEqual(held[0]); expect(held[2]).toEqual(held[0]);
     r.key('keyup', 'KeyW'); r.dispose();
+  });
+  it('a predictor that throws is dropped: the session keeps pumping and draws the confirmed replica (Fable #4)', () => {
+    const r = rig(0), c = r.attach();
+    for (let k = 0; k < 3; k++) r.pump();
+    const pr = h.predictors.at(-1)!;
+    h.confirmThrows.n = 1; c.publish(r.d);
+    expect(() => r.pump()).not.toThrow();
+    expect(pr.disposed).toBe(1);
+    const helds = c.helds().length, ticked = pr.ticks.length;
+    for (let k = 0; k < 3; k++) r.pump();
+    expect(c.helds().length).toBe(helds + 3);   // the pump is still scheduled: held frames still go out
+    expect(pr.ticks.length).toBe(ticked);       // and the dropped predictor is ticked no more
+    c.publish(r.d); r.pump(); session_frame(r);
+    const src = h.source as unknown as { duel: DuelState; confirmed(): DuelState };
+    expect(src.duel).toBe(src.confirmed());
+    expect(src.duel).toBe(c.state());
+    r.dispose();
+  });
+  it("a predictor whose tick() throws is dropped too, and the pump goes on", () => {
+    const r = rig(0), c = r.attach(), pr = h.predictors.at(-1)!, real = pr.ticks.push.bind(pr.ticks);
+    let once = true;
+    pr.ticks.push = (...a) => { if (once) { once = false; throw Error('tick fault'); } return real(...a); };   // the spied tick() throws once
+    r.pump();
+    const helds = c.helds().length;
+    r.pump();
+    expect(c.helds().length).toBe(helds + 1);
+    expect(pr.disposed).toBe(1);
+    r.dispose();
+  });
+  it('a throw elsewhere in the pump leaves the next pump scheduled (try/finally)', async () => {
+    let fault = false;
+    const r = rig(0, undefined, { linkStats: () => { if (fault) throw Error('link fault'); return Promise.resolve(null); } }), c = r.attach();
+    await new Promise<void>((resolve) => setImmediate(resolve));   // the first poll settles
+    fault = true; r.advance(1000);
+    expect(() => r.pump()).toThrow('link fault');   // pollLink's call throws out of the pump
+    fault = false;
+    const helds = c.helds().length;
+    r.pump();
+    expect(c.helds().length).toBe(helds + 4);   // the throw did not unschedule the pump (which catches up LOCAL_TICKS_MAX ticks of the 1 s)
+    r.dispose();
   });
   it('a link close drops the prediction: the frozen copy is drawn', () => {
     const r = rig(0); r.attach();

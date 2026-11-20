@@ -11,7 +11,7 @@ import { browserPortEndpoint } from '../../../../network/transport/bridge';
 import { classifyStreamPacket } from '../../../../network/state/imageCodec';
 import { createDuelRemoteClient } from '../../../../network/modes/duelStream';
 import type { CommandEnvelope, CommandId, DuelCommand, HeldInput, Link, Scheduler, Cue } from '../../net/contracts';
-import { createDuelPredictor, type DuelPredictor, type LocalInput } from '../../clientControl/duelPredictor';
+import { createDuelPredictor, type DuelPredictor, type LocalInput, type PredictionStats } from '../../clientControl/duelPredictor';
 import { arrivalJitter, fineFigure, latencyFigure, type DuelPlaytestRecord } from '../../net/duelRecord';
 import type { ShipLayout } from '../../sim/ship/schema';
 import { loadDuelSnapshot, saveDuelSnapshot } from '../../sim/duel/snapshot';
@@ -151,7 +151,6 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   // clock, this tick's commands (collected by send), a neutralize's held sequence for the next entry, and the timings (§3.10).
   let predictor: DuelPredictor | null = null, confirmedSequence = 0, clockBase: number | null = null, localDone = 0, lastLocalAt = 0;
   let collected: CommandEnvelope<DuelCommand>[] | null = null, neutralSequence: number | null = null;
-  const confirmSamples: number[] = [], tickSamples: number[] = [];
   const keep = (list: number[], ms: number): void => { list.push(ms); if (list.length > LIVE_SAMPLES) list.shift(); };
   const p99 = (xs: readonly number[]): number | null => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return Math.round(s[Math.min(s.length - 1, Math.ceil(0.99 * s.length) - 1)]! * 1000) / 1000; };
   const roundLead: number[] = [], roundCorrection: number[] = [], roundResim: number[] = [], liveResim: number[] = []; let roundVerified = 0, roundConfirms = 0;   // liveResim: F3's recent re-simulation times (R1-F12)
@@ -185,6 +184,11 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     // Net-4a §3.3: this local tick's commands go into its log entry; setPaused, rematch and presence are never predicted.
     if (id && collected && command.kind !== 'setPaused' && command.kind !== 'rematch' && command.kind !== 'presence') collected.push({ runId: descriptor.runId, id, requestedTick: 0, command });
     return id;
+  }
+  /** Fable #4: a predictor that throws is dropped for this attach; the view falls back to the confirmed replica. */
+  function dropPredictor(err: unknown): void {
+    console.error('[online duel] the predictor failed; drawing the confirmed replica', err);
+    predictor?.dispose(); predictor = null; confirmedSequence = 0;
   }
   /** The authority's held frame is neutral once input stops, so this seat's drawn axes drop too. */
   function neutralSource(): void { source?.sent(neutral()); }
@@ -225,12 +229,14 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     if (!p || !d) return;
     if (predictor && p.publicationSequence !== confirmedSequence) {   // Net-4a §3.4: verify, else re-simulate, else reset
       confirmedSequence = p.publicationSequence;
-      const t0 = deps.now(), result = predictor.confirm(p, d), ms = deps.now() - t0, st = predictor.stats();
-      keep(confirmSamples, ms);
-      // §3.10: the round's figures. A reset (a pause, a new or decided round) is not a prediction.
-      const bound = (list: number[], v: number): void => { list.push(v); if (list.length > 4096) list.shift(); };
-      if (result !== 'reset') { roundConfirms++; if (result === 'verified') roundVerified++; bound(roundLead, st.lead); }
-      if (result === 'resimulated') { bound(roundResim, ms); keep(liveResim, ms); if (st.correction) bound(roundCorrection, st.correction.ship); }
+      let done: { result: ReturnType<DuelPredictor['confirm']>; ms: number; st: PredictionStats } | null = null;
+      try { const t0 = deps.now(), result = predictor.confirm(p, d); done = { result, ms: deps.now() - t0, st: predictor.stats() }; } catch (err) { dropPredictor(err); }   // Fable #4
+      if (done) {
+        // §3.10: the round's figures. A reset (a pause, a new or decided round) is not a prediction.
+        const { result, ms, st } = done, bound = (list: number[], v: number): void => { list.push(v); if (list.length > 4096) list.shift(); };
+        if (result !== 'reset') { roundConfirms++; if (result === 'verified') roundVerified++; bound(roundLead, st.lead); }
+        if (result === 'resimulated') { bound(roundResim, ms); keep(liveResim, ms); if (st.correction) bound(roundCorrection, st.correction.ship); }
+      }
     }
     if (!synced && client.commandStatus(descriptor.seatId).state === 'ready') {
       synced = true; hint('synced');
@@ -492,10 +498,11 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       localDone++; lastLocalAt = clockBase + localDone * LOCAL_TICK_MS;
       const entry: LocalInput = first ? repeat(first) : produce();
       first ??= entry;
-      if (predictor) { const t0 = deps.now(); predictor.tick(entry); keep(tickSamples, deps.now() - t0); }
+      if (predictor) try { predictor.tick(entry); } catch (err) { dropPredictor(err); }
     }
   }
-  function schedule(): void { cancel = deps.scheduler.schedule(1000 / 60, () => { pump(); if (!disposed) schedule(); }); }
+  // Fable #4: a throw in one pump must not stop the session: the next pump is scheduled whatever happens.
+  function schedule(): void { cancel = deps.scheduler.schedule(1000 / 60, () => { try { pump(); } finally { if (!disposed) schedule(); } }); }
   schedule();
   function bannerText(): string | null {
     const p = publication();
