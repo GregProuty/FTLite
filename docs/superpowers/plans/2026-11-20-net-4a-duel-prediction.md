@@ -17,7 +17,7 @@
 ## Global Constraints
 
 - **Do not change:**
-  - Any sim rule, golden, `tests/fixtures/determinism-v2.json` or `SIM_VERSION`. It stays 62 (`src/renderer/src/sim/tuning.ts`).
+  - Any sim rule, golden, `tests/fixtures/determinism-v2.json` or `SIM_VERSION`. It stays 63 (`src/renderer/src/sim/tuning.ts`; the W-4 merge 90cd5825 moved it from 62 after the spec was written).
   - The host's work, beyond adding `held` to each publication.
 - **Duel only.** The sector predicts nothing. It carries `held` on the wire and ignores it.
 - **Schema versions move in pairs**, or hosting fails (`createHostRuntime` compares them):
@@ -117,7 +117,7 @@ describe('the publication carries held input (Net-4a §3.2)', () => {
     const w = onlineDuel(3), a = w.connect(0), b = w.connect(1);
     w.tick(2);
     a.client.held(0, { moveX: 1, moveY: 0, interactHeld: false, throttleHeld: 1, rcsX: -1 });
-    w.tick(3);
+    w.tick(6);   // latched on the next tick, then out on the next cadence tick (every third)
     const p = b.client.publication()!;
     expect(p.held).toHaveLength(2);
     expect(p.held[0]).toEqual({ moveX: 1, moveY: 0, interactHeld: false, throttleHeld: 1, rcsX: -1 });
@@ -128,9 +128,9 @@ describe('the publication carries held input (Net-4a §3.2)', () => {
     w.connect(1);
     w.tick(2);
     a.client.held(0, { moveX: 1, moveY: 0, interactHeld: false });
-    w.tick(3);
+    w.tick(6);
     a.client.command(0, { kind: 'setPaused', paused: true });
-    w.tick(3);
+    w.tick(6);
     const p = a.client.publication()!;
     expect(p.phase).toBe('paused');
     expect(p.held[0]).toEqual({ moveX: 0, moveY: 0, interactHeld: false });
@@ -205,13 +205,19 @@ Some tests slice the watermark arrays to make a short publication: `tests/crewOf
 
 In `tests/onlineDuel.test.ts:25`, change `schemaVersion: 2` to `schemaVersion: 3`.
 
+Some tests host a real mode with an identity literal, and `createHostRuntime` refuses a version that differs from the definition. Change each such literal to read the definition:
+- `tests/encounterMode.test.ts:39`: `schemaVersion: mode.schemaVersion`.
+- `tests/sessionCapture.test.ts:213-221`: the `modeId: 'sector', schemaVersion: 1` literal becomes `schemaVersion: sectorMode.schemaVersion`; import `sectorMode` from `../src/network/modes/sector`.
+
+Then run `grep -rn "modeId: 'sector', schemaVersion: 1\|modeId: 'duel', schemaVersion: 2" tests` and fix every hit that hosts a real mode the same way. A literal for a made-up mode (`'counter'`, `'opaque'`, `'sector-copy'`) is left alone.
+
 Then run `npx vitest run tests/netCodec.test.ts tests/sectorStream.test.ts tests/snapshotV2.test.ts tests/authorityRecovery.test.ts tests/crewOfFourWire.test.ts tests/duelProducers.test.ts tests/onlineDuel.test.ts tests/encounterMode.test.ts`. A JSON literal the compiler cannot see fails here with a zod error naming `held`; add `held` to it the same way.
 
 `scripts/golden/authority-trace.ts` lists fields explicitly and does not need `held`. Leave it and the goldens alone.
 
 - [ ] **Step 5: Run the tests and watch them pass**
 
-Run: `npx vitest run tests/publicationHeld.test.ts tests/netCodec.test.ts tests/sectorStream.test.ts tests/snapshotV2.test.ts tests/authorityRecovery.test.ts tests/crewOfFourWire.test.ts tests/duelProducers.test.ts tests/onlineDuel.test.ts tests/encounterMode.test.ts tests/golden.test.ts && npm run typecheck`
+Run: `npx vitest run tests/publicationHeld.test.ts tests/netCodec.test.ts tests/sectorStream.test.ts tests/snapshotV2.test.ts tests/authorityRecovery.test.ts tests/crewOfFourWire.test.ts tests/duelProducers.test.ts tests/onlineDuel.test.ts tests/encounterMode.test.ts tests/sessionCapture.test.ts tests/golden.test.ts && npm run typecheck`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
@@ -479,7 +485,7 @@ Create `tests/helpers/impairedLink.ts`:
 // packets are never lost: each is due no earlier than the one sent before it in its direction (in order), and one
 // that would fall inside an outage is due at the outage's end plus the delay. flush() delivers what is due by now().
 import type { ChannelKind, Link } from '../../src/renderer/src/net/contracts';
-import { createRng, nextFloat } from '../../src/renderer/src/sim/rng';
+import { createRng, nextFloat } from '../../src/shared/rng';
 import type { LinkPair } from './linkPair';
 
 export interface Direction { delayMs: number; jitterMs?: number; loss?: number; outages?: readonly { from: number; to: number }[]; keep?(sentAt: number): boolean }
@@ -545,8 +551,6 @@ export function impairedPair(peer: string, options: ImpairedOptions): LinkPair &
   } as LinkPair & { stats(): { sent: number; dropped: number; delivered: number } };
 }
 ```
-
-Check `createRng` and `nextFloat` in `src/renderer/src/sim/rng.ts`. `scripted.ts` imports them, so they are exported. If the export name differs, use the one `scripted.ts` uses.
 
 In `tests/helpers/onlineDuel.ts`:
 - Add `link?: (peer: string) => LinkPair` to the options type.
@@ -631,7 +635,7 @@ Create `tests/duelPredictor.test.ts`. Publications are built by hand from a live
 // input changed, anchors on the held watermark, keeps commands until the command watermark passes them, resets on a
 // pause, a new round or a decided round, and never stands more than PREDICT_MAX_TICKS past the confirmed tick.
 import { afterEach, describe, expect, it } from 'vitest';
-import { createDuelPredictor, PREDICT_HASH_EVERY, PREDICT_MAX_TICKS, type LocalInput } from '../src/renderer/src/clientControl/duelPredictor';
+import { createDuelPredictor, heldKey, PREDICT_HASH_EVERY, PREDICT_MAX_TICKS, type LocalInput } from '../src/renderer/src/clientControl/duelPredictor';
 import type { DuelPublication } from '../src/renderer/src/clientControl/duelClient';
 import type { CommandEnvelope, DuelCommand, HeldInput } from '../src/renderer/src/net/contracts';
 import { STATE_CADENCE_TICKS } from '../src/network/state/sender';
@@ -759,6 +763,12 @@ describe('the duel predictor (Net-4a §3.3, §3.4)', () => {
     expect(p.state()!.tactical.seed).toBe(b.d.tactical.seed);
     p.dispose();
   });
+  it('the input key sees every held field: a partner\'s new reticle or selection alone is a different input (R1-F7)', () => {
+    const base = { ...N(), weaponSel: 0, turretAim: 4000 };
+    for (const changed of [{ ...base, turretAim: 4001 }, { ...base, weaponSel: 1 }, { ...base, torpHeading: 3 }, { ...base, gunHeld: true }])
+      expect(heldKey(changed)).not.toBe(heldKey(base));
+    expect(heldKey({ ...base })).toBe(heldKey(base));
+  });
   it('records the hash of P on cadence ticks only', () => {
     const a = authority(), p = predictor();
     p.confirm(a.publication(), a.confirmed());
@@ -853,8 +863,12 @@ interface Entry { local: number; heldSequence: number | null; held: HeldInput; c
 /** One step P took: the inputs it used (by content) and, on a cadence tick, its hash after. Keyed by the tick it produced. */
 interface Step { key: string; hash: string | null }
 const neutral = (): HeldInput => ({ moveX: 0, moveY: 0, interactHeld: false });
-const HELD_KEYS = ['moveX', 'moveY', 'interactHeld', 'face', 'aim', 'gunHeld', 'torpTurn', 'torpHeading', 'throttleHeld', 'rcsX', 'rcsY'] as const;
-const heldKey = (h: HeldInput): string => HELD_KEYS.map((k) => (h[k] === undefined ? '' : String(h[k]))).join(',');
+/** Every HeldInput field (W-4's weaponSel and turretAim included); the check below fails to compile if one is missing. */
+const HELD_KEYS = ['moveX', 'moveY', 'interactHeld', 'face', 'aim', 'gunHeld', 'torpHeading', 'weaponSel', 'turretAim', 'throttleHeld', 'rcsX', 'rcsY'] as const;
+type MissingHeldKey = Exclude<keyof HeldInput, (typeof HELD_KEYS)[number]>;
+const heldKeysComplete: [MissingHeldKey] extends [never] ? true : never = true;
+void heldKeysComplete;
+export const heldKey = (h: HeldInput): string => HELD_KEYS.map((k) => (h[k] === undefined ? '' : String(h[k]))).join(',');
 /** The inputs of one step by content: every player's held input and the commands' ids and bodies (not their stamped tick). */
 const inputKey = (held: readonly HeldInput[], commands: readonly Command[]): string =>
   `${held.map(heldKey).join('|')}#${commands.map((c) => `${c.id.player}:${c.id.sequence}:${JSON.stringify(c.command)}`).join(';')}`;
@@ -909,8 +923,8 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
       // Step 1: the anchor (the newest entry whose held frame the authority has latched) gives the measured offset;
       // with none, the last mapping is kept. Commands leave the log only by the command watermark.
       const hw = publication.heldHighWater[seat] ?? 0, cw = publication.commandHighWater[seat] ?? 0;
-      let anchored = offset;
-      for (let i = log.length - 1; i >= 0; i--) { const s = log[i]!.heldSequence; if (s !== null && s <= hw) { anchored = T - log[i]!.local; break; } }
+      let anchored = offset, anchor = -1;
+      for (let i = log.length - 1; i >= 0; i--) { const s = log[i]!.heldSequence; if (s !== null && s <= hw) { anchored = T - log[i]!.local; anchor = i; break; } }
       for (const e of log) e.commands = e.commands.filter((c) => c.id.sequence > cw);
       waiting = waiting.filter((c) => c.id.sequence > cw);
       // Step 3: the target: T plus the local ticks after the anchor's; P's own tick when within the slack; clamped.
@@ -921,10 +935,16 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
       // The mapping from now on: the newest local tick is the target (plan deviation 1). It is the anchor's offset unless
       // the slack or the cap applied; tick() steps entry L to L + offset, so verify and tick() always agree.
       offset = target - local;
-      // Entries at or before T in the mapping are dropped; their commands not yet run move to the first entry after.
+      // Plan deviation 2: an entry leaves the log only once acknowledged (at or before the anchor), so a later held
+      // watermark can still anchor on it; entries the mapping puts at or before T stay with their command lists emptied.
+      // Either way their commands not yet run move to the first entry after T in the mapping, or wait for the next one.
       const cut = T - offset, carried: Command[] = [];
-      while (log.length && log[0]!.local <= cut) carried.push(...log.shift()!.commands);
-      if (carried.length) { if (log.length) log[0]!.commands = [...carried, ...log[0]!.commands]; else waiting = [...waiting, ...carried].slice(-PREDICT_WAITING_MAX); }
+      if (anchor >= 0) for (const e of log.splice(0, anchor + 1)) carried.push(...e.commands);
+      for (const e of log) if (e.local <= cut) { carried.push(...e.commands); e.commands = []; }
+      if (carried.length) {
+        const next = log.find((e) => e.local > cut);
+        if (next) next.commands = [...carried, ...next.commands]; else waiting = [...waiting, ...carried].slice(-PREDICT_WAITING_MAX);
+      }
       for (const k of [...steps.keys()]) if (k < T) steps.delete(k);
       // Step 4: verified when P passed through T with the authority's hash, used the planned inputs since, and stands on the target.
       const at = steps.get(T);
@@ -973,7 +993,13 @@ How this follows the spec, so a reviewer can check it:
 - `tick()` steps each entry on `P`'s own clock, while `planned` maps it on the anchor's. Once the two differ by one or two ticks, every publication re-simulates while the input changes.
 - A command carried to an entry the anchor maps beyond the target is never stepped until a later re-simulation reaches it. It vanishes from `P` for up to 50 ms, which is the flicker §3.4 forbids.
 
-With `offset = target − local` both mappings are one. This equals the anchor's offset whenever neither the slack nor the cap applied. Under the slack the authority's tick for an entry is estimated one or two ticks off, which §3.4's "Step 2 is an estimate" already allows. The trim's cut follows the same mapping, so an entry the anchor says was used but the mapping puts after `T` is kept, which is harmless: commands still leave only by `cw`. Record this deviation in the build report.
+With `offset = target − local` both mappings are one. This equals the anchor's offset whenever neither the slack nor the cap applied. Under the slack the authority's tick for an entry is estimated one or two ticks off, which §3.4's "Step 2 is an estimate" already allows. Commands still leave only by `cw`. Record this deviation in the build report.
+
+**Plan deviation 2 (from §3.4 step 1, review R1-F1).** The spec drops every entry at or before `T − offset`. That rule can never build a lead. After a reset, `P` stands about on `T` at each publication, so the cut is about the newest local tick and the whole log goes. The entry the authority will acknowledge one round trip later is therefore gone before its `heldHighWater` arrives. No anchor is ever found, the measured target equals `P`'s tick, and the lead stays at 0.
+
+Here an entry leaves the log only once acknowledged: at or before the anchor, or by `PREDICT_LOG_MAX`. An entry the mapping puts at or before `T` is kept for anchoring, and its commands move to the first entry after `T`. `planned` indexes by `local`, so the kept older entries do not disturb it.
+
+The spec's own §3.4 step 1 has the same gap, so record this deviation in the build report too. The test "runs ahead one tick per local tick and verifies" pins it. It confirms each publication right after the authority's tick, with `P` standing on that tick, as on the wire after a reset, and it requires the lead to reach the 6-tick delay.
 
 - [ ] **Step 5: Run the tests and watch them pass**
 
@@ -1060,7 +1086,7 @@ Create `tests/predictionGates.test.ts`:
 // the remote client and the predictor. Seat 0 flies the Cutter's crew Helm; seat 1 sits at Weapons. Round trips are
 // split evenly between the two directions. Every run starts after a 1 s warm-up (both seats synced and their first held
 // frames acknowledged), so the publications checked are steady-state ones.
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { DuelCommand, HeldInput } from '../src/renderer/src/net/contracts';
 import { PREDICT_MAX_TICKS } from '../src/renderer/src/clientControl/duelPredictor';
 import { impairedPair, type Direction } from './helpers/impairedLink';
@@ -1087,8 +1113,12 @@ function run(o: { seed?: number; rttMs: number; loss?: number; jitterMs?: number
   return out;
 }
 const confirms = (r: ReturnType<typeof run>) => r.steps.flatMap((s) => s.confirms).filter((c) => c.tick % 3 === 0);
+// Each run is seconds of synchronous CPU on the full stack (R1-F10): yield a macrotask before each so vitest's worker RPC
+// is answered (as tests/duelOnline.test.ts does), and give every case 120 s.
+beforeEach(() => new Promise<void>((resolve) => setImmediate(resolve)));
+const SLOW = { timeout: 120_000 };
 
-describe('G1: exact when inputs are known (Net-4a §6)', () => {
+describe('G1: exact when inputs are known (Net-4a §6)', SLOW, () => {
   for (const rttMs of [0, 50, 150, 300]) for (const loss of [0, 0.02, 0.05]) {
     it(`(a) every input constant, ${rttMs} ms round trip, ${loss * 100}% loss: P's hash at the confirmed tick is the publication's`, () => {
       const r = run({ rttMs, loss, ticks: 600, me: constant({ ...N(), throttleHeld: 1 }), partner: constant(N()) });
@@ -1116,7 +1146,7 @@ describe('G1: exact when inputs are known (Net-4a §6)', () => {
   });
 });
 
-describe('G3: answers at once (Net-4a §6)', () => {
+describe('G3: answers at once (Net-4a §6)', SLOW, () => {
   for (const rttMs of [50, 150, 400]) it(`a change in this seat's held input steps P on the next local tick at ${rttMs} ms`, () => {
     const r = run({ rttMs, ticks: 300, me: changing, partner: constant(N()) });
     expect(r.steps.every((s) => s.stepped)).toBe(true);
@@ -1128,7 +1158,7 @@ describe('G3: answers at once (Net-4a §6)', () => {
   });
 });
 
-describe('G5: rides out loss (Net-4a §6)', () => {
+describe('G5: rides out loss (Net-4a §6)', SLOW, () => {
   /** 10% publication loss, at most three in a row, none within 60 ms of the outage's edges. */
   function keep(outage: { from: number; to: number }) {
     let run = 0, k = 0;
@@ -1383,9 +1413,13 @@ export function placeEvents(events: readonly ViewEvent[], t: TacticalState): Vie
 ```ts
   const predicted = (): DuelState | null => (deps.prediction?.active() ? deps.prediction.state() : null);
   const predictedBodies = (): PredictedBodies | null => (predicted() ? deps.prediction!.before() : null);
-  const duel = (): DuelState => predicted() ?? client.state()!;
+  /** The confirmed replica: every member that predicts by hand today keeps reading it until Task 9 removes the hand-written guesses. */
+  const replica = (): DuelState => client.state()!;
+  const duel = (): DuelState => predicted() ?? replica();
   const viewAlpha = (): number => (predicted() ? deps.prediction!.alpha() : frameAlpha);
 ```
+
+   - **Only the drawing switches to P in this task** (R1-F2): the `duel` and `seed` getters, `prev`, `missilePrev`, `crewPrev`, `alpha`, `drainEvents`, `crewOverride` and the cameras in `frame`. Every other member of the source that calls `duel()` today is changed to call `replica()`: `epoch`, `view`, `axes`, `thrMille`, `turret`, `helmVent`, `throttle`, `helmAxes` and `crewHelm`'s callers. W-4's `turret()` hand prediction (`predictTurret` over `unackedFrames`) and `gunModeBase` therefore behave exactly as today until Task 9, and the existing session tests that read `turret()`, `thrMille()` and `helmVent()` still pass in Tasks 6 to 8.
 
    - Change the getters and members:
 
@@ -1496,7 +1530,7 @@ describe('the session predicts (Net-4a §3.3, §3.6)', () => {
     r.dispose();
   });
   it('the first tick of a pump takes the presses; the later ones repeat its held input with no commands', () => {
-    const r = rig(1), c = r.attach();   // seat 1 at Weapons: Space charges the laser
+    const r = rig(1, undefined, undefined, undefined, ShipClass.ValkyrnLaser), c = r.attach();   // seat 1 at the ValkyrnLaser's Weapons: Space charges the laser (the Cutter's Hound-style Weapons seat ignores Space)
     const before = c.commands().length;
     r.key('keydown', 'Space'); r.key('keyup', 'Space'); r.pump(50);
     expect(c.commands().slice(before).filter((x) => x.kind === 'laserCharge')).toHaveLength(1);
@@ -1584,6 +1618,14 @@ const neutral = (): HeldInput => ({ moveX: 0, moveY: 0, interactHeld: false });
    ```
 
 6. In `release`, after `client?.dispose(); client = null;`, add `predictor?.dispose(); predictor = null; confirmedSequence = 0;`.
+
+   §3.4 also disposes the predictor when the link closes, before any `release`. Change the attach's close handler to:
+
+   ```ts
+   offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; predictor?.dispose(); predictor = null; confirmedSequence = 0; });
+   ```
+
+   Without this, `pump` keeps stepping a hidden `P` to the cap after a close (R1-F12).
 
 7. In `observe`, after `if (!p || !d) return;`:
 
@@ -1819,8 +1861,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify: `tests/crewHelmOnline.test.ts`, `tests/duelOnlineView.test.ts`, `tests/onlineDuelSession.test.ts`
 
 **Interfaces:**
-- Removed from `OnlineDuelSource`: `thrMille`, `helmVent`, `unacked`, `throttleBase`. The scene falls back to `d.thrMille`, `d.helmVent` and `source.throttle()`, all of which are now `P`'s.
-- Removed from `onlineDuel.ts`: `UNACKED_MAX`.
+- Removed from `OnlineDuelSource`: `thrMille`, `helmVent`, `unacked`, `throttleBase` and `gunModeBase` (W-4). The scene falls back to `d.thrMille`, `d.helmVent` and `source.throttle()`. All of these are now `P`'s. `turret(slot)` stays, and reads `P`'s turret.
+- Removed from `onlineDuel.ts`: `UNACKED_MAX`, and W-4's in-flight holds `gunModeSent` and `lockSent`.
+- All the members Task 6 left on `replica()` move to `duel()`, so they read `P` while predicting.
 
 - [ ] **Step 1: Rewrite the tests that pin the removed pieces**
 
@@ -1896,6 +1939,43 @@ Delete every case whose subject is the removed mechanism:
 - "a sit, a re-attach and a noop result each clear the level in flight".
 - "a stand and a new round clear the level in flight". The new-round case above replaces it.
 
+The W-4 cases in `tests/onlineDuelSession.test.ts` that pin a hand prediction are rewritten against `P`:
+
+- **"the source's turret(0) follows the reticle at MAN traverse while gunMode is in flight, then the replica's again"** becomes:
+
+```ts
+  it("R puts pew pew on MAN in P at once, so its turret slews toward the reticle; a publication that ran the gunMode with the gun still AUTO takes it back", () => {
+    const r = rig(1), c = r.attach(); r.session.frame();
+    const src = () => h.sources.at(-1) as unknown as { turret(slot: 0 | 1): number; duel: DuelState };
+    const h0 = c.state()!.tactical.ships[0].heading, want = (h0 * 256 + 2000) % 65536;
+    h.sceneOpts[0]!.requests!.reticle(want); r.pump(); r.session.frame();
+    expect(src().turret(0)).toBe(0);   // AUTO
+    r.key('keydown', 'KeyR'); r.key('keyup', 'KeyR'); r.pump(); r.pump(); r.pump(); r.session.frame();
+    expect(src().duel.tactical.systems[0].pewManual).toBe(true);   // P holds the gunMode
+    expect(src().turret(0)).toBeGreaterThan(0);   // and slews toward +2000 (MAN traverse)
+    const id = c.ids[c.commands().map((x) => x.kind).lastIndexOf('gunMode')]!;
+    c.publish(r.d, 'running', undefined, { command: [0, id.sequence] }); r.pump(); r.session.frame();   // run and refused: the replica is still AUTO
+    expect(src().duel.tactical.systems[0].pewManual).toBe(false);
+    r.dispose();
+  });
+```
+
+- **"the prediction reads the selected gun's own mode: pew pew's MAN in flight does not move the autocannon's turret"**: keep its steps. Replace each `src().turret(1)` expectation with the state's own:
+  - `expect(src().duel.tactical.systems[0].gunManual).toBe(false)` before the second R;
+  - `expect(src().duel.tactical.systems[0].gunManual).toBe(true)` after it;
+  - `expect(src().turret(1)).toBeGreaterThan(0)` after two more pumps.
+
+  The exact 341-a-frame multiple goes: the sim's slew, not `predictTurret`, moves `P`.
+- **"two E presses before a replica arrives step the target room twice (lockSent); it clears on the result, a new round and a stand"**:
+  - Keep the two-presses assertion. `P` holds the first `laserLock`, so the second E steps from it.
+  - Replace "clears on the result" with a publication `{ command: [0, <the last laserLock's sequence>] }` whose state (`r.d`, unchanged) keeps the replica's lock. The next E then steps from the replica's lock.
+  - The new-round and stand parts keep their assertions.
+- **"a MANUAL flight: no gunHeld, no pewFire, then the selection returns; the turret is not predicted while it flies"**: keep every assertion about what is sent and about `weaponSel`. Delete the two `turret(0)` expectations: what `P`'s turret does during a flight is the sim's rule.
+- **"blur drops the local prediction: the vent and thrMille fall back to the replica state"**: delete it. Blur now sends neutral entries and `P` steps with them; Task 7's "an unfocused window's prediction keeps stepping" covers it.
+- **"R sends gunMode for the selected gun; a second R before the result flips back (from gunModeSent for that slot)"**: keep its assertions and rename it "(from P)". `P` holds the first toggle.
+
+Which `publish` water index is the Weapons seat's: `rig(1)` is seat 1, so its command watermark is the second entry, `{ command: [0, sequence] }`.
+
 For the heading, laser-mode and torpedo-mode cases ("from the mode in flight, else the replica's", "a clear asked for while a heading is in flight is sent", "A held at the Helm clears the base"):
 - Keep the assertions about what is sent.
 - Rename each to say "from P".
@@ -1912,19 +1992,36 @@ Expected: FAIL, because `thrMille`, `helmVent` and `throttleBase` still exist, a
 In `src/renderer/src/app/duel/onlineDuel.ts`:
 - Delete:
   - the `UNACKED_MAX` export;
-  - `throttleSent`, `headingSent`, `laserModeSent` and `torpModeSent`, with every assignment and reset of them (in `play`, `observe`, the top of `produce`, and `attach`);
+  - `throttleSent`, `headingSent`, `laserModeSent`, `torpModeSent`, `gunModeSent` and `lockSent`, with every assignment and reset of them (in `play`, `observe`, the top of `produce`, and `attach`);
+  - both `source?.gunModeBase(...)` loops;
   - `lastHeldSequence`;
   - the `source?.unacked(...)` line;
   - both `source?.throttleBase(...)` lines.
 - Keep `torpHold` and its resets. It is the MANUAL torpedo's held heading, not a prediction. Its round reset moves to `if (d && d.round !== torpRound) { torpRound = d.round; torpHold = -1; }`, with a new `let torpRound = -1`.
 - `neutralSource()` becomes `function neutralSource(): void { source?.sent(neutral()); }`.
-- In `produce`, the decision state is the prediction. Change `const d = client?.state(), p = client?.publication();` to `const d = predictor?.state() ?? client?.state(), p = client?.publication();`. `P` is the confirmed state stepped ahead, so every `seatOf`, `crewHelmSeat`, `refusal` and `canCharge` reads the newest guess.
+- In `produce`, the console decisions read the prediction, but the round's outcome does not (§3.6, R1-F8). Change `const d = client?.state(), p = client?.publication();` to:
+
+  ```ts
+  const c = client?.state(), d = predictor?.state() ?? c, p = client?.publication();
+  ```
+
+  Then:
+  - The early-return guard tests `!c` where it tested `!d`.
+  - `decided` is `c.tactical.outcome !== Outcome.Running`.
+  - `leavePromptKeys(leaveConfirm, c, p.phase, k.presses)` reads `c`.
+  - The decided branch (`if (decided) { if (k.presses.confirm > 0) send({ kind: 'rematch' }); }`) is unchanged and is driven by `c`.
+
+  Every other read (`seatOf`, `crewHelmSeat`, `houndWeaponsSeat`, `refusal`, `canCharge`, `canLaunch`, the W-4 `flightFrame` and the round resets on `d.round`) takes `d`, `P`. A predicted kill therefore never neutralizes input or opens the leave prompt ahead of the authority.
 - In `play`, use the prediction's own fields:
   - `throttleRequest(d.throttle, p, k.throttleTo, throttleCap(d.tactical.systems[0]!))`, then `if (level !== null) send({ kind: 'throttle', level });`.
   - The heading dedupe at both seats becomes `heading !== d.holdHeading`. The crew Helm's `if (k.fireHeld) headingSent = ...` and the Helm's two `if (turning) headingSent = ...` lines go. `P` already cleared the hold on the ticks A/D or auto-face were held.
   - `let manual = sys.laserManual;` and `if (...) { manual = !manual; send({ kind: 'laserMode', manual }); }`.
   - `let torpManual = sys.torpManual;` and `if (p.torpMode % 2 === 1) { torpManual = !torpManual; send({ kind: 'torpMode', manual: torpManual }); }`.
-  - The `sit` and `stand` branches keep only `torpHold = -1;` and the `send`.
+  - The `sit` and `stand` branches keep `torpHold = -1;`, W-4's selection resets (`weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false;`) and the `send`.
+  - W-4's Hound Weapons branch:
+    - E/Q step from `sys0.lock`; `sendLock` loses its `lockSent` assignment.
+    - `modeRequests([sys0.pewManual, sys0.gunManual, sys0.torpManual], weaponSel, p, k.modeTaps)`; the two sends lose their `gunModeSent` and `torpModeSent` assignments.
+    - The held frame's trigger reads `d.tactical.systems[0].gunManual` where it read `gunModeSent[1]`.
 - In `observe`, the result loop keeps:
   - the `pewSent`, `laserSent` and `torpSent` NO CHARGE and NO TORPEDOES lines;
   - the command latency stamps.
@@ -1932,8 +2029,16 @@ In `src/renderer/src/app/duel/onlineDuel.ts`:
   Delete its four `...Sent = null` lines.
 
 In `src/renderer/src/app/duel/onlineSource.ts`:
-- Delete `unackedFrames`, `shownThrottle`, `thrMille`, `helmVent`, `unacked` and `throttleBase` (from the object and from its declared type).
-- Delete the now-unused imports: `rampTicks`, `heldAxis`, `engineBars`, `throttleFloor`, `throttleCap`, `ventOf`, `noVent`, `HelmVent`.
+- Delete `unackedFrames`, `shownThrottle`, `gunModeShown`, `thrMille`, `helmVent`, `unacked`, `throttleBase` and `gunModeBase` (from the object and from its declared type).
+- `turret` reads `P`'s own turret, which the sim slews toward the held `turretAim`:
+
+  ```ts
+      turret: (slot: 0 | 1): number => { const s = duel().tactical.systems[0]; return slot === 0 ? s.pewTurret : s.gunTurret; },   // Net-4a §3.9: P's turret
+  ```
+
+- Delete the now-unused imports: `rampTicks`, `heldAxis`, `engineBars`, `throttleFloor`, `throttleCap`, `ventOf`, `noVent`, `HelmVent`, `predictTurret`. Keep `houndWeaponsSeat` if anything else still uses it.
+- Replace every remaining `replica()` call (from Task 6) with `duel()`, then delete `replica`.
+- If `predictTurret` in `app/duel/weaponsSeat.ts` has no other caller (`grep -rn predictTurret src`), delete it and its test cases.
 - Change `axes` to:
 
 ```ts
@@ -1949,7 +2054,7 @@ In `src/renderer/src/app/duel/onlineSource.ts`:
 - [ ] **Step 4: Run the tests and watch them pass**
 
 Run: `npx vitest run tests/crewHelmOnline.test.ts tests/duelOnlineView.test.ts tests/onlineDuelSession.test.ts tests/crewSeats.test.ts tests/predictionGates.test.ts && npm run typecheck`
-Expected: PASS. Then `grep -rn "UNACKED_MAX\|throttleSent\|headingSent\|laserModeSent\|torpModeSent\|unackedFrames" src tests` must print nothing.
+Expected: PASS. Then `grep -rn "UNACKED_MAX\|throttleSent\|headingSent\|laserModeSent\|torpModeSent\|gunModeSent\|lockSent\|gunModeBase\|unackedFrames" src tests` must print nothing.
 
 - [ ] **Step 5: Commit**
 
@@ -1999,14 +2104,14 @@ describe('prediction figures (Net-4a §3.10)', () => {
     expect(rec.version).toBe(1);
     expect(rec.prediction).toBeDefined();
     expect(rec.prediction!.lead.count).toBeGreaterThan(0);
-    expect(() => validateDuelRecord({ ...rec, summary: { ...rec.summary, round: rec.round, seed: rec.seed } })).not.toThrow();
+    expect(() => duelRecordSchema.shape.prediction.unwrap().parse(rec.prediction)).not.toThrow();   // roundEvent's summary is partial, so only the new block is validated
     r.dispose();
   });
 });
 ```
 
-- Import `latencyOverlayLines` from `../src/renderer/src/render/duel/latencyOverlay`, and `latencyFigure` and `validateDuelRecord` from `../src/renderer/src/net/duelRecord`.
-- `roundEvent(0)`'s record is partial. If this file's existing record cases build a full summary another way, use theirs, and keep the `prediction` assertions.
+- Import `latencyOverlayLines` from `../src/renderer/src/render/duel/latencyOverlay`, and `latencyFigure` and `duelRecordSchema` from `../src/renderer/src/net/duelRecord`.
+- `roundEvent(0)`'s record is `{ round, seed }` only, so the strict summary schema would refuse the whole record. The test validates only the `prediction` block.
 
 - [ ] **Step 2: Run the tests and watch them fail**
 
@@ -2063,7 +2168,7 @@ In `src/renderer/src/app/duel/onlineDuel.ts`:
 1. Import `fineFigure`. Add the round's samples:
 
    ```ts
-   const roundLead: number[] = [], roundCorrection: number[] = [], roundResim: number[] = []; let roundVerified = 0, roundConfirms = 0;
+   const roundLead: number[] = [], roundCorrection: number[] = [], roundResim: number[] = [], liveResim: number[] = []; let roundVerified = 0, roundConfirms = 0;   // liveResim: F3's recent re-simulation times (R1-F12)
    ```
 
 2. Replace `observe`'s confirm block (from Task 7) with:
@@ -2076,7 +2181,7 @@ In `src/renderer/src/app/duel/onlineDuel.ts`:
       // §3.10: the round's figures. A reset (a pause, a new or decided round) is not a prediction.
       const bound = (list: number[], v: number): void => { list.push(v); if (list.length > 4096) list.shift(); };
       if (result !== 'reset') { roundConfirms++; if (result === 'verified') roundVerified++; bound(roundLead, st.lead); }
-      if (result === 'resimulated') { bound(roundResim, ms); if (st.correction) bound(roundCorrection, st.correction.ship); }
+      if (result === 'resimulated') { bound(roundResim, ms); keep(liveResim, ms); if (st.correction) bound(roundCorrection, st.correction.ship); }
     }
 ```
 
@@ -2099,7 +2204,7 @@ In `src/renderer/src/app/duel/onlineDuel.ts`:
    ```ts
       const ps = predictor?.stats(), checked = ps ? ps.verified + ps.resimulated : 0;
       if (debug.on()) deps.latency?.frame(latencyOverlayLines({ transport: transport(), held: latencyFigure(liveHeld), command: latencyFigure(liveCommand), rttMs,
-        prediction: ps ? { leadTicks: ps.lead, verifiedShare: checked ? ps.verified / checked : null, resimP99Ms: p99(confirmSamples), correction: ps.correction?.ship ?? null } : null }));
+        prediction: ps ? { leadTicks: ps.lead, verifiedShare: checked ? ps.verified / checked : null, resimP99Ms: p99(liveResim), correction: ps.correction?.ship ?? null } : null }));
    ```
 
    This replaces the existing `if (debug.on()) ...` line. Its `else deps.latency?.clear();` stays.
@@ -2140,14 +2245,15 @@ Create `tests/predictionCorrections.test.ts`:
 // Net-4a gate G4: the scripted pair over the impaired link at 50 to 200 ms round trip: the own-ship correction p95 at
 // most 1 u and max at most 5 u; this seat's own character corrected by at most half a tile (Net-0's gate). Each seat's
 // script reads that seat's own predicted view, as a player reads the screen.
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/scripted';
 import { impairedPair } from './helpers/impairedLink';
 import { onlineDuel } from './helpers/onlineDuel';
 import { predictedSeat } from './helpers/predictedSeat';
 
 const p95 = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.ceil(0.95 * s.length) - 1)]! : 0; };
-describe('G4: small corrections (Net-4a §6)', () => {
+beforeEach(() => new Promise<void>((resolve) => setImmediate(resolve)));   // R1-F10, as tests/duelOnline.test.ts
+describe('G4: small corrections (Net-4a §6)', { timeout: 300_000 }, () => {
   for (const rttMs of [50, 100, 200]) it(`scripted pair at ${rttMs} ms: own ship p95 <= 1 u, max <= 5 u; character <= 0.5 tile`, () => {
     const w = onlineDuel(5, { link: (peer) => impairedPair(peer, { seed: 11, now: () => w.nowMs(), up: { delayMs: rttMs / 2, jitterMs: 5 }, down: { delayMs: rttMs / 2, jitterMs: 5 } }) });
     w.connect(0); w.connect(1);
@@ -2357,7 +2463,7 @@ Run each and keep the output:
 Expected:
 - Everything passes.
 - The last command prints nothing: no golden, fixture or `SIM_VERSION` changed.
-- `grep -n "SIM_VERSION =" src/renderer/src/sim/tuning.ts` still shows 62.
+- `grep -n "SIM_VERSION =" src/renderer/src/sim/tuning.ts` still shows 63.
 
 If `test:duel-app-runtime` fails on the schema version, the two pairs of Task 1 did not move together. Check `createHostRuntime`'s comparison.
 
