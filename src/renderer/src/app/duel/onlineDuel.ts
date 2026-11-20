@@ -144,7 +144,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   // MANUAL launches it sent, whose 'unavailable' answer names the reason (the always-send rule); and the MANUAL torpedo's
   // held heading, re-sent in every held frame while it flies (−1 none).
   // W-4 spec §9, §11: the Hound's Weapons seat's selection (pew pew at a sit), the last gun selected (W-4c reads it) and the
-  // trigger on the last pump (the autocannon's refusal is on its press edge).
+  // trigger on the last pump (the autocannon's refusal is on its press edge), and the round the selection was last reset on.
   let torpModeSent: { manual: boolean; sequence: number; round: number } | null = null, torpHold = -1, weaponSel = 0, lastGunSel = 0, triggerPrev = false, selRound = -1;
   const torpSent = new Set<number>();
   const heldStamps: { sequence: number; at: number }[] = [], commandStamps = new Map<number, number>(), pewSent = new Set<number>(), heldSamples: number[] = [], commandSamples: number[] = [], roundGaps: number[] = [];
@@ -243,12 +243,12 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   function play(k: KeySample, d: DuelState, me: number, requests: ContactRequests, heading: number | null, prevHeld: HeldFlags, pew: number | null, steerNow: number | null): void {
     for (const c of k.ship ?? []) send(c);   // Engineering spike §7: the ship view's clicks, as Single player queues them
     const seat = seatOf(d, me), p = k.presses;
+    if (!houndWeaponsSeat(d, me)) { weaponSel = 0; lastGunSel = 0; triggerPrev = false; }   // W-4 spec §9: a sit starts on pew pew (as Single player, before the standing return)
     if (seat === 'standing') {
       if (p.interact > 0 && repairInReach(d, me) < 0) { const c = consoleInReach(d, me); if (c >= 0) { throttleSent = null; headingSent = null; laserModeSent = null; torpModeSent = null; torpHold = -1; weaponSel = 0; lastGunSel = 0; triggerPrev = false; send({ kind: 'sit', station: c }); } }
       return;
     }
     if (p.stand > 0) { throttleSent = null; headingSent = null; laserModeSent = null; torpModeSent = null; torpHold = -1; weaponSel = 0; lastGunSel = 0; triggerPrev = false; send({ kind: 'stand' }); return; }
-    if (!houndWeaponsSeat(d, me)) { weaponSel = 0; lastGunSel = 0; triggerPrev = false; }   // W-4 spec §9: a sit starts on pew pew
     if (requests.scan !== null && d.tactical.known[requests.scan] < CONTACT_MAX_LEVEL[requests.scan]) send({ kind: 'contactScan', contact: requests.scan });   // Sci-1 spec §5
     if (crewHelmSeat(d, me)) {   // playtest2feedback §3-§5: the held frame carries the rest
       if (p.camera > 0 && source) snapBack(source.cameras.helm);

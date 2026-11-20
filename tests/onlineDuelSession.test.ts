@@ -215,6 +215,28 @@ describe('the online Hound Weapons seat (W-4 spec §11)', () => {
     expect(h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'pew')).toEqual([{ control: 'pew', reason: 'NO CHARGE' }]);
     r.dispose();
   });
+  it('a new round starts on pew pew, still seated (the selection\'s round reset)', () => {
+    const r = rig(1), c = r.attach();
+    tapKey(r, 'Digit2'); r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ weaponSel: 1 });
+    nextRound(r.d); c.publish(r.d); r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ weaponSel: 0 });
+    r.dispose();
+  });
+  it('off the seat the selection resets: a stand and a sit back start on pew pew', () => {
+    const r = rig(1), c = r.attach();
+    const stepOne = (command: DuelCommand, sequence: number): void => {
+      stepDuelTick(r.d, { held: [], commands: [{ runId: 'duel', id: { player: 1, sequence }, requestedTick: r.d.interior.tick, command }] });
+      c.publish(r.d); r.pump();
+    };
+    tapKey(r, 'Digit3'); r.pump();
+    expect(c.helds().at(-1)).toMatchObject({ weaponSel: 2 });
+    stepOne({ kind: 'stand' }, 1);   // the replica shows the stand (the authority's, not this seat's X)
+    expect(c.helds().at(-1)).not.toHaveProperty('weaponSel');
+    stepOne({ kind: 'sit', station: r.d.weapons }, 2);
+    expect(c.helds().at(-1)).toMatchObject({ weaponSel: 0 });
+    r.dispose();
+  });
   it('4 tunes the guns to frequency 0; 3 selects the torpedo and sends no frequency', () => {
     const r = rig(1), c = r.attach();
     r.session.frame();
