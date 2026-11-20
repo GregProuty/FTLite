@@ -16,3 +16,17 @@ const C2 = WELL_CORE * WELL_CORE;
 export function wellScale(q: number): number { const s = C2 / (q + C2); return 1 - WELL_PULL * s * s; }
 /** The farthest the well moves any point (world units): at r = c / √3. */
 export const WELL_MAX_SHIFT = WELL_PULL * WELL_CORE * 9 / (16 * Math.sqrt(3));
+
+/** A body's dent (owner 2026-11-19): ships and rocks pull a small dimple into the gravity grid that travels with them,
+ *  sized by the body. For show only: they have no pull in the sim. The same shape as the well: a point at squared
+ *  distance q from the body moves toward it by pull · (c2 / (q + c2))² of its offset; `reach` is how far the dent is
+ *  drawn at all. */
+export interface Dent { x: number; y: number; c2: number; pull: number; reach: number; shift: number }
+/** A dent's core is DENT_CORE_PER_R body radii; its pull rises with the radius to DENT_PULL_MAX at DENT_FULL_R; it is
+ *  drawn out to DENT_REACH cores, where it moves a point by under a hundredth of its core. */
+export const DENT_CORE_PER_R = 3.5, DENT_PULL_MAX = 0.55, DENT_FULL_R = 45, DENT_REACH = 4;
+/** The dent of a body of radius r at (x, y); `shift` is the farthest it moves any point (world units). */
+export function dentOf(x: number, y: number, r: number): Dent {
+  const core = DENT_CORE_PER_R * r, pull = DENT_PULL_MAX * Math.min(1, r / DENT_FULL_R);
+  return { x, y, c2: core * core, pull, reach: DENT_REACH * core, shift: pull * core * 9 / (16 * Math.sqrt(3)) };
+}
