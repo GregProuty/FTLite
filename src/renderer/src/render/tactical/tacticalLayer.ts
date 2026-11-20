@@ -274,21 +274,20 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         if (a.dot) { bodies.rect(Math.round(a.x) - 1, Math.round(a.y) - 1, 2, 2).fill(CRT.mid); continue; }
         // Asteroids-iv spec §7: a cell rock is its cells' outline (holes in the tube's colour), a plain rock the old
         // nine-sided shape; both the same CRT.dim fill and CRT.mid outline at any wear. The seams fade in with wear.
-        const pts: number[] = [];
         if (a.outline) {
-          const z = a.scale ?? 1;
-          a.outline.loops.forEach((loop, li) => {
-            pts.length = 0;
-            for (let i = 0; i < loop.length; i += 2) pts.push(a.x + loop[i]! * z, a.y + loop[i + 1]! * z);
-            bodies.poly(pts).fill(li === 0 ? CRT.dim : CRT.glass).stroke({ width: 1, color: CRT.mid });
-          });
+          const z = a.scale ?? 1, loops = a.outline.loops;
+          for (let li = 0; li < loops.length; li++) {
+            const loop = loops[li]!, lp: number[] = [];   // Pixi keeps the array handed to poly: one per loop
+            for (let i = 0; i < loop.length; i += 2) lp.push(a.x + loop[i]! * z, a.y + loop[i + 1]! * z);
+            bodies.poly(lp).fill(li === 0 ? CRT.dim : CRT.glass).stroke({ width: 1, color: CRT.mid });
+          }
           const wear = a.wear ?? 0, seams = a.outline.seams;
           if (wear > 0 && a.r >= SEAM_MIN_PX && seams.length > 0) {
             for (let i = 0; i < seams.length; i += 4) bodies.moveTo(a.x + seams[i]! * z, a.y + seams[i + 1]! * z).lineTo(a.x + seams[i + 2]! * z, a.y + seams[i + 3]! * z);
             bodies.stroke({ width: 1, color: CRT.faint, alpha: CRACK_ALPHA * wear });
           }
         } else {
-          const shape = asteroidShape(a.index);
+          const pts: number[] = [], shape = asteroidShape(a.index);
           shape.forEach((m, k) => { const ang = (k / shape.length) * Math.PI * 2; pts.push(a.x + Math.cos(ang) * a.r * m, a.y + Math.sin(ang) * a.r * m); });
           bodies.poly(pts).fill(CRT.dim).stroke({ width: 1, color: CRT.mid });
         }

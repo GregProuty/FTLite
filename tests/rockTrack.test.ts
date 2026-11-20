@@ -1,5 +1,5 @@
 // Asteroids-iii §7.1, §7.2, §13.5 (renderer): rails drawn at tick − 1 + α, free rocks lerped from the last tick (a
-// history that resets on a kind or r change or a jump), the outline spin, and the predicted path of the Weapons map's rock
+// history that resets on a kind or r change or a jump), and the predicted path of the Weapons map's rock
 // target. Look pass (docs/superpowers/specs/2026-11-20-asteroids-look-design.md): no trails and no streaks.
 import { describe, expect, it } from 'vitest';
 import { createCamera, worldToScreen } from '../src/renderer/src/render/tactical/camera';
