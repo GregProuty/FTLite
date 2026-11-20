@@ -1,21 +1,21 @@
 {
-  "simVersion": 65,
+  "simVersion": 66,
   "seed": 1,
   "outcome": 2,
   "ticks": 6960,
-  "finalHash": "21a0b838",
+  "finalHash": "a228e238",
   "every": 600,
   "hashes": [
-    "da728ff2",
-    "1811f284",
-    "3ff0710f",
-    "e5045ea0",
-    "3cdb01aa",
-    "32459134",
-    "d1516c6e",
-    "f38e0ced",
-    "432ffc1e",
-    "a1214464",
-    "6690a7ab"
+    "b75ca472",
+    "de402b84",
+    "76fc268f",
+    "6216cda0",
+    "2d53d02a",
+    "a7a6f434",
+    "338f246e",
+    "3c5919ed",
+    "0448f81e",
+    "2db9b264",
+    "4fbe132b"
   ]
 }
