@@ -11,7 +11,7 @@ import type { CrtScale } from '../crt';
 import { createCrtFilters, type CrtFilters } from './crtFilter';
 import { ALERT_BLINK_HZ, blink, CRT, DAMAGE_BLINK_HZ, DASH, ENEMY_BLINK_HZ, GAP, HATCH_ANGLE, HATCH_SPACING, roomLevel, roomLook } from './crtTheme';
 import { dashCircle, dashLine, hatchSegments } from './dashModel';
-import { asteroidShape, blipMark, CHEVRON_SIZE, CRACK_ALPHA, crackDraw, type ArrowTarget, type ContactMarkDraw, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
+import { asteroidShape, blipMark, CHEVRON_SIZE, CRACK_ALPHA, SEAM_MIN_PX, type ArrowTarget, type ContactMarkDraw, type Label, type RingDraw, type ShipDraw, type TacticalDraw } from './tacticalModel';
 import { ENEMY_RING, HULLS } from './hullModel';
 import type { ArcDraw, CombatDraw, MissileDraw } from './weaponsModel';
 import type { Viewport } from './camera';
@@ -272,12 +272,26 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       }
       for (const a of d.asteroids) {
         if (a.dot) { bodies.rect(Math.round(a.x) - 1, Math.round(a.y) - 1, 2, 2).fill(CRT.mid); continue; }
-        const shape = asteroidShape(a.index), pts: number[] = [];
-        shape.forEach((m, k) => { const ang = (k / shape.length) * Math.PI * 2 + (a.spin ?? 0); pts.push(a.x + Math.cos(ang) * a.r * m, a.y + Math.sin(ang) * a.r * m); });
-        // Look pass spec §2: a rock is background: the same CRT.dim fill and CRT.mid outline whole or worn, and its cracks
-        // one CRT.faint stroke each (darker than the fill, never lighter), no highlight.
-        bodies.poly(pts).fill(CRT.dim).stroke({ width: 1, color: CRT.mid });
-        for (const s of crackDraw(a.index, a.wear ?? 0, a.x, a.y, a.r, a.spin ?? 0)) bodies.moveTo(s.x1, s.y1).lineTo(s.x2, s.y2).stroke({ width: 1, color: CRT.faint, alpha: CRACK_ALPHA });
+        // Asteroids-iv spec §7: a cell rock is its cells' outline (holes in the tube's colour), a plain rock the old
+        // nine-sided shape; both the same CRT.dim fill and CRT.mid outline at any wear. The seams fade in with wear.
+        const pts: number[] = [];
+        if (a.outline) {
+          const z = a.scale ?? 1;
+          a.outline.loops.forEach((loop, li) => {
+            pts.length = 0;
+            for (let i = 0; i < loop.length; i += 2) pts.push(a.x + loop[i]! * z, a.y + loop[i + 1]! * z);
+            bodies.poly(pts).fill(li === 0 ? CRT.dim : CRT.glass).stroke({ width: 1, color: CRT.mid });
+          });
+          const wear = a.wear ?? 0, seams = a.outline.seams;
+          if (wear > 0 && a.r >= SEAM_MIN_PX && seams.length > 0) {
+            for (let i = 0; i < seams.length; i += 4) bodies.moveTo(a.x + seams[i]! * z, a.y + seams[i + 1]! * z).lineTo(a.x + seams[i + 2]! * z, a.y + seams[i + 3]! * z);
+            bodies.stroke({ width: 1, color: CRT.faint, alpha: CRACK_ALPHA * wear });
+          }
+        } else {
+          const shape = asteroidShape(a.index);
+          shape.forEach((m, k) => { const ang = (k / shape.length) * Math.PI * 2; pts.push(a.x + Math.cos(ang) * a.r * m, a.y + Math.sin(ang) * a.r * m); });
+          bodies.poly(pts).fill(CRT.dim).stroke({ width: 1, color: CRT.mid });
+        }
       }
 
       for (const q of d.rockPath ?? []) bodies.rect(Math.round(q.x) - 1, Math.round(q.y) - 1, 2, 2).fill({ color: CRT.mid, alpha: 0.8 });   // §7.2: the target's next 20 s

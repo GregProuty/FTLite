@@ -1,10 +1,12 @@
 // Asteroids look pass (docs/superpowers/specs/2026-11-20-asteroids-look-design.md): rocks are background. A rock keeps
-// its starting colours however worn it is (CRT.dim fill, CRT.mid outline), its cracks are one faint stroke each, darker
+// its starting colours however worn it is (CRT.dim fill, CRT.mid outline), its seams are one faint stroke, darker
 // than the fill and never lighter, and nothing about a rock draws in CRT.main or CRT.hot.
 import { describe, expect, it } from 'vitest';
 import { Container, Graphics } from 'pixi.js';
 import { CRT } from '../src/renderer/src/render/tactical/crtTheme';
 import { createTacticalLayer } from '../src/renderer/src/render/tactical/tacticalLayer';
+import { buildTemplate } from '../src/renderer/src/sim/tactical/rockCells';
+import { rockOutline } from '../src/renderer/src/render/tactical/rockOutline';
 import type { AsteroidDraw, TacticalDraw } from '../src/renderer/src/render/tactical/tacticalModel';
 
 const vp = { w: 1280, h: 720 };
@@ -28,7 +30,8 @@ function drawn(asteroids: AsteroidDraw[]): Stroke[] {
   layer.draw(frame(asteroids), null, 0);
   return strokes(layer.container);
 }
-const rock = (wear: number): AsteroidDraw => ({ index: 5, x: 400, y: 300, r: 40, dot: false, wear, spin: 0.3 });
+const tpl = buildTemplate(5, 44, 3), outline = rockOutline(tpl, tpl.full);
+const rock = (wear: number): AsteroidDraw => ({ index: 5, x: 400, y: 300, r: 40, dot: false, wear, outline, scale: 0.9 });
 
 describe('the rock look: background (look pass spec §2)', () => {
   const empty = drawn([]), whole = drawn([rock(0)]);
@@ -44,12 +47,17 @@ describe('the rock look: background (look pass spec §2)', () => {
       expect(body, `wear ${wear}`).toEqual([{ action: 'fill', colour: CRT.dim, alpha: 1 }, { action: 'stroke', colour: CRT.mid, alpha: 1 }]);
     }
   });
-  it('the cracks are CRT.faint strokes (darker than the fill) at a low alpha, with no highlight beside them', () => {
+  it('the seams are one CRT.faint stroke (darker than the fill) at alpha 0.6 * wear, with no highlight beside it', () => {
     for (const wear of [0.2, 0.5, 0.8, 1]) {
-      const cracks = added(drawn([rock(wear)])).slice(2);
-      expect(cracks.length, `wear ${wear}`).toBeGreaterThan(0);
-      for (const c of cracks) { expect(c.action).toBe('stroke'); expect(c.colour).toBe(CRT.faint); expect(c.alpha).toBeLessThanOrEqual(0.7); }
+      const seams = added(drawn([rock(wear)])).slice(2);
+      expect(seams.length, `wear ${wear}`).toBe(1);
+      const c = seams[0]!;
+      expect(c.action).toBe('stroke'); expect(c.colour).toBe(CRT.faint);
+      expect(c.alpha).toBeCloseTo(0.6 * wear, 9); expect(c.alpha).toBeLessThanOrEqual(0.6);
     }
+  });
+  it('a plain rock (no cells) adds only the fill and the outline: no seams', () => {
+    expect(added(drawn([{ index: 5, x: 400, y: 300, r: 40, dot: false, wear: 0.8 }]))).toEqual([{ action: 'fill', colour: CRT.dim, alpha: 1 }, { action: 'stroke', colour: CRT.mid, alpha: 1 }]);
   });
   it('nothing about a rock draws in CRT.main or CRT.hot', () => {
     for (const wear of [0, 0.2, 0.5, 0.8, 1]) for (const s of added(drawn([rock(wear), { index: 9, x: 600, y: 300, r: 1, dot: true }])))
