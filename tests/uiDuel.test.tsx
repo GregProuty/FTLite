@@ -68,9 +68,9 @@ describe('the end card, banners and map overlay', () => {
     act(() => duel.frame(view({ banners: { interior: 'I', tactical: null, notice: null } })));
     expect(find('I')).toMatchObject({ x: INTERNAL_W / 2, y: PAUSE_Y + PAUSE_H / 2 });
   });
-  it('draws the zoom text, scale label and snap hint where the tactical layer did', () => {
+  it('draws the scale label and snap hint where the tactical layer did; no zoom text (UI round §2.3)', () => {
     const { duel } = mount(); act(() => duel.frame(view({ overlay: { zoomText: 'ZOOM 0.50', scaleBar: { px: 80, units: 500 }, snapHint: true } })));
-    expect(find('ZOOM 0.50')).toMatchObject({ x: 16, y: INTERNAL_H - 64 });
+    expect(find('ZOOM 0.50')).toBeUndefined();
     expect(find('500 u')).toMatchObject({ x: 16 + 80 + 8, y: INTERNAL_H - 36 });
     expect(find('C: SNAP BACK')).toMatchObject({ x: INTERNAL_W / 2, y: INTERNAL_H - 12, anchor: '0.5' });
     expect(document.querySelectorAll('[data-ui-scalebar]').length).toBe(3);

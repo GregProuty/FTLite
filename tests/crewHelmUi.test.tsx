@@ -26,7 +26,7 @@ const attr = (name: string) => (document.querySelector(`[${name}]`) as HTMLEleme
 const crew = { thrMille: 300, cap: 750, floor: -500, bars: 3, gas: 720, gasMax: 720, gasLow: false, venting: false };
 const helmView = (over: Partial<NonNullable<ConsoleView['helm']>> = {}): ConsoleView => ({
   station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
-  helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 0, crew, ...over }, weapons: null, science: null, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } });
+  helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 0, crew, ...over }, weapons: null, science: null });
 const view = (console: ConsoleView): DuelUiView => ({ end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store);
@@ -45,7 +45,6 @@ describe('the console model (spec §5, §6)', () => {
       d.gas = 4;
       expect(consoleModel({ duel: d, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null, vent: { x: 1, y: 0 } })?.helm?.crew).toMatchObject({ gas: 4, gasLow: true, venting: true });
       d.gas = 720;
-      expect(m?.power?.system).toBe(DuelSystem.Engines);   // Engineering spike §9.3: the Helm's own power strip is the Engines'
       d.tactical.systems[0].bars[DuelSystem.Engines] = 1;
       expect(consoleModel({ duel: d, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: null })?.helm?.crew).toMatchObject({ thrMille: 0, cap: 250, floor: -500, bars: 1 });
       d.tactical.systems[0].bars[DuelSystem.Engines] = 0;

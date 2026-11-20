@@ -8,7 +8,8 @@ import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
 import type { ConsoleView } from '../src/renderer/src/render/duel/consoleModel';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
-import { STATION, stationTop, weaponCard } from '../src/renderer/src/render/duel/consoleLayout';
+import { CONSOLE_RESERVE, STATION, stationTop, weaponCard } from '../src/renderer/src/render/duel/consoleLayout';
+import { INTERNAL_W } from '../src/shared/resolution';
 import { FONT_NATIVE, TEXT, textPx } from '../src/renderer/src/render/theme';
 import { makeUi } from './helpers/uiStore';
 
@@ -19,11 +20,10 @@ const btn = (name: string) => document.querySelector(`[data-testid="console-${na
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
 const weaponsConsole: ConsoleView = {
   station: 'weapons', tabs: { helm: 'open', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: 'switch', weapons: null, science: null, ship: 'stand' },
-  helm: null, science: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: -1, torpTarget: -1, burst: 2 },
-  side: { zoom: '0.90', free: false, snapLabel: 'CAMERA' }
+  helm: null, science: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: -1, torpTarget: -1, burst: 2 }
 };
 const helmConsole: ConsoleView = { ...weaponsConsole, station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
-  weapons: null, helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 2 }, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } };
+  weapons: null, helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 2 } };
 const view = (console: ConsoleView | null): DuelUiView => ({
   end: null,
   banners: { interior: null, tactical: null, notice: null }, overlay: { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: false }, crt: true, console });
@@ -40,16 +40,17 @@ describe('the console screen (spec §2)', () => {
     const { duel } = mount(); act(() => duel.frame(view(null)));
     expect(btn('tab-helm')).toBeNull();
   });
-  it('on Weapons: tabs, the station and the side column', () => {
+  it('on Weapons: tabs and the station; no zoom box (UI round §2.3)', () => {
     const { duel } = mount(); act(() => duel.frame(view(weaponsConsole)));
-    for (const n of ['tab-helm', 'tab-weapons', 'tab-ship', 'fire', 'card-laser', 'card-torpedo', 'launch', 'zoom-in', 'zoom-out', 'snap'])
+    for (const n of ['tab-helm', 'tab-weapons', 'tab-ship', 'fire', 'card-laser', 'card-torpedo', 'launch'])
       expect([n, btn(n)]).not.toEqual([n, null]);
+    for (const n of ['zoom-in', 'zoom-out', 'snap']) expect([n, btn(n)]).toEqual([n, null]);
     for (const n of ['lock-0', 'lock-1', 'lock-2']) expect([n, btn(n)]).toEqual([n, null]);   // FTL targeting spec §1: the cards replace the lock row
     expect(btn('tab-weapons').dataset.uiButton).toBe('lit');
     for (const t of ['BEAM', 'x2', 'TGT --', 'MAG 4/4', '1', '2', '3/4/5']) expect(find(t), t).toBeDefined();
     for (const n of ['steer-left', 'steer-right']) expect([n, btn(n)]).toEqual([n, null]);   // homing torpedo spec §3: no STEER
     expect(find('TORPEDO')).toBeDefined(); expect(find('STEER')).toBeUndefined(); expect(find('MISSILE')).toBeUndefined();
-    expect(find('ZOOM 0.90')).toBeUndefined(); expect(find('0.90')).toBeDefined(); expect(find('CAMERA')).toBeDefined();
+    expect(find('ZOOM 0.90')).toBeUndefined(); expect(find('0.90')).toBeUndefined(); expect(find('CAMERA')).toBeUndefined();
   });
   it('on the Helm: six throttle notches, the set one lit with the pointer and 25 up to it filled; the turn holds; no THRUST or REV hold', () => {
     const { duel } = mount(); act(() => duel.frame(view(helmConsole)));
@@ -59,7 +60,7 @@ describe('the console screen (spec §2)', () => {
     expect(['100', '75', '50', '25', 'STOP', 'REV'].map((l) => document.querySelector(`[data-ui-throttle="${l}"]`)?.getAttribute('data-ui-lit'))).toEqual(['0', '0', '1', '1', '0', '0']);
     expect(texts().filter((t) => t.text === '<' && t.x === STATION.x + 8 + 78).map((t) => t.y)).toEqual([stationTop('helm') + 6 + 18 + 2 * 26 + 2]);
     expect(find('W/S  THROTTLE')).toBeDefined();
-    expect(btn('tab-weapons').dataset.uiButton).toBe('disabled'); expect(btn('snap').dataset.uiButton).toBe('lit');
+    expect(btn('tab-weapons').dataset.uiButton).toBe('disabled');
   });
   it('at REV the pointer is on REV and nothing is filled; at 100 every forward notch is', () => {
     const { duel } = mount();
@@ -69,6 +70,15 @@ describe('the console screen (spec §2)', () => {
     expect(filled()).toEqual(['0', '0', '0', '0', '0', '0']); expect(btn('throttle-rev').dataset.uiButton).toBe('lit');
     act(() => duel.frame(at(4)));
     expect(filled()).toEqual(['1', '1', '1', '1', '0', '0']); expect(btn('throttle-100').dataset.uiButton).toBe('lit');
+  });
+  it('the console\'s C: SNAP BACK shows only while overlay.snapHint (UI round §2.3), left of the scale bar', () => {
+    const { duel } = mount();
+    act(() => duel.frame(view(weaponsConsole)));
+    expect(find('C: SNAP BACK')).toBeUndefined();
+    act(() => duel.frame({ ...view(weaponsConsole), overlay: { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: true } }));
+    const hint = find('C: SNAP BACK')!, units = find('100 u')!;
+    expect(hint).toBeDefined(); expect(hint.x).toBeLessThan(units.x);
+    expect(find('ZOOM 0.90')).toBeUndefined();
   });
 });
 
@@ -91,7 +101,7 @@ describe('the Weapons block layout', () => {
   it('the online notice centres on the console map span, not the old play centre', () => {
     const { duel } = mount();
     act(() => duel.frame({ ...view(weaponsConsole), banners: { interior: null, tactical: null, notice: 'YOU: WEAPONS' } }));
-    expect(find('YOU: WEAPONS')!.x).toBe(676);
+    expect(find('YOU: WEAPONS')!.x).toBe((CONSOLE_RESERVE.left + INTERNAL_W - CONSOLE_RESERVE.right) / 2);   // 766 (UI round §2.4a)
   });
   it('FLYING ends before the LAUNCH button starts', () => {
     const { duel } = mount();
@@ -125,15 +135,13 @@ describe('clicks reach the keyboard (spec §6.2)', () => {
     fireEvent.pointerDown(btn('turn-left'), { button: 0 }); fireEvent.pointerUp(btn('turn-left'));
     expect(input.hold.mock.calls).toEqual([['KeyA', true], ['KeyA', false]]);
   });
-  it('FIRE presses Space once (FTL targeting spec §2); LAUNCH presses F; tabs press their action; zoom presses keys', () => {
+  it('FIRE presses Space once (FTL targeting spec §2); LAUNCH presses F; tabs press their action', () => {
     const { duel, input } = mount(); act(() => duel.frame(view(weaponsConsole)));
     fireEvent.pointerDown(btn('fire'), { button: 0 }); fireEvent.pointerUp(btn('fire'));
     expect(input.press).toHaveBeenCalledWith('fireDown'); expect(input.hold).not.toHaveBeenCalled();
     fireEvent.pointerDown(btn('launch'), { button: 0 }); expect(input.press).toHaveBeenCalledWith('launch');
     fireEvent.pointerDown(btn('tab-helm'), { button: 0 }); expect(input.press).toHaveBeenCalledWith('switch');
     fireEvent.pointerDown(btn('tab-ship'), { button: 0 }); expect(input.press).toHaveBeenCalledWith('stand');
-    fireEvent.pointerDown(btn('zoom-in'), { button: 0 }); expect(input.press).toHaveBeenCalledWith('zoomIn');
-    fireEvent.pointerDown(btn('snap'), { button: 0 }); expect(input.press).toHaveBeenCalledWith('camera');
   });
   it('a locked tab does nothing; a LAUNCH that cannot launch still presses, so it can say why (Feel-ii §2.8)', () => {
     const { duel, input } = mount();

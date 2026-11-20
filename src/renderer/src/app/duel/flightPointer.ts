@@ -1,6 +1,6 @@
 // Valkyrn spec §5.1, §6.2: what the pointer does on the Flight map this frame. Pure: the scene feeds it the pointer, the
 // own ship's drawn marker and the right button's press; the tests drive it directly.
-import { CONTACT, FLIGHT, OWN_SHIP, SIDE, SIDE_H, STATION, stationTop, TABS, TABS_RIGHT } from '../../render/duel/consoleLayout';
+import { CONTACT, FLIGHT, HUD_POWER, HUD_TOP, OWN_SHIP, STATION, stationTop, TABS, TABS_RIGHT } from '../../render/duel/consoleLayout';
 import { headingOf, pickRadius } from '../../render/tactical/tacticalModel';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 
@@ -9,11 +9,10 @@ interface Rect { x: number; y: number; w: number; h: number }
 const inside = (p: Point, r: Rect): boolean => p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h;
 /** The console blocks drawn over the maps, by name. */
 const TAB_STRIP: Rect = { x: TABS.x, y: TABS.y, w: TABS_RIGHT - TABS.x, h: TABS.h };
-const SIDE_COLUMN: Rect = { x: SIDE.x, y: SIDE.y, w: SIDE.w, h: SIDE_H };
 const HELM_BLOCK: Rect = { x: STATION.x, y: stationTop('helm'), w: STATION.w, h: STATION.h.helm };
-/** The console blocks drawn over the Flight map: the tab strip, the side column, the Helm block, the FLIGHT block and the
- *  own ship window (own ship window spec §3). */
-const BLOCKS: readonly Rect[] = [TAB_STRIP, SIDE_COLUMN, HELM_BLOCK, FLIGHT, OWN_SHIP];
+/** The console blocks drawn over the Flight map: the tab strip, the HUD's two blocks (UI round §2.4a), the Helm block, the
+ *  FLIGHT block and the own ship window (own ship window spec §3). */
+const BLOCKS: readonly Rect[] = [TAB_STRIP, HUD_TOP, HUD_POWER, HELM_BLOCK, FLIGHT, OWN_SHIP];
 
 /** Spec §6.2: whether a screen point (internal pixels) is on the Flight map's open part: on the screen and clear of the
  *  console blocks, and of the contact window while it is shown. Over a side tool the aim keeps its last bearing. */
@@ -23,11 +22,12 @@ export function onFlightMap(p: Point, contactShown: boolean): boolean {
   return !BLOCKS.some((r) => inside(p, r));
 }
 
-/** The console blocks drawn over the Weapons map: the tab strip, the side column, the Weapons block (its PEW row and cards) and the own ship window.
- *  UI round §2.2: the status table is gone. */
+/** The console blocks drawn over the Weapons map: the tab strip, the HUD's two blocks (UI round §2.4a), the Weapons block
+ *  (its PEW row and cards) and the own ship window. */
 const WEAPONS_BLOCKS: readonly Rect[] = [
-  { x: TABS.x, y: TABS.y, w: TABS_RIGHT - TABS.x, h: TABS.h },
-  { x: SIDE.x, y: SIDE.y, w: SIDE.w, h: SIDE_H },
+  TAB_STRIP,
+  HUD_TOP,
+  HUD_POWER,
   { x: STATION.x, y: stationTop('weapons'), w: STATION.w, h: STATION.h.weapons },
   OWN_SHIP   // W-1 merge: the own ship window (own ship window spec §3) is not the map
 ];
@@ -62,9 +62,9 @@ export function flightPointer(i: FlightPointerInput): { steer: number | null; la
   return { steer, launch: i.press && !i.aimed };
 }
 
-/** Playtest2feedback §4a: the console blocks over the crew Helm's map: the tab strip, the side column, the Helm block and
- *  the own ship window (own ship window spec §3). */
-const HELM_BLOCKS: readonly Rect[] = [TAB_STRIP, SIDE_COLUMN, HELM_BLOCK, OWN_SHIP];
+/** Playtest2feedback §4a: the console blocks over the crew Helm's map: the tab strip, the HUD's two blocks (UI round
+ *  §2.4a), the Helm block and the own ship window (own ship window spec §3). */
+const HELM_BLOCKS: readonly Rect[] = [TAB_STRIP, HUD_TOP, HUD_POWER, HELM_BLOCK, OWN_SHIP];
 /** Whether a screen point is on the crew Helm map's open part: on the screen, clear of its blocks, and of the contact window
  *  while it is shown. */
 export function onHelmMap(p: Point, contactShown: boolean): boolean {

@@ -20,7 +20,7 @@ export interface DuelUiView { end: EndView | null; banners: Banners; overlay: Ma
   /** FTL targeting spec §1: the map pointer's last position in internal px (the app's pointer source), set only while a
    *  weapon is picked up, so the targeting line can draw before the mouse next moves; absent or null when unknown. */
   pointer?: { x: number; y: number } | null;
-  /** The ship HUD (duel polish i spec §E): set on the SHIP view only (standing, console.station 'ship'); absent or null draws none. */
+  /** The ship HUD (duel polish i spec §E): set on every view (UI round §2.4); absent or null draws none. */
   hud?: ShipHudView | null;
   /** Feel-i (console feel spec §1): the sit-down card over the map, its seat's goal and three keys; absent or null draws none. */
   sitCard?: import('../render/duel/sitModel').SitCardView | null }

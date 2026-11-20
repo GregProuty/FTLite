@@ -13,3 +13,15 @@ Spec: docs/superpowers/specs/2026-11-20-ui-round-design.md §2.2-§2.4a. Plan: d
 - Band numbers recomputed (duelInterior, worldFit, interiorCamera); interiorZoomScene's clamp case moves to +2 because +1 no longer overflows the wider band.
 - 17 fixture-only readout fields removed; full list in .superpowers/sdd/task-2-report.md.
 - Suite: typecheck clean, build OK, 540 files, 6389 passed, 3 skipped; snapshot.test.ts timed out under load and passes alone (49/49).
+
+## Task 3: no zoom box, the HUD on every view, the terminal layout
+- Deleted SideColumn.tsx and PowerStrip.tsx. `ConsolePowerStrip` and `powerStrip` are gone, and `ConsoleView` has no `side` and no `power`. `SciencePanel.range` is the sensor range, drawn as `SENSOR RANGE n` on the Science block's top row.
+- consoleLayout (§2.4a): `HUD_TOP` (6, 40, 330, 110), `HUD_POWER` (6, 527, 328, 185), `STATION.x` 346, `FLIGHT.x` 658, `OWN_SHIP` (12, 160, 240, 170), `CONTACT` (968, 42, 300, 420), `CONSOLE_RESERVE` {264, 12}, `INFO_BAND` {408, 968}. No STATUS, SIDE, SIDE_H, POWER_STRIP or stripTop. Importing shipHudModel caused no import cycle.
+- The scene sends `hud: shipHud(d)` on every view. DuelUi mounts ShipHud right after MapOverlay. The console map shows `C: SNAP BACK` left of the scale bar; there is no zoom text anywhere. The sit card always sits at the top (y 100, or 156 under the notice), centred on INFO_BAND. The pointer hit tests use HUD_TOP and HUD_POWER.
+- Stale "readout" comments fixed in interiorView, shipHudModel, tacticalModel, scene and uiProbe.
+- Deleted cases: duelConsoleModel's side column case; engineeringConsoleModel's powerStrip case; engineeringConsoleUi's strip assertions and its Science/Weapons strip case; uiConsole's zoom box buttons, finds and presses; crewHelmUi's and engineeringWeapons' power lines; crtBezel's zoom-text rect.
+- Rewritten cases: the layout pins (duelConsoleModel, flightPointer, pewInput, ownShipLayout, pauseLine, duelWeaponsView, valkyrnViews, crewSeats); the sit card at the top (feelIiUi); the HUD present at the Helm (shipHudScene); science range (scienceSeat, scienceConsole, scienceUi); uiDuel without zoom text; the uiConsole notice x is 766; the contactScene south probe moved to 70 px (100 px now lands on the Weapons block); tacticalModel's and feelPresentation's avoid cases use a fixture window at the old rect.
+- New cases: terminalLayout.test.ts (2), the console snap hint (uiConsole), the HUD power columns on a weapons view (engineeringConsoleUi), the HUD on a weapons view (uiShipHud), and the console snap hint inside the bezel (crtBezel).
+- `side:` fixtures were removed from 16 UI test files. The full list is in .superpowers/sdd/task-3-report.md.
+- Suite: typecheck clean, build OK. 541 files: 6385 passed, 5 failed, 3 skipped. Four of the failures were this task's and are fixed; those files pass alone (57/57). snapshot.test.ts timed out under load and passes alone (49/49).
+- Concerns: the widest sit card (600 px, x 388..988) overlaps the contact window by 20 px. Map clicks less than about 80 px below the centred ship land on the Weapons block. The online notice is still centred at 766 (CONSOLE_RESERVE).

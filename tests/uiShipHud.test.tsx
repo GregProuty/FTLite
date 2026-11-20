@@ -17,7 +17,7 @@ import { makeUi } from './helpers/uiStore';
 afterEach(() => { cleanup(); });
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((c) => ({ text: c.dataset.text!, x: Number(c.dataset.x), y: Number(c.dataset.y) }));
 const all = (attr: string, v?: string) => Array.from(document.querySelectorAll<HTMLElement>(v === undefined ? `[${attr}]` : `[${attr}="${v}"]`));
-const shipConsole: ConsoleView = { station: 'ship', tabs: { helm: 'open', weapons: 'locked', science: 'locked', ship: 'current' }, tabActions: { helm: 'interact', weapons: null, science: null, ship: null }, helm: null, weapons: null, science: null, side: null };
+const shipConsole: ConsoleView = { station: 'ship', tabs: { helm: 'open', weapons: 'locked', science: 'locked', ship: 'current' }, tabActions: { helm: 'interact', weapons: null, science: null, ship: null }, helm: null, weapons: null, science: null };
 const col = (system: number, name: string, bars: number, capacity: number, slots: number, max: number, extra: Partial<PowerColumn> = {}): PowerColumn =>
   ({ system, name, bars, capacity, slots, max, heat: 0, heatMax: 240, coolant: 0, cools: system < 4, failed: false, overdriven: false, ...extra });
 const hud: ShipHudView = {
@@ -72,6 +72,14 @@ describe('the engineering panel (spec §6)', () => {
     expect(ship.mock.calls.map((c) => c[0])).toEqual([{ kind: 'shipPower', system: 1, delta: 1 }, { kind: 'shipPower', system: 3, delta: -1 }, { kind: 'shipCoolant', system: 2 }]);
     expect(screen.queryByTestId('hud-coolant-4')).toBeNull();
     expect([0, 1, 2, 3, 4].every((s) => screen.getByTestId(`hud-power-${s}`).style.pointerEvents === 'auto')).toBe(true);
+  });
+  it('a weapons-station view with a HUD renders it (UI round §2.4: the HUD on every view)', () => {
+    const { duel } = mount();
+    const weapons: ConsoleView = { ...shipConsole, station: 'weapons', tabs: { helm: 'locked', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' } };
+    act(() => duel.frame({ ...view(), console: weapons }));
+    expect(all('data-ui-hud-crt')).toHaveLength(1);
+    expect(all('data-ui-hud-seg')).toHaveLength(20);
+    expect(all('data-ui-hud-slot').length).toBeGreaterThan(0);
   });
   it('drawn whenever the frame carries a HUD, never without one; an equal HUD keeps the stored view', () => {
     const { duel, store } = mount();

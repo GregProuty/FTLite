@@ -27,7 +27,7 @@ const charge = { label: 'CHARGE', value: 'READY', labelTint: TEXT, valueTint: TE
 const live: ContactSync = { shown: true, station: 'weapons', target: 1, active: () => true, epoch: 0, enemyKnown: 2 };
 const weaponsConsole: ConsoleView = {
   station: 'weapons', tabs: { helm: 'open', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: 'switch', weapons: null, science: null, ship: 'stand' },
-  helm: null, science: null, side: null,
+  helm: null, science: null,
   weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: -1, torpTarget: -1, burst: 2 }
 };
 const btn = (name: string) => document.querySelector(`[data-testid="console-${name}"]`) as HTMLElement;

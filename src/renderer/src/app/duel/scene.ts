@@ -1,6 +1,6 @@
 // The duel's scene (H-1 spec §3, §4; H-2 spec §3): the console map view (Helm or Weapons) or the interior for the active
-// character, and the effects and shake, on the renderer's Pixi stage with its sector children hidden. The readout, the
-// banners, the end card and the map overlay are drawn by React through the UI sink (React UI spec §6). It draws from a
+// character, and the effects and shake, on the renderer's Pixi stage with its sector children hidden. The ship HUD, the
+// console blocks, the banners, the end card and the map overlay are drawn by React through the UI sink (React UI spec §6). It draws from a
 // DuelViewSource: the local runtime (Single player) or the online duel source (Multiplayer), so both modes show exactly
 // the same screens.
 import { Container } from 'pixi.js';
@@ -11,7 +11,7 @@ import type { CrewOverride } from '../../render/duel/crewOverride';
 import type { Renderer } from '../../render/renderer';
 import { crtActive, crtScale } from '../../render/crt';
 import type { EndView } from '../../render/duel/endModel';
-import { CONSOLE_RESERVE, CONTACT, CONTACT_RESERVE, EDGE, OWN_SHIP, OWN_SHIP_BOX, SIDE, STATUS_RESERVE, TABS_RIGHT } from '../../render/duel/consoleLayout';
+import { CONSOLE_RESERVE, CONTACT, CONTACT_RESERVE, EDGE, INFO_BAND, OWN_SHIP, OWN_SHIP_BOX, STATUS_RESERVE } from '../../render/duel/consoleLayout';
 import { consoleModel, consoleStation, type ConsoleStation } from '../../render/duel/consoleModel';
 import { contactModel } from '../../render/duel/contactModel';
 import { fireWatch, ownShipModel, type FireWatch } from '../../render/duel/ownShipModel';
@@ -258,7 +258,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const shownThrottle = (): number => (classOf(d.tactical, CREW_SLOT).newtonianHelm ? source.thrMille?.() ?? d.thrMille : source.throttle());
       const fogView = stepFog(fog, d.tactical, performance.now() / 1000, source.epoch());   // Engineering spike §10.4
       const camKey = view === 'interior' ? null : viewCamera(view), cam = camKey ? source.cameras[camKey] : null;   // Valkyrn spec §5: Flight flies the Helm's camera
-      // Everything the console changes follows whether it is drawn (Artemis spec §6.1): a decided round falls back to the right-hand readout. UI round §1.5: a pause does not.
+      // Everything the console changes follows whether it is drawn (Artemis spec §6.1): a decided round hides it (the end card shows). UI round §1.5: a pause does not.
       const hidden = consoleHidden(c, overlay, source.running()), onConsole = !hidden && view !== 'interior';   // Net-4a §3.6: the confirmed outcome
       // Enemy ship window spec §6.5 steps 1 to 3: the station from the seat, this frame's map click, then the closing rules.
       const station = hidden ? null : consoleStation(d, source.active());
@@ -429,7 +429,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         // Step 4: the map keeps its arrows and info line clear of the window while it is shown.
         const input = {
           rockTrack, state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, console: camKey!, axes: source.axes(),
-          ships: fx.kill || !fogView.seen.enemy ? [0] : [0, 1], fog: fogView, paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: { left: TABS_RIGHT, right: SIDE.x } } : { reserveRight: EDGE }), ...(onMap ? { avoid: OWN_SHIP } : {}), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
+          ships: fx.kill || !fogView.seen.enemy ? [0] : [0, 1], fog: fogView, paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: INFO_BAND } : { reserveRight: EDGE }), ...(onMap ? { avoid: OWN_SHIP } : {}), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
           holdHeading: view === 'flight' ? -1 : preview ?? d.holdHeading, holdPreview: preview !== null, crewHull: hullFor(true, d.interior.layout.hull), gravity: camKey === 'helm', flight: view === 'flight', alert, pings,   // Feel-ii; Valkyrn spec §4.5: the crew hull
           laserAim: station === 'weapons' && view === 'weapons' ? options.requests?.reticleAim() ?? null : null,   // W-2: the MANUAL laser's aim (the reticle) (the model aims along the nose without one)
           turrets: source.turret ? { pew: source.turret(0), gun: source.turret(1) } : null,   // W-4 spec §10, §11: online the own selected turret is predicted
@@ -459,7 +459,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         console: consoleView,
         crt: crtActive(view),
         ...sceneUi(view, overlay, options.pauseText, overlayView),
-        hud: view === 'interior' ? shipHud(d) : null,   // duel polish i spec §E: the SHIP view, paused and on the end card too (review)
+        hud: shipHud(d),   // UI round §2.4: the HUD on every view
         ...(contact ? { contact: contactView } : {}),
         ownShip: onMap ? ownShipModel(d, OWN_SHIP_BOX, t, flashUntil) : null,   // own ship window spec §4: the console map views only
         ...(contactView?.aimWeapon ? { pointer: options.pointer?.() ?? null } : {}),   // FTL targeting spec §1: seeds the targeting line

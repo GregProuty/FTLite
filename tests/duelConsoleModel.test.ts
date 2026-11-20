@@ -9,7 +9,7 @@ import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim
 import { createSeatedDuel } from './helpers/duelSeat';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { canLaunch } from '../src/renderer/src/sim/tactical/weapons';
-import { CONSOLE_RESERVE, CONTACT, CONTACT_BOX, CONTACT_RESERVE, EDGE, SIDE, SIDE_H, STATION, STATUS, TABS, TABS_RIGHT, stationTop } from '../src/renderer/src/render/duel/consoleLayout';
+import { CONSOLE_RESERVE, CONTACT, CONTACT_BOX, CONTACT_RESERVE, EDGE, HUD_POWER, HUD_TOP, STATION, TABS, TABS_RIGHT, stationTop } from '../src/renderer/src/render/duel/consoleLayout';
 import { INTERNAL_H, INTERNAL_W } from '../src/shared/resolution';
 import { consoleModel, consoleStation, consoleTabs, type ConsoleModelInput } from '../src/renderer/src/render/duel/consoleModel';
 import { consoleInReach, repairInReach } from '../src/renderer/src/app/duel/controls';
@@ -28,17 +28,16 @@ const model = (d: DuelState, over: Partial<ConsoleModelInput> = {}) => consoleMo
 
 describe('console layout (spec §2)', () => {
   it('has the spec numbers', () => {
-    expect(TABS_RIGHT).toBe(408); expect(CONSOLE_RESERVE).toEqual({ left: 228, right: 156 });
-    expect(SIDE.x).toBe(1136); expect(STATUS).toMatchObject({ x: 12, y: 42, w: 204 }); expect(STATION).toMatchObject({ x: 12, w: 300 });
+    expect(TABS_RIGHT).toBe(408); expect(CONSOLE_RESERVE).toEqual({ left: 264, right: 12 });   // UI round §2.4a: right of the own ship window; no side column
+    expect(STATION).toMatchObject({ x: 346, w: 300 });   // UI round §2.4a: right of the HUD's power panel
     expect(stationTop('helm')).toBe(508); expect(stationTop('weapons')).toBe(440);   // W-1: the PEW row; merge with the Engineering spike (kind a): the bar pips, +24 (was 464)
   });
-  it('the contact window (enemy ship window spec §4.1): right edge, below the side column, overlapping nothing', () => {
-    expect(SIDE_H).toBe(96);
-    expect(CONTACT).toEqual({ x: 968, y: 150, w: 300, h: 420 });
+  it('the contact window (enemy ship window spec §4.1; UI round §2.4a): the top-right corner, overlapping nothing', () => {
+    expect(CONTACT).toEqual({ x: 968, y: 42, w: 300, h: 420 });
     expect(CONTACT.x + CONTACT.w).toBe(INTERNAL_W - EDGE);
-    expect(CONTACT.y).toBe(SIDE.y + SIDE_H + EDGE);
+    expect(CONTACT.y).toBe(TABS.y + TABS.h + 8);   // where the side column was, level with the old status table
     expect(CONTACT_RESERVE).toBe(324);
-    expect(CONTACT_BOX).toEqual({ x: 980, y: 210, w: 276, h: 200 });
+    expect(CONTACT_BOX).toEqual({ x: 980, y: 102, w: 276, h: 200 });
     expect(CONTACT_BOX.x >= CONTACT.x && CONTACT_BOX.x + CONTACT_BOX.w <= CONTACT.x + CONTACT.w).toBe(true);
     expect(CONTACT_BOX.y >= CONTACT.y && CONTACT_BOX.y + CONTACT_BOX.h <= CONTACT.y + CONTACT.h).toBe(true);
     type R = { x: number; y: number; w: number; h: number };
@@ -46,10 +45,10 @@ describe('console layout (spec §2)', () => {
     const overlap = (a: R, b: R): boolean => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
     const others: [string, R][] = [
       ['tabs', rect(TABS.x, TABS.y, TABS_RIGHT - TABS.x, TABS.h)],
-      ['status', rect(STATUS.x, STATUS.y, STATUS.w, INTERNAL_H - STATUS.y)],
+      ['hud top', HUD_TOP],
+      ['hud power', HUD_POWER],
       ['helm block', rect(STATION.x, stationTop('helm'), STATION.w, STATION.h.helm)],
       ['weapons block', rect(STATION.x, stationTop('weapons'), STATION.w, STATION.h.weapons)],
-      ['side column', rect(SIDE.x, SIDE.y, SIDE.w, SIDE_H)],
       ['scale bar row', rect(0, INTERNAL_H - 40, INTERNAL_W, 40)],
       ['info line row', rect(0, 0, INTERNAL_W, 30)],
       ['screen centre ± 80', rect(INTERNAL_W / 2 - 80, INTERNAL_H / 2 - 80, 160, 160)]
@@ -106,12 +105,6 @@ describe('station panels', () => {
     const d = createSeatedDuel(layout, 5), s = d.tactical.ships[0]!;
     s.heading = 64; s.vx = 3; s.vy = 4;
     expect(model(d)!.helm).toMatchObject({ heading: 90, speed: 5 });
-    disposeDuel(d);
-  });
-  it('the side column from the map overlay', () => {
-    const d = createSeatedDuel(layout, 5), overlay = { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: true };
-    expect(model(d, { me: 1, overlay })!.side).toEqual({ zoom: '0.90', free: true, snapLabel: 'CAMERA' });
-    expect(model(d, { overlay })!.side!.snapLabel).toBe('SNAP');
     disposeDuel(d);
   });
   it('consoleStation: the seat, or SHIP while standing (enemy ship window spec §6.5 step 1)', () => {

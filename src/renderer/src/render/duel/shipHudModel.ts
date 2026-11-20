@@ -1,12 +1,11 @@
 // The ship HUD's view model and layout (duel polish i spec §E; Engineering spike §6). Pure: the crew ship's hull, its
 // shields with the bars' layer cap, and the power view (one column per duel system and the reactor's spare bars, with
-// heat and coolant) as JSON-plain data, built each frame by the scene on the ship view, so the sink's equality sharing
-// keeps React still while nothing changes. FTL's layout idea (a segmented hull bar top left, power bars bottom left),
+// heat and coolant) as JSON-plain data, built each frame by the scene on every view (UI round §2.4), so the sink's
+// equality sharing keeps React still while nothing changes. FTL's layout idea (a segmented hull bar top left, power bars bottom left),
 // original art, in the console's amber CRT ramp.
 import type { DuelState } from '../../sim/duel/state';
-import { capacityOf, coolantFree, COOLANT_POOL_DUEL, DUEL_SYSTEM_COUNT, DuelSystem, isOverdriven, OVERDRIVE_SYSTEMS, REACTOR_BARS, sparesOf, SYSTEM_MAX, SYSTEM_SLOTS } from '../../sim/duel/power';
+import { capacityOf, coolantFree, COOLANT_POOL_DUEL, DUEL_SYSTEM_COUNT, isOverdriven, OVERDRIVE_SYSTEMS, REACTOR_BARS, sparesOf, SYSTEM_MAX, SYSTEM_SLOTS } from '../../sim/duel/power';
 import { effectiveBars, SHIELD_LAYERS_BY_BARS } from '../../sim/tactical/bars';
-import { sensorRange } from '../../sim/tactical/science';
 import { classOf, CREW_SLOT } from '../../sim/tactical/state';
 import { SHIP_HULL } from '../../sim/tactical/tuning';
 import { HEAT_MAX } from '../../sim/tuning';
@@ -16,9 +15,8 @@ import { HEAT_MAX } from '../../sim/tuning';
 export const HULL_SEGMENTS = 20;
 export const HULL_PER_SEGMENT = SHIP_HULL / HULL_SEGMENTS;
 
-/** The layout in internal px (§E, Engineering spike §6): inside the interior band, left of the readout column, below the
- *  tab strip. The power panel's columns rest on `power.bottom`: the name, then the coolant pips, the heat bar, and the
- *  slots stacked bottom up; the reactor column stands `reactorGap` to the right of the five systems. */
+/** The layout in internal px (§E, Engineering spike §6): under the tab strip. The power panel's columns rest on
+ *  `power.bottom`: the name, then the coolant pips, the heat bar, and the slots stacked bottom up; the reactor column stands `reactorGap` to the right of the five systems. */
 export const HUD = {
   x: 12,
   hull: { labelY: 46, barY: 72, segW: 14, segH: 18, gap: 2 },
@@ -90,12 +88,3 @@ export function powerPanel(): { x: number; y: number; w: number; h: number } {
 }
 /** The left edge of hull segment `k`. */
 export function hullSegX(k: number): number { const h = HUD.hull; return HUD.x + k * (h.segW + h.gap); }
-
-/** Engineering spike §9.3: one console's own system power, read-only; the Sensors strip adds the sensor range (§10.4). */
-export interface ConsolePowerStrip { system: number; name: string; bars: number; capacity: number; slots: number; max: number; lost: number; heat: number; heatMax: number; failed: boolean; overdriven: boolean; spare: number; range?: number }
-/** The strip for `system`: its column's numbers, the slots lost (slots - capacity) and the reactor's spare bars. */
-export function powerStrip(d: DuelState, system: number): ConsolePowerStrip {
-  const v = powerView(d), c = v.systems[system]!;
-  const strip: ConsolePowerStrip = { system, name: c.name, bars: c.bars, capacity: c.capacity, slots: c.slots, max: c.max, lost: c.slots - c.capacity, heat: c.heat, heatMax: c.heatMax, failed: c.failed, overdriven: c.overdriven, spare: v.spare };
-  return system === DuelSystem.Sensors ? { ...strip, range: sensorRange(d.tactical.systems[CREW_SLOT]!) } : strip;
-}

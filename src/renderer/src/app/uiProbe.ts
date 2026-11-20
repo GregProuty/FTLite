@@ -8,17 +8,16 @@ import type { ConsoleView } from '../render/duel/consoleModel';
 import { NO_HELD_FLAGS } from './duel/input';
 import { PROBE_SAMPLES } from '../ui/probe/samples';
 
-/** A fixture duel view for `?mode=uiprobe&probe=duel`: readout rows, the end card and all three banners. */
+/** A fixture duel view for `?mode=uiprobe&probe=duel`: the end card and all three banners; or a Helm or Weapons console. */
 function consoleFixture(which: 'helm' | 'weapons'): DuelUiView {
   const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: AMBER } };
   const base: ConsoleView = {
     station: 'weapons', tabs: { helm: 'open', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: 'switch', weapons: null, science: null, ship: 'stand' },
-    helm: null, science: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: 1, torpTarget: -1, burst: 2 },
-    side: { zoom: '0.90', free: false, snapLabel: 'CAMERA' }
+    helm: null, science: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: 1, torpTarget: -1, burst: 2 }
   };
   const cv: ConsoleView = which === 'weapons' ? base : { ...base, station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
     // playtest2feedback §6: the crew Helm
-    weapons: null, helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 0, crew: { thrMille: 500, cap: 750, floor: -500, bars: 3, gas: 720, gasMax: 720, gasLow: false, venting: false } }, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } };
+    weapons: null, helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 0, crew: { thrMille: 500, cap: 750, floor: -500, bars: 3, gas: 720, gasMax: 720, gasLow: false, venting: false } } };
   return {
     end: null, banners: { interior: null, tactical: null, notice: null },
     overlay: { zoomText: 'ZOOM 0.90', scaleBar: { px: 90, units: 100 }, snapHint: false }, crt: true, console: cv

@@ -14,7 +14,7 @@ import { FEEL_PANEL_H, FEEL_PANEL_MARGIN, FEEL_PANEL_W } from '../src/renderer/s
 import { SCALE_BAR_MAX_PX, tacticalModel } from '../src/renderer/src/render/tactical/tacticalModel';
 import { combatModel } from '../src/renderer/src/render/tactical/weaponsModel';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
-import { BX, BY, SNAP_Y, ZOOM_Y } from '../src/renderer/src/ui/duel/MapOverlay';
+import { BX, BY, SNAP_Y } from '../src/renderer/src/ui/duel/MapOverlay';
 
 const vp = { w: INTERNAL_W, h: INTERNAL_H };
 interface Rect { what: string; x: number; y: number; w: number; h: number }
@@ -55,10 +55,10 @@ describe('every edge-anchored placement lies inside the bezel (CRT map spec sect
     }
     expect(checked).toBeGreaterThan(200);
   });
-  it('the React overlays: the zoom text, the scale bar and its units, the snap hint, the feel panel', () => {
-    const longest = 'ZOOM 0.12';
+  it('the React overlays: the scale bar and its units, the snap hint (on the map and on a console), the feel panel', () => {
+    const consoleBx = INTERNAL_W - 16 - textPx('2000 u', 1) - 8 - SCALE_BAR_MAX_PX;   // UI round §2.3: MapOverlay's console placement
     expectInside([
-      ink('zoom text', longest, BX, ZOOM_Y, 0, 0, FONT_SIZE),
+      ink('console snap hint', 'C: SNAP BACK', consoleBx - 12, BY - 8, 1, 0),
       { what: 'scale bar', x: BX - 1, y: BY - 5, w: SCALE_BAR_MAX_PX + 2, h: 10 },
       ink('scale units', '2000 u', BX + SCALE_BAR_MAX_PX + 8, BY - 8, 0, 0),
       ink('snap hint', 'C: SNAP BACK', INTERNAL_W / 2, SNAP_Y, 0.5, 1, FONT_SIZE),

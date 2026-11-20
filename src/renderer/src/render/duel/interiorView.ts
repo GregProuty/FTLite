@@ -69,7 +69,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
     blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined,
     painted: (id) => battlemapFor(id, missing) !== null   // the art spike: painted fire, blasts and particles on a painted ship
   });
-  // Interior zoom: a zoomed ship is clipped to the band so it never runs under the readout column; the backdrop stays unclipped.
+  // Interior zoom: a zoomed ship is clipped to the band (the full stage width); the backdrop stays unclipped.
   const clip = new Graphics().rect(INTERIOR_BAND.x, INTERIOR_BAND.y, INTERIOR_BAND.w, INTERIOR_BAND.h).fill(0xffffff);
   container.addChild(fx.starfield, world, clip);   // the starfield under the world, filling INTERIOR_BAND; Art-v: or the painted backdrop over the whole stage
   const memory = createRenderMemory();
@@ -211,7 +211,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
       // Light and feel: the duel's hull alert, a hit flashes the whole interior, sparks at damaged repair rooms, repair work.
       const working = duelWorking(d);
       const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working, artPx: 2 * fit.scale, starPx: 2 * fit0.scale }, presentDt, dt);
-      world.position.set(fit.x + shake.x, fit.y + shake.y);   // only the interior world shakes; the readout column stays still
+      world.position.set(fit.x + shake.x, fit.y + shake.y);   // only the interior world shakes; the UI over it stays still
       // Crew3D spec section 4: the 3D crew pose from the same list, on the presentation clock: `presentDt` is 0 while the
       // duel is paused or decided, and then they hold their pose and frame. Net-4a §3.6: online, the other players' crew
       // are drawn from the confirmed publications (crewPresentation).

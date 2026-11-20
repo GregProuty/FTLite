@@ -50,12 +50,12 @@ describe('the Science console (spec §7.3)', () => {
     expect(consoleTabs({ seat: 'standing', reach: 'science', repairNear: false, otherSeat: 'helm', mode: 'single' }))
       .toEqual({ tabs: { helm: 'open', weapons: 'locked', science: 'open', ship: 'current' }, tabActions: { helm: 'switch', weapons: null, science: 'interact', ship: null } });
   });
-  it('the console model at Science: no Helm or Weapons block, the side column with SNAP', () => {
+  it('the console model at Science: no Helm or Weapons block, the Science panel with the sensor range (UI round §2.4: no side column)', () => {
     const d = createDuel(CUTTER, 5);
     try {
       sitDown(d.interior, 0, d.science);
       expect(consoleModel({ duel: d, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: { zoomText: 'ZOOM 0.50', scaleBar: { px: 50, units: 100 }, snapHint: false } }))
-        .toMatchObject({ station: 'science', helm: null, weapons: null, side: { zoom: '0.50', free: false, snapLabel: 'SNAP' } });
+        .toMatchObject({ station: 'science', helm: null, weapons: null, science: { hover: null, range: 900 } });
     } finally { disposeDuel(d); }
   });
   it('the Science block sits at the bottom left, 96 high', () => {

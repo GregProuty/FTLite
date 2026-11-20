@@ -9,7 +9,7 @@ import { emptyPresses, type KeyAction, type KeySample } from '../src/renderer/sr
 import { createMapRequests } from '../src/renderer/src/app/duel/mapRequests';
 import { onWeaponsMap } from '../src/renderer/src/app/duel/flightPointer';
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
-import { CONTACT, SIDE, STATION, stationTop, TABS } from '../src/renderer/src/render/duel/consoleLayout';
+import { CONTACT, HUD_POWER, HUD_TOP, STATION, stationTop, TABS } from '../src/renderer/src/render/duel/consoleLayout';
 import { refusal } from '../src/renderer/src/render/duel/situationModel';
 import { HEADING_COUNT } from '../src/renderer/src/sim/tactical/tuning';
 import { seatDuelCrew } from './helpers/duelSeat';
@@ -44,11 +44,12 @@ describe('the map requests (spec §1)', () => {
 });
 
 describe('the Weapons map pointer (spec §1)', () => {
-  it('is the open map only: clear of the tab strip, the side column, the Weapons block and the open contact window', () => {
+  it('is the open map only: clear of the tab strip, both HUD blocks (UI round §2.4a), the Weapons block and the open contact window', () => {
     expect(onWeaponsMap({ x: 640, y: 300 }, false)).toBe(true);
     expect(onWeaponsMap({ x: -1, y: 300 }, false)).toBe(false);
     expect(onWeaponsMap({ x: TABS.x + 5, y: TABS.y + 5 }, false)).toBe(false);
-    expect(onWeaponsMap({ x: SIDE.x + 5, y: SIDE.y + 5 }, false)).toBe(false);
+    expect(onWeaponsMap({ x: HUD_TOP.x + 5, y: HUD_TOP.y + 5 }, false)).toBe(false);
+    expect(onWeaponsMap({ x: HUD_POWER.x + 5, y: HUD_POWER.y + 5 }, false)).toBe(false);
     expect(onWeaponsMap({ x: STATION.x + 20, y: stationTop('weapons') + 10 }, false)).toBe(false);   // the top of the Weapons block (the PEW row after Task 9)
     expect(onWeaponsMap({ x: CONTACT.x + 20, y: CONTACT.y + 20 }, true)).toBe(false);
     expect(onWeaponsMap({ x: CONTACT.x + 20, y: CONTACT.y + 20 }, false)).toBe(true);

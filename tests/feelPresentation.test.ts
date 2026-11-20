@@ -231,7 +231,8 @@ describe('sitting down (spec §1)', () => {
   });
   it('own ship window spec §3 (owner 2026-11-18): the avoid cap uses the 28 px arrow margin, so (-200, -200) frames at 0.72', () => {
     const vp = { w: 1280, h: 720 };
-    expect(frameZoom(-200, -200, vp, 228, 156, OWN_SHIP)).toBeCloseTo((640 - 468 - 28) / 200, 9);
+    const win = { x: 228, y: 42, w: 240, h: 170 };   // UI round §2.4a: a fixture window at the old rect (the live OWN_SHIP moved under the HUD)
+    expect(frameZoom(-200, -200, vp, 228, 156, win)).toBeCloseTo((640 - 468 - 28) / 200, 9);
   });
   it('own ship window spec §3: an up-left enemy is framed clear of the window on at least one axis; without avoid, unchanged', () => {
     const vp = { w: 1280, h: 720 };

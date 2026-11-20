@@ -6,6 +6,7 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
+import { sensorRange } from '../src/renderer/src/sim/tactical/science';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
 import { createCamera } from '../src/renderer/src/render/tactical/camera';
 import { consoleModel } from '../src/renderer/src/render/duel/consoleModel';
@@ -71,8 +72,10 @@ describe('the console model (spec §7.3, §7.4)', () => {
       try {
         sitDown(sci.interior, 0, sci.science);
         const m = consoleModel({ duel: sci, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: OVERLAY, hover: 'BRG 090 RNG 100' })!;
-        expect([m.station, m.science, m.weapons, m.helm]).toEqual(['science', { hover: 'BRG 090 RNG 100' }, null, null]);
-        expect(consoleModel({ duel: sci, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: OVERLAY })!.science).toEqual({ hover: null });
+        const range = sensorRange(sci.tactical.systems[0]!);   // UI round §2.4: the range the power strip showed rides the Science panel
+        expect([m.station, m.science, m.weapons, m.helm]).toEqual(['science', { hover: 'BRG 090 RNG 100', range }, null, null]);
+        expect(consoleModel({ duel: sci, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: OVERLAY })!.science).toEqual({ hover: null, range });
+        expect(range).toBe(900);   // Engineering spike §10.4: the start sensor range (the gone strip's RANGE 900)
       } finally { disposeDuel(sci); }
     } finally { disposeDuel(d); }
   });

@@ -2,7 +2,7 @@
 // over the console blocks or the shown contact window, and the right button launches only when no weapon is picked up.
 import { describe, expect, it } from 'vitest';
 import { flightPointer, onFlightMap, torpedoSteer } from '../src/renderer/src/app/duel/flightPointer';
-import { CONTACT, FLIGHT, OWN_SHIP, SIDE, STATION, stationTop, TABS } from '../src/renderer/src/render/duel/consoleLayout';
+import { CONTACT, FLIGHT, HUD_POWER, HUD_TOP, OWN_SHIP, STATION, stationTop, TABS } from '../src/renderer/src/render/duel/consoleLayout';
 import { headingOf } from '../src/renderer/src/render/tactical/tacticalModel';
 
 const ship = { x: 640, y: 360 }, open = { x: 640, y: 200 };
@@ -16,8 +16,8 @@ describe('the Flight pointer (Valkyrn spec §6.2)', () => {
     expect(at(open).steer).toBe(headingOf(open.x - ship.x, open.y - ship.y));
     expect(at(open, true).steer).toBe(headingOf(open.x - ship.x, open.y - ship.y));
   });
-  it('a pointer inside FLIGHT, the Helm block, the tab strip or the side column sends no steer', () => {
-    for (const p of [mid(FLIGHT), { x: STATION.x + 20, y: stationTop('helm') + 20 }, { x: TABS.x + 10, y: TABS.y + 10 }, { x: SIDE.x + 10, y: SIDE.y + 10 }]) {
+  it('a pointer inside FLIGHT, the Helm block, the tab strip or the HUD\'s two blocks (UI round §2.4a) sends no steer', () => {
+    for (const p of [mid(FLIGHT), { x: STATION.x + 20, y: stationTop('helm') + 20 }, { x: TABS.x + 10, y: TABS.y + 10 }, mid(HUD_TOP), mid(HUD_POWER)]) {
       expect(onFlightMap(p, false), JSON.stringify(p)).toBe(false);
       expect(at(p).steer).toBeNull();
     }
