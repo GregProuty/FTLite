@@ -1,162 +1,119 @@
 {
   "platform": "win32/x64",
-  "digest": "534318150919ed155d73ac4b65b88c3c3d78597661eeef6485def4ae935c289c",
+  "digest": "e374ed58eeaf22a8ba4d10de12c32aa062d1660cf18ecb8ff4968fbf7d5e0720",
   "node": "v24.18.0",
   "samples": 1800,
   "runs": [
     {
-      "ship": "cutter",
-      "runId": "det-cutter-0",
+      "ship": "hound",
+      "runId": "det-hound-2-0",
       "seed": 20261114,
-      "ticks": 12286,
+      "ticks": 9196,
       "ended": true
     },
     {
-      "ship": "cutter",
-      "runId": "det-cutter-1",
+      "ship": "hound",
+      "runId": "det-hound-2-1",
       "seed": 20261115,
-      "ticks": 10661,
+      "ticks": 10283,
       "ended": true
     },
     {
-      "ship": "cutter",
-      "runId": "det-cutter-2",
+      "ship": "hound",
+      "runId": "det-hound-2-2",
       "seed": 20261116,
-      "ticks": 12454,
+      "ticks": 5689,
       "ended": true
     },
     {
-      "ship": "cutter",
-      "runId": "det-cutter-3",
+      "ship": "hound",
+      "runId": "det-hound-2-3",
       "seed": 20261117,
-      "ticks": 10572,
+      "ticks": 14223,
       "ended": true
     },
     {
-      "ship": "cutter",
-      "runId": "det-cutter-4",
+      "ship": "hound",
+      "runId": "det-hound-2-4",
       "seed": 20261118,
-      "ticks": 8027,
+      "ticks": 9769,
+      "ended": true
+    },
+    {
+      "ship": "hound",
+      "runId": "det-hound-2-5",
+      "seed": 20261119,
+      "ticks": 4840,
       "ended": false
     },
     {
-      "ship": "skiff",
-      "runId": "det-skiff-0",
+      "ship": "hound",
+      "runId": "det-hound-3-0",
       "seed": 20261114,
-      "ticks": 2491,
+      "ticks": 7057,
       "ended": true
     },
     {
-      "ship": "skiff",
-      "runId": "det-skiff-1",
+      "ship": "hound",
+      "runId": "det-hound-3-1",
       "seed": 20261115,
-      "ticks": 5691,
+      "ticks": 10301,
       "ended": true
     },
     {
-      "ship": "skiff",
-      "runId": "det-skiff-2",
+      "ship": "hound",
+      "runId": "det-hound-3-2",
       "seed": 20261116,
-      "ticks": 2559,
+      "ticks": 6758,
       "ended": true
     },
     {
-      "ship": "skiff",
-      "runId": "det-skiff-3",
+      "ship": "hound",
+      "runId": "det-hound-3-3",
       "seed": 20261117,
-      "ticks": 3742,
+      "ticks": 9929,
       "ended": true
     },
     {
-      "ship": "skiff",
-      "runId": "det-skiff-4",
+      "ship": "hound",
+      "runId": "det-hound-3-4",
       "seed": 20261118,
-      "ticks": 7401,
+      "ticks": 12829,
       "ended": true
     },
     {
-      "ship": "skiff",
-      "runId": "det-skiff-5",
+      "ship": "hound",
+      "runId": "det-hound-3-5",
       "seed": 20261119,
-      "ticks": 4073,
+      "ticks": 6955,
       "ended": true
     },
     {
-      "ship": "skiff",
-      "runId": "det-skiff-6",
+      "ship": "hound",
+      "runId": "det-hound-3-6",
       "seed": 20261120,
-      "ticks": 2062,
-      "ended": true
-    },
-    {
-      "ship": "skiff",
-      "runId": "det-skiff-7",
-      "seed": 20261121,
-      "ticks": 2498,
-      "ended": true
-    },
-    {
-      "ship": "skiff",
-      "runId": "det-skiff-8",
-      "seed": 20261122,
-      "ticks": 2498,
-      "ended": true
-    },
-    {
-      "ship": "skiff",
-      "runId": "det-skiff-9",
-      "seed": 20261123,
-      "ticks": 2062,
-      "ended": true
-    },
-    {
-      "ship": "skiff",
-      "runId": "det-skiff-10",
-      "seed": 20261124,
-      "ticks": 5971,
-      "ended": true
-    },
-    {
-      "ship": "skiff",
-      "runId": "det-skiff-11",
-      "seed": 20261125,
-      "ticks": 2498,
-      "ended": true
-    },
-    {
-      "ship": "skiff",
-      "runId": "det-skiff-12",
-      "seed": 20261126,
-      "ticks": 8936,
-      "ended": true
-    },
-    {
-      "ship": "skiff",
-      "runId": "det-skiff-13",
-      "seed": 20261127,
-      "ticks": 1518,
+      "ticks": 171,
       "ended": false
     }
   ],
   "engines": [
     {
       "engine": "Node v24.18.0; V8 13.6.233.17-node.50",
-      "seconds": 18.147806699999997
+      "seconds": 17.268712999999998
     },
     {
       "engine": "Electron 37.10.3; Chromium 138.0.7204.251; V8 13.8.258.32-electron.0",
-      "seconds": 18.020295999999995,
+      "seconds": 17.365945300000003,
       "status": "PASS"
     },
     {
       "engine": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:160.0) Gecko/20100101 Firefox/160.0",
-      "seconds": 22.839314100000003,
+      "seconds": 21.324508500000004,
       "status": "PASS"
     }
   ],
   "gaps": [
     "Safari/JSC not run",
     "ARM not run"
-  ],
-  "sourceCommit": "9b8fddda183dd9ff32d2c241210635053e1d8eb5"
+  ]
 }
