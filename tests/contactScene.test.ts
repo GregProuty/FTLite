@@ -189,15 +189,16 @@ describe('the scene and the contact window (spec §6.5)', () => {
       expect(r.contact.state()).toBeNull(); expect(r.view()).toBeNull();
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
-  it('spike ii §6.5: with a weapon picked up, a click on a rock (no ship under it) drops it there: a rockLock request, the window closes', () => {
+  it('UI round §1.4: with a weapon picked up, a click on a rock picks nothing: no rockLock request', () => {
     const r = rig();
     try {
       const t = r.rt.duel.tactical, me = t.ships[0], slot = rockSlots(t) - 1;
       writeRock(t, slot, RockKind.Free, me.x + 150, me.y, 0, 0, 25, 3);
       r.contact.pickUp('laser'); r.scene.draw(r.rt, 1 / 60, LIVE);
       r.clicks.push(worldToScreen(r.rt.cameras.weapons, vp, me.x + 150, me.y)); r.scene.draw(r.rt, 1 / 60, LIVE);
-      expect(r.contact.takeRequests().rockLock).toEqual({ weapon: 'laser', rock: slot });
-      expect(r.contact.state()).toBeNull();
+      expect(r.contact.takeRequests().rockLock).toBeUndefined();
+      expect(r.contact.state()).toEqual({ contact: 0, aim: true });   // click(null) does nothing: the window stays open, the aim armed
+      expect(r.contact.aimWeapon()).toBe('laser');
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
 });
