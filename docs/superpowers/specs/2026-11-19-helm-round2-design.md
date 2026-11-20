@@ -174,7 +174,7 @@ Paths are under `src/renderer/src/` unless they start with `tests/` or `docs/`. 
 - **The refusal.** `RefusedControl` (`render/duel/situationModel.ts`) gains `'gas'`, with the reason `NO GAS`. Both
   runtimes raise it once per press: on a sample whose `rcsX` or `rcsY` changes from 0 to nonzero (the keys and the
   PORT / STBD buttons both arrive there) while the state's `gas` (online, the replica's) is below `GAS_SPEND`. The
-  Helm shows it in place of its first hint line, and the GAS bar flashes.
+  Helm shows it in place of its second hint line, the one that names the gas keys (§6.1), and the GAS bar flashes.
 - **`crewAxes`** (the app's predicted path) vents an axis by the same test and in the same order, from the state's
   `gas`.
 
@@ -244,7 +244,8 @@ Paths are under `src/renderer/src/` unless they start with `tests/` or `docs/`. 
   116 px wide and 10 px high, with a `data-ui-gas` attribute carrying `gas`. It is filled by `gas / GAS_MAX`, `hot`
   while a thruster vents, `dim` while `gas < GAS_SPEND`, and it flashes on a `NO GAS` refusal.
 - **The hint lines** become `W/S THR  TAP S CUT  A/D TURN` and `Q/E GAS  LMB STEER`. The plan measures them against
-  the console's width.
+  the console's width. A refusal replaces the line that names its control: the first line for `throttle`, the second
+  for `turn` and `gas`. The crew Helm no longer raises `heading` or `auto-face` (§4).
 - The AUTO-FACE button is removed (§4).
 
 - **The OUTSIDE readout** (`render/duel/readoutModel.ts`) shows `COASTING` under an empty Helm today. With the Helm
@@ -288,7 +289,10 @@ Paths are under `src/renderer/src/` unless they start with `tests/` or `docs/`. 
     on the result, a new round, a sit and a stand, as `torpModeSent` is). Then the replica is the base again. A
     refused cut clears `cutSent` the same way, and the replica's throttle shows.
   - **The latch is predicted too.** While the replica's `thrCut` is set, or a cut is in flight, the prediction ramps
-    with a held value of 0 until the seat's own `throttleHeld` has been 0 on a sample, as the sim's rule does.
+    with a held value of 0 until the seat's own `throttleHeld` has been 0 on a sample taken since the cut was sent
+    or, with no cut in flight, since the replica's `thrCut` was first seen set. That record is cleared with
+    `cutSent`. So a player who lets go and presses W again sees the ramp at once, even while the replica still shows
+    the latch.
     `crewAxes` (`step.ts`, the predicted path's axes) does the same from the state's `thrCut`, so it still flies
     exactly what `crewHelm` flies.
   - The throttle "when the key went down" for §2.3's test is this predicted value.
@@ -300,7 +304,8 @@ Paths are under `src/renderer/src/` unless they start with `tests/` or `docs/`. 
 - **New `DuelState` fields**, in the helm module's `HELM` list (`sim/duel/modules.ts`), in this order after today's
   three: `throttle`, `holdHeading`, `thrMille`, then `thrCut` (a flag), `gas` (0..720), `gasIdle` (0..30). Snapshot
   validation (`sim/duel/snapshot.ts`) reads them at `helmAt + 3`, `+ 4` and `+ 5` with those bounds, after
-  `thrMille` at `helmAt + 2`.
+  `thrMille` at `helmAt + 2`. The helm module then holds six values, so the same file's `powerAt` becomes
+  `helmAt + 6` (it is `helmAt + 3` today, with a comment that says three), and every offset after it follows.
 - **New command:** `throttleCut` in `net/contracts.ts`, the codec, `DUEL_KINDS` in `step.ts`, the helm module's
   `commands` list (`['throttle', 'heading', 'throttleCut']`; `tests/duelModules.test.ts` pins the lists) and the
   runtime's `isConsoleCommand`.

@@ -1,0 +1,105 @@
+{
+  "verdict": "ready",
+  "findings": [
+    {
+      "severity": "P3",
+      "title": "The power module's snapshot offset moves with the three new helm values, and the spec does not say so",
+      "claim": "\u00a78 places thrCut, gas and gasIdle at helmAt + 3..5, but snapshot.ts computes powerAt = helmAt + 3 (its comment says the helm module holds three values). That must become helmAt + 6, and everything after it shifts. The spec names only the new reads.",
+      "evidence": "spec L300-L303; src/renderer/src/sim/duel/snapshot.ts:L151 (`powerAt = helmAt + 3`, comment 'the helm module holds three values'), L183",
+      "why": "The snapshot tests would catch it, but the plan's snapshot task should list it so it is not under-scoped.",
+      "fix": "Add to \u00a78: `powerAt` becomes `helmAt + 6`, and update the L151 comment."
+    },
+    {
+      "severity": "P3",
+      "title": "NO GAS replaces the first hint line, but the new hint layout moves Q/E GAS to the second",
+      "claim": "\u00a73.3 shows NO GAS in place of the first hint line. \u00a76.1 moves `Q/E GAS` to the second line (`Q/E GAS  LMB STEER`). So the refusal appears beside the throttle hint, not where the gas key is named. The second line's control set ('turn', 'heading', 'auto-face') also loses its crew-Helm 'heading' and 'auto-face' refusals (\u00a74) and is not restated.",
+      "evidence": "spec L176-L178 (first hint line); spec L247-L248 (new hint lines); src/renderer/src/ui/duel/HelmStation.tsx:L117-L118 (hint(['throttle'], ...) and hint(['turn','heading','auto-face'], ...))",
+      "why": "It is buildable as written, but a reader may take it for a slip, and the console test's expected line is fixed by it.",
+      "fix": "Either show `gas` on the second line (hint(['turn','gas'], 'Q/E GAS  LMB STEER')) or say outright that the first line is deliberate. Also list each line's control set for the crew Helm."
+    },
+    {
+      "severity": "P3",
+      "title": "The predicted latch's 'until throttleHeld has been 0 on a sample' has no start point",
+      "claim": "\u00a77 says the prediction ramps with held 0 'until the seat's own throttleHeld has been 0 on a sample', but not since when: since the cut was sent, or since the replica's thrCut was first seen set. While the replica lags, its thrCut can still read set after the player has released S and pressed W again. Whether the prediction ramps W then depends on that start point.",
+      "evidence": "spec L290-L293; src/renderer/src/app/duel/onlineDuel.ts:L130, L216 (the sent-command records the prediction keys off)",
+      "why": "It affects a transient display only, not the authority, but two builds would show different throttle bars for one round trip.",
+      "fix": "Say 'a sample since the cut was sent (cutSent) or, with no cut in flight, since the replica's thrCut was first seen set'. Clear the record with cutSent."
+    }
+  ],
+  "prior": [
+    {
+      "id": "R1-F1",
+      "result": "resolved",
+      "note": "\u00a72.3 now gives stale-tick, invalid-seat, unavailable, noop, and says helmModule.reasons is unchanged."
+    },
+    {
+      "id": "R1-F2",
+      "result": "resolved",
+      "note": "The cut has its own loop after heading's, crewHelm's order is clear, ramp, clamp, and the cut's own tick counts. This matches scripted.ts L410-L413, where the bot holds nothing on its cut tick, so the next tick's W ramps."
+    },
+    {
+      "id": "R1-F3",
+      "result": "resolved",
+      "note": "\u00a75 defers the stand while thrMille \u2260 0. That covers all three stand sites (scripted.ts L375, L380, L391), and a gate test is added. The OUTSIDE readout row (readoutModel.ts L155) is a sound extra for the player's case."
+    },
+    {
+      "id": "R1-F4",
+      "result": "resolved",
+      "note": "HELM order, the commands list, DUEL_KINDS and isConsoleCommand (runtime.ts L258) are all named. The powerAt shift is left as a P3 nit."
+    },
+    {
+      "id": "R1-F5",
+      "result": "resolved",
+      "note": "\u00a77 predicts the latch in both crewAxes and onlineSource, and a refused cut clears cutSent. The start point of 'has been 0' is left as a P3."
+    },
+    {
+      "id": "R1-F6",
+      "result": "resolved",
+      "note": "now and tapMs are given, read live. throttleDown is set before the Shift+W branch (input.ts L151), which works because the intercept return at L148 never takes W or S. Down times are dropped by clear (and so by blur, L167) and by staleHeld (L201). Tests are listed."
+    },
+    {
+      "id": "R1-F7",
+      "result": "resolved",
+      "note": "Sites checked: runtime.ts L610 and L617, onlineDuel.ts L71 and L244. The glow rule now keeps A/D."
+    },
+    {
+      "id": "R1-F8",
+      "result": "resolved",
+      "note": "RefusedControl 'gas' and the 0\u2192nonzero rcsX or rcsY edge are defined. The hint-line placement is left as a P3."
+    },
+    {
+      "id": "R1-F9",
+      "result": "resolved",
+      "note": "The defs.ts guard is in the removal list. stabiliseUnderThrust is optional. The drag-0 branch and MAX_SPEED stay, and the crewFlight pins are to be rewritten."
+    },
+    {
+      "id": "R1-F10",
+      "result": "resolved",
+      "note": "THR_LABELS REV at -500 (HelmStation.tsx L79), the THR readout at y0+72 between CAP (y0+56) and the PORT/STBD buttons (y0+90), and the GAS bar in AUTO-FACE's row (L116, y0+118, 148 wide = 32 + 116) are all consistent."
+    },
+    {
+      "id": "R1-F11",
+      "result": "resolved",
+      "note": "Rewritten in axis terms: spend, then idle count, then refill. gasIdle starts at 30, the first refill comes on the 30th tick, and the charge is full after 240 more (720/3)."
+    },
+    {
+      "id": "R1-F12",
+      "result": "resolved",
+      "note": "The nudge is now THR_RAMP \u00d7 tap ticks, and the Engines factor is stated as 1 at 1-4 bars, 1.25 on the overdrive bar and 0 with none."
+    }
+  ],
+  "verified": [
+    "input.ts L144-L164: the down handler's branch order lets throttleDown and the down time be set before the Shift+W branch. clear runs on blur (L167). staleHeld (L201) is the sit hook the spec names.",
+    "HelmStation.tsx L79, L109-L118: the THR_LABELS entry and the CAP, PORT/STBD and AUTO-FACE row positions match \u00a76.1's layout. The GAS bar's 32 + 116 fits AUTO-FACE's 148 px width.",
+    "runtime.ts L258, L412, L431: isConsoleCommand is the drop list for Tab and stand, so adding throttleCut there covers \u00a72.3's claim.",
+    "runtime.ts L610 and L617, onlineDuel.ts L71 and L244: the face and pan sites that \u00a74 lists exist as described.",
+    "scripted.ts L375, L380, L391, L400-L415: the three stand sites precede the Helm branch, so \u00a75's deferral can be built before them. The bot holds no throttle on a cut tick, so the latch clears in the same tick.",
+    "readoutModel.ts L150-L155: the COASTING row sits under the OUTSIDE heading and has the DuelState (thrMille) in scope.",
+    "snapshot.ts L151, L179-L183: helmAt + 1 and + 2 are today's reads, so + 3..5 follow on."
+  ],
+  "not_verified": [
+    "Whether thrMille stays 0 on the Valkyrn class, so that \u00a75's 'thrMille is not 0' stand deferral never fires there. Not read in step.ts this round.",
+    "onlineSource.ts L165-L170 and L199 (the throttle prediction and the pan exemption) were not re-read. I relied on the round-1 citations and the diff text.",
+    "scene.ts L298-L302 and L387 (the right-button heading request and the goal glow) were not re-read this round."
+  ]
+}
