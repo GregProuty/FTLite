@@ -15,14 +15,14 @@
           "r": 44.9,
           "blasted": true,
           "pieces": 8,
-          "touches": 1,
+          "touches": 2,
           "massShare": 1,
-          "turned": 2,
+          "turned": 4,
           "crit": {
             "a": true,
             "b": false,
             "c": true,
-            "d": false
+            "d": true
           },
           "pass": false
         },
@@ -31,46 +31,46 @@
           "r": 44.4,
           "blasted": true,
           "pieces": 8,
-          "touches": 1,
+          "touches": 3,
           "massShare": 1,
-          "turned": 3,
+          "turned": 6,
           "crit": {
             "a": true,
-            "b": false,
+            "b": true,
             "c": true,
-            "d": false
+            "d": true
           },
-          "pass": false
+          "pass": true
         },
         {
           "rock": 17,
           "r": 44.4,
           "blasted": true,
           "pieces": 8,
-          "touches": 2,
+          "touches": 5,
           "massShare": 1,
-          "turned": 2,
+          "turned": 4,
           "crit": {
             "a": true,
-            "b": false,
+            "b": true,
             "c": true,
-            "d": false
+            "d": true
           },
-          "pass": false
+          "pass": true
         },
         {
           "rock": 25,
           "r": 44.3,
           "blasted": true,
           "pieces": 8,
-          "touches": 2,
+          "touches": 1,
           "massShare": 1,
-          "turned": 3,
+          "turned": 4,
           "crit": {
             "a": true,
             "b": false,
             "c": true,
-            "d": false
+            "d": true
           },
           "pass": false
         },
@@ -79,20 +79,68 @@
           "r": 44.1,
           "blasted": true,
           "pieces": 8,
-          "touches": 0,
+          "touches": 5,
           "massShare": 1,
-          "turned": 2,
+          "turned": 4,
           "crit": {
             "a": true,
-            "b": false,
+            "b": true,
             "c": true,
-            "d": false
+            "d": true
           },
-          "pass": false
+          "pass": true
         },
         {
           "rock": 50,
           "r": 44,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 4,
+          "massShare": 1,
+          "turned": 5,
+          "crit": {
+            "a": true,
+            "b": true,
+            "c": true,
+            "d": true
+          },
+          "pass": true
+        },
+        {
+          "rock": 21,
+          "r": 44,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 3,
+          "massShare": 1,
+          "turned": 4,
+          "crit": {
+            "a": true,
+            "b": true,
+            "c": true,
+            "d": true
+          },
+          "pass": true
+        },
+        {
+          "rock": 19,
+          "r": 43.5,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 3,
+          "massShare": 1,
+          "turned": 4,
+          "crit": {
+            "a": true,
+            "b": true,
+            "c": true,
+            "d": true
+          },
+          "pass": true
+        },
+        {
+          "rock": 52,
+          "r": 42.3,
           "blasted": true,
           "pieces": 8,
           "touches": 2,
@@ -107,76 +155,28 @@
           "pass": false
         },
         {
-          "rock": 21,
-          "r": 44,
-          "blasted": true,
-          "pieces": 8,
-          "touches": 2,
-          "massShare": 1,
-          "turned": 2,
-          "crit": {
-            "a": true,
-            "b": false,
-            "c": true,
-            "d": false
-          },
-          "pass": false
-        },
-        {
-          "rock": 19,
-          "r": 43.5,
-          "blasted": true,
-          "pieces": 8,
-          "touches": 3,
-          "massShare": 1,
-          "turned": 2,
-          "crit": {
-            "a": true,
-            "b": true,
-            "c": true,
-            "d": false
-          },
-          "pass": false
-        },
-        {
-          "rock": 52,
-          "r": 42.3,
-          "blasted": true,
-          "pieces": 8,
-          "touches": 1,
-          "massShare": 1,
-          "turned": 3,
-          "crit": {
-            "a": true,
-            "b": false,
-            "c": true,
-            "d": false
-          },
-          "pass": false
-        },
-        {
           "rock": 33,
           "r": 41.7,
           "blasted": true,
           "pieces": 8,
-          "touches": 1,
+          "touches": 0,
           "massShare": 1,
-          "turned": 3,
+          "turned": 4,
           "crit": {
             "a": true,
             "b": false,
             "c": true,
-            "d": false
+            "d": true
           },
           "pass": false
         }
       ],
-      "passing": 0,
+      "passing": 6,
       "perCriterion": {
         "a": 10,
-        "b": 1,
+        "b": 6,
         "c": 10,
-        "d": 1
+        "d": 10
       },
       "gatePass": false
     },
@@ -187,22 +187,6 @@
           "r": 44.9,
           "blasted": true,
           "pieces": 8,
-          "touches": 1,
-          "massShare": 1,
-          "turned": 2,
-          "crit": {
-            "a": true,
-            "b": false,
-            "c": true,
-            "d": false
-          },
-          "pass": false
-        },
-        {
-          "rock": 22,
-          "r": 44.4,
-          "blasted": true,
-          "pieces": 8,
           "touches": 2,
           "massShare": 1,
           "turned": 4,
@@ -215,24 +199,24 @@
           "pass": false
         },
         {
-          "rock": 17,
+          "rock": 22,
           "r": 44.4,
           "blasted": true,
           "pieces": 8,
-          "touches": 1,
+          "touches": 3,
           "massShare": 1,
-          "turned": 2,
+          "turned": 6,
           "crit": {
             "a": true,
-            "b": false,
+            "b": true,
             "c": true,
-            "d": false
+            "d": true
           },
-          "pass": false
+          "pass": true
         },
         {
-          "rock": 25,
-          "r": 44.3,
+          "rock": 17,
+          "r": 44.4,
           "blasted": true,
           "pieces": 8,
           "touches": 3,
@@ -247,13 +231,13 @@
           "pass": false
         },
         {
-          "rock": 26,
-          "r": 44.1,
+          "rock": 25,
+          "r": 44.3,
           "blasted": true,
           "pieces": 8,
-          "touches": 0,
+          "touches": 2,
           "massShare": 1,
-          "turned": 2,
+          "turned": 3,
           "crit": {
             "a": true,
             "b": false,
@@ -263,11 +247,91 @@
           "pass": false
         },
         {
+          "rock": 26,
+          "r": 44.1,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 5,
+          "massShare": 1,
+          "turned": 4,
+          "crit": {
+            "a": true,
+            "b": true,
+            "c": true,
+            "d": true
+          },
+          "pass": true
+        },
+        {
           "rock": 50,
           "r": 44,
           "blasted": true,
           "pieces": 8,
-          "touches": 2,
+          "touches": 4,
+          "massShare": 1,
+          "turned": 5,
+          "crit": {
+            "a": true,
+            "b": true,
+            "c": true,
+            "d": true
+          },
+          "pass": true
+        },
+        {
+          "rock": 21,
+          "r": 44,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 3,
+          "massShare": 1,
+          "turned": 4,
+          "crit": {
+            "a": true,
+            "b": true,
+            "c": true,
+            "d": true
+          },
+          "pass": true
+        },
+        {
+          "rock": 19,
+          "r": 43.5,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 5,
+          "massShare": 1,
+          "turned": 4,
+          "crit": {
+            "a": true,
+            "b": true,
+            "c": true,
+            "d": true
+          },
+          "pass": true
+        },
+        {
+          "rock": 52,
+          "r": 42.3,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 3,
+          "massShare": 1,
+          "turned": 4,
+          "crit": {
+            "a": true,
+            "b": true,
+            "c": true,
+            "d": true
+          },
+          "pass": true
+        },
+        {
+          "rock": 33,
+          "r": 41.7,
+          "blasted": true,
+          "pieces": 8,
+          "touches": 0,
           "massShare": 1,
           "turned": 4,
           "crit": {
@@ -277,78 +341,14 @@
             "d": true
           },
           "pass": false
-        },
-        {
-          "rock": 21,
-          "r": 44,
-          "blasted": true,
-          "pieces": 8,
-          "touches": 1,
-          "massShare": 1,
-          "turned": 2,
-          "crit": {
-            "a": true,
-            "b": false,
-            "c": true,
-            "d": false
-          },
-          "pass": false
-        },
-        {
-          "rock": 19,
-          "r": 43.5,
-          "blasted": true,
-          "pieces": 8,
-          "touches": 5,
-          "massShare": 1,
-          "turned": 2,
-          "crit": {
-            "a": true,
-            "b": true,
-            "c": true,
-            "d": false
-          },
-          "pass": false
-        },
-        {
-          "rock": 52,
-          "r": 42.3,
-          "blasted": true,
-          "pieces": 8,
-          "touches": 1,
-          "massShare": 1,
-          "turned": 3,
-          "crit": {
-            "a": true,
-            "b": false,
-            "c": true,
-            "d": false
-          },
-          "pass": false
-        },
-        {
-          "rock": 33,
-          "r": 41.7,
-          "blasted": true,
-          "pieces": 8,
-          "touches": 1,
-          "massShare": 1,
-          "turned": 3,
-          "crit": {
-            "a": true,
-            "b": false,
-            "c": true,
-            "d": false
-          },
-          "pass": false
         }
       ],
-      "passing": 0,
+      "passing": 6,
       "perCriterion": {
         "a": 10,
-        "b": 2,
+        "b": 7,
         "c": 10,
-        "d": 2
+        "d": 8
       },
       "gatePass": false
     }
@@ -364,28 +364,29 @@
       "capHits": 0
     },
     "refused": {
-      "laneFar": 54
+      "laneFar": 76
     },
     "gridChecks": 1320,
     "safetyPass": true,
-    "tidalBreaks": 8,
-    "tidalPieces": 16,
+    "tidalBreaks": 15,
+    "tidalPieces": 30,
     "rejoins": {
-      "lane": 12,
+      "lane": 22,
       "group": 0,
-      "own": 0
+      "own": 0,
+      "cluster": 0
     },
     "stepDuelMs": {
-      "median": 0.0873,
-      "p99": 0.2787
+      "median": 0.0269,
+      "p99": 0.0752
     },
     "freeEvery10sMax": [
-      12,
-      15,
-      26,
-      25,
-      38,
-      43
+      13,
+      17,
+      29,
+      31,
+      39,
+      47
     ]
   },
   "cost": {
@@ -399,11 +400,11 @@
       "liveMedian": 246,
       "liveMin": 239,
       "stepDuelMs": {
-        "median": 0.1911,
-        "p99": 0.516
+        "median": 0.0567,
+        "p99": 0.2227
       },
       "p99GateMs": 0.5,
-      "p99Pass": false
+      "p99Pass": true
     },
     "settled": {
       "seeds": [
@@ -415,13 +416,13 @@
       "liveMedian": 247,
       "liveMin": 242,
       "stepDuelMs": {
-        "median": 1.9956,
-        "p99": 3.9028
+        "median": 0.1126,
+        "p99": 0.4706
       },
       "p99GateMs": 0.5,
-      "p99Pass": false
+      "p99Pass": true
     },
-    "p99Pass": false
+    "p99Pass": true
   },
   "idle": {
     "seeds": 20,
@@ -500,26 +501,26 @@
     "rows": [
       {
         "seed": 1,
-        "peakFree": 44,
+        "peakFree": 55,
         "backToTenAtS": -1,
-        "freeAt270": 17,
-        "deltaMedian": 1921,
+        "freeAt270": 24,
+        "deltaMedian": 2267,
         "pass": false
       },
       {
         "seed": 2,
-        "peakFree": 34,
+        "peakFree": 43,
         "backToTenAtS": -1,
-        "freeAt270": 19,
-        "deltaMedian": 1775,
+        "freeAt270": 25,
+        "deltaMedian": 2303,
         "pass": false
       },
       {
         "seed": 3,
-        "peakFree": 41,
+        "peakFree": 55,
         "backToTenAtS": -1,
-        "freeAt270": 17,
-        "deltaMedian": 1691,
+        "freeAt270": 33,
+        "deltaMedian": 2639,
         "pass": false
       }
     ],
@@ -528,36 +529,37 @@
   "burstWhy": [
     {
       "seed": 1,
-      "freeAtEnd": 17,
+      "freeAtEnd": 24,
       "refusedBy": {
-        "laneFar": 28,
-        "sweepCluster": 2070,
-        "sweepLane": 318,
-        "snap": 351,
-        "sweepRail": 11,
-        "overlap": 2
+        "overlap": 53,
+        "laneFar": 286,
+        "sweepLane": 515,
+        "sweepCluster": 2295,
+        "snap": 403,
+        "sweepRail": 22
       }
     },
     {
       "seed": 2,
-      "freeAtEnd": 19,
+      "freeAtEnd": 25,
       "refusedBy": {
-        "laneFar": 42,
-        "sweepCluster": 1586,
-        "snap": 248,
-        "sweepLane": 125
+        "laneFar": 77,
+        "sweepLane": 493,
+        "sweepCluster": 2725,
+        "overlap": 168,
+        "snap": 213
       }
     },
     {
       "seed": 3,
-      "freeAtEnd": 17,
+      "freeAtEnd": 33,
       "refusedBy": {
-        "overlap": 30,
-        "laneFar": 203,
-        "sweepCluster": 1506,
-        "sweepLane": 277,
-        "snap": 304,
-        "sweepRail": 69
+        "laneFar": 218,
+        "snap": 600,
+        "sweepCluster": 2210,
+        "sweepLane": 804,
+        "sweepRail": 157,
+        "overlap": 6
       }
     }
   ]
