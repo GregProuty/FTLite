@@ -13,13 +13,17 @@ import {
 import { Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import type { DuelState } from '../src/renderer/src/sim/duel/state';
-import { BELT_OUTER, R_MAP } from '../src/renderer/src/sim/tactical/tuning';
+import { ASTEROID_GAP, BELT_OUTER, LANES, R_MAP } from '../src/renderer/src/sim/tactical/tuning';
 
 const layout = parseShip(cutter);
 
 describe('the scripted pair (H-0c-ii-a spec §3)', () => {
   it('draws its orbit radius once per seed from its own stream, inside the band outside the belt and inside the edge', () => {
-    expect(ORBIT_MIN).toBeGreaterThanOrEqual(BELT_OUTER + 200);
+    // Asteroids-iv §10b (owner 2026-11-20): BELT_OUTER moved 1300 -> 1450 to take the big outer lane (1390 ± 55). The scripted
+    // orbit band is unchanged (no tuning in that task): it stays 200 outside the three-lane belt's edge (1278 + 20 = 1298,
+    // spec's 1300) and clears the big lane's rock surfaces (1445) by more than ASTEROID_GAP. Was: ≥ BELT_OUTER + 200 (1500 ≥ 1500).
+    expect(ORBIT_MIN).toBeGreaterThanOrEqual(LANES[2]!.rho + LANES[2]!.rMax + 200);
+    expect(ORBIT_MIN).toBeGreaterThanOrEqual(BELT_OUTER + ASTEROID_GAP);
     expect(ORBIT_MAX).toBeLessThanOrEqual(R_MAP - 600);
     expect([AVOID_TICKS, AVOID_MARGIN, ORBIT_GAIN, SPEED_SLACK, MISSILE_GAP].every((v) => v > 0)).toBe(true);
     for (let seed = 1; seed <= 10; seed++) {

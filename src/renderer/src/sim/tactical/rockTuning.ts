@@ -90,5 +90,7 @@ export const RIM_DROP = 30, CRATER_K = 0.75;
 /** §5.4: a cut parts its two sides at v_esc(ρ) · CUT_KICK along the line's normal (a tidal cut: TIDAL_CUT_KICK), shared by
  *  inverse mass. §5.1: a free rock breaks tidally only with at least TIDAL_MIN_CELLS cells. */
 export const CUT_KICK = 0.12, TIDAL_CUT_KICK = 0.04, TIDAL_MIN_CELLS = 4;
-/** §5.3 (owner 2026-11-20): a torpedo's direct hit bursts SHATTER_DEPTH spacings inside the rock along its path, at the cell nearest that point. */
-export const SHATTER_DEPTH = 1.5;
+/** §5.3 (owner 2026-11-20): a torpedo's direct hit bursts SHATTER_DEPTH spacings inside the rock along its path, at the cell nearest that point.
+ *  1.6, not 1.5: at exactly 1.5 a hit along a hex row lands midway between two cells and the lower index wins (so the burst
+ *  sometimes drills only one cell in); 1.6 has no tie (420 hits: median 6 pieces, mean 5.10, share ≥ 4 0.88). */
+export const SHATTER_DEPTH = 1.6;

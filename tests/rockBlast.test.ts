@@ -13,6 +13,7 @@ import { makeCells, rockAlive, rockAt, rockBorn, rockCellsInto, rockHp, rockMass
 import { shapeOf, templateFor } from '../src/renderer/src/sim/tactical/rockCells';
 import { kickFraction } from '../src/renderer/src/sim/tactical/rockBreak';
 import { blastFall, detonateTorpedo } from '../src/renderer/src/sim/tactical/rockBlast';
+import { SHATTER_DEPTH } from '../src/renderer/src/sim/tactical/rockTuning';
 import { arena, fillPool, mover, rockEvents, shaped, tmplOf, withSwitches } from './helpers/rockArena';
 
 const cells = makeCells();
@@ -38,13 +39,15 @@ function nearestTmplCell(st: ReturnType<typeof arena>, k: number, x: number, y: 
 }
 
 describe('the direct hit (spec §4.2 item 1)', () => {
-  it('shatters the touched rock whatever its hp: at least 4 real chunks, the crater 1.5 spacings inside along the path (owner 2026-11-20)', () => {
+  it('shatters the touched rock whatever its hp: at least 4 real chunks, the crater SHATTER_DEPTH (1.6) spacings inside along the path, S in a piece (owner 2026-11-20)', () => {
     const st = arena(), tm = tmplOf(st, 31), d = templateFor(st.map, tm).d;
     shaped(st, 100, tm, -54, 2000, 5, 0);
     st.rocks[100 * ROCK_STRIDE + 6] = 99;   // whatever its hp
     const w = westCell(st, 100);
-    const p = nearestTmplCell(st, 100, w.x + 1.5 * d, w.y);   // P: the cell nearest S + (1, 0) · 1.5 · d
+    expect(SHATTER_DEPTH).toBe(1.6);
+    const p = nearestTmplCell(st, 100, w.x + SHATTER_DEPTH * d, w.y);   // P: the cell nearest S + (1, 0) · 1.6 · d
     expect(p.c).not.toBe(w.c);
+    expect(Math.hypot(p.x - w.x, p.y - w.y)).toBeCloseTo(2 * d, 9);   // no tie at 1.6: P is two cells along S's row
     detonateTorpedo(st, 0, w.x - w.hitR, w.y, 300, 0, 100);   // on the westernmost cell's surface, flying east into it
     expect(rockEvents(st, 'blast')).toMatchObject([{ rock: 100, by: 'torpedo', ship: 0, x: w.x - w.hitR, y: w.y, r: 120 }]);
     expect([st.rockBlasts, st.systems[0].rocksBroken]).toEqual([1, 1]);
@@ -54,10 +57,9 @@ describe('the direct hit (spec §4.2 item 1)', () => {
     for (const q of pieces) { const m = rockMaskOf(st, q); expect(rockTmpl(st, q)).toBe(tm); expect(all & m).toBe(0); all |= m; }
     expect((all >>> p.c) & 1).toBe(0);   // the cell at P is the crater
     const dust = rockEvents(st, 'dust'), crater = dust[dust.length - 1]!;   // the crater is the last dust group
-    // S is not the crater: it flies off in a piece, or (as on this seed's rock, where S + 1.5 d falls exactly midway between
-    // the next two cells of its row, the lower index wins and P is S's neighbour, leaving S alone in its sector) it is a
-    // one-cell group of its own, dust by the rule, distinct from the crater.
-    if (((all >>> w.c) & 1) === 0) expect(dust.slice(0, -1).some((e) => Math.abs(e.x - w.x) < 1e-9 && Math.abs(e.y - w.y) < 1e-9)).toBe(true);
+    // S is not the crater: it flies off in a piece. (At SHATTER_DEPTH 1.5, S + 1.5 d fell exactly midway between the next two
+    // cells of S's row, the lower index won and P was S's neighbour, leaving S alone as one-cell dust; 1.6 has no tie.)
+    expect((all >>> w.c) & 1).toBe(1);
     expect(crater.x).toBeCloseTo(p.x, 9); expect(crater.y).toBeCloseTo(p.y, 9);
     expect(Math.hypot(crater.x - w.x, crater.y - w.y)).toBeGreaterThan(d / 2);   // not at S
     const a0 = rockAt(st, pieces[0]!);

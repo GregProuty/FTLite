@@ -256,14 +256,28 @@ fresh halves' bounding circles overlap deeply, so circle physics would throw the
 4. §3.2's spacing is fitted after the rim drops: the cells are re-centred on their centre of mass and
    d = R / (the farthest cell centre in spacings + 0.5773502691896258). The table's divisors are those of a template
    with no drop.
-5. §5.3's point P is the centre of the cell nearest the point SHATTER_DEPTH (1.5) spacings inside the rock along the
-   torpedo's relative path from the struck cell (owner 2026-11-20: more destructive torpedoes). The struck cell is the
+5. §5.3's point P is the centre of the cell nearest the point SHATTER_DEPTH (1.6) spacings inside the rock along the
+   torpedo's relative path from the struck cell (owner 2026-11-20: more destructive torpedoes; 1.6, not 1.5, so a hit
+   along a hex row never lands midway between two cells). The struck cell is the
    rock's cell nearest the torpedo. If the three lines leave one group, it is cut once through its centre of mass along u.
 6. §9's per-slot memo of world cells is built only if the measured cost needs it.
 7. §7's easing of a rim corner (the notch out, the tip in) is decided by the template's own rim, not by the cells a rock
    has now. A corner's drawn place is then fixed per template, two pieces fit exactly along their cut, and a fresh cut
    face is jagged where the original rim is smooth.
 
+## 10b. The big outer lane (owner 2026-11-20)
+
+The owner asked for a few larger asteroids on the outer ring. The belt gains a fourth lane, just outside it, of five big
+rocks; the belt's three lanes are unchanged and the clusters move out to make room. All in `tactical/tuning.ts`:
+
+- `LANES` gains `{ rho: 1390, rMin: 40, rMax: 55, count: 5 }`, last. Cross-lane clearance with the outer lane:
+  20 + 55 + ASTEROID_GAP 10 = 85 ≤ 1390 − 1278 = 112.
+- `BELT_COUNT` 70 → 75 (17 + 36 + 17 + 5); `BELT_OUTER` 1300 → 1450 (1390 + 55 = 1445 inside it).
+- `LANE_ZONE_EDGES` [1092, 1161, 1239, 1308] → [1092, 1161, 1239, 1334, 1450]: each zone is the band nearest its lane
+  (1334 is midway between 1278 and 1390). `laneZone` is written over the array.
+- `CLUSTER_CENTRE_MIN` 1550 → 1670: cluster rock surfaces reach 1670 − 150 − 55 = 1465 ≥ 1445 + 10.
+  `CLUSTER_RHO_SLACK` = 2550 − 1670 − 2·420 = 40 (was 160).
+
 ## 11. Tests
 
 - **Templates:** deterministic per seed and index, connected, 1 to 31 cells, every contact circle inside R.
