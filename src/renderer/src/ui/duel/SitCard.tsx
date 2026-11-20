@@ -1,5 +1,5 @@
 // Feel-i (spec 2026-11-17-console-feel-design §1): the sit-down card. For 4 s after sitting (or until the first action), on
-// the first three sits at a seat per session, a small card under the ship names the seat's goal and its three keys. It
+// the first three sits at a seat per session, a small card under the ship names the seat's goal and its keys on one row. It
 // takes no pointer, fades over its last half second, and draws in the console's CRT ramp (the theme's colours off CRT).
 import { memo } from 'react';
 import { INTERNAL_W } from '../../../../shared/resolution';

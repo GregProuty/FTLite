@@ -132,7 +132,6 @@ describe('the Settings controls list (W-4 spec §9)', () => {
     expect(rows.find((r) => r.keys === 'V')?.action).not.toMatch(/A\/D|right mouse/);
     expect(rows.filter((r) => r.keys === 'Hold left mouse').map((r) => r.action)).toContainEqual(expect.stringMatching(/^At Weapons, with a MANUAL torpedo flying: steer it/));   // the Helm's row comes first and stays
     expect(rows.find((r) => r.keys === 'W A S D')?.action).not.toMatch(/MANUAL torpedo/);
-    expect(rows.find((r) => r.keys === 'Right click or drag')?.action).not.toMatch(/torpedo/);
-    expect(rows.find((r) => r.keys === 'Right click or drag')?.action).toMatch(/elsewhere pan/);
+    expect(rows.find((r) => r.keys === 'Right drag')?.action).toBe('Pan the map');   // helm round 2 §4 (kind a): the right button pans everywhere now
   });
 });

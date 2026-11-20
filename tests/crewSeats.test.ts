@@ -8,6 +8,10 @@ import { createSitTracker, resetSits, SIT_CARDS, sitCard, trackSit } from '../sr
 import { loadDuelSnapshot, saveDuelSnapshot } from '../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
+import { CONSOLE_RESERVE } from '../src/renderer/src/render/duel/consoleLayout';
+import { FONT_NATIVE, FONT_SIZE, textPx } from '../src/renderer/src/render/theme';
+import { INTERNAL_W } from '../src/shared/resolution';
+import { SIT_CARD_PAD } from '../src/renderer/src/ui/duel/SitCard';
 import { standAtStation } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
 
@@ -46,5 +50,15 @@ describe('seat 2 online (spec §5.1)', () => {
       source.frame(1 / 60, null, null);
       expect([source.active(), source.view()]).toEqual([2, 'weapons']);
     } finally { disposeDuel(d); if (replica) disposeDuel(replica); }
+  });
+});
+
+describe('the Helm sit-down card (helm round 2 §6.4)', () => {
+  it('teaches the lever, the tap and braking; its four keys fit on its one row inside the map (plan Decision 4)', () => {
+    expect(SIT_CARDS.helm).toEqual({ title: 'HELM: POINT AT THE ENEMY', keys: ['HOLD LMB  STEER', 'W/S  THROTTLE (IT STAYS)', 'TAP S  CUT THRUST', 'BRAKE: TAP S, OR FLIP AND BURN'] });
+    const keysW = SIT_CARDS.helm.keys.reduce((n, k) => n + textPx(k, 1), 0) + 28 * (SIT_CARDS.helm.keys.length - 1);   // SitCard.tsx's row: 28 px gaps
+    const w = Math.max(textPx(SIT_CARDS.helm.title, FONT_SIZE / FONT_NATIVE), keysW) + 2 * SIT_CARD_PAD;
+    expect([keysW, w]).toEqual([572, 600]);
+    expect(w).toBeLessThanOrEqual(INTERNAL_W - CONSOLE_RESERVE.right - CONSOLE_RESERVE.left);   // 896
   });
 });

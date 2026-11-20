@@ -50,7 +50,13 @@ describe('the controls list', () => {
     expect(action('Left click')).toMatch(/Weapons.*pew/);   // W-1: the pew's left click
     expect(action('Z')).toMatch(/Weapons.*AUTO.*MANUAL/);   // W-2: the laser's mode
     expect(action('V')).toMatch(/Weapons.*torpedo.*AUTO.*MANUAL/);   // W-3: the torpedo's mode
-    expect(action('Right click or drag')).toMatch(/Helm.*heading/);   // Feel-ii: the Helm's right button aims the heading
+    expect(sections[0]!.rows.some((r) => r.keys === 'Right click or drag')).toBe(false);   // helm round 2 §4 (kind a): no right-click heading at the crew Helm
+    expect(action('Right drag')).toBe('Pan the map');
+    expect(action('Hold W / S')).toMatch(/stays/);
+    expect(action('Tap S (W in reverse)')).toMatch(/^At the Helm, cut the throttle to 0/);
+    expect(action('Hold Space')).not.toMatch(/Helm/);   // no auto-face at the crew Helm (the Valkyrn's section keeps it)
+    expect(action('Q / E / ← →')).toMatch(/charge/);
+    expect(sections[0]!.rows.map((r) => r.action).join(' ')).not.toMatch(/side thrusters/);
     expect(action('G / Middle click')).toBe('Ping the map point (or the enemy) for the crew');
     expect(sections[0]!.rows.some((r) => r.keys === 'Shift+W' || /notch/.test(r.action))).toBe(false);   // playtest2feedback §6: the crew Helm has no notches
     expect([action('Hold W / S'), action('Hold A / D'), action('Hold left mouse'), action('Q / E / ← →'), action('↑ ↓')].every((t) => t.startsWith('At the Helm'))).toBe(true);

@@ -61,11 +61,11 @@ describe('the Helm AUTO-FACE button (spec §2)', () => {
 });
 
 describe('the sit-down card (spec §1)', () => {
-  it('names the seat goal and its three keys, and takes no pointer', () => {
+  it('names the seat goal and its keys, and takes no pointer', () => {
     const { duel } = mount(); act(() => duel.frame(view(helm, { sitCard: sitCard('helm', 0.5, false) })));
     const card = document.querySelector('[data-ui-sit-card="helm"]') as HTMLElement;
     expect(card).not.toBeNull(); expect(card.style.pointerEvents).toBe('none');
-    for (const t of ['HELM: POINT AT THE ENEMY', 'HOLD LMB  STEER', 'W/S  THROTTLE', 'A/D  THRUSTERS']) expect(texts(), t).toContain(t);
+    for (const t of ['HELM: POINT AT THE ENEMY', 'HOLD LMB  STEER', 'W/S  THROTTLE (IT STAYS)', 'TAP S  CUT THRUST', 'BRAKE: TAP S, OR FLIP AND BURN']) expect(texts(), t).toContain(t);
     act(() => duel.frame(view(helm, { sitCard: null })));
     expect(document.querySelector('[data-ui-sit-card]')).toBeNull();
   });

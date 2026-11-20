@@ -19,7 +19,7 @@ export function keyLabel(code: string): string {
 const DUEL_ACTION: Readonly<Record<Exclude<KeyAction, 'fireUp'>, string>> = {
   interact: 'Sit at a console; at Weapons, lock the next target',
   prevLock: 'At Weapons, lock the previous target',
-  fireDown: 'With the laser fit at Weapons, fire a full laser (in MANUAL, along the map aim); at the Helm, hold to turn the nose onto the enemy (auto-face)',   // W-4 spec §9
+  fireDown: 'With the laser fit at Weapons, fire a full laser (in MANUAL, along the map aim)',   // W-4 spec §9; helm round 2 §4: Space does nothing at the crew Helm
   launch: 'At Weapons, launch a torpedo',
   laserMode: 'With the laser fit at Weapons, switch the laser between AUTO (it fires at its target by itself) and MANUAL (Space fires it along the map aim)',
   torpMode: 'With the laser fit at Weapons, switch the torpedo between AUTO (it homes on its target) and MANUAL (F launches it with no target; hold the left mouse to fly it)',
@@ -47,7 +47,7 @@ function codesFor(action: KeyAction): string[] {
 export function controlSections(): ControlSection[] {
   const move = [MOVE_CODES.up, MOVE_CODES.left, MOVE_CODES.down, MOVE_CODES.right].map(keyLabel).join(' ');
   // The mouse rows are written here by hand (createPointerSource in duel/input.ts: wheel zooms, right or middle drag pans).
-  const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, W/S hold the throttle and A/D fire the side thrusters; at Weapons, A/D select a weapon' }];   // playtest2feedback §6
+  const duel: ControlRow[] = [{ keys: move, action: 'Walk; at the Helm, W/S set the throttle and A/D turn; at Weapons, A/D select a weapon' }];   // helm round 2 §6.4
   for (const action of Object.keys(DUEL_ACTION) as (keyof typeof DUEL_ACTION)[]) {
     // Rows written elsewhere: the Valkyrn's notches are in its own section and the crew Helm holds W/S (playtest2feedback §6);
     // selection is its own merged row below (W-4 spec §9); Shift+R has no code of its own, so it is written with R's row
@@ -67,19 +67,20 @@ export function controlSections(): ControlSection[] {
     { keys: selectKeys(Object.keys(GUN_FREQ_CODES)), action: "At Weapons, tune the guns' shield frequency A / B / C" });
   duel.push({ keys: 'Mouse', action: "At Weapons, the reticle: the selected gun's turret follows it, inside its arc (MAN)" });   // W-4 spec §9
   duel.push({ keys: `${codesFor('prevLock').map(keyLabel).join('')} / ${codesFor('interact').map(keyLabel).join('')}`, action: 'At Weapons, step the target room (Weapons, Shields, Engines); rounds fired by hand damage it' });   // W-4 amendment §3.6
-  // Feel-ii: the ping (G or a middle click), the Helm's right-click heading; W-1: the Weapons map's left click (the pew).
+  // Feel-ii: the ping (G or a middle click); W-1: the Weapons map's left click (the pew).
   duel.push({ keys: `${keyLabel(PING_CODE)} / Middle click`, action: 'Ping the map point (or the enemy) for the crew' });
-  // Playtest2feedback §6: the crew Helm: W/S throttle · hold LMB steer · RMB set heading · A/D turn · Q/E ←→↑↓ thrusters (owner
-  // 2026-11-19: no 1/2 power keys; the throttle's cap is Engineering's Engines bars).
-  duel.push({ keys: `Hold ${keyLabel(MOVE_CODES.up)} / ${keyLabel(MOVE_CODES.down)}`, action: 'At the Helm, push the throttle up or down; let go and it returns to 0' },
+  // Helm round 2 §6.4: the crew Helm: W/S ramp the throttle and it stays · a tap cuts it · A/D turn · hold LMB steer · Q/E ←→↑↓
+  // vent the cold gas while the charge lasts. No right-click heading and no auto-face here (§4).
+  duel.push({ keys: `Hold ${keyLabel(MOVE_CODES.up)} / ${keyLabel(MOVE_CODES.down)}`, action: 'At the Helm, ramp the throttle up or down; let go and it stays where it is' },
+    { keys: `Tap ${keyLabel(MOVE_CODES.down)} (${keyLabel(MOVE_CODES.up)} in reverse)`, action: 'At the Helm, cut the throttle to 0 (the tap time is in Settings)' },
     { keys: `Hold ${keyLabel(MOVE_CODES.left)} / ${keyLabel(MOVE_CODES.right)}`, action: 'At the Helm, turn the nose to port or to starboard' },
     { keys: 'Hold left mouse', action: 'At the Helm, steer: the nose turns toward the pointer' },
-    { keys: `${keyLabel(RCS_CODES.port[0])} / ${keyLabel(RCS_CODES.starboard[0])} / ← →`, action: 'At the Helm, cold gas thrusters to port and to starboard' },
-    { keys: '↑ ↓', action: 'At the Helm, cold gas thrusters fore and aft' });
+    { keys: `${keyLabel(RCS_CODES.port[0])} / ${keyLabel(RCS_CODES.starboard[0])} / ← →`, action: 'At the Helm, vent the cold gas to port or to starboard while the charge lasts; it refills once you let go' },
+    { keys: '↑ ↓', action: 'At the Helm, vent the cold gas fore or aft while the charge lasts' });
   duel.push({ keys: 'Mouse wheel', action: 'Zoom (the maps and the ship)' },
     { keys: 'Left click', action: 'At Weapons, fire the selected weapon: pew pew one round, the autocannon while held, the torpedo launches' },
     { keys: 'Hold left mouse', action: 'At Weapons, with a MANUAL torpedo flying: steer it toward the pointer; let go and it holds that heading' },   // W-4 spec §9
-    { keys: 'Right click or drag', action: 'At the Helm, set a heading to hold (on your ship: clear); elsewhere pan' },
+    { keys: 'Right drag', action: 'Pan the map' },   // helm round 2 §4: the crew Helm's right button pans too
     { keys: 'Middle drag', action: 'Pan the camera (in the ship, when zoomed in)' });
   const k = SECTOR_KEYS;
   const sector: ControlRow[] = [

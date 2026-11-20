@@ -75,6 +75,8 @@ FAIL: median 140.1 s < 180
 
 - Task 12 (the Settings record gains a field, helm round 2 §6.3): `tests/settingsAndControls.test.ts` (the full `Settings` literals gain `throttleTapMs: 200`), `tests/uiMenuState.test.ts` (the two `settings` slice expectations gain `throttleTapMs: 200`). No test deleted. No kind (b) failures in the Task 12 targeted run.
 
+- Task 13 (the hints, helm round 2 §6.4 and §4): `tests/feelPresentation.test.ts` and `tests/feelUi.test.tsx` (the old three-key sit card; the latter's title says "its keys"), `tests/settingsAndControls.test.ts` (the right-click heading row is gone, the right drag pans, the new crew Helm rows), `tests/manualTorpedoInput.test.ts` (the right button's row is 'Right drag', 'Pan the map'). New case in `tests/crewSeats.test.ts` pins the card's 572 px keys and 600 px width. No test deleted. No kind (b) failures in the Task 13 targeted run.
+
 ## Scripted Helm tuning (spec §5's gate rule)
 
 - Task 6: none. Every per-seed gate in `tests/duelGates.test.ts` passed with no constant moved (21 passed, the 2 aggregate bands skipped); no crew twin added.

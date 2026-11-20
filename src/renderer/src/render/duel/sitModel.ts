@@ -1,5 +1,5 @@
 // Feel-i (spec 2026-11-17-console-feel-design §1, sitting down): what a seat shows in its first seconds. The sit-down card
-// (the seat's goal and its three keys, for SIT_CARD_S or until the first action, on the first SIT_CARD_SITS sits of a seat
+// (the seat's goal and its keys, for SIT_CARD_S or until the first action, on the first SIT_CARD_SITS sits of a seat
 // per app session), the goal glow that stops once the control is used, and the auto-frame zoom that fits both ships.
 // Pure apart from the session's sit counter, which lives for the app's run and is never saved.
 import type { Viewport } from '../tactical/camera';
@@ -15,7 +15,7 @@ export type SitSeat = 'helm' | 'weapons' | 'flight';
 /** `under` (Feel-ii §3.9): the online start's notice (YOU: HELM) shows, so a top card moves below it. */
 export interface SitCardView { seat: SitSeat; title: string; keys: readonly string[]; alpha: number; top: boolean; under?: boolean }
 export const SIT_CARDS: Readonly<Record<SitSeat, { title: string; keys: readonly string[] }>> = {
-  helm: { title: 'HELM: POINT AT THE ENEMY', keys: ['HOLD LMB  STEER', 'W/S  THROTTLE', 'A/D  THRUSTERS'] },   // playtest2feedback §6: the crew Helm
+  helm: { title: 'HELM: POINT AT THE ENEMY', keys: ['HOLD LMB  STEER', 'W/S  THROTTLE (IT STAYS)', 'TAP S  CUT THRUST', 'BRAKE: TAP S, OR FLIP AND BURN'] },   // helm round 2 §6.4: the lever, the tap and braking (four keys fit, plan Decision 4)
     weapons: { title: 'WEAPONS: CLICK A WEAPON, THEN A ROOM OR ROCK', keys: ['1  LASER', '2  TORPEDO', 'E/Q  NEXT ROOM', 'L-CLICK MAP  PEW'] },   // W-1: the pew
   flight: { title: 'FLIGHT: MOUSE TO STEER', keys: ['W/S THROTTLE', 'L-CLICK GUN', 'R-CLICK TORPEDO'] }   // Valkyrn spec §9
 };
