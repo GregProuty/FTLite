@@ -4,9 +4,6 @@
 import type { ReadoutRow } from '../../render/duel/readoutModel';
 import { ALERT_BLINK_HZ, blink, CRT } from '../../render/tactical/crtTheme';
 
-/** An inverse bar behind a row's text: from 5 below the row's top to 27 (the caps at +8, descenders to +26). */
-export const INVERSE_TOP = 5, INVERSE_H = 22, INVERSE_PAD = 4;
-
 /** How a row draws on the CRT screen: its label and value tones, which part (if any) sits on an inverse bar of `block`, and its bar's fill. */
 export interface CrtRowLook { label: number; value: number; inverse: 'label' | 'value' | null; block: number; bar: number }
 export function crtRowLook(r: ReadoutRow, t: number): CrtRowLook {

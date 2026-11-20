@@ -56,7 +56,7 @@ import { createFog, stepFog, type FogView } from '../../render/tactical/fogModel
 import { weaponBars, WeaponSlot } from '../../sim/tactical/bars';
 import { hasTurret } from '../../sim/tactical/defs';
 
-/** What the scene reads each frame (H-2 spec §3): the duel, its interpolation inputs, the cameras, the view and the readouts. */
+/** What the scene reads each frame (H-2 spec §3): the duel, its interpolation inputs, the cameras, the view and the contact window. */
 export interface DuelViewSource {
   readonly duel: DuelState;
   readonly seed: number;

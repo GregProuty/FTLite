@@ -108,7 +108,7 @@ export interface CombatModelInput extends TacticalModelInput {
   /** Each ship's missile at the previous tick (null when none flew). */
   missilePrev: readonly (PrevBody | null)[];
   fx: FxState;
-  /** The top row's clear span in screen px (on a console: from the tab strip's end to the side column); the info line,
+  /** The top row's clear span in screen px (on a console: from the tab strip's end to the contact window's left edge, INFO_BAND); the info line,
    *  centred between the reserves, shifts to stay inside it. Absent: centred only. */
   infoBand?: { left: number; right: number };
   /** Feel-i (spec §1): pulse the goal glow on the Helm's enemy edge arrow (the scene stops it once the Helm acts). */
@@ -141,7 +141,7 @@ export function bearingDeg(dx: number, dy: number): number {
 /** Internal px the info line keeps clear of its band's ends. */
 export const INFO_BAND_PAD = 8;
 /** Feel-i: the status sentence's top (FONT_SIZE, as the old info line), and the Weapons info line's, stacked under it at
- *  FONT_NATIVE (clear of the sentence's descenders and above the status table's first row at the band's ends). */
+ *  FONT_NATIVE (clear of the sentence's descenders and clear of the contact window at the band's ends). */
 export const STATUS_Y = 12, INFO_Y = 44;
 /** A top-row label (anchored at its centre) at `y` and text scale `scale`: at `centre`, shifted to stay inside `band`. */
 function bandLabel(text: string, centre: number, band: { left: number; right: number } | undefined, y: number, scale: number): Label {

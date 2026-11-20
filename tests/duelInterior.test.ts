@@ -12,8 +12,9 @@ import { REPAIR_UNITS } from '../src/renderer/src/sim/duel/tuning';
 import type { GameAssets } from '../src/renderer/src/render/assets';
 import { FEATURE_NAMES } from '../src/renderer/src/render/fallback';
 import { duelFit, interiorOverlay, INTERIOR_BAND } from '../src/renderer/src/render/duel/interiorModel';
-import { createInteriorView } from '../src/renderer/src/render/duel/interiorView';
+import { crewLabelAt, createInteriorView } from '../src/renderer/src/render/duel/interiorView';
 import { createInteriorCamera, interiorInput } from '../src/renderer/src/render/duel/interiorCamera';
+import { WARN } from '../src/renderer/src/render/theme';
 import { TILE_PX } from '../src/shared/resolution';
 import type { ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 
@@ -132,6 +133,20 @@ describe('healing and revive feedback in the interior (duel polish i spec §D)',
       expect(shown[0]!.x).toBe(Math.round(Position.x[e1]! * TILE_PX));
       for (let k = 0; k < 30; k++) { d.tactical.tick += 1; view.draw(d, crewAt(d), 1, 1 / 60); }
       expect(count(view.container)).toBe(n0);
+    } finally { view.destroy(); disposeDuel(d); }
+  });
+
+  it('a downed character shows its DOWNED label under the character in the DOWNED red, not at (0,0) (UI round 2a final review)', () => {
+    const d = createSeatedDuel(layout, 5), view = createInteriorView(assets), e1 = d.interior.crew[1]!;
+    try {
+      Life.state[e1] = LifeState.Downed;
+      view.draw(d, crewAt(d), 1, 1 / 60);
+      const shown = view.world.children.filter((k) => (k as BitmapText).text === 'DOWNED' && k.visible) as BitmapText[];
+      expect(shown).toHaveLength(1);
+      expect(shown[0]!.x).toBe(Math.round(Position.x[e1]! * TILE_PX));
+      expect(shown[0]!.y).toBe(Math.round((Position.y[e1]! + 0.5) * TILE_PX));
+      expect(shown[0]!.tint).toBe(WARN);
+      expect(crewLabelAt(10.4, 20.4)).toEqual({ x: 10, y: Math.round(20.4 + TILE_PX * 0.5), tint: WARN });
     } finally { view.destroy(); disposeDuel(d); }
   });
 });

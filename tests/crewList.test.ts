@@ -14,30 +14,30 @@ const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 type Duel = ReturnType<typeof createDuel>;
 /** Every other player's `P<k>` and crewStatus, in player order (what the crew list read). */
 const crewRows = (d: Duel, me: number): string[][] => Array.from({ length: d.interior.playerCount }, (_, pid) => pid).filter((pid) => pid !== me).map((pid) => [`P${pid + 1}`, crewStatus(d, pid)]);
-const pairs = (rows: string[][]) => rows;
+
 
 describe('the crew list (spec §5.2)', () => {
   it('a crew of two (Single player): the one other character', () => {
     const d = createDuel(CUTTER, 5);
     try {
-      expect(pairs(crewRows(d, 0))).toEqual([['P2', 'ON FOOT']]);
+      expect(crewRows(d, 0)).toEqual([['P2', 'ON FOOT']]);
       sitDown(d.interior, 0, d.nav);
-      expect(pairs(crewRows(d, 1))).toEqual([['P1', 'HELM']]);
+      expect(crewRows(d, 1)).toEqual([['P1', 'HELM']]);
     } finally { disposeDuel(d); }
   });
   it('a crew of three: every other player in order, an empty seat AWAY', () => {
     const d = createDuel(CUTTER, 5, 0, 3);
     try {
       sitDown(d.interior, 0, d.nav); d.present[2] = false;
-      expect(pairs(crewRows(d, 1))).toEqual([['P1', 'HELM'], ['P3', 'AWAY']]);
-      expect(pairs(crewRows(d, 2))).toEqual([['P1', 'HELM'], ['P2', 'ON FOOT']]);
+      expect(crewRows(d, 1)).toEqual([['P1', 'HELM'], ['P3', 'AWAY']]);
+      expect(crewRows(d, 2)).toEqual([['P1', 'HELM'], ['P2', 'ON FOOT']]);
     } finally { disposeDuel(d); }
   });
   it('a crew of four: the precedence DOWNED, AWAY, console, REPAIRING, ON FOOT', () => {
     const d = createDuel(CUTTER, 5, 0, 4);
     try {
       sitDown(d.interior, 1, d.weapons); sitDown(d.interior, 2, d.science);
-      expect(pairs(crewRows(d, 0))).toEqual([['P2', 'WEAPONS'], ['P3', 'SCIENCE'], ['P4', 'ON FOOT']]);
+      expect(crewRows(d, 0)).toEqual([['P2', 'WEAPONS'], ['P3', 'SCIENCE'], ['P4', 'ON FOOT']]);
       d.present[1] = false;
       expect(crewStatus(d, 1)).toBe('AWAY');                           // a seated away character reads AWAY
       Life.state[d.interior.crew[1]!] = LifeState.Downed;
@@ -56,7 +56,7 @@ describe('the crew list (spec §5.2)', () => {
     try {
       sitDown(d.interior, 0, d.nav);
       const r = loadDuelSnapshot(CUTTER, saveDuelSnapshot(d, DIGEST), DIGEST);
-      try { expect(pairs(crewRows(r, 2))).toEqual([['P1', 'HELM'], ['P2', 'ON FOOT']]); } finally { disposeDuel(r); }
+      try { expect(crewRows(r, 2)).toEqual([['P1', 'HELM'], ['P2', 'ON FOOT']]); } finally { disposeDuel(r); }
     } finally { disposeDuel(d); }
   });
 });

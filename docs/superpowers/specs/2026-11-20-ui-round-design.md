@@ -116,7 +116,7 @@ rows move as follows:
 | P2..P4 AWAY / DOWNED | Ship view only: a small tag on that crew member |
 | HELM / WEAPONS EMPTY, COASTING | Ship view only: the empty console's icon blinks |
 | ENEMY range / BEARING | Helm only, beside the map's enemy marker |
-| TORPEDO INBOUND | A banner in every view |
+| TORPEDO INBOUND | A banner on the ship view (the consoles already show TORPEDO INBOUND: EVADE in the map's status sentence) |
 | Help lines | Removed from screen; they stay in Settings → Controls |
 
 The flight mode's feel rows (Valkyrn flight) are not the info box and stay.
@@ -156,7 +156,7 @@ Part 2 is built in two plans: **2a** (§2.2-§2.4, this layout) and **2b** (§2.
   extinguish progress is a 2 px bar under the name.
 - **Helm range and bearing:** the Helm map gets the Weapons map's info line (`BRG 074  RNG 728`, no TORP) at y 44, or
   `NO CONTACT IN SENSOR RANGE`. That is "beside the marker" made consistent with Weapons. The off-screen arrow already
-  carries the range.
+  carries the range. The Valkyrn's Flight view, which flies the Helm camera, shows the same line.
 - **Ship view only:** `TORPEDO INBOUND` (the old readout's rule: the enemy torpedo within 600) blinks hot at top centre
   (centred on y 106, FONT_SIZE: between the pause line and the notice). An AWAY player gets an `AWAY` label under their character, the way DOWNED does. An empty Helm or
   Weapons console's badge blinks WARN.
