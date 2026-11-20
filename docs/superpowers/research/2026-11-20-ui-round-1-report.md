@@ -236,3 +236,28 @@ crew wins 0, hunter wins 10 (gate ≥ 1), draws 0, at the cap 0 (gate 0)
 gun 2853 shots, 2490 hits (87.3%) over 10 duels; cap 900 s
 FAIL: median 149.4 s < 180
 ```
+
+## Task 5
+
+A pause keeps the whole UI (spec §1.5): `consoleHidden` is true only on a decided round; the pause text is one line at
+top centre (y 66 to 90, native size, on a panel) and names F11. Gameplay input stays dropped while paused: the runtime
+drops presses and drains the contact and map requests; the online duel drains them and sends nothing unless its phase
+is running; the right-click heading aim and the ping now also need `source.running()`.
+
+Tests rewritten to expect the UI present while paused (`// UI round §1.5: a pause keeps the UI`) or the one pause line:
+
+- `tests/consoleHidden.test.ts`: only a decided round hides the console (a banner, a dimmed layer, a stopped duel do not).
+- `tests/contactScene.test.ts` "T over the enemy at the Weapons console opens the contact view; a pause keeps it open"
+  (was "a pause clears it on that frame"): the window and the contact state stay through a paused frame.
+- `tests/shipHudScene.test.ts` "standing: the SHIP view frame carries shipHud(d), paused too": the console stays (station
+  `ship`) as well as the hull.
+- `tests/uiDuel.test.tsx` "places the pause line and the notice" (was "places the three banners"): either pause text
+  draws at (640, 78); the tactical one wins; the notice keeps (530, 130). Its flight pause string gains `F11: FULLSCREEN`.
+- `tests/uiCrt.test.tsx` "sits after the banners…": the panel list gains the pause line's CRT panel first.
+- `tests/uiGlyphs.test.ts`: the glyph check's pause string gains `F11: FULLSCREEN`.
+
+New: `tests/pauseLine.test.tsx` (the box at y 66, h 24, centred, clear of the tab strip, the hull bar and shield row
+computed from `HUD`, the status table, the own ship window and the enemy window, for the longest local text).
+
+Deviation: `pauseLineBox` rounds the text width up to even so the panel centres on whole pixels (the brief's version
+centred at 640.5 for the longest text, failing its own `toBeCloseTo(640, 6)`).

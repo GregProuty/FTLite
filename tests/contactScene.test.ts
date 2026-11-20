@@ -61,7 +61,7 @@ function rig(cls?: number) {
 }
 
 describe('the scene and the contact window (spec §6.5)', () => {
-  it('T over the enemy at the Weapons console opens the contact view; a pause clears it on that frame', () => {
+  it('T over the enemy at the Weapons console opens the contact view; a pause keeps it open', () => {
     const r = rig(ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit
     try {
       expect(r.rt.view()).toBe('weapons');
@@ -80,7 +80,8 @@ describe('the scene and the contact window (spec §6.5)', () => {
       r.scene.draw(r.rt, 1 / 60, LIVE);   // stays open without a click
       expect(r.view()?.title).toBe('ENEMY SHIP');
       r.scene.draw(r.rt, 1 / 60, PAUSED);
-      expect(r.view()).toBeNull(); expect(r.contact.state()).toBeNull();
+      // UI round §1.5: a pause keeps the UI
+      expect(r.view()?.title).toBe('ENEMY SHIP'); expect(r.contact.state()).toEqual({ contact: 0, aim: false });
     } finally { r.scene.dispose(); r.rt.dispose(); }
   });
   it('W-1: a left click over the enemy at Weapons asks for the pew at its bearing and opens nothing', () => {

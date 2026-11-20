@@ -57,7 +57,7 @@ describe('the CRT screen (CRT map spec section 3)', () => {
     const order = all('[data-ui-crt], canvas[data-text="PAUSED"], canvas[data-text="VICTORY"], canvas[data-text="RTT 3 MS"]').map((e) => e.dataset.text ?? 'crt');
     expect(order).toEqual(['PAUSED', 'crt', 'VICTORY', 'RTT 3 MS']);
     const panels = all('[data-ui-panel]').map((p) => p.dataset.uiPanel);
-    expect(panels).toEqual(['crt', '']);   // the readout on the CRT, the end card as today
+    expect(panels).toEqual(['crt', 'crt', '']);   // UI round §1.5: the pause line's panel, then the readout on the CRT, the end card as today
   });
   it('the readout: the HUNTER heading and the low hull on inverse bars', () => {
     const { duel } = mount(); act(() => duel.frame(view()));

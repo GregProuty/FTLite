@@ -120,7 +120,7 @@ export function createContactController(): ContactController {
       laserFit = s.laser ?? true;
       turretFit = s.turret ?? false;
       if (st && s.shown && s.station === 'science' && st.contact === 0 && !s.active(s.target)) { st = null; designate = -1; }   // Science's enemy is gone: undesignate it
-      if (st && (!s.shown || (st.contact === 0 && !s.active(s.target)))) st = null;   // hidden, SHIP, paused, decided, or the enemy is gone
+      if (st && (!s.shown || (st.contact === 0 && !s.active(s.target)))) st = null;   // hidden, SHIP, decided, or the enemy is gone
       if (st && s.station === 'science' && station !== 'science') designate = st.contact;   // a contact carried to Science is its selection: designate it
       if (st?.aim && station !== null && s.station !== station) st = { ...st, aim: false };   // a station change disarms
       if (!st && s.shown && s.station === 'science' && (!allowed || station !== 'science') && (s.designated ?? -1) >= 0) st = { contact: s.designated as ContactId, aim: false };   // arriving at Science: adopt the shared designation, no request

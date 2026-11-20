@@ -30,7 +30,7 @@ describe('buildGlyphAtlas', () => {
     expect(atlasTextWidth(atlas, 'A…')).toBe(advance('A') + 7);
   });
   it('covers every character of the duel scene\'s banner and end-card strings', () => {
-    for (const text of ['LEAVING…', 'CONNECTION LOST — RECONNECTING', 'PAUSED   ESC: RESUME   M: MAIN MENU', 'ENTER: REMATCH   ESC: LEAVE', 'YOU: HELM', 'DUEL LENGTH 1:23'])
+    for (const text of ['LEAVING…', 'CONNECTION LOST — RECONNECTING', 'PAUSED   ESC: RESUME   F11: FULLSCREEN   M: MAIN MENU', 'ENTER: REMATCH   ESC: LEAVE', 'YOU: HELM', 'DUEL LENGTH 1:23'])
       for (const ch of text) expect(GLYPH_CHARS, `${text}: ${ch}`).toContain(ch);
   });
   it('returns null without a 2D context', () => {

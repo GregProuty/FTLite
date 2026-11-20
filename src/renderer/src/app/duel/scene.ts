@@ -109,13 +109,14 @@ export const REFUSAL_FLASH_S = 0.3, REFUSAL_SHOW_S = 1.5;
  *  one-line notice (the online start's YOU: HELM). */
 export interface SceneOverlay { banner: string | null; layerPaused: boolean; end: EndView | null; notice?: string | null }
 
-/** No console on the end card, under any pause banner or dimmed layer, or while the duel is not running (paused for
- *  any reason locally; any publication phase but `running` online) (Artemis spec §6.1). */
-export function consoleHidden(d: DuelState, overlay: SceneOverlay, running: boolean): boolean {
-  return !running || overlay.banner !== null || overlay.layerPaused || d.tactical.outcome !== Outcome.Running;
+/** No console on the end card (Artemis spec §6.1). UI round spec §1.5: a pause (local or online, any reason) or a banner
+ *  hides nothing, so the crew can pause and read the screen; gameplay input is still dropped while paused (the runtime
+ *  drops presses and drains the contact requests; the online duel sends nothing unless its phase is running). */
+export function consoleHidden(d: DuelState, _overlay: SceneOverlay, _running: boolean): boolean {
+  return d.tactical.outcome !== Outcome.Running;
 }
 
-/** The banners and the map overlay the scene hands the UI (deviation 1: the tactical banner shows only on a map view). */
+/** The banners and the map overlay the scene hands the UI (deviation 1: the tactical banner shows only on a map view) (UI round §1.5: Banners draws either at the one pause line). */
 export function sceneUi(view: DuelView, overlay: SceneOverlay, pauseText: string, overlayView: MapOverlayView | null): { banners: Banners; overlay: MapOverlayView | null } {
   return {
     banners: {
@@ -251,8 +252,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const shownThrottle = (): number => (classOf(d.tactical, CREW_SLOT).newtonianHelm ? source.thrMille?.() ?? d.thrMille : source.throttle());
       const fogView = stepFog(fog, d.tactical, performance.now() / 1000, source.epoch());   // Engineering spike §10.4
       const camKey = view === 'interior' ? null : viewCamera(view), cam = camKey ? source.cameras[camKey] : null;   // Valkyrn spec §5: Flight flies the Helm's camera
-      // Everything the console changes follows whether it is drawn (Artemis spec §6.1): a paused or decided console view
-      // falls back to the right-hand readout with its rows and help.
+      // Everything the console changes follows whether it is drawn (Artemis spec §6.1): a decided round falls back to the right-hand readout. UI round §1.5: a pause does not.
       const hidden = consoleHidden(d, overlay, source.running()), onConsole = !hidden && view !== 'interior';
       // Enemy ship window spec §6.5 steps 1 to 3: the station from the seat, this frame's map click, then the closing rules.
       const station = hidden ? null : consoleStation(d, source.active());
@@ -309,7 +309,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       // Helm round 2 §4: not at the crew Helm, whose right button pans; its left-button steer still draws the held heading.
       const aim = options.takeAim?.() ?? null, running = d.tactical.outcome === Outcome.Running;
       let preview: number | null = null;
-      if (aim && onMap && station === 'helm' && view === 'helm' && running && !crewSeat) {
+      if (aim && onMap && station === 'helm' && view === 'helm' && running && source.running() && !crewSeat) {
         const cam = source.cameras.helm, b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), s = worldToScreen(cam, viewport, b.x, b.y);
         const dx = aim.x - s.x, dy = aim.y - s.y, onShip = Math.hypot(dx, dy) <= pickRadius(cam.zoom), h = onShip ? -1 : headingOf(dx, dy);
         if (aim.held && !onShip) preview = h;
@@ -319,7 +319,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       // pointer, else the map point. Single player shows it at once (one a second); online it goes out and comes back.
       const pingAt = options.takePingAt?.() ?? null, nowS = performance.now() / 1000;
       let pinged = 0;
-      if (pingAt && onMap && running) {
+      if (pingAt && onMap && running && source.running()) {
         const pc = cam!, picked = pickContact({ state: d.tactical, prev: source.prev, alpha, camera: pc, viewport, fog: fogView }, pingAt) === Contact.Enemy;
         const at = picked ? interpolatedShip(d.tactical, source.prev, alpha, targetOf(d.tactical, CREW_SLOT)) : screenToWorld(pc, viewport, pingAt.x, pingAt.y);
         const req: PingRequest = { x: at.x, y: at.y, target: picked };

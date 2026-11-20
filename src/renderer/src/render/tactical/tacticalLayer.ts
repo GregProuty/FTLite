@@ -59,7 +59,7 @@ export function starField(seed: number, w: number, h: number): { x: number; y: n
 export interface TacticalLayerOptions {
   fontFamily: string; viewport: Viewport; seed?: number;
 }
-export const PAUSE_TEXT = 'PAUSED   ESC: RESUME';
+export const PAUSE_TEXT = 'PAUSED   ESC: RESUME   F11: FULLSCREEN';   // UI round §1.5, §1.6
 
 export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
   const { w, h } = opts.viewport;
