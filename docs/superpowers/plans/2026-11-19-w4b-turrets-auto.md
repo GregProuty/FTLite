@@ -44,12 +44,12 @@
   - **Tuning (Task 13, the ladder's knobs, base values):** `HOUND_HELM_LINEUP = true` (`scripted.ts`; rung 0's reference row turns it off), `AUTOCANNON_HITS_PER_HULL = 12` (`tuning.ts`; `AUTOCANNON.hitsPerHull` reads it, `GUN` keeps `GUN_HITS_PER_HULL`), `HOUND_MISSILE_GAP = 1500` and `HOUND_GUNNER_AUTOCANNON_BARS: 1 | 2 = 1` (`scripted.ts`; `houndGunner` reads them, the Valkyrn's `gunner` keeps `MISSILE_GAP`).
   - **App:** `MapRequests.reticle(aim)`, `reticleAim(): number | null`, `resetReticle()` (renamed from `aimLaser`, `laserAim`, `resetLaserAim`); `DuelRuntimeDeps.reticleAim?()` (renamed from `laserAim?`); `KeyAction 'weaponMode'` (KeyR, new) and `'weaponModeAll'` (Shift+KeyR: no code of its own in `PRESS_CODES`); `'laserMode'` stays KeyZ's and `'torpMode'` KeyV's; `KeyEventLike.ctrlKey?`, `metaKey?`; `ConsoleInput.mode?(slot: 0 | 1 | 2)` and `KeySample.modeTaps?: number[]` (a tag's click, Decision 18); `modeRequests(base, sel, presses, taps): { modes; changed }` (`weaponsSeat.ts`); `weaponsSeatHeld(sel, trigger, aim = -1)`; `sessionHeld(k, d, me, steer, weapons?: { sel: number; trigger: boolean; aim?: number })`; `predictTurret(t, slot, held, manual, k): number`; `DuelViewSource.turret?(slot: 0 | 1): number`; the online source's `turret(slot)` and `gunModeBase(slot: 0 | 1, manual: boolean | null)`; in `onlineDuel.ts`, `gunModeSent: [ModeSent | null, ModeSent | null]` (one per gun slot) and `lockSent: { room: number; sequence: number; round: number } | null`; `ContactSync.turret?: boolean` (`contactController.ts`).
   - **View:** `CombatModelInput.turrets?`, `weaponSel?`, `reticle?`; `CombatDraw.turretArc`, `muzzles`, `reticle`, `bracket`; `WeaponsPanel.pewManual?`, `gunManual?`, `gunsHand?`, `gunsHold?`; Buttons `gun-mode-pew`, `gun-mode-autocannon` (each its own switch); `ContactView.roomClick?: boolean` (`contactModel.ts`); the hint row texts `R AUTO/MAN · Q/E ROOM: <NAME>` and `Q/E ROOM: <NAME> · RMB TORPEDO: CLEAR`, with `<NAME>` one of `WEAPONS`, `SHIELDS`, `ENGINES`.
-- **The fences (spec §13.4).** The Valkyrn and its laser fit have no turret: `slewTurrets` returns at once on them, `gunMode` is `unavailable` for either slot, their turret fields and mode flags stay 0 / false, and `tickGun`'s `turret === null` branch is today's code. Their rounds carry `room` 0, `laserLock` is unchanged on both (unavailable on the Valkyrn, the laser's lock on the laser fit), and the Valkyrn's `gunHit` keeps the room under the round (amendment §3.4). `tests/valkyrnIdentity.test.ts`'s five digests do not change: Task 1 rebuilds its hashed array without the new fields, by name; Task 3 renames the flag in that pattern and Task 8 adds the two pools' `room` fields to it. `tests/valkyrnRoundsRocks.test.ts`, `tests/w4HunterIdentity.test.ts`, `tests/pewHunter.test.ts` and `tests/torpedoGuidance.test.ts` pass unchanged at the end of every task.
+- **The fences (spec §13.4).** The Valkyrn and its laser fit have no turret: `slewTurrets` returns at once on them, `gunMode` is `unavailable` for either slot, their turret fields and mode flags stay 0 / false, and `tickGun`'s `turret === null` branch is today's code. Their rounds carry `room` 0, `laserLock` is unchanged on both (unavailable on the Valkyrn, the laser's lock on the laser fit), and the Valkyrn's `gunHit` keeps the room under the round (amendment §3.4). `tests/valkyrnIdentity.test.ts`'s five digests do not change: Task 1 rebuilds its hashed array without the new fields, by name; Task 3 renames the flag in that pattern and Task 8 adds the two pools' `room` fields to it. `tests/valkyrnRoundsRocks.test.ts`, `tests/w4HunterIdentity.test.ts`, `tests/pewHunter.test.ts` and `tests/torpedoGuidance.test.ts` pass unchanged at the end of every task. `tests/valkyrnRounds.test.ts` is not a fence file: Task 8 edits its one exact pin of a freed pool entry, which gains `room: 0`.
 - **The fallout rule (binding on every task; as W-4a's).** Classify each failing test exactly once: a rule W-4b replaces (kind (a): rewrite, citing "W-4 spec §n"); a whole-run number (kind (b): re-pick in Task 14 with `// W-4b (SIM V): was <old>`); a band (kind (c): stays as it is). Never edit a band's limits, never skip a kind (a) or (b) test, never delete a test except a kind (a) test whose rule no class keeps (name it in the commit).
 - **Known-red window:** these fail by design, and only these:
   - from Task 1 (new hashed fields; Task 3 changes a field name and adds one value per ship, and Task 8 adds one value per round pool entry, so the flatten length and every duel hash move again at each) until Task 14: `tests/golden.test.ts`, `tests/duelGolden.test.ts`, `tests/duelRematchGolden.test.ts`, and any test that pins a duel hash or flatten length (`tests/duelCheckpoint.test.ts`, `tests/duelSnapshot.test.ts`: list each in the report's "Task 11 re-picks");
   - from Task 5 (turrets move rounds) until Task 14: the trajectory pins (`tests/duelModules.test.ts`'s `played(…)`, `tests/tacticalSlots.test.ts`, `tests/duelScripted.test.ts`'s whole-run values);
-  - from Task 7 (AUTO fires; Task 8 then takes AUTO's room damage away, amendment §3.5, which moves whole runs once more) until Task 13: `tests/duelGates.test.ts`'s per-seed tests, only if a seed fails; Task 13's ladder must end with them green.
+  - from Task 5 (the stand-in pew flies along the slewed turret; Task 7: AUTO fires; Task 8 then takes AUTO's room damage away, amendment §3.5, which moves whole runs once more) until Task 13: `tests/duelGates.test.ts`'s per-seed tests, only if a seed fails; Task 13's ladder must end with them green.
   Every other test passes at the end of each task. Each task runs its own targeted tests; the full suite runs in Tasks 1, 7, 8 and 14.
 - **Sim rules:** only `+ − × ÷` and `sqrt` in `src/renderer/src/sim/**` (`tests/helpers/determinismGuard.ts`: `Math.abs/ceil/floor/round/min/max/sign/imul/sqrt` only; no trig, no `**`, no `Math.hypot`). No sim file imports from `app/`, `render/`, `input/` or `ui/`. No new randomness. The turret arithmetic is integer.
 - **Test commands:** targeted `npx vitest run <files>`; `npx tsc -b`; the full suite `npx vitest run --maxWorkers=4`, always after `npx electron-vite build`; `npm run test:duel-app-runtime`; `npm run test:determinism`. Never two vitest processes at once. A full-suite timeout under load is re-run alone before it counts (`tests/director.test.ts`, `tests/run.test.ts`, `tests/snapshot.test.ts`, `tests/gate-*.test.ts`, `tests/duelGates.test.ts`).
@@ -2125,7 +2125,7 @@ This task comes after Task 7 on purpose (amendment §6): until Task 7 deleted it
 - Modify: `src/renderer/src/sim/tactical/state.ts` (`GunRound`, `emptyRound`, `roundRoom`, the `pewHit` event), `sim/tactical/hash.ts` (`ROUND_SLOT`, `MissingRoundKeys`, `roundFields`, `validateTacticalValues`), `sim/tactical/tuning.ts` (`PEW_ROOM_WEAR`), `sim/tactical/gun.ts` (`placeRound`, `fireRound`, `tickGun`, `gunHit`, `stepRounds`), `sim/tactical/pew.ts` (`firePew`, `firePewTrigger`, `pewHit`, `stepPew`), `sim/tactical/weapons.ts` (`applyWeaponsInput`), `sim/duel/step.ts` (the `laserLock` admission)
 - Modify: `src/renderer/src/app/duel/onlineSource.ts` (its `pewHit` literal, Decision 25)
 - Create: `tests/w4Rooms.test.ts`
-- Modify (kind (a)): `tests/w4PewFire.test.ts`, `tests/w4Autocannon.test.ts`, `tests/engineeringFog.test.ts`, `tests/pewUi.test.tsx`, `tests/pewViews.test.ts`, `tests/pewRounds.test.ts`
+- Modify (kind (a)): `tests/w4PewFire.test.ts`, `tests/w4Autocannon.test.ts`, `tests/engineeringFog.test.ts`, `tests/pewUi.test.tsx`, `tests/pewViews.test.ts`, `tests/pewRounds.test.ts`, `tests/valkyrnRounds.test.ts` (its one exact pin of a freed pool entry, Step 9)
 - Modify: `tests/valkyrnIdentity.test.ts` (the left-out pattern), `tests/tacticalDeterminism.test.ts` (the comment on the length line), `docs/superpowers/research/2026-11-19-w4-report.md`
 
 **Interfaces:**
@@ -2717,10 +2717,24 @@ The five pinned strings stay exactly as they are: the left-out values are the ne
 
 and in the file's header comment change "and gunHit's room level after 6 hits" to "and, by hand, the target room's level after 6 hits (W-4 amendment §3.4)".
 
+`tests/valkyrnRounds.test.ts` (a third kind (a) edit, forced by Step 3's `emptyRound`; it is not a fence file): `stepRounds` frees an ended entry with `Object.assign(r, emptyRound())`, and this file pins the freed entry member for member. Replace the line
+
+```ts
+    expect(r).toEqual({ x: 0, y: 0, vx: 0, vy: 0, age: 0, owner: 0, active: false });
+```
+
+with
+
+```ts
+    expect(r).toEqual({ x: 0, y: 0, vx: 0, vy: 0, age: 0, owner: 0, active: false, room: 0 });   // W-4 amendment §3.3: a free entry holds zeros, its room included
+```
+
+Nothing else in that file changes: the Valkyrn's rounds still carry 0, and its other cases read members by name.
+
 - [ ] **Step 10: Run**
 
 Run: `npx tsc -b` then `npx vitest run tests/w4Rooms.test.ts tests/w4PewFire.test.ts tests/w4Autocannon.test.ts tests/w4Auto.test.ts tests/w4Manual.test.ts tests/w4Turret.test.ts tests/w4Frequency.test.ts tests/w4Rocks.test.ts tests/tacticalDeterminism.test.ts tests/duelModules.test.ts tests/engineeringFog.test.ts tests/pewUi.test.tsx tests/pewViews.test.ts tests/pewRounds.test.ts tests/valkyrnGun.test.ts tests/valkyrnRounds.test.ts tests/valkyrnIdentity.test.ts tests/valkyrnRoundsRocks.test.ts tests/w4HunterIdentity.test.ts tests/pewHunter.test.ts tests/torpedoGuidance.test.ts tests/duelScripted.test.ts`
-Expected: tsc clean (every hand-placed round in `tests/` compiles unchanged: `room` is optional there, Decision 19); all PASS except the known-red whole-run values (`duelModules`' `played(…)`, `duelScripted`'s). `valkyrnIdentity`'s five pins are unchanged, and `git diff --stat W4_BASE -- tests/valkyrnRoundsRocks.test.ts tests/pewHunter.test.ts tests/torpedoGuidance.test.ts` prints nothing. `duelModules`' member walk and "every field moves the hash" pass with no edit: `rounds.<k>.room` is a module field whose name is the member's path.
+Expected: tsc clean (every hand-placed round in `tests/` compiles unchanged: `room` is optional there, Decision 19); `tests/valkyrnRounds.test.ts` passes with Step 9's one-line edit; all PASS except the known-red whole-run values (`duelModules`' `played(…)`, `duelScripted`'s). `valkyrnIdentity`'s five pins are unchanged, and `git diff --stat W4_BASE -- tests/valkyrnRoundsRocks.test.ts tests/pewHunter.test.ts tests/torpedoGuidance.test.ts` prints nothing. `duelModules`' member walk and "every field moves the hash" pass with no edit: `rounds.<k>.room` is a module field whose name is the member's path.
 
 - [ ] **Step 11: Classify the fallout, and the gates**
 
@@ -2732,7 +2746,7 @@ Then: `npx vitest run tests/duelGates.test.ts` and `npx tsx scripts/duel-telemet
 - [ ] **Step 12: Commit**
 
 ```bash
-git add src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/tactical/tuning.ts src/renderer/src/sim/tactical/gun.ts src/renderer/src/sim/tactical/pew.ts src/renderer/src/sim/tactical/weapons.ts src/renderer/src/sim/duel/step.ts src/renderer/src/app/duel/onlineSource.ts tests/w4Rooms.test.ts tests/w4PewFire.test.ts tests/w4Autocannon.test.ts tests/engineeringFog.test.ts tests/pewUi.test.tsx tests/pewViews.test.ts tests/pewRounds.test.ts tests/valkyrnIdentity.test.ts tests/tacticalDeterminism.test.ts docs/superpowers/research/2026-11-19-w4-report.md <each kind (a) test fixed in Step 11>
+git add src/renderer/src/sim/tactical/state.ts src/renderer/src/sim/tactical/hash.ts src/renderer/src/sim/tactical/tuning.ts src/renderer/src/sim/tactical/gun.ts src/renderer/src/sim/tactical/pew.ts src/renderer/src/sim/tactical/weapons.ts src/renderer/src/sim/duel/step.ts src/renderer/src/app/duel/onlineSource.ts tests/w4Rooms.test.ts tests/w4PewFire.test.ts tests/w4Autocannon.test.ts tests/engineeringFog.test.ts tests/pewUi.test.tsx tests/pewViews.test.ts tests/pewRounds.test.ts tests/valkyrnRounds.test.ts tests/valkyrnIdentity.test.ts tests/tacticalDeterminism.test.ts docs/superpowers/research/2026-11-19-w4-report.md <each kind (a) test fixed in Step 11>
 git commit -m "feat(w4b): the target room: laserLock sets it on the Hound, rounds fired by hand carry it (a hashed room per round, ROUND_SLOT 8), the autocannon by hand wears it and on AUTO wears no room, pew pew by hand adds PEW_ROOM_WEAR; pewHit names the room (W-4 amendment §3.1 to §3.4)" -m "<kind (a) tests changed>" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -2742,7 +2756,7 @@ git commit -m "feat(w4b): the target room: laserLock sets it on the Hound, round
 
 **Files:**
 - Modify: `src/renderer/src/app/duel/weaponsSeat.ts` (`predictTurret`), `app/duel/onlineSource.ts` (`turret`, `gunModeBase`), `app/duel/onlineDuel.ts` (feed `gunModeBase`), `app/duel/runtime.ts` (`turret`), `app/duel/scene.ts` (`DuelViewSource.turret?`)
-- Modify: `tests/w4Online.test.ts`
+- Modify: `tests/w4Online.test.ts`, `tests/onlineDuelSession.test.ts` (Step 1's two prediction cases in its Hound block)
 
 **Interfaces:**
 - Consumes: `slewTurret` (turret.ts), `weaponBars`, `WeaponSlot`, `houndWeaponsSeat`, the source's `sentHeld` and `unackedFrames`, `gunModeSent` (Task 6).
@@ -2885,7 +2899,7 @@ Expected: tsc clean; all PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/renderer/src/app/duel/weaponsSeat.ts src/renderer/src/app/duel/onlineSource.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/scene.ts tests/w4Online.test.ts
+git add src/renderer/src/app/duel/weaponsSeat.ts src/renderer/src/app/duel/onlineSource.ts src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/app/duel/runtime.ts src/renderer/src/app/duel/scene.ts tests/w4Online.test.ts tests/onlineDuelSession.test.ts
 git commit -m "feat(w4b): the online seat predicts its own selected turret over the unacknowledged frames, as the throttle (W-4 spec §11)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -3181,6 +3195,9 @@ describe('a switch on each card: the AUTO / MAN / HOLD tags (W-4 spec §4.3, §1
     fireEvent.pointerDown(tags()[1]!, { button: 0 });
     expect(i.mode.mock.calls).toEqual([[0], [1]]);
     expect(i.press).not.toHaveBeenCalled();
+    // the PEW PEW tag comes after the row's select overlay in the DOM, so a real click reaches the tag, not the overlay
+    const overlay = document.querySelector('[data-testid="console-card-pew"]')!;
+    expect(overlay.compareDocumentPosition(tags()[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
   it('the tags clear the PEW PEW label, the charge pips, the bar pips, the AUTOCANNON title and each other (8 px from the text)', () => {
     const { duel } = mount();
@@ -3264,7 +3281,7 @@ export const houndRoomHint = (lock: number, torpTarget: boolean): string => {
 ```
 
 - in W-4a's `HoundWeapons`, add a helper `const gunTag = (slot: 0 | 1): string => (weapons.gunsHand === slot ? 'MAN' : weapons.gunsHold ? 'HOLD' : 'AUTO');` (each tag names what its gun does, Decision 9);
-- on the PEW PEW row, between its `PEW PEW` label (45 px) and the charge pips at `x0 + HOUND_PEW_PIPS_X` (W-4a): `<Button name="gun-mode-pew" label={gunTag(0)} x={x0 + textPx('PEW PEW', 1) + 8} y={top + 4} w={36} h={18} lit={weapons.pewManual === true} onPress={() => actions.console.mode?.(0)} />`. That spans `x0 + 53` to `x0 + 89`, 11 px short of the first charge pip, and `top + 4` to `top + 22`, above the bar pips at `top + 24`;
+- on the PEW PEW row, between its `PEW PEW` label (45 px) and the charge pips at `x0 + HOUND_PEW_PIPS_X` (W-4a): `<Button name="gun-mode-pew" label={gunTag(0)} x={x0 + textPx('PEW PEW', 1) + 8} y={top + 4} w={36} h={18} lit={weapons.pewManual === true} onPress={() => actions.console.mode?.(0)} />`. That spans `x0 + 53` to `x0 + 89`, 11 px short of the first charge pip, and `top + 4` to `top + 22`, above the bar pips at `top + 24`. **Render it after the `console-card-pew` div** (the row's select overlay, whose Box takes pointer events from `x0` to `right` and `top + 6` to `top + 22`), as the TORPEDO tag follows its Card: `Button` sets no z-index, so DOM order decides which takes a click, and a tag placed before the overlay would select pew pew instead of flipping its switch;
 - in the AUTOCANNON card's header, right of its title: `<Button name="gun-mode-autocannon" label={gunTag(1)} x={ax + textPx('AUTOCANNON', 1) + 8} y={A.y + 2} w={36} h={18} lit={weapons.gunManual === true} onPress={() => actions.console.mode?.(1)} />` with W-4a's `A = weaponCard('autocannon')` and `ax = A.x + 6`. The title is 60 px, so the tag spans `ax + 68` to `ax + 104`, inside the card and left of the `2` hint. W-2's BEAM tag sat at `lx + 66`, which the longer title would touch;
 - the second hint row: replace W-4a's `<PixelText text="RIGHT-CLICK TORPEDO: CLEAR" x={x0} y={y0 + 134} size={FONT_NATIVE} tint={dim} />` with `<PixelText text={houndRoomHint(weapons.lock, weapons.torpTarget >= 0 || weapons.torpRock === true)} x={x0} y={y0 + 134} size={FONT_NATIVE} tint={dim} />`. The first row stays `LMB FIRE · A/D SELECT · W/S POWER`, and the rows stay at `y0 + 116` and `y0 + 134` (the divider at `y0 + 156` leaves no room for a third);
 - update the file's header comment: "W-4 spec §10 (W-4b), amendment §2.5: each gun card has its own AUTO / MAN tag and each tag is its own switch (R flips the selected weapon's, Shift+R both guns'): lit while that gun is set to MAN; its word is what the gun does now: MAN for the gun in hand, else AUTO, or HOLD while the hold keeps AUTO quiet. The second hint row names the target room."
