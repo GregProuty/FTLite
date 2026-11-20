@@ -27,13 +27,13 @@ export function browserExecutable(engine: string, executable: string | undefined
   return `${engine} NOT RUN: executable unavailable`;
 }
 export function receiveBrowser(timeoutMs: number) {
-  let resolve!: (value: { engine: string; report: Report }) => void, reject!: (error: Error) => void;
-  const promise = new Promise<{ engine: string; report: Report }>((yes, no) => { resolve = yes; reject = no; });
+  let resolve!: (value: { engine: string; report: Report; duelRestore: { checks: number; finalHash: string } }) => void, reject!: (error: Error) => void;
+  const promise = new Promise<{ engine: string; report: Report; duelRestore: { checks: number; finalHash: string } }>((yes, no) => { resolve = yes; reject = no; });
   const timer = setTimeout(() => reject(Error(`browser timeout after ${timeoutMs}ms`)), timeoutMs);
   return { promise, report(value: any) {
     clearTimeout(timer);
     if (value?.error) reject(Error(`browser page failure: ${value.error}`));
-    else if (!value?.engine || !Array.isArray(value?.report?.samples) || !Array.isArray(value?.report?.boundaries)) reject(Error('malformed browser report'));
+    else if (!value?.engine || !Array.isArray(value?.report?.samples) || !Array.isArray(value?.report?.boundaries) || typeof value?.duelRestore?.finalHash !== 'string' || typeof value?.duelRestore?.checks !== 'number') reject(Error('malformed browser report'));
     else resolve(value);
   } };
 }
