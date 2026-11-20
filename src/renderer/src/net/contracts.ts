@@ -37,8 +37,10 @@ export interface Session {
  *  `gunHeld`, `torpTurn` and `torpHeading` from Weapons'. Playtest2feedback §7: `throttleHeld` (1 W, −1 S), `rcsX`
  *  (−1 port, 1 starboard) and `rcsY` (−1 aft, 1 forward) are the crew Helm's held throttle and thrusters, each an
  *  integer −1..1; absent means 0. W-4 spec §8: `weaponSel` the Weapons seat's selected slot (0 pew pew, 1 the autocannon,
- *  2 the torpedo; absent none), read from the Weapons attendant; on a turret class `gunHeld` fires the autocannon only with it 1. */
-export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean; aim?: number; gunHeld?: boolean; torpTurn?: number; torpHeading?: number; weaponSel?: number; throttleHeld?: number; rcsX?: number; rcsY?: number }
+ *  2 the torpedo; absent none), read from the Weapons attendant; on a turret class `gunHeld` fires the autocannon only with it 1.
+ *  W-4 spec §8: `turretAim` the reticle's world bearing from the own ship, a fine aim 0..65535 (−1 or absent none), read from
+ *  the Weapons attendant; the selected MAN gun's turret slews toward it. */
+export interface HeldInput { moveX: number; moveY: number; interactHeld: boolean; face?: boolean; aim?: number; gunHeld?: boolean; torpTurn?: number; torpHeading?: number; weaponSel?: number; turretAim?: number; throttleHeld?: number; rcsX?: number; rcsY?: number }
 export interface HeldFrame { runId: RunId; player: PlayerId; tick: number; sequence: number; held: HeldInput }
 export interface LifecyclePause { paused: boolean; reason: string }
 export interface CommandId { player: PlayerId; sequence: number }

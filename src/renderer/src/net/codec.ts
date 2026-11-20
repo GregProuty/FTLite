@@ -161,8 +161,8 @@ const pingCoord = z.number().finite().min(-1e6).max(1e6);   // Feel-ii §2.7: a 
 const id = z.object({ player, sequence: positive }).strict();
 const heldAxis = z.number().int().min(-1).max(1).optional();   // playtest2feedback §7: absent means 0
 const held = z.object({ moveX: axis, moveY: axis, interactHeld: z.boolean(), face: z.boolean().optional(), aim: z.number().int().min(-1).max(255).optional(), gunHeld: z.boolean().optional(),
-  torpTurn: z.number().int().min(-1).max(1).optional(), torpHeading: z.number().int().min(-1).max(255).optional(), weaponSel: z.number().int().min(0).max(2).optional(),
-  throttleHeld: heldAxis, rcsX: heldAxis, rcsY: heldAxis }).strict();   // face: Feel-i's auto-face; aim, gunHeld: Valkyrn spec §6.2, §7.1; torpTurn, torpHeading: W-3; weaponSel: W-4; the crew Helm's throttle and thrusters: playtest2feedback §7
+  torpTurn: z.number().int().min(-1).max(1).optional(), torpHeading: z.number().int().min(-1).max(255).optional(), weaponSel: z.number().int().min(0).max(2).optional(), turretAim: z.number().int().min(-1).max(65535).optional(),
+  throttleHeld: heldAxis, rcsX: heldAxis, rcsY: heldAxis }).strict();   // face: Feel-i's auto-face; aim, gunHeld: Valkyrn spec §6.2, §7.1; torpTurn, torpHeading: W-3; weaponSel: W-4; turretAim: W-4b; the crew Helm's throttle and thrusters: playtest2feedback §7
 const frame = z.object({ runId: text, player, tick: uint, sequence: positive, held }).strict();
 const commandSchema = z.discriminatedUnion('kind', wire.commands(prims));
 const envelope = z.object({ runId: text, id, requestedTick: uint, command: commandSchema }).strict();

@@ -16,7 +16,7 @@ import { applyWeaponPower } from './weaponSlots';
 import { stepDuel } from '../tactical/duel';
 import { autoFacePoint, autoFaceTurn, headingTurn } from '../tactical/hunter';
 import { contactSeen, scanCommand, shipSeen } from '../tactical/science';
-import { BOOST_FAR, HEADING_COUNT, RCS_TURN_BOOST, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
+import { AIM_STEPS, BOOST_FAR, HEADING_COUNT, RCS_TURN_BOOST, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
 import { classOf, CONTACT_MAX_LEVEL, Outcome, type Axes } from '../tactical/state';
 import { hx, hy } from '../tactical/direction';
 import { shipEngineFactor } from '../tactical/physics';
@@ -115,6 +115,11 @@ function repairPhase(d: DuelState, held: readonly HeldInput[]): void {
 export function heldAim(h: HeldInput): number {
   const a = h.aim;
   return typeof a === 'number' && Number.isInteger(a) && a >= 0 && a < HEADING_COUNT ? a : -1;
+}
+/** W-4 spec §8: the reticle in a held frame: an integer 0..65535, else −1 (none). */
+export function heldTurretAim(h: HeldInput): number {
+  const a = h.turretAim;
+  return typeof a === 'number' && Number.isInteger(a) && a >= 0 && a < AIM_STEPS ? a : -1;
 }
 /** W-3 (pew pew spec §3): the MANUAL torpedo's steering in a held input: `turn` the sign of torpTurn (absent or NaN: 0) and
  *  `heading` torpHeading, a heading index 0..255 (absent, −1, a non-integer or out of range: −1, none). */
@@ -311,7 +316,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
   // W-4 spec §8: on a turret class (the Hound) the trigger fires the autocannon only while it is the selected weapon; elsewhere today's rule.
   const trigger = gunner >= 0 && gunnerHeld.gunHeld === true && (!hasTurret(classOf(d.tactical, 0)) || weaponSel === WeaponSlot.Autocannon);
   const crew: ShipInput = { helm: helm >= 0, weapons: gunner >= 0, axes: { turn: 0, thrust: 0 }, laserLock: null, torpLock: null, rockLock: { laser: null, torpedo: null }, laserCharge: null, missileLaunch: false,
-    gunHeld: trigger, pewAim: -1, laserFire: -1, torpTurn: steer.turn, torpHeading: steer.heading, weaponSel, pewTrigger: false, scanner: true };   // Valkyrn spec §7.1: the trigger of Weapons' attendant; W-2: laserFire sets laserFire; W-3: the held steering; W-4: pewFire sets pewTrigger
+    gunHeld: trigger, pewAim: -1, laserFire: -1, torpTurn: steer.turn, torpHeading: steer.heading, weaponSel, pewTrigger: false, turretAim: gunner >= 0 ? heldTurretAim(gunnerHeld) : -1, scanner: true };   // W-4 spec §8: the reticle; Valkyrn spec §7.1: the trigger of Weapons' attendant; W-2: laserFire sets laserFire; W-3: the held steering; W-4: pewFire sets pewTrigger
   // Spike ii §6.1: missileLaunch is admitted with this tick's effective torpedo rock target: the last accepted
   // rockLock(torpedo), else −1 after an accepted torpLock (it clears torpRock first), else the stored value.
   let torpRockNext: number | null = null, torpLocked = false;

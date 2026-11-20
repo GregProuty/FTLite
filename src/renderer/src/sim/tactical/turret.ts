@@ -4,7 +4,7 @@
 // integer out; only + − and the integer modulo. Task 4 adds AUTO's solutions and the per-tick slew of both guns.
 import { AIM_STEPS, HEADING_COUNT } from './tuning';
 
-/** The signed fine-step difference of fine aim `aim` from heading index `heading`'s nose, in (−AIM_STEPS/2, AIM_STEPS/2]:
+/** The signed fine-step difference of fine aim `aim` from heading index `heading`'s nose, in [−AIM_STEPS/2, AIM_STEPS/2):
  *  ((aim − heading·256 + 1.5·AIM_STEPS) mod AIM_STEPS) − AIM_STEPS/2. `aim` may be any integer (it wraps). */
 export function turretOffset(heading: number, aim: number): number {
   return ((((aim - heading * HEADING_COUNT + AIM_STEPS + AIM_STEPS / 2) % AIM_STEPS) + AIM_STEPS) % AIM_STEPS) - AIM_STEPS / 2;

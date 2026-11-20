@@ -326,8 +326,8 @@ function createLiveCore<T extends EncounterTypes>(rules: EncounterRules<T>, deps
     const now = deps.clock.nowMs(), expired: number[] = [];
     for (let p = 0; p < held.length; p++) if (heldReceipts[p] !== null && now - heldReceipts[p]! >= REMOTE_HELD_TIMEOUT_MS) {
       heldReceipts[p] = null;
-      const h = held[p]!;   // Valkyrn spec §6.2: an expired aim clears; W-3: and a torpedo's steering; W-4: and the weapon selection; playtest2feedback §7: and a held throttle or thruster
-      if (h.moveX !== 0 || h.moveY !== 0 || h.interactHeld || h.face === true || h.gunHeld === true || h.aim !== undefined || h.torpTurn !== undefined || h.torpHeading !== undefined || h.weaponSel !== undefined || (h.throttleHeld ?? 0) !== 0 || (h.rcsX ?? 0) !== 0 || (h.rcsY ?? 0) !== 0) expired.push(p);
+      const h = held[p]!;   // Valkyrn spec §6.2: an expired aim clears; W-3: and a torpedo's steering; W-4: and the weapon selection and the reticle; playtest2feedback §7: and a held throttle or thruster
+      if (h.moveX !== 0 || h.moveY !== 0 || h.interactHeld || h.face === true || h.gunHeld === true || h.aim !== undefined || h.torpTurn !== undefined || h.torpHeading !== undefined || h.weaponSel !== undefined || h.turretAim !== undefined || (h.throttleHeld ?? 0) !== 0 || (h.rcsX ?? 0) !== 0 || (h.rcsY ?? 0) !== 0) expired.push(p);
     }
     if (expired.length) neutralizeExpired(expired);
   }
@@ -433,7 +433,7 @@ function createLiveCore<T extends EncounterTypes>(rules: EncounterRules<T>, deps
     phase = paused ? 'paused' : 'running'; pauseOwner = owner; pauseReason = reason;
     emit({ kind: 'pause', paused, owner, reason: reason ?? 'resume' });
     driver.setPaused(paused);
-    if (paused) held.forEach((h) => { h.moveX = 0; h.moveY = 0; h.interactHeld = false; delete h.face; delete h.aim; delete h.gunHeld; delete h.torpTurn; delete h.torpHeading; delete h.weaponSel; delete h.throttleHeld; delete h.rcsX; delete h.rcsY; });   // Valkyrn spec §6.2: a pause clears the aim and the trigger; W-3: and the torpedo's steering; W-4: and the weapon selection; playtest2feedback §7: and the throttle and thrusters
+    if (paused) held.forEach((h) => { h.moveX = 0; h.moveY = 0; h.interactHeld = false; delete h.face; delete h.aim; delete h.gunHeld; delete h.torpTurn; delete h.torpHeading; delete h.weaponSel; delete h.turretAim; delete h.throttleHeld; delete h.rcsX; delete h.rcsY; });   // Valkyrn spec §6.2: a pause clears the aim and the trigger; W-3: and the torpedo's steering; W-4: and the weapon selection and the reticle; playtest2feedback §7: and the throttle and thrusters
     publishCompletedState(true);
     complete();
     if (!replaying && controls.length >= 256) { rejectPending(); resetBaseline(); }
