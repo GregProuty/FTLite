@@ -28,7 +28,7 @@ export interface DuelAudioFrame {
    *  this frame (one soft ping tone for any). */
   torpedo?: TorpedoTone; pings?: number;
   /** Playtest2feedback §6: the crew ship's vent this frame (the hiss); absent: none. */
-  vent?: { x: number; y: number; boosted: boolean };
+  vent?: { x: number; y: number };
 }
 
 export function createDuelAudio(out: AudioOut) {
@@ -56,7 +56,7 @@ export function createDuelAudio(out: AudioOut) {
       const tone = f.torpedo && f.live !== false && !f.paused ? lockTone(lock, f.torpedo, launched, clock) : { watch: lock, sounds: [] };
       lock = tone.watch;
       const rocks = rockSounds(rockWatch, f.events, f.pan, clock); rockWatch = rocks.watch;   // spike ii §7 item 8
-      const v = f.vent, hiss = rcsHiss(nextHiss, f.live !== false && !f.paused && !!v && (v.x !== 0 || v.y !== 0 || v.boosted), clock);   // playtest2feedback §6
+      const v = f.vent, hiss = rcsHiss(nextHiss, f.live !== false && !f.paused && !!v && (v.x !== 0 || v.y !== 0), clock);   // playtest2feedback §6; helm round 2 §3.2: no turn-boost hiss
       nextHiss = hiss.next;
       const list = [...ev.sounds, ...st.sounds, ...ins.sounds, ...(alarm.play ? FIRE_ALARM : []), ...(beat.beat ? [HEARTBEAT] : []), ...tone.sounds, ...((f.pings ?? 0) > 0 ? [PING_TONE] : []), ...rocks.sounds, ...(hiss.play ? [RCS_HISS] : [])];
       if (list.length) out.sounds(list);

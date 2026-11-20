@@ -32,6 +32,7 @@ import { damagedRepairPoints, duelWorking } from '../particles/sources';
 import type { ViewEvent } from '../tactical/fxModel';
 import { featureReady } from '../fallback';
 import { crewDrawAt, crewPresentation, type CrewOverride } from './crewOverride';
+import { CARRY_LIFT_3D } from '../crew3dModel';
 import { createHealFx, crewLife, healFxDraw, stepHealFx } from './healFxModel';
 import { createRandom, hashString } from '../particles/random';
 
@@ -58,8 +59,9 @@ const TINT: readonly number[] = [0, AMBER, WARN], MARK: readonly number[] = [0, 
 export const HAZARD_LABELS = 16;
 
 /** `stageScale`: the letterbox's stage scale, read every frame so the fit snaps to whole screen pixels per art pixel (Art-i spec section 4); tests leave it at 1.
- *  `feel`: the feel setting (Art-i spec section 7), read every frame; tests leave it at full. */
-export function createInteriorView(assets: GameAssets, stageScale: () => number = () => 1, feel: () => FeelSetting = () => DEFAULT_FEEL): InteriorView {
+ *  `feel`: the feel setting (Art-i spec section 7), read every frame; tests leave it at full.
+ *  `crew3d`: the 3D crew art or the old art (Crew3D spec section 4), read every frame; tests leave it on. */
+export function createInteriorView(assets: GameAssets, stageScale: () => number = () => 1, feel: () => FeelSetting = () => DEFAULT_FEEL, crew3d: () => boolean = () => true): InteriorView {
   const container = new Container(), world = new Container();
   const missing = new Set(assets.missing);
   const fx = createInteriorFeel({   // Art-i spec sections 5-8; Art-ii: the bought consoles and blasts
@@ -73,9 +75,10 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory), effects = createEffectsLayer(assets, memory), icons = createIconLayer(['navigation', 'medbay']);   // the badges stand in for these two (start-aboard spec §2)
   const props = createPropLayer(assets);   // Art-iii spec section 4: the set dressing, directly over the tiles
-  const desks = createConsoleLayer(assets), crew = createCrewLayer(assets, memory), boarders = createBoarderLayer(assets);
+  const desks = createConsoleLayer(assets), crew = createCrewLayer(assets, memory, crew3d), boarders = createBoarderLayer(assets, crew3d);
   const air = new Graphics(), damage = new Graphics(), marks = new Graphics();   // Engineering spike §6: the air tint under the damage tint
   let last: Placement | null = null;
+  const bar3d = featureReady(missing, 'crew3d');   // Crew3D spec section 4: the health bar clears the taller figure
   const hazardLabels = Array.from({ length: HAZARD_LABELS }, () => {
     const t = new BitmapText({ text: '', style: { fontFamily: assets.fontFamily, fontSize: FONT_NATIVE } });
     t.anchor.set(0.5, 0); t.roundPixels = true; t.visible = false; return t;
@@ -181,7 +184,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         const at = crewDrawAt(c.pid, c.x / TILE_PX, c.y / TILE_PX, crewPrev, alpha, override), x = at.x * TILE_PX, y = at.y * TILE_PX;
         drawn[c.pid] = { x, y };
         if (c.bar) {
-          const w = TILE_PX * 0.8, bx = x - w / 2, by = y - TILE_PX * 0.75;
+          const w = TILE_PX * 0.8, bx = x - w / 2, by = y - (bar3d && crew3d() ? CARRY_LIFT_3D - 2 : TILE_PX * 0.75);   // Crew3D: over the standing figure's head, not across its chest
           marks.rect(bx - 1, by - 1, w + 2, 5).fill({ color: 0x000000, alpha: 0.6 });
           marks.rect(bx, by, w * c.fill, 3).fill({ color: Math.ceil(c.fill * HEALTH_MAX) < HEALTH_LOW ? WARN : GOOD })   // the HEALTH row's rounding;
         }
@@ -206,10 +209,14 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         if (l) { t.alpha = l.alpha; t.position.set(Math.round(l.x), Math.round(l.y)); }
       });
       // Light and feel: the duel's hull alert, a hit flashes the whole interior, sparks at damaged repair rooms, repair work.
-      const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working: duelWorking(d), artPx: 2 * fit.scale, starPx: 2 * fit0.scale }, presentDt, dt);
+      const working = duelWorking(d);
+      const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working, artPx: 2 * fit.scale, starPx: 2 * fit0.scale }, presentDt, dt);
       world.position.set(fit.x + shake.x, fit.y + shake.y);   // only the interior world shakes; the readout column stays still
-      crew.draw(st, alpha, crewPresentation(override), bob);
-      boarders.draw(st, dt);
+      // Crew3D spec section 4: the 3D crew pose from the same list, on the presentation clock: `presentDt` is 0 while the
+      // duel is paused or decided, and then they hold their pose and frame. Net-4a §3.6: online, the other players' crew
+      // are drawn from the confirmed publications (crewPresentation).
+      crew.draw(st, alpha, crewPresentation(override), bob, working, { dt: presentDt, paused: presentDt === 0 && dt > 0 });
+      boarders.draw(st, dt, presentDt);
     },
     destroy() { memory.reset(); fx.destroy(); container.destroy({ children: true }); }   // the feel first: it frees its shared GraphicsContexts
   };

@@ -113,6 +113,17 @@ describe('the duel readout (H-1 spec §7 item 9, §8)', () => {
     }
     disposeDuel(d);
   });
+  it('helm round 2 §6.1: with the Helm empty and the throttle set, the row under HELM reads THRUST <n>%; at 0, COASTING', () => {
+    const d = createDuel(layout, 5);   // nobody seated: the Helm is empty
+    try {
+      d.thrMille = 650;
+      expect(pairs({ duel: d, mode: 'interior', active: 0 })).toContainEqual(['', 'THRUST 65%']);
+      d.thrMille = -500;
+      expect(pairs({ duel: d, mode: 'interior', active: 0 })).toContainEqual(['', 'THRUST -50%']);
+      d.thrMille = 0;
+      expect(pairs({ duel: d, mode: 'interior', active: 0 })).toContainEqual(['', 'COASTING']);
+    } finally { disposeDuel(d); }
+  });
 });
 
 describe('the end screen (H-1 spec §4 End)', () => {

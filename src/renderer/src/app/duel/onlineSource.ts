@@ -231,7 +231,7 @@ export function createOnlineDuelSource(deps: OnlineDuelSourceDeps) {
       const d = duel();   // Net-4a §3.6, §3.9: the seat, the torpedo flag and the cameras' follow read the drawn state
       frameAlpha = Math.max(0, Math.min(1, (deps.now() - receivedAt) * TICK_HZ / (1000 * gap)));
       const view = seatOf(d, seat), cam = view === 'helm' ? cameras.helm : view === 'weapons' ? cameras.weapons : view === 'science' ? cameras.science : null;
-      if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer, view === 'helm'); else cameraInput.applyInterior(interiorCamera, keys, pointer); }   // W-4 spec §7: at Weapons the right button pans again
+      if (keys && pointer) { if (cam) cameraInput.apply(cam, keys, pointer, view === 'helm' && !crewHelmSeat(d, seat)); else cameraInput.applyInterior(interiorCamera, keys, pointer); }   // W-4 spec §7: at Weapons the right button pans again; helm round 2 §4: so does the crew Helm's
       trackManualTorpedo(cameras.weapons, torpFollow, manualTorpedoFlying(d.tactical));   // W-3 (pew pew spec §3): follow a MANUAL torpedo, then go back
       for (const c of [cameras.helm, cameras.weapons, cameras.science]) {
         if (c.follow === 'missile' && !missileOf(d.tactical, 0)) followBody(c, 'ship');

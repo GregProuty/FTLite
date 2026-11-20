@@ -14,7 +14,7 @@ import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim
 import { createSeatedDuel } from './helpers/duelSeat';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
-import { Outcome } from '../src/renderer/src/sim/tactical/state';
+import { Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { placeMissile, removeMissile } from '../src/renderer/src/sim/tactical/state';
 import { sitDown, standUp } from '../src/renderer/src/sim/stations';
 import type { OnlinePortDescriptor, OnlineStatus } from '../src/shared/onlineSession';
@@ -537,7 +537,7 @@ describe('the online duel session (H-2 spec §3, §6, §7)', () => {
     r.dispose();
   });
   it('Feel-i: Space held at the Helm rides the held frame as face; seat 1 at Weapons never sends it', () => {
-    const r = rig(0), c = r.attach();   // seat 0 sits at the Helm
+    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();   // seat 0 at the Valkyrn class's Helm (helm round 2 §4: the crew Helm sends no face)
     r.key('keydown', 'Space'); r.pump();
     expect(c.helds().at(-1)).toEqual({ moveX: 0, moveY: 0, interactHeld: false, face: true });
     expect(c.commands().some((x) => x.kind === 'laserCharge')).toBe(false);
@@ -757,6 +757,7 @@ describe('the online Helm throttle reads the prediction (Artemis spec §5.4, Net
 });
 
 describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () => {
+  const drawn = (): DuelState => (h.source as unknown as { duel: DuelState }).duel;   // Net-4a §3.9: the drawn state, P
   const headings = (c: Stub) => c.commands().filter((x) => x.kind === 'heading');
   const ask = (r: ReturnType<typeof rig>, heading: number): void => { (h.sceneOpts.at(-1) as unknown as { requests: { heading(n: number): void } }).requests.heading(heading); r.pump(); };
   it('held W rides the frame as throttleHeld and a Digit1 press sends no helmPower (owner 2026-11-19)', () => {
@@ -768,14 +769,93 @@ describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () =>
     expect(c.commands().filter((x) => (x.kind as string) === 'helmPower')).toEqual([]);
     r.dispose();
   });
-  it('A turns here too and clears the held heading in P (the sim\'s rule, owner 2026-11-19), so the same heading asked again is sent', () => {
+  it('helm round 2 §4: the map\'s heading request sends nothing at the crew Helm, whatever the replica holds', () => {
     const r = rig(0), c = r.attach();
-    r.d.holdHeading = 77; c.publish(r.d); r.pump();
-    ask(r, 77);
-    expect(headings(c)).toEqual([]);   // P holds it already
-    r.key('keydown', 'KeyA'); r.pump(); r.key('keyup', 'KeyA'); r.pump();   // step.ts crewHelm: a held A/D clears the hold
-    ask(r, 77);
-    expect(headings(c)).toEqual([{ kind: 'heading', heading: 77 }]);
+    ask(r, 77); ask(r, -1);
+    r.d.holdHeading = 77; c.publish(r.d); r.pump(); ask(r, 12);
+    expect(headings(c)).toEqual([]);
+    r.dispose();
+  });
+  it('helm round 2 §4: Space rides no face at the crew Helm and raises no auto-face refusal', () => {
+    const r = rig(0), c = r.attach();
+    r.d.tactical.systems[0].rooms[Room.Engines] = 2; c.publish(r.d); r.pump();   // Engines failed: the old refusal's condition
+    r.key('keydown', 'Space'); r.pump(); r.session.frame();
+    expect(c.helds().at(-1)).not.toHaveProperty('face');
+    expect(h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'auto-face')).toEqual([]);
+    r.dispose();
+  });
+  it('helm round 2 §2.3, §7: a tap of S with the predicted throttle above 0 sends one throttleCut; P shows 0 at once, and a publication that ran it refused takes it back (Net-4a §3.9)', () => {
+    const r = rig(0), c = r.attach(), cuts = () => c.commands().filter((x) => x.kind === 'throttleCut');
+    r.d.thrMille = 400; c.publish(r.d); r.pump();
+    r.key('keydown', 'KeyS'); r.pump(); r.advance(80); r.key('keyup', 'KeyS'); r.pump();
+    expect(cuts()).toEqual([{ kind: 'throttleCut' }]);
+    r.session.frame();
+    expect(drawn().thrMille).toBe(0);   // the cut is in P (it holds every unacknowledged command)
+    expect(h.predictors.at(-1)!.ticks.some((e) => e.commands.some((x) => (x as { command: DuelCommand }).command.kind === 'throttleCut'))).toBe(true);   // collected into its log entry
+    const cut = c.ids[c.commands().map((x) => x.kind).lastIndexOf('throttleCut')]!.sequence;
+    c.publish(r.d, 'running', undefined, { command: [cut, 0], held: [c.helds().length, 0] }); r.pump(); r.session.frame();   // ran, the state still at 400: refused
+    expect(drawn().thrMille).toBe(c.state()!.thrMille);   // the replica is P's base again
+    r.dispose();
+  });
+  it('helm round 2 §2.3: a tap of S at 0 and a 250 ms press of S send no cut', () => {
+    const a = rig(0), ca = a.attach();
+    a.key('keydown', 'KeyS'); a.pump(); a.advance(80); a.key('keyup', 'KeyS'); a.pump();
+    expect(ca.commands().filter((x) => x.kind === 'throttleCut')).toEqual([]);
+    a.dispose();
+    const b = rig(0), cb = b.attach();
+    b.d.thrMille = 400; cb.publish(b.d); b.pump();
+    b.key('keydown', 'KeyS'); b.pump(); b.advance(250); b.key('keyup', 'KeyS'); b.pump();
+    expect(cb.commands().filter((x) => x.kind === 'throttleCut')).toEqual([]);
+    b.dispose();
+  });
+  it('helm round 2 §2.3, §7: a tap of W with the predicted throttle below 0 sends one throttleCut', () => {
+    const r = rig(0), c = r.attach();
+    r.d.thrMille = -300; c.publish(r.d); r.pump();
+    r.key('keydown', 'KeyW'); r.pump(); r.advance(80); r.key('keyup', 'KeyW'); r.pump();
+    expect(c.commands().filter((x) => x.kind === 'throttleCut')).toEqual([{ kind: 'throttleCut' }]);
+    r.session.frame();
+    expect(drawn().thrMille).toBe(0);   // the cut is in P
+    r.dispose();
+  });
+  it('helm round 2 §3.3: a PORT / STBD button press on the replica\'s empty charge says NO GAS once a press', () => {
+    let input: ConsoleInput | null = null;
+    const r = rig(0, undefined, undefined, { setConsole: (i: ConsoleInput | null) => { input = i; } }), c = r.attach();
+    const gas = () => h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'gas');
+    r.d.gas = 0; c.publish(r.d); r.pump(); r.session.frame(); gas();
+    input!.hold('ArrowLeft', true); r.pump(); r.pump(); r.pump(); r.session.frame();
+    expect(gas()).toEqual([{ control: 'gas', reason: 'NO GAS' }]);   // once, for the held press
+    input!.hold('ArrowLeft', false); r.pump(); input!.hold('ArrowRight', true); r.pump(); r.session.frame();
+    expect(gas()).toEqual([{ control: 'gas', reason: 'NO GAS' }]);   // a new press
+    r.dispose();
+  });
+  it('helm round 2 §7, Net-4a §3.9: the cut is in P, not an in-flight copy: the publication of a new round and a re-attach show the replica throttle; a stand after it keeps P at 0 (the authority runs the cut first)', () => {
+    const r = rig(0);
+    let c = r.attach();
+    /** A tap of S at 400: the cut is in P, which reads 0. */
+    const cutInP = (why: string): void => {
+      r.d.thrMille = 400; c.publish(r.d); r.pump();
+      const before = c.commands().filter((x) => x.kind === 'throttleCut').length;
+      r.key('keydown', 'KeyS'); r.pump(); r.advance(80); r.key('keyup', 'KeyS'); r.pump();
+      expect(c.commands().filter((x) => x.kind === 'throttleCut').length, why).toBe(before + 1);
+      r.session.frame(); expect(drawn().thrMille, `${why}: in P`).toBe(0);
+    };
+    const replica = (why: string): void => { r.session.frame(); expect(drawn().thrMille, `${why}: the replica's`).toBe(400); };
+    const water = () => ({ command: [c.ids.at(-1)!.sequence, 0], held: [c.helds().length, 0] });
+    cutInP('new round');
+    nextRound(r.d); r.d.thrMille = 400; c.publish(r.d, 'running', undefined, water()); r.pump();
+    replica('new round');
+    cutInP('stand');
+    r.key('keydown', 'KeyX'); r.key('keyup', 'KeyX'); r.pump();   // this seat's stand, after the cut
+    r.session.frame(); expect(drawn().thrMille, 'stand: the cut ran first').toBe(0);
+    c = r.attach();
+    replica('re-attach');
+    r.dispose();
+  });
+  it('helm round 2 §3.3: a thruster press on the replica\'s empty charge says NO GAS once a press', () => {
+    const r = rig(0), c = r.attach();
+    r.d.gas = 0; c.publish(r.d); r.pump();
+    r.key('keydown', 'KeyQ'); r.pump(); r.pump(); r.session.frame();
+    expect(h.sources.at(-1)!.takeRefusals().filter((x) => x.control === 'gas')).toEqual([{ control: 'gas', reason: 'NO GAS' }]);
     r.dispose();
   });
   it('keys held while sitting (E) or walking up (W) do not carry onto the crew Helm until pressed again (final review I1)', () => {
@@ -796,13 +876,23 @@ describe('the online crew Helm on the Cutter (playtest2feedback Task 10)', () =>
     expect([c.helds().at(-1)!.rcsX, c.helds().at(-1)!.throttleHeld]).toEqual([1, 1]);
     r.dispose();
   });
+  it('blur neutralises the held frame P steps on: the crew Helm thrusters stop venting in P (rewritten from the local-vent case)', () => {
+    const r = rig(0), c = r.attach();
+    c.publish(r.d); r.pump(); r.session.frame();
+    r.key('keydown', 'ArrowUp'); r.pump(); r.pump();
+    expect(h.predictors.at(-1)!.ticks.at(-1)!.held.rcsY).not.toBeUndefined();   // the thruster rides P's entry
+    r.session.setFocused(false); r.pump(); r.pump();
+    const last = h.predictors.at(-1)!.ticks.at(-1)!.held;
+    expect([last.rcsX, last.rcsY, last.throttleHeld]).toEqual([undefined, undefined, undefined]);   // neutral: P vents nothing
+    r.dispose();
+  });
 });
 
 describe('the online Helm heading (Feel-ii §1.1)', () => {
   const headings = (c: Stub) => c.commands().filter((x) => x.kind === 'heading');
   const ask = (r: ReturnType<typeof rig>, heading: number): void => { (h.sceneOpts.at(-1) as unknown as { requests: { heading(n: number): void } }).requests.heading(heading); r.pump(); };
   it('a clear asked for while a heading is in P is sent, not deduped against the lagging replica (from P)', () => {
-    const r = rig(0), c = r.attach();   // the replica holds no heading (−1)
+    const r = rig(0, undefined, undefined, undefined, ShipClass.Valkyrn), c = r.attach();   // the replica holds no heading (−1); the Valkyrn class's Helm: helm round 2 §4 takes the heading off the crew Helm
     ask(r, 77); ask(r, -1);
     expect(headings(c)).toEqual([{ kind: 'heading', heading: 77 }, { kind: 'heading', heading: -1 }]);
     ask(r, -1);   // P holds the clear now: deduped against it

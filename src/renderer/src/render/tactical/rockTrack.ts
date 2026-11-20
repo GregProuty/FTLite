@@ -1,37 +1,35 @@
-// Asteroids-iii §7.1, §13.5 (renderer only): each rock slot's history for smooth motion and trails, view-owned and never
+// Asteroids-iii §7.1, §13.5 (renderer only): each rock slot's last two places for smooth motion, view-owned and never
 // hashed. A rail is drawn at tick − gap·(1 − α) by rotating its centre and offset (any Math here: renderer), gap the whole
 // ticks between the last two observed ticks (1 on a host, about 3 on a guest, whose α spans the publication gap); a free
-// rock is lerped from its last observed position. Free rocks keep a ring of TRAIL_LEN samples at TRAIL_HZ: a rock younger than YOUNG_AGE_S
-// shows TRAIL_YOUNG_S of it, an older one TRAIL_OLD_S. A slot's history resets when its kind or r changes or it jumps more
-// than JUMP_RESET_U between ticks, which covers slot reuse on guests (who get no rock events). Net-4a (Fable #8): online
+// rock is lerped from its last observed position. A slot's history resets when its kind or r changes or it jumps more
+// than JUMP_RESET_U between ticks, which covers slot reuse on guests (who get no rock events). Look pass (docs/
+// superpowers/specs/2026-11-20-asteroids-look-design.md §2): no trails are kept or drawn. Net-4a (Fable #8): online
 // while predicting the caller gives the gap (1: α spans one local tick, as the ships' blend), and a backward tick of at
-// most RESYNC_BACK_TICKS (a prediction retarget) re-syncs the positions without wiping the trails. Rock jump brief §2:
+// most RESYNC_BACK_TICKS (a prediction retarget) re-syncs the positions without a reset. Rock jump brief §2:
 // online the caller also gives the session's draw-tick offset (a retarget taken back over SMOOTH_MS), added to the draw
 // tick of the rails and the spin, and to a free rock's blend; and a tick change other than the given gap (a retarget or
 // two ticks in one frame) puts a free rock's last position one gap back along its step, so its blend spans one gap as the
 // rails' does. Single player and the guest's replica give neither: their path is the old one.
-import { isRail, RockKind, rockSlots, ROCK_STRIDE, rockT, rockX, rockY } from '../../sim/tactical/rocks';
+import { isRail, RockKind, rockSlots, ROCK_STRIDE, rockX, rockY } from '../../sim/tactical/rocks';
 import { orbitRate, SPIN_RATE } from '../../sim/tactical/rails';
 import type { TacticalState } from '../../sim/tactical/state';
 import { TICK_HZ } from '../../sim/tuning';
 import type { Point } from './camera';
 
-export const TRAIL_HZ = 4, TRAIL_YOUNG_S = 25, TRAIL_OLD_S = 6, YOUNG_AGE_S = 60, JUMP_RESET_U = 50;
-export const TRAIL_LEN = TRAIL_YOUNG_S * TRAIL_HZ;
+export const JUMP_RESET_U = 50;
 /** Fable #8: the furthest back a prediction retarget moves the drawn tick (PREDICT_MAX_TICKS); further back is a new history. */
 export const RESYNC_BACK_TICKS = 30;
-const TRAIL_EVERY = TICK_HZ / TRAIL_HZ;
-export interface RockTrack { tick: number; gap: number; shift: number; n: number; kind: Float64Array; r: Float64Array; px: Float64Array; py: Float64Array; cx: Float64Array; cy: Float64Array; trail: Float64Array; head: Int32Array; len: Int32Array }
+export interface RockTrack { tick: number; gap: number; shift: number; n: number; kind: Float64Array; r: Float64Array; px: Float64Array; py: Float64Array; cx: Float64Array; cy: Float64Array }
 
 export function createRockTrack(): RockTrack {
-  return { tick: -1, gap: 1, shift: 0, n: 0, kind: new Float64Array(0), r: new Float64Array(0), px: new Float64Array(0), py: new Float64Array(0), cx: new Float64Array(0), cy: new Float64Array(0), trail: new Float64Array(0), head: new Int32Array(0), len: new Int32Array(0) };
+  return { tick: -1, gap: 1, shift: 0, n: 0, kind: new Float64Array(0), r: new Float64Array(0), px: new Float64Array(0), py: new Float64Array(0), cx: new Float64Array(0), cy: new Float64Array(0) };
 }
-export function resetRockTrack(t: RockTrack): void { t.tick = -1; t.gap = 1; t.shift = 0; t.len.fill(0); t.head.fill(0); }
+export function resetRockTrack(t: RockTrack): void { t.tick = -1; t.gap = 1; t.shift = 0; }
 function sized(t: RockTrack, n: number): void {
-  Object.assign(t, { n, tick: -1, gap: 1, kind: new Float64Array(n), r: new Float64Array(n), px: new Float64Array(n), py: new Float64Array(n), cx: new Float64Array(n), cy: new Float64Array(n), trail: new Float64Array(n * TRAIL_LEN * 2), head: new Int32Array(n), len: new Int32Array(n) });
+  Object.assign(t, { n, tick: -1, gap: 1, kind: new Float64Array(n), r: new Float64Array(n), px: new Float64Array(n), py: new Float64Array(n), cx: new Float64Array(n), cy: new Float64Array(n) });
 }
 /** Once per frame: on a new tick, record the tick gap (the ticks since the last one seen, at least 1, or `gap` when given),
- *  shift each slot's positions, reset what changed, and sample the free rocks' trails. A small step back re-syncs.
+ *  shift each slot's positions and reset what changed. A small step back re-syncs.
  *  `shift` (rock jump brief §2, online only): the draw-tick offset this frame. */
 export function updateRockTrack(t: RockTrack, s: TacticalState, gap?: number, shift = 0): void {
   const n = rockSlots(s);
@@ -39,23 +37,17 @@ export function updateRockTrack(t: RockTrack, s: TacticalState, gap?: number, sh
   t.shift = shift;
   if (s.tick === t.tick) { if (gap !== undefined) t.gap = gap; return; }
   const back = t.tick >= 0 && s.tick < t.tick, first = t.tick < 0 || t.tick - s.tick > RESYNC_BACK_TICKS, resync = back && !first;
-  const sample = first || (!resync && Math.floor(s.tick / TRAIL_EVERY) !== Math.floor(t.tick / TRAIL_EVERY));   // a re-sync samples nothing: those ticks are in the trail
   t.gap = gap ?? (first || resync ? 1 : Math.max(1, s.tick - t.tick));
   const moved = s.tick - t.tick, along = gap !== undefined && !first && moved !== gap;   // §2: a free rock's last position one gap back along its step
   for (let k = 0; k < n; k++) {
     const kind = s.rocks[k * ROCK_STRIDE]!;
-    if (kind === RockKind.Gone) { t.kind[k] = 0; t.len[k] = 0; continue; }
+    if (kind === RockKind.Gone) { t.kind[k] = 0; continue; }
     const x = rockX(s, k), y = rockY(s, k), r = s.rocks[k * ROCK_STRIDE + 5]!;
     const reset = first || t.kind[k] !== kind || t.r[k] !== r || Math.hypot(x - t.cx[k]!, y - t.cy[k]!) > JUMP_RESET_U;
-    if (reset) { t.px[k] = x; t.py[k] = y; t.len[k] = 0; t.head[k] = 0; }
+    if (reset) { t.px[k] = x; t.py[k] = y; }
     else if (along) { t.px[k] = x - ((x - t.cx[k]!) * gap) / moved; t.py[k] = y - ((y - t.cy[k]!) * gap) / moved; }
     else if (resync) { t.px[k] = x; t.py[k] = y; } else { t.px[k] = t.cx[k]!; t.py[k] = t.cy[k]!; }
     t.cx[k] = x; t.cy[k] = y; t.kind[k] = kind; t.r[k] = r;
-    if (kind === RockKind.Free && (reset || sample)) {
-      const at = (k * TRAIL_LEN + t.head[k]!) * 2;
-      t.trail[at] = x; t.trail[at + 1] = y;
-      t.head[k] = (t.head[k]! + 1) % TRAIL_LEN; t.len[k] = Math.min(TRAIL_LEN, t.len[k]! + 1);
-    }
   }
   t.tick = s.tick;
 }
@@ -76,22 +68,4 @@ export function rockDrawPos(t: RockTrack | null, s: TacticalState, k: number, al
   if (!t || t.tick !== s.tick || k >= t.n) return { x: v[b + 1]!, y: v[b + 2]! };
   const a = t.shift ? alpha + t.shift / t.gap : alpha;   // §2: the offset carries the blend on along the same step
   return { x: t.px[k]! + (t.cx[k]! - t.px[k]!) * a, y: t.py[k]! + (t.cy[k]! - t.py[k]!) * a };
-}
-/** Rock k's trail written into `out` as flat world x, y pairs, oldest first (the number of pairs is returned): 25 s while it
- *  is younger than 60 s, 6 s after; none for a rail. `out` is the caller's scratch: no allocation once it has grown. */
-export function rockTrailInto(t: RockTrack, s: TacticalState, k: number, out: number[]): number {
-  if (k >= t.n || s.rocks[k * ROCK_STRIDE] !== RockKind.Free) return 0;
-  const young = (s.tick - rockT(s, k)) / TICK_HZ < YOUNG_AGE_S, keep = Math.min(t.len[k]!, (young ? TRAIL_YOUNG_S : TRAIL_OLD_S) * TRAIL_HZ);
-  for (let i = keep, j = 0; i >= 1; i--, j += 2) {
-    const at = (k * TRAIL_LEN + ((t.head[k]! - i + TRAIL_LEN) % TRAIL_LEN)) * 2;
-    out[j] = t.trail[at]!; out[j + 1] = t.trail[at + 1]!;
-  }
-  return keep;
-}
-const scratch: number[] = [];
-/** Rock k's trail in world units, oldest first (rockTrailInto, as Points). */
-export function rockTrail(t: RockTrack, s: TacticalState, k: number): Point[] {
-  const n = rockTrailInto(t, s, k, scratch), out: Point[] = [];
-  for (let i = 0; i < n; i++) out.push({ x: scratch[i * 2]!, y: scratch[i * 2 + 1]! });
-  return out;
 }

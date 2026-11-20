@@ -43,6 +43,7 @@ import { inputBlockedOf } from './ui/menuState';
 import { mountUi } from './ui/mount';
 import { createUiPerf } from './ui/perf';
 import { installFeel } from './app/feelBoot';
+import { installCrew3d } from './app/crew3dBoot';
 import { installCrt } from './app/crtBoot';
 import type { Renderer } from './render/renderer';
 import type { OnlineStatus } from '../../shared/onlineSession';
@@ -66,6 +67,7 @@ ${err instanceof Error ? err.message : String(err)}`;
 /** The feel setting (Art-i spec section 7): read once at boot inside a try/catch (loadFeel), F9 cycles it in dev builds. */
 function bootFeel(renderer: Renderer): void {
   installFeel(renderer, { storage: () => localStorage, keys: window, dev: import.meta.env.DEV, log: (m) => console.info(m) });
+  installCrew3d(renderer, { storage: () => localStorage, keys: window, dev: import.meta.env.DEV, log: (m) => console.info(m) });   // Crew3D spec section 4: F8 in dev
 }
 
 /** The CRT setting (CRT map spec section 4): read once at boot (loadCrt), F10 cycles it in dev builds; it reaches the
@@ -122,7 +124,7 @@ async function startApp(): Promise<void> {
       removeEventListener: (type, fn, capture) => window.removeEventListener(type, fn as (e: KeyboardEvent) => void, capture),
       dispatchEscape: () => { for (const type of ['keydown', 'keyup']) window.dispatchEvent(new KeyboardEvent(type, { code: 'Escape', key: 'Escape', bubbles: true })); } },
     matchRunning: () => inMatch(store.getState().menu), now: () => performance.now(), onChange: () => actions.windowResized() });
-  const store = createUiStore({ onlineAvailable: !!bridge, browser: browserInit, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, mapGrid: settings.mapGrid, fullscreenAvailable: !!win || !!pageFullscreen?.available, controls: controlSections(),
+  const store = createUiStore({ onlineAvailable: !!bridge, browser: browserInit, settings: { master: settings.master, music: settings.music, effects: settings.effects, shake: settings.shake, mapGrid: settings.mapGrid, throttleTapMs: settings.throttleTapMs, fullscreenAvailable: !!win || !!pageFullscreen?.available, controls: controlSections(),
     ships: SOLO_SHIPS.map(({ id, name, line }) => ({ id, name, line })), soloShip: settings.soloShip, valkyrnLaserFit: settings.valkyrnLaserFit } });   // Valkyrn spec §9
   bootCrt(renderer, store);
   const offGuards = installPageGuards(window, () => inMatch(store.getState().menu));   // web build spec §7.1 (harmless in Electron)
@@ -133,7 +135,7 @@ async function startApp(): Promise<void> {
       const cls = settings.valkyrnLaserFit && pick.laserFit !== null ? classIndexById(pick.laserFit) : undefined;   // §8: the developer laser fit
       const dispose = startDuelMode({ renderer, seed: DEFAULT_SEED, layout, cls, lifecycle: window.ftlite, ui: duelSink, audio,   // Audio-i: Single player was silent
         onExit: () => { session.home(); actions.leaveSingle(); }, recordDuel, setConsole: (input) => actions.setConsole(input),
-        setContact: (contact) => actions.setContact(contact) });
+        setContact: (contact) => actions.setContact(contact), throttleTapMs: () => settings.throttleTapMs });
       return { frame() { /* the duel runs on its own ticker callback */ }, dispose };
     },
     // Multiplayer (H-2 spec §3): the wrapper builds the duel's or the sector's session when the first port arrives.
@@ -142,7 +144,7 @@ async function startApp(): Promise<void> {
       online = createOnlineModeSession({
         duel: () => createOnlineDuelSession({ renderer, ui: duelSink, latency: latencySink, now: () => performance.now(), scheduler, contentDigest: __GAMEPLAY_CONTENT_DIGEST__, resolveLayout, api: bridge!,
           leave: () => actions.leave(), audio, recordDuel, setConsole: (input) => actions.setConsole(input),
-          setContact: (contact) => actions.setContact(contact) }),   // Audio-i: local duel sounds; the replicated cues would play twice
+          setContact: (contact) => actions.setContact(contact), throttleTapMs: () => settings.throttleTapMs }),   // Audio-i: local duel sounds; the replicated cues would play twice
         sector: () => createOnlineRendererSession({ sampleDevices: keyboard.sample, resetInput: keyboard.reset, renderer, hud, now: () => performance.now(), scheduler,
           resolveLayout, api: bridge!, playCue: audio.play, sound: createSectorAudio(audio) })
       });
@@ -165,6 +167,7 @@ async function startApp(): Promise<void> {
     setVolume(channel, volume) { settings = { ...settings, [channel]: volume }; audio.setVolumes(settings); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     setShake(shake) { settings = { ...settings, shake }; renderer.setShake?.(shake); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
     setMapGrid(mapGrid) { settings = { ...settings, mapGrid }; renderer.setMapGrid?.(mapGrid); try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },
+    setThrottleTap(throttleTapMs) { settings = { ...settings, throttleTapMs }; try { saveSettings(localStorage, settings); } catch { /* storage denied */ } },   // helm round 2 §6.3: the keyboards read it live
     fullscreen: win ? { get: () => win.isFullScreen(), set: (on) => win.setFullScreen(on) }
       : pageFullscreen ? { get: () => pageFullscreen.get(), set: (on) => pageFullscreen.set(on) } : undefined,
     reload() { location.reload(); },   // web build spec §5.4: the update banner

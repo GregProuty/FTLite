@@ -13,13 +13,17 @@ export const VOLUME_STEPS: readonly number[] = [0, 0.25, 0.5, 0.75, 1];
 export const VOLUME_CHANNELS = ['master', 'music', 'effects'] as const;
 export type VolumeChannel = (typeof VOLUME_CHANNELS)[number];
 export const VOLUME_LABELS: Readonly<Record<VolumeChannel, string>> = { master: 'Master volume', music: 'Music', effects: 'Effects' };
+/** Helm round 2 §2.3, §6.3: the throttle tap time's choices in ms (a W or S press shorter than it is a tap), and the
+ *  default. The Settings record's throttleTapMs holds one. */
+export const THROTTLE_TAP_STEPS: readonly number[] = [150, 200, 250, 300];
+export const DEFAULT_THROTTLE_TAP_MS = 200;
 
 /** Feel-i: `shake`, the console maps' screen shake (off, low, full); a version 2 record without it reads full. Valkyrn spec
  *  §8, §9: `soloShip`, the Single player ship last picked, and `valkyrnLaserFit`, the developer laser fit; a record without
  *  them reads the first solo ship and the gun. `mapGrid` (owner 2026-11-19), the console map's grid; a record without it
- *  reads the gravity grid. */
-export interface Settings extends Volumes { version: 2; shake: ShakeSetting; soloShip: SoloShipId; valkyrnLaserFit: boolean; mapGrid: MapGridSetting }
-export const DEFAULT_SETTINGS: Settings = { version: 2, master: 1, music: 0.5, effects: 1, shake: DEFAULT_SHAKE, soloShip: DEFAULT_SOLO_SHIP, valkyrnLaserFit: false, mapGrid: DEFAULT_MAP_GRID };   // music at half (owner 2026-11-17)
+ *  reads the gravity grid. `throttleTapMs` (helm round 2 §6.3): the throttle tap time, one of THROTTLE_TAP_STEPS; a record without it, or with any other value, reads DEFAULT_THROTTLE_TAP_MS. */
+export interface Settings extends Volumes { version: 2; shake: ShakeSetting; soloShip: SoloShipId; valkyrnLaserFit: boolean; mapGrid: MapGridSetting; throttleTapMs: number }
+export const DEFAULT_SETTINGS: Settings = { version: 2, master: 1, music: 0.5, effects: 1, shake: DEFAULT_SHAKE, soloShip: DEFAULT_SOLO_SHIP, valkyrnLaserFit: false, mapGrid: DEFAULT_MAP_GRID, throttleTapMs: DEFAULT_THROTTLE_TAP_MS };   // music at half (owner 2026-11-17)
 
 const step = (v: unknown, fallback: number): number => (typeof v === 'number' && VOLUME_STEPS.includes(v) ? v : fallback);
 
@@ -33,7 +37,8 @@ export function loadSettings(storage: RecordStorage): Settings {
     return { version: 2, master: step(r.master, DEFAULT_SETTINGS.master), music: step(r.music, DEFAULT_SETTINGS.music), effects: step(r.effects, DEFAULT_SETTINGS.effects),
       shake: validShake(r.shake) ? r.shake : DEFAULT_SETTINGS.shake,
       soloShip: isSoloShipId(r.soloShip) ? r.soloShip : DEFAULT_SETTINGS.soloShip, valkyrnLaserFit: r.valkyrnLaserFit === true,
-      mapGrid: validMapGrid(r.mapGrid) ? r.mapGrid : DEFAULT_SETTINGS.mapGrid };
+      mapGrid: validMapGrid(r.mapGrid) ? r.mapGrid : DEFAULT_SETTINGS.mapGrid,
+      throttleTapMs: typeof r.throttleTapMs === 'number' && THROTTLE_TAP_STEPS.includes(r.throttleTapMs) ? r.throttleTapMs : DEFAULT_THROTTLE_TAP_MS };   // helm round 2 §6.3
   } catch { return { ...DEFAULT_SETTINGS }; }
 }
 

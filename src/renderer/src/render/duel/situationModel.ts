@@ -206,7 +206,10 @@ export function evadeDir(t: TacticalState): { x: number; y: number } | null {
 }
 
 /** The console controls a refusal can name (the buttons, and their keys). W-1: `pew`, the Weapons map's left click. */
-export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser' | 'pew' | 'autocannon' | 'power';   // W-4 spec §9: the autocannon's dead trigger and W/S at a range end; owner 2026-11-19: the free cold gas is never refused
+export type RefusedControl = 'fire' | 'launch' | 'turn' | 'auto-face' | 'throttle' | 'heading' | 'laser' | 'pew' | 'autocannon' | 'power' | 'gas';   // W-4 spec §9: the autocannon's dead trigger and W/S at a range end; helm round 2 §3.3: a thruster press on an empty charge ('auto-face' and 'heading' stay for the other Helm)
+/** Helm round 2 §3.3: why a thruster press does nothing: the gas charge is below one tick's spend. The runtimes raise it;
+ *  refusal() never returns it. */
+export const NO_GAS = 'NO GAS';
 /** Valkyrn spec §6.1: the reason a laser key (1, 3/4/5) gives on a class without a laser (the `laser` control, Flight only). */
 export const NO_LASER = 'NO LASER';
 /** Engineering spike §10.4 (final review): why the sim refuses a lock on the target ship (a laserLock or torpLock on a

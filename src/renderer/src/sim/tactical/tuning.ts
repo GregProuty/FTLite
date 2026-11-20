@@ -73,12 +73,17 @@ export const TURN_DEG_PER_S = 150;
 export const TURN_STEPS_PER_TICK = (TURN_DEG_PER_S / 360) * HEADING_COUNT * DT;   // about 1.78
 export const THRUST = 120;                     // u/s²
 export const REVERSE_FRACTION = 0.4;
+/** Helm round 2 §2.2: the Hound's (CUTTER_CLASS's) full reverse, half its full thrust (60 u/s²). REVERSE_FRACTION stays
+ *  every other class's, so the Hunter still brakes at 40 %. */
+export const HOUND_REVERSE_FRACTION = 0.5;
 export const DRAG = 0.15;                      // velocity × (1 − DRAG · dt) per tick
 export const STABILISE = 80;                   // u/s² of sideways velocity removed while both axes are zero
 
 /** Switches for the §4 test configurations. The game flies each slot's flightFor (physics.ts): CREW_FLIGHT for a
- *  newtonianHelm crew class (playtest2feedback §2), else DEFAULT_FLIGHT. */
-export interface FlightTuning { gravity: boolean; edge: boolean; drag: number; stabilise: number }
+ *  newtonianHelm crew class (playtest2feedback §2, helm round 2 §3.1), else DEFAULT_FLIGHT. `stabiliseUnderThrust` (helm
+ *  round 2 §3.1; absent is false): the stabilise also acts while the main engine thrusts, so only the turn and the
+ *  thrusters stop it. */
+export interface FlightTuning { gravity: boolean; edge: boolean; drag: number; stabilise: number; stabiliseUnderThrust?: boolean }
 export const DEFAULT_FLIGHT: FlightTuning = { gravity: true, edge: true, drag: DRAG, stabilise: STABILISE };
 
 // Weapons and shields (§5, §7a)
@@ -202,19 +207,20 @@ export const GUN_HITS_PER_LEVEL = 6;
  *  level at the owner's gun's hitsPerLevel, 6): two hits a level. */
 export const PEW_ROOM_WEAR = 3;
 
-// Playtest2feedback (spec 2026-11-18-playtest2feedback-design §2, §4, §4a): the crew Helm's Newtonian flight, on a class
-// whose `newtonianHelm` is true (the Cutter). Start values, tuned in playtest.
-/** §2: the top speed thrust may not push a ship past (u/s); gravity, the edge and bounces still can. */
+// Playtest2feedback (spec 2026-11-18-playtest2feedback-design §2, §4) and helm round 2 (spec 2026-11-19-helm-round2-design
+// §3): the crew Helm's flight on a class whose `newtonianHelm` is true (the Hound). Start values, tuned in playtest.
+/** Playtest2feedback §2: the top speed thrust may not push a ship flying with drag 0 past (u/s); gravity, the edge and
+ *  bounces still can. Helm round 2 §3.1: no game ship flies with drag 0 now; the test configurations still do. */
 export const MAX_SPEED = 400;
-/** §4: one vented cold gas axis's push (u/s²), in the ship frame; never scaled by Engines damage. */
-export const RCS_THRUST = 35;
-/** §4a: a gas-boosted turn steps this many times the class's turn a tick. */
-export const RCS_TURN_BOOST = 2;
-/** §4a: a turn toward an aim or a held heading is far (boosted) while the signed index difference is beyond this; it is
- *  wider than a boosted step (2 × 1.78 = 3.56), so the boost never reaches the aim's own |d| ≤ 1 band. */
-export const BOOST_FAR = 4;
-/** §2: the crew Helm's flight: gravity and the edge spring, no drag, no stabilise. */
-export const CREW_FLIGHT: FlightTuning = { gravity: true, edge: true, drag: 0, stabilise: 0 };
+/** §4, helm round 2 §3.3: one vented cold gas axis's push (u/s²), in the ship frame; never scaled by the Engines. 70 (was
+ *  35): a full charge on one thruster is 105 u/s before drag, a real dodge. */
+export const RCS_THRUST = 70;
+/** Helm round 2 §3.1: the Hound's own drag and stabilise (the values every ship flew before the playtest2feedback spike),
+ *  so tuning them never moves the Hunter. */
+export const CREW_DRAG = 0.15;
+export const CREW_STABILISE = 80;
+/** Helm round 2 §3.1: the crew Helm's flight: gravity, the edge spring, drag, and a stabilise that also acts under thrust. */
+export const CREW_FLIGHT: FlightTuning = { gravity: true, edge: true, drag: CREW_DRAG, stabilise: CREW_STABILISE, stabiliseUnderThrust: true };
 // Pew pew (spec 2026-11-18-pew-pew-weapons-design §1, §4; W-1): the Cutter's and the Hunter's skill-shot gun. Start values,
 // tuned in playtest; Task 6 of the W-1 plan may move only the Hunter's and the scripted gunner's knobs.
 /** Fine heading units to the turn (spec §4): a heading index times HEADING_COUNT plus its fraction aimAcc, 0..255. */

@@ -210,10 +210,10 @@ export interface TacticalState {
 }
 
 /** Held axes for one ship: turn (+ clockwise) and thrust (+ forward). flyShip quantises the turn by sign and rounds the
- *  thrust to thousandths in −1..1 (NaN counts as 0; playtest2feedback §3). Playtest2feedback §4, §4a: `turnBoost` (1 or 2,
- *  absent 1) multiplies the turn step; `rcsX` (−1 port, 1 starboard) and `rcsY` (−1 aft, 1 forward) are the cold gas
- *  axes that vented this tick (absent 0). */
-export interface Axes { turn: number; thrust: number; turnBoost?: number; rcsX?: number; rcsY?: number }
+ *  thrust to thousandths in −1..1 (NaN counts as 0; playtest2feedback §3). Playtest2feedback §4: `rcsX` (−1 port, 1
+ *  starboard) and `rcsY` (−1 aft, 1 forward) are the cold gas axes that vented this tick (absent 0). Helm round 2 §3.2:
+ *  there is no turn boost. */
+export interface Axes { turn: number; thrust: number; rcsX?: number; rcsY?: number }
 export const NO_AXES: Axes = { turn: 0, thrust: 0 };
 
 /** The crew's ship slot. */

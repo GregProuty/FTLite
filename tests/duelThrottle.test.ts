@@ -54,7 +54,7 @@ describe('the throttle levels (Artemis spec §5.1, §5.3)', () => {
 describe('the helm module (Artemis spec §5.1)', () => {
   it('sits after round and before interior, owns throttle, and its field moves the duel hash', () => {
     expect(DUEL_MODULES.map(({ module }) => module.id)).toEqual(['space', 'ship', 'science', 'presence', 'repair', 'round', 'helm', 'power', 'interior']);   // Engineering spike spec §7: the power module, after helm and before interior
-    expect([helmModule.commands, helmModule.reasons]).toEqual([['throttle', 'heading'], ['invalid-seat', 'malformed', 'stale-tick', 'unavailable']]);   // Feel-ii adds the held heading; playtest2feedback: unavailable (the crew Helm's class; Engineering's cap); owner 2026-11-19: no helmPower
+    expect([helmModule.commands, helmModule.reasons]).toEqual([['throttle', 'heading', 'throttleCut'], ['invalid-seat', 'malformed', 'stale-tick', 'unavailable']]);   // Feel-ii adds the held heading; playtest2feedback: unavailable (the crew Helm's class; Engineering's cap); owner 2026-11-19: no helmPower; helm round 2 §2.3: throttleCut
     const d = seatedValkyrn(5);
     try {
       expect(d.throttle).toBe(0);
@@ -207,7 +207,7 @@ describe('quarter-thrust flight (Artemis spec §5.3)', () => {
     expect(push(1)).toBeCloseTo(-THRUST * DT, 12);
     expect(push(0.5)).toBeCloseTo(-0.5 * THRUST * DT, 12);
     expect(push(0.3)).toBeCloseTo(-0.3 * THRUST * DT, 12);
-    expect(push(-0.25)).toBeCloseTo(0.25 * 0.4 * THRUST * DT, 12); expect(push(-1)).toBeCloseTo(0.4 * THRUST * DT, 12);
+    expect(push(-0.25)).toBeCloseTo(0.25 * 0.5 * THRUST * DT, 12); expect(push(-1)).toBeCloseTo(0.5 * THRUST * DT, 12);   // helm round 2 §2.2: the Hound reverses at 50 %
     expect(push(NaN)).toBe(push(0));
   });
 });

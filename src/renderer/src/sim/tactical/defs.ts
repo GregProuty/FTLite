@@ -10,7 +10,7 @@ import {
   MISSILE_ARM_TICKS, MISSILE_FUEL_TICKS, MISSILE_HULL, MISSILE_BOOST_TICKS, MISSILE_LAUNCH_SPEED, MISSILE_LIFE_TICKS, MISSILE_RADIUS, MISSILE_RANGE, MISSILE_SPAWN_OFFSET, MISSILE_THRUST,
   MISSILE_TURN_STEPS_PER_TICK, REVERSE_FRACTION, SHIELD_LAYERS, SHIELD_RATE, SHIELD_RECHARGE_UNITS, SHIP_HULL, SHIP_RADIUS, THRUST, TURN_STEPS_PER_TICK, VALKYRN_HULL, VALKYRN_THRUST,
   VALKYRN_TURN_STEPS_PER_TICK, PEW_ARC_STEPS, PEW_HULL, PEW_LIFE, PEW_RECHARGE_TICKS, PEW_CHARGE_SCALE, HUNTER_PEW_RECHARGE_TICKS, PEW_SHOTS, PEW_SPEED,
-  BOOST_FAR, RCS_TURN_BOOST, AUTOCANNON_ARC_STEPS, AUTOCANNON_TURRET_TRAVERSE, PEW_TURRET_TRAVERSE, AUTOCANNON_HITS_PER_HULL
+  HOUND_REVERSE_FRACTION, AUTOCANNON_ARC_STEPS, AUTOCANNON_TURRET_TRAVERSE, PEW_TURRET_TRAVERSE, AUTOCANNON_HITS_PER_HULL
 } from './tuning';
 import { AUTOCANNON_INTERVAL_BY_BARS, AUTOCANNON_MAN_INTERVAL_BY_BARS, AUTOCANNON_WEAK_HITS_PER_LAYER } from './bars';   // bars.ts imports only types from state.ts
 import { AUTOCANNON_ROCK_PUSH, AUTOCANNON_ROUNDS_PER_ROCK_HP } from './rockTuning';
@@ -149,7 +149,7 @@ function shipClass(id: string, ai: ShipClassDef['ai'], hull: number, laser: Lase
  *  keeps its single laser and the pew pew (refilling slower, HUNTER_PEW); the Hound has no laser.
  *  W-4 spec §2: the Hound: pew pew and the autocannon on turrets and the torpedo; its laser slot is null (the beam left;
  *  every slots.laser reader already guards null, Valkyrn spec §6.1). Playtest2feedback §1: the crew Helm's Newtonian flight. */
-export const CUTTER_CLASS: ShipClassDef = Object.freeze({ ...shipClass('cutter', 'crew', SHIP_HULL, null, AUTOCANNON, STANDARD, HOUND_PEW), newtonianHelm: true });
+export const CUTTER_CLASS: ShipClassDef = Object.freeze({ ...shipClass('cutter', 'crew', SHIP_HULL, null, AUTOCANNON, STANDARD, HOUND_PEW), newtonianHelm: true, reverseFraction: HOUND_REVERSE_FRACTION });   // helm round 2 §2.2
 export const HUNTER_CLASS = shipClass('hunter', 'hunter', HUNTER_HULL, HUNTER_LASER, null, STANDARD, HUNTER_PEW);
 /** Valkyrn spec §6.1, §8: the solo fighter (the gun and the torpedo, no laser) and its developer laser fit (the Cutter's
  *  double laser and torpedo on the Valkyrn's hull and flight). */
@@ -171,7 +171,4 @@ export function classIndexById(id: string): number {
 // Valkyrn spec §6.2: the aim's dead band is three heading indices wide, so a class that turns 3 or more steps a tick
 // could step across it and chatter. Valkyrn spec §7.1: Weapons damage halves the gun's coolings in whole units.
 for (const c of SHIP_CLASSES) if (!(c.turnStepsPerTick < 3)) throw new Error(`ship class ${c.id} turns ${c.turnStepsPerTick} heading steps a tick; the aim band needs fewer than 3`);
-// Playtest2feedback §4a: a boosted turn (RCS_TURN_BOOST × the class turn) must stay inside the far band, so it never
-// steps across the normal turn's own bands and the nose never chatters.
-for (const c of SHIP_CLASSES) if (c.newtonianHelm && !(RCS_TURN_BOOST * c.turnStepsPerTick < BOOST_FAR)) throw new Error(`ship class ${c.id} turns ${RCS_TURN_BOOST * c.turnStepsPerTick} boosted heading steps a tick; the far band needs fewer than ${BOOST_FAR}`);
 if (!Number.isInteger(GUN.cool / 2) || !Number.isInteger(GUN.coolLocked / 2)) throw new Error('the gun\'s coolings must be even, so Weapons damage halves them exactly');

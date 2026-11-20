@@ -132,10 +132,10 @@ export function recordTick(t: DuelTelemetry, d: DuelState, input: DuelInput): vo
   const helm = attendant(d, d.nav);
   if (helm >= 0) {
     // Artemis spec §5.3: the Helm turns, or the throttle is not 0. Playtest2feedback Decision 15: on a newtonianHelm class, a
-    // held face or aim, a vented thruster or boost (helmVent), or a held throttle that is not 0.
+    // held face or aim, a vented thruster (helmVent), or a held throttle that is not 0 (helm round 2 §3.2: no boost).
     const h = input.held[helm], v = d.helmVent;
     const manoeuvre = classOf(tac, 0).newtonianHelm
-      ? h?.face === true || (h !== undefined && heldAim(h) >= 0) || v.x !== 0 || v.y !== 0 || v.boosted || d.thrMille !== 0
+      ? h?.face === true || (h !== undefined && heldAim(h) >= 0) || v.x !== 0 || v.y !== 0 || d.thrMille !== 0
       : (h?.moveX ?? 0) !== 0 || d.throttle !== 0;
     if (manoeuvre && dist(crew.x, crew.y, enemy.x, enemy.y) <= BAIT_RANGE) { m.tick = tick; m.x = enemy.x; m.y = enemy.y; }
   }

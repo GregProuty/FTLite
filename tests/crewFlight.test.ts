@@ -1,6 +1,6 @@
 // Playtest2feedback (spec 2026-11-18-playtest2feedback-design §1, §2, §3, §4, §4a): the newtonianHelm flag, flightFor's
 // per-slot tuning, the drag-0 speed cap, unquantised thrust with proportional reverse, the ship-relative thruster push,
-// the turn boost, and the bit-identical flight of every ship that flies with drag.
+// the fixed turn rate (helm round 2 §3.2: no boost), and the bit-identical flight of every ship that flies with drag.
 import { describe, expect, it } from 'vitest';
 import { CUTTER_CLASS, HUNTER_CLASS, SHIP_CLASSES, ShipClass, VALKYRN_CLASS, VALKYRN_LASER_CLASS, type ShipClassDef } from '../src/renderer/src/sim/tactical/defs';
 import { hx, hy, wrapHeading } from '../src/renderer/src/sim/tactical/direction';
@@ -8,7 +8,7 @@ import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { edgeAccel, engineFactor, flightFor, flyShip, gravityAccel } from '../src/renderer/src/sim/tactical/physics';
 import { predictFlight, predictPath } from '../src/renderer/src/sim/tactical/predict';
 import { createTacticalState, type Axes, type Ship } from '../src/renderer/src/sim/tactical/state';
-import { BOOST_FAR, CREW_FLIGHT, DEFAULT_FLIGHT, DT, MAX_SPEED, RCS_THRUST, RCS_TURN_BOOST, THRUST, TURN_STEPS_PER_TICK, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
+import { CREW_FLIGHT, DEFAULT_FLIGHT, DT, MAX_SPEED, RCS_THRUST, THRUST, type FlightTuning } from '../src/renderer/src/sim/tactical/tuning';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { throttleThrust } from '../src/renderer/src/sim/duel/throttle';
 
@@ -42,19 +42,17 @@ function flyShipToday(s: Ship, axes: Axes, tuning: FlightTuning, engines = 0, cl
 }
 const ship = (over: Partial<Ship>): Ship => ({ ...createTacticalState(1).ships[0], x: 0, y: 0, vx: 0, vy: 0, heading: 0, headingAcc: 0, ...over });
 const speed = (s: Ship): number => Math.sqrt(s.vx * s.vx + s.vy * s.vy);
-const NO_GRAVITY: FlightTuning = { ...CREW_FLIGHT, gravity: false };
+const NO_GRAVITY: FlightTuning = { gravity: false, edge: true, drag: 0, stabilise: 0 };   // helm round 2 §3.1: the drag-0 branch, which no game ship flies now
+const DRAG0: FlightTuning = { ...NO_GRAVITY, gravity: true };
 
 describe('which ships (spec §1, §2)', () => {
   it('only the Cutter is newtonianHelm; flightFor gives slot 0 CREW_FLIGHT on it and DEFAULT_FLIGHT otherwise', () => {
     expect(SHIP_CLASSES.map((c) => c.newtonianHelm)).toEqual([true, false, false, false]);
-    expect(CREW_FLIGHT).toEqual({ gravity: true, edge: true, drag: 0, stabilise: 0 });
+    expect(CREW_FLIGHT).toEqual({ gravity: true, edge: true, drag: 0.15, stabilise: 80, stabiliseUnderThrust: true });   // helm round 2 §3.1
     expect(MAX_SPEED).toBe(400);
     const st = createTacticalState(5);
     expect([flightFor(st, 0), flightFor(st, 1)]).toEqual([CREW_FLIGHT, DEFAULT_FLIGHT]);
     for (const cls of [ShipClass.Valkyrn, ShipClass.ValkyrnLaser]) expect(flightFor(createTacticalState(5, 2, cls), 0)).toBe(DEFAULT_FLIGHT);
-  });
-  it('every newtonianHelm class turns a boosted tick in fewer whole steps than the far band (defs.ts asserts it)', () => {
-    for (const c of SHIP_CLASSES.filter((k) => k.newtonianHelm)) expect(RCS_TURN_BOOST * c.turnStepsPerTick).toBeLessThan(BOOST_FAR);
   });
 });
 
@@ -101,7 +99,7 @@ describe('Newtonian flight (spec §2)', () => {
   it('gravity can still push the speed past 400, and thrust then cannot add to it', () => {
     const s = ship({ x: 150, y: 0, vx: 0, vy: -420 });
     expect(speed(s)).toBe(420);
-    flyShip(s, { turn: 0, thrust: 0 }, CREW_FLIGHT);
+    flyShip(s, { turn: 0, thrust: 0 }, DRAG0);   // the drag-0 branch's own test
     expect(speed(s)).toBeGreaterThan(420);   // gravity pushed it past the cap and past where it was, uncapped
     const t = ship({ vx: 0, vy: -420 });
     flyShip(t, { turn: 0, thrust: 1 }, NO_GRAVITY);
@@ -114,8 +112,8 @@ describe('the thrust axis (spec §3)', () => {
   it('is no longer quantised to quarters, and reverse is proportional', () => {
     expect(push(0.3)).toBeCloseTo(-0.3 * THRUST * DT, 12);
     expect(push(0.007)).toBeCloseTo(-0.007 * THRUST * DT, 12);
-    expect(push(-0.5)).toBeCloseTo(0.5 * 0.4 * THRUST * DT, 12);
-    expect(push(-1)).toBeCloseTo(0.4 * THRUST * DT, 12);
+    expect(push(-0.5)).toBeCloseTo(0.5 * 0.5 * THRUST * DT, 12);
+    expect(push(-1)).toBeCloseTo(0.5 * THRUST * DT, 12);   // helm round 2 §2.2
     expect(push(2)).toBe(push(1)); expect(push(-3)).toBe(push(-1));
     expect(push(Number.NaN)).toBe(0); expect(Object.is(push(-0), 0) || push(-0) === 0).toBe(true);
   });
@@ -144,12 +142,11 @@ describe('the cold gas thrusters in flight (spec §4)', () => {
   });
 });
 
-describe('the turn boost in flight (spec §4a)', () => {
-  it('turnBoost 2 steps twice the class turn; absent or 1 is today\'s', () => {
-    const a = ship({}), b = ship({}), c = ship({});
-    flyShip(a, { turn: 1, thrust: 0, turnBoost: 2 }, NO_GRAVITY); flyShip(b, { turn: 1, thrust: 0 }, NO_GRAVITY); flyShip(c, { turn: 1, thrust: 0, turnBoost: 1 }, NO_GRAVITY);
-    expect(a.heading + a.headingAcc).toBeCloseTo(2 * TURN_STEPS_PER_TICK, 12);
-    expect(b).toEqual(c); expect(b.heading + b.headingAcc).toBeCloseTo(TURN_STEPS_PER_TICK, 12);
+describe('the turn in flight (helm round 2 §3.2: a fixed rate)', () => {
+  it('steps the class turn a tick, with no boost', () => {
+    const a = ship({});
+    flyShip(a, { turn: 1, thrust: 0 }, NO_GRAVITY);
+    expect(a.heading + a.headingAcc).toBeCloseTo(CUTTER_CLASS.turnStepsPerTick, 12);
   });
 });
 

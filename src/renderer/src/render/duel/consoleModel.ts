@@ -17,7 +17,7 @@ import { DuelSystem } from '../../sim/duel/power';
 import { throttleCap, trimmedWeaponPower, weaponBarsUsable, WeaponSlot } from '../../sim/tactical/bars';
 import { powerStrip, type ConsolePowerStrip } from './shipHudModel';
 import { engineBars, throttleCap as crewThrottleCap, throttleFloor } from '../../sim/duel/helmFlight';
-import { THR_MAX, THR_MIN } from '../../sim/duel/tuning';
+import { GAS_MAX, GAS_SPEND, THR_MAX, THR_MIN } from '../../sim/duel/tuning';
 export { THR_MAX, THR_MIN };   // playtest2feedback §6: the throttle bar's range, for the UI (which imports no sim values)
 
 export type ConsoleStation = 'helm' | 'weapons' | 'science' | 'flight' | 'ship';
@@ -30,11 +30,14 @@ export type ConsoleTabActions = Record<TabKey, KeyAction | null> & { flight?: Ke
 /** Feel-ii §2.8: a refused control on this block: which, the reason, and whether it is still in its flash. */
 export interface RefusedView { control: RefusedControl; reason: string; flash: boolean }
 /** Playtest2feedback §6: the crew Helm's readings: the shown thrMille, the throttle's cap and floor, and (owner 2026-11-19,
- *  replacing §5's split) the effective Engines bars that set them. No tank: the cold gas is free (owner 2026-11-19). */
-export interface CrewHelmPanel { thrMille: number; cap: number; floor: number; bars: number }
-export function crewPanel(d: DuelState, thrMille: number): CrewHelmPanel {
-  const engine = engineBars(d);
-  return { thrMille, cap: crewThrottleCap(engine), floor: throttleFloor(engine), bars: engine };
+ *  replacing §5's split) the effective Engines bars that set them. Helm round 2 §6.1: the cold gas charge (`gas` of
+ *  `gasMax`), whether it is below one tick's spend (`gasLow`), and whether a thruster vents this frame (`venting`). */
+export interface CrewHelmPanel { thrMille: number; cap: number; floor: number; bars: number; gas: number; gasMax: number; gasLow: boolean; venting: boolean }
+/** The crew Helm's readings (CrewHelmPanel). `vent` is this frame's vent the scene draws (online, this seat's prediction);
+ *  absent, the duel's helmVent (plan Decision 14). */
+export function crewPanel(d: DuelState, thrMille: number, vent: { x: number; y: number } | null = null): CrewHelmPanel {
+  const engine = engineBars(d), v = vent ?? d.helmVent;
+  return { thrMille, cap: crewThrottleCap(engine), floor: throttleFloor(engine), bars: engine, gas: d.gas, gasMax: GAS_MAX, gasLow: d.gas < GAS_SPEND, venting: v.x !== 0 || v.y !== 0 };
 }
 export interface HelmPanel {
   heading: number; speed: number; held: HeldFlags; throttle: number; refused?: RefusedView | null; holdHeading?: number;
@@ -105,6 +108,8 @@ export interface ConsoleModelInput {
   throttle?: number;
   /** Playtest2feedback §3, §6: the crew Helm's thrMille to show (Single player the sim's; online the local prediction); the duel's when absent. */
   thrMille?: number;
+  /** Helm round 2 §6.1: the crew ship's vent this frame (the scene's, the puffs' source), for the GAS bar's hot fill; absent: the duel's. */
+  vent?: { x: number; y: number } | null;
   /** Science's hover readout this frame (Sci-1 spec §7.3), from the scene; null or absent with no cursor. */
   hover?: string | null;
   /** Feel-i: seconds since the crew laser last fired on this screen (the FIRING hold; absent: never), and whether the
@@ -139,7 +144,7 @@ export function consoleStation(d: DuelState, me: number): ConsoleStation {
   return seat === 'standing' ? 'ship' : seat;
 }
 
-const HELM_CONTROLS: readonly RefusedControl[] = ['turn', 'auto-face', 'throttle', 'heading'];
+const HELM_CONTROLS: readonly RefusedControl[] = ['turn', 'auto-face', 'throttle', 'heading', 'gas'];   // helm round 2 §3.3: NO GAS shows on the Helm block
 
 /** W-1 (pew pew spec 1): the crew pew's pips, one per third, each its fill 0..1 (a full third 1, the one recharging its
  *  share, the rest 0); null for a class without the pew. A third is the def's pewThird (Engineering spike §11: charge units). */
@@ -162,7 +167,7 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
   const helm: HelmPanel | null = station === 'helm' || station === 'flight'
     ? { heading: ((Math.round((ship.heading / HEADING_COUNT) * 360) % 360) + 360) % 360, speed: Math.round(Math.hypot(ship.vx, ship.vy)), held, throttle: i.throttle ?? d.throttle,
         refused: i.refused && HELM_CONTROLS.includes(i.refused.control) ? i.refused : null, holdHeading: d.holdHeading, cap: throttleCap(t.systems[0]!), ...(station === 'flight' ? { flight: true } : {}),
-        ...(station === 'helm' && crewHelmSeat(d, i.me) ? { crew: crewPanel(d, i.thrMille ?? d.thrMille) } : {}) }   // playtest2feedback §6
+        ...(station === 'helm' && crewHelmSeat(d, i.me) ? { crew: crewPanel(d, i.thrMille ?? d.thrMille, i.vent ?? null) } : {}) }   // playtest2feedback §6; helm round 2 §6.1: the gas
     : null;
   const flightM = missileOf(t, 0), flying = flightM !== null, sys = t.systems[0], torpDef = classOf(t, 0).slots.missile;   // W-3: the crew's torpedo in flight and its def, for the card's words
   const weaponsPanel = (): WeaponsPanel => {

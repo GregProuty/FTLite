@@ -29,7 +29,7 @@ export interface ShipChoice { id: string; name: string; line: string }
 /** Valkyrn spec §8, §9: `ships` the picker's list, `soloShip` the remembered choice, `valkyrnLaserFit` the developer switch. */
 export interface SettingsSlice extends Volumes {
   available: boolean; fullscreenAvailable: boolean; controls: readonly ControlSection[]; shake: import('../render/shake').ShakeSetting; mapGrid: import('../render/tactical/mapGrid').MapGridSetting;
-  ships: readonly ShipChoice[]; soloShip: string; valkyrnLaserFit: boolean;
+  ships: readonly ShipChoice[]; soloShip: string; valkyrnLaserFit: boolean; throttleTapMs: number;   // helm round 2 §6.3
 }
 /** The canvas's place (React UI spec §4): the strip above it, the letterbox scale and offsets, the device pixel ratio. */
 export interface LayoutSlice { stripHeight: number; scale: number; offsetX: number; offsetY: number; dpr: number }

@@ -5,20 +5,23 @@ import type { GameAssets } from './assets';
 import { bubbleAnchor, CALLOUT_LIFT_PUNY, type Bubble } from './calloutModel';
 import { CREW_COLORS } from './crewSprites';
 import { CALLOUT_LIFT_DOWN_LIMEZU, CALLOUT_LIFT_LIMEZU } from './crewArt';
+import { CALLOUT_LIFT_3D, CALLOUT_LIFT_DOWN_3D } from './crew3dModel';
 import { featureReady } from './fallback';
 import { Life, LifeState } from '../sim/components';
 
 const PAD = 4, ICON = 16, MAX_BUBBLES = 4, TAIL = 5, BG = 0x10131a, TEXT = 0xffffff;
 
 /** Callout bubbles (spec Coop-i section 3): one per player over the crew member's head, in internal pixels, drawn between the world and the HUD. Display objects are made once and reused. */
-export function createCalloutLayer(assets: GameAssets) {
+export function createCalloutLayer(assets: GameAssets, crew3d: () => boolean = () => true) {
   const container = new Container();
   const missing = new Set(assets.missing);
   const limezu = featureReady(missing, 'crew') && featureReady(missing, 'crewArt');   // over the taller bought crew (Art-ii spec section 1)
   /** A standing LimeZu head is 50 units up; a downed one lies across its tile (top about 16 up), so its bubble sits lower (plan review R1-F1). */
+  const use3d = featureReady(missing, 'crew3d');   // Crew3D spec section 4: over the rendered figures, on every ship
   const liftFor = (state: SimState, pid: number): number => {
-    if (!limezu) return CALLOUT_LIFT_PUNY;
     const eid = state.crew[pid];
+    if (use3d && crew3d()) return eid !== undefined && Life.state[eid] !== LifeState.Conscious ? CALLOUT_LIFT_DOWN_3D : CALLOUT_LIFT_3D;
+    if (!limezu) return CALLOUT_LIFT_PUNY;
     return eid !== undefined && Life.state[eid] !== LifeState.Conscious ? CALLOUT_LIFT_DOWN_LIMEZU : CALLOUT_LIFT_LIMEZU;
   };
   const pool = Array.from({ length: MAX_BUBBLES }, () => {

@@ -57,16 +57,23 @@ export const DUEL_BREACH_CHANCE_LASER = 0.2;
 export const DUEL_BREACH_CHANCE_MISSILE = 0.5;
 /** Engineering spike spec §4: crew in a room below this oxygen fraction lose O2_DAMAGE health a second. */
 export const LOW_AIR_FRAC = 0.25;
-// Playtest2feedback (spec 2026-11-18-playtest2feedback-design §3, §4a): the crew Helm's held throttle and its boosted turn,
-// on a newtonianHelm class. Start values, tuned in playtest. Owner 2026-11-19: no power split (the cap is Engineering's
-// Engines bars, sim/duel/helmFlight.ts) and free cold gas.
-/** §3: the held throttle in per mille, from full reverse (−250) to full forward (1000). */
-export const THR_MIN = -250;
+// Playtest2feedback (spec 2026-11-18-playtest2feedback-design §3) and helm round 2 (spec 2026-11-19-helm-round2-design §2):
+// the crew Helm's held throttle on a newtonianHelm class. Start values, tuned in playtest. Owner 2026-11-19: no power split
+// (the cap is Engineering's Engines bars, sim/duel/helmFlight.ts).
+/** Helm round 2 §2.2: the held throttle in per mille, from full reverse (−500) to full forward (1000). */
+export const THR_MIN = -500;
 export const THR_MAX = 1000;
-/** §3: per mille a tick while W or S is held (0 to 1000 in 143 ticks), and toward 0 while neither is (1000 to 0 in 30). */
-export const THR_RAMP = 7;
-export const THR_RETURN = 34;
-// Owner 2026-11-19 (replacing §4's tank): the cold gas is free. No tank, no gas spend, no compressor: a held thruster vents
-// whenever the Helm is attended, and the far turn is always gas-boosted (sim/duel/step.ts helmBoost).
-/** §4a: sin 6°: auto-face's turn is far (boosted) while its target lies outside this of the nose (about 4.27 indices). */
-export const BOOST_FACE_SIN = 0.10452846326765347;
+/** Helm round 2 §2.1: per mille a tick while W or S is held: 0 to 1000 in 59 ticks (0.98 s), 0 to −500 in 30 (0.5 s).
+ *  Neither held leaves it where it is. */
+export const THR_RAMP = 17;
+// Helm round 2 (spec 2026-11-19-helm-round2-design §3.3): the crew Helm's cold gas charge replaces the owner's free cold
+// gas. It is in whole units so every duration is an exact tick count, and gasTick (sim/duel/helmFlight.ts) spends it.
+// §3.2: the turn has no gas boost, so the far-turn constant is gone. Start values, tuned in playtest.
+/** §3.3: the charge's top; a round starts full. */
+export const GAS_MAX = 720;
+/** §3.3: what one vented axis spends a tick: a full charge is 90 axis-ticks (1.5 s of one thruster, 0.75 s of two). */
+export const GAS_SPEND = 8;
+/** §3.3: what a refill tick adds (empty to full in 240 refill ticks, 4 s), and the ticks with no thruster axis held before
+ *  the refill starts (0.5 s). */
+export const GAS_REFILL = 3;
+export const GAS_REFILL_DELAY = 30;

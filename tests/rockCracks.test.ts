@@ -58,16 +58,14 @@ describe('crack paths (spec §7.3)', () => {
     expect(crackPaths(42, 0.6)).toEqual(crackPaths(42, 0.6));
     expect(crackPaths(42, 1).length).toBe(6);
   });
-  it('crackDraw: nothing under CRACK_MIN_PX on screen; otherwise each cut segment and its highlight 0.6 px off perpendicular', () => {
+  it('crackDraw: nothing under CRACK_MIN_PX on screen; otherwise each cut segment once, with no highlight stroke (look pass spec §2)', () => {
     expect(crackDraw(9, 1, 100, 100, CRACK_MIN_PX - 0.1)).toEqual([]);
-    const segs = crackDraw(9, 1, 100, 100, 40), cuts = segs.filter((s) => !s.light), lights = segs.filter((s) => s.light);
-    expect(cuts.length).toBe(lights.length);
-    expect(cuts.length).toBeGreaterThan(0);
-    cuts.forEach((c, i) => {
-      const l = lights[i]!, ex = c.x2 - c.x1, ey = c.y2 - c.y1, len = Math.hypot(ex, ey);
-      expect(Math.abs(((l.x1 - c.x1) * ex + (l.y1 - c.y1) * ey) / len)).toBeLessThan(1e-9);
-      expect(Math.hypot(l.x1 - c.x1, l.y1 - c.y1)).toBeCloseTo(0.6, 9);
-    });
+    const segs = crackDraw(9, 1, 100, 100, 40), want = crackPaths(9, 1).reduce((n, line) => n + line.length - 1, 0);
+    expect(segs.length).toBe(want);
+    expect(segs.length).toBeGreaterThan(0);
+    for (const s of segs) expect(Object.keys(s).sort()).toEqual(['x1', 'x2', 'y1', 'y2']);
+    const first = crackPaths(9, 1)[0]!;
+    expect(segs[0]!.x1).toBeCloseTo(100 + first[0]!.x * 40, 9); expect(segs[0]!.y1).toBeCloseTo(100 + first[0]!.y * 40, 9);
   });
   it('the cracks turn with the outline (§13.5): crackDraw with a spin is the unspun strokes turned about the centre', () => {
     const a = crackDraw(9, 1, 100, 100, 40), b = crackDraw(9, 1, 100, 100, 40, Math.PI / 2);

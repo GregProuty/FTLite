@@ -1121,3 +1121,61 @@ Spec `docs/superpowers/specs/2026-11-19-sensors-blip-design.md`; plan `docs/supe
   5. At Weapons, click the blip and press T: nothing is picked, and a lock still reads NO CONTACT.
 
   Does the blip read as a rough fix on the amber CRT, is the 2 s ping comfortable to watch, and is the circle the right size near and far? The numbers are starting values: `BLIP_R_MIN`, `BLIP_GROW`, `BLIP_R_MAX` and `BLIP_PING_TICKS` in `src/renderer/src/render/tactical/fogModel.ts`.
+
+## Helm round 2: a throttle that stays, a tap to cut, drag, and a gas charge (2026-11-20)
+
+Spec `docs/superpowers/specs/2026-11-19-helm-round2-design.md`; plan `docs/superpowers/plans/2026-11-20-helm-round2.md`; report `docs/superpowers/research/2026-11-20-helm-round2-report.md`.
+
+- [x] Automated: `npx vitest run` passes (522 files, 6258 tests, 2 skipped). This includes the throttle that stays (−500..1000, 17 a tick, held through an empty Helm, clamped by a lost bar and not raised when it returns), reverse at 50 % on the Hound (48 u/s² on the Hunter), `throttleCut` and its latch (a late S frame leaves the throttle at 0), the keyboard's tap on a fake clock (150 / 200 / 250 / 300 ms, read live), both runtimes judging the tap against the throttle at keydown, the online prediction (0 while a cut is in flight; the latch predicted), drag and a stabilise that acts under thrust, the fixed 150°/s turn, the gas charge (90 ticks of one thruster, the 30-tick wait, 240 refill ticks; NO GAS once a press), the 1-bar climb at 300 u, the scripted Helm's cuts (it never stands with the throttle set), the console's THR, GAS bar and hints, the velocity ring, the Settings row and the sit card (`tests/helm*.test.ts` and the files the plan names). Same-version bless at SIM 63 (7ad1c7d1), then SIM_VERSION 63 → 64 alone (42c5e5a9; canonical trace and duel oracle per tick: 21 runs, 175320 ticks, 740 fields, identical). `tests/valkyrnIdentity.test.ts` and `tests/w4HunterIdentity.test.ts` unchanged; the Valkyrn gate unchanged. `npx tsc -b` is clean; `npm run build` succeeds; determinism passes on Node, Electron and Firefox. Scripted Helm tuning: none (the per-seed gates pass with no scripted knob moved; the aggregate duel median is 136.7 s, 147.0 s at the base, already outside 180-300 at the base and owner tuning). `DUEL_TEST_SEED`: moved 423 → 1921 (a seated search; the only seed in 1..4000; tick 4276).
+- [ ] Manual (owner): play a Single player duel at the Hound's Helm.
+  1. Hold W to about half and let go: the throttle bar and THR stay there, and the ship keeps thrusting. Stand up: it still thrusts (the OUTSIDE row reads THRUST n%).
+  2. Tap S: the throttle drops to 0 at once. Hold S: it ramps into reverse (to REV, −50). Tap W from reverse: 0 again. A tap from 0 only nudges it.
+  3. Brake from speed both ways: tap S then flip the nose and burn, and hold S in reverse.
+  4. Hold Q or E: the ship sidesteps while the GAS bar empties (about 1.5 s on one thruster), then nothing; let go and it refills after half a second (about 4 s to full). Pressing on an empty bar says NO GAS and flashes it.
+  5. Turn with A / D or the left button, then stop turning with the throttle set: the sideways slide dies away and the ship flies where the nose points.
+  6. The small ring at the end of the dashed velocity line shows where the ship will be in 1 s.
+  7. The right drag pans the Helm map. Space does nothing at the Helm, and there is no AUTO-FACE button.
+  8. Set Throttle tap (150 to 300 ms) in Settings, then start a duel, and feel the tap get easier or stricter.
+  9. Online: hold W again just after a cut lands. Two things can happen, both known: the predicted throttle can stall for a publication or two while the replica still shows the latch (plan-mandated by spec §7), and a W pressed very soon after an S tap may need pressing again, because the authority keeps the latch until W comes up (spec §2.3, the latch; owner judgement call 3). Say whether either is noticeable.
+
+  The owner's judgement calls to confirm (spec §11): an unattended Helm keeps its throttle; a tap is judged from the throttle when the key went down; after a cut the key must come up before the throttle moves; drag 0.15 and stabilise 80 (top speed about 800 u/s); stabilise under thrust; the gas numbers (1.5 s push, 0.5 s wait, 4 s refill, 70 u/s²); the AUTO-FACE button goes with Space; the bots keep auto-face; built on top of W-4.
+
+  Screenshots for the look gate:
+  1. The Helm console with THR, the GAS bar half empty and the two hint lines.
+  2. The map with the velocity line and its ring.
+
+  Does the throttle feel like a lever, and does the tap feel quick enough?
+
+## Crew3D: pre-rendered 3D crew and boarders (2026-11-20)
+
+Spec `docs/superpowers/specs/2026-11-20-crew3d-prerendered-sprites-design.md` (see "As built"). Render tool `tools/sprite-render/` (`render.py`, `figure.py`, `anims.py`, `post.py`, `lookdev.json`); `npm run art:crew3d` binds the sheets.
+
+- [x] Automated (Crew3D): `npx tsc -b` clean; `npx electron-vite build` succeeds; `npx vitest run --maxWorkers=4` passes (517 files, 6224 tests, 3 skipped). This includes the pose priority (down, walk, working, seated, idle), a turn keeping the stride, a work target underfoot not turning the figure, fire / breach / power / repair to firefight / repair / work / repair aimed at the target, the body and colour per player, the grey dead tint on both layers, every pose name bound for both bodies and all 8 directions, the frame counts (idle 4, walk 8, work 6, repair 6, firefight 6, down 1; boarder idle 4, walk 8, attack 6), the manifest entries equal to the model's sheet blocks, the colour layer covering only pixels of its figure, the crew layer (two sprites per member on one frame, lower on screen in front, a lying body behind whoever stands over it, the torpedo on top), the callout bubble over the 3D head, the fallback to the old art when the sheets are missing or the toggle is off, the boarder attacking a crew member in its room, the F8 toggle in dev builds only, and, run on request with `CREW3D_RENDER_TEST=1`, the render script smoke test (one frame, headless Blender; it passed here). An independent review of the branch found no serious bug; its points on turns, the work pose, draw order and test gaps are applied.
+- [x] Automated (Crew3D pause, 2026-11-20): `npx vitest run --maxWorkers=4` passes (517 files, 6226 tests, 3 skipped), with the animation frame coming from the layer's own clock (a loop wraps, a one-shot holds), a pause holding the pose and the frame for the crew and the raider, and neither sprite ever playing on Pixi's ticker. In the built app, paused mid-walk on the Hound, three screenshots 0.9 s apart were identical over the ship (0 differing pixels), and differed again after resuming.
+- [x] Licences: the five sheets under `public/assets/art/crew3d/` are licence `original`: the figures are built by `tools/sprite-render/figure.py` from primitives, and the animations are curves in `anims.py`. No downloaded model, texture or clip is in them. The BlendSwap soldier used for look development is not in the repo and nothing rendered from it is committed.
+- [ ] Manual (owner): play Single player on the Hound, on foot (the SHIP tab).
+  1. The crew are small armoured figures in your colour, not round tokens. Walk in all eight directions (WASD): the figure turns and its legs move. Stop: it stands and breathes.
+  2. Zoom in with the wheel: the figure stays sharp-edged, with a flat shadow to its upper right.
+  3. Hold E on a fire, then on a breach: it sprays with an extinguisher, and kneels with a welder, facing the work.
+  4. Get downed (a fire will do it): the figure lies on its back; the DOWNED label still reads.
+  5. Walk, and press Esc mid-stride: the figure freezes in that stride, and the standing ones stop breathing. Esc again: they carry on.
+  6. In a dev build (`npm run dev`), F8 switches to the old tokens and back.
+  7. In a sector run (couch build), let boarders arrive: red spiked raiders with a health bar over the head; one swings its blade at a crew member in its room.
+
+  Screenshots: `C:\Users\djuar\FTLite-shots\crew3d\` (`hound-*-on.png` against `hound-*-off.png`; `build\x-zoom-walk.png` zoomed in). Only idle and walking were looked at in the running game; the work, down and boarder poses were checked on the rendered sheets and by the tests. In a duel, `duelWorking` only reports point-room fires and repairs, so fighting a plain room fire or patching a breach there still shows the idle pose (the particles have the same gap).
+
+  Does it read as Diablo 2 in space? Things to tune: the size (`CREW3D_SCALE` in `crew3dModel.ts`), the tilt, light and palette (`tools/sprite-render/lookdev.json`, then re-render: about 17 minutes), the two suits and the raider (`figure.py`), and the walk (`anims.py`). The figures are placeholders built from simple shapes; a bought or CC0 model can replace them without touching the game side.
+
+## Asteroids look pass: rocks as background (2026-11-20)
+
+Spec `docs/superpowers/specs/2026-11-20-asteroids-look-design.md`. No plan: a small drawing-only change the owner approved in conversation, built test first.
+
+- [x] Automated (asteroids look): `npx vitest run` passes (518 files, 6225 tests, 3 skipped). This includes the rock body (the same `CRT.dim` fill and 1 px `CRT.mid` outline at wear 0, 0.2, 0.5, 0.8 and 1; the cracks one `CRT.faint` stroke per segment at alpha 0.6 with no highlight; nothing of a rock in `CRT.main` or `CRT.hot`) (`tests/rockLook.test.ts`, `tests/rockCracks.test.ts`), the effects (a split of either pattern or a dust is 6 `CRT.dim` specks and nothing else; a touch, a hard rock-rock bump and a ram draw nothing; the laser's chips and flare, the torpedo's blast and the autocannon's spark are unchanged; `FxState` has no hit-stop fields) (`tests/rockFx.test.ts`), and the track and the model (the history still resets on a jump, an r change, a kind change or a tick going backwards; no trail is kept; a rock draw has no `streak` and no `trail`) (`tests/rockTrack.test.ts`). `npx tsc -b` is clean and `npm run build` passes. Drawing only: no file under `src/renderer/src/sim/`, no wire schema and no golden changed, and SIM_VERSION is untouched.
+- [x] Screenshots (Claude, the built app at Weapons): worn rocks at wear 0.25, 0.5 and 1, and a torpedo's direct hit at 0, 0.5, 2 and 10 s, in `C:\Users\djuar\FTLite-shots\asteroids-look\`. Worn rocks match whole ones but for faint dark cracks; the pieces fly with no trail, streak, ring or shards.
+- [ ] Manual (owner): play a Single player duel and sit at Weapons.
+  1. Shoot a rock with the laser a few times without breaking it. Its outline and fill stay as they were; thin dark cracks appear and nothing on it gets brighter.
+  2. Break one with the laser and one with a torpedo. Each break is a small dim puff. There is no bright ring, no amber shards and no freeze of the picture. The torpedo's own blast still flashes.
+  3. Watch the pieces drift for half a minute. No lines follow them and none streak, however fast they fly.
+  4. Let two free rocks meet. Nothing sparks.
+
+  Do the rocks now read as background? Still as before, and yours to call: the 2 px screen shake when a rock breaks on screen (`BREAK_SHAKE` in `src/renderer/src/render/tactical/rockFx.ts`), the laser's hot chips off a rock, and the dotted predicted path of a targeted rock. The crack strength is `CRACK_ALPHA` in `src/renderer/src/render/tactical/tacticalModel.ts`.

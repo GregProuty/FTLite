@@ -13,6 +13,7 @@ import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/
 import { Outcome } from '../src/renderer/src/sim/tactical/state';
 import { TACTICAL_MODULES } from '../src/renderer/src/sim/tactical/hash';
 import { CUTTER } from './helpers/scriptedDuel';
+import { CUTTER_CLASS, pewFullCharge } from '../src/renderer/src/sim/tactical/defs';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 function scriptedDuel(seed: number, ticks: number) {
@@ -67,14 +68,17 @@ describe('the duel snapshot (spec §6)', () => {
     } finally { disposeDuel(d); }
   });
   it('rejects tactical, presence and repair values the module writers would refuse, even rehashed, before allocating', () => {
-    const { d } = scriptedDuel(1, 6465);   // a missile in flight, a damaged crew room and a repair in progress: the first such tick from 5000 on, on the lowest seed whose crew pew turret is slewed there (the W-4 merge with asteroids-iii, SIM 62: seed 4's first is 6308 with the turret at 0; was seed 4 tick 5657 on W-4 and 6649 on master; W-4b (SIM 60): was seed 4 tick 6406; seed 1 6325, seeds 2 and 6 none, seed 3 5034, seed 5 6192, seed 7 6343, seed 8 6671, seed 9 6237, seed 10 6234; W-4a (SIM 60): was seed 4 tick 8456; the merge with the Engineering spike and owner 2026-11-19 (playtest2feedback merge, SIM 59): seed 4 tick 8456, was 5050; merge of the Engineering spike with W-1, W-2 and W-3: seed 4 tick 5050; the spike alone at SIM 55: seed 4 tick 6276; still seed 4 tick 6156 at SIM_VERSION 55 on master, W-1's pew merged with asteroids-ii; seed 6 tick 5000 on the W-1 branch, SIM_VERSION 54; SIM_VERSION 53, spike ii with the fan split at r 13: seed 4 tick 6156; seeds 1 to 3, 5 and 7 to 10 have none, seed 6 does at 6055; seed 1 tick 6472 before, SIM_VERSION 53 with the fan split at r 25, when seeds 2 to 5 and 7 to 10 had none and seed 6 did at 9888; seed 5 tick 7011 before, SIM_VERSION 50; seed 3 tick 5395 before FTL targeting, SIM_VERSION 49; seed 6 tick 6249 before the weapons update, SIM_VERSION 48; seed 9 tick 5108 before Sci-1's merge, SIM_VERSION 47; seed 4 tick 5193 before homing torpedoes, SIM_VERSION 46)
+    const { d } = scriptedDuel(2, 6134);   // a missile in flight, a damaged crew room and a repair in progress: the first such tick from 5000 on, on the lowest seed whose crew pew turret is slewed there (helm round 2 (SIM 63), kind b: seed 1 tick 6465 -> seed 2 tick 6134, turret -3476, the Hunter's pew charge 1728; seed 1's first is 5975 with the turret at -5632 but the Hunter's charge 438, under the Cutter's full 1080, so the systems.1.cls case below would reach the identity check; seeds 3 to 9 first at 6039, 6475, 6119, 6398, 5975, 5119 (turret 0), 5352, seed 10 none; the W-4 merge with asteroids-iii, SIM 62: seed 4's first is 6308 with the turret at 0; was seed 4 tick 5657 on W-4 and 6649 on master; W-4b (SIM 60): was seed 4 tick 6406; seed 1 6325, seeds 2 and 6 none, seed 3 5034, seed 5 6192, seed 7 6343, seed 8 6671, seed 9 6237, seed 10 6234; W-4a (SIM 60): was seed 4 tick 8456; the merge with the Engineering spike and owner 2026-11-19 (playtest2feedback merge, SIM 59): seed 4 tick 8456, was 5050; merge of the Engineering spike with W-1, W-2 and W-3: seed 4 tick 5050; the spike alone at SIM 55: seed 4 tick 6276; still seed 4 tick 6156 at SIM_VERSION 55 on master, W-1's pew merged with asteroids-ii; seed 6 tick 5000 on the W-1 branch, SIM_VERSION 54; SIM_VERSION 53, spike ii with the fan split at r 13: seed 4 tick 6156; seeds 1 to 3, 5 and 7 to 10 have none, seed 6 does at 6055; seed 1 tick 6472 before, SIM_VERSION 53 with the fan split at r 25, when seeds 2 to 5 and 7 to 10 had none and seed 6 did at 9888; seed 5 tick 7011 before, SIM_VERSION 50; seed 3 tick 5395 before FTL targeting, SIM_VERSION 49; seed 6 tick 6249 before the weapons update, SIM_VERSION 48; seed 9 tick 5108 before Sci-1's merge, SIM_VERSION 47; seed 4 tick 5193 before homing torpedoes, SIM_VERSION 46)
     try {
       // The fixture's precondition first, so a trajectory change fails here by name rather than further down.
       const flying = d.tactical.missiles.findIndex((m) => m.active);
-      expect(flying, 'one missile in flight at seed 1 tick 6465').toBeGreaterThanOrEqual(0);
-      expect(d.tactical.missiles[1 - flying]!.active, 'only one missile in flight at seed 1 tick 6465').toBe(false);
-      expect(d.tactical.systems[0].rooms.some((r) => r > 0), 'a damaged crew room at seed 1 tick 6465').toBe(true);
-      expect(d.repair.some((r) => r > 0), 'a repair in progress at seed 1 tick 6465').toBe(true);
+      expect(flying, 'one missile in flight at seed 2 tick 6134').toBeGreaterThanOrEqual(0);
+      expect(d.tactical.missiles[1 - flying]!.active, 'only one missile in flight at seed 2 tick 6134').toBe(false);
+      expect(d.tactical.systems[0].rooms.some((r) => r > 0), 'a damaged crew room at seed 2 tick 6134').toBe(true);
+      expect(d.repair.some((r) => r > 0), 'a repair in progress at seed 2 tick 6134').toBe(true);
+      // Helm round 2 (final review): the two properties the systems.0.cls and systems.1.cls cases below need.
+      expect(d.tactical.systems[0].pewTurret, 'the crew pew turret is slewed (non-zero) at seed 2 tick 6134').not.toBe(0);
+      expect(d.tactical.systems[1].pewCharge, "the Hunter's pew charge is above the Cutter's full pew charge at seed 2 tick 6134").toBeGreaterThan(pewFullCharge(CUTTER_CLASS.slots.pew!));
       const good = saveDuelSnapshot(d, DIGEST), names = new Map<string, number>();
       let at = 1;
       for (const m of TACTICAL_MODULES) for (const f of m.fields(d.tactical)) { names.set(f.name, at); at += f.count; }
@@ -92,8 +96,8 @@ describe('the duel snapshot (spec §6)', () => {
         [`${free}.flight`, 2, 0.25, /a free entry holds values/], [`${free}.owner`, 0, 1, /a free entry holds values/],
         ['ships.0.headingAcc', 0, 1e300, /ships\.0\.headingAcc/], ['ships.1.headingAcc', 0, -1, /ships\.1\.headingAcc/],
         ['ships.1.skidBudget', 0, -0.5, /ships\.1\.skidBudget/], ['ships.0.graceUntil', 0, 2147483648, /ships\.0\.graceUntil/],
-        ['systems.0.cls', 0, 1, /systems\.0\.pewTurret: out of range/],   // W-4 spec §13.1: the crew's slewed pew turret (5288 here) is bounded by the claimed class first, and the Hunter has no turret; the identity case alone is below
-        ['systems.1.cls', 0, 0, /systems\.1\.pewCharge: out of range/],   // Task 6 review: the Hunter's charge (above the Cutter's full 180) is now bounded by the claimed class first; the identity case alone is below
+        ['systems.0.cls', 0, 1, /systems\.0\.pewTurret: out of range/],   // W-4 spec §13.1: the crew's slewed pew turret (-3476 here; helm round 2 (SIM 63): was 5288) is bounded by the claimed class first, and the Hunter has no turret; the identity case alone is below
+        ['systems.1.cls', 0, 0, /systems\.1\.pewCharge: out of range/],   // Task 6 review: the Hunter's charge (above the Cutter's full 1080; helm round 2: the comment said 180) is now bounded by the claimed class first; the identity case alone is below
         ['systems.1.laserManual', 0, 1, /systems\.1\.laserManual: only the crew laser has a manual mode/],   // W-2: the Hunter is always AUTO
         ['systems.0.laserAim', 0, 65536, /systems\.0\.laserAim: out of range/],   // W-2: a fine aim 0..65535, or −1
         ['systems.1.torpManual', 0, 1, /systems\.1\.torpManual: only the crew torpedo has a manual mode/],   // W-3: the Hunter is always AUTO
@@ -120,7 +124,7 @@ describe('the duel snapshot (spec §6)', () => {
       const twice = structuredClone(good);   // the free entry claims the flying missile's owner: two missiles for one ship
       twice.values[names.get(`${free}.active`)!] = 1; twice.values[names.get(`${free}.owner`)!] = owner; twice.header.hash = hashF64(Float64Array.from(twice.values));
       expect(() => validateDuelSnapshot(CUTTER, twice, DIGEST)).toThrow(new RegExp(`ship ${owner} has two missiles in flight`));
-      const interiorAt = at + 5 + 4 + 3 + POWER_VALUES, fieldsAt = interiorAt;   // after presence, repair, the round module (H-2) and the helm module (Artemis-ii's throttle, Feel-ii's held heading; playtest2feedback §7: thrMille; owner 2026-11-19: no compressor, no tank); Engineering spike spec §7: the power module sits between helm and interior
+      const interiorAt = at + 5 + 4 + 6 + POWER_VALUES, fieldsAt = interiorAt;   // after presence, repair, the round module (H-2) and the helm module (Artemis-ii's throttle, Feel-ii's held heading; playtest2feedback §7: thrMille; owner 2026-11-19: no compressor, no tank); Engineering spike spec §7: the power module sits between helm and interior; helm round 2 §8: the helm module holds six values
       // Feel-ii §1.1: the held heading is −1 or a heading index 0..255.
       for (const value of [-2, 256, 0.5]) {
         const snap = structuredClone(good); snap.values[at + 5 + 4 + 1] = value; snap.header.hash = hashF64(Float64Array.from(snap.values));

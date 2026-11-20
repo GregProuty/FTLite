@@ -96,6 +96,9 @@ export type DuelCommand =
   /** Feel-ii's click-to-heading (Feel-ii spec §1.1): a heading index 0..255 the Helm turns to and holds, or −1 to clear
    *  it. Any finite number passes the codec, and the sim answers a bad one malformed. */
   | { kind: 'heading'; heading: number }
+  /** Helm round 2 §2.3: the crew Helm's tap of S (or of W in reverse): the held throttle to 0, and a latch until the key
+   *  comes up. The Helm attendant only; a class that is not newtonianHelm answers unavailable, a throttle at 0 noop. */
+  | { kind: 'throttleCut' }
   /** Sci-1 spec §5: scan the next level of a contact (0 the enemy, 1 the derelict) from the Helm, Weapons or Science. */
   | { kind: 'contactScan'; contact: number }
   /** Science points out a contact (−1 none, 0 or 1) for every screen. */

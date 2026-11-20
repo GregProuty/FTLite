@@ -21,6 +21,7 @@ import type { DuelRoundRecord } from '../../sim/duel/summary';
 import { Outcome } from '../../sim/tactical/state';
 import { throttleCap, WeaponSlot } from '../../sim/tactical/bars';
 import { weaponPowerRefusal } from '../../sim/duel/weaponSlots';
+import { GAS_SPEND } from '../../sim/duel/tuning';
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 import { HEADING_COUNT } from '../../sim/tactical/tuning';
@@ -34,7 +35,7 @@ import { consoleInReach, crewHelmSeat, cycleLock, houndWeaponsSeat, repairInReac
 import { crewHelmHeld, createDuelKeyboard, createPointerSource, emptyPresses, NO_HELD_FLAGS, PING_CODE, throttleRequest, type ConsoleInput, type EventSource, type HeldFlags, type KeySample } from './input';
 import { createMapRequests } from './mapRequests';
 import { pingAllowed, type PingRequest } from '../../render/duel/pingModel';
-import { lockRefusal, refusal } from '../../render/duel/situationModel';
+import { lockRefusal, NO_GAS, refusal } from '../../render/duel/situationModel';
 import { consoleChange } from './consoleChange';
 import { createContactController, type ContactActions, type ContactRequests } from './contactController';
 import { createOnlineDuelSource, type OnlineDuelSource } from './onlineSource';
@@ -58,6 +59,8 @@ export interface OnlineDuelDeps {
   setConsole?(input: ConsoleInput | null): void;
   /** The contact window's click slot (enemy ship window spec §6.1, §6.6): filled with this session's controller, emptied on dispose. */
   setContact?(contact: ContactActions | null): void;
+  /** Helm round 2 §2.3, §6.3: the Settings tap time in ms, read live by the keyboard; absent, its default (200). */
+  throttleTapMs?(): number;
 }
 const NOTICE_MS = 3000;
 /** How often the session asks main for the link's figures, and how many recent samples the F3 overlay reads. */
@@ -69,12 +72,12 @@ export const LOCAL_TICK_MS = 1000 / 60, LOCAL_TICKS_MAX = 4;
 const neutral = (): HeldInput => ({ moveX: 0, moveY: 0, interactHeld: false });
 /** Playtest2feedback §3, §4, §4a: this seat's held frame. At the crew Helm (a newtonianHelm class): A/D's turn, the held
  *  throttle and thrusters and the left button's steer (crewHelmHeld). Elsewhere, and on any other class: quantised to -1,
- *  0 and 1 (H-2 spec §3), with Space at the Helm as auto-face (Feel-i). W-4 spec §11: at the Hound's Weapons seat,
+ *  0 and 1 (H-2 spec §3), with Space at the Helm as auto-face (Feel-i; helm round 2 §4: not at the crew Helm). W-4 spec §11: at the Hound's Weapons seat,
  *  `weapons` adds weaponSel, the trigger (gunHeld with the autocannon selected) and the reticle as turretAim (W-4b). */
 export function sessionHeld(k: KeySample, d: DuelState, me: number, steer: number, weapons?: { sel: number; trigger: boolean; aim?: number }): HeldInput {
   const seat = seatOf(d, me), crewHelm = crewHelmSeat(d, me);
   return { moveX: Math.sign(k.moveX) || 0, moveY: Math.sign(k.moveY) || 0, interactHeld: k.interactHeld,
-    ...(k.fireHeld && seat === 'helm' ? { face: true } : {}), ...(crewHelm ? crewHelmHeld(k, steer) : {}),
+    ...(k.fireHeld && seat === 'helm' && !crewHelm ? { face: true } : {}), ...(crewHelm ? crewHelmHeld(k, steer) : {}),   // helm round 2 §4: no auto-face at the crew Helm
     ...(weapons && houndWeaponsSeat(d, me) ? weaponsSeatHeld(weapons.sel, weapons.trigger, weapons.aim ?? -1) : {}) };   // W-4 spec §11: the Hound's Weapons seat
 }
 /** Whether two held frames differ (a change is stamped for the held delay). */
@@ -108,7 +111,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   const contact = createContactController(), requests = createMapRequests();
   // Feel-ii §2.7: G pings at the pointer (taken from the keyboard as the contact window's keys are), a middle click too.
   let pingKey = false, lastPing: number | null = null, pingsIn: (PingRequest & { player: number })[] = [];
-  const keyboard = createDuelKeyboard(window as unknown as EventSource, { intercept: (code) => focused && !blocked && (contact.intercept(code) || (code === PING_CODE && (pingKey = true))) });
+  const keyboard = createDuelKeyboard(window as unknown as EventSource, { intercept: (code) => focused && !blocked && (contact.intercept(code) || (code === PING_CODE && (pingKey = true))),
+    now: deps.now, tapMs: deps.throttleTapMs });   // helm round 2 §2.3: the session's clock and the Settings tap time
   deps.setConsole?.(keyboard.ui);
   deps.setContact?.(contact);
   const trackConsole = consoleChange(() => keyboard.clearUi());   // Artemis spec §6.2: a console change drops its holds
@@ -147,6 +151,9 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   // Net-4a §3.9: the autocannon's mode this pump's play() decided (P's, after this pump's R or tag), or null. Its gunMode rides
   // this tick's entry with the held frame and the sim sets the mode before the gun fires (step.ts), so the trigger reads it.
   let gunManualNow: boolean | null = null;
+  // Helm round 2 §2.3, §7: the drawn throttle when W and S last went down (plan Decision 9) and the thrusters on the last
+  // pump (NO GAS's press edge, §3.3). Net-4a §3.9: these are press edges, not in-flight copies; the cut and its latch are in P.
+  let tapFrom: { w: number | null; s: number | null } = { w: null, s: null }, rcsPrev = { x: 0, y: 0 };
   const torpSent = new Set<number>();
   // Net-4a §3.3, §3.4: the predictor (owned with the stream client), the last publication it was given, the local tick
   // clock, this tick's commands (collected by send), a neutralize's held sequence for the next entry, and the timings (§3.10).
@@ -288,25 +295,35 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     for (const c of k.ship ?? []) send(c);   // Engineering spike §7: the ship view's clicks, as Single player queues them
     const seat = seatOf(d, me), p = k.presses;
     if (!houndWeaponsSeat(d, me)) { weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; }   // W-4 spec §9: a sit starts on pew pew (as Single player, before the standing return)
+    if (!crewHelmSeat(d, me)) { tapFrom = { w: null, s: null }; rcsPrev = { x: 0, y: 0 }; }   // helm round 2 Decision 9: a tap is judged at the crew Helm only
     if (seat === 'standing') {
-      if (p.interact > 0 && repairInReach(d, me) < 0) { const c = consoleInReach(d, me); if (c >= 0) { torpHold = -1; weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; send({ kind: 'sit', station: c }); } }
+      if (p.interact > 0 && repairInReach(d, me) < 0) { const c = consoleInReach(d, me); if (c >= 0) { tapFrom = { w: null, s: null }; rcsPrev = { x: 0, y: 0 }; torpHold = -1; weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; send({ kind: 'sit', station: c }); } }
       return;
     }
-    if (p.stand > 0) { torpHold = -1; weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; send({ kind: 'stand' }); return; }
+    if (p.stand > 0) { tapFrom = { w: null, s: null }; rcsPrev = { x: 0, y: 0 }; torpHold = -1; weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; send({ kind: 'stand' }); return; }
     if (requests.scan !== null && d.tactical.known[requests.scan] < CONTACT_MAX_LEVEL[requests.scan]) send({ kind: 'contactScan', contact: requests.scan });   // Sci-1 spec §5
     if (crewHelmSeat(d, me)) {   // playtest2feedback §3-§5: the held frame carries the rest
       if (p.camera > 0 && source) snapBack(source.cameras.helm);
-      // Net-4a §3.9: deduped against P's hold (P already cleared it on the ticks auto-face was held).
-      if (heading !== null && Number.isInteger(heading) && heading >= -1 && heading < 256 && heading !== d.holdHeading) send({ kind: 'heading', heading });
+      // Helm round 2 §4: no right-button heading and no Space here (the map's right button pans; the sim keeps both inputs).
       // §4a: a hold steers once the map gives a bearing (a press over a block or the ship steers nothing yet).
       const off = refusal(d, 'turn'), held = k.held ?? NO_HELD_FLAGS, steering = pointer.leftHeld(), steered = steering && steerNow !== null;
+      // Helm round 2 §2.3, §7: record the predicted throttle when a key goes down, then judge a tap against it: S cuts a
+      // forward throttle, W a reverse one; recorded first, so a press shorter than a pump is judged too. Decision 10: no cut
+      // while the Engines refuse. Net-4a §3.9: the predicted throttle is P's (it holds every unacknowledged frame and cut).
+      const shown = d.thrMille;
+      if (k.throttleDown === 1) tapFrom.w = shown; else if (k.throttleDown === -1) tapFrom.s = shown;
+      const from = k.throttleTap === -1 ? tapFrom.s : k.throttleTap === 1 ? tapFrom.w : null;
+      if (k.throttleTap === -1) tapFrom.s = null; else if (k.throttleTap === 1) tapFrom.w = null;
+      if (!off && from !== null && (k.throttleTap === -1 ? from > 0 : from < 0)) send({ kind: 'throttleCut' });
+      // Helm round 2 §3.3: a thruster press (a key or PORT / STBD) on an empty charge says why, once a press (Net-4a §3.9: P's charge).
+      const rx = k.rcsX ?? 0, ry = k.rcsY ?? 0;
+      if (((rx !== 0 && rcsPrev.x === 0) || (ry !== 0 && rcsPrev.y === 0)) && d.gas < GAS_SPEND) source?.refuse('gas', NO_GAS);
+      rcsPrev = { x: rx, y: ry };
       if (off) {
         if (steered && !steerPrev) source?.refuse('turn', off);   // the hold's first steer (final review M1)
-        if (held.fire && !prevHeld.fire) source?.refuse('auto-face', off);
         if ((held.up && !prevHeld.up) || (held.down && !prevHeld.down)) source?.refuse('throttle', off);
-        if (heading !== null && heading >= 0) source?.refuse('heading', off);
       }
-      steerPrev = steering && (steerPrev || steered);   // owner 2026-11-19: the free cold gas has no refusal
+      steerPrev = steering && (steerPrev || steered);
       return;
     }
     if (seat === 'helm') {
@@ -465,7 +482,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
     // Final review I1: on the pump this seat becomes the crew Helm (P's predicted sit, Net-4a §3.9), the keys held now are
     // stale until pressed again (E sits and is a thruster; W, A and D walk), and this sample's crew fields are dropped.
     const crewHelmNow = crewHelmSeat(d, me);
-    if (crewHelmNow && !crewHelmPrev) { keyboard.staleHeld(); k = { ...k, throttleHeld: 0, rcsX: 0, rcsY: 0 }; }
+    if (crewHelmNow && !crewHelmPrev) { keyboard.staleHeld(); k = { ...k, throttleHeld: 0, rcsX: 0, rcsY: 0, throttleDown: 0, throttleTap: 0 }; }   // helm round 2 Decision 8
     crewHelmPrev = crewHelmNow;
     // Escape and the leave prompt (spec §7): a prompt from a round that is no longer decided and running closes first.
     const keys = leavePromptKeys(leaveConfirm, c, p.phase, k.presses);
@@ -547,7 +564,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       observe(); release();
       // This round's gaps before the re-attach stay in its record (the reconnect time itself is never one).
       if (source) { roundGaps.push(...source.takeArrivals()); if (roundGaps.length > 4096) roundGaps.splice(0, roundGaps.length - 4096); }
-      descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; torpHold = -1; weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; steer = -1; steerPrev = false; attaches++;
+      descriptor = next; linkClosed = false; synced = false; presenceSent = false; lastPhase = ''; leaveConfirm = CLOSED_PROMPT; tapFrom = { w: null, s: null }; rcsPrev = { x: 0, y: 0 }; torpHold = -1; weaponSel = 0; lastGunSel = 0; triggerPrev = false; flight = NO_FLIGHT; triggerLive = false; steer = -1; steerPrev = false; attaches++;
       heldStamps.length = 0; commandStamps.clear(); pewSent.clear(); laserSent.clear(); torpSent.clear();   // the new client restarts its sequences: an old stamp would match a new frame
       // Spec §6.2: a map click counts only while this window has focus and input is not blocked; otherwise it is drained and dropped.
       scene ??= createDuelScene(deps.renderer, { seed: 0, pauseText: 'PAUSED', ui: deps.ui, audio: deps.audio, contact,

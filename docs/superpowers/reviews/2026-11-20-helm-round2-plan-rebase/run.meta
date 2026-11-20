@@ -1,0 +1,11 @@
+topic=helm-round2-plan-rebase
+subject_kind=plan
+subject=docs/superpowers/plans/2026-11-20-helm-round2.md
+worktree=C:\Users\djuar\FTLite\.worktrees\helm-round2
+base=main
+cap=10
+effort=medium
+confirm=0
+verify=
+created=2026-11-20
+head_at_setup=b3e2e1d8
