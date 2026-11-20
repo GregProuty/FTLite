@@ -3,7 +3,7 @@
 // input changed, anchors on the held watermark, keeps commands until the command watermark passes them, resets on a
 // pause, a new round or a decided round, and never stands more than PREDICT_MAX_TICKS past the confirmed tick.
 import { afterEach, describe, expect, it } from 'vitest';
-import { createDuelPredictor, heldKey, PREDICT_HASH_EVERY, PREDICT_MAX_TICKS, type LocalInput } from '../src/renderer/src/clientControl/duelPredictor';
+import { createDuelPredictor, headingSteps, heldKey, PREDICT_HASH_EVERY, PREDICT_MAX_TICKS, type LocalInput } from '../src/renderer/src/clientControl/duelPredictor';
 import type { DuelPublication } from '../src/renderer/src/clientControl/duelClient';
 import type { CommandEnvelope, DuelCommand, HeldInput } from '../src/renderer/src/net/contracts';
 import { STATE_CADENCE_TICKS } from '../src/network/state/sender';
@@ -230,6 +230,39 @@ describe('the duel predictor (Net-4a §3.3, §3.4)', () => {
     for (const changed of [{ ...base, turretAim: 4001 }, { ...base, weaponSel: 1 }, { ...base, torpHeading: 3 }, { ...base, gunHeld: true }])
       expect(heldKey(changed)).not.toBe(heldKey(base));
     expect(heldKey({ ...base })).toBe(heldKey(base));
+  });
+  it('heading steps between two continuous headings are wrap-aware over 256 (Fable #1)', () => {
+    expect(headingSteps(10, 13.5)).toBe(3.5);
+    expect(headingSteps(255.5, 0.25)).toBe(0.75);
+    expect(headingSteps(0.25, 255.5)).toBe(0.75);
+    expect(headingSteps(0, 128)).toBe(128);
+  });
+  it("a correction reports the own ship's heading change in heading steps (Fable #1)", () => {
+    // Seat 0 (the crew Helm) steers to a bearing a quarter turn off for 3 ticks; the authority never gets those frames.
+    const a = authority(), p = predictor();
+    p.confirm(a.publication(), a.confirmed());
+    const aim = (a.d.tactical.ships[0]!.heading + 64) % 256;
+    for (let L = 1; L <= 6; L++) { p.tick(entry(L, L <= 3 ? { ...N(), aim } : N())); a.step([N(), N()]); a.water.held[0] = L; }
+    const own = (d: DuelState) => d.tactical.ships[0]!.heading + d.tactical.ships[0]!.headingAcc, before = own(p.state()!);
+    expect(p.confirm(a.publication(), a.confirmed())).toBe('resimulated');
+    const c = p.stats().correction!;
+    expect(c.heading).toBeGreaterThan(0);
+    expect(c.heading).toBe(headingSteps(before, own(a.d)));
+    expect(own(p.state()!)).toBe(own(a.d));
+    p.dispose();
+  });
+  it('a retarget is a non-reset confirm whose target is not where P stood: counted, with its signed size in ticks (Fable #2)', () => {
+    const a = authority(), p = predictor(), held = { ...N(), throttleHeld: 1 };
+    p.confirm(a.publication(), a.confirmed());
+    expect([p.stats().retargets, p.stats().lastRetarget]).toEqual([0, 0]);
+    // As the constant-delay case: the first acknowledgement moves the target 6 ticks forward; after that P stands on it.
+    for (let L = 1; L <= 60; L++) { p.tick(entry(L, held)); a.step([L > 6 ? held : N(), N()]); if (L > 6) a.water.held[0] = L - 6; if (a.d.interior.tick % 3 === 0) p.confirm(a.publication(), a.confirmed()); }
+    expect([p.stats().retargets, p.stats().lastRetarget]).toEqual([1, 6]);
+    // The held delay drops to 2 ticks (the watermark jumps to L − 2): the target moves 4 ticks back.
+    for (let L = 61; L <= 63; L++) { p.tick(entry(L, held)); a.step([held, N()]); a.water.held[0] = L - 2; }
+    p.confirm(a.publication(), a.confirmed());
+    expect([p.stats().retargets, p.stats().lastRetarget]).toEqual([2, -4]);
+    p.dispose();
   });
   it('records the hash of P on cadence ticks only', () => {
     const a = authority(), p = predictor();

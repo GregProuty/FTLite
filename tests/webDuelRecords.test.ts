@@ -49,8 +49,15 @@ describe('the record’s prediction block (Net-4a §3.10)', () => {
     const old = JSON.parse(JSON.stringify(record(0))) as DuelPlaytestRecord;
     expect('prediction' in old).toBe(false);
     expect(validateDuelRecord(old)).toEqual(old);
-    const withBlock = { ...old, prediction: { lead: latencyFigure([6, 7]), verifiedShare: 0.95, correction: fineFigure([0.12]), resimP99Ms: 0.84 } };
+    const withBlock = { ...old, prediction: { lead: latencyFigure([6, 7]), verifiedShare: 0.95, correction: fineFigure([0.12]), heading: fineFigure([0.5, 3.25]), resimP99Ms: 0.84, retargetsPerMin: 1.5, retarget: latencyFigure([3, 4]) } };
     expect(validateDuelRecord(withBlock).prediction).toEqual(withBlock.prediction);
+  });
+  it('the block carries the heading corrections and the retargets (Fable #1, #2); none of them may be left out', () => {
+    const old = JSON.parse(JSON.stringify(record(0))) as DuelPlaytestRecord;
+    const full = { lead: latencyFigure([6]), verifiedShare: 0.9, correction: fineFigure([0.1]), heading: fineFigure([2]), resimP99Ms: 0.5, retargetsPerMin: null, retarget: latencyFigure([]) };
+    expect(validateDuelRecord({ ...old, prediction: full }).prediction).toEqual(full);
+    for (const k of ['heading', 'retargetsPerMin', 'retarget'] as const) { const { [k]: _, ...rest } = full; expect(() => validateDuelRecord({ ...old, prediction: rest })).toThrow(); }
+    expect(() => validateDuelRecord({ ...old, prediction: { ...full, retargetsPerMin: -1 } })).toThrow();
   });
   it('fineFigure rounds to 0.001 (latencyFigure to whole ms)', () => {
     expect(fineFigure([0.12344, 0.5, 1.23456])).toEqual({ count: 3, median: 0.5, p95: 1.235, max: 1.235 });

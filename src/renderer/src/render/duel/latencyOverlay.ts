@@ -6,8 +6,9 @@ import type { LatencyFigure } from '../../net/duelRecord';
 
 /** The key that shows and hides the overlay. */
 export const OVERLAY_CODE = 'F3';
-/** Net-4a §3.10: the prediction's figures. */
-export interface PredictionFigures { leadTicks: number; verifiedShare: number | null; resimP99Ms: number | null; correction: number | null }
+/** Net-4a §3.10: the prediction's figures. Fable #1, #2: the last correction's own-ship heading change (heading steps) and
+ *  the retargets in the last 60 s. */
+export interface PredictionFigures { leadTicks: number; verifiedShare: number | null; resimP99Ms: number | null; correction: number | null; heading: number | null; retargetsPerMin: number }
 export interface LatencyOverlayModel {
   transport: 'loopback' | 'lan' | 'internet' | null;
   held: LatencyFigure; command: LatencyFigure;
@@ -20,7 +21,7 @@ const row = (label: string, f: LatencyFigure): string => `${label} n ${f.count} 
 export function latencyOverlayLines(m: LatencyOverlayModel): string[] {
   const lines = [`LATENCY  ${m.transport === null ? 'LINK ?' : m.transport.toUpperCase()}   F3: HIDE`, row('HELD', m.held), row('CMD ', m.command), `RTT ${ms(m.rttMs)} MS`];
   const p = m.prediction;
-  if (p) lines.push(`PRED LEAD ${p.leadTicks} (${Math.round(p.leadTicks * 1000 / 60)} MS)  OK ${p.verifiedShare === null ? '?' : `${Math.round(p.verifiedShare * 100)}%`}  RESIM ${p.resimP99Ms === null ? '?' : p.resimP99Ms.toFixed(2)} MS  FIX ${p.correction === null ? '0' : p.correction.toFixed(2)} U`);
+  if (p) lines.push(`PRED LEAD ${p.leadTicks} (${Math.round(p.leadTicks * 1000 / 60)} MS)  OK ${p.verifiedShare === null ? '?' : `${Math.round(p.verifiedShare * 100)}%`}  RESIM ${p.resimP99Ms === null ? '?' : p.resimP99Ms.toFixed(2)} MS  FIX ${p.correction === null ? '0' : p.correction.toFixed(2)} U  HDG ${p.heading === null ? '0' : p.heading.toFixed(2)}  RT ${p.retargetsPerMin}/MIN`);
   return lines;
 }
 

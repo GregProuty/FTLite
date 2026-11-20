@@ -1053,21 +1053,29 @@ describe('the session predicts (Net-4a §3.3, §3.6)', () => {
   });
 });
 describe('prediction figures (Net-4a §3.10)', () => {
-  it('F3 shows the prediction line: lead in ticks and ms, the verified share, re-simulation p99 and the last correction', () => {
+  it('F3 shows the prediction line: lead in ticks and ms, the verified share, re-simulation p99, the last correction and its heading steps, and the retargets of the last minute', () => {
     expect(latencyOverlayLines({ transport: 'internet', held: latencyFigure([]), command: latencyFigure([]), rttMs: 80,
-      prediction: { leadTicks: 9, verifiedShare: 0.966, resimP99Ms: 0.84, correction: 0.12 } }).at(-1))
-      .toBe('PRED LEAD 9 (150 MS)  OK 97%  RESIM 0.84 MS  FIX 0.12 U');
+      prediction: { leadTicks: 9, verifiedShare: 0.966, resimP99Ms: 0.84, correction: 0.12, heading: 3.5, retargetsPerMin: 2 } }).at(-1))
+      .toBe('PRED LEAD 9 (150 MS)  OK 97%  RESIM 0.84 MS  FIX 0.12 U  HDG 3.50  RT 2/MIN');
+    expect(latencyOverlayLines({ transport: 'internet', held: latencyFigure([]), command: latencyFigure([]), rttMs: 80,
+      prediction: { leadTicks: 0, verifiedShare: null, resimP99Ms: null, correction: null, heading: null, retargetsPerMin: 0 } }).at(-1))
+      .toBe('PRED LEAD 0 (0 MS)  OK ?  RESIM ? MS  FIX 0 U  HDG 0  RT 0/MIN');
     expect(latencyOverlayLines({ transport: 'lan', held: latencyFigure([]), command: latencyFigure([]), rttMs: null }).some((l) => l.startsWith('PRED'))).toBe(false);
   });
   it("a round's record carries the prediction block, validated, version still 1", async () => {
     const r = rig(0), c = r.attach();
     for (let k = 0; k < 9; k++) r.pump();
-    c.publish(r.d); r.pump();
+    c.publish(r.d, 'running', undefined, { held: [c.helds().length, 0] }); r.pump();   // every frame sent acknowledged: the target is T
     c.events.push(roundEvent(0)); r.pump();
     const rec = r.records.at(-1)!;
     expect(rec.version).toBe(1);
     expect(rec.prediction).toBeDefined();
     expect(rec.prediction!.lead.count).toBeGreaterThan(0);
+    // Fable #1, #2: P stood about ten ticks past T, so that confirm moved the target back to T: one retarget.
+    expect(rec.prediction!.retarget.count).toBe(1);
+    expect(rec.prediction!.retarget.max).toBeGreaterThanOrEqual(9);
+    expect(rec.prediction!.retargetsPerMin === null || rec.prediction!.retargetsPerMin >= 0).toBe(true);
+    expect(rec.prediction!.heading).toBeDefined();
     expect(() => duelRecordSchema.shape.prediction.unwrap().parse(rec.prediction)).not.toThrow();   // roundEvent's summary is partial, so only the new block is validated
     r.dispose();
   });

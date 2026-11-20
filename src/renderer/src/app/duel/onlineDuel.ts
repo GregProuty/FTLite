@@ -154,6 +154,13 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   const keep = (list: number[], ms: number): void => { list.push(ms); if (list.length > LIVE_SAMPLES) list.shift(); };
   const p99 = (xs: readonly number[]): number | null => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return Math.round(s[Math.min(s.length - 1, Math.ceil(0.99 * s.length) - 1)]! * 1000) / 1000; };
   const roundLead: number[] = [], roundCorrection: number[] = [], roundResim: number[] = [], liveResim: number[] = []; let roundVerified = 0, roundConfirms = 0;   // liveResim: F3's recent re-simulation times (R1-F12)
+  // Fable #1, #2: the round's heading corrections (steps), its retargets' sizes (ticks) and count, the confirmed ticks its
+  // predicted play spans (for the rate), F3's retarget times (ms) and the predictor's retarget count last seen.
+  const roundHeading: number[] = [], roundRetarget: number[] = [], liveRetargets: number[] = [];
+  let roundRetargets = 0, roundFirstTick: number | null = null, roundLastTick = 0, seenRetargets = 0;
+  const RETARGET_WINDOW_MS = 60_000;
+  const recentRetargets = (now: number): number => { while (liveRetargets.length && now - liveRetargets[0]! >= RETARGET_WINDOW_MS) liveRetargets.shift(); return liveRetargets.length; };
+  const retargetsPerMin = (): number | null => { const minutes = roundFirstTick === null ? 0 : (roundLastTick - roundFirstTick) / 3600; return minutes > 0 ? Math.round(roundRetargets / minutes * 10) / 10 : null; };
   const heldStamps: { sequence: number; at: number }[] = [], commandStamps = new Map<number, number>(), pewSent = new Set<number>(), heldSamples: number[] = [], commandSamples: number[] = [], roundGaps: number[] = [];
   // The link (H-2b): the route label and RTT from main, the round's RTT samples; the overlay's recent delays.
   const liveHeld: number[] = [], liveCommand: number[] = [], roundRtt: number[] = [], debug = createKeyToggle(window as unknown as KeyTarget);
@@ -188,7 +195,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   /** Fable #4: a predictor that throws is dropped for this attach; the view falls back to the confirmed replica. */
   function dropPredictor(err: unknown): void {
     console.error('[online duel] the predictor failed; drawing the confirmed replica', err);
-    predictor?.dispose(); predictor = null; confirmedSequence = 0;
+    predictor?.dispose(); predictor = null; confirmedSequence = 0; seenRetargets = 0;
   }
   /** The authority's held frame is neutral once input stops, so this seat's drawn axes drop too. */
   function neutralSource(): void { source?.sent(neutral()); }
@@ -219,8 +226,10 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       summary, latency: { held: latencyFigure(heldSamples), command: latencyFigure(commandSamples), rttMs: latencyFigure(roundRtt.splice(0)).median },
       // Per round: the disconnects and pauses since the last record (the first attach is not a disconnect).
       jitter: arrivalJitter([...roundGaps.splice(0), ...(source?.takeArrivals() ?? [])]), disconnects: Math.max(0, attaches - roundAttaches), pauses: pauses - roundPauses,
-      ...(roundConfirms > 0 ? { prediction: { lead: latencyFigure(roundLead), verifiedShare: roundVerified / roundConfirms, correction: fineFigure(roundCorrection), resimP99Ms: p99(roundResim) } } : {}) };
-    heldSamples.length = 0; commandSamples.length = 0; roundLead.length = 0; roundCorrection.length = 0; roundResim.length = 0; roundVerified = 0; roundConfirms = 0; roundAttaches = Math.max(1, attaches); roundPauses = pauses; startedAtIso = new Date().toISOString();
+      ...(roundConfirms > 0 ? { prediction: { lead: latencyFigure(roundLead), verifiedShare: roundVerified / roundConfirms, correction: fineFigure(roundCorrection), heading: fineFigure(roundHeading),
+        resimP99Ms: p99(roundResim), retargetsPerMin: retargetsPerMin(), retarget: latencyFigure(roundRetarget) } } : {}) };
+    heldSamples.length = 0; commandSamples.length = 0; roundLead.length = 0; roundCorrection.length = 0; roundResim.length = 0; roundVerified = 0; roundConfirms = 0;
+    roundHeading.length = 0; roundRetarget.length = 0; roundRetargets = 0; roundFirstTick = null; roundLastTick = 0; roundAttaches = Math.max(1, attaches); roundPauses = pauses; startedAtIso = new Date().toISOString();
     void Promise.resolve(deps.recordDuel?.(r)).catch(() => {});
   }
   function observe(): void {
@@ -234,8 +243,10 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       if (done) {
         // §3.10: the round's figures. A reset (a pause, a new or decided round) is not a prediction.
         const { result, ms, st } = done, bound = (list: number[], v: number): void => { list.push(v); if (list.length > 4096) list.shift(); };
-        if (result !== 'reset') { roundConfirms++; if (result === 'verified') roundVerified++; bound(roundLead, st.lead); }
-        if (result === 'resimulated') { bound(roundResim, ms); keep(liveResim, ms); if (st.correction) bound(roundCorrection, st.correction.ship); }
+        if (result !== 'reset') { roundConfirms++; if (result === 'verified') roundVerified++; bound(roundLead, st.lead); roundFirstTick ??= p.tick; roundLastTick = p.tick; }
+        if (result === 'resimulated') { bound(roundResim, ms); keep(liveResim, ms); if (st.correction) { bound(roundCorrection, st.correction.ship); bound(roundHeading, st.correction.heading); } }
+        if (st.retargets > seenRetargets) { roundRetargets++; bound(roundRetarget, Math.abs(st.lastRetarget)); bound(liveRetargets, deps.now()); }   // Fable #2: one confirm moves the target at most once
+        seenRetargets = st.retargets;
       }
     }
     if (!synced && client.commandStatus(descriptor.seatId).state === 'ready') {
@@ -537,7 +548,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       // Subscribe before the client, which releases its replica on close: keep the last view frozen.
       offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; predictor?.dispose(); predictor = null; confirmedSequence = 0; });   // Net-4a §3.4: no hidden P steps on after a close
       client = createDuelRemoteClient(link, [next.seatId], { runId: next.runId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout, clock: { nowMs: deps.now } });
-      predictor = createDuelPredictor({ seat: next.seatId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout });   // Net-4a §3.4: one per client
+      predictor = createDuelPredictor({ seat: next.seatId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout }); seenRetargets = 0;   // Net-4a §3.4: one per client
       source = createOnlineDuelSource({ client: { state, publication, live }, seat: next.seatId, now: deps.now, viewport: { w: INTERNAL_W, h: INTERNAL_H },
         prediction: { active: () => !linkClosed && (predictor?.active() ?? false), state: () => predictor?.state() ?? null, before: () => predictor?.before() ?? null,
           alpha: () => Math.max(0, Math.min(1, (deps.now() - lastLocalAt) / LOCAL_TICK_MS)) } });
@@ -563,7 +574,8 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       if (debug.on()) {
         const ps = predictor?.stats(), checked = ps ? ps.verified + ps.resimulated : 0;   // only while F3 shows: stats() copies
         deps.latency?.frame(latencyOverlayLines({ transport: transport(), held: latencyFigure(liveHeld), command: latencyFigure(liveCommand), rttMs,
-          prediction: ps ? { leadTicks: ps.lead, verifiedShare: checked ? ps.verified / checked : null, resimP99Ms: p99(liveResim), correction: ps.correction?.ship ?? null } : null }));
+          prediction: ps ? { leadTicks: ps.lead, verifiedShare: checked ? ps.verified / checked : null, resimP99Ms: p99(liveResim), correction: ps.correction?.ship ?? null,
+            heading: ps.correction?.heading ?? null, retargetsPerMin: recentRetargets(now) } : null }));
       } else deps.latency?.clear();
     },
     dispose(): void {

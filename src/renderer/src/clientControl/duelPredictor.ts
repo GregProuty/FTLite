@@ -13,6 +13,7 @@ import { loadDuelSnapshot, restoreDuelSnapshot } from '../sim/duel/snapshot';
 import { disposeDuel, type DuelState } from '../sim/duel/state';
 import { stepDuelTick, type DuelInput } from '../sim/duel/step';
 import { CREW_SLOT, missileOf, Outcome } from '../sim/tactical/state';
+import { HEADING_COUNT } from '../sim/tactical/tuning';
 import { hashF64 } from '../../../shared/hash';
 
 /** §3.4: the most ticks P stands past the confirmed tick (500 ms, the old cap on unacknowledged held frames). */
@@ -29,8 +30,11 @@ export interface PredictedBody { x: number; y: number; h: number }
 export interface PredictedBodies { ships: PredictedBody[]; missiles: (PredictedBody | null)[]; crew: { x: number; y: number }[] }
 export interface PredictionStats {
   verified: number; resimulated: number; resets: number; lead: number; measured: number; standing: number;
-  /** Plan deviation 3: `reseated` when this seat's seated station differs across the re-simulation (a refused or moved sit or stand taken back, §3.7). */
-  correction: { ship: number; character: number; reseated: boolean } | null;
+  /** Fable #2: the non-reset confirms whose target was not where P stood (the whole predicted world jumps), and the last one's signed size in ticks. */
+  retargets: number; lastRetarget: number;
+  /** Plan deviation 3: `reseated` when this seat's seated station differs across the re-simulation (a refused or moved sit or stand taken back, §3.7).
+   *  Fable #1: `heading`, the own ship's heading change in heading steps (wrap-aware, sub-steps included). */
+  correction: { ship: number; heading: number; character: number; reseated: boolean } | null;
 }
 export interface DuelPredictorOptions { seat: number; contentDigest: string; resolveLayout: ResolveLayout; step?(d: DuelState, input: DuelInput): void }
 export interface DuelPredictor {
@@ -54,6 +58,8 @@ const HELD_KEYS = ['moveX', 'moveY', 'interactHeld', 'face', 'aim', 'gunHeld', '
 type MissingHeldKey = Exclude<keyof HeldInput, (typeof HELD_KEYS)[number]>;
 const heldKeysComplete: [MissingHeldKey] extends [never] ? true : never = true;
 void heldKeysComplete;
+/** Fable #1: the unsigned turn between two continuous headings (heading + headingAcc), in heading steps, the short way round. */
+export const headingSteps = (a: number, b: number): number => { const d = b - a; return Math.abs(d - Math.round(d / HEADING_COUNT) * HEADING_COUNT); };
 export const heldKey = (h: HeldInput): string => HELD_KEYS.map((k) => (h[k] === undefined ? '' : String(h[k]))).join(',');
 /** The inputs of one step by content: every player's held input and the commands' ids and bodies (not their stamped tick). */
 const inputKey = (held: readonly HeldInput[], commands: readonly Command[]): string =>
@@ -75,7 +81,7 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
   /** I1 (§3.5): true once a capped tick has set `prior` to P's own bodies, so the view holds at P and nothing is rebuilt per tick. */
   let holding = false;
   const steps = new Map<number, Step>();
-  const stats: PredictionStats = { verified: 0, resimulated: 0, resets: 0, lead: 0, measured: 0, standing: 0, correction: null };
+  const stats: PredictionStats = { verified: 0, resimulated: 0, resets: 0, lead: 0, measured: 0, standing: 0, retargets: 0, lastRetarget: 0, correction: null };
   const withOwn = (own: HeldInput): HeldInput[] => held.map((h, k) => (k === seat ? own : h));
   /** One step of P from its tick with `own` in this seat's slot (§3.3); requestedTick is P's tick, as the authority restamps. */
   function advance(own: HeldInput, commands: readonly Command[]): void {
@@ -127,6 +133,7 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
       let target = Math.abs(standing - measured) <= PREDICT_SLACK_TICKS ? standing : measured;
       target = Math.max(T, Math.min(T + PREDICT_MAX_TICKS, target));
       stats.measured = measured; stats.standing = standing;
+      if (target !== standing) { stats.retargets++; stats.lastRetarget = target - standing; }   // Fable #2
       // The mapping from now on: the newest local tick is the target (plan deviation 1). It is the anchor's offset unless
       // the slack or the cap applied; tick() steps entry L to L + offset, so verify and tick() always agree.
       offset = target - local;
@@ -149,14 +156,14 @@ export function createDuelPredictor(options: DuelPredictorOptions): DuelPredicto
       for (let k = T + 1; ok && k <= target; k++) { const s = steps.get(k), plan = planned(k); ok = !!s && s.key === inputKey(withOwn(plan.own), plan.commands); }
       if (ok) { stats.verified++; stats.correction = null; stats.lead = standing - T; return 'verified'; }
       // Step 5: restore and step to the target with the planned inputs.
-      const ship = d.tactical.ships[CREW_SLOT]!, sx = ship.x, sy = ship.y, eid = d.interior.crew[seat], cx = eid === undefined ? 0 : Position.x[eid]!, cy = eid === undefined ? 0 : Position.y[eid]!, seated = eid === undefined ? -1 : Seated.station[eid]!;
+      const ship = d.tactical.ships[CREW_SLOT]!, sx = ship.x, sy = ship.y, sh = ship.heading + ship.headingAcc, eid = d.interior.crew[seat], cx = eid === undefined ? 0 : Position.x[eid]!, cy = eid === undefined ? 0 : Position.y[eid]!, seated = eid === undefined ? -1 : Seated.station[eid]!;
       restoreDuelSnapshot(d, publication.snapshot, options.contentDigest);
       steps.clear(); steps.set(T, { key: '', hash: publication.hash });
       prior = bodies(d); holding = false;
       for (let k = T + 1; k <= target; k++) { const plan = planned(k); advance(plan.own, plan.commands); }
       const after = d.tactical.ships[CREW_SLOT]!, dx = after.x - sx, dy = after.y - sy;
       const ex = eid === undefined ? 0 : Position.x[eid]! - cx, ey = eid === undefined ? 0 : Position.y[eid]! - cy;
-      stats.correction = target === standing ? { ship: Math.sqrt(dx * dx + dy * dy), character: Math.sqrt(ex * ex + ey * ey), reseated: (eid === undefined ? -1 : Seated.station[eid]!) !== seated } : null;
+      stats.correction = target === standing ? { ship: Math.sqrt(dx * dx + dy * dy), heading: headingSteps(sh, after.heading + after.headingAcc), character: Math.sqrt(ex * ex + ey * ey), reseated: (eid === undefined ? -1 : Seated.station[eid]!) !== seated } : null;
       stats.resimulated++; stats.lead = target - T;
       return 'resimulated';
     },

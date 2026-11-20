@@ -26,8 +26,10 @@ export interface DuelPlaytestRecord {
   /** Publication inter-arrival: the standard deviation against the expected 50 ms, over `count` gaps. */
   jitter: { count: number; stdMs: number | null };
   disconnects: number; pauses: number;
-  /** Net-4a §3.10: the round's prediction: the lead (ticks), the verified share, the own-ship corrections (u) and the re-simulation p99. */
-  prediction?: { lead: LatencyFigure; verifiedShare: number | null; correction: LatencyFigure; resimP99Ms: number | null };
+  /** Net-4a §3.10: the round's prediction: the lead (ticks), the verified share, the own-ship corrections (u) and the re-simulation p99.
+   *  Fable #1, #2: the corrections' own-ship heading change (heading steps), the retargets per minute of predicted play
+   *  (null with none of it) and each retarget's size (ticks, unsigned). */
+  prediction?: { lead: LatencyFigure; verifiedShare: number | null; correction: LatencyFigure; heading: LatencyFigure; resimP99Ms: number | null; retargetsPerMin: number | null; retarget: LatencyFigure };
 }
 
 const uint = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), ms = z.number().finite().min(0).max(DUEL_RECORD_MAX_MS);
@@ -49,7 +51,8 @@ export const duelRecordSchema = z.object({
   startedAtIso: z.string().max(32).regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/),
   summary, latency: z.object({ held: figure, command: figure, rttMs: ms.nullable() }).strict(),
   jitter: z.object({ count: uint, stdMs: ms.nullable() }).strict(), disconnects: uint, pauses: uint,
-  prediction: z.object({ lead: figure, verifiedShare: z.number().min(0).max(1).nullable(), correction: figure, resimP99Ms: ms.nullable() }).strict().optional()
+  prediction: z.object({ lead: figure, verifiedShare: z.number().min(0).max(1).nullable(), correction: figure, heading: figure, resimP99Ms: ms.nullable(),
+    retargetsPerMin: z.number().finite().min(0).max(DUEL_RECORD_MAX_MS).nullable(), retarget: figure }).strict().optional()
 }).strict();
 
 /** The record, validated and within its byte cap; throws otherwise. */
