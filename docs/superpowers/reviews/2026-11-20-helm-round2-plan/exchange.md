@@ -96,3 +96,42 @@ Confirmed against `sim/duel/power.ts:L72-75`: `clampToCapacity` lowers the bars 
 
 ---
 
+# Round 2 (delta, reviewing f30cb257, effort medium, 35 s, 149994 in / 122775 cached / 2975 out)
+
+Verdict: ready
+
+## Prior findings
+- R1-F1: resolved — Task 1 Step 1 (plan L118-119) now checks that 02b1ef81 is an ancestor of HEAD, that src/tests/scripts/package.json are the same as at 02b1ef81, and that those paths are clean. It says the docs commits and the untracked review files are expected. Step 5 (plan L150) defines HR2_BASE as the head at the start and no longer carries the '(02b1ef81)' gloss.
+- R1-F2: resolved — The loop at plan L238 now holds only number fields (thrMille, gas, gasIdle; DuelState types at plan L350-353). The `as const` literal values can be assigned to number, so `d[key] = value` / `d[key] = was` typecheck. thrCut gets its own set, check and reset line after the loop and before `expect(hashDuel(d)).toBe(base)`, which matches the existing body at tests/helmModule.test.ts:L107-112.
+- R1-F3: resolved — (1) Task 3 (plan L950) edits tests/duelThrottle.test.ts:57's `['throttle', 'heading']` to add 'throttleCut'. The current line matches the quoted anchor. (2) Task 2 (plan L312) quotes tests/crewOfFourWire.test.ts:64 verbatim up to the first ';' of its comment, changes `+ 3` to `+ 6`, and keeps the comment's tail ('Engineering spike spec §7 …'). The file is also added to Files (L201), to Step 7's run (L427) and to Step 8's git add (L436).
+- R1-F4: resolved — The search now covers seeds 1..4000 with LIMIT 5000 (plan L3639-3658). That is the range of the last re-pick recorded at scripts/network/duel-app-smoke.ts:L22-24. BLOCKED is reported only if the whole range is empty.
+- R1-F5: resolved — Decision 19 (plan L76) records that 'full 240 ticks after' counts the 240 refill ticks: the first on index 29, full on index 268. This matches Task 5's test.
+- R1-F6: resolved — Plan L530-532 now clears the room, then calls engines(d, 4), which brings the cap back to 1000, and then checks that 60 released ticks stay at 500. The test can now fail if the bar coming back raises the throttle. clampToCapacity (power.ts:L72-77) returns the excess to an implicit pool count, so setting 4 bars again restores the pre-hit total of 10 and over-commits nothing. The comment is corrected.
+
+## Verified
+- tests/crewOfFourWire.test.ts:L64: the current text matches the plan's quoted anchor at L312. The `[5, 9]` corruption loop at L65 uses interiorAt, so the +6 fix moves both checks.
+- tests/duelThrottle.test.ts:L57: the current commands list is ['throttle', 'heading'], as Task 3's edit at plan L950 assumes.
+- tests/helmModule.test.ts:L103-118: the test's title, loop and `expect(hashDuel(d)).toBe(base)` line match the edits Task 2 describes at plan L234-247.
+- Plan L493: the engines() helper sets Engines bars directly; L522-534 is the corrected clamp test.
+- src/renderer/src/sim/duel/power.ts:L70-77: clampToCapacity lowers bars to capacity, with the excess going to the pool count, and then calls clampThrottle.
+
+## Not verified
+- I did not check whether a seed in 1..4000 decides before tick 5000 under the new drag. That needs a sim run, and running the suite or the sim is out of scope.
+- Task 1 Step 1 chains with `&&`. That works under Bash or PowerShell 7 but not Windows PowerShell 5.1; I did not check which shell the executor uses.
+
+---
+
+# Round 2 response (no subject change)
+
+Reviewed `round-2.json` against the subject at `f30cb257`. 0 accepted, 0 rejected, 0 deferred; no new findings. The reviewer confirmed R1-F1 to R1-F6 as resolved; the verdict is "ready".
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+<!-- end -->
+
+---
+
