@@ -2,7 +2,9 @@
 // Cutter duel is run straight, its inputs and hashes kept; at every third tick a copy is restored in place from that
 // tick's snapshot and stepped 12 ticks with the same inputs, and its hash must equal the straight run's. `bursts` breaks
 // the biggest belt rock every 300 ticks inside the step function both runs use (a deterministic function of the state),
-// so the Asteroids-iii pieces are covered. Run by tests/predictionRestore.test.ts on Node and by the cross-engine run.
+// so the Asteroids-iii pieces are covered. Fable #5: `layout` and `crew` (default the Cutter and 2, the cross-engine run's)
+// put the pair on another ship and crew; the players past the scripted pair's two hold neutral input. Run by
+// tests/predictionRestore.test.ts on Node and by the cross-engine run.
 import cutter from '../../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../../src/renderer/src/sim/ship/schema';
 import { hashDuel } from '../../src/renderer/src/sim/duel/hash';
@@ -10,6 +12,7 @@ import { createScriptedPair, scriptedInput } from '../../src/renderer/src/sim/du
 import { loadDuelSnapshot, restoreDuelSnapshot, saveDuelSnapshot, type DuelSnapshot } from '../../src/renderer/src/sim/duel/snapshot';
 import { createDuel, disposeDuel, type DuelState } from '../../src/renderer/src/sim/duel/state';
 import { stepDuelTick, type DuelInput } from '../../src/renderer/src/sim/duel/step';
+import type { ShipLayout } from '../../src/renderer/src/sim/ship/schema';
 import { breakRock } from '../../src/renderer/src/sim/tactical/rockBreak';
 import { beginRockTick, rockAlive, rockAt } from '../../src/renderer/src/sim/tactical/rocks';
 
@@ -33,22 +36,23 @@ export function burstStep(every: number) {
     stepDuelTick(d, input);
   };
 }
-export function duelRestoreCheck(digest: string, options: { seed?: number; ticks?: number; bursts?: boolean } = {}): { checks: number; finalHash: string } {
-  const seed = options.seed ?? 3, ticks = options.ticks ?? 1800, step = burstStep(options.bursts ? 300 : 0);
-  const d = createDuel(CUTTER, seed), pair = createScriptedPair(seed);
+export function duelRestoreCheck(digest: string, options: { seed?: number; ticks?: number; bursts?: boolean; layout?: ShipLayout; crew?: number } = {}): { checks: number; finalHash: string } {
+  const seed = options.seed ?? 3, ticks = options.ticks ?? 1800, step = burstStep(options.bursts ? 300 : 0), layout = options.layout ?? CUTTER, crew = options.crew ?? 2;
+  const d = createDuel(layout, seed, 0, crew), pair = createScriptedPair(seed);
   const inputs: DuelInput[] = [], hashes: string[] = [hashDuel(d)], snaps = new Map<number, DuelSnapshot>();
   let copy: DuelState | null = null, checks = 0;
   try {
     for (let k = 0; k < ticks; k++) {
       if (k % 3 === 0) snaps.set(k, saveDuelSnapshot(d, digest));
-      const input = scriptedInput(pair, d);
+      const scripted = scriptedInput(pair, d), extra = Math.max(0, crew - scripted.held.length);
+      const input: DuelInput = { ...scripted, held: [...scripted.held, ...Array.from({ length: extra }, () => ({ moveX: 0, moveY: 0, interactHeld: false }))] };
       inputs.push(structuredClone(input));
       step(d, input);
       hashes.push(hashDuel(d));
     }
     for (const [k, snap] of snaps) {
       if (k + 12 > ticks) continue;
-      if (!copy) copy = loadDuelSnapshot(CUTTER, snap, digest); else restoreDuelSnapshot(copy, snap, digest);
+      if (!copy) copy = loadDuelSnapshot(layout, snap, digest); else restoreDuelSnapshot(copy, snap, digest);
       for (let j = 0; j < 12; j++) step(copy, inputs[k + j]!);
       const got = hashDuel(copy), want = hashes[k + 12]!;
       if (got !== want) throw Error(`duel restore at tick ${k} differs after 12 ticks: ${got} != ${want}`);
