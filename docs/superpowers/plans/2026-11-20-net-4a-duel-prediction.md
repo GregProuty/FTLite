@@ -1858,7 +1858,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Files:**
 - Modify: `src/renderer/src/app/duel/onlineDuel.ts`
 - Modify: `src/renderer/src/app/duel/onlineSource.ts`
-- Modify: `tests/crewHelmOnline.test.ts`, `tests/duelOnlineView.test.ts`, `tests/onlineDuelSession.test.ts`
+- Modify: `tests/crewHelmOnline.test.ts`, `tests/duelOnlineView.test.ts`, `tests/onlineDuelSession.test.ts`, `tests/w4Online.test.ts`, `src/renderer/src/app/duel/weaponsSeat.ts`
 
 **Interfaces:**
 - Removed from `OnlineDuelSource`: `thrMille`, `helmVent`, `unacked`, `throttleBase` and `gunModeBase` (W-4). The scene falls back to `d.thrMille`, `d.helmVent` and `source.throttle()`. All of these are now `P`'s. `turret(slot)` stays, and reads `P`'s turret.
@@ -1969,7 +1969,8 @@ The W-4 cases in `tests/onlineDuelSession.test.ts` that pin a hand prediction ar
 - **"two E presses before a replica arrives step the target room twice (lockSent); it clears on the result, a new round and a stand"**:
   - Keep the two-presses assertion. `P` holds the first `laserLock`, so the second E steps from it.
   - Replace "clears on the result" with a publication `{ command: [0, <the last laserLock's sequence>] }` whose state (`r.d`, unchanged) keeps the replica's lock. The next E then steps from the replica's lock.
-  - The new-round and stand parts keep their assertions.
+  - The new-round part keeps its assertions.
+  - The stand part becomes: `const n = locks().length; tapKey(r, 'KeyX'); r.pump(); e(); expect(locks()).toHaveLength(n);`. In `P` the seat has already stood, so E sends no lock. The old assertion (`locks().at(-1)` still room 2) would pass whatever the stand did (R2-F2).
 - **"a MANUAL flight: no gunHeld, no pewFire, then the selection returns; the turret is not predicted while it flies"**: keep every assertion about what is sent and about `weaponSel`. Delete the two `turret(0)` expectations: what `P`'s turret does during a flight is the sim's rule.
 - **"blur drops the local prediction: the vent and thrMille fall back to the replica state"**: delete it. Blur now sends neutral entries and `P` steps with them; Task 7's "an unfocused window's prediction keeps stepping" covers it.
 - **"R sends gunMode for the selected gun; a second R before the result flips back (from gunModeSent for that slot)"**: keep its assertions and rename it "(from P)". `P` holds the first toggle.
@@ -2038,7 +2039,7 @@ In `src/renderer/src/app/duel/onlineSource.ts`:
 
 - Delete the now-unused imports: `rampTicks`, `heldAxis`, `engineBars`, `throttleFloor`, `throttleCap`, `ventOf`, `noVent`, `HelmVent`, `predictTurret`. Keep `houndWeaponsSeat` if anything else still uses it.
 - Replace every remaining `replica()` call (from Task 6) with `duel()`, then delete `replica`.
-- If `predictTurret` in `app/duel/weaponsSeat.ts` has no other caller (`grep -rn predictTurret src`), delete it and its test cases.
+- `predictTurret` in `app/duel/weaponsSeat.ts` then has no caller in `src` (`grep -rn predictTurret src`). Delete it, and delete the `describe('the predicted own turret (W-4 spec §11)', ...)` block in `tests/w4Online.test.ts` (from L53) together with its `predictTurret` import.
 - Change `axes` to:
 
 ```ts
@@ -2053,13 +2054,13 @@ In `src/renderer/src/app/duel/onlineSource.ts`:
 
 - [ ] **Step 4: Run the tests and watch them pass**
 
-Run: `npx vitest run tests/crewHelmOnline.test.ts tests/duelOnlineView.test.ts tests/onlineDuelSession.test.ts tests/crewSeats.test.ts tests/predictionGates.test.ts && npm run typecheck`
-Expected: PASS. Then `grep -rn "UNACKED_MAX\|throttleSent\|headingSent\|laserModeSent\|torpModeSent\|gunModeSent\|lockSent\|gunModeBase\|unackedFrames" src tests` must print nothing.
+Run: `npx vitest run tests/crewHelmOnline.test.ts tests/duelOnlineView.test.ts tests/onlineDuelSession.test.ts tests/w4Online.test.ts tests/crewSeats.test.ts tests/predictionGates.test.ts && npm run typecheck`
+Expected: PASS. Then `grep -rn "UNACKED_MAX\|throttleSent\|headingSent\|laserModeSent\|torpModeSent\|gunModeSent\|lockSent\|gunModeBase\|unackedFrames\|predictTurret" src tests` must print nothing.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/app/duel/onlineSource.ts tests/crewHelmOnline.test.ts tests/duelOnlineView.test.ts tests/onlineDuelSession.test.ts
+git add src/renderer/src/app/duel/onlineDuel.ts src/renderer/src/app/duel/onlineSource.ts src/renderer/src/app/duel/weaponsSeat.ts tests/crewHelmOnline.test.ts tests/duelOnlineView.test.ts tests/onlineDuelSession.test.ts tests/w4Online.test.ts
 git commit -m "net-4a(cleanup): the in-flight holds, throttle ramp and local vent go; the session reads P
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"

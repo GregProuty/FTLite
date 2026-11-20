@@ -151,3 +151,72 @@ Confirmed. Task 7's close handler now disposes the predictor (spec L117), and F3
 
 ---
 
+# Round 2 (delta, reviewing 13af968c, effort medium, 228 s, 1359985 in / 1250231 cached / 18563 out)
+
+Verdict: ready
+
+## Findings
+
+### [P3] R2-F1 Task 9 deletes predictTurret 'and its test cases' without naming the file that holds them
+If `predictTurret` loses its only caller, Task 9 tells the executor to delete it and its test cases. The only tests for it are in tests/w4Online.test.ts, which is neither in Task 9's Files list nor in its Step 4 run, and `predictTurret` is not in the Step 4 grep. · plan Task 9 'If `predictTurret` in `app/duel/weaponsSeat.ts` has no other caller (`grep -rn predictTurret src`), delete it and its test cases'; plan Task 9 Files: Modify `tests/crewHelmOnline.test.ts`, `tests/duelOnlineView.test.ts`, `tests/onlineDuelSession.test.ts`; tests/w4Online.test.ts:L10, L67, L78-82 import and call predictTurret; src grep: only onlineSource.ts:L20/L181 call it. · An executor who follows only the listed files leaves w4Online.test.ts importing a deleted export. Task 9's own run passes, and the break first shows in Task 12's full suite. · Name the file: 'delete `predictTurret` and the `predictTurret` cases in tests/w4Online.test.ts (L60-83)'. Add tests/w4Online.test.ts to Task 9's Files list and its Step 4 run, and add `predictTurret` to the Step 4 grep.
+
+### [P3] R2-F2 The rewritten lock test's stand part now passes trivially
+With P read in Task 9, X's `stand` takes effect in P straight away, so the next E no longer runs at the Hound Weapons seat and sends no laserLock. `locks().at(-1)` is still room 2 from the new-round step, so the kept assertion passes whatever the stand does. · plan Task 9 lock-test rewrite: 'The new-round and stand parts keep their assertions'; tests/onlineDuelSession.test.ts:L346-348 (X, then E, expect `locks().at(-1)` to be room 2, which L345 already left there); onlineDuel.ts:L309 (the lock branch needs `houndWeaponsSeat(d, me)`, and after Task 9 d is P). · The stand step no longer tests anything. It does no harm, but it pins nothing. · Replace the stand part with `const n = locks().length; tapKey(r, 'KeyX'); r.pump(); e(); expect(locks()).toHaveLength(n);` (in P the seat has stood, so E sends no lock), or delete that part.
+
+## Prior findings
+- R1-F1: resolved — I traced the new confirm (plan L926-947) through 'runs ahead' with S=0. Up to L=6 there is no anchor, entries are kept, and P re-simulates. At L=9, hw=3 anchors on entry 3: measured=15, target=15, offset=6, entries 1-3 are spliced, and P re-simulates to 15 using entries 4-9. At L=12, P stands on 18 = measured, the hash at 12 matches, and the keys for 13-18 match: verified, lead 6. The command test also passes: the cmd stays on entry 10 until cw=1 at T=15, and P's throttle is 2 from L=10 on. Deviation 2 is recorded (plan L998-1002).
+- R1-F2: resolved — Task 6 keeps turret, thrMille, helmVent and the others on replica() until Task 9 (plan L1416-1422). Task 9 adds the new turret() reading P's pewTurret/gunTurret, removes gunModeSent, lockSent, gunModeShown and gunModeBase, and rewrites or deletes the W-4 cases, including the blur case at L812-821. The sim slews P's turret toward the held turretAim (turret.ts:L81-83). Remaining nit: the predictTurret test file is not named (new P3).
+- R1-F3: resolved — plan L1533 uses rig(1, undefined, undefined, undefined, ShipClass.ValkyrnLaser), which matches the rig signature (onlineDuelSession.test.ts:L110).
+- R1-F4: resolved — Only duelRecordSchema.shape.prediction.unwrap() is validated now, and the import list names duelRecordSchema.
+- R1-F5: resolved — The import is '../../src/shared/rng' and the check-at-execution note is gone.
+- R1-F6: resolved — encounterMode.test.ts:L39 hosts sectorMode or copy, so `mode.schemaVersion` is right for both. sessionCapture.test.ts:L219 is listed and added to the run. The other 'sector', schemaVersion: 1 literals (onlineRenderer, mirrorStore, onlineBridge…) are client descriptors that host nothing, and the plan correctly leaves them alone.
+- R1-F7: resolved — HELD_KEYS has 12 fields (torpTurn removed, weaponSel/turretAim added). A type-level completeness check is added, and heldKey is exported and tested for single-field changes (plan L766-771, L866-871).
+- R1-F8: resolved — Task 9 adds `const c = client?.state(), d = predictor?.state() ?? c`. The guard, `decided` and `leavePromptKeys` read c; seat and console decisions read d. This matches spec §3.6 and onlineDuel.ts:L449-464.
+- R1-F9: resolved — Both waits are w.tick(6), which reaches a cadence publication after the frame is latched.
+- R1-F10: resolved — vitest 3.2.7 (package.json:L65) supports describe(name, options, fn), and the suite timeout passes down to each test. The beforeEach setImmediate yield matches duelOnline.test.ts:L46. G4 gets 300 s.
+- R1-F12: resolved — The close handler (onlineDuel.ts:L519) now also disposes the predictor (plan L1624-1626). F3 reads p99(liveResim), and liveResim is fed only on 'resimulated'.
+
+## Verified
+- Task 4 confirm (plan L916-965), traced by hand: the 'runs ahead' test reaches lead 6 with the last 10 confirms verified; the partner-change test re-simulates onto the authority's hash; in the command test the throttle never flickers and leaves only by cw.
+- inputKey ignores requestedTick, so the stamped step keys equal the unstamped planned keys (plan L873-874, L891).
+- Task 7's observe runs before produce in pump (onlineDuel.ts:L433; plan L1639), so P-based decisions see the latest confirm.
+- Task 9's rewritten gunMode/lock cases: the second R and E read P's applied command, and a publication with water.command past the command re-simulates P back to the replica's value. The stub publish takes a water argument (plan L1501-1510).
+- The Shift+R case (onlineDuelSession.test.ts:L264-276) stays consistent when modes come from P.
+- onlineSource.ts: after Task 9, `manualTorpedoFlying` is still used in frame(), so only predictTurret, houndWeaponsSeat (if unused) and the helmFlight imports go.
+- SIM_VERSION 63 in Global Constraints and Task 12 matches the W-4 merge.
+
+## Not verified
+- Whether P's AUTO pew turret stays at 0 for the seed-7 Cutter start in the rewritten turret test. On AUTO the sim slews toward autoSolution when the enemy is in PEW_RANGE with line of sight (turret.ts:L84-86), and I did not check where the enemy spawns.
+- Whether the MANUAL torpedo placed at age 30 in the 'MANUAL flight' case keeps flying in P for the test's pumps. If P ends the flight early, the not.toHaveProperty('gunHeld') assertion could change.
+- Hash equality between hashF64(flattenDuel(d)) and snapshot.header.hash. This is unchanged material from round 1 and I did not re-check it.
+- Gate run times under the new 120 s / 300 s timeouts. The suite was not run, per the constraints.
+
+---
+
+# Round 2 response (plan revised)
+
+Reviewed `round-2.json` against the plan at `f77c9656`: 2 accepted, 0 rejected, 0 deferred. The reviewer confirmed R1-F1 to R1-F10 and R1-F12 as resolved.
+
+## R2-F1 [P3]: predictTurret's tests are not named
+
+Confirmed: `tests/w4Online.test.ts:L53` holds the `describe('the predicted own turret (W-4 spec §11)')` block that imports `predictTurret`. Task 9 now:
+- names that block for deletion;
+- adds the file and `weaponsSeat.ts` to its Files list and its commit;
+- adds the file to its Step 4 run, and `predictTurret` to the grep.
+
+## R2-F2 [P3]: The lock test's stand part passes trivially
+
+Confirmed: once the session reads `P`, the stand takes effect at once, and `locks().at(-1)` is left over from the new-round step. The stand part now asserts that E after X sends no new lock.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/plans/2026-11-20-net-4a-duel-prediction.md
+
+<!-- end -->
+
+---
+
