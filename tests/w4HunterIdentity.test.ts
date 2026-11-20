@@ -11,8 +11,9 @@ import { createTacticalState, Outcome } from '../src/renderer/src/sim/tactical/s
 import { UNCREWED_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 
 const TICKS = 3000;
+// the slingshot (SIM 66), ships feel twice the planet's pull: was { 1: '3000:fc7f80b50370e1ad', 2: '3000:213a76173e2cba3e', 3: '3000:ae9f3de5ea18c9d4' }
 // UI round (SIM 64), Hunter 95 / Valkyrn thrust 200: was { 1: '3000:d28638b2cc4b604d', 2: '3000:bc99f85ea5a8593e', 3: '3000:d9324c2a0c606026' }
-const DIGESTS: Readonly<Record<number, string>> = { 1: '3000:fc7f80b50370e1ad', 2: '3000:213a76173e2cba3e', 3: '3000:ae9f3de5ea18c9d4' };
+const DIGESTS: Readonly<Record<number, string>> = { 1: '3000:67358e39a4a3f739', 2: '3000:d48c438e535f815b', 3: '3000:4cd1486a136fcae1' };
 
 function run(seed: number): string {
   const st = createTacticalState(seed, 2, ShipClass.Valkyrn), h = createHash('sha256'), c = st.ships[0]!;

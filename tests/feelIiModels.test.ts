@@ -11,7 +11,7 @@ import { STATUS_RESERVE } from '../src/renderer/src/render/duel/consoleLayout';
 import { combatModel, TORPEDO_PATH_TICKS } from '../src/renderer/src/render/tactical/weaponsModel';
 import { createCamera } from '../src/renderer/src/render/tactical/camera';
 import { createFx } from '../src/renderer/src/render/tactical/fxModel';
-import { gravityAccel } from '../src/renderer/src/sim/tactical/physics';
+import { shipGravityAccel } from '../src/renderer/src/sim/tactical/physics';
 import { initRocks } from '../src/renderer/src/sim/tactical/rocks';
 import { predictFlight, predictMissile, predictPath } from '../src/renderer/src/sim/tactical/predict';
 import { classOf, createTacticalState, missileOf, Outcome, placeMissile, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
@@ -109,7 +109,7 @@ describe('the gravity rings and SLINGSHOT (Feel-ii §1.3)', () => {
   it('sit where the planet\'s pull is half and all of the crew ship\'s full thrust, labelled G 0.5 and G 1, at the Helm only', () => {
     const st = createTacticalState(5), thrust = classOf(st, 0).thrust;
     for (const g of GRAVITY_RINGS) {
-      const r = gravityRadius(g, thrust), [gx, gy] = gravityAccel(r, 0);
+      const r = gravityRadius(g, thrust), [gx, gy] = shipGravityAccel(r, 0);
       expect(Math.hypot(gx, gy) / (g * thrust)).toBeCloseTo(1, 4);
     }
     expect(gravityRadius(0.5, thrust)).toBeGreaterThan(gravityRadius(1, thrust));

@@ -5,7 +5,7 @@ import { dirBetween, hx, hy } from './direction';
 import {
   ASTEROID_GAP, BELT_COUNT, BELT_INNER, BELT_OUTER, CLUSTER_CENTRE_MIN, CLUSTER_COUNT,
   CLUSTER_MAX, CLUSTER_MIN, CLUSTER_R_MAX, CLUSTER_R_MIN, CLUSTER_RADIUS, CLUSTER_RHO_SEPARATION, CLUSTER_RHO_SLACK, EDGE_MARGIN, GAP_COUNT, GAP_MIN_SEPARATION, GAP_WIDTH,
-  GM, GRAVITY_EPS, HEADING_COUNT, LANES, PLANET_RADIUS, R_MAP, SPAWN_CLEARANCE, SPAWN_RADIUS, type Lane
+  GM, GRAVITY_EPS, HEADING_COUNT, SHIP_GRAVITY, LANES, PLANET_RADIUS, R_MAP, SPAWN_CLEARANCE, SPAWN_RADIUS, type Lane
 } from './tuning';
 
 export interface Circle { x: number; y: number; r: number }
@@ -33,6 +33,9 @@ export function circularSpeed(r: number): number {
   const q = r * r + GRAVITY_EPS * GRAVITY_EPS;
   return Math.sqrt((GM * r * r) / (q * Math.sqrt(q)));
 }
+
+/** Speed of a ship's circular orbit at radius r: the ship feels SHIP_GRAVITY times the pull (the slingshot, tuning.ts). */
+export function shipCircularSpeed(r: number): number { return circularSpeed(r) * Math.sqrt(SHIP_GRAVITY); }
 
 /** True when circle c intrudes on the gap corridor along heading `gap` (a ray from the planet, GAP_WIDTH wide). */
 export function inCorridor(c: Circle, gap: number): boolean {

@@ -1189,3 +1189,8 @@ Spec: docs/superpowers/specs/2026-11-20-ui-round-design.md §1. Report: docs/sup
 - [x] Automated: suite, typecheck, determinism (Node, Electron, Firefox), canonical trace and duel oracle across 64 -> 65, duel app smoke.
 - [x] Claude's screenshots (FTLite-shots/ui-round-1): grid off, no torpedo ring, rooms-only hint, pause keeps the UI, pause line clear of the hull bar, FPS corner, Settings.
 - [ ] Owner playtest: the Hunter at 95 hull feels right; the Valkyrn feels fast enough; the pause line and the FPS counter read well; F11 in the browser.
+
+## Slingshot and grid names (owner 2026-11-20, branch slingshot, SIM 66)
+- [x] Map grid Off hides the column letters and row numbers too (they stayed after UI round 1 turned the lines off). Square and Gravity well still show them.
+- [x] Slingshot: ships feel the planet's pull twice as hard (SHIP_GRAVITY 2); no drag within 400 u of the planet, fading back in by 800 u; above 200 u/s, the pull on the way out is cut by 60 % (SLING_OUT_CUT). A coasting Hound pass now leaves 15-95 u/s faster than it came in, where it used to leave 145-225 u/s slower. Orbits slower than 200 u/s stay put. Rocks and missiles are unchanged. The trajectory preview, the G rings, the contours and the feel panel use the ship's pull. Trade-off: a Hound at 1 Engines bar can now climb straight out only from about 410 u (was 300 u).
+- [ ] Owner playtest: do slingshots feel powerful enough, and is the planet now too grabby? Knobs: SHIP_GRAVITY, SLING_CALM_R, SLING_OUT_CUT, SLING_MIN_SPEED in sim/tactical/tuning.ts.
