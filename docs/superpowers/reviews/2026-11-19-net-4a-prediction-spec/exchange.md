@@ -135,3 +135,81 @@ Confirmed. §3.9 lists the three test files and notes the scene's optional reade
 
 ---
 
+# Round 2 (delta, reviewing 0ef87a6c, effort medium, 152 s, 530948 in / 464123 cached / 14584 out)
+
+Verdict: changes requested
+
+## Findings
+
+### [P1] R2-F1 G5 at a 150 ms round trip has no margin under the cap, so with 10% loss as well 'tick never returns false' fails for some seeds
+G5 now requires `tick` never to return false. At 150 ms round trip the lead when a publication arrives is about 9 ticks, plus a tick of pump granularity. The first publication after a 300 ms outage of publications arrives up to one cadence (50 ms, 3 ticks) after the outage ends. So P reaches 9 + 18 + 3 = 30 ticks past the last confirmed tick, which is PREDICT_MAX_TICKS. §3.5's own figure ('At a 150 ms lead that is about 350 ms') is exactly 300 ms of outage plus one cadence. G5 also runs 10% publication loss in the same case. If the publication just before or just after the outage is lost, the gap grows by another 50 ms, past the cap, and `tick` returns false. The fix for R1-F11 turned the old, tautological 'never stops while within the cap' into this stronger check, and that is what produced the problem. · spec L213 (G5: 50 and 150 ms, 10% loss plus a 300 ms outage, 'tick never returns false'); spec L121 (§3.5: 150 ms lead ⇒ about 350 ms before the cap); spec L109 (cap 30, false at the cap); spec L99 (measured target = T plus the local ticks since the anchor); src/network/state/sender.ts:L13 (STATE_CADENCE_TICKS = 3) · Whether the gate passes depends on the seed and on pump timing. Implementers will either fish for a passing seed or weaken the check, which is the failure mode R1-F1 and R1-F2 were raised to stop. · Keep the cap and change the case. Either run the 300 ms outage only at 50 ms round trip, or use 150 ms with a 250 ms outage. In either case, apply no random loss to the publication before and the publication after the outage window. Alternatively, state the bound: past the cap, `tick` returns false for at most the gap's excess over (30 − lead) ticks.
+
+### [P1] R2-F2 G1(a) cannot pass at 50 ms round trip or more: the first anchored publication after every reset must re-simulate
+After a reset, the log is cleared and the offset maps the newest local tick to T, so the lead is 0 (§3.4 step 1, Reset). Frames sent after the reset are acknowledged only a round trip later. The first publication that holds an anchor then moves the measured target by the whole lead: about 3 ticks at 50 ms, 9 at 150 ms and 18 at 300 ms. That is more than the 2-tick allowance, so step 4 fails and step 5 re-simulates. G1(a) requires 'every cadence publication after the first' to verify, so it fails once per round start at every non-zero round trip in its matrix. At 5% loss, three held frames lost in a row also move the anchor by 3 and force a re-simulation, even though the inputs are constant. · spec L97 (after a reset the offset maps the newest local tick to T; no lead until the first anchor); spec L99 (target from the anchor; 2-tick allowance); spec L100-L101 (outside the allowance ⇒ re-simulated); spec L111 (reset clears the log); spec L209 (G1(a): 'every cadence publication after the first verifies' at 50/150/300 ms) · The gate cannot pass as written. That re-simulation is the designed way the lead is built, so it is not a bug the implementer can fix. · Reword G1(a) to 'every cadence publication after the first anchored one verifies, except one re-simulation per anchor shift of more than 2 ticks, and every re-simulation leaves P's state unchanged (equal hash before and after)'. Alternatively, require 'P's state at every confirmed tick hashes equal to the publication', which is the property G1 names, and report the verified/resimulated split.
+
+### [P2] R2-F3 Step 1 drops commands that have not run yet when their entry is at or before the anchor
+Step 1 drops every entry at or before the anchor's local tick, and removes only the commands with sequence <= c from the entries that remain. A command whose entry falls at or before the anchor but whose sequence is above c is still waiting at the authority, and it is dropped with its entry. This happens when the reliable command reaches the authority after a later held frame. Held frames go on 'unreliable-latest'. Commands go on 'reliable-ordered', and in receive-time mode they wait in a per-player outbox that flushes only when allowed and on ACK. P then lacks that command until C shows its result. The command shows on the next tick, vanishes, then comes back. That is a toggle flicker for something like laserMode, not the tick-or-two error the 'Step 2 is an estimate' paragraph describes. · spec L97 ('Entries at or before the anchor's local tick are dropped. Commands with sequence <= c are removed from the entries that hold them'); spec L105 (the only stated effect of a command arriving apart from its frame is 'off by a tick or two'); src/renderer/src/clientControl/streamClient.ts:L208 (held on unreliable-latest), L209-L214 (commands to the outbox when receiveTime, flushed separately) · This is visible on the Weapons and Helm consoles under loss, in ordinary online play. Two implementers could reasonably build it either way, and the spec's description of the error understates it. · In step 1, carry the remaining commands (sequence > c) from dropped entries onto the first entry after the anchor. If none exists, carry them onto tick T + 1. Keep the risk row's guarantee: a command leaves the log only by c. State this in the estimate paragraph.
+
+### [P3] R2-F4 The log and the per-tick records are never trimmed while this seat is not producing
+Step 1 drops entries only up to an anchor. Not-producing entries have a null sequence and never become anchors. While the window is unfocused, the log, the per-tick input records and the hashes therefore grow by 60 a second for as long as focus is away. Step 2 reads only the entries from local tick T + 1 − offset onward, so everything older is dead weight. · spec L86 (not-producing entries: null sequence); spec L97 (no anchor ⇒ offset kept, nothing dropped); spec L89 (per-tick records) · It is a slow leak on an alt-tabbed window, and an implementer has to invent the trim rule. · Add to step 1: whether or not an anchor is found, drop entries and records at local ticks at or before T − offset, and records at ticks before T.
+
+## Prior findings
+- R1-F1: resolved — §3.4 L105 now calls step 2 an estimate and names the ways it breaks. G1 is split into (a), (b) and (c), and §2's Limits (L41) says the shares are an upper bound. A separate wording defect in G1(a) is raised as a new finding.
+- R1-F2: resolved — G3 (L211) covers up to 400 ms, and the 600 ms over-cap case is consistent with the Constants paragraph (L109).
+- R1-F3: resolved — §3.2 (L72) limits the claim to publications made right after a tick and corrects the pause wording. §3.4 (L107) accepts the attach broadcast's one-publication error, and a risk row is added (L228).
+- R1-F4: resolved — §3.3 (L83-L86) defines local ticks while not producing, null sequences, and logging for the neutralize and leave-prompt frames. Step 1 keeps the offset when there is no anchor, and an empty log uses publication.held. This matches onlineDuel.ts:L367 and L379 and streamClient.ts:L196-L205.
+- R1-F5: resolved — §3.6 (L139-L143) names crewOverride and confirmed() and when the blend bodies are captured. Indexing follows crewPrev's per-player convention (interiorView.ts:L118, L180).
+- R1-F6: resolved — Reset (L111-L117): every decided-round publication is a reset, prediction restarts from a running undecided one, and the predictor is disposed on close and on every attach.
+- R1-F7: resolved — §3.1 (L53) says the predictor has no clock, and §3.10 (L182) has the session do the timing.
+- R1-F8: resolved — §3.2 (L74, L76) names the shared schema function with its length refine and the four version sites compared by createHostRuntime. §3.1 (L50) is reworded.
+- R1-F9: resolved — §3.7 (L149-L157) has a per-kind table and accepts the effect-after-cause order explicitly.
+- R1-F10: resolved — §3.7 (L163-L166) lists both departures from Net-0 §3.4.
+- R1-F11: resolved — G5 names the round trips and the outage directions, and §3.5 states the 250 ms expiry (core.ts:L327, receivePolicy.ts:L4). The stronger 'never returns false' wording has no margin at 150 ms; that is raised as a new finding.
+- R1-F12: resolved — §3.9 (L176) lists the three test files and the scene's fallback readers.
+
+## Verified
+- The leave prompt sends a neutral held frame every pump while it is open, and stopInput sends neutralize. Both are logged as neutral entries with sequences as §3.3 L86 says (onlineDuel.ts:L171-L177, L379; streamClient.ts:L196-L205).
+- Cadence publications fall on tick % 3 === 0, as §3.3 L89 states (src/network/state/sender.ts:L13, L16).
+- acceptHeld latches the newest sequence with no tick mapping, and expiry neutralizes after 250 ms with no new sequence, matching §3.4 L105 and §3.5 L121 (core.ts:L314-L332).
+- The interior view indexes crewPrev by player id, so crewOverride's per-slot arrays with this seat's slot null fit the existing shape (interiorView.ts:L47, L118, L127, L180).
+- Commands in receive-time mode go through a per-player outbox, apart from the unreliable held frame (streamClient.ts:L206-L215). This underlies the new step 1 finding.
+
+## Not verified
+- I did not re-read codec.ts to confirm that both codecs build their publication schema from a single function (§3.2 L74). R1-F8's evidence cited codec.ts:L201-L206 and I relied on that.
+- I did not re-check that createHostRuntime compares exactly the four named version sites. I accepted round 1's evidence (hostRuntime.ts:L10-L11).
+- Whether the audio's duelStateSounds and the end card can be moved to confirmed() without other readers of source.duel. Not traced in scene.ts or duelAudio.ts this round.
+
+---
+
+# Round 2 response (spec revised)
+
+Reviewed `round-2.json` against the subject at `24d3c28e`. 4 accepted, 0 rejected, 0 deferred. The reviewer confirmed R1-F1 to R1-F12 resolved.
+
+## R2-F1 [P1]: G5 at a 150 ms round trip has no margin under the cap
+
+Confirmed by the arithmetic: 9 ticks of lead, 18 of outage and up to 3 of cadence is 30, the cap, before any random loss beside the outage. §3.5's "seven lost updates" was also wrong: 21 ticks is 350 ms, which is six lost updates and the seventh arriving. G5 is now four cases. (a) 50 ms round trip with a 300 ms outage of publications, (b) 150 ms with 200 ms, (c) 50 ms with both directions out for 200 ms: in each `tick` never returns false, and the publications just before and just after the outage are delivered so the seed cannot push it over. (d) 150 ms with a 500 ms outage checks the over-cap behaviour directly: `tick` is false only while `P` stands at the cap, and stepping resumes at the next publication. §3.5 states the bound.
+
+## R2-F2 [P1]: G1(a) cannot pass at 50 ms round trip or more
+
+Confirmed: after a reset the lead is 0 and the first anchored publication moves the target by the whole lead, past the 2-tick allowance, so step 5 runs by design. G1(a) now requires the property itself (the hash recorded for `P` at every confirmed tick equals the publication's) and allows a re-simulation only when the measured target moved more than 2 ticks from where `P` stood; the verified and re-simulated counts are reported.
+
+## R2-F3 [P2]: Step 1 drops commands that have not run yet when their entry is at or before the anchor
+
+Confirmed against `streamClient.ts:L208-L214`: held frames go out on `unreliable-latest`, commands through the receive-time outbox on `reliable-ordered`, so a held frame can be acknowledged before the command sent beside it has run. Step 1 now removes commands only by `c`: those above `c` on entries about to be dropped move to the first entry after the anchor, or are kept for tick `T + 1`, and step 2 runs them there. The estimate paragraph says a pending command stays in `P`, so a toggle does not flicker.
+
+## R2-F4 [P3]: The log and the per-tick records are never trimmed while this seat is not producing
+
+Confirmed. Step 1's trim now runs whether or not an anchor was found: entries at or before local tick `T - offset` are dropped, with the records of ticks before `T`.
+
+## Also changed
+
+- (nothing)
+
+## Files changed
+
+- docs/superpowers/specs/2026-11-19-net-4a-duel-prediction-design.md
+
+<!-- end -->
+
+---
+
