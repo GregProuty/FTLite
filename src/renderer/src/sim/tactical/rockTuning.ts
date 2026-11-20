@@ -91,3 +91,8 @@ export const BURST_KICK_MIN = 0.3, BURST_KICK_SPAN = 0.3, FAN_KICK_MIN = 0.1, FA
 export const GOLDEN_FRAC = 0.6180339887498949;
 /** §5.3: a blast's push on a rock is at most BLAST_PUSH_CAP · v_esc(ρ), a laser's at most LASER_PUSH_CAP · v_esc(ρ). */
 export const BLAST_PUSH_CAP = 0.5, LASER_PUSH_CAP = 0.25;
+
+// ---- Asteroids-iv (docs/superpowers/specs/2026-11-20-asteroids-iv-cell-rocks-design.md) ----
+/** §3.2: a rim cell is a candidate to drop when its hash mod 100 is under RIM_DROP. §5.3: a shatter's crater takes the
+ *  cells whose centre lies within CRATER_K spacings of the struck cell's centre. */
+export const RIM_DROP = 30, CRATER_K = 0.75;
