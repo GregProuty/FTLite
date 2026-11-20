@@ -1,7 +1,7 @@
 // `npm run test:duel-app-runtime` (H-2 spec §10): the online duel through the real application. Two Electron processes
 // with separate temporary userData, against local workerd through Net-3d's harness and driver entry. Through the menu,
 // Multiplayer → Host, Join by the displayed code, ready, start. Round 1 is the forced round end: a
-// test-only first seed (FTLITE_DUEL_TEST_SEED) whose round is decided on tick 4276 when nobody flies or fires, so in it
+// test-only first seed (FTLITE_DUEL_TEST_SEED) whose round is decided on tick 4377 when nobody flies or fires, so in it
 // both players only stand up and sit down again (their records' command samples); then Enter starts round 2 on both,
 // and a duel-*.jsonl with latency figures is on both machines. In round 2 the Helm (the guest) holds W for 2 s and the
 // ship's speed rises on both screens; Weapons (the host) presses Space with the beam unpowered (Engineering spike §10.3: nothing fires), clicks the beam's pips for a bar, presses Space again and a beam fires on both; both
@@ -19,8 +19,10 @@ import { build } from 'vite';
 import { computeContentDigest } from '../../build/contentDigest';
 import { startOnlineAppRuntime } from './online-app-runtime';
 
-/** The test-only first seed: with no flight or weapon input its first round is decided on tick 4276, about 71 s of play
- *  (the Hunter's 30 s grace included), a crew win (helm round 2 (SIM 63): 423 -> 1921, decided on tick 4276; found by search
+/** The test-only first seed: with no flight or weapon input its first round is decided on tick 4377, about 73 s of play
+ *  (the Hunter's 30 s grace included), a crew win (asteroids-iv-a (SIM_VERSION 65, cell rocks): 1921 -> 2182, decided on tick 4377;
+ *  found by search over seeds 1-4000 before tick 5000 with both crew seated, 2182 the only one; 1921 now decides on tick 8661, a
+ *  crew loss, past the step's 90 s). Seed 1921 before: decided on tick 4276 (helm round 2 (SIM 63): 423 -> 1921, decided on tick 4276; found by search
  *  over seeds 1-4000 before tick 5000 with both crew seated, 1921 the only one: the crew Helm's CREW_DRAG now slows the unflown
  *  Hound; standing, seed 84 is the earliest at 4946, but seated it is 7609, and 423 is 9286 seated). Seed 423 before: decided on tick 4199, a crew win (SIM_VERSION 60/61, identical per tick, asteroids-iii: found by search over seeds 1-300 before
  *  tick 4500, none, then 301-4000 before tick 5000, 423 the earliest). Seed 6626 before: decided on tick 3979, a crew loss,
@@ -35,7 +37,7 @@ import { startOnlineAppRuntime } from './online-app-runtime';
  *  planet dive. Seed 351 before that: decided on tick 4453 (SIM_VERSION 52; 7531, a crew loss, at 53); 3423 before the
  *  weapons update, SIM_VERSION 48; found by search over seeds 1-1500 at SIM_VERSION 45; 2277, decided on tick 1471,
  *  before the grace. */
-export const DUEL_TEST_SEED = 1921;
+export const DUEL_TEST_SEED = 2182;
 const delay = (ms: number) => new Promise(done => setTimeout(done, ms));
 const assert = (value: unknown, message: string) => { if (!value) throw Error(message); };
 type Application = { child: ChildProcess; pid: number; profile: string; exited: boolean; exitCode?: number | null; exit: Promise<void>; request(command: string, data?: object): Promise<any> };
@@ -131,7 +133,7 @@ async function main() {
     proof.start = { helmPlayer: latest(started).helmPlayer, seed: latest(started).seed };
     step = 'step 2';
     // 2. Round 1, the forced end: both start standing aboard (start-aboard spec §1) and walk to their consoles: the host
-    //    to Weapons, the guest to the Helm. Nobody flies or fires, so the test seed's round is decided on tick 4276
+    //    to Weapons, the guest to the Helm. Nobody flies or fires, so the test seed's round is decided on tick 4377
     //    whatever the timing, and both records get command samples.
     await takeConsoles(h, g);
     step = 'step 3';
