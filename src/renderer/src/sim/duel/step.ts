@@ -24,6 +24,7 @@ import { HAZARD_EVERY } from '../tuning';
 import { rockAlive } from '../tactical/rocks';
 import { canCharge, canLaunch, manualLaserReady, validRockLock, validTarget, type ShipInput } from '../tactical/weapons';
 import { pewReady, validAim } from '../tactical/pew';
+import { hasTurret } from '../tactical/defs';
 import type { DuelEnvelope, DuelReason, DuelResult } from './commands';
 import { clampThrottle } from './engines';
 import { extinguishRoomWork, extinguishWork, firePhase, pointBurning } from './fire';
@@ -384,7 +385,7 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     const freq = e.command.freq;
     if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
     if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }
-    if (classOf(t, 0).slots.laser === null) { result(e, 'unavailable'); continue; }   // Valkyrn spec §6.1: no laser to tune
+    if (classOf(t, 0).slots.laser === null && !hasTurret(classOf(t, 0))) { result(e, 'unavailable'); continue; }   // Valkyrn spec §6.1: nothing to tune; W-4 spec §5.2: the Hound's guns tune
     if (!Number.isInteger(freq) || freq < 0 || freq > 2) { result(e, 'malformed'); continue; }
     if (freq === t.systems[0].freq) { result(e, undefined, 'noop'); continue; }
     t.systems[0].freq = freq; result(e);

@@ -89,14 +89,16 @@ export function tickPew(state: TacticalState, i: number): void {
 }
 
 /** Owner's pew round hit ship k at (x, y) (spec §1): with a shield layer up it strips one (the shield clock and the gun's
- *  wear go to 0, as any strip); else it costs the owner's pew hull. Never a room level. The owner counts the hit; a pewHit
+ *  wear go to 0, as any strip; W-4 spec §5.2: two on the weak frequency from the crew's turret pew); else it costs the owner's pew hull. Never a room level. The owner counts the hit; a pewHit
  *  event marks it. */
 function pewHit(state: TacticalState, owner: number, k: number, x: number, y: number): void {
   const def = classOf(state, owner).slots.pew, t = state.systems[k]!;
   if (!def) return;
   state.systems[owner]!.pewHits++;
   const stripped = t.shields > 0;
-  if (stripped) { t.shields--; t.shieldClock = 0; t.gunWear = 0; }
+  // W-4 spec §5.2: the crew's turret pew (the Hound's) on the enemy's weak frequency strips 2 layers (as many as are up).
+  const weak = owner === CREW_SLOT && def.turret !== null && state.systems[owner]!.freq === state.weakFreq;
+  if (stripped) { t.shields -= weak ? Math.min(2, t.shields) : 1; t.shieldClock = 0; t.gunWear = 0; }
   else t.hull = Math.max(0, t.hull - def.hull);
   state.events.push({ kind: 'pewHit', ship: k, owner, stripped, hull: !stripped, x, y });
 }

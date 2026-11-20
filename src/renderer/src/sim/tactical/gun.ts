@@ -8,7 +8,7 @@ import { weaponBars, WeaponSlot } from './bars';
 import { dirBetween, hx, hy } from './direction';
 import { hitRock, pushRock } from './rockBreak';
 import { rockAt, rockMass, rocksNear } from './rocks';
-import { classOf, emptyRound, Room, type GunRound, type TacticalState } from './state';
+import { classOf, CREW_SLOT, emptyRound, Room, type GunRound, type TacticalState } from './state';
 import { DT, HEADING_COUNT } from './tuning';
 import type { ShipInput } from './weapons';
 
@@ -112,7 +112,9 @@ function gunHit(state: TacticalState, owner: number, k: number, ox: number, oy: 
   const [x, y] = closest(ox, oy, nx, ny, b.x, b.y);
   state.systems[owner]!.gunHits++;
   if (t.shields > 0) {
-    const stripped = ++t.gunWear >= g.hitsPerLayer;
+    // W-4 spec §5.2: the crew's autocannon (weakHitsPerLayer set) on the weak frequency takes a layer in 4; the threshold is the moment's.
+    const perLayer = owner === CREW_SLOT && g.weakHitsPerLayer !== null && state.systems[owner]!.freq === state.weakFreq ? g.weakHitsPerLayer : g.hitsPerLayer;
+    const stripped = ++t.gunWear >= perLayer;
     if (stripped) { t.shields--; t.shieldClock = 0; t.gunWear = 0; }
     state.events.push({ kind: 'gunHit', ship: k, room: -1, stripped, hull: false, level: false, x, y });
     return;
