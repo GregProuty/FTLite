@@ -2108,5 +2108,2512 @@
     "credit": "'Law in the City' by Alexandr Zhelanov (opengameart.org/users/alexandr-zhelanov), CC-BY 4.0",
     "required": false,
     "name": "music.combat"
+  },
+  {
+    "file": "art/crew3d/crewA.png",
+    "title": "FTLite rendered crew (heavy suit)",
+    "author": "FTLite project owner",
+    "source": "assets/art",
+    "license": "original",
+    "required": false,
+    "sheet": {
+      "frameW": 128,
+      "frameH": 128,
+      "frames": {},
+      "animations": {
+        "crew3d.crewA.idle.n": {
+          "frames": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.idle.ne": {
+          "frames": [
+            4,
+            5,
+            6,
+            7
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.idle.e": {
+          "frames": [
+            8,
+            9,
+            10,
+            11
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.idle.se": {
+          "frames": [
+            12,
+            13,
+            14,
+            15
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.idle.s": {
+          "frames": [
+            16,
+            17,
+            18,
+            19
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.idle.sw": {
+          "frames": [
+            20,
+            21,
+            22,
+            23
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.idle.w": {
+          "frames": [
+            24,
+            25,
+            26,
+            27
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.idle.nw": {
+          "frames": [
+            28,
+            29,
+            30,
+            31
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.walk.n": {
+          "frames": [
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.walk.ne": {
+          "frames": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.walk.e": {
+          "frames": [
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54,
+            55
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.walk.se": {
+          "frames": [
+            56,
+            57,
+            58,
+            59,
+            60,
+            61,
+            62,
+            63
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.walk.s": {
+          "frames": [
+            64,
+            65,
+            66,
+            67,
+            68,
+            69,
+            70,
+            71
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.walk.sw": {
+          "frames": [
+            72,
+            73,
+            74,
+            75,
+            76,
+            77,
+            78,
+            79
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.walk.w": {
+          "frames": [
+            80,
+            81,
+            82,
+            83,
+            84,
+            85,
+            86,
+            87
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.walk.nw": {
+          "frames": [
+            88,
+            89,
+            90,
+            91,
+            92,
+            93,
+            94,
+            95
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.work.n": {
+          "frames": [
+            96,
+            97,
+            98,
+            99,
+            100,
+            101
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.work.ne": {
+          "frames": [
+            102,
+            103,
+            104,
+            105,
+            106,
+            107
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.work.e": {
+          "frames": [
+            108,
+            109,
+            110,
+            111,
+            112,
+            113
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.work.se": {
+          "frames": [
+            114,
+            115,
+            116,
+            117,
+            118,
+            119
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.work.s": {
+          "frames": [
+            120,
+            121,
+            122,
+            123,
+            124,
+            125
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.work.sw": {
+          "frames": [
+            126,
+            127,
+            128,
+            129,
+            130,
+            131
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.work.w": {
+          "frames": [
+            132,
+            133,
+            134,
+            135,
+            136,
+            137
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.work.nw": {
+          "frames": [
+            138,
+            139,
+            140,
+            141,
+            142,
+            143
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.n": {
+          "frames": [
+            144,
+            145,
+            146,
+            147,
+            148,
+            149
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.ne": {
+          "frames": [
+            150,
+            151,
+            152,
+            153,
+            154,
+            155
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.e": {
+          "frames": [
+            156,
+            157,
+            158,
+            159,
+            160,
+            161
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.se": {
+          "frames": [
+            162,
+            163,
+            164,
+            165,
+            166,
+            167
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.s": {
+          "frames": [
+            168,
+            169,
+            170,
+            171,
+            172,
+            173
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.sw": {
+          "frames": [
+            174,
+            175,
+            176,
+            177,
+            178,
+            179
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.w": {
+          "frames": [
+            180,
+            181,
+            182,
+            183,
+            184,
+            185
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.nw": {
+          "frames": [
+            186,
+            187,
+            188,
+            189,
+            190,
+            191
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.n": {
+          "frames": [
+            192,
+            193,
+            194,
+            195,
+            196,
+            197
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.ne": {
+          "frames": [
+            198,
+            199,
+            200,
+            201,
+            202,
+            203
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.e": {
+          "frames": [
+            204,
+            205,
+            206,
+            207,
+            208,
+            209
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.se": {
+          "frames": [
+            210,
+            211,
+            212,
+            213,
+            214,
+            215
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.s": {
+          "frames": [
+            216,
+            217,
+            218,
+            219,
+            220,
+            221
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.sw": {
+          "frames": [
+            222,
+            223,
+            224,
+            225,
+            226,
+            227
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.w": {
+          "frames": [
+            228,
+            229,
+            230,
+            231,
+            232,
+            233
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.nw": {
+          "frames": [
+            234,
+            235,
+            236,
+            237,
+            238,
+            239
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.down.n": {
+          "frames": [
+            240
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewA.down.ne": {
+          "frames": [
+            241
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewA.down.e": {
+          "frames": [
+            242
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewA.down.se": {
+          "frames": [
+            243
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewA.down.s": {
+          "frames": [
+            244
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewA.down.sw": {
+          "frames": [
+            245
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewA.down.w": {
+          "frames": [
+            246
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewA.down.nw": {
+          "frames": [
+            247
+          ],
+          "fps": 1,
+          "loop": false
+        }
+      }
+    }
+  },
+  {
+    "file": "art/crew3d/crewA.mask.png",
+    "title": "FTLite rendered crew (heavy suit), team colour layer",
+    "author": "FTLite project owner",
+    "source": "assets/art",
+    "license": "original",
+    "required": false,
+    "sheet": {
+      "frameW": 128,
+      "frameH": 128,
+      "frames": {},
+      "animations": {
+        "crew3d.crewA.idle.n.mask": {
+          "frames": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.idle.ne.mask": {
+          "frames": [
+            4,
+            5,
+            6,
+            7
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.idle.e.mask": {
+          "frames": [
+            8,
+            9,
+            10,
+            11
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.idle.se.mask": {
+          "frames": [
+            12,
+            13,
+            14,
+            15
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.idle.s.mask": {
+          "frames": [
+            16,
+            17,
+            18,
+            19
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.idle.sw.mask": {
+          "frames": [
+            20,
+            21,
+            22,
+            23
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.idle.w.mask": {
+          "frames": [
+            24,
+            25,
+            26,
+            27
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.idle.nw.mask": {
+          "frames": [
+            28,
+            29,
+            30,
+            31
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewA.walk.n.mask": {
+          "frames": [
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.walk.ne.mask": {
+          "frames": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.walk.e.mask": {
+          "frames": [
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54,
+            55
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.walk.se.mask": {
+          "frames": [
+            56,
+            57,
+            58,
+            59,
+            60,
+            61,
+            62,
+            63
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.walk.s.mask": {
+          "frames": [
+            64,
+            65,
+            66,
+            67,
+            68,
+            69,
+            70,
+            71
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.walk.sw.mask": {
+          "frames": [
+            72,
+            73,
+            74,
+            75,
+            76,
+            77,
+            78,
+            79
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.walk.w.mask": {
+          "frames": [
+            80,
+            81,
+            82,
+            83,
+            84,
+            85,
+            86,
+            87
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.walk.nw.mask": {
+          "frames": [
+            88,
+            89,
+            90,
+            91,
+            92,
+            93,
+            94,
+            95
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewA.work.n.mask": {
+          "frames": [
+            96,
+            97,
+            98,
+            99,
+            100,
+            101
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.work.ne.mask": {
+          "frames": [
+            102,
+            103,
+            104,
+            105,
+            106,
+            107
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.work.e.mask": {
+          "frames": [
+            108,
+            109,
+            110,
+            111,
+            112,
+            113
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.work.se.mask": {
+          "frames": [
+            114,
+            115,
+            116,
+            117,
+            118,
+            119
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.work.s.mask": {
+          "frames": [
+            120,
+            121,
+            122,
+            123,
+            124,
+            125
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.work.sw.mask": {
+          "frames": [
+            126,
+            127,
+            128,
+            129,
+            130,
+            131
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.work.w.mask": {
+          "frames": [
+            132,
+            133,
+            134,
+            135,
+            136,
+            137
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.work.nw.mask": {
+          "frames": [
+            138,
+            139,
+            140,
+            141,
+            142,
+            143
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.n.mask": {
+          "frames": [
+            144,
+            145,
+            146,
+            147,
+            148,
+            149
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.ne.mask": {
+          "frames": [
+            150,
+            151,
+            152,
+            153,
+            154,
+            155
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.e.mask": {
+          "frames": [
+            156,
+            157,
+            158,
+            159,
+            160,
+            161
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.se.mask": {
+          "frames": [
+            162,
+            163,
+            164,
+            165,
+            166,
+            167
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.s.mask": {
+          "frames": [
+            168,
+            169,
+            170,
+            171,
+            172,
+            173
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.sw.mask": {
+          "frames": [
+            174,
+            175,
+            176,
+            177,
+            178,
+            179
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.w.mask": {
+          "frames": [
+            180,
+            181,
+            182,
+            183,
+            184,
+            185
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.repair.nw.mask": {
+          "frames": [
+            186,
+            187,
+            188,
+            189,
+            190,
+            191
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.n.mask": {
+          "frames": [
+            192,
+            193,
+            194,
+            195,
+            196,
+            197
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.ne.mask": {
+          "frames": [
+            198,
+            199,
+            200,
+            201,
+            202,
+            203
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.e.mask": {
+          "frames": [
+            204,
+            205,
+            206,
+            207,
+            208,
+            209
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.se.mask": {
+          "frames": [
+            210,
+            211,
+            212,
+            213,
+            214,
+            215
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.s.mask": {
+          "frames": [
+            216,
+            217,
+            218,
+            219,
+            220,
+            221
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.sw.mask": {
+          "frames": [
+            222,
+            223,
+            224,
+            225,
+            226,
+            227
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.w.mask": {
+          "frames": [
+            228,
+            229,
+            230,
+            231,
+            232,
+            233
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.firefight.nw.mask": {
+          "frames": [
+            234,
+            235,
+            236,
+            237,
+            238,
+            239
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewA.down.n.mask": {
+          "frames": [
+            240
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewA.down.ne.mask": {
+          "frames": [
+            241
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewA.down.e.mask": {
+          "frames": [
+            242
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewA.down.se.mask": {
+          "frames": [
+            243
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewA.down.s.mask": {
+          "frames": [
+            244
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewA.down.sw.mask": {
+          "frames": [
+            245
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewA.down.w.mask": {
+          "frames": [
+            246
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewA.down.nw.mask": {
+          "frames": [
+            247
+          ],
+          "fps": 1,
+          "loop": false
+        }
+      }
+    }
+  },
+  {
+    "file": "art/crew3d/crewB.png",
+    "title": "FTLite rendered crew (light suit)",
+    "author": "FTLite project owner",
+    "source": "assets/art",
+    "license": "original",
+    "required": false,
+    "sheet": {
+      "frameW": 128,
+      "frameH": 128,
+      "frames": {},
+      "animations": {
+        "crew3d.crewB.idle.n": {
+          "frames": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.idle.ne": {
+          "frames": [
+            4,
+            5,
+            6,
+            7
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.idle.e": {
+          "frames": [
+            8,
+            9,
+            10,
+            11
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.idle.se": {
+          "frames": [
+            12,
+            13,
+            14,
+            15
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.idle.s": {
+          "frames": [
+            16,
+            17,
+            18,
+            19
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.idle.sw": {
+          "frames": [
+            20,
+            21,
+            22,
+            23
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.idle.w": {
+          "frames": [
+            24,
+            25,
+            26,
+            27
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.idle.nw": {
+          "frames": [
+            28,
+            29,
+            30,
+            31
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.walk.n": {
+          "frames": [
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.walk.ne": {
+          "frames": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.walk.e": {
+          "frames": [
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54,
+            55
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.walk.se": {
+          "frames": [
+            56,
+            57,
+            58,
+            59,
+            60,
+            61,
+            62,
+            63
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.walk.s": {
+          "frames": [
+            64,
+            65,
+            66,
+            67,
+            68,
+            69,
+            70,
+            71
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.walk.sw": {
+          "frames": [
+            72,
+            73,
+            74,
+            75,
+            76,
+            77,
+            78,
+            79
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.walk.w": {
+          "frames": [
+            80,
+            81,
+            82,
+            83,
+            84,
+            85,
+            86,
+            87
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.walk.nw": {
+          "frames": [
+            88,
+            89,
+            90,
+            91,
+            92,
+            93,
+            94,
+            95
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.work.n": {
+          "frames": [
+            96,
+            97,
+            98,
+            99,
+            100,
+            101
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.work.ne": {
+          "frames": [
+            102,
+            103,
+            104,
+            105,
+            106,
+            107
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.work.e": {
+          "frames": [
+            108,
+            109,
+            110,
+            111,
+            112,
+            113
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.work.se": {
+          "frames": [
+            114,
+            115,
+            116,
+            117,
+            118,
+            119
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.work.s": {
+          "frames": [
+            120,
+            121,
+            122,
+            123,
+            124,
+            125
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.work.sw": {
+          "frames": [
+            126,
+            127,
+            128,
+            129,
+            130,
+            131
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.work.w": {
+          "frames": [
+            132,
+            133,
+            134,
+            135,
+            136,
+            137
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.work.nw": {
+          "frames": [
+            138,
+            139,
+            140,
+            141,
+            142,
+            143
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.n": {
+          "frames": [
+            144,
+            145,
+            146,
+            147,
+            148,
+            149
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.ne": {
+          "frames": [
+            150,
+            151,
+            152,
+            153,
+            154,
+            155
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.e": {
+          "frames": [
+            156,
+            157,
+            158,
+            159,
+            160,
+            161
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.se": {
+          "frames": [
+            162,
+            163,
+            164,
+            165,
+            166,
+            167
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.s": {
+          "frames": [
+            168,
+            169,
+            170,
+            171,
+            172,
+            173
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.sw": {
+          "frames": [
+            174,
+            175,
+            176,
+            177,
+            178,
+            179
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.w": {
+          "frames": [
+            180,
+            181,
+            182,
+            183,
+            184,
+            185
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.nw": {
+          "frames": [
+            186,
+            187,
+            188,
+            189,
+            190,
+            191
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.n": {
+          "frames": [
+            192,
+            193,
+            194,
+            195,
+            196,
+            197
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.ne": {
+          "frames": [
+            198,
+            199,
+            200,
+            201,
+            202,
+            203
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.e": {
+          "frames": [
+            204,
+            205,
+            206,
+            207,
+            208,
+            209
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.se": {
+          "frames": [
+            210,
+            211,
+            212,
+            213,
+            214,
+            215
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.s": {
+          "frames": [
+            216,
+            217,
+            218,
+            219,
+            220,
+            221
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.sw": {
+          "frames": [
+            222,
+            223,
+            224,
+            225,
+            226,
+            227
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.w": {
+          "frames": [
+            228,
+            229,
+            230,
+            231,
+            232,
+            233
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.nw": {
+          "frames": [
+            234,
+            235,
+            236,
+            237,
+            238,
+            239
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.down.n": {
+          "frames": [
+            240
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewB.down.ne": {
+          "frames": [
+            241
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewB.down.e": {
+          "frames": [
+            242
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewB.down.se": {
+          "frames": [
+            243
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewB.down.s": {
+          "frames": [
+            244
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewB.down.sw": {
+          "frames": [
+            245
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewB.down.w": {
+          "frames": [
+            246
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewB.down.nw": {
+          "frames": [
+            247
+          ],
+          "fps": 1,
+          "loop": false
+        }
+      }
+    }
+  },
+  {
+    "file": "art/crew3d/crewB.mask.png",
+    "title": "FTLite rendered crew (light suit), team colour layer",
+    "author": "FTLite project owner",
+    "source": "assets/art",
+    "license": "original",
+    "required": false,
+    "sheet": {
+      "frameW": 128,
+      "frameH": 128,
+      "frames": {},
+      "animations": {
+        "crew3d.crewB.idle.n.mask": {
+          "frames": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.idle.ne.mask": {
+          "frames": [
+            4,
+            5,
+            6,
+            7
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.idle.e.mask": {
+          "frames": [
+            8,
+            9,
+            10,
+            11
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.idle.se.mask": {
+          "frames": [
+            12,
+            13,
+            14,
+            15
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.idle.s.mask": {
+          "frames": [
+            16,
+            17,
+            18,
+            19
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.idle.sw.mask": {
+          "frames": [
+            20,
+            21,
+            22,
+            23
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.idle.w.mask": {
+          "frames": [
+            24,
+            25,
+            26,
+            27
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.idle.nw.mask": {
+          "frames": [
+            28,
+            29,
+            30,
+            31
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.crewB.walk.n.mask": {
+          "frames": [
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.walk.ne.mask": {
+          "frames": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.walk.e.mask": {
+          "frames": [
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54,
+            55
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.walk.se.mask": {
+          "frames": [
+            56,
+            57,
+            58,
+            59,
+            60,
+            61,
+            62,
+            63
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.walk.s.mask": {
+          "frames": [
+            64,
+            65,
+            66,
+            67,
+            68,
+            69,
+            70,
+            71
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.walk.sw.mask": {
+          "frames": [
+            72,
+            73,
+            74,
+            75,
+            76,
+            77,
+            78,
+            79
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.walk.w.mask": {
+          "frames": [
+            80,
+            81,
+            82,
+            83,
+            84,
+            85,
+            86,
+            87
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.walk.nw.mask": {
+          "frames": [
+            88,
+            89,
+            90,
+            91,
+            92,
+            93,
+            94,
+            95
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.crewB.work.n.mask": {
+          "frames": [
+            96,
+            97,
+            98,
+            99,
+            100,
+            101
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.work.ne.mask": {
+          "frames": [
+            102,
+            103,
+            104,
+            105,
+            106,
+            107
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.work.e.mask": {
+          "frames": [
+            108,
+            109,
+            110,
+            111,
+            112,
+            113
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.work.se.mask": {
+          "frames": [
+            114,
+            115,
+            116,
+            117,
+            118,
+            119
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.work.s.mask": {
+          "frames": [
+            120,
+            121,
+            122,
+            123,
+            124,
+            125
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.work.sw.mask": {
+          "frames": [
+            126,
+            127,
+            128,
+            129,
+            130,
+            131
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.work.w.mask": {
+          "frames": [
+            132,
+            133,
+            134,
+            135,
+            136,
+            137
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.work.nw.mask": {
+          "frames": [
+            138,
+            139,
+            140,
+            141,
+            142,
+            143
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.n.mask": {
+          "frames": [
+            144,
+            145,
+            146,
+            147,
+            148,
+            149
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.ne.mask": {
+          "frames": [
+            150,
+            151,
+            152,
+            153,
+            154,
+            155
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.e.mask": {
+          "frames": [
+            156,
+            157,
+            158,
+            159,
+            160,
+            161
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.se.mask": {
+          "frames": [
+            162,
+            163,
+            164,
+            165,
+            166,
+            167
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.s.mask": {
+          "frames": [
+            168,
+            169,
+            170,
+            171,
+            172,
+            173
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.sw.mask": {
+          "frames": [
+            174,
+            175,
+            176,
+            177,
+            178,
+            179
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.w.mask": {
+          "frames": [
+            180,
+            181,
+            182,
+            183,
+            184,
+            185
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.repair.nw.mask": {
+          "frames": [
+            186,
+            187,
+            188,
+            189,
+            190,
+            191
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.n.mask": {
+          "frames": [
+            192,
+            193,
+            194,
+            195,
+            196,
+            197
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.ne.mask": {
+          "frames": [
+            198,
+            199,
+            200,
+            201,
+            202,
+            203
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.e.mask": {
+          "frames": [
+            204,
+            205,
+            206,
+            207,
+            208,
+            209
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.se.mask": {
+          "frames": [
+            210,
+            211,
+            212,
+            213,
+            214,
+            215
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.s.mask": {
+          "frames": [
+            216,
+            217,
+            218,
+            219,
+            220,
+            221
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.sw.mask": {
+          "frames": [
+            222,
+            223,
+            224,
+            225,
+            226,
+            227
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.w.mask": {
+          "frames": [
+            228,
+            229,
+            230,
+            231,
+            232,
+            233
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.firefight.nw.mask": {
+          "frames": [
+            234,
+            235,
+            236,
+            237,
+            238,
+            239
+          ],
+          "fps": 8,
+          "loop": true
+        },
+        "crew3d.crewB.down.n.mask": {
+          "frames": [
+            240
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewB.down.ne.mask": {
+          "frames": [
+            241
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewB.down.e.mask": {
+          "frames": [
+            242
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewB.down.se.mask": {
+          "frames": [
+            243
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewB.down.s.mask": {
+          "frames": [
+            244
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewB.down.sw.mask": {
+          "frames": [
+            245
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewB.down.w.mask": {
+          "frames": [
+            246
+          ],
+          "fps": 1,
+          "loop": false
+        },
+        "crew3d.crewB.down.nw.mask": {
+          "frames": [
+            247
+          ],
+          "fps": 1,
+          "loop": false
+        }
+      }
+    }
+  },
+  {
+    "file": "art/crew3d/boarder.png",
+    "title": "FTLite rendered boarder",
+    "author": "FTLite project owner",
+    "source": "assets/art",
+    "license": "original",
+    "required": false,
+    "sheet": {
+      "frameW": 128,
+      "frameH": 128,
+      "frames": {},
+      "animations": {
+        "crew3d.boarder.idle.n": {
+          "frames": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.boarder.idle.ne": {
+          "frames": [
+            4,
+            5,
+            6,
+            7
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.boarder.idle.e": {
+          "frames": [
+            8,
+            9,
+            10,
+            11
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.boarder.idle.se": {
+          "frames": [
+            12,
+            13,
+            14,
+            15
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.boarder.idle.s": {
+          "frames": [
+            16,
+            17,
+            18,
+            19
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.boarder.idle.sw": {
+          "frames": [
+            20,
+            21,
+            22,
+            23
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.boarder.idle.w": {
+          "frames": [
+            24,
+            25,
+            26,
+            27
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.boarder.idle.nw": {
+          "frames": [
+            28,
+            29,
+            30,
+            31
+          ],
+          "fps": 4,
+          "loop": true
+        },
+        "crew3d.boarder.walk.n": {
+          "frames": [
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.boarder.walk.ne": {
+          "frames": [
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.boarder.walk.e": {
+          "frames": [
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54,
+            55
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.boarder.walk.se": {
+          "frames": [
+            56,
+            57,
+            58,
+            59,
+            60,
+            61,
+            62,
+            63
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.boarder.walk.s": {
+          "frames": [
+            64,
+            65,
+            66,
+            67,
+            68,
+            69,
+            70,
+            71
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.boarder.walk.sw": {
+          "frames": [
+            72,
+            73,
+            74,
+            75,
+            76,
+            77,
+            78,
+            79
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.boarder.walk.w": {
+          "frames": [
+            80,
+            81,
+            82,
+            83,
+            84,
+            85,
+            86,
+            87
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.boarder.walk.nw": {
+          "frames": [
+            88,
+            89,
+            90,
+            91,
+            92,
+            93,
+            94,
+            95
+          ],
+          "fps": 12,
+          "loop": true
+        },
+        "crew3d.boarder.attack.n": {
+          "frames": [
+            96,
+            97,
+            98,
+            99,
+            100,
+            101
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew3d.boarder.attack.ne": {
+          "frames": [
+            102,
+            103,
+            104,
+            105,
+            106,
+            107
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew3d.boarder.attack.e": {
+          "frames": [
+            108,
+            109,
+            110,
+            111,
+            112,
+            113
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew3d.boarder.attack.se": {
+          "frames": [
+            114,
+            115,
+            116,
+            117,
+            118,
+            119
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew3d.boarder.attack.s": {
+          "frames": [
+            120,
+            121,
+            122,
+            123,
+            124,
+            125
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew3d.boarder.attack.sw": {
+          "frames": [
+            126,
+            127,
+            128,
+            129,
+            130,
+            131
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew3d.boarder.attack.w": {
+          "frames": [
+            132,
+            133,
+            134,
+            135,
+            136,
+            137
+          ],
+          "fps": 10,
+          "loop": true
+        },
+        "crew3d.boarder.attack.nw": {
+          "frames": [
+            138,
+            139,
+            140,
+            141,
+            142,
+            143
+          ],
+          "fps": 10,
+          "loop": true
+        }
+      }
+    }
   }
 ]

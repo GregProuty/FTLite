@@ -215,7 +215,8 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
   for (const child of hidden) child.visible = false;   // world, enemy window, projectiles, callouts, HUD; shown again on dispose
   const root = new Container(), scene = new Container();
   const layer = createTacticalLayer({ fontFamily: font, viewport, seed: options.seed });
-  let interior: InteriorView = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel);
+  const crew3dOn = (): boolean => (renderer.crew3d?.() ?? 'on') === 'on';   // Crew3D spec section 4: F8 in dev builds
+  let interior: InteriorView = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel, crew3dOn);
   scene.addChild(layer.container, interior.container);
   root.addChild(scene);
   renderer.app.stage.addChild(root);
@@ -249,7 +250,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         lastOutcome = Outcome.Running; pings.length = 0; refused = null;
         fires = null; flashUntil = 0;
         options.requests?.resetReticle();   // W-2, W-4 spec §10: a new round's reticle aim starts empty (the MANUAL laser aims along the nose, the Hound's reticle waits for the pointer)
-        interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel); scene.addChildAt(interior.container, 1);
+        interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel, crew3dOn); scene.addChildAt(interior.container, 1);
       }
       const d = source.duel, view = source.view(), alpha = source.alpha(), contact = options.contact;
       /** Playtest2feedback §3: the crew Helm's lever is thrMille; the Valkyrn's is its level (Feel-i's sit card reads either). */
