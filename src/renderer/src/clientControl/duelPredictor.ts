@@ -1,0 +1,168 @@
+// Net-4a (spec 2026-11-19-net-4a-duel-prediction-design §3.1, §3.3, §3.4): the duel client's predicted state P. P is the
+// confirmed replica stepped ahead with the real stepDuelTick: every other player's held input carried forward from the
+// latest publication, this seat's from its input log. Each publication either verifies P (the hash P recorded at the
+// confirmed tick equals the publication's, the inputs P used after it equal the ones the log now maps there, and P stands
+// on the target) or restores P from the snapshot and re-steps it to the target. Headless and clock-free: it is inside
+// the deterministic module graph (tests/boundary.test.ts); the session times its calls.
+import type { CommandEnvelope, DuelCommand, HeldInput } from '../net/contracts';
+import type { ResolveLayout } from '../authority/rules';
+import type { DuelPublication } from './duelClient';
+import { Position } from '../sim/components';
+import { flattenDuel } from '../sim/duel/hash';
+import { loadDuelSnapshot, restoreDuelSnapshot } from '../sim/duel/snapshot';
+import { disposeDuel, type DuelState } from '../sim/duel/state';
+import { stepDuelTick, type DuelInput } from '../sim/duel/step';
+import { CREW_SLOT, missileOf, Outcome } from '../sim/tactical/state';
+import { hashF64 } from '../../../shared/hash';
+
+/** §3.4: the most ticks P stands past the confirmed tick (500 ms, the old UNACKED_MAX). */
+export const PREDICT_MAX_TICKS = 30;
+/** §3.4 step 3: within this many ticks of the measured target, P's own tick is the target (one tick of jitter moves no clock). */
+export const PREDICT_SLACK_TICKS = 2;
+/** P's hash is recorded on ticks a cadence publication can fall on: STATE_CADENCE_TICKS (pinned by tests/duelPredictor.test.ts). */
+export const PREDICT_HASH_EVERY = 3;
+/** Bounds while publications stop: the log keeps at most 10 s of local ticks, and at most this many commands wait. */
+export const PREDICT_LOG_MAX = 600, PREDICT_WAITING_MAX = 64;
+
+export interface LocalInput { heldSequence: number | null; held: HeldInput; commands: readonly CommandEnvelope<DuelCommand>[] }
+export interface PredictedBody { x: number; y: number; h: number }
+export interface PredictedBodies { ships: PredictedBody[]; missiles: (PredictedBody | null)[]; crew: { x: number; y: number }[] }
+export interface PredictionStats {
+  verified: number; resimulated: number; resets: number; lead: number; measured: number; standing: number;
+  correction: { ship: number; character: number } | null;
+}
+export interface DuelPredictorOptions { seat: number; contentDigest: string; resolveLayout: ResolveLayout; step?(d: DuelState, input: DuelInput): void }
+export interface DuelPredictor {
+  confirm(publication: DuelPublication, confirmed: DuelState): 'verified' | 'resimulated' | 'reset';
+  tick(entry: LocalInput): boolean;
+  state(): DuelState | null;
+  active(): boolean;
+  before(): PredictedBodies | null;
+  hashAt(tick: number): string | null;
+  stats(): PredictionStats;
+  dispose(): void;
+}
+
+type Command = CommandEnvelope<DuelCommand>;
+interface Entry { local: number; heldSequence: number | null; held: HeldInput; commands: Command[] }
+/** One step P took: the inputs it used (by content) and, on a cadence tick, its hash after. Keyed by the tick it produced. */
+interface Step { key: string; hash: string | null }
+const neutral = (): HeldInput => ({ moveX: 0, moveY: 0, interactHeld: false });
+/** Every HeldInput field (W-4's weaponSel and turretAim included); the check below fails to compile if one is missing. */
+const HELD_KEYS = ['moveX', 'moveY', 'interactHeld', 'face', 'aim', 'gunHeld', 'torpHeading', 'weaponSel', 'turretAim', 'throttleHeld', 'rcsX', 'rcsY'] as const;
+type MissingHeldKey = Exclude<keyof HeldInput, (typeof HELD_KEYS)[number]>;
+const heldKeysComplete: [MissingHeldKey] extends [never] ? true : never = true;
+void heldKeysComplete;
+export const heldKey = (h: HeldInput): string => HELD_KEYS.map((k) => (h[k] === undefined ? '' : String(h[k]))).join(',');
+/** The inputs of one step by content: every player's held input and the commands' ids and bodies (not their stamped tick). */
+const inputKey = (held: readonly HeldInput[], commands: readonly Command[]): string =>
+  `${held.map(heldKey).join('|')}#${commands.map((c) => `${c.id.player}:${c.id.sequence}:${JSON.stringify(c.command)}`).join(';')}`;
+function bodies(d: DuelState): PredictedBodies {
+  const t = d.tactical;
+  return { ships: t.ships.map((s) => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc })),
+    missiles: t.ships.map((_, i) => { const m = missileOf(t, i); return m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null; }),
+    crew: d.interior.crew.map((eid) => ({ x: Position.x[eid]!, y: Position.y[eid]! })) };
+}
+
+export function createDuelPredictor(options: DuelPredictorOptions): DuelPredictor {
+  const { seat } = options, step = options.step ?? ((d: DuelState, input: DuelInput) => { stepDuelTick(d, input); });
+  let p: DuelState | null = null, predicting = false, local = 0, offset = 0, confirmedTick = 0, revision = -1;
+  let held: HeldInput[] = [], log: Entry[] = [], waiting: Command[] = [], prior: PredictedBodies | null = null;
+  const steps = new Map<number, Step>();
+  const stats: PredictionStats = { verified: 0, resimulated: 0, resets: 0, lead: 0, measured: 0, standing: 0, correction: null };
+  const withOwn = (own: HeldInput): HeldInput[] => held.map((h, k) => (k === seat ? own : h));
+  /** One step of P from its tick with `own` in this seat's slot (§3.3); requestedTick is P's tick, as the authority restamps. */
+  function advance(own: HeldInput, commands: readonly Command[]): void {
+    const d = p!, at = d.interior.tick, input = withOwn(own), stamped = commands.map((c) => ({ ...c, requestedTick: at }));
+    prior = bodies(d);
+    step(d, { held: input, commands: stamped });
+    const tick = d.interior.tick;
+    steps.set(tick, { key: inputKey(input, stamped), hash: tick % PREDICT_HASH_EVERY === 0 ? hashF64(flattenDuel(d)) : null });
+  }
+  /** §3.4 step 2: what tick k (the step that produces k) uses: the entry of local tick k − offset; past the newest, its held input and no commands. */
+  function planned(k: number): { own: HeldInput; commands: Command[] } {
+    const first = log[0], e = first ? log[k - offset - first.local] : undefined;
+    if (e && e.local === k - offset) return { own: e.held, commands: e.commands };
+    const newest = log[log.length - 1];
+    return { own: newest ? newest.held : held[seat] ?? neutral(), commands: [] };
+  }
+  function reset(publication: DuelPublication, decided: boolean): 'reset' {
+    const h = publication.snapshot.header;
+    const matches = !!p && h.layoutId === p.interior.layout.id && h.layoutHash === p.interior.derived.layoutHash && h.seed === p.tactical.seed && h.playerCount === p.interior.playerCount && h.crewClass === p.crewClass;
+    if (p && matches) restoreDuelSnapshot(p, publication.snapshot, options.contentDigest);
+    else { if (p) disposeDuel(p); p = null; p = loadDuelSnapshot(options.resolveLayout(h.layoutId), publication.snapshot, options.contentDigest); }
+    log = []; waiting = []; steps.clear(); steps.set(publication.tick, { key: '', hash: publication.hash });
+    prior = bodies(p); revision = publication.controlRevision; offset = publication.tick - local;
+    predicting = publication.phase === 'running' && !decided;
+    stats.resets++; stats.correction = null; stats.lead = 0; stats.measured = stats.standing = publication.tick;
+    return 'reset';
+  }
+  return {
+    confirm(publication, confirmed) {
+      const T = publication.tick, h = publication.snapshot.header;
+      confirmedTick = T; held = publication.held.map((x) => ({ ...x }));
+      const decided = confirmed.tactical.outcome !== Outcome.Running;
+      const replaced = !p || h.seed !== p.tactical.seed || h.layoutId !== p.interior.layout.id || h.layoutHash !== p.interior.derived.layoutHash || h.playerCount !== p.interior.playerCount || h.crewClass !== p.crewClass;
+      if (replaced || !predicting || decided || publication.phase !== 'running' || publication.controlRevision !== revision) return reset(publication, decided);
+      const d = p!;
+      // Step 1: the anchor (the newest entry whose held frame the authority has latched) gives the measured offset;
+      // with none, the last mapping is kept. Commands leave the log only by the command watermark.
+      const hw = publication.heldHighWater[seat] ?? 0, cw = publication.commandHighWater[seat] ?? 0;
+      let anchored = offset, anchor = -1;
+      for (let i = log.length - 1; i >= 0; i--) { const s = log[i]!.heldSequence; if (s !== null && s <= hw) { anchored = T - log[i]!.local; anchor = i; break; } }
+      for (const e of log) e.commands = e.commands.filter((c) => c.id.sequence > cw);
+      waiting = waiting.filter((c) => c.id.sequence > cw);
+      // Step 3: the target: T plus the local ticks after the anchor's; P's own tick when within the slack; clamped.
+      const measured = T + Math.max(0, local - (T - anchored)), standing = d.interior.tick;
+      let target = Math.abs(standing - measured) <= PREDICT_SLACK_TICKS ? standing : measured;
+      target = Math.max(T, Math.min(T + PREDICT_MAX_TICKS, target));
+      stats.measured = measured; stats.standing = standing;
+      // The mapping from now on: the newest local tick is the target (plan deviation 1). It is the anchor's offset unless
+      // the slack or the cap applied; tick() steps entry L to L + offset, so verify and tick() always agree.
+      offset = target - local;
+      // Plan deviation 2: an entry leaves the log only once acknowledged (at or before the anchor), so a later held
+      // watermark can still anchor on it; entries the mapping puts at or before T stay with their command lists emptied.
+      // Either way their commands not yet run move to the first entry after T in the mapping, or wait for the next one.
+      const cut = T - offset, carried: Command[] = [];
+      if (anchor >= 0) for (const e of log.splice(0, anchor + 1)) carried.push(...e.commands);
+      for (const e of log) if (e.local <= cut) { carried.push(...e.commands); e.commands = []; }
+      if (carried.length) {
+        const next = log.find((e) => e.local > cut);
+        if (next) next.commands = [...carried, ...next.commands]; else waiting = [...waiting, ...carried].slice(-PREDICT_WAITING_MAX);
+      }
+      for (const k of [...steps.keys()]) if (k < T) steps.delete(k);
+      // Step 4: verified when P passed through T with the authority's hash, used the planned inputs since, and stands on the target.
+      const at = steps.get(T);
+      let ok = !!at && at.hash === publication.hash && standing === target;
+      for (let k = T + 1; ok && k <= target; k++) { const s = steps.get(k), plan = planned(k); ok = !!s && s.key === inputKey(withOwn(plan.own), plan.commands); }
+      if (ok) { stats.verified++; stats.correction = null; stats.lead = standing - T; return 'verified'; }
+      // Step 5: restore and step to the target with the planned inputs.
+      const ship = d.tactical.ships[CREW_SLOT]!, sx = ship.x, sy = ship.y, eid = d.interior.crew[seat], cx = eid === undefined ? 0 : Position.x[eid]!, cy = eid === undefined ? 0 : Position.y[eid]!;
+      restoreDuelSnapshot(d, publication.snapshot, options.contentDigest);
+      steps.clear(); steps.set(T, { key: '', hash: publication.hash });
+      prior = bodies(d);
+      for (let k = T + 1; k <= target; k++) { const plan = planned(k); advance(plan.own, plan.commands); }
+      const after = d.tactical.ships[CREW_SLOT]!, dx = after.x - sx, dy = after.y - sy;
+      const ex = eid === undefined ? 0 : Position.x[eid]! - cx, ey = eid === undefined ? 0 : Position.y[eid]! - cy;
+      stats.correction = target === standing ? { ship: Math.sqrt(dx * dx + dy * dy), character: Math.sqrt(ex * ex + ey * ey) } : null;
+      stats.resimulated++; stats.lead = target - T;
+      return 'resimulated';
+    },
+    tick(input) {
+      if (!p || !predicting) return false;
+      const e: Entry = { local: ++local, heldSequence: input.heldSequence, held: { ...input.held }, commands: [...waiting.splice(0), ...input.commands] };
+      log.push(e);
+      if (log.length > PREDICT_LOG_MAX) { const old = log.shift()!; log[0]!.commands = [...old.commands, ...log[0]!.commands]; }
+      if (p.interior.tick >= confirmedTick + PREDICT_MAX_TICKS) return false;
+      advance(e.held, e.commands);
+      stats.lead = p.interior.tick - confirmedTick;
+      return true;
+    },
+    state: () => p,
+    active: () => !!p && predicting,
+    before: () => (p ? prior : null),
+    hashAt: (tick) => steps.get(tick)?.hash ?? null,
+    stats: () => ({ ...stats, correction: stats.correction ? { ...stats.correction } : null }),
+    dispose() { if (p) disposeDuel(p); p = null; predicting = false; log = []; waiting = []; steps.clear(); prior = null; }
+  };
+}
