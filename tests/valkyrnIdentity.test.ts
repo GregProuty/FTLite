@@ -1,6 +1,6 @@
 // The merge of the Helm-flight spike with the Engineering spike (owner 2026-11-19): the Valkyrn (not newtonianHelm) keeps
 // master's flight and bots bit for bit. The pinned digests were first computed on master 2ced83cf (SIM 58), and re-recorded
-// for asteroids-iii's orbiting belt (SIM 60, unchanged per tick at 61: the rocks it flies among changed) for asteroids-iv-a's cell rocks (SIM 65) and for its big outer lane (SIM 67), with the same digest
+// for asteroids-iii's orbiting belt (SIM 60, unchanged per tick at 61: the rocks it flies among changed) for asteroids-iv-a's cell rocks (SIM 65) and for its big outer lane (SIM 67), and for the hacking spike's four new state fields (SIM 70: hashed, but every run unchanged per tick by the duel oracle's `added` check), with the same digest
 // over the first 3000 ticks of five duels: the scripted pilot (crew of one) at seeds 1 to 3 and the scripted pair on the
 // Hound as a Valkyrn at seeds 1 and 2. Each tick hashes the tactical state (both ships' flight, the Hunter included), the
 // throttle level, the held heading, the power module and the command results; it leaves out SIM_VERSION and the helm
@@ -51,8 +51,8 @@ function run(kind: 'pilot' | 'pair', seed: number): string {
 describe('the Valkyrn after the merge (owner 2026-11-19)', () => {
   it('flies and fights as pinned (master 2ced83cf\'s flight and bots, among asteroids-iii\'s orbiting belt): five duels, 3000 ticks each, every tick identical', { timeout: 120_000 }, () => {
     expect([run('pilot', 1), run('pilot', 2), run('pilot', 3), run('pair', 1), run('pair', 2)]).toEqual([
-      'pilot-1:3000:d59dc2b211d0b940', 'pilot-2:3000:38ed639cfb5e124d', 'pilot-3:3000:af729d1d7bcfa25f',
-      'pair-1:3000:1e57790e10b07489', 'pair-2:3000:cf19960c9341e67a'
+      'pilot-1:3000:2037f4c21c0fbaa9', 'pilot-2:3000:7b336bd12d2e185c', 'pilot-3:3000:c6791cbf016a850e',
+      'pair-1:3000:88f1feb2dcb079e6', 'pair-2:3000:dbd01a33fcd7c540'
     ]);   // the doubled sensor range (SIM 69, owner 2026-11-20): pair-1 and pair-2 were 'pair-1:3000:bb9911d08387472b', 'pair-2:3000:9a04445c3cef44d2'.
     // the asteroids-iv merge with master (SIM_VERSION 68: ui-round-1's Hunter 95 / Valkyrn thrust 200 and the slingshot's doubled
     // planet pull among the cell rocks; kind b): was 'pilot-1:3000:4ff16b1bc07aa71a', 'pilot-2:3000:ad8a6fe131ef2a4e', 'pilot-3:3000:c9d8200c5e371f2b',
