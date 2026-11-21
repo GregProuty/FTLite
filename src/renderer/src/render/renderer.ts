@@ -1,6 +1,6 @@
 import type { CardUiState } from '../clientControl/cardController';
 import { Application, Container } from 'pixi.js';
-import { worldFit, WORLD_BAND } from './worldFit';
+import { worldFit, worldBand, WORLD_BAND } from './worldFit';
 import { createBattlemapLayer } from './battlemapLayer';
 import { battlemapFor, fitRect } from './battlemapModel';
 import { INTERNAL_W, INTERNAL_H, TILE_PX, REFERENCE_STAGE, type StageSize } from '../../../shared/resolution';
@@ -20,7 +20,7 @@ import { createConsoleLayer } from './consoleLayer';
 import { createPropLayer } from './propLayer';
 import { createProjectileLayer } from './projectiles';
 import { createEnemyWindowLayer } from './enemyWindow';
-import { enemyWindowModel, stepWindowAnim, freshWindowAnim, windowShown, windowRoomCentre, WINDOW, hitFlashOf } from './enemyWindowModel';
+import { enemyWindowModel, stepWindowAnim, freshWindowAnim, windowShown, windowRoomCentre, WINDOW, hitFlashOf, enemyWindowX } from './enemyWindowModel';
 import { EnemyRoom } from '../sim/enemy';
 import { createCalloutLayer } from './callouts';
 import type { Bubble } from './calloutModel';
@@ -132,11 +132,14 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       const d = state.derived;
       const now = performance.now();
       const dt = lastDraw === null ? 0 : Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
-      const fit = worldFit(d.width, d.height, stage, fitRect(state.layout.id, d.width, d.height, missing)); world.scale.set(fit.scale);
+      // UI round 2b (final review): the ship band and the enemy window anchor to the stage like the React panels (the
+      // right column at 872 + dw, the notice and event card at 256 + dw / 2); at 1280x720 both are the reference values.
+      const band = worldBand(size), winX = enemyWindowX(size);
+      const fit = worldFit(d.width, d.height, stage, fitRect(state.layout.id, d.width, d.height, missing), band); world.scale.set(fit.scale);
       anim = stepWindowAnim(anim, state);
       const view = enemyWindowModel(state, state.tick + alpha, anim), shown = windowShown(state, view);
-      enemyWindow.draw(view, shown, dt, hitFlashOf(state, view));
-      projectiles.draw(state, fit, dt, { shotOrigin: shown ? windowRoomCentre(EnemyRoom.Weapons) : null, target: (slot) => { if (!shown || !view.bolt || view.bolt.slot !== slot || !view.bolt.to) return null; return { x: WINDOW.x + view.slideX + view.bolt.to.x, y: WINDOW.y + view.shipDY + view.bolt.to.y }; } });
+      enemyWindow.draw(view, shown, dt, hitFlashOf(state, view), winX);
+      projectiles.draw(state, fit, dt, { band, shotOrigin: shown ? windowRoomCentre(EnemyRoom.Weapons, winX) : null, target: (slot) => { if (!shown || !view.bolt || view.bolt.slot !== slot || !view.bolt.to) return null; return { x: winX + view.slideX + view.bolt.to.x, y: WINDOW.y + view.shipDY + view.bolt.to.y }; } });
       battlemap.draw(state);
       tiles.update(state, dt);
       props.draw(state);
@@ -148,7 +151,7 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       const hits = sectorHits(state.rooms.impactTick, state.tick, seenImpact); seenImpact = hits.seen;
       watchRepair(memory.repair, state);
       const working = sectorWorking(state, memory.repair);
-      const { shake, bob } = feel.draw({ state, grade: sectorGradeInput(state), hit: { rooms: hits.rooms }, sparks: failedStationPoints(state), working, artPx: 2 * fit.scale, stage: size }, paused ? 0 : dt, dt);   // UI round 2b: the backdrop covers the current stage
+      const { shake, bob } = feel.draw({ state, grade: sectorGradeInput(state), hit: { rooms: hits.rooms }, sparks: failedStationPoints(state), working, artPx: 2 * fit.scale, stage: size, band }, paused ? 0 : dt, dt);   // UI round 2b: the backdrop covers the current stage
       world.position.set(fit.x + shake.x, fit.y + shake.y); projectiles.container.position.set(shake.x, shake.y);   // the shake moves the world and the projectiles, as before
       crew.draw(state, alpha, presentation, bob, working, { dt: paused ? 0 : dt, paused });   // the 3D crew hold their pose and frame while paused
       boarders.draw(state, dt, paused ? 0 : dt);

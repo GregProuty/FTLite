@@ -11,6 +11,14 @@ describe('stageSizeFor / stageFit (spec §2.1)', () => {
   ])('window %ix%i -> stage %ix%i', (ww, wh, sw, sh) => {
     expect(stageSizeFor(ww, wh)).toEqual({ w: sw, h: sh });
   });
+  it('clamps past 32:9 (2560 wide, or 2560 tall) and stageFit leaves bars beyond it', () => {
+    expect(stageSizeFor(3840, 1080)).toEqual({ w: 2560, h: 720 });   // exactly 32:9
+    expect(stageSizeFor(5120, 1080)).toEqual({ w: 2560, h: 720 });
+    expect(stageSizeFor(2000, 1)).toEqual({ w: 2560, h: 720 });      // a degenerate window can't make a 921600-wide stage
+    expect(stageSizeFor(1, 2000)).toEqual({ w: 1280, h: 2560 });
+    const f = stageFit(5120, 1080);
+    expect(f.scale).toBeCloseTo(1.5, 9); expect(f.offsetX).toBe(640); expect(f.offsetY).toBe(0);
+  });
   it('never smaller than the reference', () => {
     for (const [ww, wh] of [[300, 900], [2000, 200], [640, 365]] as const) {
       const s = stageSizeFor(ww, wh);

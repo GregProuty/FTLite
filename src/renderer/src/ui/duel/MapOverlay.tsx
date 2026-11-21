@@ -15,6 +15,7 @@ import { useStage } from '../stage/useStage';
 
 /** The scale bar's left end and baseline and the snap hint's bottom (internal pixels) at the reference stage; UI round 2b:
  *  the baseline and the hint follow the stage's bottom edge (`stage.h - 28`, `stage.h - 12`). */
+// reference (1280x720) values; the component anchors to the live stage
 export const BX = 16, BY = INTERNAL_H - 28, SNAP_Y = INTERNAL_H - 12;
 
 export const MapOverlay = memo(function MapOverlay({ overlay, placement = 'column' }: { overlay: MapOverlayView; placement?: 'column' | 'console' }) {

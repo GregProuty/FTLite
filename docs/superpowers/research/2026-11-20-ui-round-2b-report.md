@@ -54,5 +54,15 @@ Status: DONE. Added hudLayout(stage) (memoised, copies the stage size) with THRE
 - Verification: typecheck clean; electron-vite build OK; vitest 548 files, 6445 passed, 3 skipped, 0 failed; determinism PASS (Node, Electron 37.10.3, Firefox 160; duel restore 597 checks); `test:web-output` PASS; no diff under sim, goldens or fixtures since 22b5f58f.
 - `test:duel-app-runtime` FAILS at step 3 (`the forced round end timeout`), twice. The branch has no sim change. Most likely cause: the slingshot merge in the base (SIM 65 -> 66) moved `DUEL_TEST_SEED` 1921's round end (picked at SIM 63) past the step's 90 s. Needs a new seed search; not patched here.
 - Screenshots in `C:\Users\djuar\FTLite-shots\ui-round-2b\` (script `scripts/ui-round-2b-shots.cjs`): Helm, Weapons with the enemy window and the ship view at 1280x720, 2560x1080 and 1280x960 (the window minimum is 1280x720, so 1280x960 stands in for 1024x768), `resize-live.png` and `menu-2560x1080.png`. No bars, panels on their edges, no overlaps, more map on the wide window, text readable, live resize follows.
-- Look concern: at 2560x1080 the ship interior snaps to 2/3 of the fit, so it is the same screen size as at 1280x720 and looks small in the wide frame.
+- Look note: before bdeadd6d the 2560x1080 interior snapped to 2/3 of the fit and looked small. Since bdeadd6d it stays at the fit (3 px per art px, 1.5x its 1280x720 size): the snap now tolerates a stage scale a hair under a half step.
 - Gate entry `## UI round Part 2b (fill the window)` added to docs/gates.md; owner check open.
+
+## Final review fixes
+
+- The online sector view's Pixi pieces anchor like its React panels. New pure helpers `enemyWindowX(stage)` (render/enemyWindowModel.ts, `WINDOW.x + dw`) and `worldBand(stage)` (render/worldFit.ts, `WORLD_BAND` shifted by `dw / 2`). The renderer's sector path passes them to the enemy window layer (`draw(..., x)`), `windowRoomCentre` (the enemy shot origin), our bolt's target, `worldFit` (new optional `band`), the projectiles (`WindowLink.band`) and the feel's starfield (`band`). The React Navigation map (MapPanel), drawn in the enemy window's spot, uses `enemyWindowX` too. At 1280x720, dw = 0 and every value is the reference. Test in hudFit.test.ts: at 1707x720 the window is at 872 + 427 (= THREATS.x) and the band at 256 + 213.5 (= EVENT_CARD.x).
+- Docs: since bdeadd6d the 2560x1080 interior stays at the fit (3 px per art px, 1.5x its 1280x720 size); the gate entry and this report no longer say it snaps to 2/3.
+- `stageSizeFor` clamps the growing side at 2560 (32:9 wide; the same bound tall). `stageFit` leaves bars past it. A degenerate window can't make a huge stage.
+- `snapWorldScale` takes the rounded-up n only while `n / (2 stage) <= 1.01 fit`, else n - 1 (then the 2/3 floor as before).
+- hudFit: the event card is on the stage and the right card's margin is 8, at every tested stage. FpsCounter computes `stage.w - 8`, `stage.h - 18`; the reference exports are commented.
+- Verification: typecheck clean; electron-vite build OK; `npx vitest run --maxWorkers=4` 553 files, 6498 passed, 3 skipped, 0 failed.
+- Duel app smoke: PASS (183 s).

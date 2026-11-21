@@ -1,4 +1,5 @@
 import type { SimState } from '../sim/state';
+import { INTERNAL_W, REFERENCE_STAGE, type StageSize } from '../../../shared/resolution';
 import { EnemySystem, EnemyRoom, ENEMY_ROOM_NAMES, ENEMY_SYSTEM_COUNT, enemyShieldCap, isWarden, enemyWeaponCharge, fleeSecondsLeft, rotateSecondsLeft, ionSecondsLeft } from '../sim/enemy';
 import { isEnemySlot, enemyRoomOfSlot, weaponsTargetSlot } from '../sim/debrisTargets';
 import { StationKind } from '../sim/stationKinds';
@@ -47,7 +48,11 @@ function roomRect(room: number): Rect { const r = ENEMY_LAYOUT.rooms[room]!; ret
 const centreOf = (r: Rect): Pt => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
 
 /** A room's centre in internal (screen) pixels with the window at rest: the enemy-shot origin (amendment R3). */
-export function windowRoomCentre(room: number): Pt { const c = centreOf(roomRect(room)); return { x: WINDOW.x + c.x, y: WINDOW.y + c.y }; }
+export function windowRoomCentre(room: number, windowX: number = WINDOW.x): Pt { const c = centreOf(roomRect(room)); return { x: windowX + c.x, y: WINDOW.y + c.y }; }
+
+/** UI round 2b (final review): the window's left edge on a stage: it moves with the stage's right edge (WINDOW.x + dw), under
+ *  the threats panel (hudLayout's THREATS.x = 872 + dw). At 1280x720 it is WINDOW.x. */
+export function enemyWindowX(stage: StageSize = REFERENCE_STAGE): number { return WINDOW.x + stage.w - INTERNAL_W; }
 
 /** Advance the animation memory: an arrival, a departure (destroyed when the kill counter rose), a jump or a new run (closed at once). */
 export function stepWindowAnim(prev: WindowAnim, state: SimState): WindowAnim {

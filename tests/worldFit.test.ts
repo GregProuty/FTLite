@@ -39,6 +39,14 @@ describe('snapWorldScale (Art-i spec section 4 table)', () => {
     expect(snapWorldScale(CUTTER_FIT, 0.7)).toBe(CUTTER_FIT);   // n = floor(0.917) = 0
     expect(snapWorldScale(1, 0.9)).toBe(1);                      // n = 1, 1 / 1.8 = 0.556 < 2/3
   });
+  it('final review: the rounded-up whole number is taken only within 1% over the fit, else n - 1', () => {
+    // a tiny stage: 2 x 1 x 0.4925 = 0.985, the +0.02 rounds up to n = 1, 1 / 0.985 is 1.5% over the fit: n - 1 = 0, the fit is kept
+    expect(snapWorldScale(1, 0.4925)).toBe(1);
+    // 2 x 0.5 x 1.985 = 1.985 rounds up to 2 (0.76% over): taken
+    expect(2 * snapWorldScale(0.5, 1.985) * 1.985).toBeCloseTo(2, 9);
+    // 2 x 1 x 0.99005 = 1.9801 rounds up to 2, 1.01005 over (a hair past 1%): n - 1 = 1 is under the 2/3 floor, the fit is kept
+    expect(snapWorldScale(1, 0.99005)).toBe(1);
+  });
 });
 
 describe('worldFit and duelFit take the stage scale', () => {

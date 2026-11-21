@@ -8,6 +8,7 @@ import { PixelText } from './stage/PixelText';
 import { useStage } from './stage/useStage';
 
 /** The reference stage's spot; UI round 2b: the readout follows the stage's bottom-right corner (`w - 8`, `h - 18`). */
+// reference (1280x720) values; the component anchors to the live stage
 export const FPS_X = INTERNAL_W - 8, FPS_Y = INTERNAL_H - 18;
 
 export const FpsCounter = memo(function FpsCounter() {
@@ -16,7 +17,7 @@ export const FpsCounter = memo(function FpsCounter() {
   if (!on || fps === null) return null;
   return (
     <div data-ui-fps="" style={{ position: 'fixed', left: 0, right: 0, top: Math.round(top * dpr) / dpr, bottom: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 30 }}>
-      <PixelText text={`${fps} FPS`} x={stage.w - (INTERNAL_W - FPS_X)} y={stage.h - (INTERNAL_H - FPS_Y)} size={FONT_NATIVE} tint={DIM} anchorX={1} />
+      <PixelText text={`${fps} FPS`} x={stage.w - 8} y={stage.h - 18} size={FONT_NATIVE} tint={DIM} anchorX={1} />
     </div>
   );
 });

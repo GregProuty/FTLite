@@ -18,6 +18,8 @@ import { buildCreditLines } from '../src/renderer/src/render/creditsText';
 import { parseManifest } from '../src/renderer/src/render/manifest';
 import { readFileSync } from 'node:fs';
 import { makeState, quiet, mapM, setEvent, RECRUITS, LAYOUT, CUTTER } from './helpers/sim';
+import { worldBand, WORLD_BAND } from '../src/renderer/src/render/worldFit';
+import { enemyWindowX, windowRoomCentre, WINDOW } from '../src/renderer/src/render/enemyWindowModel';
 
 /** The HUD at the larger font (spec Demo-x-c section 1): every text colour readable, every panel and card fitting its longest content. Widths are the font's real advances (theme textPx). */
 const SHIPS = [LAYOUT, CUTTER, parseShip(skiff)];
@@ -215,5 +217,18 @@ describe('the sector HUD anchors to the stage (UI round 2b)', () => {
     for (let i = 0; i < 12; i++) for (let j = i + 1; j < 12; j++) if (!overlaps(refAll[i]!, refAll[j]!)) expect(overlaps(all[i]!, all[j]!), `${i}/${j}`).toBe(false);
     expect(r.CREDITS.x + r.CREDITS.w).toBe(st.w - 40); expect(r.CREDITS.y + r.CREDITS.h).toBe(st.h - 40);
     expect(r.NOTICE.x + r.NOTICE.w / 2 - (CLOCK.x + CLOCK.w + r.THREATS.x) / 2).toBe(0);
+    expect(r.EVENT_CARD.x).toBeGreaterThanOrEqual(0); expect(r.EVENT_CARD.x + r.EVENT_CARD.w).toBeLessThanOrEqual(st.w);   // final review
+    for (const tabbed of [false, true]) expect(r.cardRect(2, tabbed).x + r.cardRect(2, tabbed).w).toBe(st.w - 8);
+  });
+  it('the sector Pixi pieces anchor with it (final review): the enemy window under THREATS, the ship band centred between the columns', () => {
+    for (const st of stages) {
+      const r = hudLayout(st), band = worldBand(st), dw = st.w - 1280;
+      expect(enemyWindowX(st)).toBe(r.THREATS.x); expect(enemyWindowX(st)).toBe(WINDOW.x + dw);
+      expect(band.x).toBe(WORLD_BAND.x + dw / 2); expect(band.x).toBe(r.EVENT_CARD.x);
+      expect({ y: band.y, w: band.w, h: band.h }).toEqual({ y: WORLD_BAND.y, w: WORLD_BAND.w, h: WORLD_BAND.h });
+      expect(windowRoomCentre(0, enemyWindowX(st)).x - windowRoomCentre(0).x).toBe(dw);
+    }
+    expect(enemyWindowX({ w: 1707, h: 720 })).toBe(872 + 427); expect(worldBand({ w: 1707, h: 720 }).x).toBe(256 + 213.5);
+    expect(enemyWindowX()).toBe(WINDOW.x); expect(worldBand()).toBe(WORLD_BAND);   // 1280x720 unchanged
   });
 });

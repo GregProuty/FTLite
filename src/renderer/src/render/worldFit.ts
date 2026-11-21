@@ -1,4 +1,4 @@
-import { TILE_PX } from '../../../shared/resolution';
+import { INTERNAL_W, REFERENCE_STAGE, TILE_PX, type StageSize } from '../../../shared/resolution';
 import type { TileRect } from './battlemapModel';
 
 /** The world band in internal pixels: the ship is fitted inside it (spec Demo-iv section 3); projectiles enter from outside it (spec Demo-vii section 2). */
@@ -18,9 +18,19 @@ export interface Fit { scale: number; x: number; y: number }
 export function snapWorldScale(fit: number, stage: number): number {
   // UI round 2b: +0.02 so a stage scale a hair under a half step (2560x1080 rounds to a 1707-wide stage, scale 1.4997)
   // still takes the whole number just above (3 px per art px, the ship at fit, at most 1% over it) instead of dropping to 2/3.
-  const n = Math.floor(2 * fit * stage + 0.02);
+  // The rounded-up n is taken only while it is at most 1% over the fit; otherwise n - 1 (still under the 2/3 floor rule).
+  let n = Math.floor(2 * fit * stage + 0.02);
+  if (n / (2 * stage) > fit * 1.01) n -= 1;
   if (n >= 1 && n / (2 * stage) >= (2 / 3) * fit - 1e-12) return n / (2 * stage);
   return fit;
+}
+
+/** UI round 2b (final review): the world band on a stage: WORLD_BAND shifted right by half the extra width, so the ship
+ *  stays centred between the left column and the right column (which moves with the stage's right edge), like the notice
+ *  and the event card (256 + dw / 2). At 1280x720 it is WORLD_BAND. */
+export function worldBand(stage: StageSize = REFERENCE_STAGE): Band {
+  const dw = stage.w - INTERNAL_W;
+  return dw === 0 ? WORLD_BAND : { ...WORLD_BAND, x: WORLD_BAND.x + dw / 2 };
 }
 
 /** Fit a rectangle of tiles into a band (never above 1x), snap the scale, and centre the rectangle; x and y are where tile (0,0) lands, on whole screen pixels. */
@@ -37,6 +47,6 @@ export function fitInBand(band: Band, widthTiles: number, heightTiles: number, s
 }
 
 /** The sector ship in the world band (spec Demo-iv section 3), snapped for the stage scale (Art-i spec section 4); `rect` (Art-iv): the painted bounds to fit instead of the tiles. */
-export function worldFit(widthTiles: number, heightTiles: number, stage: number, rect?: TileRect): Fit {
-  return rect ? fitRectInBand(WORLD_BAND, rect, stage) : fitInBand(WORLD_BAND, widthTiles, heightTiles, stage);
+export function worldFit(widthTiles: number, heightTiles: number, stage: number, rect?: TileRect, band: Band = WORLD_BAND): Fit {
+  return rect ? fitRectInBand(band, rect, stage) : fitInBand(band, widthTiles, heightTiles, stage);
 }
