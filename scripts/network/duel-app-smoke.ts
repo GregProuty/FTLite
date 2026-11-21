@@ -19,8 +19,10 @@ import { build } from 'vite';
 import { computeContentDigest } from '../../build/contentDigest';
 import { startOnlineAppRuntime } from './online-app-runtime';
 
-/** The test-only first seed: with no flight or weapon input its first round is decided on tick 4377, about 73 s of play
- *  (the Hunter's 30 s grace included), a crew win (asteroids-iv-a (SIM_VERSION 65, cell rocks): 1921 -> 2182, decided on tick 4377;
+/** The test-only first seed: with no flight or weapon input its first round is decided on tick 4653, about 78 s of play
+ *  (the Hunter's 30 s grace included), a crew loss (the asteroids-iv merge with master, SIM_VERSION 68: 2182 -> 358, found by
+ *  search over seeds 1-4000 before tick 5000 with both crew seated, 358 the earliest of 23 (484 the earliest crew win, at
+ *  3621); 2182 is no longer decided by tick 5000). Seed 2182 before: decided on tick 4377, a crew win (asteroids-iv-a (SIM_VERSION 65, cell rocks): 1921 -> 2182, decided on tick 4377;
  *  found by search over seeds 1-4000 before tick 5000 with both crew seated, 2182 the only one; 1921 now decides on tick 8661, a
  *  crew loss, past the step's 90 s). Seed 1921 before: decided on tick 4276 (helm round 2 (SIM 63): 423 -> 1921, decided on tick 4276; found by search
  *  over seeds 1-4000 before tick 5000 with both crew seated, 1921 the only one: the crew Helm's CREW_DRAG now slows the unflown
@@ -37,7 +39,7 @@ import { startOnlineAppRuntime } from './online-app-runtime';
  *  planet dive. Seed 351 before that: decided on tick 4453 (SIM_VERSION 52; 7531, a crew loss, at 53); 3423 before the
  *  weapons update, SIM_VERSION 48; found by search over seeds 1-1500 at SIM_VERSION 45; 2277, decided on tick 1471,
  *  before the grace. */
-export const DUEL_TEST_SEED = 2182;
+export const DUEL_TEST_SEED = 358;
 const delay = (ms: number) => new Promise(done => setTimeout(done, ms));
 const assert = (value: unknown, message: string) => { if (!value) throw Error(message); };
 type Application = { child: ChildProcess; pid: number; profile: string; exited: boolean; exitCode?: number | null; exit: Promise<void>; request(command: string, data?: object): Promise<any> };

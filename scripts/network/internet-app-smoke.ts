@@ -13,7 +13,7 @@ import { parseJoinCodeFile } from './join-code-file';
 
 const pause=(ms:number)=>new Promise<void>(done=>setTimeout(done,ms));
 /** The duel smoke's forced-end test seed (duel-app-smoke.ts DUEL_TEST_SEED; importing that file would run it). */
-const DUEL_TEST_SEED=2182;   // asteroids-iv-a (SIM_VERSION 65): 1921 -> 2182, decided on tick 4377 seated (1921 decides on tick 8661); helm round 2 (SIM 63): 423 -> 1921, decided on tick 4276 seated; asteroids-iii (SIM 60/61, identical per tick): was 6626 (decides on tick 7381 at SIM 60/61); was 1980 before the playtest2feedback merge (SIM 59: 1980 decides on tick 8271)
+const DUEL_TEST_SEED=358;   // the asteroids-iv merge with master (SIM_VERSION 68): 2182 -> 358, decided on tick 4653 seated (2182 not decided by 5000);asteroids-iv-a (SIM_VERSION 65): 1921 -> 2182, decided on tick 4377 seated (1921 decides on tick 8661); helm round 2 (SIM 63): 423 -> 1921, decided on tick 4276 seated; asteroids-iii (SIM 60/61, identical per tick): was 6626 (decides on tick 7381 at SIM 60/61); was 1980 before the playtest2feedback merge (SIM 59: 1980 decides on tick 8271)
 /** Two machines: how long one machine waits for the other (a room code in the guest's file, the guest in the host's lobby). */
 const CODE_WAIT_MS=90000;
 const hash=(path:string)=>createHash('sha256').update(readFileSync(path)).digest('hex');
