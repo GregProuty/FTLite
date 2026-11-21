@@ -29,3 +29,18 @@
 - The callouts clamp to the stage width.
 - TDD: tests/liveViewport.test.ts went RED with 5 of 7 failing. The runtime follow-camera test passed before the change, because the runtime already held the viewport by reference; it guards that contract. It then went GREEN. The 19 targeted files (273 tests) passed. Typecheck is clean.
 - Full suite: 6425 passed, 3 skipped, 1 failed (the director soak load timeout; passes alone, 35/35).
+
+## Task 4
+
+- New `consoleLayout(stage)` in render/duel/consoleLayout.ts, memoised per size. The old exported names keep the 1280x720 values.
+- What is anchored to the stage:
+  - The station blocks and FLIGHT sit on the bottom edge.
+  - The contact window sits in the top-right corner.
+  - The power panel sits on the bottom edge: the power helpers take `stageH`.
+- `useConsoleLayout()` is new.
+- The scene computes `consoleLayout(viewport)` once per frame and uses it for the hit tests, the map reserves, the info band and the contact window's drawing box (`contactModel` gains a `box` input).
+- The flightPointer hit tests take a layout and check bounds against `layout.stage`.
+- These components read the live layout or stage: the station blocks, ContactWindow, TargetingLine, ShipHud, SitCard, Banners, MapOverlay, EndCard, FeelPanel, FpsCounter and CrtScreen.
+- TDD: tests/anchoredLayout.test.ts went RED on the hit tests, then GREEN (12 tests). It covers 5 stages: on-stage, no overlap, margins, INFO_BAND and hit tests. A new contactWindow render test checks that the left edge is at 1395 at stage 1707.
+- The brief's point (1700, 100) is in the 12 px margin, not inside the window (x 1395 to 1695). The test uses (1690, 100) instead.
+- Full suite: 548 files, 6439 passed, 3 skipped, 0 failed. Typecheck is clean.

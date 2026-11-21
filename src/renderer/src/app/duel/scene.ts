@@ -10,7 +10,7 @@ import type { CrewOverride } from '../../render/duel/crewOverride';
 import type { Renderer } from '../../render/renderer';
 import { crtActive, crtScale } from '../../render/crt';
 import type { EndView } from '../../render/duel/endModel';
-import { CONSOLE_RESERVE, CONTACT, CONTACT_RESERVE, EDGE, INFO_BAND, OWN_SHIP, OWN_SHIP_BOX, STATUS_RESERVE } from '../../render/duel/consoleLayout';
+import { CONSOLE_RESERVE, consoleLayout, EDGE, OWN_SHIP, OWN_SHIP_BOX, STATUS_RESERVE } from '../../render/duel/consoleLayout';
 import { consoleModel, consoleStation, type ConsoleStation } from '../../render/duel/consoleModel';
 import { contactModel } from '../../render/duel/contactModel';
 import { fireWatch, ownShipModel, type FireWatch } from '../../render/duel/ownShipModel';
@@ -247,6 +247,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
      *  spec §6.2: the mode clears the console's holds when it changes). */
     draw(source: DuelViewSource, dt: number, overlay: SceneOverlay): ConsoleStation | null {
       syncViewport(viewport, renderer); layer.resize(viewport);   // UI round 2b: a no-op when unchanged
+      const L = consoleLayout(viewport), CONTACT = L.CONTACT;   // UI round 2b: the console layout anchored to this frame's stage
       if (epoch === null) { epoch = source.epoch(); lastOutcome = (source.confirmed?.() ?? source.duel).tactical.outcome; if (source.seed !== options.seed) layer.reseed(source.seed); }   // the online duel learns its seed from the first publication; a round already decided on attach is no kill to show
       if (source.epoch() !== epoch) {   // a new round (a restart before H-2): every view-owned cache starts again
         epoch = source.epoch();
@@ -282,11 +283,11 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       // has pointer-events none; only Buttons, the card hit boxes, the throttle box and the window take their own).
       const pewClick = click !== null && onMap && station === 'weapons' && view === 'weapons' && d.tactical.outcome === Outcome.Running && !overlay.layerPaused
         && (contact?.aimWeapon() ?? null) === null && classOf(d.tactical, CREW_SLOT).slots.pew !== null
-        && onWeaponsMap(click, contact?.state() != null);
+        && onWeaponsMap(click, contact?.state() != null, L);
       if (pewClick && click) {
         const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), w = screenToWorld(cam!, viewport, click.x, click.y);
         if (Math.hypot(w.x - b.x, w.y - b.y) > 0) options.requests?.pew(fineHeadingOf(w.x - b.x, w.y - b.y));
-      } else if (contact && click && crewHelmMap && onHelmMap(click, contact.state() != null)) {
+      } else if (contact && click && crewHelmMap && onHelmMap(click, contact.state() != null, L)) {
         // Owner 2026-11-19: on the crew Helm a left press on a ship contact opens (or switches, or closes) its window, as on the
         // other Helm, and steers nothing until the button is let go; a press anywhere else only steers (playtest2feedback §4a).
         const ship = pickContact({ state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, fog: fogView }, click);
@@ -303,13 +304,13 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       // fires while it is held and selected); off the map, over a block, with a weapon picked up or paused, it is not.
       const triggerAt = station === 'weapons' && view === 'weapons' && d.tactical.outcome === Outcome.Running && !overlay.layerPaused && hasTurret(classOf(d.tactical, CREW_SLOT))
         && (contact?.aimWeapon() ?? null) === null && (options.leftHeld?.() ?? false) ? options.pointer?.() ?? null : null;
-      options.requests?.trigger(triggerAt !== null && onWeaponsMap(triggerAt, contact?.state() != null));
+      options.requests?.trigger(triggerAt !== null && onWeaponsMap(triggerAt, contact?.state() != null, L));
       // W-2, W-4 spec §9: the reticle follows the pointer on the open Weapons map, for the laser fit's MANUAL laser and the
       // Hound's turrets (its fine bearing from the own ship's drawn marker, in either mode, so it is ready when the mode
       // changes); over a console block or the open window, off the canvas or with no pointer, the last aim stands.
       const reticlePointer = station === 'weapons' && view === 'weapons' && d.tactical.outcome === Outcome.Running && !overlay.layerPaused && (classOf(d.tactical, CREW_SLOT).slots.laser !== null || hasTurret(classOf(d.tactical, CREW_SLOT)))
         ? options.pointer?.() ?? null : null;
-      const reticleOnMap = reticlePointer !== null && onWeaponsMap(reticlePointer, contact?.state() != null);
+      const reticleOnMap = reticlePointer !== null && onWeaponsMap(reticlePointer, contact?.state() != null, L);
       if (reticlePointer && reticleOnMap) {
         const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), w = screenToWorld(cam!, viewport, reticlePointer.x, reticlePointer.y);
         if (w.x !== b.x || w.y !== b.y) options.requests?.reticle(fineHeadingOf(w.x - b.x, w.y - b.y));
@@ -350,7 +351,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       // targeting line's own listener has already dropped it, so the last frame's pick-up counts too).
       if (onMap && station === 'flight' && view === 'flight' && running && !overlay.layerPaused) {
         const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT);
-        const f = flightPointer({ pointer: options.pointer?.() ?? null, ship: worldToScreen(cam!, viewport, b.x, b.y), zoom: cam!.zoom, contactShown: shown,
+        const f = flightPointer({ pointer: options.pointer?.() ?? null, ship: worldToScreen(cam!, viewport, b.x, b.y), zoom: cam!.zoom, contactShown: shown, layout: L,
           press: aim?.press === true, aimed: lastAimed !== null || (contact?.aimWeapon() ?? null) !== null });
         if (f.steer !== null) options.requests?.steer(f.steer);
         if (f.launch) options.requests?.launch();
@@ -362,7 +363,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       if (!leftHeld) helmPick = false;
       if (onMap && crewHelmMap && running && !overlay.layerPaused && leftHeld && !helmPick) {
         const b = interpolatedShip(d.tactical, source.prev, alpha, CREW_SLOT), p = options.pointer?.() ?? null;
-        const h = helmSteer({ pointer: p, ship: worldToScreen(cam!, viewport, b.x, b.y), zoom: cam!.zoom, contactShown: shown });
+        const h = helmSteer({ pointer: p, ship: worldToScreen(cam!, viewport, b.x, b.y), zoom: cam!.zoom, contactShown: shown, layout: L });
         if (h !== null) { options.requests?.steer(h); steerTo = p; }   // final review M1: the marker only while a steer goes out
       }
       // W-4c Decision 14: a MANUAL launch drops a weapon pick-up (a TORPEDO card click both selects and picks it up), so the
@@ -377,7 +378,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         && (contact?.aimWeapon() ?? null) === null && (options.leftHeld?.() ?? false)) {
         const m = interpolatedMissile(d.tactical, source.missilePrev, alpha, CREW_SLOT);
         if (m) {
-          const h = torpedoSteer({ pointer: options.pointer?.() ?? null, torpedo: worldToScreen(cam!, viewport, m.x, m.y), zoom: cam!.zoom, contactShown: shown });
+          const h = torpedoSteer({ pointer: options.pointer?.() ?? null, torpedo: worldToScreen(cam!, viewport, m.x, m.y), zoom: cam!.zoom, contactShown: shown, layout: L });
           if (h !== null) options.requests?.torpHeading(h);
         }
       }
@@ -435,7 +436,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         const input = {
           rockTrack, state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, console: camKey!, axes: source.axes(),
           // UI round §2.4a: OWN_SHIP sits inside the 264 left reserve now, so this avoid is a guard, not a change
-          ships: fx.kill || !fogView.seen.enemy ? [0] : [0, 1], fog: fogView, paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: INFO_BAND } : { reserveRight: EDGE }), ...(onMap ? { avoid: OWN_SHIP } : {}), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
+          ships: fx.kill || !fogView.seen.enemy ? [0] : [0, 1], fog: fogView, paused: overlay.layerPaused, contacts: true, ...(onConsole ? { reserveLeft: CONSOLE_RESERVE.left, reserveRight: shown ? L.CONTACT_RESERVE : CONSOLE_RESERVE.right, reserveTop: STATUS_RESERVE, infoBand: L.INFO_BAND } : { reserveRight: EDGE }), ...(onMap ? { avoid: OWN_SHIP } : {}), spreadArrows: true, missilePrev: source.missilePrev, fx, t, gunner: gunnerPresent(d),
           holdHeading: view === 'flight' ? -1 : preview ?? d.holdHeading, holdPreview: preview !== null, crewHull: hullFor(true, d.interior.layout.hull), gravity: camKey === 'helm', flight: view === 'flight', alert, pings,   // Feel-ii; Valkyrn spec §4.5: the crew hull
           laserAim: station === 'weapons' && view === 'weapons' ? options.requests?.reticleAim() ?? null : null,   // W-2: the MANUAL laser's aim (the reticle) (the model aims along the nose without one)
           turrets: source.turret ? { pew: source.turret(0), gun: source.turret(1) } : null,   // W-4 spec §10, §11: online the own selected turret is predicted
@@ -458,7 +459,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       // Step 5: the contact view, only while shown.
       const open = contact?.state() ?? null;
       const contactView = shown && station !== null && station !== 'ship'   // Science's window shows with nothing selected
-        ? contactModel({ state: d.tactical, contact: open?.contact ?? null, aim: open?.aim ?? false, weapon: contact?.aimWeapon() ?? 'laser', station, t, weapons: consoleView?.weapons ?? consoleView?.flight?.weapons ?? null, seen: open?.contact === 0 ? fogView.seen.enemy : open?.contact === 1 ? fogView.seen.derelict : true, flashes: open?.contact === 0 ? flashesFor(fx.struck, targetOf(d.tactical, CREW_SLOT)) : [] })
+        ? contactModel({ state: d.tactical, contact: open?.contact ?? null, aim: open?.aim ?? false, weapon: contact?.aimWeapon() ?? 'laser', station, t, weapons: consoleView?.weapons ?? consoleView?.flight?.weapons ?? null, seen: open?.contact === 0 ? fogView.seen.enemy : open?.contact === 1 ? fogView.seen.derelict : true, flashes: open?.contact === 0 ? flashesFor(fx.struck, targetOf(d.tactical, CREW_SLOT)) : [], box: L.CONTACT_BOX })
         : null;
       options.ui.frame({
         end: overlay.end,

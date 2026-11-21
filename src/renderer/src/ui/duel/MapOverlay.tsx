@@ -3,7 +3,7 @@
 // the snap hint on the consoles too. On a CRT screen (CRT map spec section 2) the bar and units are `mid` and the snap
 // hint `main`.
 import { memo } from 'react';
-import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
+import { INTERNAL_H } from '../../../../shared/resolution';
 import { AMBER, DIM, FONT_NATIVE, FONT_SIZE, textPx } from '../../render/theme';
 import { CRT } from '../../render/tactical/crtTheme';
 import { Box } from '../stage/Box';
@@ -11,12 +11,15 @@ import { hex } from '../stage/color';
 import { useCrt } from '../stage/CrtContext';
 import { PixelText } from '../stage/PixelText';
 import type { MapOverlayView } from '../views';
+import { useStage } from '../stage/useStage';
 
-/** The scale bar's left end and baseline and the snap hint's bottom (internal pixels). */
+/** The scale bar's left end and baseline and the snap hint's bottom (internal pixels) at the reference stage; UI round 2b:
+ *  the baseline and the hint follow the stage's bottom edge (`stage.h - 28`, `stage.h - 12`). */
 export const BX = 16, BY = INTERNAL_H - 28, SNAP_Y = INTERNAL_H - 12;
 
 export const MapOverlay = memo(function MapOverlay({ overlay, placement = 'column' }: { overlay: MapOverlayView; placement?: 'column' | 'console' }) {
   const { crt } = useCrt(), dim = crt ? CRT.mid : DIM, accent = crt ? CRT.main : AMBER;
+  const stage = useStage(), BY = stage.h - 28, SNAP_Y = stage.h - 12;
   const px = overlay.scaleBar.px, line = { background: hex(dim) };
   const units = `${overlay.scaleBar.units} u`;
   const bar = (bx: number) => (
@@ -29,7 +32,7 @@ export const MapOverlay = memo(function MapOverlay({ overlay, placement = 'colum
   );
   // UI round §2.3: on a console the scale bar at the bottom right and, while the camera is free, the snap hint left of it
   if (placement === 'console') {
-    const bx = INTERNAL_W - 16 - textPx(units, 1) - 8 - px;
+    const bx = stage.w - 16 - textPx(units, 1) - 8 - px;
     return (
       <>
         {bar(bx)}
@@ -40,7 +43,7 @@ export const MapOverlay = memo(function MapOverlay({ overlay, placement = 'colum
   return (
     <>
       {bar(BX)}
-      {overlay.snapHint && <PixelText text="C: SNAP BACK" x={INTERNAL_W / 2} y={SNAP_Y} size={FONT_SIZE} tint={accent} anchorX={0.5} anchorY={1} />}
+      {overlay.snapHint && <PixelText text="C: SNAP BACK" x={stage.w / 2} y={SNAP_Y} size={FONT_SIZE} tint={accent} anchorX={0.5} anchorY={1} />}
     </>
   );
 });
