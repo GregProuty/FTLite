@@ -22,8 +22,7 @@ import { hex } from '../stage/color';
 import { boxCss } from '../stage/geometry';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
-import { hexPoints } from '../../render/shieldFx';
-import { polyPoints, segPath } from './svgPaths';
+import { cellPaths, polyPoints, segPath } from './svgPaths';
 import { useConsoleLayout } from '../stage/useStage';
 
 /** The laser's target mark: four corner brackets; the torpedo's: a diamond. */
@@ -108,8 +107,8 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
             <ellipse data-ui-contact-bubble="" cx={contact.shield.ellipse.cx} cy={contact.shield.ellipse.cy} rx={contact.shield.ellipse.rx} ry={contact.shield.ellipse.ry}
               fill="none" stroke={hex(CRT.main)} strokeOpacity={contact.shield.bubble} strokeWidth={1} style={{ pointerEvents: 'none' }} />
           )}
-          {contact.shield?.cells.map((c, k) => (
-            <polygon key={`c${k}`} data-ui-contact-cell="" points={polyPoints(hexPoints(c.x, c.y, contact.shield!.cell))} fill="none" stroke={hex(CRT.main)} strokeOpacity={c.alpha} strokeWidth={1} style={{ pointerEvents: 'none' }} />
+          {contact.shield && cellPaths(contact.shield.cells, contact.shield.cell).map((p) => (
+            <path key={`c${p.alpha}`} data-ui-contact-cell="" d={p.d} fill="none" stroke={hex(CRT.main)} strokeOpacity={p.alpha} strokeWidth={1} style={{ pointerEvents: 'none' }} />
           ))}
           {contact.rooms.map((r, k) => (
             <g key={k} data-ui-contact-room={r.label}>

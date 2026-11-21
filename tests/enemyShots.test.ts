@@ -40,6 +40,25 @@ describe('readHits', () => {
     expect(readHits(s, [{ ...t, cause: 'planet' } as ViewEvent])).toEqual([]);
     expect(readHits(s, [{ ...t, ship: 0, target: 1 } as ViewEvent])[0]!.target).toBe(1);
   });
+  it('the fog: an unseen shooter gives the impact bearing for a hit and no read for a miss', () => {
+    const s = fake(0);   // crew at the origin, nose north; the shooter is due east (x1 100), the beam lands at the north (x2 0, y2 -10)
+    const unseen = (_x: number, _y: number) => false, seen = () => true;
+    const e = laser({ x1: 100, y1: 0, x2: 0, y2: -10 });
+    expect(readHits(s, [e], seen)[0]!.a).toBeCloseTo(Math.PI / 2);
+    expect(readHits(s, [e], unseen)[0]!.a).toBeCloseTo(0);   // from the impact point, not the shooter
+    expect(readHits(s, [laser({ hit: false, room: -1, x1: 100, y1: 0 })], unseen)).toEqual([]);
+    expect(readHits(s, [laser({ hit: false, room: -1, x1: 100, y1: 0 })], seen)).toHaveLength(1);
+    // the crew's own laser is never fogged
+    expect(readHits(s, [laser({ ship: CREW_SLOT, x1: 0, y1: 0 })], unseen)).toHaveLength(1);
+  });
+  it('gunHit: stripped stops and drops, a hull or room hit goes through, kind pew', () => {
+    const s = fake();
+    const g = (o: object) => ({ kind: 'gunHit', ship: 1, room: -1, stripped: false, hull: false, level: false, x: 0, y: -100, ...o }) as unknown as ViewEvent;
+    expect(readHits(s, [g({ stripped: true })])[0]).toMatchObject({ target: 1, kind: 'pew', stopped: true, drop: true });
+    expect(readHits(s, [g({ room: 2 })])[0]).toMatchObject({ kind: 'pew', stopped: false, room: 2 });
+    expect(readHits(s, [g({ hull: true })])[0]).toMatchObject({ kind: 'pew', stopped: false, room: -1 });
+    expect(readHits(s, [g({})])).toEqual([]);   // wear only
+  });
   it('bearing: dead ahead 0; quarter-turned ship follows the map convention', () => {
     expect(readHits(fake(0), [laser({})])[0]!.a).toBeCloseTo(0);
     // heading quarter: nose points east (+x); a shooter due north is to port: -PI/2

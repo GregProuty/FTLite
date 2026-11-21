@@ -13,8 +13,7 @@ import { hex } from '../stage/color';
 import { boxCss } from '../stage/geometry';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
-import { hexPoints } from '../../render/shieldFx';
-import { polyPoints, segPath } from './svgPaths';
+import { cellPaths, polyPoints, segPath } from './svgPaths';
 
 const stop = (e: SyntheticEvent): void => e.preventDefault();
 const swallow = (e: ReactWheelEvent): void => e.stopPropagation();
@@ -56,8 +55,8 @@ export const OwnShipWindow = memo(function OwnShipWindow({ ownShip: v }: { ownSh
           <ellipse data-ui-own-bubble="" cx={v.shield.ellipse.cx} cy={v.shield.ellipse.cy} rx={v.shield.ellipse.rx} ry={v.shield.ellipse.ry}
             fill="none" stroke={hex(CRT.main)} strokeOpacity={v.shield.bubble} strokeWidth={1} />
         )}
-        {v.shield?.cells.map((c, k) => (
-          <polygon key={`c${k}`} data-ui-own-cell="" points={polyPoints(hexPoints(c.x, c.y, v.shield!.cell))} fill="none" stroke={hex(CRT.main)} strokeOpacity={c.alpha} strokeWidth={1} />
+        {v.shield && cellPaths(v.shield.cells, v.shield.cell).map((p) => (
+          <path key={`c${p.alpha}`} data-ui-own-cell="" d={p.d} fill="none" stroke={hex(CRT.main)} strokeOpacity={p.alpha} strokeWidth={1} />
         ))}
         {v.crew.map((c, k) => c.downed
           ? <rect key={k} data-ui-own-crew="downed" x={c.x - 2} y={c.y - 2} width={4} height={4} fill={hex(CRT.glass)} stroke={hex(CRT.hot)} strokeWidth={1} />

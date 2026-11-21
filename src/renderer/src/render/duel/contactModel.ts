@@ -11,7 +11,7 @@ import { HUNTER_MISSILE_COOLDOWN_TICKS, SALVAGE_TICKS, SCAN_UNITS } from '../../
 import { ALERT_BLINK_HZ, blink, CRT, DAMAGE_BLINK_HZ, HATCH_ANGLE, HATCH_SPACING, roomLevel, roomLook } from '../tactical/crtTheme';
 import { hatchSegments } from '../tactical/dashModel';
 import { HULLS, hullFor, roomCentre } from '../tactical/hullModel';
-import { bubbleAlpha, shieldCells, type Ellipse, type ShieldFx } from '../shieldFx';
+import { bubbleAlpha, quantCells, shieldCells, type Ellipse, type ShieldFx } from '../shieldFx';
 import { CONTACT_BOX } from './consoleLayout';
 import type { WeaponsPanel } from './consoleModel';
 import { FREQ_NAMES, hostilityLine, LOOT_NAMES, scanButton, type ScanButton } from './scienceModel';
@@ -218,7 +218,7 @@ export function contactModel(i: ContactModelInput): ContactView | null {
     const a = at(i.art.frame.f0, i.art.frame.s0), z = at(i.art.frame.f1, i.art.frame.s1);
     return { url: i.art.url, x: a.x, y: a.y, w: z.x - a.x, h: z.y - a.y };
   })() : null;
-  const shield = i.shield ? { ellipse, bubble: bubbleAlpha(i.shield.fx, i.shield.slot, sys.shields), cells: shieldCells(i.shield.fx, i.shield.slot, ellipse, CONTACT_SHIELD_CELL, nose, star), cell: CONTACT_SHIELD_CELL } : null;
+  const shield = i.shield ? { ellipse, bubble: bubbleAlpha(i.shield.fx, i.shield.slot, sys.shields), cells: quantCells(shieldCells(i.shield.fx, i.shield.slot, ellipse, CONTACT_SHIELD_CELL, nose, star)), cell: CONTACT_SHIELD_CELL } : null;
   return {
     art, shield, statusY: box.y + box.h + 6,
     contact: Contact.Enemy, title: 'ENEMY SHIP',

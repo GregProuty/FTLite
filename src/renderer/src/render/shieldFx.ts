@@ -20,7 +20,9 @@ export function createShieldFx(slots: number): ShieldFx {
 }
 
 export function addShieldHit(fx: ShieldFx, slot: number, a: number, drop: boolean, last: boolean, delay = 0, layer = -1): void {
-  fx.hits[slot]!.push({ a, age: -delay, drop, last, layer });
+  const list = fx.hits[slot];
+  if (!list) return;   // a slot the fx was not sized for
+  list.push({ a, age: -delay, drop, last, layer });
   if (last && delay <= 0) fx.collapse[slot] = 0;
 }
 
@@ -145,9 +147,18 @@ export function shieldCells(fx: ShieldFx, slot: number, e: Ellipse, cell: number
   return out;
 }
 
+/** The React windows' cells: alpha rounded to 1/20 steps (so the windows group them into a few paths); cells that round to 0 go. */
+export function quantCells(cells: readonly { x: number; y: number; alpha: number }[]): { x: number; y: number; alpha: number }[] {
+  const out: { x: number; y: number; alpha: number }[] = [];
+  for (const c of cells) { const alpha = Math.round(c.alpha * 20) / 20; if (alpha > 0) out.push({ x: c.x, y: c.y, alpha }); }
+  return out;
+}
+
 /** The resting bubble's stroke alpha: 0 with `up` 0 (fading to 0 over COLLAPSE_S after a collapse), else 0.12 + 0.08 * up, at most 0.5. */
 export function bubbleAlpha(fx: ShieldFx, slot: number, up: number): number {
   if (up > 0) return Math.min(0.5, 0.12 + 0.08 * up);
+  // The last layer's shot is still in flight (the HUD already shows 0): the bubble holds at one layer until it lands.
+  for (const h of fx.hits[slot] ?? []) if (h.last && h.age < 0) return 0.12 + 0.08;
   const c = fx.collapse[slot] ?? -1;
   if (c < 0 || c >= COLLAPSE_S) return 0;
   return (0.12 + 0.08) * (1 - c / COLLAPSE_S);

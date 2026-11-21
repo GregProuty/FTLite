@@ -228,9 +228,16 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
   root.addChild(scene);
   renderer.app.stage.addChild(root);
   const fx = createFx();
-  const hunterArt = () => { const img = renderer.assets.image?.('ship.hunter.art'); return img ? { url: img.url, frame: HUNTER_FRAME } : null; };   // UI round Part 3 §3.4
-  const ownPainting = (layoutId: string) => { const def = battlemapFor(layoutId, new Set(renderer.assets.missing)); return def ? renderer.assets.image?.(def.name) ?? null : null; };   // Part 3 §3.5: the layout's own painting
-  const shieldFx = createShieldFx(2), shots = createShots();   // UI round Part 3 §3: the shield shimmer (both ships) and the enemy shots seen from inside
+  let hunterMemo: { url: string; art: { url: string; frame: typeof HUNTER_FRAME } } | null = null;   // one art object per url, not one per frame
+  const hunterArt = () => {   // UI round Part 3 §3.4
+    const img = renderer.assets.image?.('ship.hunter.art');
+    if (!img) return null;
+    if (!hunterMemo || hunterMemo.url !== img.url) hunterMemo = { url: img.url, art: { url: img.url, frame: HUNTER_FRAME } };
+    return hunterMemo.art;
+  };
+  const missingSet = new Set(renderer.assets.missing);   // the asset set is fixed once the scene is built
+  const ownPainting = (layoutId: string) => { const def = battlemapFor(layoutId, missingSet); return def ? renderer.assets.image?.(def.name) ?? null : null; };   // Part 3 §3.5: the layout's own painting
+  const shieldFx = createShieldFx(2), shots = createShots(), later: number[] = [0, 0];   // `later`: per-frame scratch for the drop layers   // UI round Part 3 §3: the shield shimmer (both ships) and the enemy shots seen from inside
   const stageHook = globalThis as unknown as { __FTLITE_STAGE__?: boolean; __spikeAsteroidsFx?: unknown };
   if (stageHook.__FTLITE_STAGE__ === true) stageHook.__spikeAsteroidsFx = fx;   // asteroids-iii: the frame-time check reads the live fx count (a read-only staging hook, behind duelMode's __FTLITE_STAGE__ flag like __spikeAsteroids)
   const rockTrack = createRockTrack();   // asteroids-iii §7.1: smooth motion
@@ -438,16 +445,17 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       layer.container.visible = view !== 'interior'; interior.container.visible = view === 'interior';
       let overlayView: MapOverlayView | null = null;
       // UI round Part 3 §3: hits become shield shimmer (either ship, any view) and, inside, enemy shots; then both age on the presentation clock.
-      const hits = readHits(d.tactical, events), pdt = frozen ? 0 : dt;
+      // Under the fog (Engineering spike §10.4): a shot from an unseen enemy is felt, not seen, so it takes no bearing from the shooter.
+      const hits = readHits(d.tactical, events, (x, y) => pointSeen(d.tactical, x, y)), pdt = frozen ? 0 : dt;
       // The shields count is after every drop this frame, so a drop's layer is that count plus the later drops on the same ship;
       // only the frame's last drop can be the one that reaches 0 (`last`).
-      const later = new Map<number, number>();
+      later[0] = 0; later[1] = 0;
       for (let i = hits.length - 1; i >= 0; i--) {
         const h = hits[i]!;
         if (!h.stopped) continue;
-        const after = (d.tactical.systems[h.target]?.shields ?? 0) + (h.drop ? later.get(h.target) ?? 0 : 0);
+        const after = (d.tactical.systems[h.target]?.shields ?? 0) + (h.drop ? later[h.target] ?? 0 : 0);
         addShieldHit(shieldFx, h.target, h.a, h.drop, h.drop && after === 0, FLIGHT_S[h.kind], h.drop ? after : -1);
-        if (h.drop) later.set(h.target, (later.get(h.target) ?? 0) + 1);
+        if (h.drop) later[h.target] = (later[h.target] ?? 0) + 1;
       }
       if (view === 'interior' && hits.length > 0) {
         const band = interior.band();

@@ -1,7 +1,7 @@
 // UI round Part 3 spec §3.2: the shield fx model (hex shimmer, bubble, HUD flash), pure.
 import { describe, expect, it } from 'vitest';
 import {
-  addShieldHit, bubbleAlpha, COLLAPSE_S, createShieldFx, ellipsePoint, FLICKER_S, hexPoints, PATCH_RINGS, RING_STEP_S,
+  addShieldHit, bubbleAlpha, COLLAPSE_S, createShieldFx, ellipsePoint, FLICKER_S, hexPoints, PATCH_RINGS, quantCells, RING_STEP_S,
   shieldCells, shieldFlash, SHIMMER_S, stepShieldFx, type Ellipse
 } from '../src/renderer/src/render/shieldFx';
 
@@ -99,6 +99,32 @@ describe('shieldFx', () => {
     expect(bubbleAlpha(fx, 0, 1)).toBeCloseTo(0.2, 6);
     expect(bubbleAlpha(fx, 0, 2)).toBeGreaterThan(bubbleAlpha(fx, 0, 1));
     expect(bubbleAlpha(fx, 0, 100)).toBe(0.5);
+  });
+
+  it('the bubble holds at one layer while the last layer\'s shot is still in flight, then collapses', () => {
+    const fx = createShieldFx(1);
+    addShieldHit(fx, 0, 0, true, true, 0.2);
+    expect(bubbleAlpha(fx, 0, 0)).toBeCloseTo(0.2, 6);
+    stepShieldFx(fx, 0.1);
+    expect(bubbleAlpha(fx, 0, 0)).toBeCloseTo(0.2, 6);
+    stepShieldFx(fx, 0.15);   // landed: the collapse fade runs
+    expect(bubbleAlpha(fx, 0, 0)).toBeLessThanOrEqual(0.2);
+    stepShieldFx(fx, COLLAPSE_S + 0.1);
+    expect(bubbleAlpha(fx, 0, 0)).toBe(0);
+  });
+
+  it('a slot the fx was not sized for is ignored, never thrown on', () => {
+    const fx = createShieldFx(2);
+    expect(() => addShieldHit(fx, 5, 0, true, true)).not.toThrow();
+    expect(bubbleAlpha(fx, 5, 0)).toBe(0);
+    expect(shieldCells(fx, 5, E, CELL, NOSE, STAR)).toEqual([]);
+    expect(shieldFlash(fx, 5)).toBeNull();
+    expect(() => stepShieldFx(fx, 0.1)).not.toThrow();
+  });
+
+  it('quantCells rounds alpha to 1/20 steps and drops zeros', () => {
+    const q = quantCells([{ x: 1, y: 2, alpha: 0.533 }, { x: 3, y: 4, alpha: 0.02 }]);
+    expect(q).toEqual([{ x: 1, y: 2, alpha: 0.55 }]);
   });
 
   it('after a last hit the bubble fades over COLLAPSE_S', () => {

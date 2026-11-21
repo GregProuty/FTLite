@@ -9,7 +9,7 @@ import { ALERT_BLINK_HZ, blink, CRT, DAMAGE_BLINK_HZ, HATCH_ANGLE, HATCH_SPACING
 import { hatchSegments } from '../tactical/dashModel';
 import { HIT_FRESH_TICKS } from '../impactModel';
 import { BATTLEMAPS } from '../battlemapModel';
-import { bubbleAlpha, shieldCells, type Ellipse, type ShieldFx } from '../shieldFx';
+import { bubbleAlpha, quantCells, shieldCells, type Ellipse, type ShieldFx } from '../shieldFx';
 import { interiorFrame } from './enemyShots';
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -107,7 +107,7 @@ export function ownShipModel(d: DuelState, box: Box, t: number, flashUntil: numb
       ? { cx: ox + (def!.bounds.x + def!.bounds.w / 2) * s, cy: oy + (def!.bounds.y + def!.bounds.h / 2) * s, rx: 0.56 * def!.bounds.w * s, ry: 0.56 * def!.bounds.h * s }
       : { cx: (bx0 + bx1) / 2, cy: (by0 + by1) / 2, rx: 0.56 * (bx1 - bx0), ry: 0.56 * (by1 - by0) };
     const fr = interiorFrame(d, { x: 0, y: 0, w: gw, h: gh });   // tile to px is a uniform scale plus offset, so the unit vectors carry over
-    shield = { ellipse, bubble: bubbleAlpha(paint.fx, CREW_SLOT, sys.shields), cells: shieldCells(paint.fx, CREW_SLOT, ellipse, OWN_SHIELD_CELL, fr.nose, fr.star), cell: OWN_SHIELD_CELL };
+    shield = { ellipse, bubble: bubbleAlpha(paint.fx, CREW_SLOT, sys.shields), cells: quantCells(shieldCells(paint.fx, CREW_SLOT, ellipse, OWN_SHIELD_CELL, fr.nose, fr.star)), cell: OWN_SHIELD_CELL };
   }
   return {
     painting, shield, tileOpacity: painted ? 0.6 : 1,

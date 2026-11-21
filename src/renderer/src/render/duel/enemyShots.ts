@@ -24,18 +24,27 @@ function bearing(state: TacticalState, slot: number, px: number, py: number): nu
   return Math.atan2(s, f);
 }
 
-export function readHits(state: TacticalState, events: readonly ViewEvent[]): ShipHitRead[] {
+/** `seen` (the map's fog, Engineering spike §10.4): whether a world point is seen. An enemy beam fired from an unseen point
+ *  is felt, not seen: a hit takes its bearing from the impact point instead of the shooter, and a miss is dropped. */
+export function readHits(state: TacticalState, events: readonly ViewEvent[], seen?: (x: number, y: number) => boolean): ShipHitRead[] {
   const out: ShipHitRead[] = [];
   for (const e of events) {
     if (e.kind === 'laser') {
       if ((e.rock ?? -1) >= 0) continue;
       const target = e.ship === CREW_SLOT ? targetOf(state, CREW_SLOT) : CREW_SLOT;
       if (target < 0 || target >= state.ships.length) continue;
-      const a = bearing(state, target, e.x1, e.y1);
+      const hidden = e.ship !== CREW_SLOT && !!seen && !seen(e.x1, e.y1);
+      if (hidden && !e.hit) continue;
+      const a = hidden ? bearing(state, target, e.x2, e.y2) : bearing(state, target, e.x1, e.y1);
       if (!e.hit) out.push({ target, a, kind: 'laser', stopped: false, drop: false, room: -1, miss: true });
       else if (e.stripped) out.push({ target, a, kind: 'laser', stopped: true, drop: true, room: -1, miss: false });
       else if (e.room >= 0) out.push({ target, a, kind: 'laser', stopped: false, drop: false, room: e.room, miss: false });
     } else if (e.kind === 'pewHit') {
+      const a = bearing(state, e.ship, e.x, e.y);
+      if (e.stripped) out.push({ target: e.ship, a, kind: 'pew', stopped: true, drop: true, room: -1, miss: false });
+      else if (e.hull || e.room >= 0) out.push({ target: e.ship, a, kind: 'pew', stopped: false, drop: false, room: e.room, miss: false });
+    } else if (e.kind === 'gunHit') {   // the Valkyrn gun's round: a stripped layer stops it, a hull or room hit goes through (as pewHit)
+      if (e.ship < 0 || e.ship >= state.ships.length) continue;
       const a = bearing(state, e.ship, e.x, e.y);
       if (e.stripped) out.push({ target: e.ship, a, kind: 'pew', stopped: true, drop: true, room: -1, miss: false });
       else if (e.hull || e.room >= 0) out.push({ target: e.ship, a, kind: 'pew', stopped: false, drop: false, room: e.room, miss: false });
