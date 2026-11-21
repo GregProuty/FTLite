@@ -11,7 +11,8 @@ import { Life, LifeState, Position } from '../src/renderer/src/sim/components';
 import { createDuel, disposeDuel, type DuelState } from '../src/renderer/src/sim/duel/state';
 import { extinguishProgress } from '../src/renderer/src/sim/duel/fire';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
-import { classOf, Room } from '../src/renderer/src/sim/tactical/state';
+import { classOf, CREW_SLOT, Room } from '../src/renderer/src/sim/tactical/state';
+import { addShieldHit, createShieldFx } from '../src/renderer/src/render/shieldFx';
 import { OWN_SHIP_BOX } from '../src/renderer/src/render/duel/consoleLayout';
 import { CRT } from '../src/renderer/src/render/tactical/crtTheme';
 import {
@@ -54,6 +55,39 @@ describe('the fit (spec §4)', () => {
       });
     }
   });
+});
+
+describe('the painting and shield (UI round Part 3 §3.5)', () => {
+  const img = { url: 'hound.png', w: 2800, h: 1400 };
+  const withHound = (f: (d: DuelState) => void): void => { const d = createDuel(parseShip(hound), 5); try { f(d); } finally { disposeDuel(d); } };
+  it('places the painting in the tiles transform and draws only damaged or burning tiles over it', () => withHound((d) => {
+    const fx = createShieldFx(2), f = ownShipFit(d.interior.derived.width, d.interior.derived.height, box);
+    const plain = ownShipModel(d, box, 0, 0), v = ownShipModel(d, box, 0, 0, { painting: img, fx });
+    expect(v.painting).toEqual({ url: 'hound.png', x: f.ox + -5.5 * f.s, y: f.oy + -3.5 * f.s, w: 2800 / 70 * f.s, h: 1400 / 70 * f.s });
+    const tx0 = Math.min(...plain.tiles.map((q) => q.x)), tx1 = Math.max(...plain.tiles.map((q) => q.x + q.s));
+    expect(v.painting!.x).toBeLessThanOrEqual(tx0); expect(v.painting!.x + v.painting!.w).toBeGreaterThanOrEqual(tx1);
+    expect(plain.painting).toBeNull(); expect(plain.tileOpacity).toBe(1);
+    expect(v.tileOpacity).toBe(0.6);
+    expect(v.tiles.length).toBe(0);   // an undamaged ship: no tile draws over the painting
+    expect(v.edges).toEqual(plain.edges);
+  }));
+  it('a burning room still draws its tiles over the painting', () => withHound((d) => {
+    igniteRoom(d.interior, roomOf(d, Room.Engines));
+    const v = ownShipModel(d, box, LIT, 0, { painting: img, fx: createShieldFx(2) });
+    expect(v.tiles.length).toBeGreaterThan(0);
+  }));
+  it('no image for the layout, or an unpainted layout, gives no painting; the shield still shows', () => {
+    withHound((d) => { expect(ownShipModel(d, box, 0, 0, { painting: null, fx: createShieldFx(2) }).painting).toBeNull(); });
+    withDuel((d) => { const v = ownShipModel(d, box, 0, 0, { painting: img, fx: createShieldFx(2) }); expect(v.painting).toBeNull(); expect(v.tiles.length).toBeGreaterThan(0); });
+  });
+  it('the shield ellipse is the tiles box at 0.56 radii and the cells shimmer on a hit; no fx, no shield', () => withHound((d) => {
+    const fx = createShieldFx(2); addShieldHit(fx, CREW_SLOT, 0, false, false); fx.hits[CREW_SLOT]![0]!.age = 0.01;
+    const plain = ownShipModel(d, box, 0, 0), v = ownShipModel(d, box, 0, 0, { painting: img, fx });
+    const x0 = Math.min(...plain.tiles.map((q) => q.x)), x1 = Math.max(...plain.tiles.map((q) => q.x + q.s));
+    expect(v.shield!.ellipse.cx).toBeCloseTo((x0 + x1) / 2, 9); expect(v.shield!.ellipse.rx).toBeCloseTo(0.56 * (x1 - x0), 9);
+    expect(v.shield!.cell).toBe(4); expect(v.shield!.cells.length).toBeGreaterThan(0);
+    expect(plain.shield).toBeNull();
+  }));
 });
 
 describe('edges (spec §4)', () => {

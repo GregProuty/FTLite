@@ -13,6 +13,7 @@ import type { EndView } from '../../render/duel/endModel';
 import { CONSOLE_RESERVE, consoleLayout, EDGE, OWN_SHIP, OWN_SHIP_BOX, STATUS_RESERVE } from '../../render/duel/consoleLayout';
 import { consoleModel, consoleStation, type ConsoleStation } from '../../render/duel/consoleModel';
 import { contactModel } from '../../render/duel/contactModel';
+import { battlemapFor } from '../../render/battlemapModel';
 import { fireWatch, ownShipModel, type FireWatch } from '../../render/duel/ownShipModel';
 import { hoverReadout } from '../../render/duel/scienceModel';
 import { shipHud } from '../../render/duel/shipHudModel';
@@ -228,6 +229,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
   renderer.app.stage.addChild(root);
   const fx = createFx();
   const hunterArt = () => { const img = renderer.assets.image?.('ship.hunter.art'); return img ? { url: img.url, frame: HUNTER_FRAME } : null; };   // UI round Part 3 §3.4
+  const ownPainting = (layoutId: string) => { const def = battlemapFor(layoutId, new Set(renderer.assets.missing)); return def ? renderer.assets.image?.(def.name) ?? null : null; };   // Part 3 §3.5: the layout's own painting
   const shieldFx = createShieldFx(2), shots = createShots();   // UI round Part 3 §3: the shield shimmer (both ships) and the enemy shots seen from inside
   const stageHook = globalThis as unknown as { __FTLITE_STAGE__?: boolean; __spikeAsteroidsFx?: unknown };
   if (stageHook.__FTLITE_STAGE__ === true) stageHook.__spikeAsteroidsFx = fx;   // asteroids-iii: the frame-time check reads the live fx count (a read-only staging hook, behind duelMode's __FTLITE_STAGE__ flag like __spikeAsteroids)
@@ -482,7 +484,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         ...sceneUi(view, overlay, options.pauseText, overlayView, torpedoInbound(d.tactical)),
         hud: (() => { const h = shipHud(d, source.active()); h.shields.flash = shieldFlash(shieldFx, CREW_SLOT, h.shields.up); return h; })(),   // UI round §2.4: the HUD on every view
         ...(contact ? { contact: contactView } : {}),
-        ownShip: onMap ? ownShipModel(d, OWN_SHIP_BOX, t, flashUntil) : null,   // own ship window spec §4: the console map views only
+        ownShip: onMap ? ownShipModel(d, OWN_SHIP_BOX, t, flashUntil, { painting: ownPainting(d.interior.layout.id), fx: shieldFx }) : null,   // own ship window spec §4: the console map views only
         ...(contactView?.aimWeapon ? { pointer: options.pointer?.() ?? null } : {}),   // FTL targeting spec §1: seeds the targeting line
         sitCard: onConsole && seat !== null && carded ? sitCard(seat, t - sitAt, acted, sitCardBelow(d.tactical, fogView), !!overlay.notice) : null   // Feel-i §1; Feel-ii §3.9: under the online notice
       });

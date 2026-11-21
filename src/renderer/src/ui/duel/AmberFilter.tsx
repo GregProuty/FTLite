@@ -1,5 +1,5 @@
 // UI round Part 3 §3.4: the shared amber filter (id crt-amber): desaturate, then map luminance onto the CRT ramp. Element
-// ids are global in the DOM, so render this once where it is shown (the contact window; Task 6 reuses the id).
+// ids are global in the DOM, so DuelUi renders this once for both the contact and own ship windows.
 import { amberTables } from '../../render/amberFilter';
 
 export function AmberFilter() {

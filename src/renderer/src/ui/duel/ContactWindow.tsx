@@ -23,7 +23,6 @@ import { boxCss } from '../stage/geometry';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
 import { hexPoints } from '../../render/shieldFx';
-import { AmberFilter } from './AmberFilter';
 import { polyPoints, segPath } from './svgPaths';
 import { useConsoleLayout } from '../stage/useStage';
 
@@ -74,7 +73,6 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
       <div data-ui-contact="" onPointerDown={rootDown} onContextMenu={stop} onMouseDown={stop} onAuxClick={stop} onWheel={swallow}
         style={{ position: 'absolute', boxSizing: 'border-box', ...boxCss(CONTACT.x, CONTACT.y, CONTACT.w, CONTACT.h, l), pointerEvents: 'auto' }} />
       <Panel x={CONTACT.x} y={CONTACT.y} w={CONTACT.w} h={CONTACT.h} />
-      <AmberFilter />
       <PixelText text={contact.title} x={x0} y={top + 8} size={FONT_NATIVE} tint={CRT.main} />
       {contact.contact !== null && <Button name="contact-close" label="X" x={right - 24} y={top + 6} w={24} h={20} onPress={() => actions.contact.close()} />}
       {scan && scan.enabled && <Button name="contact-scan" label={scan.label} x={right - 24 - 6 - 132} y={top + 6} w={132} h={20} onPress={() => actions.contact.scan()} />}
