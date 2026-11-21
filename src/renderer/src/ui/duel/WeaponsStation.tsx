@@ -37,7 +37,7 @@ import { hex } from '../stage/color';
 import { useCrt } from '../stage/CrtContext';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
-import { crtRowLook } from './ReadoutPanel';
+import { crtRowLook } from './crtRowLook';
 
 type Weapon = 'laser' | 'torpedo';
 /** The room words, rooms[0] Weapons, rooms[1] Shields, rooms[2] Engines (as the contact window's labels). */

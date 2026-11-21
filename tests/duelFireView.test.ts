@@ -1,4 +1,4 @@
-// Duel fire views (duel-fire spec §2): the interior marker, the readout row, the help line, the client's reach check
+// Duel fire views (duel-fire spec §2): the interior marker, the client's reach check (UI round §2.2: the readout row and help are gone)
 // and the work particles.
 import { describe, expect, it } from 'vitest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
@@ -9,10 +9,8 @@ import { DUEL_EXTINGUISH_UNITS } from '../src/renderer/src/sim/duel/tuning';
 import { igniteRoom } from '../src/renderer/src/sim/hazards/fire';
 import { Room } from '../src/renderer/src/sim/tactical/state';
 import { interiorOverlay } from '../src/renderer/src/render/duel/interiorModel';
-import { readoutHelp, readoutRows, type ReadoutMode } from '../src/renderer/src/render/duel/readoutModel';
 import { duelWorking } from '../src/renderer/src/render/particles/sources';
 import { repairInReach } from '../src/renderer/src/app/duel/controls';
-import { GOOD, WARN } from '../src/renderer/src/render/theme';
 import { TILE_PX } from '../src/shared/resolution';
 
 const layout = parseShip(cutter);
@@ -31,25 +29,6 @@ describe('duel fire views (spec §2)', () => {
       expect(interiorOverlay(d).markers[0]).toMatchObject({ level: 2, progress: 0.25, label: 'FIRE - HOLD E', fire: true });
       expect(interiorOverlay(d).tints.map((t) => [t.tacticalRoom, t.level])).toEqual([[Room.Engines, 2]]);
     } finally { disposeDuel(d); }
-  });
-  it('a burning room reads FIRE in the damage red on every readout, with the extinguish bar', () => {
-    const d = createDuel(layout, 5);
-    try {
-      d.tactical.systems[0].rooms[Room.Shields] = 1;
-      igniteRoom(d.interior, roomOf(d, Room.Shields));
-      for (const mode of ['helm', 'weapons', 'interior'] as ReadoutMode[]) {
-        const rows = readoutRows({ duel: d, mode, active: 0 });
-        const r = rows.find((x) => x.label === 'SHIELDS')!;
-        expect(r).toMatchObject({ value: 'FIRE', valueTint: WARN, emphasis: 'alert' });
-        expect(r.bar).toBeUndefined();
-        expect(rows.find((x) => x.label === 'WEAPONS' && x.value !== '')!.value).toBe('OK');
-      }
-      d.interior.rooms.fireRepair[roomOf(d, Room.Shields)] = 0.5;
-      expect(readoutRows({ duel: d, mode: 'helm', active: 0 }).find((x) => x.label === 'SHIELDS')!.bar).toEqual({ fill: 0.5, colour: GOOD });
-    } finally { disposeDuel(d); }
-  });
-  it('the interior help says HOLD E REPAIR/EXTINGUISH', () => {
-    expect(readoutHelp('interior')).toContain('E SIT   HOLD E REPAIR/EXTINGUISH');
   });
   it('the client reach check counts a burning, undamaged room as the sim does', () => {
     const d = createDuel(layout, 5), eid = d.interior.crew[0]!;

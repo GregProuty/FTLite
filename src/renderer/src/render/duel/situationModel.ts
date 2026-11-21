@@ -16,6 +16,13 @@ import { trimmedWeaponPower, WeaponSlot } from '../../sim/tactical/bars';
 import { pointSeen, shipSeen } from '../../sim/tactical/science';
 import { shipEngineFactor } from '../../sim/tactical/physics';
 
+/** UI round §2.4a (the old readout's rule): the enemy torpedo is within INCOMING_RANGE of the crew ship. */
+export const INCOMING_RANGE = 600;
+export function torpedoInbound(t: TacticalState): boolean {
+  const m = missileOf(t, targetOf(t, CREW_SLOT)), me = t.ships[CREW_SLOT]!;
+  return m !== null && (m.x - me.x) ** 2 + (m.y - me.y) ** 2 <= INCOMING_RANGE * INCOMING_RANGE;
+}
+
 /** Seconds a released shot keeps the solution lit, so a volley that auto-fires the tick it is ready still reads FIRING. */
 export const SOLUTION_HOLD_S = 0.6;
 

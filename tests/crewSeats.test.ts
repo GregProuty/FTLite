@@ -11,7 +11,7 @@ import { stepDuelTick } from '../src/renderer/src/sim/duel/step';
 import { CONSOLE_RESERVE } from '../src/renderer/src/render/duel/consoleLayout';
 import { FONT_NATIVE, FONT_SIZE, textPx } from '../src/renderer/src/render/theme';
 import { INTERNAL_W } from '../src/shared/resolution';
-import { SIT_CARD_PAD } from '../src/renderer/src/ui/duel/SitCard';
+import { SIT_CARD_PAD, sitCardCx } from '../src/renderer/src/ui/duel/SitCard';
 import { standAtStation } from './helpers/duelSeat';
 import { CUTTER } from './helpers/scriptedDuel';
 
@@ -59,6 +59,8 @@ describe('the Helm sit-down card (helm round 2 §6.4)', () => {
     const keysW = SIT_CARDS.helm.keys.reduce((n, k) => n + textPx(k, 1), 0) + 28 * (SIT_CARDS.helm.keys.length - 1);   // SitCard.tsx's row: 28 px gaps
     const w = Math.max(textPx(SIT_CARDS.helm.title, FONT_SIZE / FONT_NATIVE), keysW) + 2 * SIT_CARD_PAD;
     expect([keysW, w]).toEqual([572, 600]);
-    expect(w).toBeLessThanOrEqual(INTERNAL_W - CONSOLE_RESERVE.right - CONSOLE_RESERVE.left);   // 896
+    expect(w).toBeLessThanOrEqual(INTERNAL_W - CONSOLE_RESERVE.right - CONSOLE_RESERVE.left);   // 1004 (UI round §2.4a)
+    expect(sitCardCx - w / 2).toBeGreaterThanOrEqual(CONSOLE_RESERVE.left);   // UI round §2.4a: centred on the top band (688), the card stays inside the map
+    expect(sitCardCx + w / 2).toBeLessThanOrEqual(INTERNAL_W - CONSOLE_RESERVE.right);
   });
 });

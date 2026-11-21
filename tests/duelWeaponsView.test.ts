@@ -13,7 +13,7 @@ import { BEAM_HIT, BEAM_MISS, createFx, hitsCrew, pushEvents, recordTrails, rese
 import { createTacticalLayer, starField } from '../src/renderer/src/render/tactical/tacticalLayer';
 import { ARROW_GAP_SIDE, ARROW_MARGIN, spreadArrows, tacticalModel, type ArrowDraw, type PrevBody } from '../src/renderer/src/render/tactical/tacticalModel';
 import { ARC_HALF, bearingDeg, combatModel, TORPEDO_DOT_PX, weaponsInfoText, type CombatModelInput } from '../src/renderer/src/render/tactical/weaponsModel';
-import { CONSOLE_RESERVE, CONTACT_RESERVE, SIDE, TABS_RIGHT } from '../src/renderer/src/render/duel/consoleLayout';
+import { CONSOLE_RESERVE, CONTACT, CONTACT_RESERVE, INFO_BAND, TABS_RIGHT } from '../src/renderer/src/render/duel/consoleLayout';
 import { FONT_NATIVE, FONT_SIZE, textPx } from '../src/renderer/src/render/theme';
 import { roomCentre } from '../src/renderer/src/render/tactical/hullModel';
 
@@ -76,24 +76,24 @@ describe('the combat model (H-1 spec §7)', () => {
     const w = combatModel({ ...input(st, createCamera(0, 0), 'weapons'), reserveLeft: 228, reserveRight: 156 }).weapons!;
     expect(w.info.x).toBe(676);
   });
-  it('the info text fits between the tab strip and the side column in a 1280-wide console view, window open or not (FTL targeting fix)', () => {
+  it('the info text fits between the tab strip and the contact window in a 1280-wide console view (UI round §2.4a: INFO_BAND), window open or not (FTL targeting fix)', () => {
     // Feel-i: the arc's words moved into the status sentence; the info line is bearing, range and the torpedo, under it.
     expect(weaponsInfoText(263, 3987, false)).toBe('BRG 263  RNG 3987  TORP OUT');
     expect(weaponsInfoText(7, 120, true)).toBe('BRG 007  RNG 120  TORP IN');
-    const st = createTacticalState(11, 2, ShipClass.ValkyrnLaser), band = { left: TABS_RIGHT, right: SIDE.x }, seenRange = sensorRange(st.systems[0]!);   // W-4 spec §14.1: the beam's sentence, on the laser fit
-    expect([TABS_RIGHT, SIDE.x]).toEqual([408, 1136]);
+    const st = createTacticalState(11, 2, ShipClass.ValkyrnLaser), band = INFO_BAND, seenRange = sensorRange(st.systems[0]!);   // W-4 spec §14.1: the beam's sentence, on the laser fit
+    expect([TABS_RIGHT, CONTACT.x]).toEqual([408, 968]); expect(band).toEqual({ left: TABS_RIGHT, right: CONTACT.x });
     for (const far of [300, 600, 3987, 99999]) {   // Engineering spike §10.4: 600 is seen at the start sensor range, so its sentence is measured
       Object.assign(st.ships[1], { x: st.ships[0].x + far, y: st.ships[0].y });
       for (const reserveRight of [CONSOLE_RESERVE.right, CONTACT_RESERVE]) {
         const w = combatModel({ ...input(st, createCamera(st.ships[0].x, st.ships[0].y), 'weapons'), reserveLeft: CONSOLE_RESERVE.left, reserveRight, infoBand: band }).weapons!;
         const half = textPx(w.info.text, 1) / 2;   // Feel-i: FONT_NATIVE, stacked under the status sentence
         expect(w.info.x - half, `${far} ${reserveRight}`).toBeGreaterThanOrEqual(TABS_RIGHT);
-        expect(w.info.x + half, `${far} ${reserveRight}`).toBeLessThanOrEqual(SIDE.x);
+        expect(w.info.x + half, `${far} ${reserveRight}`).toBeLessThanOrEqual(CONTACT.x);
         const status = combatModel({ ...input(st, createCamera(st.ships[0].x, st.ships[0].y), 'weapons'), reserveLeft: CONSOLE_RESERVE.left, reserveRight, infoBand: band }).status ?? null;
         if (far > seenRange) { expect(status, `status ${far}`).toBeNull(); continue; }   // Engineering spike §10.4: no words of an unseen enemy
         const sh = textPx(status!.label.text, FONT_SIZE / FONT_NATIVE) / 2;
         expect(status!.label.x - sh, `status ${far} ${reserveRight}`).toBeGreaterThanOrEqual(TABS_RIGHT);
-        expect(status!.label.x + sh, `status ${far} ${reserveRight}`).toBeLessThanOrEqual(SIDE.x);
+        expect(status!.label.x + sh, `status ${far} ${reserveRight}`).toBeLessThanOrEqual(CONTACT.x);
         expect(status!.label.y + 26, 'the sentence clears the info line').toBeLessThanOrEqual(w.info.y);
       }
     }

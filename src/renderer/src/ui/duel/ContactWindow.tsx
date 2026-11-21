@@ -1,5 +1,5 @@
 // The contact window (enemy ship window spec §4, §5, §6.6): one map contact, here the enemy ship, at CONTACT below the
-// side column. The ship drawing is an inline SVG in internal px inside the console's CRT glow; React draws only the
+// top right. The ship drawing is an inline SVG in internal px inside the console's CRT glow; React draws only the
 // view's resolved ramp colours and does no blinking of its own. At Weapons, LASER arms the aim: the drawing box hides
 // the cursor and draws a reticle, the hovered room gets a hot stroke, and a room click picks it (the console lock).
 // The Helm only looks. The window takes the pointer, so no click or wheel over it reaches the map.

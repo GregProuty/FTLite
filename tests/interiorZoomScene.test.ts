@@ -67,18 +67,19 @@ describe('the scene follows the source\'s active character (interior zoom spec r
 });
 
 describe('a zoomed interior view (interior zoom spec rules 1, 2)', () => {
-  it('at stage 1.5 and +1: whole screen pixels, the clamp, and the band clip only while zoomed', () => {
+  it('at stage 1.5 and +2: whole screen pixels, the clamp, and the band clip only while zoomed', () => {
     const d = createDuel(layout, 5), view = createInteriorView(assets, () => 1.5), camera = createInteriorCamera();
     try {
       view.draw(d, crewAt(d), 1, 1 / 60, [], 1 / 60, { camera, active: 0 });
       expect(view.world.mask ?? null).toBeNull();
-      interiorInput(camera, ZOOM_IN);
+      // UI round §2.2: the band is the full width, so +1 (1237 px) no longer overflows it; +2 (1547 px) does, as +1 did in 1060.
+      interiorInput(camera, ZOOM_IN); interiorInput(camera, ZOOM_IN);
       const eid = d.interior.crew[0]!;
       for (const x of [0.5, 9.3, 28.5]) {
         Position.x[eid] = x;
         view.draw(d, crewAt(d), 1, 1 / 60, [], 1 / 60, { camera, active: 0 });
         const s = view.world.scale.x, w = view.world;
-        expect(2 * s * 1.5).toBe(4);   // the fit at 1.5 is 3 screen px per art px; +1 is 4
+        expect(2 * s * 1.5).toBe(5);   // the fit at 1.5 is 3 screen px per art px; +2 is 5
         expect(Number.isInteger(w.x * 1.5) && Number.isInteger(w.y * 1.5), `${w.x} ${w.y}`).toBe(true);
         expect(w.x).toBeLessThanOrEqual(0);                                          // the ship's left edge never inside the band's
         expect(w.x + 29 * TILE_PX * s).toBeGreaterThanOrEqual(INTERIOR_BAND.w - 1e-9);   // nor its right edge

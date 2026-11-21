@@ -33,10 +33,10 @@ const AC = { heat: 0.25, locked: false, offline: false, rate: '6/S' };
 /** A Weapons view; `pew` (pew pew's three charge fills) is set, so the PEW PEW card draws; a laser-fit case passes `pew: undefined`. */
 const weapons = (over: Partial<NonNullable<ConsoleView['weapons']>>): ConsoleView => ({
   station: 'weapons', tabs: { helm: 'open', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: 'switch', weapons: null, science: null, ship: 'stand' },
-  helm: null, science: null, side: { zoom: '0.90', free: false, snapLabel: 'CAMERA' },
+  helm: null, science: null,
   weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: false, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: -1, torpTarget: -1, burst: 0, pew: [1, 1, 1], ...over }
 });
-const view = (console: ConsoleView): DuelUiView => ({ readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console });
+const view = (console: ConsoleView): DuelUiView => ({ end: null, banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, console });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store);
   render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);

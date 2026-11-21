@@ -116,7 +116,7 @@ rows move as follows:
 | P2..P4 AWAY / DOWNED | Ship view only: a small tag on that crew member |
 | HELM / WEAPONS EMPTY, COASTING | Ship view only: the empty console's icon blinks |
 | ENEMY range / BEARING | Helm only, beside the map's enemy marker |
-| TORPEDO INBOUND | A banner in every view |
+| TORPEDO INBOUND | A banner on the ship view (the consoles already show TORPEDO INBOUND: EVADE in the map's status sentence) |
 | Help lines | Removed from screen; they stay in Settings → Controls |
 
 The flight mode's feel rows (Valkyrn flight) are not the info box and stay.
@@ -144,6 +144,7 @@ Part 2 is built in two plans: **2a** (§2.2-§2.4, this layout) and **2b** (§2.
 - **The own ship window** moves under the HUD: x 12, y 160, 240×170 (to y 330).
 - **The enemy window** moves up to the top-right corner (y 42), where the zoom box was: x 968-1268, y 42-462.
 - **The map's top band** (status sentence, info line) runs from the tab strip to the enemy window's left edge (408-968).
+- **The sit card** draws at the top (y 100, or 156 under the online notice), centred on the top band (x 688), clamped left so a wide card ends 8 px before the enemy window.
 - **The map's reserves:** left 264 (the own ship window's right edge + 12), right 12, or the enemy window's 324 while
   it shows.
 - **The console strip** (the WEAP / ENG / SENS POWER strip) goes: the HUD's power panel shows every system. Science's
@@ -155,9 +156,9 @@ Part 2 is built in two plans: **2a** (§2.2-§2.4, this layout) and **2b** (§2.
   extinguish progress is a 2 px bar under the name.
 - **Helm range and bearing:** the Helm map gets the Weapons map's info line (`BRG 074  RNG 728`, no TORP) at y 44, or
   `NO CONTACT IN SENSOR RANGE`. That is "beside the marker" made consistent with Weapons. The off-screen arrow already
-  carries the range.
+  carries the range. The Valkyrn's Flight view, which flies the Helm camera, shows the same line.
 - **Ship view only:** `TORPEDO INBOUND` (the old readout's rule: the enemy torpedo within 600) blinks hot at top centre
-  (y 100, FONT_SIZE). An AWAY player gets an `AWAY` label under their character, the way DOWNED does. An empty Helm or
+  (centred on y 106, FONT_SIZE: between the pause line and the notice). An AWAY player gets an `AWAY` label under their character, the way DOWNED does. An empty Helm or
   Weapons console's badge blinks WARN.
 
 ### 2.5 Tests and gates

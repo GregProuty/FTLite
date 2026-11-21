@@ -13,6 +13,7 @@ import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
 import { TEXT } from '../src/renderer/src/render/theme';
 import { sitCard } from '../src/renderer/src/render/duel/sitModel';
 import { SIT_CARD_TOP_Y, SIT_CARD_UNDER_Y } from '../src/renderer/src/ui/duel/SitCard';
+import { PAUSE_H, PAUSE_Y } from '../src/renderer/src/ui/duel/Banners';
 import { THROTTLE_WHEEL_PX } from '../src/renderer/src/ui/duel/HelmStation';
 import { WHEEL_NOTCH_PX } from '../src/renderer/src/app/duel/input';
 import { makeUi } from './helpers/uiStore';
@@ -23,13 +24,13 @@ const btn = (name: string) => document.querySelector(`[data-testid="console-${na
 const charge = { label: 'CHARGE', value: 'READY', labelTint: TEXT, valueTint: TEXT, bar: { fill: 1, colour: TEXT } };
 const weapons = (over: Partial<NonNullable<ConsoleView['weapons']>>): ConsoleView => ({
   station: 'weapons', tabs: { helm: 'open', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: 'switch', weapons: null, science: null, ship: 'stand' },
-  helm: null, science: null, side: { zoom: '0.90', free: false, snapLabel: 'CAMERA' },
+  helm: null, science: null,
   weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: 1, torpTarget: -1, burst: 2, ...over }
 });
 const helm = (over: Partial<NonNullable<ConsoleView['helm']>> = {}): ConsoleView => ({ ...weapons({}), station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, weapons: null,
-  helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 2, ...over }, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } });
-const view = (console: ConsoleView, extra: Partial<DuelUiView> = {}): DuelUiView => ({ readout: { rows: [], help: [] }, end: null,
-  banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console, ...extra });
+  helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 2, ...over } });
+const view = (console: ConsoleView, extra: Partial<DuelUiView> = {}): DuelUiView => ({ end: null,
+  banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, console, ...extra });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store);
   const input = { press: vi.fn(), hold: vi.fn(), lock: vi.fn(), torpLock: vi.fn(), throttle: vi.fn(), frequency: vi.fn() };
@@ -99,16 +100,19 @@ describe('the Helm block (Feel-ii §1.1, §1.4)', () => {
   });
 });
 
-describe('the sit-down card under the online notice (Feel-ii §3.9)', () => {
-  it('a top card moves below YOU: HELM while it shows; a bottom card stays', () => {
+describe('the sit-down card under the online notice (Feel-ii §3.9; UI round §2.4a: always at the top)', () => {
+  it('the card sits at the top, under the pause line, and moves below YOU: HELM while it shows, whatever the model\'s top', () => {
     const { duel } = mount();
     const y = () => Number((document.querySelector('[data-ui-sit-card]') as HTMLElement).dataset.uiSitY);
-    act(() => duel.frame(view(helm(), { sitCard: sitCard('helm', 0.5, false, true, true), banners: { interior: null, tactical: null, notice: 'YOU: HELM' } })));
+    act(() => duel.frame(view(helm(), { sitCard: sitCard('helm', 0.5, false, true, true), banners: { interior: null, tactical: null, notice: 'YOU: HELM', alert: null } })));
     expect(y()).toBe(SIT_CARD_UNDER_Y);
     expect(SIT_CARD_UNDER_Y).toBeGreaterThanOrEqual(130 + 24);   // the notice: centred at 130, FONT_SIZE × 1.5 tall
     act(() => duel.frame(view(helm(), { sitCard: sitCard('helm', 0.5, false, true, false) })));
     expect(y()).toBe(SIT_CARD_TOP_Y);
-    act(() => duel.frame(view(helm(), { sitCard: sitCard('helm', 0.5, false, false, true), banners: { interior: null, tactical: null, notice: 'YOU: HELM' } })));
-    expect(y()).toBe(576);
+    expect(SIT_CARD_TOP_Y).toBe(100); expect(SIT_CARD_TOP_Y).toBeGreaterThanOrEqual(PAUSE_Y + PAUSE_H);   // under the pause line (y 66..90)
+    act(() => duel.frame(view(helm(), { sitCard: sitCard('helm', 0.5, false, false, true), banners: { interior: null, tactical: null, notice: 'YOU: HELM', alert: null } })));
+    expect(y()).toBe(SIT_CARD_UNDER_Y);   // UI round §2.4a: the old bottom card (y 576) is gone: a card without top is at the top too
+    act(() => duel.frame(view(helm(), { sitCard: sitCard('helm', 0.5, false, false, false) })));
+    expect(y()).toBe(SIT_CARD_TOP_Y);
   });
 });

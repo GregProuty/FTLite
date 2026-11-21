@@ -20,7 +20,7 @@ import { gunReason, laserSituation, refusal } from '../src/renderer/src/render/d
 import { enemyCharge, flashesFor, hitCallouts, pushHits } from '../src/renderer/src/render/tactical/hitModel';
 import type { ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import { chargeRow } from '../src/renderer/src/render/duel/readoutModel';
-import { SIDE, TABS_RIGHT } from '../src/renderer/src/render/duel/consoleLayout';
+import { INFO_BAND } from '../src/renderer/src/render/duel/consoleLayout';
 
 const vp = { w: 1280, h: 720 };
 const valkyrn = parseShip(valkyrnJson), hound = parseShip(houndJson);
@@ -28,7 +28,7 @@ function flying(): DuelState { const d = createDuel(valkyrn, 7, 0, 1); sitDown(d
 function input(d: DuelState, flight = true): CombatModelInput {
   const st = d.tactical, s = st.ships[0];
   return { state: st, prev: st.ships.map((b) => ({ x: b.x, y: b.y, h: b.heading + b.headingAcc })), alpha: 1, camera: createCamera(s.x, s.y, 0.5), viewport: vp, console: 'helm',
-    axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: 156, reserveLeft: 228, infoBand: { left: TABS_RIGHT, right: SIDE.x }, missilePrev: [null, null], fx: createFx(), flight };
+    axes: { turn: 0, thrust: 0 }, ships: [0, 1], paused: false, reserveRight: 12, reserveLeft: 264, infoBand: INFO_BAND, missilePrev: [null, null], fx: createFx(), flight };
 }
 /** The enemy `dist` ahead of the crew's nose and `side` to starboard, moving with the crew. */
 function place(d: DuelState, dist: number, side = 0): void {

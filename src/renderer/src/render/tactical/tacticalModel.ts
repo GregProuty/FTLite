@@ -174,9 +174,9 @@ export interface TacticalModelInput {
   /** Ships to draw (the flight view draws only ship 0). The crew ship is index 0. */
   ships: readonly number[];
   paused: boolean;
-  /** Screen pixels on the right kept clear of off-screen arrows (the readout panel). */
+  /** Screen pixels on the right kept clear of off-screen arrows (the stage edge, or the contact window while it shows). */
   reserveRight: number;
-  /** Screen pixels on the left kept clear of off-screen arrows (the Artemis console's status table); default 0. */
+  /** Screen pixels on the left kept clear of off-screen arrows (the own ship window, UI round §2.4a); default 0. */
   reserveLeft?: number;
   /** Spread crowded off-screen arrows apart (the duel views set it; the flight view keeps H-1a's exact positions). */
   spreadArrows?: boolean;
