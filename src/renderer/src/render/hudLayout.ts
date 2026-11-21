@@ -32,6 +32,7 @@ export function hudLayout(stage: StageSize = REFERENCE_STAGE): HudLayout {
     blockRect: (i) => ({ x: 8 + i * (BLOCK_W + 8), y: blockY, w: BLOCK_W, h: BLOCK_H }),
     cardRect: (i, tabbed) => { const ch = (CARD_BODY_LINES + (tabbed ? 1 : 0)) * LINE + 8; return { x: xs[i] ?? xs[3], y: blockY - 4 - ch, w: CARD_W, h: ch }; },
   };
+  if (cache.size >= 32) cache.clear();   // a window drag passes many sizes; keep the cache small (as consoleLayout)
   cache.set(key, out); return out;
 }
 
