@@ -14,7 +14,7 @@ import { hx, hy } from '../tactical/direction';
 import { inArc, sideOf } from '../tactical/geometry';
 import { autoFaceTurn } from '../tactical/hunter';
 import { rockAlive, rockSlots, rockVx, rockVy, rockX, rockY, ROCK_STRIDE } from '../tactical/rocks';
-import { circularSpeed } from '../tactical/map';
+import { shipCircularSpeed } from '../tactical/map';
 import { predictFlight } from '../tactical/predict';
 import { nearestHeading } from '../tactical/lead';
 import { classOf, missileOf, Room, targetOf, type Axes } from '../tactical/state';
@@ -188,7 +188,7 @@ export function orbitSteer(d: DuelState, orbitR: number): Axes & { dx: number; d
   const dl = len(dx, dy); dx /= dl; dy /= dl;
   const nose = hx(s.heading) * dx + hy(s.heading) * dy;
   const turn = nose >= COS_STEP ? 0 : turnToward(s.heading, dx, dy);
-  const speed = len(s.vx, s.vy), vc = circularSpeed(r), slack = classOf(d.tactical, 0).newtonianHelm ? CREW_SPEED_SLACK : SPEED_SLACK;
+  const speed = len(s.vx, s.vy), vc = shipCircularSpeed(r), slack = classOf(d.tactical, 0).newtonianHelm ? CREW_SPEED_SLACK : SPEED_SLACK;
   let thrust = 0;
   if (nose < COS_45) thrust = 0;
   else if (speed > vc + slack) thrust = -1;

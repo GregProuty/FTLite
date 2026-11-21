@@ -212,6 +212,13 @@ export const PEW_ROOM_WEAR = 3;
 /** Playtest2feedback §2: the top speed thrust may not push a ship flying with drag 0 past (u/s); gravity, the edge and
  *  bounces still can. Helm round 2 §3.1: no game ship flies with drag 0 now; the test configurations still do. */
 export const MAX_SPEED = 400;
+/** Slingshot (owner 2026-11-20: "make slingshots around the planet more powerful"). A ship feels the planet's pull
+ *  SHIP_GRAVITY times as hard as a rock or missile does; inside SLING_CALM_R of the planet its drag is off, coming back
+ *  linearly to full by 2 · SLING_CALM_R; and while it moves away from the planet the pull holding it back is cut by
+ *  SLING_OUT_CUT when the ship is faster than SLING_MIN_SPEED (the Helm's SLINGSHOT word's speed), so a close, fast pass
+ *  leaves faster than it came in (a coasting Hound gains about 15-95 u/s where it used to lose 145-225 to drag), while a
+ *  slower circular orbit (every orbit beyond about 130 u) stays put. */
+export const SHIP_GRAVITY = 2, SLING_CALM_R = 400, SLING_OUT_CUT = 0.6, SLING_MIN_SPEED = 200;
 /** §4, helm round 2 §3.3: one vented cold gas axis's push (u/s²), in the ship frame; never scaled by the Engines. 70 (was
  *  35): a full charge on one thruster is 105 u/s before drag, a real dodge. */
 export const RCS_THRUST = 70;

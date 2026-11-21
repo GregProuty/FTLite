@@ -70,17 +70,17 @@ describe('a fixed turn rate (spec §3.2)', () => {
 });
 
 describe('low power (spec §3.4)', () => {
-  it('a Hound at rest 300 u from the planet\'s centre, nose outward, at 1 Engines bar with the throttle at its cap, is farther out after 5 s', () => {
+  it('a Hound at rest 450 u from the planet\'s centre, nose outward, at 1 Engines bar with the throttle at its cap, is farther out after 5 s', () => {   // the slingshot (SIM 66): ships feel twice the pull, so 1 bar (30 u/s²) climbs out only beyond about 410 u; was 300 u
     const d = createSeatedDuel(CUTTER, 5);
     try {
       const p = d.tactical.map.planet;
-      Object.assign(d.tactical.ships[0], { x: p.x, y: p.y - 300, vx: 0, vy: 0, heading: 0, headingAcc: 0 });   // north of the centre, nose north: outward
+      Object.assign(d.tactical.ships[0], { x: p.x, y: p.y - 450, vx: 0, vy: 0, heading: 0, headingAcc: 0 });   // north of the centre, nose north: outward
       d.tactical.systems[0].bars[DuelSystem.Engines] = 1;
       d.thrMille = 250;   // the cap at 1 bar (25 %): 30 u/s²
       for (let k = 0; k < 300; k++) stepDuelTick(d, { held: [{ ...NONE, throttleHeld: 1 }, NONE], commands: [] });
       const s = d.tactical.ships[0];
       expect(d.thrMille).toBe(250);
-      expect(Math.hypot(s.x - p.x, s.y - p.y)).toBeGreaterThan(300);
+      expect(Math.hypot(s.x - p.x, s.y - p.y)).toBeGreaterThan(450);
     } finally { disposeDuel(d); }
   });
 });

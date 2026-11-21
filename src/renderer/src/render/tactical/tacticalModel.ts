@@ -1,12 +1,12 @@
 // The console map view model (H-1 spec §7, parent §10b). Pure: turns the tactical state, the previous tick's positions,
 // the interpolation alpha, the console's camera and the current Helm axes into screen-space draw lists. The Pixi layer
 // (tacticalLayer.ts) only draws what this returns. Render code, so it may use any Math (not under the determinism guard).
-import { gravityAccel } from '../../sim/tactical/physics';
+import { shipGravityAccel } from '../../sim/tactical/physics';
 import { predictFlight, predictRock } from '../../sim/tactical/predict';
 import { derelictPos } from '../../sim/tactical/science';
 import { classOf, Contact, CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
 import { rockAlive, rockAt, rockHpMax, rockSlots } from '../../sim/tactical/rocks';
-import { AIM_STEPS, HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS } from '../../sim/tactical/tuning';
+import { AIM_STEPS, HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS, SLING_MIN_SPEED } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
 import { rockDrawPos, rockDrawTick, type RockTrack } from './rockTrack';
@@ -199,13 +199,13 @@ export interface TacticalModelInput {
   fog?: FogView | null;
   /** Own ship window spec §3: a console window the off-screen arrows go around (OWN_SHIP); absent: none. */
   avoid?: { x: number; y: number; w: number; h: number };
-  /** The grid's style (Settings, mapGrid.ts); absent: the square grid; 'off': no lines, the names only. */
+  /** The grid's style (Settings, mapGrid.ts); absent: the square grid; 'off': no lines and no names (owner 2026-11-20). */
   mapGrid?: MapGridSetting;
 }
 
-/** Radius at which the planet's pull is `accel`, by bisection on the falling side of gravityAccel (startup only). */
+/** Radius at which the planet's pull on a ship is `accel`, by bisection on the falling side of shipGravityAccel (startup only). */
 export function contourRadius(accel: number): number {
-  const pull = (r: number): number => { const [gx, gy] = gravityAccel(r, 0); return Math.sqrt(gx * gx + gy * gy); };
+  const pull = (r: number): number => { const [gx, gy] = shipGravityAccel(r, 0); return Math.sqrt(gx * gx + gy * gy); };
   let lo = 20, hi = R_MAP;   // the pull peaks near ε/√2 ≈ 14 and falls from there
   if (pull(hi) >= accel) return hi;
   for (let k = 0; k < 60; k++) { const mid = (lo + hi) / 2; if (pull(mid) > accel) lo = mid; else hi = mid; }
@@ -215,7 +215,7 @@ const CONTOUR_RADII = CONTOUR_ACCELS.map(contourRadius);
 /** Feel-ii §1.3: the fractions of the crew ship's full thrust the two gravity rings mark. */
 export const GRAVITY_RINGS: readonly number[] = [0.5, 1];
 /** SLINGSHOT shows while the path passes inside the G 1 ring faster than this (u/s), with no collision; it blinks at SLINGSHOT_HZ. */
-export const SLINGSHOT_SPEED = 200, SLINGSHOT_HZ = 3;
+export const SLINGSHOT_SPEED = SLING_MIN_SPEED, SLINGSHOT_HZ = 3;   // the sim's slingshot speed (tuning.ts), 200
 const gravityRadii = new Map<number, number>();
 /** The radius where the planet's pull is `g` of `thrust` (u/s²), cached per value. */
 export function gravityRadius(g: number, thrust: number): number {
@@ -308,6 +308,7 @@ function gridDraw(cam: Camera, vp: Viewport, well: Point | null, dents: readonly
   // Labels name the 500-unit squares at every zoom, so a square keeps its name (plan decision 4); each sits in the middle
   // of the square's visible part, along the top and left edges of the screen (or of the grid, when that edge is on screen).
   // On the gravity grid a label is pulled toward the planet as the lines beside it are, so it stays between them.
+  if (!drawLines) return { spacing, lines, columns, rows };   // owner 2026-11-20: 'off' drops the squares' names too
   const n = (2 * E) / GRID_MAJOR, top = Math.max(4, sy0 + 4), left = Math.max(4, sx0 + 4);
   const pulled = (x: number, y: number): Point => {
     if (!well) return worldToScreen(cam, vp, x, y);

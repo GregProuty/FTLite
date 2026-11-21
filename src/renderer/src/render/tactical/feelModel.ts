@@ -2,7 +2,7 @@
 // records one sample per sim tick; the panel reads the readout every frame.
 import { hx, hy } from '../../sim/tactical/direction';
 import type { Circle } from '../../sim/tactical/map';
-import { gravityAccel } from '../../sim/tactical/physics';
+import { shipGravityAccel } from '../../sim/tactical/physics';
 import type { Ship } from '../../sim/tactical/state';
 import { HEADING_COUNT } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
@@ -57,7 +57,7 @@ export function recordFeel(t: FeelTracker, s: Ship, planet: Circle): void {
 
 export function feelReadout(t: FeelTracker, s: Ship, planet: Circle): FeelReadout {
   const px = -hy(s.heading), py = hx(s.heading);
-  const [gx, gy] = gravityAccel(s.x - planet.x, s.y - planet.y);
+  const [gx, gy] = shipGravityAccel(s.x - planet.x, s.y - planet.y);   // what the ship feels (the slingshot)
   const here = planetDistance(s, planet);
   let min = here;
   for (let k = 0; k < t.count; k++) min = Math.min(min, t.dist[k]!);
