@@ -10,7 +10,7 @@ import { UiRoot } from '../src/renderer/src/ui/UiRoot';
 import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
 import type { ConsoleView } from '../src/renderer/src/render/duel/consoleModel';
-import { HUD, type PowerColumn, type ShipHudView } from '../src/renderer/src/render/duel/shipHudModel';
+import { HEALTH_SEGMENTS, healthLit, HUD, hullSegH, type PowerColumn, type ShipHudView } from '../src/renderer/src/render/duel/shipHudModel';
 import { TEXT } from '../src/renderer/src/render/theme';
 import { makeUi } from './helpers/uiStore';
 
@@ -22,7 +22,7 @@ const col = (system: number, name: string, bars: number, capacity: number, slots
   ({ system, name, bars, capacity, slots, max, heat: 0, heatMax: 240, coolant: 0, cools: system < 4, failed: false, overdriven: false, room: null, ...extra });
 const hud: ShipHudView = {
   hull: { segments: 20, lit: 7, tone: 'warn' },
-  shields: { layers: 2, up: 1, cap: 1 },
+  shields: { layers: 2, up: 1, cap: 1, recharge: 0 },
   power: {
     systems: [col(0, 'SHLD', 2, 5, 5, 4), col(1, 'WEAP', 2, 5, 10, 9), col(2, 'ENG', 5, 5, 5, 4, { overdriven: true, heat: 120, coolant: 1 }),
       col(3, 'SENS', 0, 0, 4, 3, { failed: true, heat: 240 }), col(4, 'O2', 1, 2, 2, 2)],
@@ -63,6 +63,42 @@ describe('the engineering panel (spec §6)', () => {
     expect(all('data-ui-hud-reactor', 'spare')).toHaveLength(0);
     expect(texts().filter((c) => c.y === HUD.power.bottom - HUD.power.nameH).map((c) => c.text)).toEqual(['SHLD', 'WEAP', 'ENG', 'SENS', 'O2', 'PWR']);
     expect(texts().some((c) => c.text === 'REACTOR 0/10   COOLANT 7/8')).toBe(true);
+  });
+  it('the hull bar steps up in three heights left to right inside a stepped frame; the shields sit in a panel with a recharge bar (owner 2026-11-20)', () => {
+    const { duel } = mount(); act(() => duel.frame(view({ ...hud, shields: { layers: 3, up: 1, cap: 2, recharge: 0.4 } })));
+    const segs = all('data-ui-hud-seg'), h = segs.map((e) => Number(e.getAttribute('data-ui-hud-seg-h')));
+    expect([...new Set(h)]).toEqual([hullSegH(0), hullSegH(10), hullSegH(19)]);
+    expect(hullSegH(0)).toBeLessThan(hullSegH(10)); expect(hullSegH(10)).toBeLessThan(hullSegH(19));
+    expect(h.every((v, k) => k === 0 || v >= h[k - 1]!)).toBe(true);   // never shorter to the right
+    const bottoms = segs.map((e) => parseFloat(e.style.top) + parseFloat(e.style.height));
+    expect(new Set(bottoms.map((b) => b.toFixed(3))).size).toBe(1);   // bottoms aligned
+    expect(all('data-ui-hud-hull-frame')).toHaveLength(1);
+    expect(all('data-ui-hud-shield-panel')).toHaveLength(1);
+    expect(all('data-ui-hud-shield').map((e) => e.getAttribute('data-ui-hud-shield'))).toEqual(['up', 'down', 'unpowered']);
+    expect(all('data-ui-hud-shield-recharge').map((e) => e.getAttribute('data-ui-hud-shield-recharge'))).toEqual(['40']);
+    act(() => duel.frame(view({ ...hud, shields: { layers: 2, up: 2, cap: 2, recharge: 0 } })));
+    expect(all('data-ui-hud-shield-recharge').map((e) => e.getAttribute('data-ui-hud-shield-recharge'))).toEqual(['0']);
+  });
+  it('the layer that just dropped flashes (Part 3 §3.3)', () => {
+    const { duel } = mount();
+    act(() => duel.frame(view({ ...hud, shields: { layers: 2, up: 1, cap: 2, recharge: 0, flash: { layer: 1, alpha: 1 } } })));
+    expect(all('data-ui-hud-shield').map((e) => e.hasAttribute('data-ui-hud-shield-flash'))).toEqual([false, true]);
+    act(() => duel.frame(view({ ...hud, shields: { layers: 2, up: 1, cap: 2, recharge: 0, flash: null } })));
+    expect(all('data-ui-hud-shield-flash')).toHaveLength(0);
+  });
+  it('an S badge in place of the SHIELDS label; the health bar in the same stepped style, lit by the fill (owner 2026-11-20)', () => {
+    const { duel } = mount(); act(() => duel.frame(view({ ...hud, health: { fill: 0.45, downed: false } })));
+    expect(all('data-ui-hud-shield-badge')).toHaveLength(1);
+    expect(texts().some((c) => c.text === 'SHIELDS')).toBe(false);
+    expect(texts().some((c) => c.text === 'S')).toBe(true);
+    const segs = all('data-ui-hud-health-seg');
+    expect(segs).toHaveLength(HEALTH_SEGMENTS);
+    expect(all('data-ui-hud-health-seg', 'lit')).toHaveLength(healthLit(0.45));
+    expect(healthLit(0.45)).toBe(5);
+    expect(new Set(segs.map((e) => e.getAttribute('data-ui-hud-seg-h'))).size).toBe(3);
+    expect(all('data-ui-hud-health-frame')).toHaveLength(1);
+    expect(all('data-ui-hud-health', '45')).toHaveLength(1);
+    expect([healthLit(1), healthLit(0.01), healthLit(0), healthLit(0.3)]).toEqual([10, 1, 0, 3]);
   });
   it('a left click adds a bar, a right click removes one, a pip click cycles coolant; O2 has no coolant control', () => {
     const { duel, ship } = mount(); act(() => duel.frame(view()));

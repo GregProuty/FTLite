@@ -17,7 +17,12 @@ export interface GameAssets {
   fontFamily: string;
   /** The audio entries, which app/audio.ts fetches and decodes in the background; loadAssets never loads them. */
   sounds?: readonly SoundSource[];
+  /** UI round Part 3: a loaded named image's absolute URL and pixel size (the React windows draw it as an SVG image), or
+   *  null when it did not load. Optional, so test fakes without it read as "no image". */
+  image?(name: string): GameImage | null;
 }
+/** A named image as the React windows use it. */
+export interface GameImage { url: string; w: number; h: number }
 
 /** A required file could not be loaded: startup stops (spec §7). `files` lists every failed required file. */
 export class AssetError extends Error {
@@ -94,10 +99,12 @@ export async function loadAssets(manifestUrl: string): Promise<GameAssets> {
     load.catch(() => {});   // the loop below reports it; this only keeps an early failure from being an unhandled rejection
     loads.push({ e, load });
   }
+  const images = new Map<string, GameImage>();   // UI round Part 3: a named image's URL and size, for the React windows
   for (const { e, load } of loads) {
     try {
       const tex = await load;
       if (tex) bind(e, tex, textures, animations, nines);
+      if (tex && e.name !== undefined) images.set(e.name, { url: new URL(e.file, base).href, w: tex.width, h: tex.height });
     } catch (err) {
       if (e.required) { failedRequired.push(e.file); console.error(`required asset failed: ${e.file}`, err); }
       else console.warn(`optional asset missing, placeholder in use: ${e.file}`);
@@ -111,6 +118,7 @@ export async function loadAssets(manifestUrl: string): Promise<GameAssets> {
   const missing = Object.keys(ASSET_NAMES).filter((n) => ASSET_NAMES[n] === 'optional' && !isAudioName(n) && !has(n));
   return {
     has, missing, sounds, fontFamily: FONT_FAMILY,
+    image: (n) => images.get(n) ?? null,
     texture(n) { const t = textures.get(n); if (!t) throw new Error(`no texture bound to ${n}`); return t; },
     animation(n) { const a = animations.get(n); if (!a) throw new Error(`no animation bound to ${n}`); return a; },
     nineSlice(n) { const s = nines.get(n); if (!s) throw new Error(`no nineSlice for ${n}`); return s; }

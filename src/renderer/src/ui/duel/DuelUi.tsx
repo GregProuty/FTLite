@@ -23,6 +23,7 @@ import { WeaponsStation } from './WeaponsStation';
 import { FlightStation } from './FlightStation';
 import { ContactWindow } from './ContactWindow';
 import { OwnShipWindow } from './OwnShipWindow';
+import { AmberFilter } from './AmberFilter';
 import { TargetingLine } from './TargetingLine';
 import { ShipHud } from './ShipHud';
 import { SitCard } from './SitCard';
@@ -42,6 +43,7 @@ export function DuelUi() {
           {duel.console?.weapons && <WeaponsStation weapons={duel.console.weapons} aim={duel.contact?.aimWeapon ?? null} />}
           {duel.console?.flight && <FlightStation flight={duel.console.flight} aim={duel.contact?.aimWeapon ?? null} />}
           {duel.console?.science && <ScienceStation science={duel.console.science} />}
+          {(duel.ownShip || duel.contact) && <AmberFilter />}   {/* the id crt-amber is global in the DOM: one definition for both windows */}
           {duel.ownShip && <OwnShipWindow ownShip={duel.ownShip} />}
           {duel.contact && <ContactWindow contact={duel.contact} />}
           {duel.contact?.aimWeapon && (duel.console?.weapons || duel.console?.flight) && <TargetingLine contact={duel.contact} seed={duel.pointer ?? null}

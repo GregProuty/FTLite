@@ -47,7 +47,8 @@ describe('room state on the power columns (spec §2.4a)', () => {
     const d = createDuel(layout, 5), eid = d.interior.crew[0]!;
     try {
       expect(shipHud(d, 0).health).toBeNull();
-      expect(HEALTH_ROW.y).toBe(124);
+      expect(HEALTH_ROW.y).toBe(132);   // below the shield panel (owner 2026-11-20; was 124)
+      expect(HEALTH_ROW.barY + HEALTH_ROW.barH).toBeLessThanOrEqual(150);   // still inside the HUD's top block
       Health.cur[eid] = 40;
       expect(shipHud(d, 0).health).toEqual({ fill: 40 / HEALTH_MAX, downed: false });
       expect(shipHud(d, 1).health).toBeNull();

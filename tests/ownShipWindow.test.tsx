@@ -4,7 +4,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, cleanup, render } from '@testing-library/react';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
+import hound from '../src/renderer/src/sim/ship/hound.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
+import { CREW_SLOT } from '../src/renderer/src/sim/tactical/state';
+import { addShieldHit, createShieldFx } from '../src/renderer/src/render/shieldFx';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { UiContext } from '../src/renderer/src/ui/context';
 import { UiRoot } from '../src/renderer/src/ui/UiRoot';
@@ -44,6 +47,19 @@ describe('the own ship window (spec §2)', () => {
     const d = createDuel(parseShip(cutter), 5);
     try { mount({ ...ownShipModel(d, OWN_SHIP_BOX, 0, 0), flash: true }); expect(document.querySelector('[data-ui-own-flash]')).not.toBeNull(); }
     finally { disposeDuel(d); }
+  });
+  it('draws the painting under the tiles with the amber filter (one definition), the bubble and the cells', () => {
+    const d = createDuel(parseShip(hound), 5);
+    try {
+      const fx = createShieldFx(2); addShieldHit(fx, CREW_SLOT, 0, false, false); fx.hits[CREW_SLOT]![0]!.age = 0.01;
+      mount(ownShipModel(d, OWN_SHIP_BOX, 0, 0, { painting: { url: 'hound.png', w: 2800, h: 1400 }, fx }));
+      expect(document.querySelectorAll('filter#crt-amber').length).toBe(1);
+      const img = document.querySelector('[data-ui-own-painting]')!;
+      expect(img.getAttribute('filter')).toBe('url(#crt-amber)');
+      expect(img.parentElement!.firstElementChild).toBe(img);
+      expect(document.querySelector('[data-ui-own-bubble]')).not.toBeNull();
+      expect(document.querySelectorAll('[data-ui-own-cell]').length).toBeGreaterThan(0);
+    } finally { disposeDuel(d); }
   });
   it('renders nothing when ownShip is null or absent', () => {
     mount(null); expect(document.querySelector('[data-ui-own-ship]')).toBeNull(); cleanup();

@@ -86,7 +86,7 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
     expect((kids[3] as Container).blendMode).toBe('multiply');                                // the battlemap, tiles, the props (Art-iii), then the grade
     const lights = kids.findIndex((k) => k.blendMode === 'add');
     expect(lights).toBe(13);                                                                   // after effects.above (the air tint, Engineering spike §6; the station badges, start-aboard spec §2, sit after the desks)
-    expect(kids.length - lights - 1).toBe(30);                                                 // the marks, the three marker labels, the sixteen hazard labels (Engineering spike §6), the four downed labels (duel-health; one per player of the largest crew, Sci-2 spec §7), the healing marks and four REVIVED labels (duel polish i spec §D) and the badge labels above the lights
+    expect(kids.length - lights - 1).toBe(31);                                                 // the shield and shots Graphics (Part 3 §3), the marks, the three marker labels, the sixteen hazard labels (Engineering spike §6), the four downed labels (duel-health; one per player of the largest crew, Sci-2 spec §7), the healing marks and four REVIVED labels (duel polish i spec §D) and the badge labels above the lights
     view.draw(d, crewAt(d), 1, 1 / 60);
     expect([view.world.x, view.world.y]).toEqual([176, 173]);
     const hit = { kind: 'laser', ship: 1, hit: true, x1: 0, y1: 0, x2: 1, y2: 1 } as unknown as ViewEvent;

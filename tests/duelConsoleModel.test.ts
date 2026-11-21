@@ -37,7 +37,7 @@ describe('console layout (spec §2)', () => {
     expect(CONTACT.x + CONTACT.w).toBe(INTERNAL_W - EDGE);
     expect(CONTACT.y).toBe(TABS.y + TABS.h + 8);   // where the side column was, level with the old status table
     expect(CONTACT_RESERVE).toBe(324);
-    expect(CONTACT_BOX).toEqual({ x: 980, y: 102, w: 276, h: 200 });
+    expect(CONTACT_BOX).toEqual({ x: 980, y: 78, w: 276, h: 200 });
     expect(CONTACT_BOX.x >= CONTACT.x && CONTACT_BOX.x + CONTACT_BOX.w <= CONTACT.x + CONTACT.w).toBe(true);
     expect(CONTACT_BOX.y >= CONTACT.y && CONTACT_BOX.y + CONTACT_BOX.h <= CONTACT.y + CONTACT.h).toBe(true);
     type R = { x: number; y: number; w: number; h: number };

@@ -1,0 +1,7 @@
+{
+  "note": "UI round Part 3 (spec section 3.4): the Hunter, an original top-down ship built on the scout hull (render/tactical/hullModel.ts HULLS.scout, nose +f = image +x, starboard +s = image +y). Neutral greys: the enemy window maps luminance onto the CRT amber ramp.",
+  "frame": { "f0": -1.24, "s0": -0.7, "f1": 1.35, "s1": 0.7 },
+  "pxPerUnit": 220,
+  "samples": 64,
+  "seed": 7
+}

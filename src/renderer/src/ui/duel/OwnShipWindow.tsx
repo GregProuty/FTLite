@@ -13,7 +13,7 @@ import { hex } from '../stage/color';
 import { boxCss } from '../stage/geometry';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
-import { segPath } from './svgPaths';
+import { cellPaths, polyPoints, segPath } from './svgPaths';
 
 const stop = (e: SyntheticEvent): void => e.preventDefault();
 const swallow = (e: ReactWheelEvent): void => e.stopPropagation();
@@ -41,7 +41,8 @@ export const OwnShipWindow = memo(function OwnShipWindow({ ownShip: v }: { ownSh
       <PixelText text={value} x={right} y={rowY} size={FONT_NATIVE} tint={v.hull.block !== null ? CRT.glass : CRT.main} anchorX={1} />
       <svg data-ui-own-ship-box="" viewBox={`${b.x} ${b.y} ${b.w} ${b.h}`} preserveAspectRatio="none" shapeRendering="crispEdges"
         style={{ position: 'absolute', ...boxCss(b.x, b.y, b.w, b.h, l), overflow: 'hidden', pointerEvents: 'none' }}>
-        {v.tiles.map((q, k) => <rect key={k} data-ui-own-tile="" x={q.x} y={q.y} width={q.s} height={q.s} fill={hex(q.fill)} />)}
+        {v.painting && <image data-ui-own-painting="" href={v.painting.url} x={v.painting.x} y={v.painting.y} width={v.painting.w} height={v.painting.h} preserveAspectRatio="none" filter="url(#crt-amber)" style={{ imageRendering: 'auto' }} />}
+        {v.tiles.map((q, k) => <rect key={k} data-ui-own-tile="" x={q.x} y={q.y} width={q.s} height={q.s} fill={hex(q.fill)} fillOpacity={v.tileOpacity} />)}
         {v.edges.map((g) => <path key={g.colour} d={segPath(g.segments)} stroke={hex(g.colour)} strokeWidth={1} fill="none" />)}
         {v.hatch.length > 0 && <path d={segPath(v.hatch)} stroke={hex(CRT.main)} strokeWidth={1} fill="none" />}
         {v.fires.map((f, k) => (
@@ -49,6 +50,13 @@ export const OwnShipWindow = memo(function OwnShipWindow({ ownShip: v }: { ownSh
             <rect x={f.x} y={f.y} width={f.w} height={2} fill={hex(CRT.glass)} />
             <rect x={f.x} y={f.y} width={f.w * f.progress} height={2} fill={hex(CRT.main)} />
           </g>
+        ))}
+        {v.shield && v.shield.bubble > 0 && (
+          <ellipse data-ui-own-bubble="" cx={v.shield.ellipse.cx} cy={v.shield.ellipse.cy} rx={v.shield.ellipse.rx} ry={v.shield.ellipse.ry}
+            fill="none" stroke={hex(CRT.main)} strokeOpacity={v.shield.bubble} strokeWidth={1} />
+        )}
+        {v.shield && cellPaths(v.shield.cells, v.shield.cell).map((p) => (
+          <path key={`c${p.alpha}`} data-ui-own-cell="" d={p.d} fill="none" stroke={hex(CRT.main)} strokeOpacity={p.alpha} strokeWidth={1} />
         ))}
         {v.crew.map((c, k) => c.downed
           ? <rect key={k} data-ui-own-crew="downed" x={c.x - 2} y={c.y - 2} width={4} height={4} fill={hex(CRT.glass)} stroke={hex(CRT.hot)} strokeWidth={1} />

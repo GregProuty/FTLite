@@ -81,8 +81,8 @@ function buildLayout(live: StageSize): ConsoleLayout {
   };
   /** The contact window (enemy ship window spec §4.1): UI round §2.4a: in the top-right corner, where the side column was. */
   const CONTACT = { x: stage.w - EDGE - 300, y: 42, w: 300, h: 420 } as const;
-  /** Its ship drawing box (spec §4.2 item 3): 276 × 200 under the title and status rows. */
-  const CONTACT_BOX = { x: CONTACT.x + 12, y: CONTACT.y + 60, w: 276, h: 200 } as const;
+  /** Its ship drawing box (spec §4.2 item 3): 276 × 200 under the title row (the status row sits under it). */
+  const CONTACT_BOX = { x: CONTACT.x + 12, y: CONTACT.y + 36, w: 276, h: 200 } as const;
   /** The map's right reserve while the window is shown, instead of CONSOLE_RESERVE.right. */
   const CONTACT_RESERVE = stage.w - CONTACT.x + EDGE;
   /** The map's top band (the status sentence and the info line): from the tab strip to the contact window's left edge. */

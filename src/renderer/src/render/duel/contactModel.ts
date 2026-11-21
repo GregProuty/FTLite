@@ -11,6 +11,7 @@ import { HUNTER_MISSILE_COOLDOWN_TICKS, SALVAGE_TICKS, SCAN_UNITS } from '../../
 import { ALERT_BLINK_HZ, blink, CRT, DAMAGE_BLINK_HZ, HATCH_ANGLE, HATCH_SPACING, roomLevel, roomLook } from '../tactical/crtTheme';
 import { hatchSegments } from '../tactical/dashModel';
 import { HULLS, hullFor, roomCentre } from '../tactical/hullModel';
+import { bubbleAlpha, quantCells, shieldCells, type Ellipse, type ShieldFx } from '../shieldFx';
 import { CONTACT_BOX } from './consoleLayout';
 import type { WeaponsPanel } from './consoleModel';
 import { FREQ_NAMES, hostilityLine, LOOT_NAMES, scanButton, type ScanButton } from './scienceModel';
@@ -89,6 +90,12 @@ export interface ContactView {
   /** W-4 amendment §3.6: a plain click on a room, with nothing picked up, sets the crew's target room: the Weapons station
    *  of a class with a turret gun (the Hound). Absent: no. */
   roomClick?: boolean;
+  /** UI round Part 3 §3.4: the Hunter render placed in the box (the frame's corners through the outline's fit), at Level 1 or more with art given. */
+  art: { url: string; x: number; y: number; w: number; h: number } | null;
+  /** UI round Part 3 §3.2: the shield bubble ellipse, its resting alpha and the shimmering hex cells (cell radius `cell` px), when a fx is given and the enemy is drawn. */
+  shield: { ellipse: Ellipse; bubble: number; cells: { x: number; y: number; alpha: number }[]; cell: number } | null;
+  /** The SHLD/HULL row's top y, under the drawing box. */
+  statusY: number;
 }
 export interface ContactModelInput {
   state: TacticalState;
@@ -108,7 +115,14 @@ export interface ContactModelInput {
   seen?: boolean;
   /** UI round 2b: the drawing box for the live stage (consoleLayout(stage).CONTACT_BOX); default the reference's CONTACT_BOX. */
   box?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
+  /** UI round Part 3: the Hunter render and its frame in ship units (f to image x, s to image y); drawn at Level 1 or more. */
+  art?: { url: string; frame: { f0: number; s0: number; f1: number; s1: number } } | null;
+  /** UI round Part 3: the shield fx and the enemy's ship slot. */
+  shield?: { fx: ShieldFx; slot: number } | null;
 }
+
+/** Hex cell radius (px) of the enemy window's shield shimmer. */
+export const CONTACT_SHIELD_CELL = 5;
 
 /** Ship units (f, s) to the box: one uniform scale fitting the outline's bounds with CONTACT_PAD on every side, the
  *  bounds centred, nose right (f to +x, s to +y). */
@@ -137,7 +151,7 @@ export function contactModel(i: ContactModelInput): ContactView | null {
   const { state } = i, b = i.box ?? CONTACT_BOX, box = { x: b.x, y: b.y, w: b.w, h: b.h };
   const alert = blink(i.t, ALERT_BLINK_HZ) ? CRT.hot : CRT.main;
   const bare = (contact: 0 | 1 | null, title: string, lines: ContactLine[] = []): ContactView => ({
-    contact, title, shields: null, hull: null, box, outline: [], rooms: [], lockRoom: null, torpRoom: null, weapons: null, aim: false, aimWeapon: null, flash: [],
+    contact, title, shields: null, hull: null, box, art: null, shield: null, statusY: box.y + box.h + 6, outline: [], rooms: [], lockRoom: null, torpRoom: null, weapons: null, aim: false, aimWeapon: null, flash: [],
     scan: contact === null ? null : scanButton(state, contact, i.station), lines
   });
   if (i.contact === null) return i.station === 'science' ? bare(null, 'NO CONTACT SELECTED') : null;
@@ -211,11 +225,22 @@ export function contactModel(i: ContactModelInput): ContactView | null {
     const ready = sys.magazine > 0 && missileOf(state, slot) === null && state.tick - state.hunter.lastLaunch >= HUNTER_MISSILE_COOLDOWN_TICKS;
     lines.push(line(ready ? 'TORPEDO READY' : 'RELOADING'));
   }
+  const placed = place(shape.outline);
+  let nx0 = Infinity, nx1 = -Infinity, ny0 = Infinity, ny1 = -Infinity;
+  for (let k = 0; k + 1 < placed.length; k += 2) { nx0 = Math.min(nx0, placed[k]!); nx1 = Math.max(nx1, placed[k]!); ny0 = Math.min(ny0, placed[k + 1]!); ny1 = Math.max(ny1, placed[k + 1]!); }
+  const ellipse: Ellipse = { cx: (nx0 + nx1) / 2, cy: (ny0 + ny1) / 2, rx: 0.56 * (nx1 - nx0), ry: 0.56 * (ny1 - ny0) };
+  const nose = { x: 1, y: 0 }, star = { x: 0, y: 1 };
+  const art = i.art ? (() => {
+    const a = at(i.art.frame.f0, i.art.frame.s0), z = at(i.art.frame.f1, i.art.frame.s1);
+    return { url: i.art.url, x: a.x, y: a.y, w: z.x - a.x, h: z.y - a.y };
+  })() : null;
+  const shield = i.shield ? { ellipse, bubble: bubbleAlpha(i.shield.fx, i.shield.slot, sys.shields), cells: quantCells(shieldCells(i.shield.fx, i.shield.slot, ellipse, CONTACT_SHIELD_CELL, nose, star)), cell: CONTACT_SHIELD_CELL } : null;
   return {
+    art, shield, statusY: box.y + box.h + 6,
     contact: Contact.Enemy, title: 'ENEMY SHIP',
     shields: { up: sys.shields, of: cls.shields.layers },
     hull: { value: sys.hull, fill: Math.max(0, Math.min(1, sys.hull / cls.hull)) },
-    box, outline: place(shape.outline), rooms, lockRoom, roomClick, torpRoom: crewSys.torpLock >= 0 ? crewSys.torpLock : null,
+    box, outline: placed, rooms, lockRoom, roomClick, torpRoom: crewSys.torpLock >= 0 ? crewSys.torpLock : null,
     weapons, aim: i.aim && weapons !== null, aimWeapon: i.aim && weapons !== null ? weapon : null,
     scan: scanButton(state, Contact.Enemy, i.station), lines,
     flash: (i.flashes ?? []).flatMap((f) => { const r = rooms[f.room]; return r && f.alpha > 0 ? [{ room: f.room, points: r.points, alpha: f.alpha }] : []; })

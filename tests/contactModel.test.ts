@@ -9,6 +9,8 @@ import { derelictPos } from '../src/renderer/src/sim/tactical/science';
 import { classOf, createTacticalState, Loot, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
 import { TEXT } from '../src/renderer/src/render/theme';
+import { addShieldHit, createShieldFx } from '../src/renderer/src/render/shieldFx';
+import { HUNTER_FRAME } from '../src/renderer/src/render/duel/hunterArt';
 
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
 const model = (state: TacticalState, over: Partial<ContactModelInput> = {}): ContactView | null =>
@@ -151,5 +153,29 @@ describe('the derelict and no selection (Sci-1 spec §7.2, §7.3)', () => {
   it('Science with nothing selected: NO CONTACT SELECTED; Helm and Weapons with nothing: no window', () => {
     expect(model(createTacticalState(4), { contact: null, station: 'science', weapons: null })).toMatchObject({ contact: null, title: 'NO CONTACT SELECTED', scan: null, lines: [], rooms: [] });
     expect(model(createTacticalState(4), { contact: null })).toBeNull();
+  });
+});
+
+describe('the Hunter art and the shield fx (UI round Part 3 §3.4)', () => {
+  const art = { url: 'hunter.png', frame: HUNTER_FRAME };
+  it('Level 1 places the art through the outline fit, inside the box; Level 0 has none; the status row sits under the box', () => {
+    const v = model(known(1), { art })!, b = v.box;
+    expect(v.art).not.toBeNull();
+    const m = 8;   // the frame is a little wider than the hull outline (transparent margin); the box's svg clips what pokes out
+    expect(v.art!.x).toBeGreaterThanOrEqual(b.x - m); expect(v.art!.x + v.art!.w).toBeLessThanOrEqual(b.x + b.w + m);
+    expect(v.art!.y).toBeGreaterThanOrEqual(b.y - m); expect(v.art!.y + v.art!.h).toBeLessThanOrEqual(b.y + b.h + m);
+    expect(v.statusY).toBe(b.y + b.h + 6);
+    expect(model(known(0), { art })!.art).toBeNull();
+    expect(model(known(1))!.art).toBeNull();
+  });
+  it('the shield has a bubble while layers are up, and a stopped hit on the enemy slot gives cells', () => {
+    const st = known(1); st.systems[1].shields = 2;
+    const fx = createShieldFx(2), slot = 1;
+    const v = model(st, { shield: { fx, slot } })!;
+    expect(v.shield!.bubble).toBeGreaterThan(0); expect(v.shield!.cells).toEqual([]); expect(v.shield!.cell).toBe(5);
+    expect(v.shield!.ellipse.rx).toBeGreaterThan(0);
+    addShieldHit(fx, slot, 0, false, false); fx.hits[slot]![0]!.age = 0.01;
+    expect(model(st, { shield: { fx, slot } })!.shield!.cells.length).toBeGreaterThan(0);
+    expect(model(known(0), { shield: { fx, slot } })!.shield).toBeNull();
   });
 });

@@ -8,6 +8,9 @@ import { classOf, CREW_SLOT } from '../../sim/tactical/state';
 import { ALERT_BLINK_HZ, blink, CRT, DAMAGE_BLINK_HZ, HATCH_ANGLE, HATCH_SPACING, roomLevel } from '../tactical/crtTheme';
 import { hatchSegments } from '../tactical/dashModel';
 import { HIT_FRESH_TICKS } from '../impactModel';
+import { BATTLEMAPS } from '../battlemapModel';
+import { bubbleAlpha, quantCells, shieldCells, type Ellipse, type ShieldFx } from '../shieldFx';
+import { interiorFrame } from './enemyShots';
 
 type Box = { x: number; y: number; w: number; h: number };
 
@@ -27,6 +30,12 @@ export interface OwnShipView {
   crew: { x: number; y: number; downed: boolean }[];
   /** The border is in the lit phase of its fire-start flash. */
   flash: boolean;
+  /** UI round Part 3 §3.5: the painted ship in the tiles' px transform (clipped by the window), or null. */
+  painting: { url: string; x: number; y: number; w: number; h: number } | null;
+  /** The shield bubble and shimmering hex cells (ellipse = the painted bounds, else the tiles' bounding box, radii 0.56 x), when a fx is given. */
+  shield: { ellipse: Ellipse; bubble: number; cells: { x: number; y: number; alpha: number }[]; cell: number } | null;
+  /** The tile fill opacity: 0.6 over a painting, else 1. */
+  tileOpacity: number;
 }
 
 export interface OwnRoomLook { fill: number; outline: number; hatch: boolean }
@@ -55,8 +64,23 @@ export function tileEdges(owner: ArrayLike<number>, gw: number, gh: number, k: n
   if (other(cx + 1, cy)) out.push(x + s, y, x + s, y + s);
 }
 
-export function ownShipModel(d: DuelState, box: Box, t: number, flashUntil: number): OwnShipView {
-  const st = d.interior, dv = st.derived, gw = dv.width, gh = dv.height, { s, ox, oy } = ownShipFit(gw, gh, box);
+/** UI round Part 3 §3.5: the shield shimmer's hex cell radius (px) in the own ship window. */
+export const OWN_SHIELD_CELL = 4;
+/** The painting under the tiles: its image, and the shield fx. Absent draws as before (no painting, no shield). */
+export interface OwnShipLook { painting: { url: string; w: number; h: number } | null; fx: ShieldFx }
+
+export function ownShipModel(d: DuelState, box: Box, t: number, flashUntil: number, paint?: OwnShipLook): OwnShipView {
+  const st = d.interior, dv = st.derived, gw = dv.width, gh = dv.height;
+  const def = paint?.painting ? BATTLEMAPS[st.layout.id] ?? null : null, img = paint?.painting ?? null;
+  const painted = !!img && !!def;
+  // With a painting the painted bounds (the rect the interior view fits) fill the box, so the whole ship shows; else the tiles do.
+  let s: number, ox: number, oy: number;
+  if (painted) {
+    const r = def!.bounds;
+    s = Math.min(box.w / r.w, box.h / r.h);
+    ox = Math.round(box.x + (box.w - r.w * s) / 2 - r.x * s); oy = Math.round(box.y + (box.h - r.h * s) / 2 - r.y * s);
+  } else ({ s, ox, oy } = ownShipFit(gw, gh, box));
+  let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
   const sys = d.tactical.systems[CREW_SLOT]!, cls = classOf(d.tactical, CREW_SLOT);
   const tiles: OwnShipView['tiles'] = [], byColour = new Map<number, number[]>(), hatch: number[] = [], fires: OwnShipView['fires'] = [];
   dv.roomTiles.forEach((roomTiles, room) => {
@@ -67,7 +91,8 @@ export function ownShipModel(d: DuelState, box: Box, t: number, flashUntil: numb
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const k of roomTiles) {
       const cx = k % gw, cy = (k - cx) / gw, x = ox + cx * s, y = oy + cy * s;
-      tiles.push({ x, y, s, fill: look.fill });
+      if (!painted || look.fill !== CRT.glass) tiles.push({ x, y, s, fill: look.fill });   // over a painting only the damaged and burning tiles draw
+      bx0 = Math.min(bx0, x); by0 = Math.min(by0, y); bx1 = Math.max(bx1, x + s); by1 = Math.max(by1, y + s);
       tileEdges(dv.roomOfTile, gw, gh, k, s, ox, oy, segs);
       x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x + s); y1 = Math.max(y1, y + s);
     }
@@ -75,7 +100,17 @@ export function ownShipModel(d: DuelState, box: Box, t: number, flashUntil: numb
     if (burning && p) { const progress = extinguishProgress(d, p); if (progress > 0) fires.push({ x: x0, y: y1 - 2, w: x1 - x0, progress }); }
   });
   const alert = sys.hull <= cls.hull / 4;
+  const painting = painted ? { url: img!.url, x: ox + def!.origin.x * s, y: oy + def!.origin.y * s, w: img!.w / def!.pxPerTile * s, h: img!.h / def!.pxPerTile * s } : null;
+  let shield: OwnShipView['shield'] = null;
+  if (paint && Number.isFinite(bx0)) {
+    const ellipse: Ellipse = painted
+      ? { cx: ox + (def!.bounds.x + def!.bounds.w / 2) * s, cy: oy + (def!.bounds.y + def!.bounds.h / 2) * s, rx: 0.56 * def!.bounds.w * s, ry: 0.56 * def!.bounds.h * s }
+      : { cx: (bx0 + bx1) / 2, cy: (by0 + by1) / 2, rx: 0.56 * (bx1 - bx0), ry: 0.56 * (by1 - by0) };
+    const fr = interiorFrame(d, { x: 0, y: 0, w: gw, h: gh });   // tile to px is a uniform scale plus offset, so the unit vectors carry over
+    shield = { ellipse, bubble: bubbleAlpha(paint.fx, CREW_SLOT, sys.shields), cells: quantCells(shieldCells(paint.fx, CREW_SLOT, ellipse, OWN_SHIELD_CELL, fr.nose, fr.star)), cell: OWN_SHIELD_CELL };
+  }
   return {
+    painting, shield, tileOpacity: painted ? 0.6 : 1,
     shields: { up: sys.shields, of: Math.max(cls.shields.layers, sys.shields) },
     hull: { value: sys.hull, fill: Math.max(0, Math.min(1, sys.hull / cls.hull)), alert, block: alert ? (blink(t, ALERT_BLINK_HZ) === 1 ? CRT.hot : CRT.main) : null },
     tiles,
