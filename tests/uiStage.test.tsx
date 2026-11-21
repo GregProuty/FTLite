@@ -3,7 +3,7 @@
 // a canvas carrying its string.
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ReactNode } from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { edge, boxCss } from '../src/renderer/src/ui/stage/geometry';
 import { hex } from '../src/renderer/src/ui/stage/color';
 import { Stage } from '../src/renderer/src/ui/stage/Stage';
@@ -13,10 +13,11 @@ import { Bar } from '../src/renderer/src/ui/stage/Bar';
 import { PixelText } from '../src/renderer/src/ui/stage/PixelText';
 import { UiContext } from '../src/renderer/src/ui/context';
 import { setLayout } from '../src/renderer/src/ui/store';
+import { useStage } from '../src/renderer/src/ui/stage/useStage';
 import { makeUi } from './helpers/uiStore';
 
 afterEach(cleanup);
-const layout = { stripHeight: 0, scale: 1.5, offsetX: 10, offsetY: 4, dpr: 1 };
+const layout = { stripHeight: 0, scale: 1.5, offsetX: 10, offsetY: 4, stageW: 1280, stageH: 720, dpr: 1 };
 
 describe('geometry', () => {
   it('rounds each edge to whole device pixels', () => {
@@ -45,5 +46,16 @@ describe('the primitives', () => {
   it('PixelText renders its string, position and anchor without an atlas', () => {
     stage(<PixelText text="HULL" x={100} y={20} size={32} tint={0xf2f5fa} anchorX={1} />);
     const c = document.querySelector('canvas')!; expect(c.dataset.text).toBe('HULL'); expect(c.dataset.anchorx).toBe('1');
+  });
+});
+
+describe('useStage (UI round §2.1)', () => {
+  it('reads the stage size from the layout slice and follows setLayout', () => {
+    const ui = makeUi(); const seen: string[] = [];
+    function Probe() { const s = useStage(); seen.push(`${s.w}x${s.h}`); return null; }
+    render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><Probe /></UiContext.Provider>);
+    expect(seen.at(-1)).toBe('1280x720');
+    act(() => setLayout(ui.store, { stageW: 1707, stageH: 720 })); expect(seen.at(-1)).toBe('1707x720');
+    const n = seen.length; act(() => setLayout(ui.store, { scale: 2 })); expect(seen.length).toBe(n);   // shallow: no re-render for other fields
   });
 });

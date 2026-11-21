@@ -22,6 +22,7 @@ import {
   bobOffset, breachOpenings, debrisBurst, fireSources, hitSmokeSources, sparkSources, stepVents, ventingSources, wallVents, workSources, type HitSmoke, type WallVent, type Working
 } from './particles/sources';
 import type { Band } from './worldFit';
+import type { StageSize } from '../../../shared/resolution';
 import type { GameAnimation } from './assets';
 import { createBackdropLayer, type BackdropOption } from './twinkleLayer';
 import { addBlast, BLAST_CAP, BLAST_SCALE, blastFrame, liveBlasts, roomCentroid, tileCentre, type Blast, type BlastKind, type BlastTimings } from './blastModel';
@@ -44,6 +45,10 @@ export interface FeelFrame {
   artPx: number;
   /** The procedural starfield's art pixel (interior zoom: the fit's, so the stars hold still while the ship zooms); defaults to `artPx`. */
   starPx?: number;
+  /** UI round 2b: the current band (the stage follows the window); absent, the options' band. */
+  band?: Band;
+  /** UI round 2b: the current stage size; the painted backdrop re-covers it when it changes. Absent, the reference. */
+  stage?: StageSize;
 }
 
 export interface InteriorFeel {
@@ -248,8 +253,8 @@ export function createInteriorFeel(opts: InteriorFeelOptions): InteriorFeel {
 
       // The starfield (section 8), or the painted backdrop's twinkle on the same clock, scaled by the feel's flash (Art-v).
       starG.clear();
-      if (backdrop) backdrop.draw(t, feelScale(opts.feel()).flash);
-      else for (const s of stars(seed, opts.band, t, frame.starPx ?? frame.artPx)) starG.rect(s.x, s.y, frame.starPx ?? frame.artPx, frame.starPx ?? frame.artPx).fill(s.layer === 0 ? RAMP.vent[3]! : RAMP.vent[1]!);   // one art pixel at this world scale
+      if (backdrop) { if (frame.stage) backdrop.resize(frame.stage); backdrop.draw(t, feelScale(opts.feel()).flash); }   // UI round 2b: a no-op unless the stage changed
+      else for (const s of stars(seed, frame.band ?? opts.band, t, frame.starPx ?? frame.artPx)) starG.rect(s.x, s.y, frame.starPx ?? frame.artPx, frame.starPx ?? frame.artPx).fill(s.layer === 0 ? RAMP.vent[3]! : RAMP.vent[1]!);   // one art pixel at this world scale
 
       stepShake(shake, paused ? realDt : pdt);   // a pause drains the shake on real time and shows none
       const bob: number[] = [];

@@ -1,10 +1,9 @@
 // The solo duel's boot (H-1 spec §3, §4, §11a): reuses the renderer's Pixi application, stage and letterbox through the
 // duel scene (scene.ts, H-2 spec §3), and steps the duel locally with the duel runtime. The sector session is never
 // created. Each decided round is written as a solo playtest record (H-2 spec §8) through `recordDuel`.
-import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { ShipLayout } from '../../sim/ship/schema';
 import type { Renderer } from '../../render/renderer';
-import { computeLetterbox } from '../../render/letterbox';
+import { pointerToStage } from './pointerToStage';
 import { endModel } from '../../render/duel/endModel';
 import type { DuelPlaytestRecord } from '../../net/duelRecord';
 import { createDuelKeyboard, createPointerSource, PING_CODE, type ConsoleInput, type EventSource } from './input';
@@ -15,6 +14,7 @@ import { createDuelRuntime } from './runtime';
 import type { DuelSink } from '../../ui/sinks';
 import type { AudioOut } from '../audio';
 import { createDuelScene } from './scene';
+import { createLiveViewport, syncViewport } from './liveViewport';
 import { soloRecorder } from './soloRecorder';
 import { beginRockTick, rockAt, RockKind, rockSlots, writeRock } from '../../sim/tactical/rocks';
 import { breakRock, hitRock, pushRock } from '../../sim/tactical/rockBreak';
@@ -46,7 +46,7 @@ export interface DuelModeDeps {
 }
 
 export function startDuelMode(deps: DuelModeDeps): () => void {
-  const { renderer } = deps, viewport = { w: INTERNAL_W, h: INTERNAL_H };
+  const { renderer } = deps, viewport = createLiveViewport(renderer);   // UI round 2b: synced from the stage every frame
   const exitHint = deps.onExit ? '   M: MAIN MENU' : '', pauseText = `PAUSED   ESC: RESUME   F11: FULLSCREEN${exitHint}`;   // UI round §1.5, §1.6
   // Enemy ship window spec §6.1: the contact window's state, local to this screen; its intercept takes Esc and T first.
   const contact = createContactController(), requests = createMapRequests();
@@ -60,10 +60,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
   deps.setConsole?.(keyboard.ui);
   deps.setContact?.(contact);
   const trackConsole = consoleChange(() => keyboard.clearUi());   // Artemis spec §6.2: a console change drops its holds
-  const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => {
-    const rect = canvas.getBoundingClientRect(), lb = computeLetterbox(rect.width, rect.height, INTERNAL_W, INTERNAL_H);
-    return { x: (cx - rect.left - lb.offsetX) / lb.scale, y: (cy - rect.top - lb.offsetY) / lb.scale };
-  }, window as unknown as EventSource);   // Valkyrn spec §5.1: a release off the canvas or a blur ends the gun
+  const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => pointerToStage(canvas, cx, cy), window as unknown as EventSource);   // Valkyrn spec §5.1: a release off the canvas or a blur ends the gun
   const runtime = createDuelRuntime({
     now: () => performance.now(),
     scheduler: { schedule(delay, cb) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } },
@@ -99,6 +96,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
 
   const frame = (ticker: { deltaMS: number }): void => {
     const dt = Math.min(0.1, ticker.deltaMS / 1000);
+    syncViewport(viewport, renderer);   // UI round 2b: the runtime's cameras see the stage's size
     runtime.frame(dt);
     if (deps.onExit && runtime.menuRequested()) { deps.onExit(); return; }   // the caller disposes this duel
     const d = runtime.duel, userPaused = runtime.reasons().has('user');

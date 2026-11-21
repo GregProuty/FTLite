@@ -46,7 +46,7 @@ describe('the latency sink (H-2b F3 overlay)', () => {
 describe('setLayout', () => {
   it('writes only changes', () => {
     const store = createUiStore({ onlineAvailable: false }); let writes = 0; store.subscribe(() => { writes++; });
-    setLayout(store, { scale: 1.5, offsetX: 0, offsetY: 30, dpr: 1 }); setLayout(store, { scale: 1.5, offsetX: 0, offsetY: 30, dpr: 1 });
-    expect(writes).toBe(1); expect(store.getState().layout).toEqual({ stripHeight: 0, scale: 1.5, offsetX: 0, offsetY: 30, dpr: 1 });
+    setLayout(store, { scale: 1.5, offsetX: 0, offsetY: 30, stageW: 1280, stageH: 720, dpr: 1 }); setLayout(store, { scale: 1.5, offsetX: 0, offsetY: 30, stageW: 1280, stageH: 720, dpr: 1 });
+    expect(writes).toBe(1); expect(store.getState().layout).toEqual({ stripHeight: 0, scale: 1.5, offsetX: 0, offsetY: 30, stageW: 1280, stageH: 720, dpr: 1 });
   });
 });

@@ -5,7 +5,6 @@
 // target. 2 (and 1 with the laser fit) pick them up from the keyboard. Drawn in the CRT ramp on the console.
 import { memo, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from 'react';
 import type { FlightPanel } from '../../render/duel/consoleModel';
-import { FLIGHT, flightCard } from '../../render/duel/consoleLayout';
 import { FREQ_NAMES } from '../../render/duel/scienceModel';
 import { AMBER, BAR_OFF, DIM, FONT_NATIVE, FONT_SIZE, TEXT } from '../../render/theme';
 import { CRT } from '../../render/tactical/crtTheme';
@@ -18,6 +17,7 @@ import { useCrt } from '../stage/CrtContext';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
 import { targetText } from './WeaponsStation';
+import { useConsoleLayout } from '../stage/useStage';
 
 type Weapon = 'laser' | 'torpedo';
 /** The GUN card's OVERHEAT blink (Hz, on the CRT clock), as the map's heat word. */
@@ -27,6 +27,7 @@ const stop = (e: SyntheticEvent): void => e.preventDefault();
 export const FlightStation = memo(function FlightStation({ flight, aim = null }: { flight: FlightPanel; aim?: Weapon | null }) {
   const actions = useActions(), { crt, now } = useCrt();
   const dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT, hot = crt ? CRT.hot : AMBER;
+  const lay = useConsoleLayout(), FLIGHT = lay.FLIGHT, flightCard = lay.flightCard;
   const w = flight.weapons, gun = flight.gun, A = flightCard(0), T = flightCard(1), ax = A.x + 6, tx = T.x + 6, x0 = FLIGHT.x + 8;
   const blinkOn = Math.floor(now * 2 * OVERHEAT_CARD_HZ) % 2 === 0, refused = w.refused ?? null;
   const card = (slot: 0 | 1, weapon: Weapon | null, lit: boolean) => {

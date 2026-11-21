@@ -17,7 +17,6 @@ import { EndCard } from './EndCard';
 import { LatencyOverlay } from './LatencyOverlay';
 import { MapOverlay } from './MapOverlay';
 import { HelmStation } from './HelmStation';
-import { INFO_BAND, flightCard } from '../../render/duel/consoleLayout';
 import { TabStrip } from './TabStrip';
 import { ScienceStation } from './ScienceStation';
 import { WeaponsStation } from './WeaponsStation';
@@ -27,9 +26,10 @@ import { OwnShipWindow } from './OwnShipWindow';
 import { TargetingLine } from './TargetingLine';
 import { ShipHud } from './ShipHud';
 import { SitCard } from './SitCard';
+import { useConsoleLayout } from '../stage/useStage';
 
 export function DuelUi() {
-  const duel = useUi((s) => s.duel), latency = useUi((s) => s.latency);
+  const duel = useUi((s) => s.duel), latency = useUi((s) => s.latency), L = useConsoleLayout();
   if (!duel) return null;
   return (
     <Stage>
@@ -45,9 +45,9 @@ export function DuelUi() {
           {duel.ownShip && <OwnShipWindow ownShip={duel.ownShip} />}
           {duel.contact && <ContactWindow contact={duel.contact} />}
           {duel.contact?.aimWeapon && (duel.console?.weapons || duel.console?.flight) && <TargetingLine contact={duel.contact} seed={duel.pointer ?? null}
-            from={duel.console?.flight ? flightCard(duel.contact.aimWeapon === 'torpedo' ? 1 : 0).anchor : undefined} />}
+            from={duel.console?.flight ? L.flightCard(duel.contact.aimWeapon === 'torpedo' ? 1 : 0).anchor : undefined} />}
           {duel.sitCard && <SitCard card={duel.sitCard} />}
-          <Banners banners={duel.banners} cx={duel.console && duel.console.station !== 'ship' ? (INFO_BAND.left + INFO_BAND.right) / 2 : undefined} />
+          <Banners banners={duel.banners} cx={duel.console && duel.console.station !== 'ship' ? (L.INFO_BAND.left + L.INFO_BAND.right) / 2 : undefined} />
         </CrtGlow>
         <CrtScreen />
       </CrtProvider>

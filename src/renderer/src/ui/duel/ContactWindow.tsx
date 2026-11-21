@@ -11,7 +11,6 @@
 // laser's corner brackets mark it.
 import { Fragment, memo, useState, type PointerEvent as ReactPointerEvent, type SyntheticEvent, type WheelEvent as ReactWheelEvent } from 'react';
 import type { ContactView } from '../../render/duel/contactModel';
-import { CONTACT } from '../../render/duel/consoleLayout';
 import { FONT_NATIVE, textPx } from '../../render/theme';
 import { CRT } from '../../render/tactical/crtTheme';
 import { pointInPolygon } from '../../render/tactical/hullModel';
@@ -24,6 +23,7 @@ import { boxCss } from '../stage/geometry';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
 import { polyPoints, segPath } from './svgPaths';
+import { useConsoleLayout } from '../stage/useStage';
 
 /** The laser's target mark: four corner brackets; the torpedo's: a diamond. */
 const LOCK_HALF = 9, LOCK_ARM = 4, DIAMOND = 6;
@@ -40,7 +40,7 @@ const swallow = (e: ReactWheelEvent): void => e.stopPropagation();
 const LINE_H = 20;
 
 export const ContactWindow = memo(function ContactWindow({ contact }: { contact: ContactView }) {
-  const actions = useActions(), l = useUi((s) => s.layout);
+  const actions = useActions(), l = useUi((s) => s.layout), CONTACT = useConsoleLayout().CONTACT;
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const b = contact.box, x0 = CONTACT.x + 8, right = CONTACT.x + CONTACT.w - 8, top = CONTACT.y;
   const statusY = top + 34, laserY = top + 270, missileY = top + 306, barX = x0 + 104;

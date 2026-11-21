@@ -1,7 +1,7 @@
 import { Container, Graphics } from 'pixi.js';
 import type { SimState } from '../sim/state';
 import { ObjectKind } from '../sim/debris';
-import { WORLD_BAND } from './worldFit';
+import { WORLD_BAND, type Band } from './worldFit';
 import { StationKind } from '../sim/stationKinds';
 import { beaconKey } from '../sim/run';
 import { isEnemySlot } from '../sim/debrisTargets';
@@ -11,7 +11,8 @@ import { projectilePath, projectilePos, evadePos, outcomeOf, shouldReset, roomCe
 
 /** Visible asteroids and enemy shots (spec Demo-vii section 2): a render-only layer over the ship, under the HUD, driven by the debris table. */
 /** What the enemy window lends the layer (spec Demo-viii amendments R2 and R3): the enemy-shot origin and our bolt's target on screen, each null while the window is not shown. */
-export interface WindowLink { shotOrigin: Pt | null; target(slot: number): Pt | null }
+/** `band` (UI round 2b final review): the stage's world band (worldBand(stage)); WORLD_BAND when left out. */
+export interface WindowLink { shotOrigin: Pt | null; target(slot: number): Pt | null; band?: Band }
 /** The world shake is no longer here: the interior feel (interiorFeel.ts) shakes the world and this container (Art-i spec section 7). */
 export interface ProjectileLayer { container: Container; reset(): void; draw(state: SimState, fit: { scale: number; x: number; y: number }, dt: number, link?: WindowLink): void }
 interface Bolt { id: number; from: Pt; to: Pt; result: number; kind: number; burst: boolean }
@@ -84,7 +85,7 @@ export function createProjectileLayer(): ProjectileLayer {
         const id = db.stableId[k]!; present.add(id);
         if (!tracked.has(id)) {
           const kind = db.kind[k]!, room = db.room[k]!;
-          tracked.set(id, { id, slot: k, kind, room, impactTick: db.impactTick[k]!, path: projectilePath(id, kind, roomCentrePx(state.derived, room, fit), WORLD_BAND, kind === ObjectKind.Shot ? link?.shotOrigin ?? undefined : undefined), last: null, shape: asteroidShape(id, kind === ObjectKind.Rock), spin: hash01(id, 6) * Math.PI * 2 });
+          tracked.set(id, { id, slot: k, kind, room, impactTick: db.impactTick[k]!, path: projectilePath(id, kind, roomCentrePx(state.derived, room, fit), link?.band ?? WORLD_BAND, kind === ObjectKind.Shot ? link?.shotOrigin ?? undefined : undefined), last: null, shape: asteroidShape(id, kind === ObjectKind.Rock), spin: hash01(id, 6) * Math.PI * 2 });
         }
       }
       for (const [id, t] of tracked) {

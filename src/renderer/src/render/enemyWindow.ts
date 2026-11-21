@@ -5,7 +5,8 @@ import { ENEMY_LAYOUT, ENEMY_TILE } from './enemyShipLayout';
 import { EnemyRoom } from '../sim/enemy';
 
 /** The enemy ship window layer (spec Demo-viii section 2): draws an EnemyWindowView. Every display object is made once; a frame only clears and redraws Graphics, moves sprites and sets text. */
-export interface EnemyWindowLayer { container: Container; draw(view: EnemyWindowView, shown: boolean, dt: number, hitFlash: { room: number | 'hull'; alpha: number } | null): void; reset(): void }
+/** `x` (UI round 2b final review): the window's left edge on the stage (enemyWindowX(stage)); WINDOW.x when left out. */
+export interface EnemyWindowLayer { container: Container; draw(view: EnemyWindowView, shown: boolean, dt: number, hitFlash: { room: number | 'hull'; alpha: number } | null, x?: number): void; reset(): void }
 export interface EnemyWindowOptions { fontFamily: string; fire: { textures: Texture[]; fps: number } | null; panel: ((w: number, h: number) => Container) | null }
 
 import { TEXT, DIM, WARN, AMBER, GOOD, FONT_SIZE, BAR_OFF, CELL_EDGE, PANEL_FILL, PANEL_ALPHA, PANEL_BORDER, PANEL_BORDER_W, PANEL_INNER } from './theme';
@@ -124,11 +125,11 @@ export function createEnemyWindowLayer(opts: EnemyWindowOptions): EnemyWindowLay
   return {
     container,
     reset() { container.visible = false; clock = 0; },
-    draw(view, shown, dt, hitFlash) {
+    draw(view, shown, dt, hitFlash, x = WINDOW.x) {
       clock += dt;
       container.visible = shown && view.visible;
       if (!container.visible) { for (const f of flames) if (f) f.visible = false; return; }
-      container.position.set(WINDOW.x + view.slideX, WINDOW.y);
+      container.position.set(x + view.slideX, WINDOW.y);
       back.clear(); shipG.clear(); over.clear();
       const destroyed = view.phase === 'destroyed', t = view.t;
       ship.position.set(0, view.shipDY);

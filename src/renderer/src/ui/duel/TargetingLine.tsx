@@ -4,14 +4,13 @@
 // elsewhere, each on a CRT.glass underlay. A right-click anywhere drops the pick-up without a change. Until the pointer
 // moves over the stage the line ends at the app's last pointer position, else at the enemy drawing's centre.
 import { memo, useEffect, useState } from 'react';
-import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
-import { weaponCard } from '../../render/duel/consoleLayout';
 import type { ContactView } from '../../render/duel/contactModel';
 import { CRT } from '../../render/tactical/crtTheme';
 import { pointInPolygon } from '../../render/tactical/hullModel';
 import { useActions, useUi } from '../context';
 import { hex } from '../stage/color';
 import { boxCss } from '../stage/geometry';
+import { useConsoleLayout } from '../stage/useStage';
 
 /** The reticle: a ring 20 internal px across with four ticks across it. */
 export const RETICLE_R = 10;
@@ -33,7 +32,7 @@ export function targetingEnd(contact: Pick<ContactView, 'box'>, seed: { x: numbe
 }
 
 export const TargetingLine = memo(function TargetingLine({ contact, seed = null, from }: { contact: ContactView; seed?: { x: number; y: number } | null; from?: { x: number; y: number } }) {
-  const actions = useActions(), l = useUi((s) => s.layout), weapon = contact.aimWeapon;
+  const actions = useActions(), l = useUi((s) => s.layout), weapon = contact.aimWeapon, lay = useConsoleLayout();
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {
     if (!weapon) return;
@@ -46,10 +45,10 @@ export const TargetingLine = memo(function TargetingLine({ contact, seed = null,
   }, [weapon, l, actions]);
   if (!weapon) return null;
   const end = pointer ?? targetingEnd(contact, seed);
-  const start = from ?? weaponCard(weapon).anchor, tint = hex(targetingTint(contact, end)), glass = hex(CRT.glass);   // Valkyrn spec §5: from the picked Flight card
+  const start = from ?? lay.weaponCard(weapon).anchor, tint = hex(targetingTint(contact, end)), glass = hex(CRT.glass);   // Valkyrn spec §5: from the picked Flight card
   return (
-    <svg data-ui-targeting={weapon} viewBox={`0 0 ${INTERNAL_W} ${INTERNAL_H}`} preserveAspectRatio="none"
-      style={{ position: 'absolute', ...boxCss(0, 0, INTERNAL_W, INTERNAL_H, l), pointerEvents: 'none', overflow: 'visible' }}>
+    <svg data-ui-targeting={weapon} viewBox={`0 0 ${lay.stage.w} ${lay.stage.h}`} preserveAspectRatio="none"
+      style={{ position: 'absolute', ...boxCss(0, 0, lay.stage.w, lay.stage.h, l), pointerEvents: 'none', overflow: 'visible' }}>
       <line data-ui-targeting-line="" x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke={glass} strokeWidth={3} />
       <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} stroke={tint} strokeWidth={1} strokeDasharray="6 4" />
       <g data-ui-contact-reticle="">

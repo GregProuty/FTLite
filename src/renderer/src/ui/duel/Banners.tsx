@@ -10,27 +10,29 @@ import { useCrt } from '../stage/CrtContext';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
 import type { Banners as BannerLines } from '../views';
+import { useStage } from '../stage/useStage';
 
-const SIZE = FONT_SIZE * 1.5, PLAY_CX = INTERNAL_W / 2;
+const SIZE = FONT_SIZE * 1.5;
 export const PAUSE_Y = 66, PAUSE_H = 24, PAUSE_PAD = 12;
-/** The pause line's panel for `text`, centred on the screen (its width rounded up to even, so it centres on whole px). */
-export function pauseLineBox(text: string): { x: number; y: number; w: number; h: number } {
+/** The pause line's panel for `text`, centred on the screen (its width rounded up to even, so it centres on whole px);
+ *  UI round 2b: on a stage `stageW` wide (the reference by default). */
+export function pauseLineBox(text: string, stageW: number = INTERNAL_W): { x: number; y: number; w: number; h: number } {
   const w = 2 * Math.ceil(textPx(text, 1) / 2) + 2 * PAUSE_PAD;
-  return { x: Math.round(INTERNAL_W / 2 - w / 2), y: PAUSE_Y, w, h: PAUSE_H };
+  return { x: Math.round(stageW / 2 - w / 2), y: PAUSE_Y, w, h: PAUSE_H };
 }
 
 /** On a CRT screen the text is `hot`. */
-export const Banners = memo(function Banners({ banners, cx = PLAY_CX }: { banners: BannerLines; cx?: number }) {
-  const { crt, now } = useCrt(), TEXT_TINT = crt ? CRT.hot : TEXT;
+export const Banners = memo(function Banners({ banners, cx: cxIn }: { banners: BannerLines; cx?: number }) {
+  const stage = useStage(), mid = stage.w / 2, cx = cxIn ?? mid, { crt, now } = useCrt(), TEXT_TINT = crt ? CRT.hot : TEXT;
   const alertTint = crt ? (blink(now, ALERT_BLINK_HZ) ? CRT.hot : CRT.main) : blink(now, ALERT_BLINK_HZ) ? WARN : TEXT;
-  const pause = banners.tactical ?? banners.interior, box = pause !== null ? pauseLineBox(pause) : null;
+  const pause = banners.tactical ?? banners.interior, box = pause !== null ? pauseLineBox(pause, stage.w) : null;
   return (
     <>
       {pause !== null && box && <>
         <Panel x={box.x} y={box.y} w={box.w} h={box.h} />
-        <PixelText text={pause} x={INTERNAL_W / 2} y={box.y + box.h / 2} size={FONT_NATIVE} tint={TEXT_TINT} anchorX={0.5} anchorY={0.5} />
+        <PixelText text={pause} x={mid} y={box.y + box.h / 2} size={FONT_NATIVE} tint={TEXT_TINT} anchorX={0.5} anchorY={0.5} />
       </>}
-      {banners.alert !== null && <div data-ui-alert="" style={{ display: 'contents' }}><PixelText text={banners.alert} x={INTERNAL_W / 2} y={106} size={FONT_SIZE} tint={alertTint} anchorX={0.5} anchorY={0.5} /></div>}
+      {banners.alert !== null && <div data-ui-alert="" style={{ display: 'contents' }}><PixelText text={banners.alert} x={mid} y={106} size={FONT_SIZE} tint={alertTint} anchorX={0.5} anchorY={0.5} /></div>}
       {banners.notice !== null && <PixelText text={banners.notice} x={cx} y={130} size={SIZE} tint={TEXT_TINT} anchorX={0.5} anchorY={0.5} />}
     </>
   );

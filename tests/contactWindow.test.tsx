@@ -13,6 +13,8 @@ import { TEXT } from '../src/renderer/src/render/theme';
 import { CRT } from '../src/renderer/src/render/tactical/crtTheme';
 import { hex } from '../src/renderer/src/ui/stage/color';
 import { makeUi } from './helpers/uiStore';
+import { setLayout } from '../src/renderer/src/ui/store';
+import { consoleLayout } from '../src/renderer/src/render/duel/consoleLayout';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
@@ -118,5 +120,18 @@ describe('the contact window (spec §4.2, §5)', () => {
     render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);
     act(() => duel.frame({ ...view(contactOf('weapons', false)), contact: null }));
     expect(root()).toBeNull();
+  });
+});
+
+describe('the contact window on a wider stage (UI round 2b)', () => {
+  it('anchors to the right edge of the stage: at stage 1707 its left edge is at internal x 1395', () => {
+    const ui = makeUi(), duel = createDuelSink(ui.store);
+    ui.actions.setContact({ close: vi.fn(), arm: vi.fn(), cancelAim: vi.fn(), pick: vi.fn(), scan: vi.fn(), pickUp: vi.fn() });
+    setLayout(ui.store, { scale: 1, offsetX: 0, offsetY: 0, stageW: 1707, stageH: 720, dpr: 1 });
+    render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);
+    const st = createTacticalState(4, 2, ShipClass.ValkyrnLaser); st.known[0] = 2;
+    act(() => duel.frame(view(contactModel({ state: st, contact: 0, aim: false, station: 'helm', t: 0, weapons: null, box: consoleLayout({ w: 1707, h: 720 }).CONTACT_BOX })!)));
+    expect((root() as HTMLElement).style.left).toBe('1395px');
+    expect((box() as SVGElement).getAttribute('viewBox')?.split(' ')[0]).toBe('1407');
   });
 });

@@ -54,6 +54,9 @@ export interface BackdropLayer {
   container: Container;
   /** `t`: the presentation clock (seconds); `feel`: 0 (off) to 1 (full); 0 hides the twinkle layer (the plain painting). */
   draw(t: number, feel: number): void;
+  /** UI round 2b: re-cover-fit the painting and its stars to a new stage size (the stage follows the window); a no-op
+   *  when the size is unchanged. */
+  resize(stage: { w: number; h: number }): void;
 }
 
 /** The backdrop sprite (linear with mipmaps, set before its first upload, as battlemapLayer) and the twinkle dots over it. */
@@ -61,21 +64,27 @@ export function createBackdropLayer(opt: BackdropOption, stage: { w: number; h: 
   const container = new Container(), src = opt.texture.source;
   src.scaleMode = 'linear';
   src.autoGenerateMipmaps = true;
-  const fit = coverFit(opt.texture.width, opt.texture.height, stage.w, stage.h);
-  const back = new Sprite(opt.texture); back.scale.set(fit.scale); back.position.set(fit.x, fit.y);
+  const back = new Sprite(opt.texture);
   const twinkle = new Container(); twinkle.blendMode = 'add';
   container.addChild(back, twinkle);
   const stars = opt.stars;
   const dots: { k: number; sprite: Sprite; params: TwinkleParams }[] = [], glints: { k: number; sprite: Sprite; period: number }[] = [];
   // A star list for a differently shaped image would land in the wrong places: no twinkle then (the backdrop still draws).
   const sameShape = !!stars && Math.abs(stars.width / stars.height - opt.texture.width / opt.texture.height) < 1e-3;
-  if (stars && sameShape) {
+  let shown = { w: 0, h: 0 };
+  const layout = (size: { w: number; h: number }): void => {
+    shown = { w: size.w, h: size.h };
+    const fit = coverFit(opt.texture.width, opt.texture.height, size.w, size.h);
+    back.scale.set(fit.scale); back.position.set(fit.x, fit.y);
+    for (const c of twinkle.removeChildren()) c.destroy();   // the sprites only: the dot and glint textures are shared
+    dots.length = 0; glints.length = 0;
+    if (!stars || !sameShape) return;
     const { dot, glint } = textures(), tint = parseInt(stars.tint.slice(1), 16), bright = brightFlags(stars.stars);
     const s = fit.scale * (opt.texture.width / stars.width);   // the star list's source px to stage px
     stars.stars.forEach(([x, y, size], k) => {
       const r = (DOT_BASE + Math.sqrt(size)) * s, px = fit.x + (x + 0.5) * s, py = fit.y + (y + 0.5) * s;   // + 0.5: a centroid in pixel indices to the pixel centre
       const reach = bright[k] ? r * GLINT_REACH : r;
-      if (px + reach < 0 || px - reach > stage.w || py + reach < 0 || py - reach > stage.h) return;   // in the cropped bands: never seen
+      if (px + reach < 0 || px - reach > shown.w || py + reach < 0 || py - reach > shown.h) return;   // in the cropped bands: never seen
       const d = new Sprite(dot); d.anchor.set(0.5); d.width = d.height = 2 * r; d.position.set(px, py); d.tint = tint;
       twinkle.addChild(d); dots.push({ k, sprite: d, params: twinkleParams(k) });
       if (bright[k]) {
@@ -83,7 +92,8 @@ export function createBackdropLayer(opt: BackdropOption, stage: { w: number; h: 
         twinkle.addChild(g); glints.push({ k, sprite: g, period: glintPeriod(k) });
       }
     });
-  }
+  };
+  layout(stage);
   return {
     container,
     draw(t, feel) {
@@ -91,6 +101,7 @@ export function createBackdropLayer(opt: BackdropOption, stage: { w: number; h: 
       if (!twinkle.visible) return;
       for (const d of dots) d.sprite.alpha = GLOW_ALPHA * twinkleAlpha(d.k, t, feel, d.params);
       for (const g of glints) g.sprite.alpha = GLINT_ALPHA * glintAlpha(g.k, t, feel, g.period);
-    }
+    },
+    resize(size) { if (size.w !== shown.w || size.h !== shown.h) layout(size); }
   };
 }

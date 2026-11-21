@@ -34,7 +34,8 @@ export function createCalloutLayer(assets: GameAssets, crew3d: () => boolean = (
   });
   return {
     container,
-    draw(state: SimState, list: readonly Bubble[], fit: { scale: number; x: number; y: number }): void {
+    /** `stageW`: the stage's width in internal px (UI round 2b: it follows the window); the bubbles clamp inside it. */
+    draw(state: SimState, list: readonly Bubble[], fit: { scale: number; x: number; y: number }, stageW: number = INTERNAL_W): void {
       const placed: { x: number; y: number; w: number }[] = [];
       pool.forEach((b, k) => {
         const item = list[k];
@@ -53,7 +54,7 @@ export function createCalloutLayer(assets: GameAssets, crew3d: () => boolean = (
             .poly([w / 2 - TAIL, h, w / 2 + TAIL, h, w / 2, h + TAIL]).fill({ color: edge });
         }
         const a = bubbleAnchor(state, item.pid, fit, liftFor(state, item.pid)), w = b.w;
-        let x = Math.round(Math.max(4, Math.min(INTERNAL_W - w - 4, a.x - w / 2))), y = Math.round(a.y - 20 - TAIL);
+        let x = Math.round(Math.max(4, Math.min(stageW - w - 4, a.x - w / 2))), y = Math.round(a.y - 20 - TAIL);
         const hits = (): boolean => placed.some((p) => x < p.x + p.w + 2 && p.x < x + w + 2 && y < p.y + 22 && p.y < y + 22);
         while (hits()) y -= 23;                                  // crew close together: stack the later bubble above the earlier one
         placed.push({ x, y, w }); b.root.position.set(x, y);

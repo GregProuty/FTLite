@@ -13,6 +13,7 @@ import { classOf, CREW_SLOT, Room } from '../../sim/tactical/state';
 import { SHIP_HULL } from '../../sim/tactical/tuning';
 import { HEALTH_MAX, HEAT_MAX } from '../../sim/tuning';
 import { textPx } from '../theme';
+import { INTERNAL_H } from '../../../../shared/resolution';
 
 /** The Cutter's hull bar in HULL_SEGMENTS segments, one per HULL_PER_SEGMENT hull. W-1: derived from `SHIP_HULL` so the
  *  bar keeps its 20 segments (and its laid-out width) when the duel hull moved 40 → 70 (3.5 hull a segment). */
@@ -98,16 +99,18 @@ export function overdriveSlot(c: Pick<PowerColumn, 'slots' | 'max'>, k: number):
 
 /** Column n's left edge: the five systems at `pitch`, the reactor (n = 5) `reactorGap` further right. */
 export function powerColumnX(n: number): number { const P = HUD.power; return HUD.x + n * P.pitch + (n >= DUEL_SYSTEM_COUNT ? P.reactorGap : 0); }
-export function powerNameY(): number { return HUD.power.bottom - HUD.power.nameH; }
-export function coolantY(): number { return powerNameY() - 4 - HUD.power.pipH; }
-export function heatY(): number { return coolantY() - 3 - HUD.power.heatH; }
+/** UI round 2b: the power panel rests on its stage's bottom edge, 12 px up (`HUD.power.bottom` at the reference 720). */
+const powerBottom = (stageH: number): number => stageH - (INTERNAL_H - HUD.power.bottom);
+export function powerNameY(stageH: number = INTERNAL_H): number { return powerBottom(stageH) - HUD.power.nameH; }
+export function coolantY(stageH: number = INTERNAL_H): number { return powerNameY(stageH) - 4 - HUD.power.pipH; }
+export function heatY(stageH: number = INTERNAL_H): number { return coolantY(stageH) - 3 - HUD.power.heatH; }
 /** The top of slot k (0 the bottom one). */
-export function powerBarY(k: number): number { const P = HUD.power; return heatY() - 4 - (k + 1) * P.barH - k * P.gap; }
+export function powerBarY(k: number, stageH: number = INTERNAL_H): number { const P = HUD.power; return heatY(stageH) - 4 - (k + 1) * P.barH - k * P.gap; }
 /** The panel's backing: around every column, from the tallest (the reactor's 10 bars and the Weapons column's 10 slots,
  *  8 px slots with 2 px gaps so they fit, spec §10.1) to the bottom. */
-export function powerPanel(): { x: number; y: number; w: number; h: number } {
-  const P = HUD.power, x = HUD.x - P.pad, y = powerBarY(Math.max(REACTOR_BARS, ...SYSTEM_SLOTS) - 1) - P.pad;
-  return { x, y, w: powerColumnX(DUEL_SYSTEM_COUNT) + P.colW + P.pad - x, h: P.bottom + 4 - y };
+export function powerPanel(stageH: number = INTERNAL_H): { x: number; y: number; w: number; h: number } {
+  const P = HUD.power, x = HUD.x - P.pad, y = powerBarY(Math.max(REACTOR_BARS, ...SYSTEM_SLOTS) - 1, stageH) - P.pad;
+  return { x, y, w: powerColumnX(DUEL_SYSTEM_COUNT) + P.colW + P.pad - x, h: powerBottom(stageH) + 4 - y };
 }
 /** The left edge of hull segment `k`. */
 export function hullSegX(k: number): number { const h = HUD.hull; return HUD.x + k * (h.segW + h.gap); }

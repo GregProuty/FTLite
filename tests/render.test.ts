@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeLetterbox } from '../src/renderer/src/render/letterbox';
+import { stageFit } from '../src/renderer/src/render/letterbox';
 import { syncCache } from '../src/renderer/src/render/cache';
 import type { Container } from 'pixi.js';
 import { createEnemyWindowLayer } from '../src/renderer/src/render/enemyWindow';
@@ -8,12 +8,12 @@ import { EnemyRoom, leave } from '../src/renderer/src/sim/enemy';
 import { ENEMY_SLOT } from '../src/renderer/src/sim/debrisTargets';
 import { makeState, quiet, placeEnemy } from './helpers/sim';
 
-describe('letterbox', () => {
-  it('picks the largest half-step scale that fits and centres', () => {
-    expect(computeLetterbox(1280, 720, 1280, 720)).toEqual({ scale: 1, offsetX: 0, offsetY: 0 });
-    expect(computeLetterbox(1920, 1080, 1280, 720)).toEqual({ scale: 1.5, offsetX: 0, offsetY: 0 });
-    expect(computeLetterbox(2560, 1440, 1280, 720)).toEqual({ scale: 2, offsetX: 0, offsetY: 0 });
-    expect(computeLetterbox(1366, 768, 1280, 720)).toEqual({ scale: 1, offsetX: 43, offsetY: 24 });
+describe('stageFit', () => {
+  it('fills the window with the stage at a smooth scale (UI round §2.1)', () => {
+    expect(stageFit(1280, 720)).toEqual({ w: 1280, h: 720, scale: 1, offsetX: 0, offsetY: 0 });
+    expect(stageFit(1920, 1080)).toEqual({ w: 1280, h: 720, scale: 1.5, offsetX: 0, offsetY: 0 });
+    expect(stageFit(2560, 1440)).toEqual({ w: 1280, h: 720, scale: 2, offsetX: 0, offsetY: 0 });
+    const f = stageFit(1366, 768); expect({ w: f.w, h: f.h }).toEqual({ w: 1281, h: 720 }); expect(f.scale).toBeCloseTo(1366 / 1281, 12); expect(f.offsetX).toBe(0); expect(f.offsetY).toBe(0);   // the rounded width binds; under a pixel spare
   });
 });
 
