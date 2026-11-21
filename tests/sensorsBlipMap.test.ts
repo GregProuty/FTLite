@@ -78,8 +78,8 @@ describe('the blip on the map (sensors blip spec §3)', () => {
     unseen(t, 1000);
     const fog = stepFog(createFog(), t, 0, 0), out = tacticalModel(input(t, { fog, ships: fog.seen.enemy ? [0, 1] : [0] }));   // the scene's own rule for `ships`
     expect(out.ships.map((s) => s.index)).toEqual([0]);
-    expect(out.blip).toBeNull();                                      // the ping at (3011, 1897), r 400: wholly off the view
-    expect(blipArrow(out)).toMatchObject({ label: 'BLIP ~2000' });    // 2014 u from the crew ship
+    expect(out.blip).toBeNull();                                      // the ping at (3911, 1897), r 400: wholly off the view
+    expect(blipArrow(out)).toMatchObject({ label: 'BLIP ~2900' });    // about 2900 u from the crew ship (the doubled range, owner 2026-11-20: was ~2000)
   });
 });
 

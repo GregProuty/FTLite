@@ -110,4 +110,4 @@ export const AUTOCANNON_WEAK_HITS_PER_LAYER = 4;
 export const SCAN_SCIENCE_BY_BARS: readonly number[] = [0, 5, 6, 7, 8];
 export const SCAN_OTHER_BY_BARS: readonly number[] = [0, 2, 2, 3, 3];
 /** Spec §10.4: the crew's sensor range (map units) by effective Sensors bars 0..4. */
-export const SENSOR_RANGE_BY_BARS: readonly number[] = [300, 900, 1400, 2000, 2800];
+export const SENSOR_RANGE_BY_BARS: readonly number[] = [600, 1800, 2800, 4000, 5600];   // doubled (owner 2026-11-20); was 300, 900, 1400, 2000, 2800

@@ -52,8 +52,9 @@ describe('the Valkyrn after the merge (owner 2026-11-19)', () => {
   it('flies and fights as pinned (master 2ced83cf\'s flight and bots, among asteroids-iii\'s orbiting belt): five duels, 3000 ticks each, every tick identical', { timeout: 120_000 }, () => {
     expect([run('pilot', 1), run('pilot', 2), run('pilot', 3), run('pair', 1), run('pair', 2)]).toEqual([
       'pilot-1:3000:d59dc2b211d0b940', 'pilot-2:3000:38ed639cfb5e124d', 'pilot-3:3000:af729d1d7bcfa25f',
-      'pair-1:3000:bb9911d08387472b', 'pair-2:3000:9a04445c3cef44d2'
-    ]);   // the asteroids-iv merge with master (SIM_VERSION 68: ui-round-1's Hunter 95 / Valkyrn thrust 200 and the slingshot's doubled
+      'pair-1:3000:1e57790e10b07489', 'pair-2:3000:cf19960c9341e67a'
+    ]);   // the doubled sensor range (SIM 69, owner 2026-11-20): pair-1 and pair-2 were 'pair-1:3000:bb9911d08387472b', 'pair-2:3000:9a04445c3cef44d2'.
+    // the asteroids-iv merge with master (SIM_VERSION 68: ui-round-1's Hunter 95 / Valkyrn thrust 200 and the slingshot's doubled
     // planet pull among the cell rocks; kind b): was 'pilot-1:3000:4ff16b1bc07aa71a', 'pilot-2:3000:ad8a6fe131ef2a4e', 'pilot-3:3000:c9d8200c5e371f2b',
     // 'pair-1:3000:09341308154e53ed', 'pair-2:3000:11b43ce33cd9e93a' (the branch at 67); master alone had, at the slingshot (SIM 66), 'pilot-1:3000:1fa7d204fd2384ab',
     // 'pilot-2:3000:562d9353cf1b24cb', 'pilot-3:3000:fe1c1c5f45f53820', 'pair-1:3000:fbdac76dabfa5d5f', 'pair-2:3000:79db86d8fa6233ff', and at the UI round (SIM 64)
