@@ -17,6 +17,7 @@ import { fireWatch, ownShipModel, type FireWatch } from '../../render/duel/ownSh
 import { hoverReadout } from '../../render/duel/scienceModel';
 import { shipHud } from '../../render/duel/shipHudModel';
 import { createInteriorView, type InteriorView } from '../../render/duel/interiorView';
+import { HUNTER_FRAME } from '../../render/duel/hunterArt';
 import { addShieldHit, createShieldFx, shieldFlash, stepShieldFx } from '../../render/shieldFx';
 import { createShots, FLIGHT_S, pushShots, readHits, stepShots } from '../../render/duel/enemyShots';
 import { shipCommandOf, shipControlAt, type ShipCommand } from '../../render/duel/shipControls';
@@ -226,6 +227,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
   root.addChild(scene);
   renderer.app.stage.addChild(root);
   const fx = createFx();
+  const hunterArt = () => { const img = renderer.assets.image?.('ship.hunter.art'); return img ? { url: img.url, frame: HUNTER_FRAME } : null; };   // UI round Part 3 §3.4
   const shieldFx = createShieldFx(2), shots = createShots();   // UI round Part 3 §3: the shield shimmer (both ships) and the enemy shots seen from inside
   const stageHook = globalThis as unknown as { __FTLITE_STAGE__?: boolean; __spikeAsteroidsFx?: unknown };
   if (stageHook.__FTLITE_STAGE__ === true) stageHook.__spikeAsteroidsFx = fx;   // asteroids-iii: the frame-time check reads the live fx count (a read-only staging hook, behind duelMode's __FTLITE_STAGE__ flag like __spikeAsteroids)
@@ -471,7 +473,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       // Step 5: the contact view, only while shown.
       const open = contact?.state() ?? null;
       const contactView = shown && station !== null && station !== 'ship'   // Science's window shows with nothing selected
-        ? contactModel({ state: d.tactical, contact: open?.contact ?? null, aim: open?.aim ?? false, weapon: contact?.aimWeapon() ?? 'laser', station, t, weapons: consoleView?.weapons ?? consoleView?.flight?.weapons ?? null, seen: open?.contact === 0 ? fogView.seen.enemy : open?.contact === 1 ? fogView.seen.derelict : true, flashes: open?.contact === 0 ? flashesFor(fx.struck, targetOf(d.tactical, CREW_SLOT)) : [], box: L.CONTACT_BOX })
+        ? contactModel({ state: d.tactical, contact: open?.contact ?? null, aim: open?.aim ?? false, weapon: contact?.aimWeapon() ?? 'laser', station, t, weapons: consoleView?.weapons ?? consoleView?.flight?.weapons ?? null, seen: open?.contact === 0 ? fogView.seen.enemy : open?.contact === 1 ? fogView.seen.derelict : true, flashes: open?.contact === 0 ? flashesFor(fx.struck, targetOf(d.tactical, CREW_SLOT)) : [], box: L.CONTACT_BOX, art: hunterArt(), shield: { fx: shieldFx, slot: targetOf(d.tactical, CREW_SLOT) } })
         : null;
       options.ui.frame({
         end: overlay.end,

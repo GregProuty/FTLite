@@ -22,6 +22,8 @@ import { hex } from '../stage/color';
 import { boxCss } from '../stage/geometry';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
+import { hexPoints } from '../../render/shieldFx';
+import { AmberFilter } from './AmberFilter';
 import { polyPoints, segPath } from './svgPaths';
 import { useConsoleLayout } from '../stage/useStage';
 
@@ -43,7 +45,7 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
   const actions = useActions(), l = useUi((s) => s.layout), CONTACT = useConsoleLayout().CONTACT;
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const b = contact.box, x0 = CONTACT.x + 8, right = CONTACT.x + CONTACT.w - 8, top = CONTACT.y;
-  const statusY = top + 34, laserY = top + 270, missileY = top + 306, barX = x0 + 104;
+  const statusY = contact.statusY, laserY = top + 270, missileY = top + 306, barX = x0 + 104;
   const linesY = contact.weapons ? top + 336 : top + 270, drawn = contact.outline.length > 0;
   const aiming = contact.aim && contact.weapons !== null;
   /** A client position to internal px: the inverse of boxCss on the stage (which starts below the session strip). */
@@ -72,6 +74,7 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
       <div data-ui-contact="" onPointerDown={rootDown} onContextMenu={stop} onMouseDown={stop} onAuxClick={stop} onWheel={swallow}
         style={{ position: 'absolute', boxSizing: 'border-box', ...boxCss(CONTACT.x, CONTACT.y, CONTACT.w, CONTACT.h, l), pointerEvents: 'auto' }} />
       <Panel x={CONTACT.x} y={CONTACT.y} w={CONTACT.w} h={CONTACT.h} />
+      <AmberFilter />
       <PixelText text={contact.title} x={x0} y={top + 8} size={FONT_NATIVE} tint={CRT.main} />
       {contact.contact !== null && <Button name="contact-close" label="X" x={right - 24} y={top + 6} w={24} h={20} onPress={() => actions.contact.close()} />}
       {scan && scan.enabled && <Button name="contact-scan" label={scan.label} x={right - 24 - 6 - 132} y={top + 6} w={132} h={20} onPress={() => actions.contact.scan()} />}
@@ -81,8 +84,10 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
       {contact.shields && (
         <>
           <PixelText text="SHLD" x={x0} y={statusY} size={FONT_NATIVE} tint={CRT.mid} />
+          <Box x={x0 + 36} y={statusY + 1} w={contact.shields.of * 11 + 3} h={14} attrs={{ 'data-ui-contact-shield-panel': '' }}
+            style={{ background: hex(CRT.glass, 0.85), border: `1px solid ${hex(CRT.dim)}`, borderRadius: 2 }} />
           {Array.from({ length: contact.shields.of }, (_, k) => (
-            <Box key={k} x={x0 + 40 + k * 12} y={statusY + 4} w={8} h={8} attrs={{ 'data-ui-contact-pip': k < contact.shields!.up ? 'up' : 'down' }}
+            <Box key={k} x={x0 + 36 + 3 + k * 11} y={statusY + 4} w={8} h={8} attrs={{ 'data-ui-contact-pip': k < contact.shields!.up ? 'up' : 'down' }}
               style={k < contact.shields!.up ? { background: hex(CRT.main) } : { border: `1px solid ${hex(CRT.mid)}` }} />
           ))}
         </>
@@ -99,7 +104,15 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
           style={{ ...boxStyle, pointerEvents: 'auto', cursor: aiming ? 'none' : 'default' }}
           onPointerMove={(e) => setPointer(toInternal(e))} onPointerLeave={() => setPointer(null)} onPointerDown={boxDown}
           onContextMenu={stop} onMouseDown={stop} onAuxClick={stop} onWheel={swallow}>
-          <polygon points={polyPoints(contact.outline)} fill={hex(CRT.glass)} stroke={hex(contact.unknown ? CRT.mid : CRT.main)} strokeWidth={1} strokeDasharray={contact.unknown ? '6 4' : undefined} />
+          {contact.art && <image data-ui-contact-art="" href={contact.art.url} x={contact.art.x} y={contact.art.y} width={contact.art.w} height={contact.art.h} preserveAspectRatio="none" filter="url(#crt-amber)" style={{ imageRendering: 'auto' }} />}
+          <polygon points={polyPoints(contact.outline)} fill={contact.art ? 'none' : hex(CRT.glass)} stroke={hex(contact.unknown ? CRT.mid : CRT.main)} strokeWidth={1} strokeDasharray={contact.unknown ? '6 4' : undefined} />
+          {contact.shield && contact.shield.bubble > 0 && (
+            <ellipse data-ui-contact-bubble="" cx={contact.shield.ellipse.cx} cy={contact.shield.ellipse.cy} rx={contact.shield.ellipse.rx} ry={contact.shield.ellipse.ry}
+              fill="none" stroke={hex(CRT.main)} strokeOpacity={contact.shield.bubble} strokeWidth={1} style={{ pointerEvents: 'none' }} />
+          )}
+          {contact.shield?.cells.map((c, k) => (
+            <polygon key={`c${k}`} data-ui-contact-cell="" points={polyPoints(hexPoints(c.x, c.y, contact.shield!.cell))} fill="none" stroke={hex(CRT.main)} strokeOpacity={c.alpha} strokeWidth={1} style={{ pointerEvents: 'none' }} />
+          ))}
           {contact.rooms.map((r, k) => (
             <g key={k} data-ui-contact-room={r.label}>
               <polygon points={polyPoints(r.points)} fill={r.fill === null ? 'none' : hex(r.fill)} stroke={hex(r.stroke)} strokeWidth={1} />
