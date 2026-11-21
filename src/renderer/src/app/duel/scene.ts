@@ -439,7 +439,16 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       let overlayView: MapOverlayView | null = null;
       // UI round Part 3 §3: hits become shield shimmer (either ship, any view) and, inside, enemy shots; then both age on the presentation clock.
       const hits = readHits(d.tactical, events), pdt = frozen ? 0 : dt;
-      for (const h of hits) if (h.stopped) addShieldHit(shieldFx, h.target, h.a, h.drop, h.drop && (d.tactical.systems[h.target]?.shields ?? 0) === 0, FLIGHT_S[h.kind]);
+      // The shields count is after every drop this frame, so a drop's layer is that count plus the later drops on the same ship;
+      // only the frame's last drop can be the one that reaches 0 (`last`).
+      const later = new Map<number, number>();
+      for (let i = hits.length - 1; i >= 0; i--) {
+        const h = hits[i]!;
+        if (!h.stopped) continue;
+        const after = (d.tactical.systems[h.target]?.shields ?? 0) + (h.drop ? later.get(h.target) ?? 0 : 0);
+        addShieldHit(shieldFx, h.target, h.a, h.drop, h.drop && after === 0, FLIGHT_S[h.kind], h.drop ? after : -1);
+        if (h.drop) later.set(h.target, (later.get(h.target) ?? 0) + 1);
+      }
       if (view === 'interior' && hits.length > 0) {
         const band = interior.band();
         pushShots(shots, hits, interior.frame(d), Math.hypot(band.w, band.h) / (interior.placement()?.scale ?? 1));

@@ -237,14 +237,14 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         for (const s of look.shots.shots) {
           const p = shotDraw(s), cx = Math.cos(p.heading), cy = Math.sin(p.heading);
           if (!s.landed) {
-            if (s.kind === 'laser') shieldG.moveTo(p.x - cx * 24, p.y - cy * 24).lineTo(p.x, p.y).stroke({ width: 3, color: SHOT_CORE }).moveTo(p.x - cx * 24, p.y - cy * 24).lineTo(p.x, p.y).stroke({ width: 1, color: SHOT_BRIGHT });
-            else if (s.kind === 'pew') shieldG.moveTo(p.x - cx * 10, p.y - cy * 10).lineTo(p.x, p.y).stroke({ width: 2, color: SHOT_CORE, alpha: 0.7 }).circle(p.x, p.y, 3).fill({ color: SHOT_BRIGHT });
+            if (s.kind === 'laser') shieldG.moveTo(p.x - cx * 56, p.y - cy * 56).lineTo(p.x, p.y).stroke({ width: 5, color: SHOT_CORE, alpha: 0.35 }).moveTo(p.x - cx * 56, p.y - cy * 56).lineTo(p.x, p.y).stroke({ width: 2, color: SHOT_BRIGHT });
+            else if (s.kind === 'pew') shieldG.moveTo(p.x - cx * 18, p.y - cy * 18).lineTo(p.x, p.y).stroke({ width: 3, color: SHOT_CORE, alpha: 0.7 }).circle(p.x, p.y, 4.5).fill({ color: SHOT_BRIGHT });
             else {
-              p.trail.forEach((t, i) => shieldG.circle(t.x, t.y, 4 - i * 0.6).fill({ color: SHOT_CORE, alpha: 0.5 - i * 0.1 }));
-              shieldG.circle(p.x, p.y, 2.5).fill({ color: SHOT_BRIGHT }).circle(p.x, p.y, 2.5).stroke({ width: 1, color: SHOT_CORE });
+              p.trail.forEach((t, i) => shieldG.circle(t.x, t.y, 5 - i).fill({ color: SHOT_CORE, alpha: 0.5 - i * 0.1 }));
+              shieldG.circle(p.x, p.y, 3.5).fill({ color: SHOT_BRIGHT }).circle(p.x, p.y, 3.5).stroke({ width: 1.5, color: SHOT_CORE });
             }
           }
-          if (p.burst > 0) shieldG.circle(p.x, p.y, 6 + 16 * p.burst).stroke({ width: 2, color: s.stopped ? SHIELD_COLOUR : SHOT_CORE, alpha: 1 - p.burst });
+          if (p.burst > 0) shieldG.circle(p.x, p.y, 8 + 22 * p.burst).stroke({ width: 2, color: s.stopped ? SHIELD_COLOUR : SHOT_CORE, alpha: 1 - p.burst });
         }
       }
       // Duel polish i spec §D: healing motes and the revive, on the presentation clock (held while paused).

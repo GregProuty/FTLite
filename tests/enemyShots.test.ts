@@ -3,7 +3,7 @@ import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { createSeatedDuel } from './helpers/duelSeat';
-import { CREW_SLOT, type TacticalState } from '../src/renderer/src/sim/tactical/state';
+import { CREW_SLOT, Room, type TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { HEADING_COUNT } from '../src/renderer/src/sim/tactical/tuning';
 import type { ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 import { ellipsePoint } from '../src/renderer/src/render/shieldFx';
@@ -58,6 +58,13 @@ describe('interior frame and shots', () => {
     expect(Math.hypot(f.nose.x, f.nose.y)).toBeCloseTo(1);
     expect(f.star).toEqual({ x: -f.nose.y, y: f.nose.x });
     expect(f.ellipse).toEqual({ cx: 7 * TILE_PX, cy: 3.5 * TILE_PX, rx: 0.56 * 10 * TILE_PX, ry: 0.56 * 5 * TILE_PX });
+    const w = d.interior.derived.width;
+    for (let r = 0; r < 3; r++) {   // each room's landing point is the centre of that room's point tile
+      const t = d.points.find((q) => q.tacticalRoom === r)!.tile;
+      expect(f.rooms[r]).toEqual({ x: (t % w + 0.5) * TILE_PX, y: (Math.floor(t / w) + 0.5) * TILE_PX });
+    }
+    const eng = f.rooms[Room.Engines]!, wpn = f.rooms[Room.Weapons]!;   // the nose points from Engines toward Weapons
+    expect(f.nose.x * (wpn.x - eng.x) + f.nose.y * (wpn.y - eng.y)).toBeGreaterThan(0);
     disposeDuel(d);
   });
   it('a stopped shot ends on the ellipse, a through shot at its room, a miss crosses', () => {
@@ -81,7 +88,9 @@ describe('interior frame and shots', () => {
     stepShots(s, FLIGHT_S.torpedo + 0.01);
     expect(s.shots[0]!.landed).toBe(true);
     expect(shotDraw(s.shots[0]!).burst).toBeGreaterThan(0);
-    stepShots(s, 0.2);
+    stepShots(s, 0.2 - 0.05);   // age is now life + 0.16: the shot is still there
+    expect(s.shots).toHaveLength(1);
+    stepShots(s, 0.05);         // life + 0.21: gone
     expect(s.shots).toHaveLength(0);
   });
   it('a missed shot flies out with no burst', () => {

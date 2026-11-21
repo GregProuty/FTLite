@@ -33,12 +33,20 @@ describe('shieldFx', () => {
     // the nose impact sits at the ellipse edge, so rings are clipped: more than ring 0-1 alone, at most 19
     expect(cs.length).toBeGreaterThan(7);
     expect(cs.length).toBeLessThanOrEqual(1 + 6 + 12);
-    const sorted = [...cs].sort((a, b) => b.alpha - a.alpha);
-    expect(sorted[0]!.alpha).toBeGreaterThan(sorted[sorted.length - 1]!.alpha);
+    // compare the ring-0 cell (the impact cell, lit alone at age 0) with a ring-2 cell, both at the same age
+    const ring0 = cells(hitAt(0))[0]!;
+    const norm = (c: { x: number; y: number }) => ((c.x - E.cx) / E.rx) ** 2 + ((c.y - E.cy) / E.ry) ** 2;
+    const colStep = Math.sqrt(3) * CELL;
+    const ring2 = cs.filter((c) => Math.abs(Math.hypot(c.x - ring0.x, c.y - ring0.y) - 2 * colStep) < 1e-6 || Math.abs(Math.hypot(c.x - ring0.x, c.y - ring0.y) - 3 * CELL) < 1e-6);
+    expect(ring2.length).toBeGreaterThan(0);
+    const raw = (c: { x: number; y: number; alpha: number }) => c.alpha / (0.45 + 0.55 * norm(c));
+    const at = cs.find((c) => c.x === ring0.x && c.y === ring0.y)!;
+    for (const c of ring2) expect(raw(c)).toBeLessThan(raw(at));
   });
 
-  it('every alpha is 0 at SHIMMER_S and the hit is removed after a step past it', () => {
-    expect(cells(hitAt(SHIMMER_S)).every((c) => c.alpha === 0)).toBe(true);
+  it('every alpha is near 0 just under SHIMMER_S, lit just after the start, and the hit is removed after a step past SHIMMER_S', () => {
+    expect(cells(hitAt(SHIMMER_S - 0.001)).every((c) => c.alpha < 0.01)).toBe(true);
+    expect(cells(hitAt(0.01)).some((c) => c.alpha > 0.3)).toBe(true);
     const fx = hitAt(SHIMMER_S + 0.01);
     expect(cells(fx).length).toBe(0);
     expect(fx.hits[0]!.length).toBe(0);
@@ -121,10 +129,22 @@ describe('shieldFx', () => {
     expect(s.y).toBeCloseTo(140, 6);
   });
 
-  it('shieldFlash: layer = up with alpha 1 right after a drop, null after 0.3 s', () => {
+  it('every impact bearing lights at least one cell at age 0, all inside the ellipse (rx 100, ry 60, cell 8)', () => {
+    const e: Ellipse = { cx: 100, cy: 100, rx: 100, ry: 60 };
+    for (const a of [0, Math.PI / 4, Math.PI / 2, 3 * Math.PI / 4, Math.PI]) {
+      const fx = createShieldFx(1); addShieldHit(fx, 0, a, false, false);
+      const cs = shieldCells(fx, 0, e, 8, NOSE, STAR);
+      expect(cs.length, `bearing ${a}`).toBeGreaterThan(0);
+      expect(cs.some((c) => c.alpha > 0.4 * 0.45), `bearing ${a}`).toBe(true);
+      for (const c of cs) expect(((c.x - e.cx) / e.rx) ** 2 + ((c.y - e.cy) / e.ry) ** 2).toBeLessThanOrEqual(1 + 1e-9);
+    }
+  });
+
+  it('shieldFlash: the layer fixed on the hit (not the live up), alpha 1 right after a drop, null after 0.3 s', () => {
     const fx = createShieldFx(1);
-    addShieldHit(fx, 0, 0, true, false);
-    expect(shieldFlash(fx, 0, 3)).toEqual({ layer: 3, alpha: 1 });
+    addShieldHit(fx, 0, 0, true, false, 0, 2);
+    expect(shieldFlash(fx, 0, 0)).toEqual({ layer: 2, alpha: 1 });
+    expect(shieldFlash(fx, 0, 5)).toEqual({ layer: 2, alpha: 1 });   // `up` changing later does not move the flash
     stepShieldFx(fx, 0.31);
     expect(shieldFlash(fx, 0, 3)).toBeNull();
     const plain = createShieldFx(1);

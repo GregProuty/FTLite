@@ -9,7 +9,7 @@ const SQRT3 = Math.sqrt(3);
 
 /** One hit on a ship's shield: `a` the impact bearing in the ship's own frame (radians, 0 = nose, +PI/2 = starboard),
  *  `age` seconds since it lands (negative while its shot is still flying), `drop` a layer went, `last` that was the last layer. */
-export interface ShieldHit { a: number; age: number; drop: boolean; last: boolean }
+export interface ShieldHit { a: number; age: number; drop: boolean; last: boolean; /** the layer that dropped (fixed at the hit), or -1 */ layer: number }
 export interface ShieldFx { hits: ShieldHit[][]; collapse: number[] }   // per ship slot; collapse = seconds since the last layer dropped, or -1
 
 export function createShieldFx(slots: number): ShieldFx {
@@ -19,8 +19,8 @@ export function createShieldFx(slots: number): ShieldFx {
   return { hits, collapse };
 }
 
-export function addShieldHit(fx: ShieldFx, slot: number, a: number, drop: boolean, last: boolean, delay = 0): void {
-  fx.hits[slot]!.push({ a, age: -delay, drop, last });
+export function addShieldHit(fx: ShieldFx, slot: number, a: number, drop: boolean, last: boolean, delay = 0, layer = -1): void {
+  fx.hits[slot]!.push({ a, age: -delay, drop, last, layer });
   if (last && delay <= 0) fx.collapse[slot] = 0;
 }
 
@@ -68,6 +68,33 @@ function nearestCell(e: Ellipse, cell: number, px: number, py: number): { q: num
   return { q: rx, s: rz };
 }
 
+function cellCentre(e: Ellipse, cell: number, q: number, s: number): { x: number; y: number } {
+  return { x: e.cx + SQRT3 * cell * (q + s / 2), y: e.cy + 1.5 * cell * s };
+}
+function cellInside(e: Ellipse, cell: number, q: number, s: number): boolean {
+  const c = cellCentre(e, cell, q, s), nx = (c.x - e.cx) / e.rx, ny = (c.y - e.cy) / e.ry;
+  return nx * nx + ny * ny <= 1;
+}
+
+/** The cell nearest (px, py) that is inside the ellipse (the grid only draws inside cells): the plain nearest when it is
+ *  inside, else the nearest inside cell within a few rings, else the centre cell. */
+function insideCell(e: Ellipse, cell: number, px: number, py: number): { q: number; s: number } {
+  const n = nearestCell(e, cell, px, py);
+  if (cellInside(e, cell, n.q, n.s)) return n;
+  let best = { q: 0, s: 0 }, bd = Infinity;
+  const R = 4;
+  for (let ds = -R; ds <= R; ds++) {
+    for (let dq = -R; dq <= R; dq++) {
+      if (hexDist(dq, ds) > R) continue;
+      const q = n.q + dq, s = n.s + ds;
+      if (!cellInside(e, cell, q, s)) continue;
+      const c = cellCentre(e, cell, q, s), dd = Math.hypot(c.x - px, c.y - py);
+      if (dd < bd) { bd = dd; best = { q, s }; }
+    }
+  }
+  return best;
+}
+
 /** The hex cells to draw now in `e` (cell radius `cell` px, pointy-top hexes on an axial grid clipped to the ellipse):
  *  each lit cell's centre and alpha 0..1 (already multiplied by the edge brightening 0.45 + 0.55 * r^2, r the normalised
  *  ellipse radius of the centre). Empty when nothing shimmers. */
@@ -85,7 +112,7 @@ export function shieldCells(fx: ShieldFx, slot: number, e: Ellipse, cell: number
     const vx = e.cx - p.x, vy = e.cy - p.y;
     const len = Math.hypot(vx, vy);
     const k = len > cell ? cell / len : 1;
-    return nearestCell(e, cell, p.x + vx * k, p.y + vy * k);
+    return insideCell(e, cell, p.x + vx * k, p.y + vy * k);
   });
 
   const rowStep = 1.5 * cell, colStep = SQRT3 * cell;
@@ -126,13 +153,14 @@ export function bubbleAlpha(fx: ShieldFx, slot: number, up: number): number {
   return (0.12 + 0.08) * (1 - c / COLLAPSE_S);
 }
 
-/** The HUD layer flash: the layer index that just dropped and its flash 0..1 (1 at the hit, 0 after 0.3 s), or null. */
-export function shieldFlash(fx: ShieldFx, slot: number, up: number): { layer: number; alpha: number } | null {
-  let best = -1;
+/** The HUD layer flash: the layer index that dropped (fixed when the hit was added; `up` is the fallback for a hit added
+ *  without one) and its flash 0..1 (1 at the hit, 0 after 0.3 s), or null. The newest drop wins. */
+export function shieldFlash(fx: ShieldFx, slot: number, up = 0): { layer: number; alpha: number } | null {
+  let best = -1, layer = up;
   for (const h of fx.hits[slot] ?? []) {
-    if (h.drop && h.age >= 0 && h.age < FLASH_S && (best < 0 || h.age < best)) best = h.age;
+    if (h.drop && h.age >= 0 && h.age < FLASH_S && (best < 0 || h.age < best)) { best = h.age; layer = h.layer >= 0 ? h.layer : up; }
   }
-  return best < 0 ? null : { layer: up, alpha: 1 - best / FLASH_S };
+  return best < 0 ? null : { layer, alpha: 1 - best / FLASH_S };
 }
 
 /** A flat-coordinate hex polygon [x0,y0,...] of radius r at (x,y), pointy-top. */

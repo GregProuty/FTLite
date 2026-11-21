@@ -21,7 +21,7 @@ const assets: GameAssets = {
   missing: Object.values(FEATURE_NAMES).flat(), fontFamily: 'm5x7'
 };
 const crewAt = (d: ReturnType<typeof createSeatedDuel>) => d.interior.crew.map((eid) => ({ x: Position.x[eid]!, y: Position.y[eid]! }));
-/** The shield Graphics: the world child just before the marks Graphics' label run (found as the one Graphics whose instructions we diff). */
+/** The drawing-instruction count of every Graphics child of the world; the shield Graphics is the one that grows with a look. */
 const instructions = (view: ReturnType<typeof createInteriorView>): number[] =>
   view.world.children.filter((c) => (c as Graphics).context !== undefined).map((c) => (c as Graphics).context.instructions.length);
 
