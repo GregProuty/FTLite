@@ -48,3 +48,11 @@
 ## Task 5
 
 Status: DONE. Added hudLayout(stage) (memoised, copies the stage size) with THREATS, NOTICE/EVENT_CARD (centred on the gap between the columns, x + dw/2), CREDITS, BLOCK_Y/blockRect/cardRect (bottom and right anchored); reference names unchanged. useHudLayout() in ui/stage/useStage.ts. SidePanels, PlayerBlock, ConsoleCard, Credits, EventCardView, Headline (CENTER_X = stage.w/2) and SummaryCard (useStage) read it. Flight view: nothing left (viewport synced in Task 3, FeelPanel/Banners in Task 4). TDD note: the implementation was written before the new tests, so no separate RED run was recorded; the tests were added to hudFit.test.ts (reference equality, on-stage, margins, no new overlaps at 1707x720 and 1280x960, notice centring) and anchoredLayout.test.ts (stage-copy memo). Tests: 11 files / 168 pass; tsc -b clean. Files: render/hudLayout.ts, ui/stage/useStage.ts, ui/hud/{SidePanels,PlayerBlock,ConsoleCard,Credits,EventCardView,Headline,SummaryCard}.tsx, tests.
+
+## Task 6
+
+- Verification: typecheck clean; electron-vite build OK; vitest 548 files, 6445 passed, 3 skipped, 0 failed; determinism PASS (Node, Electron 37.10.3, Firefox 160; duel restore 597 checks); `test:web-output` PASS; no diff under sim, goldens or fixtures since 22b5f58f.
+- `test:duel-app-runtime` FAILS at step 3 (`the forced round end timeout`), twice. The branch has no sim change. Most likely cause: the slingshot merge in the base (SIM 65 -> 66) moved `DUEL_TEST_SEED` 1921's round end (picked at SIM 63) past the step's 90 s. Needs a new seed search; not patched here.
+- Screenshots in `C:\Users\djuar\FTLite-shots\ui-round-2b\` (script `scripts/ui-round-2b-shots.cjs`): Helm, Weapons with the enemy window and the ship view at 1280x720, 2560x1080 and 1280x960 (the window minimum is 1280x720, so 1280x960 stands in for 1024x768), `resize-live.png` and `menu-2560x1080.png`. No bars, panels on their edges, no overlaps, more map on the wide window, text readable, live resize follows.
+- Look concern: at 2560x1080 the ship interior snaps to 2/3 of the fit, so it is the same screen size as at 1280x720 and looks small in the wide frame.
+- Gate entry `## UI round Part 2b (fill the window)` added to docs/gates.md; owner check open.
