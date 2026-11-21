@@ -98,6 +98,8 @@ export interface ContactModelInput {
   flashes?: readonly { room: number; alpha: number }[];
   /** Engineering spike §10.4: whether the shown contact is inside the sensor range (the scene's fog); default true. */
   seen?: boolean;
+  /** UI round 2b: the drawing box for the live stage (consoleLayout(stage).CONTACT_BOX); default the reference's CONTACT_BOX. */
+  box?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
 }
 
 /** Ship units (f, s) to the box: one uniform scale fitting the outline's bounds with CONTACT_PAD on every side, the
@@ -116,7 +118,7 @@ export function contactFit(outline: readonly number[], box: { x: number; y: numb
 const line = (text: string, tint: number = CRT.main, bar: number | null = null): ContactLine => ({ text, tint, bar });
 
 export function contactModel(i: ContactModelInput): ContactView | null {
-  const { state } = i, box = { x: CONTACT_BOX.x, y: CONTACT_BOX.y, w: CONTACT_BOX.w, h: CONTACT_BOX.h };
+  const { state } = i, b = i.box ?? CONTACT_BOX, box = { x: b.x, y: b.y, w: b.w, h: b.h };
   const alert = blink(i.t, ALERT_BLINK_HZ) ? CRT.hot : CRT.main;
   const bare = (contact: 0 | 1 | null, title: string, lines: ContactLine[] = []): ContactView => ({
     contact, title, shields: null, hull: null, box, outline: [], rooms: [], lockRoom: null, torpRoom: null, weapons: null, aim: false, aimWeapon: null, flash: [],

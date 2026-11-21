@@ -1,6 +1,6 @@
 // The duel interior's overlay and fit (H-1 spec §8). Pure: no Pixi. Positions are ship-local pixels (TILE_PX per tile),
 // drawn inside the interior's world container, which the fit scales and places.
-import { INTERNAL_H, INTERNAL_W, TILE_PX } from '../../../../shared/resolution';
+import { INTERNAL_H, INTERNAL_W, REFERENCE_STAGE, TILE_PX, type StageSize } from '../../../../shared/resolution';
 import { extinguishProgress, pointBurning } from '../../sim/duel/fire';
 import type { DuelState } from '../../sim/duel/state';
 import { REPAIR_UNITS } from '../../sim/duel/tuning';
@@ -9,19 +9,26 @@ import { HEALTH_MAX } from '../../sim/tuning';
 import { medbayOnline } from '../../sim/duel/health';
 import { Room } from '../../sim/tactical/state';
 import { StationKind } from '../../sim/stationKinds';
-import { fitInBand, fitRectInBand, type Fit } from '../worldFit';
+import { fitInBand, fitRectInBand, type Band, type Fit } from '../worldFit';
 import type { TileRect } from '../battlemapModel';
 import { fireTileOf } from '../../sim/duel/hazards';
 import { LOW_AIR_FRAC } from '../../sim/duel/tuning';
 import { AMBER, WARN } from '../theme';
 import { crewStatus } from './readoutModel';
 
-/** The band the ship is fitted into: the whole screen below the console tab strip (UI round §2.2: no readout column). */
-export const INTERIOR_BAND = { x: 0, y: 42, w: INTERNAL_W, h: INTERNAL_H - 42 } as const;
+/** The tab strip's height: the band starts under it. */
+const INTERIOR_TOP = 42;
+/** The band the ship is fitted into: the whole stage below the console tab strip (UI round §2.2: no readout column; UI
+ *  round 2b: the stage follows the window). */
+export function interiorBand(stage: StageSize = REFERENCE_STAGE): Band {
+  return { x: 0, y: INTERIOR_TOP, w: stage.w, h: stage.h - INTERIOR_TOP };
+}
+/** The band at the reference stage (INTERNAL_W x INTERNAL_H). */
+export const INTERIOR_BAND: Band = Object.freeze(interiorBand({ w: INTERNAL_W, h: INTERNAL_H }));
 
 /** worldFit's rules on the duel's band: never upscaled above 1x, snapped for the stage scale, centred on whole screen pixels (Art-i spec section 4). */
-export function duelFit(widthTiles: number, heightTiles: number, stage: number, rect?: TileRect): Fit {
-  return rect ? fitRectInBand(INTERIOR_BAND, rect, stage) : fitInBand(INTERIOR_BAND, widthTiles, heightTiles, stage);
+export function duelFit(widthTiles: number, heightTiles: number, stage: number, rect?: TileRect, band: Band = INTERIOR_BAND): Fit {
+  return rect ? fitRectInBand(band, rect, stage) : fitInBand(band, widthTiles, heightTiles, stage);
 }
 
 /** The tactical rooms' names, in Room order (Weapons, Shields, Engines). */

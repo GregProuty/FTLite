@@ -3,17 +3,19 @@
 import { memo, type ReactNode } from 'react';
 import { mapTitle, type MapModel } from '../../render/hudModel';
 import { MAP_FLEET, MAP_H, MAP_MARKS, MAP_W, NODE_R, nodeX, nodeY, ROCKS } from '../../render/mapModel';
-import { WINDOW } from '../../render/enemyWindowModel';
+import { enemyWindowX, WINDOW } from '../../render/enemyWindowModel';
 import { AMBER, CELL_EDGE, DIM, FONT_SIZE, PAD, PANEL_FILL, TEXT } from '../../render/theme';
 import { Box } from '../stage/Box';
 import { hex } from '../stage/color';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
+import { useStage } from '../stage/useStage';
 
 const rocks = (x: number, y: number, colour: number, key: string): ReactNode[] =>
   ROCKS.map((r, i) => <polygon key={`${key}r${i}`} fill={hex(colour)} points={r.map((v, j) => 1.4 * v + (j % 2 === 0 ? x : y)).join(' ')} />);
 
 export const MapPanel = memo(function MapPanel({ map }: { map: MapModel }) {
+  const wx = enemyWindowX(useStage());   // UI round 2b (final review): the enemy window's spot, anchored to the stage's right edge
   const shapes: ReactNode[] = [], marks: ReactNode[] = [];
   if (map.fleet >= 0) {   // the Pursuit's front: a red band across the overrun columns
     const right = Math.min(MAP_W - 2, nodeX(map.fleet) + 30);
@@ -36,16 +38,16 @@ export const MapPanel = memo(function MapPanel({ map }: { map: MapModel }) {
     else shapes.push(<circle key={`${key}n`} cx={x} cy={y} r={NODE_R} fill={hex(PANEL_FILL)} stroke={hex(nd.reachable ? TEXT : DIM)} strokeWidth={2} />);
     if (nd.type === 'asteroid') shapes.push(...rocks(x, y, ink, key));
     const inside = nd.type === 'shop' ? '$' : nd.type === 'event' ? '!' : nd.type === 'unknown' ? '?' : '';
-    if (inside && mi < MAP_MARKS) { mi++; marks.push(<PixelText key={`${key}m`} text={inside} x={WINDOW.x + x + 1} y={WINDOW.y + y - 1} size={FONT_SIZE} tint={ink} anchorX={0.5} anchorY={0.5} />); }
-    if (c === last && mi < MAP_MARKS) { mi++; marks.push(<PixelText key={`${key}x`} text="EXIT" x={WINDOW.x + x - 8} y={WINDOW.y + y + 30} size={FONT_SIZE} tint={AMBER} anchorX={0.5} anchorY={0.5} />); }
+    if (inside && mi < MAP_MARKS) { mi++; marks.push(<PixelText key={`${key}m`} text={inside} x={wx + x + 1} y={WINDOW.y + y - 1} size={FONT_SIZE} tint={ink} anchorX={0.5} anchorY={0.5} />); }
+    if (c === last && mi < MAP_MARKS) { mi++; marks.push(<PixelText key={`${key}x`} text="EXIT" x={wx + x - 8} y={WINDOW.y + y + 30} size={FONT_SIZE} tint={AMBER} anchorX={0.5} anchorY={0.5} />); }
   }));
   return (
     <>
-      <Panel x={WINDOW.x} y={WINDOW.y} w={MAP_W} h={MAP_H} />
-      <Box x={WINDOW.x} y={WINDOW.y} w={MAP_W} h={MAP_H}>
+      <Panel x={wx} y={WINDOW.y} w={MAP_W} h={MAP_H} />
+      <Box x={wx} y={WINDOW.y} w={MAP_W} h={MAP_H}>
         <svg width="100%" height="100%" viewBox={`0 0 ${MAP_W} ${MAP_H}`} shapeRendering="crispEdges" style={{ position: 'absolute', left: 0, top: 0 }}>{shapes}</svg>
       </Box>
-      <PixelText text={mapTitle(map)} x={WINDOW.x + PAD} y={WINDOW.y} size={FONT_SIZE} tint={AMBER} />
+      <PixelText text={mapTitle(map)} x={wx + PAD} y={WINDOW.y} size={FONT_SIZE} tint={AMBER} />
       {marks}
     </>
   );

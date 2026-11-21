@@ -5,7 +5,7 @@
 // decided round is written as a playtest record through the preload, with the link's route and RTT read from main
 // about once a second (H-2b); F3 shows the live latency overlay over the scene.
 import type { OnlinePortDescriptor, OnlinePreloadApi, OnlineStatus } from '../../../../shared/onlineSession';
-import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
+import { createLiveViewport, syncViewport } from './liveViewport';
 import { createPortLink } from '../../../../network/portLink';
 import { browserPortEndpoint } from '../../../../network/transport/bridge';
 import { classifyStreamPacket } from '../../../../network/state/imageCodec';
@@ -25,7 +25,7 @@ import { GAS_SPEND } from '../../sim/duel/tuning';
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 import { HEADING_COUNT } from '../../sim/tactical/tuning';
-import { computeLetterbox } from '../../render/letterbox';
+import { pointerToStage } from './pointerToStage';
 import { endModel } from '../../render/duel/endModel';
 import { createKeyToggle, latencyOverlayLines, type KeyTarget } from '../../render/duel/latencyOverlay';
 import { snapBack } from '../../render/tactical/camera';
@@ -106,6 +106,7 @@ export function leavePromptKeys(prompt: LeavePrompt, d: DuelState, phase: string
 
 export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   const canvas = deps.renderer.app.canvas;
+  const viewport = createLiveViewport(deps.renderer);   // UI round 2b: one live viewport for every source, synced from the stage each frame
   // Enemy ship window spec §6.1, §6.2: local to this screen, never sent. While the window is shown its intercept takes Esc
   // (and T), so the leave prompt and setPaused below never see that Escape.
   const contact = createContactController(), requests = createMapRequests();
@@ -116,10 +117,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   deps.setConsole?.(keyboard.ui);
   deps.setContact?.(contact);
   const trackConsole = consoleChange(() => keyboard.clearUi());   // Artemis spec §6.2: a console change drops its holds
-  const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => {
-    const rect = canvas.getBoundingClientRect(), lb = computeLetterbox(rect.width, rect.height, INTERNAL_W, INTERNAL_H);
-    return { x: (cx - rect.left - lb.offsetX) / lb.scale, y: (cy - rect.top - lb.offsetY) / lb.scale };
-  });
+  const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => pointerToStage(canvas, cx, cy));
   let client: ReturnType<typeof createDuelRemoteClient> | null = null, link: Link | null = null, source: OnlineDuelSource | null = null, scene: DuelScene | null = null;
   let descriptor: OnlinePortDescriptor | null = null, status: OnlineStatus | null = null;
   let frozen: DuelState | null = null, frozenPublication: { publicationSequence: number; tick: number; phase: string; pauseReason: string | null; pauseOwner: number | null } | null = null;
@@ -582,7 +580,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; predictor?.dispose(); predictor = null; confirmedSequence = 0; smoother.clear(); });   // Net-4a §3.4: no hidden P steps on after a close
       client = createDuelRemoteClient(link, [next.seatId], { runId: next.runId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout, clock: { nowMs: deps.now } });
       predictor = createDuelPredictor({ seat: next.seatId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout }); seenRetargets = 0; capped = false; smoother.clear();   // Net-4a §3.4: one per client
-      source = createOnlineDuelSource({ client: { state, publication, live }, seat: next.seatId, now: deps.now, viewport: { w: INTERNAL_W, h: INTERNAL_H },
+      source = createOnlineDuelSource({ client: { state, publication, live }, seat: next.seatId, now: deps.now, viewport,
         prediction: { active: () => !linkClosed && (predictor?.active() ?? false), state: () => predictor?.state() ?? null, before: () => predictor?.before() ?? null,
           alpha: () => (capped ? 1 : Math.max(0, Math.min(1, (deps.now() - lastLocalAt) / LOCAL_TICK_MS))), offsets: () => smoother.offsets(deps.now()), rockShift: () => smoother.tickOffset(deps.now()) } });   // §3.8; rock jump brief §2
     },
@@ -600,6 +598,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       if (client && !linkClosed) runLocalTicks();   // Fable #7: the ticks due by now, so alpha stays in [0, 1] without a clamp
       const now = deps.now(), dt = lastFrame ? Math.min(0.1, (now - lastFrame) / 1000) : 1 / 60; lastFrame = now;
       const d = state(); if (!d) { deps.latency?.clear(); return; }
+      syncViewport(viewport, deps.renderer);   // UI round 2b: the source's cameras see the stage's size
       source.frame(dt, focused && !blocked ? cameraKeys : null, focused && !blocked ? pointer.sample() : null);
       cameraKeys = keysOnly(sampleIdle());
       const ticks = (d.decidedTick >= 0 ? d.decidedTick : d.tactical.tick) - d.baseTick;

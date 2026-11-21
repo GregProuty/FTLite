@@ -2,7 +2,7 @@
 // the progress strip, then the seated player's console card above it.
 import { memo } from 'react';
 import { glyphName, seatedName, skillsLine, type HudModel, type HudPlayer } from '../../render/hudModel';
-import { BLOCK_HP_W, BLOCK_HP_X, BLOCK_O2_X, blockRect } from '../../render/hudLayout';
+import { BLOCK_HP_W, BLOCK_HP_X, BLOCK_O2_X } from '../../render/hudLayout';
 import { AMBER, BAR_ON, DIM, FONT_SIZE, LINE, PAD, WARN } from '../../render/theme';
 import { Bar } from '../stage/Bar';
 import { Icon } from '../stage/Icon';
@@ -11,6 +11,7 @@ import { PixelText } from '../stage/PixelText';
 import { Row } from '../stage/Row';
 import type { RowPart } from '../stage/rowLayout';
 import { ConsoleCard } from './ConsoleCard';
+import { useHudLayout } from '../stage/useStage';
 
 /** Lines 2 and 3 (hud.ts lines 180-189). */
 function middle(p: HudPlayer): [RowPart[], RowPart[]] {
@@ -24,7 +25,7 @@ function middle(p: HudPlayer): [RowPart[], RowPart[]] {
 }
 
 export const PlayerBlock = memo(function PlayerBlock({ i, p, phase, flash }: { i: number; p: HudPlayer; phase: HudModel['phase']; flash: readonly number[] }) {
-  const b = blockRect(i), X = b.x + PAD, Y = b.y;
+  const b = useHudLayout().blockRect(i), X = b.x + PAD, Y = b.y;
   const name = (text: string, tint: number) => <PixelText text={text} x={X} y={Y} size={FONT_SIZE} tint={tint} />;
   if (p.status === 'empty') return <><Panel {...b} />{name(`P${i + 1}: press Interact to join`, DIM)}</>;
   if (p.status === 'reconnect') return <><Panel {...b} />{name(`P${i + 1}: RECONNECT`, WARN)}</>;

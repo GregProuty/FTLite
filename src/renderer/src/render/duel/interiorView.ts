@@ -2,7 +2,7 @@
 // consoles, crew, boarders), composed as render/renderer.ts composes them, without the sector enemy window, projectiles,
 // callouts or HUD, plus the duel's damage overlay. It owns its RenderMemory; a restart destroys it and builds a new one.
 import { BitmapText, Container, Graphics } from 'pixi.js';
-import { TILE_PX } from '../../../../shared/resolution';
+import { REFERENCE_STAGE, TILE_PX, type StageSize } from '../../../../shared/resolution';
 import { Position, Stable } from '../../sim/components';
 import { DUEL_CREW_MAX, type DuelState } from '../../sim/duel/state';
 import type { GameAssets } from '../assets';
@@ -21,7 +21,8 @@ import { ALERT_BLINK_HZ, blink } from '../tactical/crtTheme';
 import { HEALTH_LOW } from './readoutModel';
 import { HEALTH_MAX } from '../../sim/tuning';
 import { createTileLayer } from '../tiles';
-import { airTints, duelFit, hazardMarkers, interiorOverlay, INTERIOR_BAND, stationBadges, type StationBadge } from './interiorModel';
+import { airTints, duelFit, hazardMarkers, interiorBand, interiorOverlay, stationBadges, type StationBadge } from './interiorModel';
+import type { Band } from '../worldFit';
 import { placeInterior, type InteriorCamera, type Placement } from './interiorCamera';
 import { shipControlAt } from './shipControls';
 import { createInteriorFeel } from '../interiorFeel';
@@ -51,6 +52,8 @@ export interface InteriorView {
   /** Engineering spike §5: the last draw's placement (the world's scale and offset before the shake), or null before the
    *  first; the scene's click hit-test reads it. */
   placement(): Placement | null;
+  /** UI round 2b: the interior band of the last draw (the current stage's), which the placement was fitted in. */
+  band(): Band;
   destroy(): void;
 }
 
@@ -61,23 +64,25 @@ export const HAZARD_LABELS = 16;
 
 /** `stageScale`: the letterbox's stage scale, read every frame so the fit snaps to whole screen pixels per art pixel (Art-i spec section 4); tests leave it at 1.
  *  `feel`: the feel setting (Art-i spec section 7), read every frame; tests leave it at full.
- *  `crew3d`: the 3D crew art or the old art (Crew3D spec section 4), read every frame; tests leave it on. */
+ *  `crew3d`: the 3D crew art or the old art (Crew3D spec section 4), read every frame; tests leave it on.
+ *  `stageSize`: the stage's size in internal px (UI round 2b: it follows the window), read every frame for the band; tests leave it at the reference. */
 /** Where a crew label (DOWNED, AWAY) sits for a character drawn at (x, y) px: under it, in the DOWNED red. */
 export function crewLabelAt(x: number, y: number): { x: number; y: number; tint: number } {
   return { x: Math.round(x), y: Math.round(y + TILE_PX * 0.5), tint: WARN };
 }
 
-export function createInteriorView(assets: GameAssets, stageScale: () => number = () => 1, feel: () => FeelSetting = () => DEFAULT_FEEL, crew3d: () => boolean = () => true): InteriorView {
+export function createInteriorView(assets: GameAssets, stageScale: () => number = () => 1, feel: () => FeelSetting = () => DEFAULT_FEEL, crew3d: () => boolean = () => true, stageSize: () => StageSize = () => REFERENCE_STAGE): InteriorView {
   const container = new Container(), world = new Container();
+  let band = interiorBand(stageSize());
   const missing = new Set(assets.missing);
   const fx = createInteriorFeel({   // Art-i spec sections 5-8; Art-ii: the bought consoles and blasts
-    world, band: INTERIOR_BAND, feel, consoleArt: featureReady(missing, 'consoleArt'), backdrop: backdropOption(assets),   // Art-v: the painted backdrop
+    world, band, feel, consoleArt: featureReady(missing, 'consoleArt'), backdrop: backdropOption(assets),   // Art-v: the painted backdrop
     blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined,
     painted: (id) => battlemapFor(id, missing) !== null   // the art spike: painted fire, blasts and particles on a painted ship
   });
   // Interior zoom: a zoomed ship is clipped to the band (the full stage width); the backdrop stays unclipped.
-  const clip = new Graphics().rect(INTERIOR_BAND.x, INTERIOR_BAND.y, INTERIOR_BAND.w, INTERIOR_BAND.h).fill(0xffffff);
-  container.addChild(fx.starfield, world, clip);   // the starfield under the world, filling INTERIOR_BAND; Art-v: or the painted backdrop over the whole stage
+  const clip = new Graphics().rect(band.x, band.y, band.w, band.h).fill(0xffffff);
+  container.addChild(fx.starfield, world, clip);   // the starfield under the world, filling the band; Art-v: or the painted backdrop over the whole stage
   const memory = createRenderMemory();
   const tiles = createTileLayer(assets, memory), effects = createEffectsLayer(assets, memory), icons = createIconLayer(['navigation', 'medbay']);   // the badges stand in for these two (start-aboard spec §2)
   const props = createPropLayer(assets);   // Art-iii spec section 4: the set dressing, directly over the tiles
@@ -121,16 +126,19 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   return {
     container, world, memory,
     placement: () => last,
+    band: () => band,
     draw(d, crewPrev, alpha, dt, events = [], presentDt = dt, zoom, hover = null, override = null) {
       clock += presentDt;   // UI round §2.4a: the badge blink's presentation clock; frozen while paused
-      const st = d.interior, stage = stageScale(), rect = fitRect(st.layout.id, st.derived.width, st.derived.height, missing), fit0 = duelFit(st.derived.width, st.derived.height, stage, rect);
+      const size = stageSize();
+      if (size.w !== band.w || size.h - band.y !== band.h) { band = interiorBand(size); clip.clear().rect(band.x, band.y, band.w, band.h).fill(0xffffff); }   // UI round 2b: the stage followed the window
+      const st = d.interior, stage = stageScale(), rect = fitRect(st.layout.id, st.derived.width, st.derived.height, missing), fit0 = duelFit(st.derived.width, st.derived.height, stage, rect, band);
       // The zoom camera places the world on whole screen pixels per art pixel; it follows the active character's drawn (interpolated) position.
       const eid = zoom ? st.crew[zoom.active] : undefined;
       const target = eid === undefined ? null : (() => {
         const x = Position.x[eid]!, y = Position.y[eid]!, was = crewPrev[zoom!.active] ?? { x, y };
         return { x: (was.x + (x - was.x) * alpha) * TILE_PX, y: (was.y + (y - was.y) * alpha) * TILE_PX };
       })();
-      const fit = zoom ? placeInterior(zoom.camera, { band: INTERIOR_BAND, rect: { x: rect.x * TILE_PX, y: rect.y * TILE_PX, w: rect.w * TILE_PX, h: rect.h * TILE_PX }, fit: fit0, stage }, target) : fit0;
+      const fit = zoom ? placeInterior(zoom.camera, { band, rect: { x: rect.x * TILE_PX, y: rect.y * TILE_PX, w: rect.w * TILE_PX, h: rect.h * TILE_PX }, fit: fit0, stage }, target) : fit0;
       world.scale.set(fit.scale);
       last = { scale: fit.scale, x: fit.x, y: fit.y };   // before the shake: the click hit-test's placement
       const zoomed = !!zoom && zoom.camera.level !== 0;
@@ -184,7 +192,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         t.tint = colour; t.position.set(Math.round(m.x), Math.round(m.y + TILE_PX * 0.5));
       });
       // Spec §5, §6: the door or airlock under the pointer, outlined (anyone can click it).
-      const over = hover ? shipControlAt(d, last, hover.x, hover.y) : null;
+      const over = hover ? shipControlAt(d, last, hover.x, hover.y, band) : null;
       if (over) { const w = st.derived.width, tx = over.tile % w, ty = Math.floor(over.tile / w); marks.rect(tx * TILE_PX + 1, ty * TILE_PX + 1, TILE_PX - 2, TILE_PX - 2).stroke({ width: 2, color: AMBER, alpha: 0.95 }); }
       // Health (duel-health spec §2): a bar above each character below full, and a downed character's pick-up ring and label.
       const drawn: { x: number; y: number }[] = [];
@@ -219,7 +227,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
       });
       // Light and feel: the duel's hull alert, a hit flashes the whole interior, sparks at damaged repair rooms, repair work.
       const working = duelWorking(d);
-      const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working, artPx: 2 * fit.scale, starPx: 2 * fit0.scale }, presentDt, dt);
+      const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working, artPx: 2 * fit.scale, starPx: 2 * fit0.scale, band, stage: size }, presentDt, dt);
       world.position.set(fit.x + shake.x, fit.y + shake.y);   // only the interior world shakes; the UI over it stays still
       // Crew3D spec section 4: the 3D crew pose from the same list, on the presentation clock: `presentDt` is 0 while the
       // duel is paused or decided, and then they hold their pose and frame. Net-4a §3.6: online, the other players' crew

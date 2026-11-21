@@ -24,7 +24,7 @@
 // in hand, else AUTO, or HOLD while the hold keeps AUTO quiet. The second hint row names the target room.
 import { memo, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from 'react';
 import type { WeaponsPanel } from '../../render/duel/consoleModel';
-import { CARD_PIPS_H, PEW_ROW_H, STATION, stationTop, weaponCard, weaponPips } from '../../render/duel/consoleLayout';
+import { CARD_PIPS_H, PEW_ROW_H, STATION } from '../../render/duel/consoleLayout';
 import { FREQ_NAMES } from '../../render/duel/scienceModel';
 import { ROOM_NAMES } from '../../render/duel/interiorModel';
 import { AMBER, BAR_OFF, DIM, FONT_NATIVE, FONT_SIZE, TEXT, textPx } from '../../render/theme';
@@ -38,6 +38,7 @@ import { useCrt } from '../stage/CrtContext';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
 import { crtRowLook } from './crtRowLook';
+import { useConsoleLayout } from '../stage/useStage';
 
 type Weapon = 'laser' | 'torpedo';
 /** The room words, rooms[0] Weapons, rooms[1] Shields, rooms[2] Engines (as the contact window's labels). */
@@ -54,7 +55,7 @@ export const WEAPON_PIPS = 4, PIP_W = 16, PIP_H = 10, PIP_GAP = 4;
 /** One weapon card's frame and its clickable part (FTL targeting spec §1): lit while picked up. Feel-i: `flash` (FIRING)
  *  blinks the frame hot, `glow` (the goal) pulses it hot and mid. */
 function Card({ weapon, lit, crt, flash = false, glow = false, now = 0, rock = false, onSelect, selected = false }: { weapon: Weapon | 'autocannon'; lit: boolean; crt: boolean; flash?: boolean; glow?: boolean; now?: number; rock?: boolean; onSelect?: () => void; selected?: boolean }) {
-  const actions = useActions(), c = weaponCard(weapon);
+  const actions = useActions(), lay = useConsoleLayout(), c = lay.weaponCard(weapon);
   const down = (e: ReactPointerEvent<HTMLDivElement>): void => {
     e.preventDefault();
     if (weapon === 'autocannon') {   // W-4 spec §10: the autocannon has no target and no pick-up; a left click selects it
@@ -84,7 +85,7 @@ function Card({ weapon, lit, crt, flash = false, glow = false, now = 0, rock = f
 
 /** Engineering spike §10.3: a weapon's bar pips under its card; a left click adds a bar, a right click removes one. */
 function Pips({ slot, bars, crt, flash = false }: { slot: 0 | 1 | 2; bars: number; crt: boolean; flash?: boolean }) {
-  const actions = useActions(), { x: x0, y } = weaponPips(slot);
+  const actions = useActions(), lay = useConsoleLayout(), { x: x0, y } = lay.weaponPips(slot);
   const down = (e: ReactPointerEvent<HTMLDivElement>): void => { e.preventDefault(); if (e.button === 0) actions.console.weaponPower?.(slot, 1); else if (e.button === 2) actions.console.weaponPower?.(slot, -1); };
   return (
     <>
@@ -103,9 +104,9 @@ function Pips({ slot, bars, crt, flash = false }: { slot: 0 | 1 | 2; bars: numbe
 /** The TORPEDO card's body under its header (both blocks): the AUTO / MAN tag (`onMode` flips it), MAG, the status word
  *  (STEER LMB / COASTING / FLYING in flight, MANUAL, else IN RANGE / OUT OF RANGE), the target and LAUNCH. */
 function TorpedoCardBody({ weapons, onMode, flash }: { weapons: WeaponsPanel; onMode: () => void; flash: boolean }) {
-  const actions = useActions(), { crt } = useCrt();
+  const actions = useActions(), lay = useConsoleLayout(), { crt } = useCrt();
   const dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT, hot = crt ? CRT.hot : AMBER;
-  const T = weaponCard('torpedo'), tx = T.x + 6, torpRock = weapons.torpRock === true || weapons.torpRockFlying === true;
+  const T = lay.weaponCard('torpedo'), tx = T.x + 6, torpRock = weapons.torpRock === true || weapons.torpRockFlying === true;
   return (
     <>
       {weapons.torpManual !== undefined
@@ -126,8 +127,8 @@ function TorpedoCardBody({ weapons, onMode, flash }: { weapons: WeaponsPanel; on
 /** Sci-1 spec §7.4: the frequency row under the divider (both blocks): A B C with the tuned one lit, the weak one marked, and
  *  the key hint (`hint`: 4/5/6 on the Hound, 3/4/5 on a laser class) at the right. */
 function FreqRow({ weapons, hint }: { weapons: WeaponsPanel; hint: string }) {
-  const actions = useActions(), { crt } = useCrt();
-  const top = stationTop('weapons'), x0 = STATION.x + 8, y0 = top + 6 + PEW_ROW_H + CARD_PIPS_H, right = STATION.x + STATION.w - 8;
+  const actions = useActions(), lay = useConsoleLayout(), { crt } = useCrt();
+  const top = lay.stationTop('weapons'), x0 = STATION.x + 8, y0 = top + 6 + PEW_ROW_H + CARD_PIPS_H, right = STATION.x + STATION.w - 8;
   const dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT;
   return (
     <>
@@ -164,10 +165,10 @@ export const houndRoomHint = (lock: number, torpTarget: boolean): string => {
 /** W-4 spec §10 (W-4a): the Hound's block: PEW PEW (the PEW row as a card), AUTOCANNON (in the beam's rectangle) and TORPEDO,
  *  the selected card's frame hot, bar pips under each, the reason row, the second row and the frequency row (4/5/6). */
 function HoundWeapons({ weapons, aim }: { weapons: WeaponsPanel; aim: Weapon | null }) {
-  const actions = useActions(), { crt, now } = useCrt();
-  const top = stationTop('weapons'), x0 = STATION.x + 8, y0 = top + 6 + PEW_ROW_H + CARD_PIPS_H, right = STATION.x + STATION.w - 8;
+  const actions = useActions(), lay = useConsoleLayout(), { crt, now } = useCrt();
+  const top = lay.stationTop('weapons'), x0 = STATION.x + 8, y0 = top + 6 + PEW_ROW_H + CARD_PIPS_H, right = STATION.x + STATION.w - 8;
   const dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT, hot = crt ? CRT.hot : AMBER;
-  const A = weaponCard('autocannon'), T = weaponCard('torpedo'), ax = A.x + 6, tx = T.x + 6;
+  const A = lay.weaponCard('autocannon'), T = lay.weaponCard('torpedo'), ax = A.x + 6, tx = T.x + 6;
   const gun = weapons.autocannon!, selected = weapons.selected ?? 0, bars = weapons.weaponBars ?? null, pew = weapons.pew ?? [];
   const refused = weapons.refused ?? null, flash = (k: string): boolean => refused?.control === k && refused.flash;
   const powerFlash = (slot: number): boolean => refused?.control === 'power' && refused.flash && selected === slot;
@@ -214,12 +215,12 @@ function HoundWeapons({ weapons, aim }: { weapons: WeaponsPanel; aim: Weapon | n
 }
 
 export const WeaponsStation = memo(function WeaponsStation({ weapons, aim = null }: { weapons: WeaponsPanel; aim?: Weapon | null }) {
-  const actions = useActions(), { crt, now } = useCrt();
+  const actions = useActions(), lay = useConsoleLayout(), { crt, now } = useCrt();
   if (weapons.autocannon) return <HoundWeapons weapons={weapons} aim={aim} />;   // W-4 spec §10: the Hound's block; a laser class keeps the BEAM block below
-  const top = stationTop('weapons'), x0 = STATION.x + 8, y0 = top + 6 + PEW_ROW_H + CARD_PIPS_H, right = STATION.x + STATION.w - 8;   // y0: the rows under the cards start CARD_PIPS_H lower (Engineering spike §10.3)
+  const top = lay.stationTop('weapons'), x0 = STATION.x + 8, y0 = top + 6 + PEW_ROW_H + CARD_PIPS_H, right = STATION.x + STATION.w - 8;   // y0: the rows under the cards start CARD_PIPS_H lower (Engineering spike §10.3)
   const dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT, hot = crt ? CRT.hot : AMBER, c = weapons.charge;
   const barColour = crt ? crtRowLook(c, now).bar : c.bar?.colour ?? TEXT;
-  const L = weaponCard('laser'), T = weaponCard('torpedo'), lx = L.x + 6, tx = T.x + 6;
+  const L = lay.weaponCard('laser'), T = lay.weaponCard('torpedo'), lx = L.x + 6, tx = T.x + 6;
   const reason = weapons.laserReason ?? null, firing = reason === 'FIRING', bars = weapons.weaponBars ?? null;
   const laserRock = weapons.laserRock === true;
   // Feel-ii §2.8: a refused FIRE or LAUNCH flashes, and the row under the cards names why for REFUSAL_SHOW_S. Engineering

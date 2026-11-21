@@ -7,6 +7,7 @@ import type { DuelState } from '../../sim/duel/state';
 import { TILE_PX } from '../../../../shared/resolution';
 import type { Placement } from './interiorCamera';
 import { INTERIOR_BAND } from './interiorModel';
+import type { Band } from '../worldFit';
 
 /** The ship view's commands (Part i's shipPower, shipCoolant, shipDoor and shipAirlock) and the Weapons block's
  *  weaponPower (spec §10.3), which ride the same keyboard queue; the sim refuses weaponPower off the Weapons seat. */
@@ -14,11 +15,12 @@ export type ShipCommand = Extract<DuelCommand, { kind: 'shipPower' | 'shipCoolan
 /** A clickable thing on the interior, with its tile index (for the hover highlight). */
 export type ShipControl = { kind: 'door'; edge: number; tile: number } | { kind: 'airlock'; index: number; tile: number };
 
-/** The door or airlock under internal point (x, y), or null: off the band, off the ship or on any other tile. */
-export function shipControlAt(d: DuelState, p: Placement, x: number, y: number): ShipControl | null {
+/** The door or airlock under internal point (x, y), or null: off the band, off the ship or on any other tile. `band`: the
+ *  interior band the placement was fitted in (UI round 2b: the current stage's; defaults to the reference band). */
+export function shipControlAt(d: DuelState, p: Placement, x: number, y: number, band: Band = INTERIOR_BAND): ShipControl | null {
   const der = d.interior.derived, size = p.scale * TILE_PX;
   if (!(size > 0)) return null;
-  if (x < INTERIOR_BAND.x || x >= INTERIOR_BAND.x + INTERIOR_BAND.w || y < INTERIOR_BAND.y || y >= INTERIOR_BAND.y + INTERIOR_BAND.h) return null;
+  if (x < band.x || x >= band.x + band.w || y < band.y || y >= band.y + band.h) return null;
   const tx = Math.floor((x - p.x) / size), ty = Math.floor((y - p.y) / size);
   if (tx < 0 || ty < 0 || tx >= der.width || ty >= der.height) return null;
   const tile = ty * der.width + tx, edge = der.doorTileToEdge[tile]!, lock = der.airlockOfTile[tile]!;

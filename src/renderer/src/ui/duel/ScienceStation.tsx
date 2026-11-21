@@ -3,15 +3,16 @@
 // and the key help, at the bottom left. UI round §2.4: the sensor range (the gone power strip's RANGE) on the top row.
 import { memo } from 'react';
 import type { SciencePanel } from '../../render/duel/consoleModel';
-import { STATION, stationTop } from '../../render/duel/consoleLayout';
+import { STATION } from '../../render/duel/consoleLayout';
 import { DIM, FONT_NATIVE, FONT_SIZE, TEXT } from '../../render/theme';
 import { CRT } from '../../render/tactical/crtTheme';
 import { useCrt } from '../stage/CrtContext';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
+import { useConsoleLayout } from '../stage/useStage';
 
 export const ScienceStation = memo(function ScienceStation({ science }: { science: SciencePanel }) {
-  const { crt } = useCrt(), top = stationTop('science'), x0 = STATION.x + 8, dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT;
+  const { crt } = useCrt(), top = useConsoleLayout().stationTop('science'), x0 = STATION.x + 8, dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT;
   return (
     <>
       <Panel x={STATION.x} y={top} w={STATION.w} h={STATION.h.science} />

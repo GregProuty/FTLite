@@ -1,13 +1,15 @@
 // hud.ts's credits overlay (UI-iii): CREDITS_LINES lines from the scroll and the footer.
 import { memo } from 'react';
-import { CREDITS, CREDITS_LINES } from '../../render/hudLayout';
+import { CREDITS_LINES } from '../../render/hudLayout';
 import { DIM, FONT_SIZE, LINE, TEXT } from '../../render/theme';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
+import { useHudLayout } from '../stage/useStage';
 
 export const CREDITS_FOOTER = 'Up/Down: scroll    Confirm or Cancel: close';
 
 export const Credits = memo(function Credits({ lines, scroll }: { lines: readonly string[]; scroll: number }) {
+  const CREDITS = useHudLayout().CREDITS;
   return (
     <>
       <Panel {...CREDITS} />

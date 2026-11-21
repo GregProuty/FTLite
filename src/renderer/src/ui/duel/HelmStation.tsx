@@ -5,7 +5,7 @@
 // Playtest2feedback §6, helm round 2 §6.1: on a newtonianHelm class (helm.crew) the block is CrewHelmStation: the held throttle bar to REV −50, THR, the Engines cap, the PORT / STBD thrusters and the GAS bar (no AUTO-FACE: helm round 2 §4).
 import { Fragment, memo, useRef } from 'react';
 import { THR_MAX, THR_MIN, type CrewHelmPanel, type HelmPanel } from '../../render/duel/consoleModel';   // the throttle range comes through the model: the UI imports no sim values
-import { STATION, stationTop } from '../../render/duel/consoleLayout';
+import { STATION } from '../../render/duel/consoleLayout';
 import { AMBER, BAR_OFF, DIM, FONT_NATIVE, FONT_SIZE, TEXT } from '../../render/theme';
 import { CRT } from '../../render/tactical/crtTheme';
 import { useActions } from '../context';
@@ -15,6 +15,7 @@ import { hex } from '../stage/color';
 import { useCrt } from '../stage/CrtContext';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
+import { useConsoleLayout } from '../stage/useStage';
 
 /** The notches top to bottom (spec §4.2): the label, the level the click asks for, the button's name. */
 /** Feel-ii §1.4: wheel delta px a throttle step takes (as the map's THROTTLE_WHEEL_PX, app/duel/input.ts). */
@@ -26,8 +27,8 @@ export const NOTCHES: readonly { label: string; level: number; name: string }[] 
 ];
 
 const NotchHelmStation = memo(function NotchHelmStation({ helm }: { helm: HelmPanel }) {   // the Valkyrn's Flight seat (Artemis-ii, unchanged)
-  const actions = useActions(), { crt } = useCrt();
-  const top = stationTop('helm'), x0 = STATION.x + 8, y0 = top + 6, rx = STATION.x + 140, h = helm.held, set = helm.throttle;
+  const actions = useActions(), { crt } = useCrt(), lay = useConsoleLayout();
+  const top = lay.stationTop('helm'), x0 = STATION.x + 8, y0 = top + 6, rx = STATION.x + 140, h = helm.held, set = helm.throttle;
   const dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT, hot = crt ? CRT.hot : AMBER, wheel = useRef(0);
   // Feel-ii §2.8: a refused control flashes, and its reason takes the hint line under it for REFUSAL_SHOW_S.
   const r = helm.refused ?? null, flash = (c: string): boolean => r?.control === c && r.flash;
@@ -85,8 +86,8 @@ const BAR_H = 150, BAR_W = 18;
  *  Decision 1's row), PORT and STBD (they hold ← and →, the side thrusters), the GAS bar (the charge: hot while venting, dim
  *  below one spend, flashing on NO GAS; plan Decision 2's row) and the two key hints. Helm round 2 §4: no AUTO-FACE. */
 const CrewHelmStation = memo(function CrewHelmStation({ helm, crew }: { helm: HelmPanel; crew: CrewHelmPanel }) {
-  const actions = useActions(), { crt } = useCrt();
-  const top = stationTop('helm'), x0 = STATION.x + 8, y0 = top + 6, rx = STATION.x + 140, h = helm.held;
+  const actions = useActions(), { crt } = useCrt(), lay = useConsoleLayout();
+  const top = lay.stationTop('helm'), x0 = STATION.x + 8, y0 = top + 6, rx = STATION.x + 140, h = helm.held;
   const dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT, hot = crt ? CRT.hot : AMBER, faint = crt ? CRT.faint : BAR_OFF;
   const r = helm.refused ?? null, flash = (c: string): boolean => r?.control === c && r.flash;
   const hint = (controls: readonly string[], text: string, y: number) => r && controls.includes(r.control)

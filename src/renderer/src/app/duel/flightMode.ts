@@ -2,9 +2,8 @@
 // sector children, and adds the Helm map view; the feel panel, banners and map overlay are drawn by React through the
 // flight sink (React UI spec §6). The sector session is never created in this mode.
 import { Container } from 'pixi.js';
-import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { Renderer } from '../../render/renderer';
-import { computeLetterbox } from '../../render/letterbox';
+import { pointerToStage } from './pointerToStage';
 import { crtScale } from '../../render/crt';
 import { feelReadout, feelRows, FEEL_PANEL_MARGIN, FEEL_PANEL_W } from '../../render/tactical/feelModel';
 import { createTacticalLayer, PAUSE_TEXT } from '../../render/tactical/tacticalLayer';
@@ -13,6 +12,7 @@ import type { FlightSink } from '../../ui/sinks';
 import { mapOverlayOf } from '../../ui/views';
 import { createDuelKeyboard, createPointerSource, type EventSource } from './input';
 import { createFlightRuntime } from './runtime';
+import { createLiveViewport, syncViewport } from './liveViewport';
 import { DEFAULT_MAP_GRID } from '../../render/tactical/mapGrid';
 
 export interface FlightModeDeps {
@@ -27,7 +27,7 @@ export interface FlightModeDeps {
 export const FLIGHT_RESERVE_RIGHT = FEEL_PANEL_W + 2 * FEEL_PANEL_MARGIN;
 
 export function startFlightMode(deps: FlightModeDeps): () => void {
-  const { renderer } = deps, viewport = { w: INTERNAL_W, h: INTERNAL_H };
+  const { renderer } = deps, viewport = createLiveViewport(renderer);   // UI round 2b: synced from the stage every frame
   for (const child of renderer.app.stage.children) child.visible = false;   // world, enemy window, projectiles, callouts, HUD
   const scene = new Container();
   const layer = createTacticalLayer({ fontFamily: renderer.assets.fontFamily, viewport, seed: deps.seed });
@@ -36,10 +36,7 @@ export function startFlightMode(deps: FlightModeDeps): () => void {
 
   const canvas = renderer.app.canvas;
   const keyboard = createDuelKeyboard(window as unknown as EventSource);
-  const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => {
-    const rect = canvas.getBoundingClientRect(), lb = computeLetterbox(rect.width, rect.height, INTERNAL_W, INTERNAL_H);
-    return { x: (cx - rect.left - lb.offsetX) / lb.scale, y: (cy - rect.top - lb.offsetY) / lb.scale };
-  });
+  const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => pointerToStage(canvas, cx, cy));
   const runtime = createFlightRuntime({
     now: () => performance.now(),
     scheduler: { schedule(delay, cb) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } },
@@ -56,6 +53,7 @@ export function startFlightMode(deps: FlightModeDeps): () => void {
   deps.lifecycle?.onResume(() => runtime.resume('suspend'));
 
   const frame = (ticker: { deltaMS: number }): void => {
+    if (syncViewport(viewport, renderer)) layer.resize(viewport);   // UI round 2b: the stage followed the window
     runtime.frame(Math.min(0.1, ticker.deltaMS / 1000));
     const ship = runtime.state.ships[0];
     const paused = runtime.reasons().has('user');

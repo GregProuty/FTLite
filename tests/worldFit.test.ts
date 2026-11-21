@@ -19,12 +19,33 @@ describe('snapWorldScale (Art-i spec section 4 table)', () => {
     for (const fit of [1, CUTTER_FIT, STARTER_FIT]) for (const stage of STAGES) {
       const s = snapWorldScale(fit, stage), px = 2 * s * stage;
       if (s !== fit) expect(Math.abs(px - Math.round(px))).toBeLessThan(1e-9);
-      expect(s).toBeGreaterThanOrEqual(0.75 * fit - 1e-12);
+      expect(s).toBeGreaterThanOrEqual((2 / 3) * fit - 1e-12);   // UI round §2.1: the 2/3 floor (was 0.75)
     }
+  });
+  it('UI round §2.1: at a smooth (non-half-step) stage scale a snapped scale still gives whole screen pixels per art pixel', () => {
+    const stage = 1.37;
+    for (const fit of [1, STARTER_FIT, 0.9, 0.45]) {   // fit 1: the duel interior (n = 2, 2 / 2.74 = 0.73, kept under 0.75, snapped under 2/3)
+      const s = snapWorldScale(fit, stage), px = 2 * s * stage;
+      expect(s, `fit ${fit}`).not.toBe(fit);
+      expect(Math.abs(px - Math.round(px))).toBeLessThan(1e-9); expect(Math.round(px)).toBeGreaterThanOrEqual(1);
+    }
+  });
+  it('UI round 2b: a stage scale a hair under a half step (2560x1080: 2560 / 1707) keeps the whole number above, not 2/3', () => {
+    const stage = 2560 / 1707, s = snapWorldScale(1, stage), px = 2 * s * stage;
+    expect(Math.round(px)).toBe(3); expect(Math.abs(px - 3)).toBeLessThan(1e-9);
+    expect(s).toBeGreaterThan(0.99); expect(s).toBeLessThan(1.01);
   });
   it('below stage 1 a fit that rounds to 0 art pixels, or snaps too small, is kept', () => {
     expect(snapWorldScale(CUTTER_FIT, 0.7)).toBe(CUTTER_FIT);   // n = floor(0.917) = 0
-    expect(snapWorldScale(1, 0.9)).toBe(1);                      // n = 1, 1 / 1.8 = 0.556 < 0.75
+    expect(snapWorldScale(1, 0.9)).toBe(1);                      // n = 1, 1 / 1.8 = 0.556 < 2/3
+  });
+  it('final review: the rounded-up whole number is taken only within 1% over the fit, else n - 1', () => {
+    // a tiny stage: 2 x 1 x 0.4925 = 0.985, the +0.02 rounds up to n = 1, 1 / 0.985 is 1.5% over the fit: n - 1 = 0, the fit is kept
+    expect(snapWorldScale(1, 0.4925)).toBe(1);
+    // 2 x 0.5 x 1.985 = 1.985 rounds up to 2 (0.76% over): taken
+    expect(2 * snapWorldScale(0.5, 1.985) * 1.985).toBeCloseTo(2, 9);
+    // 2 x 1 x 0.99005 = 1.9801 rounds up to 2, 1.01005 over (a hair past 1%): n - 1 = 1 is under the 2/3 floor, the fit is kept
+    expect(snapWorldScale(1, 0.99005)).toBe(1);
   });
 });
 

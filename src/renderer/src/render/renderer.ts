@@ -1,12 +1,12 @@
 import type { CardUiState } from '../clientControl/cardController';
 import { Application, Container } from 'pixi.js';
-import { worldFit, WORLD_BAND } from './worldFit';
+import { worldFit, worldBand, WORLD_BAND } from './worldFit';
 import { createBattlemapLayer } from './battlemapLayer';
 import { battlemapFor, fitRect } from './battlemapModel';
-import { INTERNAL_W, INTERNAL_H, TILE_PX } from '../../../shared/resolution';
+import { INTERNAL_W, INTERNAL_H, TILE_PX, REFERENCE_STAGE, type StageSize } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
 import { Position, Stable } from '../sim/components';
-import { computeLetterbox } from './letterbox';
+import { stageFit } from './letterbox';
 import type { GameAssets } from './assets';
 import { createRenderMemory } from './memory';
 import { createTileLayer } from './tiles';
@@ -20,7 +20,7 @@ import { createConsoleLayer } from './consoleLayer';
 import { createPropLayer } from './propLayer';
 import { createProjectileLayer } from './projectiles';
 import { createEnemyWindowLayer } from './enemyWindow';
-import { enemyWindowModel, stepWindowAnim, freshWindowAnim, windowShown, windowRoomCentre, WINDOW, hitFlashOf } from './enemyWindowModel';
+import { enemyWindowModel, stepWindowAnim, freshWindowAnim, windowShown, windowRoomCentre, WINDOW, hitFlashOf, enemyWindowX } from './enemyWindowModel';
 import { EnemyRoom } from '../sim/enemy';
 import { createCalloutLayer } from './callouts';
 import type { Bubble } from './calloutModel';
@@ -40,8 +40,10 @@ import { featureReady } from './fallback';
 export interface Renderer {
   app: Application; world: Container; assets: GameAssets;
   resize(winW: number, winH: number): void;
-  /** The letterbox stage scale set by the last resize (1 before the first); the duel interior reads it for its fit (Art-i spec section 4). */
+  /** The smooth stage scale set by the last resize (1 before the first; UI round §2.1); the duel interior reads it for its fit (Art-i spec section 4). */
   stageScale(): number;
+  /** UI round §2.1: the stage size in internal px set by the last resize (the 1280x720 reference before the first). */
+  stage(): StageSize;
   /** The feel setting (Art-i spec section 7), set at boot from storage (app/feelBoot.ts); the duel interior reads it too. */
   feel(): FeelSetting;
   setFeel(setting: FeelSetting): void;
@@ -98,16 +100,20 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   consoleDesks.container.addChild(feel.fixtures); effects.below.addChild(feel.paintedBelow); effects.above.addChild(feel.above, feel.paintedAbove);
   app.stage.addChildAt(feel.starfield, 0);   // the starfield under the world, filling WORLD_BAND (spec section 8); Art-v: or the painted backdrop over the whole stage
   let lastDraw: number | null = null, stage = 1, seenImpact: Int32Array | null = null;
+  let size: StageSize = REFERENCE_STAGE;
 
   return {
     app, world, assets,
     resize(winW, winH) {
-      const lb = computeLetterbox(winW, winH, INTERNAL_W, INTERNAL_H);
+      const f = stageFit(winW, winH);   // UI round §2.1: the stage follows the window at a smooth scale
       app.renderer.resize(winW, winH);
-      app.stage.scale.set(lb.scale); app.stage.position.set(lb.offsetX, lb.offsetY);
-      if (lb.scale !== stage) { stage = lb.scale; projectiles.reset(); }   // the snapped fit moves the ship: shots in flight cached paths to the old room centres (presentation only)
+      app.stage.scale.set(f.scale); app.stage.position.set(f.offsetX, f.offsetY);
+      // The snapped world fit follows the stage scale, so a change moves the ship: shots in flight cached paths to the old
+      // room centres (presentation only). Not gated on the size alone: a same-size stage at a new scale re-snaps too.
+      if (f.w !== size.w || f.h !== size.h || f.scale !== stage) { stage = f.scale; size = { w: f.w, h: f.h }; projectiles.reset(); }
     },
     stageScale: () => stage,
+    stage: () => size,
     feel: () => feelSetting,
     setFeel(setting) { feelSetting = setting; },
     crt: () => crtSetting,
@@ -126,11 +132,14 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       const d = state.derived;
       const now = performance.now();
       const dt = lastDraw === null ? 0 : Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
-      const fit = worldFit(d.width, d.height, stage, fitRect(state.layout.id, d.width, d.height, missing)); world.scale.set(fit.scale);
+      // UI round 2b (final review): the ship band and the enemy window anchor to the stage like the React panels (the
+      // right column at 872 + dw, the notice and event card at 256 + dw / 2); at 1280x720 both are the reference values.
+      const band = worldBand(size), winX = enemyWindowX(size);
+      const fit = worldFit(d.width, d.height, stage, fitRect(state.layout.id, d.width, d.height, missing), band); world.scale.set(fit.scale);
       anim = stepWindowAnim(anim, state);
       const view = enemyWindowModel(state, state.tick + alpha, anim), shown = windowShown(state, view);
-      enemyWindow.draw(view, shown, dt, hitFlashOf(state, view));
-      projectiles.draw(state, fit, dt, { shotOrigin: shown ? windowRoomCentre(EnemyRoom.Weapons) : null, target: (slot) => { if (!shown || !view.bolt || view.bolt.slot !== slot || !view.bolt.to) return null; return { x: WINDOW.x + view.slideX + view.bolt.to.x, y: WINDOW.y + view.shipDY + view.bolt.to.y }; } });
+      enemyWindow.draw(view, shown, dt, hitFlashOf(state, view), winX);
+      projectiles.draw(state, fit, dt, { band, shotOrigin: shown ? windowRoomCentre(EnemyRoom.Weapons, winX) : null, target: (slot) => { if (!shown || !view.bolt || view.bolt.slot !== slot || !view.bolt.to) return null; return { x: winX + view.slideX + view.bolt.to.x, y: WINDOW.y + view.shipDY + view.bolt.to.y }; } });
       battlemap.draw(state);
       tiles.update(state, dt);
       props.draw(state);
@@ -142,11 +151,11 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
       const hits = sectorHits(state.rooms.impactTick, state.tick, seenImpact); seenImpact = hits.seen;
       watchRepair(memory.repair, state);
       const working = sectorWorking(state, memory.repair);
-      const { shake, bob } = feel.draw({ state, grade: sectorGradeInput(state), hit: { rooms: hits.rooms }, sparks: failedStationPoints(state), working, artPx: 2 * fit.scale }, paused ? 0 : dt, dt);
+      const { shake, bob } = feel.draw({ state, grade: sectorGradeInput(state), hit: { rooms: hits.rooms }, sparks: failedStationPoints(state), working, artPx: 2 * fit.scale, stage: size, band }, paused ? 0 : dt, dt);   // UI round 2b: the backdrop covers the current stage
       world.position.set(fit.x + shake.x, fit.y + shake.y); projectiles.container.position.set(shake.x, shake.y);   // the shake moves the world and the projectiles, as before
       crew.draw(state, alpha, presentation, bob, working, { dt: paused ? 0 : dt, paused });   // the 3D crew hold their pose and frame while paused
       boarders.draw(state, dt, paused ? 0 : dt);
-      callouts.draw(state, bubbles, { scale: fit.scale, x: fit.x + shake.x, y: fit.y + shake.y });
+      callouts.draw(state, bubbles, { scale: fit.scale, x: fit.x + shake.x, y: fit.y + shake.y }, size.w);   // UI round 2b: clamp to the current stage
     }
   };
 }

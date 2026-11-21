@@ -2,18 +2,18 @@
 // status and the help, over a dark backdrop; y advances exactly as updateCard's.
 import { memo, type ReactNode } from 'react';
 import type { EventCard } from '../../render/hudModel';
-import { EVENT_CARD } from '../../render/hudLayout';
 import { AMBER, BACKDROP, BLUE, DIM, FONT_SIZE, LINE, TEXT } from '../../render/theme';
 import { Box } from '../stage/Box';
 import { hex } from '../stage/color';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
+import { useHudLayout } from '../stage/useStage';
 
-const CX = EVENT_CARD.x + 16, CW = EVENT_CARD.w - 32;
 const t = (key: string, text: string, x: number, y: number, tint: number, anchorX?: number): ReactNode =>
   text ? <PixelText key={key} text={text} x={x} y={y} size={FONT_SIZE} tint={tint} anchorX={anchorX} /> : null;
 
 export const EventCardView = memo(function EventCardView({ card }: { card: EventCard }) {
+  const EVENT_CARD = useHudLayout().EVENT_CARD, CX = EVENT_CARD.x + 16, CW = EVENT_CARD.w - 32;
   const out: ReactNode[] = [t('title', card.title, CX, EVENT_CARD.y + 6, AMBER)];
   let y = EVENT_CARD.y + 6 + LINE + 6;
   for (let k = 0; k < 2; k++) { const line = card.text[k]; if (line) { out.push(t(`t${k}`, line, CX, y, TEXT)); y += LINE; } }
