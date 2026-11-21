@@ -7,9 +7,9 @@
 // events are outputs, reset every tick, and not hashed. −0 is written as 0.
 import { hashF64 } from '../../../../shared/hash';
 import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, type ModuleField, type SimModule } from '../module';
-import { DUEL_SYSTEM_COUNT, SYSTEM_SLOTS, WEAPON_BAR_MAX, WEAPON_SLOTS } from './bars';
+import { DUEL_SYSTEM_COUNT, HACK_BAR_MAX, SYSTEM_SLOTS, WEAPON_BAR_MAX, WEAPON_SLOTS } from './bars';
 import { pewFullCharge, SHIP_CLASSES, type ShipClassDef } from './defs';
-import { AIM_STEPS, DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, GUN_POOL, HEADING_COUNT, HUNTER_PEW_GAP, HUNTER_TRAIL_TICKS, PEW_POOL, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
+import { AIM_STEPS, DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, GUN_POOL, HACK_DISABLE_TICKS, HACK_TICKS, HEADING_COUNT, HUNTER_PEW_GAP, HUNTER_TRAIL_TICKS, PEW_POOL, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
 import { templateFor } from './rockCells';
 import { CELL_STRIDE, RockKind, rockCapacity, ROCK_RESERVE, ROCK_STRIDE } from './rocks';
 import { RAIL_OFFSET_MAX, ROCK_MIN_R, ROCK_R_MAX, ROCK_RAIL_MIN } from './rockTuning';
@@ -25,7 +25,7 @@ const BODY = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'planetHits', 'aste
 const SYSTEMS_HEAD = ['cls', 'target', 'hull'] as const satisfies readonly (keyof ShipSystems)[];
 const SYSTEMS_TAIL = ['shields', 'shieldClock', 'laserCharge', 'laserHold', 'fireHeld', 'lock', 'freq', 'laserTargeted', 'torpLock', 'torpRoom', 'laserBurst', 'laserBurstClock', 'magazine', 'magazineClock',
   'shots', 'laserHits', 'layersStripped', 'missilesLaunched', 'missileHits', 'missilesLost', 'laserRock', 'torpRock', 'torpRockFlying', 'rocksBroken',   // the rock targets, spike ii §8
-  'gunHeat', 'gunLocked', 'gunCooldown', 'gunMuzzle', 'gunWear', 'gunHull', 'gunShots', 'gunHits', 'pewCharge', 'pewShots', 'pewHits', 'laserManual', 'laserAim', 'torpManual', 'pewTurret', 'gunTurret', 'pewManual', 'gunManual'] as const satisfies readonly (keyof ShipSystems)[];   // the gun's, Valkyrn spec §7.3; the pew's, W-1; the laser mode and burst aim, W-2; the torpedo mode, W-3; the turrets and each gun's mode, W-4b (amendment §2.1); gunRoomWear closes the record
+  'gunHeat', 'gunLocked', 'gunCooldown', 'gunMuzzle', 'gunWear', 'gunHull', 'gunShots', 'gunHits', 'pewCharge', 'pewShots', 'pewHits', 'laserManual', 'laserAim', 'torpManual', 'pewTurret', 'gunTurret', 'pewManual', 'gunManual', 'hackPower'] as const satisfies readonly (keyof ShipSystems)[];   // hackPower: the hacking spike; the gun's, Valkyrn spec §7.3; the pew's, W-1; the laser mode and burst aim, W-2; the torpedo mode, W-3; the turrets and each gun's mode, W-4b (amendment §2.1); gunRoomWear closes the record
 const FLAGS = new Set<string>(['released', 'fireHeld', 'laserTargeted', 'gunLocked', 'laserManual', 'torpManual', 'pewManual', 'gunManual']);
 export const MISSILE_KEYS = ['x', 'y', 'vx', 'vy', 'heading', 'headingAcc', 'age'] as const satisfies readonly (keyof MissileFlight)[];
 /** Compile-time completeness: a `Missile` member missing from these keys makes this `never` assignment fail typecheck. */
@@ -135,6 +135,7 @@ function shipFields(slots: number): ModuleField<TacticalState>[] {
     fields.push(vector(`systems.${i}.gunRoomWear`, 3, (s) => s.systems[i]!.gunRoomWear));   // Valkyrn spec §7.3
     fields.push(vector(`systems.${i}.bars`, DUEL_SYSTEM_COUNT, (s) => s.systems[i]!.bars));   // Engineering spike spec §2
     fields.push(vector(`systems.${i}.weaponPower`, WEAPON_SLOTS, (s) => s.systems[i]!.weaponPower));   // spec §10.3
+    fields.push(vector(`systems.${i}.hacked`, 3, (s) => s.systems[i]!.hacked));   // hacking spike
   }
   shipCache.set(slots, fields);
   return fields;
@@ -175,13 +176,15 @@ const SCIENCE: ModuleField<TacticalState>[] = [
   ...(['orbitR', 'phase', 'loot'] as const).map((k) => scalar<TacticalState>(`derelict.${k}`, (s) => s.derelict[k], (s, v) => { s.derelict[k] = v; })),
   flag('derelict.trapped', (s) => s.derelict.trapped, (s, v) => { s.derelict.trapped = v; }),
   scalar('derelict.salvage', (s) => s.derelict.salvage, (s, v) => { s.derelict.salvage = v; }),
-  flag('derelict.salvaged', (s) => s.derelict.salvaged, (s, v) => { s.derelict.salvaged = v; })
+  flag('derelict.salvaged', (s) => s.derelict.salvaged, (s, v) => { s.derelict.salvaged = v; }),
+  scalar('hackRoom', (s) => s.hackRoom, (s, v) => { s.hackRoom = v; }),   // hacking spike
+  scalar('hackTicks', (s) => s.hackTicks, (s, v) => { s.hackTicks = v; })
 ];
 export const scienceModule: SimModule<TacticalState> = {
   id: 'science',
   fields: () => SCIENCE,
   notSnapshotted: {},
-  commands: ['contactScan', 'designate', 'laserFrequency'],
+  commands: ['contactScan', 'designate', 'laserFrequency', 'hack', 'sciencePower'],
   reasons: ['stale-tick', 'invalid-seat', 'not-at-weapons', 'malformed', 'unavailable']
 };
 /** The tactical state's modules in canonical order. */
@@ -212,7 +215,7 @@ export function cloneTacticalFromModule(s: TacticalState): TacticalState {
   const copy: TacticalState = { ...s, rng: { s: 0 }, rocks: new Float64Array(s.rocks.length), rockCells: new Float64Array(s.rockCells.length),
     rockBorn: new Uint8Array(s.rockBorn.length), rockDone: new Uint8Array(s.rockDone.length), rockTouched: new Uint8Array(s.rockTouched.length),
     ships: s.ships.map((b) => ({ ...b, graceUntil: new Int32Array(b.graceUntil.length) })) as TacticalState['ships'],
-    systems: s.systems.map((y) => ({ ...y, rooms: [0, 0, 0], gunRoomWear: [0, 0, 0], bars: [0, 0, 0, 0, 0], weaponPower: [0, 0, 0] })) as TacticalState['systems'],
+    systems: s.systems.map((y) => ({ ...y, rooms: [0, 0, 0], gunRoomWear: [0, 0, 0], bars: [0, 0, 0, 0, 0], weaponPower: [0, 0, 0], hacked: [0, 0, 0] })) as TacticalState['systems'],
     missiles: s.missiles.map(emptyMissile) as TacticalState['missiles'],
     rounds: s.rounds.map(emptyRound),
     pew: s.pew.map(emptyRound),
@@ -262,7 +265,8 @@ const systemsRules = (slots: number, rocks: number): Readonly<Record<string, (v:
   // turrets are checked against the slot's own class (turretRule).
   pewManual: flagBit, gunManual: flagBit,
   bars: within(0, Math.max(...SYSTEM_SLOTS)),   // Engineering spike spec §2, §10.1: 0..10 per system
-  weaponPower: within(0, WEAPON_BAR_MAX + 1)   // spec §10.3
+  weaponPower: within(0, WEAPON_BAR_MAX + 1),   // spec §10.3
+  hackPower: within(0, HACK_BAR_MAX), hacked: within(0, HACK_DISABLE_TICKS)   // hacking spike
 });
 /** W-1 (pew pew spec §4; Task 6 review): a slot's pew charge, 0..its own class's full pew (0 for a class without one). */
 const pewChargeRule = (cls: number): ((v: number) => boolean) => {
@@ -285,7 +289,8 @@ const topRules = (): Readonly<Record<string, (v: number) => boolean>> => ({
   startTick: count, hostileAt: (v) => Number.isInteger(v) && v >= -1, 'scan.contact': within(-1, 1), 'scan.level': within(0, 2), 'scan.progress': count,
   'scan.rate': (v) => v === 0 || v === SCAN_RATE_OTHER || v === SCAN_RATE_SCIENCE, 'scan.by': count, designated: within(-1, 1), weakFreq: within(0, 2),
   'derelict.orbitR': (v) => Number.isInteger(v) && ((v >= DERELICT_NEAR_MIN && v <= DERELICT_NEAR_MAX) || (v >= DERELICT_FAR_MIN && v <= DERELICT_FAR_MAX)),
-  'derelict.phase': within(0, HEADING_COUNT - 1), 'derelict.loot': within(0, 2), 'derelict.trapped': flagBit, 'derelict.salvage': count, 'derelict.salvaged': flagBit
+  'derelict.phase': within(0, HEADING_COUNT - 1), 'derelict.loot': within(0, 2), 'derelict.trapped': flagBit, 'derelict.salvage': count, 'derelict.salvaged': flagBit,
+  hackRoom: within(-1, 2), hackTicks: within(0, HACK_TICKS - 1)   // hacking spike: a hack never rests at HACK_TICKS (it lands)
 });
 
 /** Asteroids-iii §3.1, §13.1: what is wrong with rock slot values v[b .. b + 7] against the state's tick, or null: kind 0..3; a
@@ -342,7 +347,8 @@ const rockKindsScratch: number[] = [];
  *  the offset after the values. Asteroids-iii §3.1: every rock slot by rockSlotProblem against the tick. */
 export function validateTacticalValues(shape: TacticalState, values: ArrayLike<number>, offset = 0): number {
   let at = offset, tickSeen = 0; const rockKinds = rockKindsScratch; rockKinds.length = 0;
-  const top = topRules(), slots = shape.ships.length, sys = systemsRules(slots, rockCapacity(shape.map)), inactive = new Set<number>(), owners = new Set<number>(), clsOf = new Map<number, number>(), burstOf = new Map<number, number>();
+  const top = topRules(), slots = shape.ships.length, sys = systemsRules(slots, rockCapacity(shape.map)), inactive = new Set<number>(), owners = new Set<number>(), clsOf = new Map<number, number>(), burstOf = new Map<number, number>(), hackedOf = new Map<number, number[]>();
+  let crewTarget = -1;
   for (const m of TACTICAL_MODULES) for (const f of m.fields(shape)) {
     const slice = Array.from({ length: f.count }, (_, k) => values[at + k]!);
     const bad = (why: string): never => { throw new Error(`duel snapshot tactical ${f.name}: ${why} (${slice.slice(0, 8).join(', ')})`); };
@@ -367,6 +373,9 @@ export function validateTacticalValues(shape: TacticalState, values: ArrayLike<n
         if (ship[1] === 'systems' && key === 'laserAim' && i !== CREW_SLOT && slice[0] !== -1) bad('only the crew laser has a manual aim');   // W-2: the Hunter is always AUTO
         if (ship[1] === 'systems' && key === 'laserAim' && slice[0] !== -1 && (burstOf.get(i) ?? 0) === 0) bad('a manual aim with no burst pending');   // W-2: it waits only for a burst's next shot
         if (ship[1] === 'systems' && key === 'torpManual' && i !== CREW_SLOT && slice[0] !== 0) bad('only the crew torpedo has a manual mode');   // W-3: the Hunter is always AUTO
+        if (ship[1] === 'systems' && key === 'target' && i === CREW_SLOT) crewTarget = slice[0]!;   // hacking spike: read by hackTicks
+        if (ship[1] === 'systems' && key === 'hackPower' && i !== CREW_SLOT && slice[0] !== 0) bad('only the crew has hack bars');   // hacking spike
+        if (ship[1] === 'systems' && key === 'hacked') { if (i === CREW_SLOT && slice.some((v) => v !== 0)) bad('the crew is never hacked'); hackedOf.set(i, slice); }   // hacking spike D13
         if (ship[1] === 'systems' && (key === 'pewManual' || key === 'gunManual') && slice[0] !== 0) {   // W-4 amendment §2.1: a gun's mode only on the crew slot of a class whose weapon in that slot has a turret
           const c = SHIP_CLASSES[clsOf.get(i) ?? -1], turret = (key === 'pewManual' ? c?.slots.pew : c?.slots.gun)?.turret ?? null;
           if (i !== CREW_SLOT || turret === null) bad('only the crew slot of a class with that turret has a gun mode');
@@ -400,6 +409,11 @@ export function validateTacticalValues(shape: TacticalState, values: ArrayLike<n
         // The owner's class is not checked: rounds are in the space module, validated before the ship module where the classes are learned.
         if (slice[0] !== 0 && values[at - 1 - ROUND_KEYS.length] !== CREW_SLOT) bad('only a crew round carries a room');   // the entry's owner
       }
+    } else if (f.name === 'hackTicks') {   // hacking spike R1-3: idle exactly when hackTicks is 0, and never on a room already down
+      const rule = top[f.name], room = values[at - 1]!;
+      if (rule && !slice.every(rule)) bad('out of range');
+      if ((room === -1) !== (slice[0] === 0)) bad('hackRoom and hackTicks disagree');
+      if (room >= 0 && (hackedOf.get(crewTarget)?.[room] ?? 0) !== 0) bad('hacking a room already down');
     } else if (f.name === 'known') { if (!within(0, 2)(slice[0]!) || !within(0, 1)(slice[1]!)) bad('out of range'); }   // the enemy 0..2, the derelict 0..1
     else { const rule = top[f.name]; if (rule && !slice.every(rule)) bad('out of range'); }
     at += f.count;

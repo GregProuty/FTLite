@@ -18,7 +18,7 @@ import { CUTTER } from './helpers/scriptedDuel';
 
 const DIGEST = __GAMEPLAY_CONTENT_DIGEST__;
 const FIELDS = ['startTick', 'hostileAt', 'known', 'scan.contact', 'scan.level', 'scan.progress', 'scan.rate', 'scan.by', 'designated', 'weakFreq',
-  'derelict.orbitR', 'derelict.phase', 'derelict.loot', 'derelict.trapped', 'derelict.salvage', 'derelict.salvaged'];
+  'derelict.orbitR', 'derelict.phase', 'derelict.loot', 'derelict.trapped', 'derelict.salvage', 'derelict.salvaged', 'hackRoom', 'hackTicks'];   // the hacking spike's two close the module
 
 describe('the science module (spec §6.2)', () => {
   it('sits after ship in both module lists, names its fields in order, and owns the three commands', () => {
@@ -26,8 +26,8 @@ describe('the science module (spec §6.2)', () => {
     expect(DUEL_MODULES.map(({ module }) => module.id)).toEqual(['space', 'ship', 'science', 'presence', 'repair', 'round', 'helm', 'power', 'interior']);   // Engineering spike spec §7: the power module, after helm and before interior
     const st = createTacticalState(3);
     expect(scienceModule.fields(st).map((f) => f.name)).toEqual(FIELDS);
-    expect(scienceModule.fields(st).map((f) => f.count)).toEqual([1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
-    expect([scienceModule.commands, scienceModule.reasons]).toEqual([['contactScan', 'designate', 'laserFrequency'], ['stale-tick', 'invalid-seat', 'not-at-weapons', 'malformed', 'unavailable']]);
+    expect(scienceModule.fields(st).map((f) => f.count)).toEqual([1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+    expect([scienceModule.commands, scienceModule.reasons]).toEqual([['contactScan', 'designate', 'laserFrequency', 'hack', 'sciencePower'], ['stale-tick', 'invalid-seat', 'not-at-weapons', 'malformed', 'unavailable']]);
     const ship = shipModule.fields(st).map((f) => f.name);
     for (const i of [0, 1]) expect(ship.indexOf(`systems.${i}.freq`)).toBe(ship.indexOf(`systems.${i}.lock`) + 1);
     expect(CONTACT_MAX_LEVEL).toEqual([2, 1]);

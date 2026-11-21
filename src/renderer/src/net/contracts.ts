@@ -134,6 +134,10 @@ export type DuelCommand =
   /** Engineering spike spec §10.3: the Weapons seat moves one bar onto (+1) or off (−1) weapon slot 0..2 (pew pew, beam,
    *  torpedo). The sim checks the ranges. */
   | { kind: 'weaponPower'; slot: number; delta: number }
+  /** Hacking spike (owner 2026-11-20): the Science seat moves one Sensors bar onto (+1) or off (−1) the hack module. */
+  | { kind: 'sciencePower'; delta: number }
+  /** Hacking spike: the Science seat starts a hack on enemy Room 0..2 (Weapons, Shields, Engines), or −1 cancels it. */
+  | { kind: 'hack'; room: number }
   | { kind: 'setPaused'; paused: boolean };
 /** The one command union (engine refactor spec §6): every mode's kinds; `setPaused` is the core's control. */
 export type Command = SectorCommand | DuelCommand;
