@@ -111,3 +111,20 @@ export const SCAN_SCIENCE_BY_BARS: readonly number[] = [0, 5, 6, 7, 8];
 export const SCAN_OTHER_BY_BARS: readonly number[] = [0, 2, 2, 3, 3];
 /** Spec §10.4: the crew's sensor range (map units) by effective Sensors bars 0..4. */
 export const SENSOR_RANGE_BY_BARS: readonly number[] = [600, 1800, 2800, 4000, 5600];   // doubled (owner 2026-11-20); was 300, 900, 1400, 2000, 2800
+
+// ---- Science, the allocation (hacking spike 2026-11-20; isolated) ----
+/** Hacking spike: Science splits the effective Sensors bars between the scanner (sensor range and scan rate) and the
+ *  hack module, as Weapons splits its bars between the weapons. The bars Science gives the hack come off the scanner;
+ *  every bar not given to the hack is the scanner's, so with no hack bars the Sensors rules are exactly today's. */
+export const HACK_MIN_BARS = 2;
+/** The hack module's pips: the Sensors slots (3 bars and the overdrive's 4th). */
+export const HACK_BAR_MAX = 4;
+/** The bars the hack module stands on now: the bars Science gave it, trimmed to the effective Sensors bars. */
+export function hackBars(sys: Pick<ShipSystems, 'rooms' | 'bars' | 'hackPower'>): number { return Math.min(sys.hackPower, effectiveBars(sys, DuelSystem.Sensors)); }
+/** The scanner's bars now: the effective Sensors bars less the hack's. Sensor range and scan progress read these. */
+export function scannerBars(sys: Pick<ShipSystems, 'rooms' | 'bars' | 'hackPower'>): number { return effectiveBars(sys, DuelSystem.Sensors) - hackBars(sys); }
+/** Whether the hack module is online: at least HACK_MIN_BARS on it. */
+export function hackOnline(sys: Pick<ShipSystems, 'rooms' | 'bars' | 'hackPower'>): boolean { return hackBars(sys) >= HACK_MIN_BARS; }
+/** Hacking spike: a Room's level as the ship's systems feel it: 2 (off) while a hack holds it, else its damage level.
+ *  Only the systems' gates read this; repair and damage still act on `rooms`. */
+export function roomLevel(sys: Pick<ShipSystems, 'rooms' | 'hacked'>, r: number): number { return sys.hacked[r]! > 0 ? 2 : sys.rooms[r]!; }

@@ -94,6 +94,9 @@ export interface ShipSystems {
    *  pew pew's and the autocannon's, false AUTO, true MAN (gunMode {slot}; only the crew slot of a class whose weapon in
    *  that slot has a turret is ever MAN). Every round starts 0 / 0 / AUTO / AUTO. */
   pewTurret: number; gunTurret: number; pewManual: boolean; gunManual: boolean;
+  /** Hacking spike (owner 2026-11-20): the Sensors bars Science gave the hack module (the crew only; 0..HACK_BAR_MAX,
+   *  trimmed on read by hackBars), and the ticks each Room stays switched off by a hack (0: not hacked; any slot). */
+  hackPower: number; hacked: [number, number, number];
 }
 
 /** A cruise missile's flight (spec §7b). */
@@ -154,7 +157,9 @@ export type DuelEvent =
   /** A missile ended. `target`: the ship it landed on (its own ship for a self-hit), or −1; `room`: the Room it struck, or −1. */
   | { kind: 'missileEnd'; ship: number; cause: 'ship' | 'planet' | 'asteroid' | 'edge' | 'expired' | 'missile' | 'shot'; target: number; room: number; x: number; y: number }
   /** Sci-1 spec §4.6: the enemy turned hostile this tick, and why (laser before gun before missile before clock; Valkyrn spec §7.2). */
-  | { kind: 'hostile'; cause: 'clock' | 'laser' | 'gun' | 'pew' | 'missile' }
+  | { kind: 'hostile'; cause: 'clock' | 'laser' | 'gun' | 'pew' | 'missile' | 'hack' }   // 'hack': the hacking spike (R1-1)
+  /** Hacking spike §2.6: Science's hack on the target's `room` landed ('done') or broke ('lost'). Not sent online (R1-6). */
+  | { kind: 'hack'; what: 'done' | 'lost'; room: number }
   /** Valkyrn spec §7.1: ship `ship` fired a gun round from muzzle `muzzle` (0 starboard, 1 port). */
   | { kind: 'gunFire'; ship: number; muzzle: number }
   /** Valkyrn spec §7.2: a round hit ship `ship` (the target) at the closest-approach point (x, y): `room` the Room it
@@ -210,6 +215,8 @@ export interface TacticalState {
    *  level each contact is known to (Contact order). `scan`: the ship's scanner. `designated`: the contact Science
    *  points out, −1 none (no rule reads it). `weakFreq`: the enemy's weak shield frequency 0..2. `derelict`: the wreck. */
   startTick: number; hostileAt: number; known: [number, number]; scan: Scan; designated: number; weakFreq: number; derelict: Derelict;
+  /** Hacking spike: the enemy Room Science is hacking (−1 none) and the ticks the hack has held (0..HACK_TICKS). */
+  hackRoom: number; hackTicks: number;
 }
 
 /** Held axes for one ship: turn (+ clockwise) and thrust (+ forward). flyShip quantises the turn by sign and rounds the
@@ -248,6 +255,7 @@ function systemsFor(cls: number, target: number, crew = false): ShipSystems {
     laserManual: false, laserAim: -1,   // W-2: every round starts AUTO, with no MANUAL burst pending
     torpManual: false,   // W-3: and the torpedo too
     pewTurret: 0, gunTurret: 0, pewManual: false, gunManual: false,   // W-4 spec §3.1, amendment §2.1: the turrets on the nose, each gun AUTO
+    hackPower: 0, hacked: [0, 0, 0],   // hacking spike: no hack bars, nothing hacked
     bars: crew ? [...START_BARS] : Array<number>(DUEL_SYSTEM_COUNT).fill(0),   // Engineering spike spec §2
     weaponPower: crew ? [...START_WEAPON_POWER] : Array<number>(WEAPON_SLOTS).fill(0)   // spec §10.3
   };
@@ -255,7 +263,7 @@ function systemsFor(cls: number, target: number, crew = false): ShipSystems {
 function emptySystems(): ShipSystems {
   return { cls: 0, target: 0, hull: 0, rooms: [0, 0, 0], shields: 0, shieldClock: 0, laserCharge: 0, laserHold: 0, fireHeld: false, lock: 0, laserTargeted: false, torpLock: 0, torpRoom: 0, laserBurst: 0, laserBurstClock: 0, freq: 0,
     magazine: 0, magazineClock: 0, laserRock: 0, torpRock: 0, torpRockFlying: 0, rocksBroken: 0, shots: 0, laserHits: 0, layersStripped: 0, missilesLaunched: 0, missileHits: 0, missilesLost: 0,
-    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0, pewCharge: 0, pewShots: 0, pewHits: 0, laserManual: false, laserAim: 0, torpManual: false, pewTurret: 0, gunTurret: 0, pewManual: false, gunManual: false,
+    gunHeat: 0, gunLocked: false, gunCooldown: 0, gunMuzzle: 0, gunWear: 0, gunHull: 0, gunRoomWear: [0, 0, 0], gunShots: 0, gunHits: 0, pewCharge: 0, pewShots: 0, pewHits: 0, laserManual: false, laserAim: 0, torpManual: false, pewTurret: 0, gunTurret: 0, pewManual: false, gunManual: false, hackPower: 0, hacked: [0, 0, 0],
     bars: Array<number>(DUEL_SYSTEM_COUNT).fill(0), weaponPower: Array<number>(WEAPON_SLOTS).fill(0) };
 }
 /** A free missile pool entry. */
@@ -305,7 +313,8 @@ export function createTacticalState(seed: number, slots = DUEL_CLASSES.length, c
     pew: Array.from({ length: PEW_POOL }, emptyRound),   // W-1 (pew pew spec §1)
     hunter: hunterFor(map.spawns[0]), outcome: Outcome.Running, events: [],
     // Sci-1 (spec §4): the round starts with the enemy unidentified and holding, the scanner idle.
-    startTick: 0, hostileAt: -1, known: [0, 0], scan: idleScan(), designated: -1, weakFreq: science.weakFreq, derelict: science.derelict
+    startTick: 0, hostileAt: -1, known: [0, 0], scan: idleScan(), designated: -1, weakFreq: science.weakFreq, derelict: science.derelict,
+    hackRoom: -1, hackTicks: 0   // hacking spike
   };
 }
 

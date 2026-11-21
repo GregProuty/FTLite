@@ -13,6 +13,7 @@ import { fineHeadingOf, interpolatedShip } from '../src/renderer/src/render/tact
 import { emptyPresses, type KeyAction, type KeySample } from '../src/renderer/src/app/duel/input';
 import { createDuelRuntime } from '../src/renderer/src/app/duel/runtime';
 import { seatDuelCrew } from './helpers/duelSeat';
+import { sitDown, standUp } from '../src/renderer/src/sim/stations';
 import { createDuelScene } from '../src/renderer/src/app/duel/scene';
 import { createContactController } from '../src/renderer/src/app/duel/contactController';
 import { createMapRequests } from '../src/renderer/src/app/duel/mapRequests';
@@ -216,5 +217,23 @@ describe('Feel-i in the scene (console feel spec §1, §3)', () => {
     r.scene.draw(r.rt, 1 / 60, LIVE);
     expect(r.store.getState().duel?.sitCard ?? null).toBeNull();   // the console is hidden on a decided round
     r.scene.dispose();
+  });
+});
+
+describe('the Science block in the scene (hacking spike R1-7, code review 6)', () => {
+  it('at Science a press on the block over a drawn contact picks nothing; the same contact off the block is picked', () => {
+    const r = rig();
+    try {
+      standUp(r.rt.duel.interior, 1); sitDown(r.rt.duel.interior, 1, r.rt.duel.science); r.tick(); r.tick();
+      const cam = r.rt.cameras.science, e = interpolatedShip(r.rt.duel.tactical, r.rt.prev, r.rt.alpha(), 1);
+      const onBlock = { x: STATION.x + 150, y: stationTop('science') + 40 };
+      cam.follow = 'free'; cam.centreX = e.x; cam.centreY = e.y;
+      const w = screenToWorld(cam, vp, onBlock.x, onBlock.y); cam.centreX += e.x - w.x; cam.centreY += e.y - w.y;   // the enemy drawn under the block
+      r.clicks.push(onBlock); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.contact.state()).toBeNull();
+      cam.centreX = e.x; cam.centreY = e.y;   // now the enemy at the screen centre, on the open map
+      r.clicks.push(worldToScreen(cam, vp, e.x, e.y)); r.scene.draw(r.rt, 1 / 60, LIVE);
+      expect(r.contact.state()?.contact).toBe(0);
+    } finally { r.scene.dispose(); r.rt.dispose(); }
   });
 });

@@ -14,7 +14,7 @@ import { placeRound, segmentEntry } from './gun';
 import { interceptTime, nearestHeading } from './lead';
 import { shootDown } from './missiles';
 import { rockEntry, rocksNear } from './rocks';
-import { classOf, CREW_SLOT, emptyRound, roundRoom, type TacticalState } from './state';
+import { classOf, CREW_SLOT, emptyRound, Room, roundRoom, type TacticalState } from './state';
 import { AIM_STEPS, DT, HEADING_COUNT, PEW_ROOM_WEAR } from './tuning';
 
 /** A full charge in charge units: every third stored. */
@@ -23,7 +23,7 @@ export function pewFull(def: PewDef): number { return pewFullCharge(def); }
 /** Engineering spike §11: whether ship i's pew pew is powered: the crew's with at least one (trimmed) pew pew bar, any
  *  other ship's always. */
 export function pewPowered(state: TacticalState, i: number): boolean {
-  return i !== CREW_SLOT || weaponBars(state.systems[i]!, WeaponSlot.Pew) >= 1;
+  return i !== CREW_SLOT ? state.systems[i]!.hacked[Room.Weapons] === 0 : weaponBars(state.systems[i]!, WeaponSlot.Pew) >= 1;   // hacking spike: a hacked Weapons room unpowers a non-crew pew (damage alone still does not, as before)
 }
 
 /** The charge units ship i's pew gains a tick: the crew's by its pew pew bars (a third per PEW_TICKS_BY_BARS ticks, 0 at
@@ -104,7 +104,7 @@ export function firePewTrigger(state: TacticalState, i: number, room = 0): boole
 /** One tick of ship i's pew recharge (spec §1; Engineering spike §11): pewGain units while below full, to full, every tick. */
 export function tickPew(state: TacticalState, i: number, manual = false): void {
   const def = classOf(state, i).slots.pew, s = state.systems[i]!;
-  if (def && s.pewCharge < pewFull(def)) s.pewCharge = Math.min(pewFull(def), s.pewCharge + pewGain(state, i, manual));
+  if (def && s.pewCharge < pewFull(def) && (i === CREW_SLOT || pewPowered(state, i))) s.pewCharge = Math.min(pewFull(def), s.pewCharge + pewGain(state, i, manual));
 }
 
 /** Owner's pew round hit ship k at (x, y) (spec §1): with a shield layer up it strips one (the shield clock and the gun's

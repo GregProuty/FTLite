@@ -9,7 +9,7 @@ interface Rect { x: number; y: number; w: number; h: number }
 const inside = (p: Point, r: Rect): boolean => p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h;
 /** The console blocks drawn over the maps, by name. */
 const TAB_STRIP: Rect = { x: TABS.x, y: TABS.y, w: TABS_RIGHT - TABS.x, h: TABS.h };
-const stationBlock = (L: ConsoleLayout, s: 'helm' | 'weapons'): Rect => ({ x: STATION.x, y: L.stationTop(s), w: STATION.w, h: STATION.h[s] });
+const stationBlock = (L: ConsoleLayout, s: 'helm' | 'weapons' | 'science'): Rect => ({ x: STATION.x, y: L.stationTop(s), w: STATION.w, h: STATION.h[s] });
 interface Blocks { flight: readonly Rect[]; weapons: readonly Rect[]; helm: readonly Rect[] }
 const blockCache = new WeakMap<ConsoleLayout, Blocks>();
 function blocksOf(L: ConsoleLayout): Blocks {
@@ -31,6 +31,10 @@ function blocksOf(L: ConsoleLayout): Blocks {
   }
   return b;
 }
+/** Hacking spike R1-7: whether p is inside the Science station block (taller since the hack rows): a press there is the
+ *  block's, never a map click, so it cannot pick a contact drawn under the block (re-designating, say, the derelict would
+ *  lose a running hack). */
+export function onScienceBlock(p: Point, L: ConsoleLayout = consoleLayout()): boolean { return inside(p, stationBlock(L, 'science')); }
 /** On the layout's stage, clear of the contact window while it is shown and of every block in `blocks`. */
 function onMap(p: Point, contactShown: boolean, L: ConsoleLayout, blocks: readonly Rect[]): boolean {
   if (p.x < 0 || p.y < 0 || p.x >= L.stage.w || p.y >= L.stage.h) return false;

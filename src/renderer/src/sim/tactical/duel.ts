@@ -7,7 +7,7 @@ import { flyMissile, resolveMissiles } from './missiles';
 import { stepRounds } from './gun';
 import { stepPew } from './pew';
 import { flightFor, flySlot } from './physics';
-import { hostilityStep, salvageStep, scanStep } from './science';
+import { hackStep, hostilityStep, salvageStep, scanStep } from './science';
 import { resolveContacts } from './contacts';
 import { settleRocks } from './rockSettle';
 import { beginRockStep, beginRockTick, endRockStep } from './rocks';
@@ -23,7 +23,7 @@ export function hunterSlot(state: TacticalState): number {
 
 /**
  * Order, fixed (Sci-1 spec §4.6): think (the hunter reads the state as it stands), weapon commands (every active ship, in slot order),
- * ships fly, missiles fly (W-3: a MANUAL one by its Weapons input), ship contacts, missile contacts, gun rounds (Valkyrn spec §7.2), pew rounds (W-1), weapon clocks, hostility, scan progress (the crew input's scanner), salvage, settle rocks (asteroids-iii §3.4), outcome, tick (asteroids-iii §3.3: inside the step context rails are read at tick + 1). The crew wins when every other
+ * ships fly, missiles fly (W-3: a MANUAL one by its Weapons input), ship contacts, missile contacts, gun rounds (Valkyrn spec §7.2), pew rounds (W-1), weapon clocks, hostility, scan progress (the crew input's scanner), the hack (the crew input's hacker), salvage, settle rocks (asteroids-iii §3.4), outcome, tick (asteroids-iii §3.3: inside the step context rails are read at tick + 1). The crew wins when every other
  * active ship's hull is gone. Does nothing once the duel has ended.
  */
 export function stepDuel(state: TacticalState, crew: ShipInput, tuning?: FlightTuning): void {   // playtest2feedback §2: `tuning` overrides every slot; absent, flightFor
@@ -49,6 +49,7 @@ export function stepDuel(state: TacticalState, crew: ShipInput, tuning?: FlightT
     for (let i = 0; i < n; i++) if (state.ships[i]!.active) tickWeapons(state, i, inputs[i]!);
     hostilityStep(state, hunter);
     scanStep(state, crew.scanner);
+    hackStep(state, crew.hacker ?? true);   // hacking spike §2.5: after the scan step
     salvageStep(state);
     settleRocks(state);   // asteroids-iii §3.4, §13.2: the rejoin pass, after every contact and weapon of the tick
     const down = (i: number): boolean => state.systems[i]!.hull <= 0;

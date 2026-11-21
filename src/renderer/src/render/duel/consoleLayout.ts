@@ -12,7 +12,7 @@ const PANEL = powerPanel();
 /** UI round §2.4a: the HUD's top block (the hull bar, the shields row and the health row under them) and its power panel
  *  with the REACTOR line above it: never the map, and the console blocks keep clear of both. */
 export const HUD_TOP = { x: HUD.x - 6, y: HUD.hull.labelY - 6, w: hullSegX(19) + HUD.hull.segW + 6 - (HUD.x - 6), h: 150 - (HUD.hull.labelY - 6) } as const;
-export const STATION = { x: PANEL.x + PANEL.w + EDGE, w: 300, h: { helm: 200, weapons: 268, science: 96 } } as const;   // UI round §2.4a: right of the power panel (x 346); the frequency row takes the old steer row's place (Sci-1 spec §7.4); W-1: the PEW row on top (+28); Engineering spike §10.3: the bar pips (+12 on the PEW row, +12 under the cards)
+export const STATION = { x: PANEL.x + PANEL.w + EDGE, w: 300, h: { helm: 200, weapons: 268, science: 176 } } as const;   // hacking spike §3.1: Science 96 → 176 for the SCAN / HACK rows   // UI round §2.4a: right of the power panel (x 346); the frequency row takes the old steer row's place (Sci-1 spec §7.4); W-1: the PEW row on top (+28); Engineering spike §10.3: the bar pips (+12 on the PEW row, +12 under the cards)
 /** W-1 (pew pew spec 1): the PEW row at the top of the Weapons block (its label, three charge pips and the click hint);
  *  Engineering spike §10.3: and its bar pips under the charge pips (+12). */
 export const PEW_ROW_H = 40;

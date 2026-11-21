@@ -3,7 +3,7 @@
 // (tacticalLayer.ts) only draws what this returns. Render code, so it may use any Math (not under the determinism guard).
 import { shipGravityAccel } from '../../sim/tactical/physics';
 import { predictFlight, predictRock } from '../../sim/tactical/predict';
-import { derelictPos } from '../../sim/tactical/science';
+import { derelictPos, enemyHacked } from '../../sim/tactical/science';
 import { classOf, Contact, CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
 import { rockAlive, rockAt, rockHpMax, rockMaskOf, rockSlots, rockTmpl } from '../../sim/tactical/rocks';
 import { templateFor } from '../../sim/tactical/rockCells';
@@ -81,6 +81,8 @@ export interface ShipDraw {
   /** The silhouette (hull silhouettes spec section 2): the shape comes from HULLS[hull], the colours from `crew`. */
   hull: HullId;
   rooms: readonly number[]; shields: number;
+  /** Hacking spike §3.3: a room of this ship is switched off by a hack (sparks round it). Absent: no. */
+  hacked?: boolean;
 }
 export interface RingDraw { x: number; y: number; r: number; ticks: (Line & { major: boolean })[]; labels: Label[] }
 /** Feel-ii (spec §1.1-§1.3): `collision` the predicted path's first solid contact (its last segment from `from`, an X at
@@ -113,7 +115,9 @@ export const LOOT_NAMES = ['HULL', 'TORPEDOES', 'SHIELD'] as const;
 /** Sci-1 spec §7.1: one map contact's mark. `unknown` (Level 0): a plain `?`, no silhouette or shield ring. `wreck`: the
  *  derelict at Level 1, with its `label` and, trapped, the `alert`. `r`: the radius of its scan ring and designation
  *  bracket. `scan`: the scanner's progress 0..1 while it scans this contact, else null. */
-export interface ContactMarkDraw { contact: 0 | 1; x: number; y: number; r: number; unknown: boolean; wreck: boolean; label: string | null; alert: string | null; scan: number | null; designated: boolean }
+export interface ContactMarkDraw { contact: 0 | 1; x: number; y: number; r: number; unknown: boolean; wreck: boolean; label: string | null; alert: string | null; scan: number | null; designated: boolean;
+  /** Hacking spike §3.3, plan R1-7: the enemy, drawn as this mark, has a hacked room (sparks round the mark). Absent: no. */
+  hacked?: boolean }
 /** The salvage hold as a ring round the crew ship, filled 0..1 over SALVAGE_TICKS. */
 export interface SalvageDraw { x: number; y: number; r: number; fill: number }
 /** Science's slow rotating ring on the crew laser's target (Artemis). */
@@ -517,7 +521,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     const b = interpolatedShip(state, prev, alpha, i), s = state.systems[i]!;
     if (!onScreen(b.x, b.y, Math.max(SHIP_RADIUS * 2, (SHIP_RADIUS * 1.9 * drawnScale(z)) / z))) continue;   // the drawn rings reach 1.9 units
     const p = toS(b.x, b.y);
-    ships.push({ index: i, x: p.x, y: p.y, angle: headingAngle(b.h), scale: drawnScale(z), chevron: 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, crew: i === 0, hull: i === 0 ? input.crewHull ?? hullFor(true) : hullFor(false), rooms: s.rooms, shields: s.shields });
+    ships.push({ index: i, x: p.x, y: p.y, angle: headingAngle(b.h), scale: drawnScale(z), chevron: 2 * SHIP_RADIUS * z < SHIP_CHEVRON_PX, crew: i === 0, hull: i === 0 ? input.crewHull ?? hullFor(true) : hullFor(false), rooms: s.rooms, shields: s.shields, ...(s.hacked[0] > 0 || s.hacked[1] > 0 || s.hacked[2] > 0 ? { hacked: true } : {}) });   // hacking spike §3.3
   }
 
   // The gravity grid's dents (mapGrid.ts): every drawn ship and live rock whose dent reaches the view and shows there.
@@ -628,7 +632,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     if (state.ships[enemy]?.active && input.ships.includes(enemy)) {
       const b = interpolatedShip(state, prev, alpha, enemy), p = toS(b.x, b.y), unknown = state.known[Contact.Enemy] === 0;
       if (onScreen(b.x, b.y, SHIP_RADIUS * 3)) {
-        marks.push({ contact: Contact.Enemy, x: p.x, y: p.y, r: unknown ? 14 : Math.max(14, ringR), unknown, wreck: false, label: null, alert: null, scan: scanOf(Contact.Enemy), designated: state.designated === Contact.Enemy });
+        marks.push({ contact: Contact.Enemy, x: p.x, y: p.y, r: unknown ? 14 : Math.max(14, ringR), unknown, wreck: false, label: null, alert: null, scan: scanOf(Contact.Enemy), designated: state.designated === Contact.Enemy, ...(unknown && enemyHacked(state) ? { hacked: true } : {}) });   // hacking spike §3.3, code review 1: only the "?" mark (a scanned enemy's ShipDraw has its own sparks)
         if (input.console === 'science') lockRing = { x: p.x, y: p.y, r: Math.max(18, ringR + 6) };
       }
     }

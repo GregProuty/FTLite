@@ -10,6 +10,7 @@ import { HEAT_COOL_IDLE, HEAT_COOL_UNIT, HEAT_MAX, HEAT_RISE, OVERHEAT_FIRE_CHAN
 import { clampThrottle } from './engines';
 import { sensorsHazards } from './sensors';
 import { clampWeaponPower } from './weaponSlots';
+import { clampSciencePower } from './scienceSlots';
 import type { DuelState } from './state';
 export {
   DuelSystem, DUEL_SYSTEM_COUNT, OVERDRIVE_SYSTEMS, SYSTEM_MAX, SYSTEM_SLOTS, SYSTEM_TACTICAL_ROOM, REACTOR_BARS, START_BARS, knock, damageCapacity, effectiveBars
@@ -74,6 +75,7 @@ export function clampToCapacity(d: DuelState): void {
   for (let k = 0; k < DUEL_SYSTEM_COUNT; k++) { const cap = capacityOf(d, k); if (b[k]! > cap) b[k] = cap; }
   clampThrottle(d);   // Task 8, spec §10.2
   clampWeaponPower(d);   // Task 9a, spec §10.3
+  clampSciencePower(d);   // hacking spike R1-5
 }
 
 /** Spec §3, one hazard tick, systems 0..3 in ascending index: overdriven +HEAT_RISE − coolant; idle −HEAT_COOL_IDLE;

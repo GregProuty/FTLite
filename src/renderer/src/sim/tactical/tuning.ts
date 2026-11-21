@@ -164,6 +164,10 @@ export const SALVAGE_SPEED = 40;                  // ... at most this fast relat
 export const SALVAGE_TICKS = 300;                 // ... for 5 s salvages it
 export const TRAP_HULL = 3;                       // a trapped derelict costs this much hull
 export const LOOT_HULL = 8;                       // Hull loot, capped at the class hull
+/** Hacking spike (owner 2026-11-20): Science holds a hack on one enemy room for HACK_TICKS (7 s) with the enemy designated
+ *  and in sensor range; it lands and switches that room off for HACK_DISABLE_TICKS (30 s). */
+export const HACK_TICKS = 420;
+export const HACK_DISABLE_TICKS = 1800;
 /** The derelict's orbit bands, clear of the three-lane belt (BELT_INNER 1100 to 1300). Since asteroids-iv §10b the far band's
  *  inner edge passes through the big outer lane (1390 ± 55); the derelict never collides with rocks. */
 export const DERELICT_NEAR_MIN = 700, DERELICT_NEAR_MAX = 1000, DERELICT_FAR_MIN = 1400, DERELICT_FAR_MAX = 1599;

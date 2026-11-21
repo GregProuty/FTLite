@@ -3,9 +3,9 @@
 // code: the heading tables for trig, never Math.sin, Math.cos or Math.PI (the determinism guard).
 import { dirBetween, wrapHeading } from './direction';
 import { circularSpeed } from './map';
-import { classOf, Contact, CREW_SLOT, idleScan, Loot, type ShipSystems, type TacticalState } from './state';
-import { DT, HEADING_COUNT, HOSTILE_AFTER_TICKS, LOOT_HULL, SALVAGE_RANGE, SALVAGE_SPEED, SALVAGE_TICKS, SCAN_RATE_SCIENCE, SCAN_UNITS, TRAP_HULL } from './tuning';
-import { DuelSystem, effectiveBars, SCAN_OTHER_BY_BARS, SCAN_SCIENCE_BY_BARS, SENSOR_RANGE_BY_BARS } from './bars';
+import { classOf, Contact, CREW_SLOT, idleScan, Loot, Room, type ShipSystems, type TacticalState } from './state';
+import { DT, HACK_DISABLE_TICKS, HACK_TICKS, HEADING_COUNT, HOSTILE_AFTER_TICKS, LOOT_HULL, SALVAGE_RANGE, SALVAGE_SPEED, SALVAGE_TICKS, SCAN_RATE_SCIENCE, SCAN_UNITS, TRAP_HULL } from './tuning';
+import { hackOnline, SCAN_OTHER_BY_BARS, SCAN_SCIENCE_BY_BARS, scannerBars, SENSOR_RANGE_BY_BARS } from './bars';
 
 /** A contactScan the duel step admitted (spec §5): scan the next level of `contact` at `rate` from station `by`. On the
  *  same contact and level the progress is kept: a faster station takes the scan over (applied), a slower or equal one
@@ -35,14 +35,14 @@ export function enemyHostile(t: TacticalState): boolean { return t.hostileAt >= 
  *  gun, then pew, then missile, then clock. */
 export function hostilityStep(t: TacticalState, hunter: number): void {
   if (t.hostileAt >= 0 || hunter < 0) return;
-  const rt = roundTick(t), crew = t.systems[CREW_SLOT];
-  if (crew.shots + crew.gunShots + crew.pewShots === 0 && crew.missilesLaunched === 0 && rt < HOSTILE_AFTER_TICKS - 1) return;   // W-1: a pew round is a shot
+  const rt = roundTick(t), crew = t.systems[CREW_SLOT], hacked = enemyHacked(t);   // hacking spike R1-1: a landed hack is an attack (state-derived)
+  if (crew.shots + crew.gunShots + crew.pewShots === 0 && crew.missilesLaunched === 0 && !hacked && rt < HOSTILE_AFTER_TICKS - 1) return;   // W-1: a pew round is a shot
   t.hostileAt = rt;
-  t.events.push({ kind: 'hostile', cause: crew.shots > 0 ? 'laser' : crew.gunShots > 0 ? 'gun' : crew.pewShots > 0 ? 'pew' : crew.missilesLaunched > 0 ? 'missile' : 'clock' });
+  t.events.push({ kind: 'hostile', cause: crew.shots > 0 ? 'laser' : crew.gunShots > 0 ? 'gun' : crew.pewShots > 0 ? 'pew' : crew.missilesLaunched > 0 ? 'missile' : hacked ? 'hack' : 'clock' });
 }
 
 /** Engineering spike spec §10.4 (Task 10): the crew's sensor range by its effective Sensors bars. */
-export function sensorRange(sys: Pick<ShipSystems, 'rooms' | 'bars'>): number { return SENSOR_RANGE_BY_BARS[effectiveBars(sys, DuelSystem.Sensors)]!; }
+export function sensorRange(sys: Pick<ShipSystems, 'rooms' | 'bars' | 'hackPower'>): number { return SENSOR_RANGE_BY_BARS[scannerBars(sys)]!; }   // hacking spike: the scanner's bars (the Sensors bars not on HACK)
 /** Whether a point is within sensor range of the crew ship's centre (a torpedo in flight, for Part ii's fog). */
 export function pointSeen(t: TacticalState, x: number, y: number): boolean {
   const a = t.ships[CREW_SLOT], r = sensorRange(t.systems[CREW_SLOT]), dx = x - a.x, dy = y - a.y;
@@ -64,7 +64,7 @@ export function contactSeen(t: TacticalState, contact: number): boolean {
  *  base rate, SCAN_RATE_SCIENCE for Science, so it picks the row) at the crew's current effective Sensors bars. */
 export function scanProgressRate(t: TacticalState): number {
   const row = t.scan.rate === SCAN_RATE_SCIENCE ? SCAN_SCIENCE_BY_BARS : SCAN_OTHER_BY_BARS;
-  return row[effectiveBars(t.systems[CREW_SLOT], DuelSystem.Sensors)]!;
+  return row[scannerBars(t.systems[CREW_SLOT])]!;   // hacking spike: the scanner's bars
 }
 
 /** Spec §4.3's progress step, after hostility: a running scan advances by its rate while the station running it is
@@ -116,4 +116,38 @@ export function salvageStep(t: TacticalState): void {
   applyLoot(t, dr.loot);
   if (dr.trapped) { const sys = t.systems[CREW_SLOT]; sys.hull = Math.max(0, sys.hull - TRAP_HULL); }
   t.events.push({ kind: 'salvage', loot: dr.loot, trapped: dr.trapped });
+}
+
+// ---- Hacking (hacking spike 2026-11-20, spec §2.5, §6 R1) ----
+/** Whether any Room of the crew's target ship is switched off by a hack now. */
+export function enemyHacked(t: TacticalState): boolean {
+  const h = t.systems[t.systems[CREW_SLOT].target]?.hacked;
+  return h !== undefined && (h[0] > 0 || h[1] > 0 || h[2] > 0);
+}
+/** Why a hack on the target's `room` could not run now, or null: the hack module offline (below HACK_MIN_BARS), the enemy
+ *  not designated by Science, the enemy unseen (outside the scanner's sensor range), or (`room` ≥ 0) that room already
+ *  down. The admission's refusals and the hold's loss conditions (with the Science seat, which the step checks). */
+export function hackBlocked(t: TacticalState, room = -1): 'HACK OFFLINE' | 'SELECT THE ENEMY' | 'OUT OF RANGE' | 'ALREADY DOWN' | null {
+  const crew = t.systems[CREW_SLOT];
+  if (!hackOnline(crew)) return 'HACK OFFLINE';
+  if (t.designated !== Contact.Enemy) return 'SELECT THE ENEMY';
+  if (!shipSeen(t, crew.target)) return 'OUT OF RANGE';
+  if (room >= 0 && (t.systems[crew.target]?.hacked[room] ?? 0) > 0) return 'ALREADY DOWN';
+  return null;
+}
+/** Spec §2.5, after the scan step: every slot's hacked rooms count down one tick; then a running hack is lost (event, back
+ *  to idle) when the Science console is unattended (`hacker`) or hackBlocked, else it holds one more tick, and at
+ *  HACK_TICKS it lands: the target's room is off for HACK_DISABLE_TICKS (a Shields hack also drops every layer), a done
+ *  event is pushed and the hack goes idle. */
+export function hackStep(t: TacticalState, hacker: boolean): void {
+  for (const s of t.systems) for (let r = 0; r < 3; r++) if (s.hacked[r]! > 0) s.hacked[r as 0 | 1 | 2]--;
+  const room = t.hackRoom;
+  if (room < 0) return;
+  if (!hacker || hackBlocked(t) !== null) { t.hackRoom = -1; t.hackTicks = 0; t.events.push({ kind: 'hack', what: 'lost', room }); return; }
+  if (++t.hackTicks < HACK_TICKS) return;
+  const target = t.systems[t.systems[CREW_SLOT].target]!;
+  target.hacked[room as 0 | 1 | 2] = HACK_DISABLE_TICKS;
+  if (room === Room.Shields) { target.shields = 0; target.shieldClock = 0; }
+  t.hackRoom = -1; t.hackTicks = 0;
+  t.events.push({ kind: 'hack', what: 'done', room });
 }

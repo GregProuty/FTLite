@@ -51,7 +51,7 @@ import type { AimSample, HeldFlags } from './input';
 import type { ContactController } from './contactController';
 import type { MapRequests } from './mapRequests';
 import { fineHeadingOf, headingOf, pickRadius } from '../../render/tactical/tacticalModel';
-import { flightPointer, helmSteer, onHelmMap, onWeaponsMap, torpedoSteer } from './flightPointer';
+import { flightPointer, helmSteer, onHelmMap, onScienceBlock, onWeaponsMap, torpedoSteer } from './flightPointer';
 import { flightAlert, type RefusedControl } from '../../render/duel/situationModel';
 import { pingAllowed, pushPing, stepPings, type Ping, type PingRequest } from '../../render/duel/pingModel';
 import type { TorpedoTone } from './duelAudio';
@@ -307,6 +307,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         const ship = pickContact({ state: d.tactical, prev: source.prev, alpha, camera: cam!, viewport, fog: fogView }, click);
         if (ship !== null) { contact.click(ship); helmPick = true; }
       } else if (contact && click && onMap && station !== 'flight' && !crewHelmMap   // Valkyrn spec §5.1: on the Flight seat the left button is the gun
+        && !(station === 'science' && onScienceBlock(click, L))   // hacking spike R1-7: a press on the Science block is the block's
         // W-1 review F4: at Weapons the window's own click is only a picked-up card's, or a click inside the shown window; any other
         // click (over a console block, empty map the pew declined) is dropped, so a block never opens or closes the window.
         && !(station === 'weapons' && view === 'weapons' && (contact.aimWeapon() ?? null) === null && !(contact.state() != null && click.x >= CONTACT.x && click.x < CONTACT.x + CONTACT.w && click.y >= CONTACT.y && click.y < CONTACT.y + CONTACT.h))) {

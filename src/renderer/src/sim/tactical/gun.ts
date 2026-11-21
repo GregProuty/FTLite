@@ -4,7 +4,7 @@
 // Weapons station. Rounds live in the fixed pool tactical.rounds. stepRounds moves the rounds after the ships fly and
 // contacts resolve and sweeps each as a segment (spec §7.2). Only + − × ÷ and sqrt (the determinism guard).
 import type { GunDef, GunRockDef } from './defs';
-import { weaponBars, WeaponSlot } from './bars';
+import { roomLevel, weaponBars, WeaponSlot } from './bars';
 import { dirBetween, hx, hy } from './direction';
 import { hitRock, pushRock } from './rockBreak';
 import { rockEntry, rockMassOf, rocksNear } from './rocks';
@@ -82,10 +82,10 @@ export function tickGun(state: TacticalState, i: number, input: ShipInput, auto 
   const g = classOf(state, i).slots.gun;
   if (g === null) return;
   const s = state.systems[i]!, cool = s.gunLocked ? g.coolLocked : g.cool;
-  s.gunHeat = Math.max(0, s.gunHeat - (s.rooms[Room.Weapons] >= 1 ? cool / 2 : cool));
+  s.gunHeat = Math.max(0, s.gunHeat - (roomLevel(s, Room.Weapons) >= 1 ? cool / 2 : cool));   // hacking spike: roomLevel
   if (s.gunLocked && s.gunHeat === 0) s.gunLocked = false;
   if (s.gunCooldown > 0) s.gunCooldown--;
-  if (!input.weapons || s.gunLocked || s.rooms[Room.Weapons] >= 2 || s.gunCooldown > 0) return;
+  if (!input.weapons || s.gunLocked || roomLevel(s, Room.Weapons) >= 2 || s.gunCooldown > 0) return;
   if (g.turret === null) { if (input.gunHeld) fireRound(state, i, g); return; }   // the Valkyrn: its trigger, as before
   const hand = handControl(state, i, input.weaponSel, WeaponSlot.Autocannon);   // W-4 spec §3.4: in hand (its own switch on MAN, and selected), else AUTO-driven
   if (gunInterval(state, i, hand) === 0) return;   // W-4 spec §5: a turret gun on 0 bars fires nothing
