@@ -64,7 +64,7 @@ export function interiorFrame(d: DuelState, rectTiles: TileRect): InteriorFrame 
   return { nose: { x: nx, y: ny }, star: { x: -ny, y: nx }, ellipse, rooms };
 }
 
-export interface Shot { kind: ShotKind; age: number; life: number; from: Pt; to: Pt; stopped: boolean; landed: boolean }
+export interface Shot { kind: ShotKind; age: number; life: number; from: Pt; to: Pt; stopped: boolean; landed: boolean; miss: boolean }
 export interface ShotState { shots: Shot[] }
 export function createShots(): ShotState { return { shots: [] }; }
 
@@ -78,7 +78,7 @@ export function pushShots(s: ShotState, hits: readonly ShipHitRead[], frame: Int
     if (h.miss) to = ellipsePoint(big, h.a + Math.PI, frame.nose, frame.star);
     else if (h.stopped || h.room < 0 || h.room >= frame.rooms.length) to = ellipsePoint(e, h.a, frame.nose, frame.star);
     else to = frame.rooms[h.room]!;
-    s.shots.push({ kind: h.kind, age: 0, life: FLIGHT_S[h.kind], from, to, stopped: h.stopped, landed: false });
+    s.shots.push({ kind: h.kind, age: 0, life: FLIGHT_S[h.kind], from, to, stopped: h.stopped, landed: false, miss: h.miss });
   }
 }
 
@@ -101,6 +101,6 @@ export function shotDraw(shot: Shot): { x: number; y: number; trail: Pt[]; burst
   };
   const p = at(shot.age), trail: Pt[] = [];
   if (shot.kind === 'torpedo') for (let i = 1; i <= TRAIL_POINTS; i++) trail.push(at(shot.age - i * TRAIL_STEP_S));
-  const burst = shot.landed ? Math.min(1, Math.max(0, (shot.age - shot.life) / SPLASH_S)) : 0;
+  const burst = shot.landed && !shot.miss ? Math.min(1, Math.max(0, (shot.age - shot.life) / SPLASH_S)) : 0;
   return { x: p.x, y: p.y, trail, burst, heading: Math.atan2(shot.to.y - shot.from.y, shot.to.x - shot.from.x) };
 }

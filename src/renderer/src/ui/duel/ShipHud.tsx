@@ -113,9 +113,11 @@ function HudBody({ hud }: { hud: ShipHudView }) {
       <Box x={sp.x} y={sp.y} w={sp.w} h={sp.h} attrs={{ 'data-ui-hud-shield-panel': '' }} style={{ background: hex(CRT.glass, 0.85), border: `1px solid ${hex(CRT.dim)}`, borderRadius: 3 }} />
       {Array.from({ length: hud.shields.layers }, (_, k) => {
         const state = k < hud.shields.up ? 'up' : k < hud.shields.cap ? 'down' : 'unpowered';
-        return <Box key={k} x={shieldBoxX(k)} y={SP.y + SP.pad} w={SP.box} h={SP.box} attrs={{ 'data-ui-hud-shield': state }}
+        const flash = hud.shields.flash && hud.shields.flash.layer === k ? hud.shields.flash.alpha : 0;   // Part 3 §3.3
+        return <Box key={k} x={shieldBoxX(k)} y={SP.y + SP.pad} w={SP.box} h={SP.box} attrs={{ 'data-ui-hud-shield': state, ...(flash > 0 ? { 'data-ui-hud-shield-flash': '' } : {}) }}
           style={{ boxSizing: 'border-box', borderRadius: 3, background: state === 'up' ? hex(CRT.dim) : hex(CRT.glass),
-            border: state === 'up' ? `2px solid ${hex(CRT.main)}` : `1px ${state === 'unpowered' ? 'dashed' : 'solid'} ${hex(state === 'unpowered' ? CRT.faint : CRT.dim)}` }} />;
+            border: state === 'up' ? `2px solid ${hex(CRT.main)}` : `1px ${state === 'unpowered' ? 'dashed' : 'solid'} ${hex(state === 'unpowered' ? CRT.faint : CRT.dim)}`,
+            ...(flash > 0 ? { boxShadow: `inset 0 0 0 2px ${hex(CRT.hot, flash)}` } : {}) }} />;
       })}
       <Box x={SP.x + SP.pad} y={barY} w={rowW} h={SP.barH} attrs={{ 'data-ui-hud-shield-recharge': String(Math.round(100 * hud.shields.recharge)) }} style={{ background: hex(CRT.faint) }}>
         <div style={{ width: `${Math.round(100 * hud.shields.recharge)}%`, height: '100%', background: hex(CRT.main) }} />

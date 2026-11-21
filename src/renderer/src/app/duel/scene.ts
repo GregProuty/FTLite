@@ -17,6 +17,8 @@ import { fireWatch, ownShipModel, type FireWatch } from '../../render/duel/ownSh
 import { hoverReadout } from '../../render/duel/scienceModel';
 import { shipHud } from '../../render/duel/shipHudModel';
 import { createInteriorView, type InteriorView } from '../../render/duel/interiorView';
+import { addShieldHit, createShieldFx, shieldFlash, stepShieldFx } from '../../render/shieldFx';
+import { createShots, FLIGHT_S, pushShots, readHits, stepShots } from '../../render/duel/enemyShots';
 import { shipCommandOf, shipControlAt, type ShipCommand } from '../../render/duel/shipControls';
 import type { Placement } from '../../render/duel/interiorCamera';
 import { createFx, fxDt, hitsCrew, interpolatedMissile, pushEvents, pushGunHits, pushKill, pushPewHits, recordTrails, resetFx, SHAKE_PX, SHAKE_S, shakeOffset, startShake, stepFx, trackSolution, type FxState, type ViewEvent } from '../../render/tactical/fxModel';
@@ -224,6 +226,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
   root.addChild(scene);
   renderer.app.stage.addChild(root);
   const fx = createFx();
+  const shieldFx = createShieldFx(2), shots = createShots();   // UI round Part 3 §3: the shield shimmer (both ships) and the enemy shots seen from inside
   const stageHook = globalThis as unknown as { __FTLITE_STAGE__?: boolean; __spikeAsteroidsFx?: unknown };
   if (stageHook.__FTLITE_STAGE__ === true) stageHook.__spikeAsteroidsFx = fx;   // asteroids-iii: the frame-time check reads the live fx count (a read-only staging hook, behind duelMode's __FTLITE_STAGE__ flag like __spikeAsteroids)
   const rockTrack = createRockTrack();   // asteroids-iii §7.1: smooth motion
@@ -251,7 +254,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       if (epoch === null) { epoch = source.epoch(); lastOutcome = (source.confirmed?.() ?? source.duel).tactical.outcome; if (source.seed !== options.seed) layer.reseed(source.seed); }   // the online duel learns its seed from the first publication; a round already decided on attach is no kill to show
       if (source.epoch() !== epoch) {   // a new round (a restart before H-2): every view-owned cache starts again
         epoch = source.epoch();
-        resetFx(fx); resetRockTrack(rockTrack); layer.reset(); layer.reseed(source.seed); sound?.reset();   // the next round's star field; a fresh audio baseline
+        resetFx(fx); shieldFx.hits.forEach((l) => { l.length = 0; }); shieldFx.collapse.fill(-1); shots.shots.length = 0; resetRockTrack(rockTrack); layer.reset(); layer.reseed(source.seed); sound?.reset();   // the next round's star field; a fresh audio baseline
         lastOutcome = Outcome.Running; pings.length = 0; refused = null;
         fires = null; flashUntil = 0;
         options.requests?.resetReticle();   // W-2, W-4 spec §10: a new round's reticle aim starts empty (the MANUAL laser aims along the nose, the Hound's reticle waits for the pointer)
@@ -430,7 +433,16 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       recordTrails(fx, d.tactical, source.missilePrev, alpha);
       layer.container.visible = view !== 'interior'; interior.container.visible = view === 'interior';
       let overlayView: MapOverlayView | null = null;
-      if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt, events, frozen ? 0 : dt, { camera: source.interiorCamera, active: source.active() }, options.pointer?.() ?? null, source.crewOverride?.() ?? null);   // Art-i spec section 7: the light and feel hold while paused; Engineering spike §6: the hover outline
+      // UI round Part 3 §3: hits become shield shimmer (either ship, any view) and, inside, enemy shots; then both age on the presentation clock.
+      const hits = readHits(d.tactical, events), pdt = frozen ? 0 : dt;
+      for (const h of hits) if (h.stopped) addShieldHit(shieldFx, h.target, h.a, h.drop, h.drop && (d.tactical.systems[h.target]?.shields ?? 0) === 0, FLIGHT_S[h.kind]);
+      if (view === 'interior' && hits.length > 0) {
+        const band = interior.band();
+        pushShots(shots, hits, interior.frame(d), Math.hypot(band.w, band.h) / (interior.placement()?.scale ?? 1));
+      }
+      stepShieldFx(shieldFx, pdt); stepShots(shots, pdt);
+      const shieldUp = d.tactical.systems[CREW_SLOT]?.shields ?? 0;
+      if (view === 'interior') interior.draw(d, source.crewPrev, alpha, dt, events, frozen ? 0 : dt, { camera: source.interiorCamera, active: source.active() }, options.pointer?.() ?? null, source.crewOverride?.() ?? null, { shield: shieldFx, shots, up: shieldUp });   // Art-i spec section 7: the light and feel hold while paused; Engineering spike §6: the hover outline
       else {
         // Step 4: the map keeps its arrows and info line clear of the window while it is shown.
         const input = {
@@ -466,7 +478,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         console: consoleView,
         crt: crtActive(view),
         ...sceneUi(view, overlay, options.pauseText, overlayView, torpedoInbound(d.tactical)),
-        hud: shipHud(d, source.active()),   // UI round §2.4: the HUD on every view
+        hud: (() => { const h = shipHud(d, source.active()); h.shields.flash = shieldFlash(shieldFx, CREW_SLOT, h.shields.up); return h; })(),   // UI round §2.4: the HUD on every view
         ...(contact ? { contact: contactView } : {}),
         ownShip: onMap ? ownShipModel(d, OWN_SHIP_BOX, t, flashUntil) : null,   // own ship window spec §4: the console map views only
         ...(contactView?.aimWeapon ? { pointer: options.pointer?.() ?? null } : {}),   // FTL targeting spec §1: seeds the targeting line

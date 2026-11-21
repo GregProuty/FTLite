@@ -37,6 +37,13 @@ import { crewDrawAt, crewPresentation, type CrewOverride } from './crewOverride'
 import { CARRY_LIFT_3D } from '../crew3dModel';
 import { createHealFx, crewLife, healFxDraw, stepHealFx } from './healFxModel';
 import { createRandom, hashString } from '../particles/random';
+import { bubbleAlpha, hexPoints, shieldCells, type ShieldFx } from '../shieldFx';
+import { interiorFrame, shotDraw, type InteriorFrame, type ShotState } from './enemyShots';
+import { CREW_SLOT } from '../../sim/tactical/state';
+
+/** UI round Part 3 §3: the shield fx, the enemy shots in flight, and the crew ship's shield layers up now. */
+export interface InteriorLook { shield: ShieldFx; shots: ShotState; up: number }
+const SHIELD_COLOUR = 0x6fc3ff, SHOT_CORE = 0xff5a3c, SHOT_BRIGHT = 0xffd0c0;
 
 export interface InteriorView {
   container: Container;
@@ -48,7 +55,10 @@ export interface InteriorView {
    *  `presentDt`: the light and feel's seconds this frame (Art-i spec section 7), 0 while the duel is paused so the
    *  particles, the pulse and the ambient life hold; it defaults to `dt`, which the tiles and boarders keep.
    *  `zoom`: the interior's zoom camera and the character it follows (interior zoom spec); absent, the plain fit. */
-  draw(d: DuelState, crewPrev: readonly { x: number; y: number }[], alpha: number, dt: number, events?: readonly ViewEvent[], presentDt?: number, zoom?: { camera: InteriorCamera; active: number }, hover?: { x: number; y: number } | null, override?: CrewOverride | null): void;
+  draw(d: DuelState, crewPrev: readonly { x: number; y: number }[], alpha: number, dt: number, events?: readonly ViewEvent[], presentDt?: number, zoom?: { camera: InteriorCamera; active: number }, hover?: { x: number; y: number } | null, override?: CrewOverride | null,
+    look?: InteriorLook): void;
+  /** UI round Part 3 §3: the frame (shield ellipse, nose, rooms) the interior draws its shield and shots with, for `d`'s layout. */
+  frame(d: DuelState): InteriorFrame;
   /** Engineering spike §5: the last draw's placement (the world's scale and offset before the shake), or null before the
    *  first; the scene's click hit-test reads it. */
   placement(): Placement | null;
@@ -87,6 +97,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   const tiles = createTileLayer(assets, memory), effects = createEffectsLayer(assets, memory), icons = createIconLayer(['navigation', 'medbay']);   // the badges stand in for these two (start-aboard spec §2)
   const props = createPropLayer(assets);   // Art-iii spec section 4: the set dressing, directly over the tiles
   const desks = createConsoleLayer(assets), crew = createCrewLayer(assets, memory, crew3d), boarders = createBoarderLayer(assets, crew3d);
+  const shieldG = new Graphics();   // UI round Part 3 §3: the bubble, the hex shimmer and the enemy shots
   const air = new Graphics(), damage = new Graphics(), marks = new Graphics();   // Engineering spike §6: the air tint under the damage tint
   let last: Placement | null = null;
   const bar3d = featureReady(missing, 'crew3d');   // Crew3D spec section 4: the health bar clears the taller figure
@@ -119,7 +130,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   // damage tint under the crew, crew, boarders (always empty in the duel), effects above, the lights, and the markers and
   // labels on top so the lights never wash them out; the crew labels draw last, above the console badge names.
   const battlemap = createBattlemapLayer(assets);
-  world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, badges, air, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels, ...hazardLabels, healMarks, ...revivedLabels);
+  world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, badges, air, damage, crew.container, boarders.container, effects.above, fx.lights, shieldG, marks, ...labels, ...hazardLabels, healMarks, ...revivedLabels);
   const badgeText = new Container();
   world.addChild(badgeText, ...crewLabels);   // UI round 2a: the crew labels (DOWNED, AWAY) above the console badge names
   desks.container.addChild(fx.fixtures); effects.below.addChild(fx.paintedBelow); effects.above.addChild(fx.above, fx.paintedAbove);
@@ -127,7 +138,8 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
     container, world, memory,
     placement: () => last,
     band: () => band,
-    draw(d, crewPrev, alpha, dt, events = [], presentDt = dt, zoom, hover = null, override = null) {
+    frame: (d) => interiorFrame(d, fitRect(d.interior.layout.id, d.interior.derived.width, d.interior.derived.height, missing)),
+    draw(d, crewPrev, alpha, dt, events = [], presentDt = dt, zoom, hover = null, override = null, look) {
       clock += presentDt;   // UI round §2.4a: the badge blink's presentation clock; frozen while paused
       const size = stageSize();
       if (size.w !== band.w || size.h - band.y !== band.h) { band = interiorBand(size); clip.clear().rect(band.x, band.y, band.w, band.h).fill(0xffffff); }   // UI round 2b: the stage followed the window
@@ -212,6 +224,28 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         if (t.text !== c.label) t.text = c.label;
         const at2 = crewLabelAt(x, y);
         t.tint = at2.tint; t.position.set(at2.x, at2.y);   // UI round 2a: AWAY reads in the DOWNED red (amber vanished on the light floor)
+      }
+      // UI round Part 3 §3: the shield bubble and its hex shimmer, then the enemy shots, in the ship's own px frame.
+      shieldG.clear();
+      if (look) {
+        const f = interiorFrame(d, rect), e = f.ellipse, ba = bubbleAlpha(look.shield, CREW_SLOT, look.up);
+        if (ba > 0) shieldG.ellipse(e.cx, e.cy, e.rx, e.ry).stroke({ width: 2, color: SHIELD_COLOUR, alpha: ba });
+        for (const c of shieldCells(look.shield, CREW_SLOT, e, TILE_PX * 0.4, f.nose, f.star)) {
+          const pts = hexPoints(c.x, c.y, TILE_PX * 0.4);
+          shieldG.poly(pts).fill({ color: SHIELD_COLOUR, alpha: c.alpha * 0.55 }).poly(pts).stroke({ width: 1, color: SHIELD_COLOUR, alpha: c.alpha });
+        }
+        for (const s of look.shots.shots) {
+          const p = shotDraw(s), cx = Math.cos(p.heading), cy = Math.sin(p.heading);
+          if (!s.landed) {
+            if (s.kind === 'laser') shieldG.moveTo(p.x - cx * 24, p.y - cy * 24).lineTo(p.x, p.y).stroke({ width: 3, color: SHOT_CORE }).moveTo(p.x - cx * 24, p.y - cy * 24).lineTo(p.x, p.y).stroke({ width: 1, color: SHOT_BRIGHT });
+            else if (s.kind === 'pew') shieldG.moveTo(p.x - cx * 10, p.y - cy * 10).lineTo(p.x, p.y).stroke({ width: 2, color: SHOT_CORE, alpha: 0.7 }).circle(p.x, p.y, 3).fill({ color: SHOT_BRIGHT });
+            else {
+              p.trail.forEach((t, i) => shieldG.circle(t.x, t.y, 4 - i * 0.6).fill({ color: SHOT_CORE, alpha: 0.5 - i * 0.1 }));
+              shieldG.circle(p.x, p.y, 2.5).fill({ color: SHOT_BRIGHT }).circle(p.x, p.y, 2.5).stroke({ width: 1, color: SHOT_CORE });
+            }
+          }
+          if (p.burst > 0) shieldG.circle(p.x, p.y, 6 + 16 * p.burst).stroke({ width: 2, color: s.stopped ? SHIELD_COLOUR : SHOT_CORE, alpha: 1 - p.burst });
+        }
       }
       // Duel polish i spec §D: healing motes and the revive, on the presentation clock (held while paused).
       const life = crewLife(d);

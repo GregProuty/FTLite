@@ -46,7 +46,9 @@ export interface PowerView { systems: PowerColumn[]; spare: number; reactor: num
 export interface ShipHudView {
   hull: { segments: number; lit: number; tone: HullTone };
   /** `recharge`: the next layer's charge 0..1 while `up` is below `cap`, else 0 (owner 2026-11-20: the bar under the layers). */
-  shields: { layers: number; up: number; cap: number; recharge: number };
+  shields: { layers: number; up: number; cap: number; recharge: number;
+    /** UI round Part 3 §3.3: the layer that just dropped flashes 0.3 s (the scene sets it from the shield fx; null otherwise). */
+    flash?: { layer: number; alpha: number } | null };
   power: PowerView;
   /** The active player's health (UI round §2.4a): null at full health and not downed. */
   health: { fill: number; downed: boolean } | null;
@@ -88,7 +90,7 @@ export function shipHud(d: DuelState, active: number): ShipHudView {
   const recharge = up < cap ? Math.round(100 * Math.max(0, Math.min(1, sys.shieldClock / cls.shields.rechargeUnits))) / 100 : 0;   // in hundredths, so equal frames stay equal
   return {
     hull: { segments: Math.ceil(cls.hull / HULL_PER_SEGMENT), lit: Math.ceil(hull / HULL_PER_SEGMENT), tone: hullTone(hull, cls.hull) },
-    shields: { layers, up, cap, recharge },
+    shields: { layers, up, cap, recharge, flash: null },
     power: powerView(d),
     health: downed ? { fill: 0, downed: true } : Math.ceil(hp) < HEALTH_MAX ? { fill: hp / HEALTH_MAX, downed: false } : null
   };

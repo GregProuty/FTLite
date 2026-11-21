@@ -84,6 +84,14 @@ describe('interior frame and shots', () => {
     stepShots(s, 0.2);
     expect(s.shots).toHaveLength(0);
   });
+  it('a missed shot flies out with no burst', () => {
+    const s = createShots();
+    pushShots(s, [{ target: 0, a: 0, kind: 'laser', stopped: false, drop: false, room: -1, miss: true }], frame, 100);
+    expect(s.shots[0]!.miss).toBe(true);
+    stepShots(s, FLIGHT_S.laser + 0.05);
+    expect(s.shots[0]!.landed).toBe(true);
+    expect(shotDraw(s.shots[0]!).burst).toBe(0);
+  });
   it('torpedo trail has 4 points, laser none', () => {
     const s = createShots();
     const h = { target: 0, a: 0, stopped: false, drop: false, room: 1, miss: false };
