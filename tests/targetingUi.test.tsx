@@ -27,7 +27,7 @@ const charge = { label: 'CHARGE', value: 'READY', labelTint: TEXT, valueTint: TE
 const live: ContactSync = { shown: true, station: 'weapons', target: 1, active: () => true, epoch: 0, enemyKnown: 2 };
 const weaponsConsole: ConsoleView = {
   station: 'weapons', tabs: { helm: 'open', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: 'switch', weapons: null, science: null, ship: 'stand' },
-  helm: null, science: null, side: null,
+  helm: null, science: null,
   weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: -1, torpTarget: -1, burst: 2 }
 };
 const btn = (name: string) => document.querySelector(`[data-testid="console-${name}"]`) as HTMLElement;
@@ -52,7 +52,7 @@ function mount(known = 2) {
     controller.sync(sync());
     const open = controller.state();
     const contact = open ? contactModel({ state: st, contact: open.contact, aim: open.aim, weapon: controller.aimWeapon() ?? 'laser', station: 'weapons', t: 0, weapons: { charge } }) : null;
-    const view: DuelUiView = { readout: { rows: [], help: [] }, end: null, banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console: weaponsConsole, contact,
+    const view: DuelUiView = { end: null, banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, console: weaponsConsole, contact,
       ...(contact?.aimWeapon ? { pointer } : {}) };
     act(() => duel.frame(view));
   };

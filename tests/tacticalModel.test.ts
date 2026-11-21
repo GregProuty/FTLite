@@ -5,7 +5,6 @@ import {
   asteroidShape, BEARING_RING_PX, STAR_PARALLAX, starOffset, columnName, contourRadius, GRID_EXTENT, interpolatedShip, pathSeconds, pickRadius, pickShip, ringCrossesRect,
   aroundAvoid, WELL_PAD, shipScale, SHIP_MIN_PX_PER_UNIT, spreadArrows, tacticalModel, type ArrowDraw, type PrevBody, type TacticalModelInput
 } from '../src/renderer/src/render/tactical/tacticalModel';
-import { OWN_SHIP } from '../src/renderer/src/render/duel/consoleLayout';
 import { HULLS } from '../src/renderer/src/render/tactical/hullModel';
 import { DENT_FULL_R, DENT_PULL_MAX, DENT_SUM_MAX, dentEase, dentOf, WELL_MAX_SHIFT, WELL_PULL, wellScale } from '../src/renderer/src/render/tactical/mapGrid';
 import { RockKind, writeRock } from '../src/renderer/src/sim/tactical/rocks';
@@ -389,14 +388,17 @@ describe('pickShip (enemy ship window spec §3, §6.2)', () => {
 });
 
 describe('arrows around the own ship window (own ship window spec §3)', () => {
-  const RL = 228, RR = 156, RT = 44, m = 28, AR = OWN_SHIP.x + OWN_SHIP.w + m, AB = OWN_SHIP.y + OWN_SHIP.h + m;   // A's right 496, bottom 240
-  const inWindow = (a: { x: number; y: number }) => a.x > OWN_SHIP.x && a.x < OWN_SHIP.x + OWN_SHIP.w && a.y > OWN_SHIP.y && a.y < OWN_SHIP.y + OWN_SHIP.h;
+  // UI round §2.4a: the live OWN_SHIP (x 12..252) now sits inside the console's left reserve (264), so the avoid algorithm
+  // is pinned with a fixture window at the old rect (x 228..468, y 42..212), which intrudes into the map as it did.
+  const WIN = { x: 228, y: 42, w: 240, h: 170 } as const;
+  const RL = 228, RR = 156, RT = 44, m = 28, AR = WIN.x + WIN.w + m, AB = WIN.y + WIN.h + m;   // A's right 496, bottom 240
+  const inWindow = (a: { x: number; y: number }) => a.x > WIN.x && a.x < WIN.x + WIN.w && a.y > WIN.y && a.y < WIN.y + WIN.h;
   const onA = (a: { x: number; y: number }) => (Math.abs(a.x - AR) < 1e-6 && a.y <= AB + 1e-6) || (Math.abs(a.y - AB) < 1e-6 && a.x <= AR + 1e-6);
   it('an object hidden under the window gets an arrow on A, not inside the window', () => {
     const st = createTacticalState(4), cam = createCamera(0, 0, 1.0); pan(cam, 0, 1);
     Object.assign(st.ships[0], { x: 300 - 640, y: 150 - 360 - 1 });   // screen (300, 150): under the window
     expect(tacticalModel(input(st, cam, { reserveLeft: RL, reserveRight: RR, reserveTop: RT })).arrows.find((a) => a.target === 'ship')).toBeUndefined();
-    const a = tacticalModel(input(st, cam, { reserveLeft: RL, reserveRight: RR, reserveTop: RT, avoid: OWN_SHIP })).arrows.find((x) => x.target === 'ship')!;
+    const a = tacticalModel(input(st, cam, { reserveLeft: RL, reserveRight: RR, reserveTop: RT, avoid: WIN })).arrows.find((x) => x.target === 'ship')!;
     expect(a.edge).toBeDefined(); expect(onA(a)).toBe(true); expect(inWindow(a)).toBe(false);
   });
   it('an off-screen object up and left, whose edge arrow would sit on the window, moves onto A', () => {
@@ -404,27 +406,27 @@ describe('arrows around the own ship window (own ship window spec §3)', () => {
     Object.assign(st.ships[0], { x: -1500, y: -1000 });
     const plain = tacticalModel(input(st, cam, { reserveLeft: RL, reserveRight: RR, reserveTop: RT })).arrows.find((x) => x.target === 'ship')!;
     expect(plain.x).toBeCloseTo(RL + m, 6); expect(plain.y).toBeLessThan(AB);   // today: on the left edge, beside the window
-    const a = tacticalModel(input(st, cam, { reserveLeft: RL, reserveRight: RR, reserveTop: RT, avoid: OWN_SHIP })).arrows.find((x) => x.target === 'ship')!;
+    const a = tacticalModel(input(st, cam, { reserveLeft: RL, reserveRight: RR, reserveTop: RT, avoid: WIN })).arrows.find((x) => x.target === 'ship')!;
     expect(onA(a)).toBe(true); expect(a.angle).toBeCloseTo(plain.angle, 9);
   });
   it("a ray through A's corner lands on the right edge", () => {
     const vp = { w: 1280, h: 720 }, l = RL + m, t = RT + m, r = 1280 - RR - m, b = 720 - m, cx = (l + r) / 2, cy = (t + b) / 2;
     const p = { x: cx + (AR - cx) * 3, y: cy + (AB - cy) * 3 };   // straight through the corner, off screen
-    const e = aroundAvoid(vp, RL, RR, RT, OWN_SHIP, p, { x: l, y: cy + (AB - cy) * ((l - cx) / (AR - cx)), angle: 0 });
+    const e = aroundAvoid(vp, RL, RR, RT, WIN, p, { x: l, y: cy + (AB - cy) * ((l - cx) / (AR - cx)), angle: 0 });
     expect(e!.edge).toBe('avoidRight'); expect(e!.x).toBeCloseTo(AR, 6); expect(e!.y).toBeCloseTo(AB, 6);
   });
   it("an on-screen object in A's margin band, not under the window, gets no arrow", () => {
     const vp = { w: 1280, h: 720 };
-    expect(aroundAvoid(vp, RL, RR, RT, OWN_SHIP, { x: OWN_SHIP.x + OWN_SHIP.w + 10, y: 100 }, null)).toBeNull();
+    expect(aroundAvoid(vp, RL, RR, RT, WIN, { x: WIN.x + WIN.w + 10, y: 100 }, null)).toBeNull();
   });
   it('two arrows on one avoid edge spread apart; no top-edge arrow is left of A after spreading', () => {
     const vp = { w: 1280, h: 720 }, mk = (x: number, y: number, edge?: ArrowDraw['edge']): ArrowDraw => ({ target: 'planet', x, y, angle: 0, distance: 1, label: '', ...(edge ? { edge } : {}) });
     const two = [mk(400, AB, 'avoidBottom'), mk(401, AB, 'avoidBottom')];
-    spreadArrows(two, vp, RR, RL, RT, OWN_SHIP);
+    spreadArrows(two, vp, RR, RL, RT, WIN);
     expect(Math.abs(two[0]!.x - two[1]!.x)).toBeGreaterThanOrEqual(110 - 1e-9);   // ARROW_GAP_TOP
     for (const a of two) { expect(a.x).toBeLessThanOrEqual(AR + 1e-9); expect(a.x).toBeGreaterThanOrEqual(RL + m - 1e-9); }
     const top = [mk(AR + 5, RT + m), mk(AR + 6, RT + m), mk(1000, RT + m)];
-    spreadArrows(top, vp, RR, RL, RT, OWN_SHIP);
+    spreadArrows(top, vp, RR, RL, RT, WIN);
     for (const a of top) expect(a.x).toBeGreaterThanOrEqual(AR - 1e-9);
   });
   it('without avoid nothing changes', () => {

@@ -1,18 +1,17 @@
 // Sci-1 (spec 2026-11-17-science-scans §7.1, §7.2, §7.3, §7.4): the hostility line, the hover readout, the SCAN button
-// state, the Weapons frequency row and the Science panel in the console model, the consoles' readout row, and the layout.
+// state, the Weapons frequency row and the Science panel in the console model, and the layout (UI round §2.2: the consoles' readout row is gone).
 import { describe, expect, it } from 'vitest';
 import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { sitDown } from '../src/renderer/src/sim/stations';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
+import { sensorRange } from '../src/renderer/src/sim/tactical/science';
 import { NO_HELD_FLAGS } from '../src/renderer/src/app/duel/input';
 import { createCamera } from '../src/renderer/src/render/tactical/camera';
 import { consoleModel } from '../src/renderer/src/render/duel/consoleModel';
-import { CONTACT, STATION, stationTop, STATUS } from '../src/renderer/src/render/duel/consoleLayout';
-import { readoutRows } from '../src/renderer/src/render/duel/readoutModel';
+import { CONTACT, STATION, stationTop } from '../src/renderer/src/render/duel/consoleLayout';
 import { FREQ_NAMES, hostilityLine, hoverReadout, LOOT_NAMES, scanButton } from '../src/renderer/src/render/duel/scienceModel';
-import { LINE, PAD } from '../src/renderer/src/render/theme';
 
 const CUTTER = parseShip(cutter);
 const OVERLAY = { zoomText: 'ZOOM 0.50', scaleBar: { px: 50, units: 100 }, snapHint: false };
@@ -73,33 +72,17 @@ describe('the console model (spec §7.3, §7.4)', () => {
       try {
         sitDown(sci.interior, 0, sci.science);
         const m = consoleModel({ duel: sci, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: OVERLAY, hover: 'BRG 090 RNG 100' })!;
-        expect([m.station, m.science, m.weapons, m.helm]).toEqual(['science', { hover: 'BRG 090 RNG 100' }, null, null]);
-        expect(consoleModel({ duel: sci, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: OVERLAY })!.science).toEqual({ hover: null });
+        const range = sensorRange(sci.tactical.systems[0]!);   // UI round §2.4: the range the power strip showed rides the Science panel
+        expect([m.station, m.science, m.weapons, m.helm]).toEqual(['science', { hover: 'BRG 090 RNG 100', range }, null, null]);
+        expect(consoleModel({ duel: sci, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: OVERLAY })!.science).toEqual({ hover: null, range });
+        expect(range).toBe(900);   // Engineering spike §10.4: the start sensor range (the gone strip's RANGE 900)
       } finally { disposeDuel(sci); }
-    } finally { disposeDuel(d); }
-  });
-  it('the consoles\' readout carries the hostility line right after the HUNTER heading; the plain readout does not', () => {
-    const d = createDuel(CUTTER, 5);
-    try {
-      const labels = readoutRows({ duel: d, mode: 'helm', active: 0, console: true }).map((r) => r.label);
-      expect(labels[labels.indexOf('CONTACT') + 1]).toBe('INCOMING SCAN');
-      expect(readoutRows({ duel: d, mode: 'helm', active: 0 }).map((r) => r.label)).not.toContain('INCOMING SCAN');
-      const row = readoutRows({ duel: d, mode: 'helm', active: 0, console: true }).find((r) => r.label === 'INCOMING SCAN')!;
-      expect(row.emphasis).toBe('alert');
-      d.tactical.systems[0].shields = 3;   // the Shield loot's extra layer shows as a third pip
-      expect(readoutRows({ duel: d, mode: 'helm', active: 0, console: true }).find((r) => r.label === 'SHIELD')!.pips).toMatchObject({ n: 3, max: 3 });
     } finally { disposeDuel(d); }
   });
 });
 
 describe('the layout (spec §7.3, §7.4)', () => {
-  it('the Weapons block is 268 high (the frequency row where the steer row was; W-1: the PEW row on top; the Engineering spike: the bar pips, merge kind a, was 244), the contact window 420, the Science block 96; the status table still ends above the Weapons block', () => {
+  it('the Weapons block is 268 high (the frequency row where the steer row was; W-1: the PEW row on top; the Engineering spike: the bar pips, merge kind a, was 244), the contact window 420, the Science block 96', () => {
     expect([STATION.h.weapons, stationTop('weapons'), CONTACT.h, STATION.h.science, stationTop('science')]).toEqual([268, 440, 420, 96, 612]);
-    const d = createDuel(CUTTER, 5);
-    try {
-      d.tactical.systems[0].rooms = [2, 1, 1];
-      const rows = readoutRows({ duel: d, mode: 'weapons', active: 0, console: true });
-      expect(STATUS.y + PAD + LINE * rows.length + PAD).toBeLessThanOrEqual(stationTop('weapons'));
-    } finally { disposeDuel(d); }
   });
 });

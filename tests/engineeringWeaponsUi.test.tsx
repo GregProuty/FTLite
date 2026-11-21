@@ -21,9 +21,9 @@ const all = (attr: string) => Array.from(document.querySelectorAll<HTMLElement>(
 const panel: WeaponsPanel = { lock: 1, charge: { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } }, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false,
   fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: -1, torpTarget: -1, burst: 0, weaponBars: [1, 0, 4], weaponFree: 1, pew: [1, 1, 1] };
 const weapons: ConsoleView = { station: 'weapons', tabs: { helm: 'locked', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
-  helm: null, weapons: panel, science: null, side: null };
-const view = (): DuelUiView => ({ readout: { rows: [{ label: 'CREW', value: '2', labelTint: TEXT, valueTint: TEXT }], help: [] }, end: null,
-  banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console: weapons });
+  helm: null, weapons: panel, science: null };
+const view = (): DuelUiView => ({ end: null,
+  banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, console: weapons });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store), weaponPower = vi.fn(), pickUp = vi.fn();
   ui.actions.setConsole({ press: vi.fn(), hold: vi.fn(), lock: vi.fn(), torpLock: vi.fn(), throttle: vi.fn(), frequency: vi.fn(), weaponPower });

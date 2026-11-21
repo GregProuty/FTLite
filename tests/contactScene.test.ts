@@ -111,7 +111,7 @@ describe('the scene and the contact window (spec §6.5)', () => {
       const at = (dx: number, dy: number) => { r.clicks.push({ x: m.x + dx, y: m.y + dy }); r.scene.draw(r.rt, 1 / 60, LIVE); return r.requests.takePew(); };
       expect(at(0, -100)).toBe(0);                 // straight up: heading 0
       expect(at(100, 0)).toBe(16384);              // east: a quarter turn of 65536
-      expect(at(0, 100)).toBe(32768);              // south
+      expect(at(0, 70)).toBe(32768);               // south (UI round §2.4a: 70 px, clear of the Weapons block from y 440 at x 346..646)
       const odd = at(63, -41), want = fineHeadingOf(63, -41);
       expect(odd).toBe(want);
       expect([Math.floor(odd! / 256), odd! % 256]).toEqual([Math.floor(want / 256), want % 256]);

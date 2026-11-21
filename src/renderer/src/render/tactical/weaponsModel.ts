@@ -86,6 +86,8 @@ export interface CombatDraw {
   laserAim?: Segment | null;
   /** W-4 spec §10: the Hound's turrets: the selected gun's arc (Weapons), each gun's muzzle line, the reticle (Weapons) and AUTO's bracket (Weapons). */
   turretArc?: ArcDraw | null; muzzles?: MuzzleDraw[]; reticle?: Point | null; bracket?: BracketDraw | null;
+  /** UI round §2.4a: the Helm map's info line (bearing and range to the enemy) in the top band; null off the Helm map. */
+  helmInfo?: Label | null;
 }
 /** Feel-ii §1.6: the EVADE arrow beside the own ship (its tip, the way it points in radians clockwise from north) and its word. */
 export interface EvadeDraw { x: number; y: number; angle: number; label: Label }
@@ -106,7 +108,7 @@ export interface CombatModelInput extends TacticalModelInput {
   /** Each ship's missile at the previous tick (null when none flew). */
   missilePrev: readonly (PrevBody | null)[];
   fx: FxState;
-  /** The top row's clear span in screen px (on a console: from the tab strip's end to the side column); the info line,
+  /** The top row's clear span in screen px (on a console: from the tab strip's end to the contact window's left edge, INFO_BAND); the info line,
    *  centred between the reserves, shifts to stay inside it. Absent: centred only. */
   infoBand?: { left: number; right: number };
   /** Feel-i (spec §1): pulse the goal glow on the Helm's enemy edge arrow (the scene stops it once the Helm acts). */
@@ -139,7 +141,7 @@ export function bearingDeg(dx: number, dy: number): number {
 /** Internal px the info line keeps clear of its band's ends. */
 export const INFO_BAND_PAD = 8;
 /** Feel-i: the status sentence's top (FONT_SIZE, as the old info line), and the Weapons info line's, stacked under it at
- *  FONT_NATIVE (clear of the sentence's descenders and above the status table's first row at the band's ends). */
+ *  FONT_NATIVE (clear of the sentence's descenders and clear of the contact window at the band's ends). */
 export const STATUS_Y = 12, INFO_Y = 44;
 /** A top-row label (anchored at its centre) at `y` and text scale `scale`: at `centre`, shifted to stay inside `band`. */
 function bandLabel(text: string, centre: number, band: { left: number; right: number } | undefined, y: number, scale: number): Label {
@@ -153,6 +155,8 @@ function bandLabel(text: string, centre: number, band: { left: number; right: nu
 export function weaponsInfoText(bearing: number, range: number, torpedoInRange: boolean): string {
   return `BRG ${String(bearing).padStart(3, '0')}  RNG ${range}  TORP ${torpedoInRange ? 'IN' : 'OUT'}`;
 }
+/** UI round §2.4a: the Helm map's info line: bearing and range to the enemy, no torpedo word (Weapons' line has it). */
+export function helmInfoText(bearing: number, range: number): string { return `BRG ${String(bearing).padStart(3, '0')}  RNG ${range}`; }
 /** The bracket's closing (Feel-i): it starts SOLUTION_OPEN times wide and closes over SOLUTION_CLOSE_S. */
 export const SOLUTION_OPEN = 2.2, SOLUTION_CLOSE_S = 0.25, GOAL_PULSE_HZ = 1.2;
 const TONE: Readonly<Record<'hot' | 'main' | 'mid', number>> = { hot: CRT.hot, main: CRT.main, mid: CRT.mid };
@@ -201,6 +205,11 @@ export function combatModel(input: CombatModelInput): CombatDraw {
       info: bandLabel(input.ships.includes(target) || input.fx.kill !== null ? weaponsInfoText(bearingDeg(dx, dy), range, inRange) : 'NO CONTACT IN SENSOR RANGE', centre, input.infoBand, input.infoBand ? INFO_Y : 12, input.infoBand ? 1 : FONT_SIZE / FONT_NATIVE),
       inArc, torpedoInRange: inRange
     };
+  }
+  let helmInfo: Label | null = null;
+  if (input.console === 'helm' && input.infoBand) {
+    const dx = enemy.x - own.x, dy = enemy.y - own.y;
+    helmInfo = bandLabel(input.ships.includes(target) || input.fx.kill !== null ? helmInfoText(bearingDeg(dx, dy), Math.round(Math.sqrt(dx * dx + dy * dy))) : 'NO CONTACT IN SENSOR RANGE', centre, input.infoBand, INFO_Y, 1);
   }
   const helmArc: ArcDraw | null = input.console === 'helm' && input.ships.includes(0) && cls.slots.laser !== null ? ownArc : null;   // Feel-i §2: Helm sees the arc it gives
   // The bracket closes about the enemy's drawn marker, or its edge arrow off screen, while the shot is lined up.
@@ -321,5 +330,5 @@ export function combatModel(input: CombatModelInput): CombatDraw {
     const a = toS(q.x - q.vx * PEW_STREAK_S, q.y - q.vy * PEW_STREAK_S), b = toS(q.x, q.y);
     return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
   });
-  return { weapons, lock, missiles, effects, charge, callouts, status, helmArc, solution, goal, floats, torpedoPath, evade, pings, pewRounds, laserAim, turretArc, muzzles, reticle, bracket, ...gun };
+  return { weapons, lock, missiles, effects, charge, callouts, status, helmArc, solution, goal, floats, torpedoPath, evade, pings, pewRounds, laserAim, turretArc, muzzles, reticle, bracket, helmInfo, ...gun };
 }

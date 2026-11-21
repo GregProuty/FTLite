@@ -1,6 +1,7 @@
-// The tactical map's screen overlay (tacticalLayer.ts's lines 216-222): the zoom text, the scale bar with its end
-// ticks (2 px lines centred on their paths) and units label, and the snap-back hint while the camera is free. On a CRT
-// screen (CRT map spec section 2) the zoom text, bar and units are `mid` and the snap hint `main`.
+// The tactical map's screen overlay (tacticalLayer.ts's lines 216-222): the scale bar with its end ticks (2 px lines
+// centred on their paths) and units label, and the snap-back hint while the camera is free. UI round §2.3: no zoom text;
+// the snap hint on the consoles too. On a CRT screen (CRT map spec section 2) the bar and units are `mid` and the snap
+// hint `main`.
 import { memo } from 'react';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import { AMBER, DIM, FONT_NATIVE, FONT_SIZE, textPx } from '../../render/theme';
@@ -11,8 +12,8 @@ import { useCrt } from '../stage/CrtContext';
 import { PixelText } from '../stage/PixelText';
 import type { MapOverlayView } from '../views';
 
-/** The scale bar's left end and baseline, the zoom text's top and the snap hint's bottom (internal pixels). */
-export const BX = 16, BY = INTERNAL_H - 28, ZOOM_Y = INTERNAL_H - 64, SNAP_Y = INTERNAL_H - 12;
+/** The scale bar's left end and baseline and the snap hint's bottom (internal pixels). */
+export const BX = 16, BY = INTERNAL_H - 28, SNAP_Y = INTERNAL_H - 12;
 
 export const MapOverlay = memo(function MapOverlay({ overlay, placement = 'column' }: { overlay: MapOverlayView; placement?: 'column' | 'console' }) {
   const { crt } = useCrt(), dim = crt ? CRT.mid : DIM, accent = crt ? CRT.main : AMBER;
@@ -26,11 +27,18 @@ export const MapOverlay = memo(function MapOverlay({ overlay, placement = 'colum
       <PixelText text={units} x={bx + px + 8} y={BY - 8} size={FONT_NATIVE} tint={dim} />
     </>
   );
-  // Artemis spec §2: the side column shows zoom and snap; only the scale bar stays, at the bottom right
-  if (placement === 'console') return bar(INTERNAL_W - 16 - textPx(units, 1) - 8 - px);
+  // UI round §2.3: on a console the scale bar at the bottom right and, while the camera is free, the snap hint left of it
+  if (placement === 'console') {
+    const bx = INTERNAL_W - 16 - textPx(units, 1) - 8 - px;
+    return (
+      <>
+        {bar(bx)}
+        {overlay.snapHint && <PixelText text="C: SNAP BACK" x={bx - 12} y={BY - 8} size={FONT_NATIVE} tint={accent} anchorX={1} />}
+      </>
+    );
+  }
   return (
     <>
-      <PixelText text={overlay.zoomText} x={BX} y={ZOOM_Y} size={FONT_SIZE} tint={dim} />
       {bar(BX)}
       {overlay.snapHint && <PixelText text="C: SNAP BACK" x={INTERNAL_W / 2} y={SNAP_Y} size={FONT_SIZE} tint={accent} anchorX={0.5} anchorY={1} />}
     </>

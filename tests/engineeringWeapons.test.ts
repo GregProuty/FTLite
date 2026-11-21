@@ -42,7 +42,7 @@ describe('the Weapons panel (spec §10.3, §11)', () => {
     expect(p1).toEqual({ x: l.x + 6, y: l.y + l.hitH + 2 }); expect(p2).toEqual({ x: t.x + 6, y: t.y + t.hitH + 2 });
     expect(l.pipsY + 14 + 24).toBeLessThanOrEqual(l.y + l.h);   // FIRE / LAUNCH under the pips, inside the card
   });
-  it('merge decision 4: the panel carries W-1/W-2/W-3 state beside the bars: the pew pips by its bars, the modes, the power strip', () => {
+  it('merge decision 4: the panel carries W-1/W-2/W-3 state beside the bars: the pew pips by its bars, the modes', () => {
     const d = createDuel(HOUND, 5);
     try {
       seatDuelCrew(d);
@@ -54,7 +54,6 @@ describe('the Weapons panel (spec §10.3, §11)', () => {
       sys.bars[1] = 4; sys.weaponPower = [3, 0, 1];
       for (let k = 0; k < 15; k++) tickWeapons(d.tactical, 0, IDLE_INPUT);   // 3 bars: 30 ticks a third, so 15 more fill it
       expect(panel().weapons!.pew).toEqual([1, 0, 0]);
-      expect(panel().power).toBeDefined();   // the WEAP power strip rides with the Weapons station
     } finally { disposeDuel(d); }
   });
   it('weaponPower rides the keyboard\'s ship queue', () => {

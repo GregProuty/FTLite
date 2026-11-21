@@ -14,11 +14,10 @@ import type { TileRect } from '../battlemapModel';
 import { fireTileOf } from '../../sim/duel/hazards';
 import { LOW_AIR_FRAC } from '../../sim/duel/tuning';
 import { AMBER, WARN } from '../theme';
+import { crewStatus } from './readoutModel';
 
-/** The readout column on the right that the interior leaves clear (spec §8). */
-export const READOUT_COLUMN = 220;
-/** The band the ship is fitted into: the whole screen left of the readout column, below the console tab strip (Artemis spec §2). */
-export const INTERIOR_BAND = { x: 0, y: 42, w: INTERNAL_W - READOUT_COLUMN, h: INTERNAL_H - 42 } as const;
+/** The band the ship is fitted into: the whole screen below the console tab strip (UI round §2.2: no readout column). */
+export const INTERIOR_BAND = { x: 0, y: 42, w: INTERNAL_W, h: INTERNAL_H - 42 } as const;
 
 /** worldFit's rules on the duel's band: never upscaled above 1x, snapped for the stage scale, centred on whole screen pixels (Art-i spec section 4). */
 export function duelFit(widthTiles: number, heightTiles: number, stage: number, rect?: TileRect): Fit {
@@ -43,7 +42,7 @@ export function crewHealthMarks(d: DuelState): CrewHealthMark[] {
   return d.interior.crew.map((eid, pid) => {
     const downed = Life.state[eid] === LifeState.Downed, hp = Health.cur[eid]!, revive = downed ? Life.reviveProgress[eid]! : 0;
     return { pid, x: Position.x[eid]! * TILE_PX, y: Position.y[eid]! * TILE_PX, fill: hp / HEALTH_MAX, bar: !downed && Math.ceil(hp) < HEALTH_MAX, downed, revive,
-      label: downed ? (revive > 0 ? 'DOWNED - STAY CLOSE' : 'DOWNED') : '' };
+      label: downed ? (revive > 0 ? 'DOWNED - STAY CLOSE' : 'DOWNED') : crewStatus(d, pid) === 'AWAY' ? 'AWAY' : '' };
   });
 }
 
@@ -72,21 +71,22 @@ export function interiorOverlay(d: DuelState): InteriorOverlay {
 
 /** A working station's badge (start-aboard spec §2): the glyph kind, its label, the console tile's centre in ship pixels, and
  *  its tint: `offline` (red) when its system is off, `faint` when it does not work now, else `normal`. */
-export interface StationBadge { station: number; kind: 'navigation' | 'weapons' | 'science' | 'medbay'; label: string; x: number; y: number; tint: 'normal' | 'offline' | 'faint' }
+export interface StationBadge { station: number; kind: 'navigation' | 'weapons' | 'science' | 'medbay'; label: string; x: number; y: number; tint: 'normal' | 'offline' | 'faint'; empty: boolean }
 
 /** The Helm, Weapons, Science and Medbay badges, in that order (start-aboard spec §2; Sci-2 spec §5.4): Helm red at
- *  Engines 2, Weapons red at Weapons 2, Science always normal, the Medbay faint while it is not online. A layout without a
+ *  Engines 2, Weapons red at Weapons 2, Science always normal, the Medbay faint while it is not online. `empty` (Helm and Weapons only, UI round §2.4a): no present player sits at the console, so its badge blinks; false for Science and Medbay. A layout without a
  *  Science or Medbay console has no badge for it. */
 export function stationBadges(d: DuelState): StationBadge[] {
   const st = d.interior, w = st.derived.width, rooms = d.tactical.systems[0].rooms;
   const at = (station: number): { x: number; y: number } => { const t = st.derived.stationTile[station]!, tx = t % w; return { x: (tx + 0.5) * TILE_PX, y: ((t - tx) / w + 0.5) * TILE_PX }; };
+  const crewed = (pid: number): boolean => pid >= 0 && !!d.present[pid];
   const out: StationBadge[] = [
-    { station: d.nav, kind: 'navigation', label: 'HELM', ...at(d.nav), tint: rooms[Room.Engines] >= 2 ? 'offline' : 'normal' },
-    { station: d.weapons, kind: 'weapons', label: 'WEAPONS', ...at(d.weapons), tint: rooms[Room.Weapons] >= 2 ? 'offline' : 'normal' }
+    { station: d.nav, kind: 'navigation', label: 'HELM', ...at(d.nav), tint: rooms[Room.Engines] >= 2 ? 'offline' : 'normal', empty: !crewed(st.stations.occupant[d.nav]!) },
+    { station: d.weapons, kind: 'weapons', label: 'WEAPONS', ...at(d.weapons), tint: rooms[Room.Weapons] >= 2 ? 'offline' : 'normal', empty: !crewed(st.stations.occupant[d.weapons]!) }
   ];
-  if (d.science >= 0) out.push({ station: d.science, kind: 'science', label: 'SCIENCE', ...at(d.science), tint: 'normal' });
+  if (d.science >= 0) out.push({ station: d.science, kind: 'science', label: 'SCIENCE', ...at(d.science), tint: 'normal', empty: false });
   const mb = st.derived.stationOfKind[StationKind.Medbay]!;
-  if (mb >= 0) out.push({ station: mb, kind: 'medbay', label: 'MEDBAY', ...at(mb), tint: medbayOnline(d) ? 'normal' : 'faint' });
+  if (mb >= 0) out.push({ station: mb, kind: 'medbay', label: 'MEDBAY', ...at(mb), tint: medbayOnline(d) ? 'normal' : 'faint', empty: false });
   return out;
 }
 

@@ -6,16 +6,14 @@ import type { DuelState } from '../../sim/duel/state';
 import { hasTurret, pewThird } from '../../sim/tactical/defs';
 import { gunInterval } from '../../sim/tactical/gun';
 import { autocannonRateText } from '../../app/duel/weaponsSeat';
-import { classOf, Contact, handControl, missileOf, Room, type TacticalState } from '../../sim/tactical/state';
-import { enemyHostile } from '../../sim/tactical/science';
+import { classOf, Contact, CREW_SLOT, handControl, missileOf, Room, type TacticalState } from '../../sim/tactical/state';
+import { enemyHostile, sensorRange } from '../../sim/tactical/science';
 import { HEADING_COUNT, MAGAZINE } from '../../sim/tactical/tuning';
 import { beamShots, canLaunch, torpedoInRange } from '../../sim/tactical/weapons';
 import type { MapOverlayView } from '../../ui/views';
 import { chargeRow, type ReadoutRow } from './readoutModel';
 import { gunnerPresent, laserCardReason, laserSituation, manualCardReason, weaponsOffline, type RefusedControl } from './situationModel';
-import { DuelSystem } from '../../sim/duel/power';
 import { throttleCap, trimmedWeaponPower, weaponBarsUsable, WeaponSlot } from '../../sim/tactical/bars';
-import { powerStrip, type ConsolePowerStrip } from './shipHudModel';
 import { engineBars, throttleCap as crewThrottleCap, throttleFloor } from '../../sim/duel/helmFlight';
 import { GAS_MAX, GAS_SPEND, THR_MAX, THR_MIN } from '../../sim/duel/tuning';
 export { THR_MAX, THR_MIN };   // playtest2feedback §6: the throttle bar's range, for the UI (which imports no sim values)
@@ -83,8 +81,9 @@ export interface GunPanel { state: 'READY' | 'OVERHEAT' | 'OFFLINE'; heat: numbe
 /** Valkyrn spec §5: the Flight seat's weapons: the GUN card (null with the laser fit) and the Weapons panel its cards and the
  *  contact window read. */
 export interface FlightPanel { gun: GunPanel | null; weapons: WeaponsPanel }
-/** The Science block (Sci-1 spec §7.3): the hover readout, or null with no cursor over the map. */
-export interface SciencePanel { hover: string | null }
+/** The Science block (Sci-1 spec §7.3): the hover readout, or null with no cursor over the map; UI round §2.4: and the
+ *  sensor range (the gone power strip's RANGE). */
+export interface SciencePanel { hover: string | null; range: number }
 export interface ConsoleView {
   station: ConsoleStation;
   tabs: ConsoleTabs;
@@ -93,12 +92,8 @@ export interface ConsoleView {
   helm: HelmPanel | null;
   weapons: WeaponsPanel | null;
   science: SciencePanel | null;
-  side: { zoom: string; free: boolean; snapLabel: 'SNAP' | 'CAMERA' } | null;
   /** Valkyrn spec §5: the Flight seat's block; present only there. */
   flight?: FlightPanel | null;
-  /** Engineering spike §9.3: this console's own system power (Helm -> Engines, Weapons -> Weapons, Science -> Sensors);
-   *  absent on the ship view and the Flight seat. */
-  power?: ConsolePowerStrip | null;
 }
 export interface ConsoleModelInput {
   duel: DuelState; me: number; mode: 'single' | 'online'; hidden: boolean; held: HeldFlags; overlay: MapOverlayView | null;
@@ -188,10 +183,6 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
     ? { gun: gunDef ? { state: sys.rooms[Room.Weapons] >= 2 ? 'OFFLINE' : sys.gunLocked === true ? 'OVERHEAT' : 'READY', heat: Math.max(0, Math.min(1, sys.gunHeat / gunDef.heatMax)), locked: sys.gunLocked === true } : null,
         weapons: weaponsPanel() }
     : null;
-  const side = i.overlay && station !== 'ship'
-    ? { zoom: i.overlay.zoomText.replace(/^ZOOM\s+/, ''), free: i.overlay.snapHint, snapLabel: station === 'weapons' ? 'CAMERA' as const : 'SNAP' as const }
-    : null;
-  const science = station === 'science' ? { hover: i.hover ?? null } : null;
-  const own = station === 'helm' ? DuelSystem.Engines : station === 'weapons' ? DuelSystem.Weapons : station === 'science' ? DuelSystem.Sensors : -1;   // Engineering spike §9.3
-  return { station, tabs, tabActions, helm, weapons, science, side, ...(flight ? { flight } : {}), ...(own >= 0 ? { power: powerStrip(d, own) } : {}) };
+  const science = station === 'science' ? { hover: i.hover ?? null, range: sensorRange(t.systems[CREW_SLOT]!) } : null;   // UI round §2.4: the range the power strip showed
+  return { station, tabs, tabActions, helm, weapons, science, ...(flight ? { flight } : {}) };
 }

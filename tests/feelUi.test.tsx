@@ -19,13 +19,13 @@ const btn = (name: string) => document.querySelector(`[data-testid="console-${na
 const charge = { label: 'CHARGE', value: 'READY', labelTint: TEXT, valueTint: TEXT, bar: { fill: 1, colour: TEXT } };
 const weapons = (over: Partial<NonNullable<ConsoleView['weapons']>>): ConsoleView => ({
   station: 'weapons', tabs: { helm: 'open', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: 'switch', weapons: null, science: null, ship: 'stand' },
-  helm: null, science: null, side: { zoom: '0.90', free: false, snapLabel: 'CAMERA' },
+  helm: null, science: null,
   weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 0, weakFreq: null, laserTarget: 1, torpTarget: -1, burst: 2, ...over }
 });
 const helm: ConsoleView = { ...weapons({}), station: 'helm', tabs: { helm: 'current', weapons: 'locked', science: 'locked', ship: 'open' }, weapons: null,
-  helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 2 }, side: { zoom: '0.90', free: true, snapLabel: 'SNAP' } };
-const view = (console: ConsoleView, extra: Partial<DuelUiView> = {}): DuelUiView => ({ readout: { rows: [], help: [] }, end: null,
-  banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console, ...extra });
+  helm: { heading: 55, speed: 142, held: NO_HELD_FLAGS, throttle: 2 } };
+const view = (console: ConsoleView, extra: Partial<DuelUiView> = {}): DuelUiView => ({ end: null,
+  banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, console, ...extra });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store);
   const input = { press: vi.fn(), hold: vi.fn(), lock: vi.fn(), torpLock: vi.fn(), throttle: vi.fn(), frequency: vi.fn() };

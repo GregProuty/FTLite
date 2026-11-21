@@ -18,7 +18,7 @@ describe('shipHud (spec §E; Engineering spike §6)', () => {
   it('a fresh Hound: 20 lit segments, the bars 2/2/3/1/1 of 5/10/5/4/2 slots, one spare bar, all eight coolant free', () => {
     const d = createDuel(HOUND, 5);
     try {
-      const h = shipHud(d);
+      const h = shipHud(d, 0);
       expect(h.hull).toEqual({ segments: SHIP_HULL / HULL_PER_SEGMENT, lit: SHIP_HULL / HULL_PER_SEGMENT, tone: 'good' });
       expect(h.hull.segments).toBe(20);   // W-1: duel hull ×1.75 (70 hull, 3.5 a segment; 40 hull, 2 a segment before)
       expect(h.shields.cap).toBe(1);   // 2 Shields bars hold one layer (spec §2)
@@ -37,7 +37,7 @@ describe('shipHud (spec §E; Engineering spike §6)', () => {
     try {
       sys.rooms[Room.Weapons] = 1; sys.bars[1] = 2; sys.bars[3] = 0; sys.bars[2] = 3;
       d.power.heat[2] = 100; d.power.coolant[2] = 2; d.power.failed[3] = 1; d.power.heat[3] = HEAT_MAX;
-      const h = shipHud(d), col = (k: number) => h.power.systems[k]!;
+      const h = shipHud(d, 0), col = (k: number) => h.power.systems[k]!;
       expect(col(1).capacity).toBe(capacityOf(d, 1));
       expect(col(1).capacity).toBe(5);   // Weapons 10 slots, damage 1 knocks out 5 (spec §10.1)
       expect(col(2)).toMatchObject({ bars: 3, heat: 100, coolant: 2 });
@@ -45,11 +45,11 @@ describe('shipHud (spec §E; Engineering spike §6)', () => {
       expect(h.power.spare).toBe(REACTOR_BARS - (2 + 2 + 3 + 0 + 1));
       expect(h.power.coolantFree).toBe(6);
       sys.bars[2] = SYSTEM_MAX[2]! + 1;
-      expect(shipHud(d).power.systems[2]!.overdriven).toBe(true);
+      expect(shipHud(d, 0).power.systems[2]!.overdriven).toBe(true);
     } finally { disposeDuel(d); }
   });
   it('slotState: on below the bars, empty below the capacity, lost above it; the overdrive slot is the one past max', () => {
-    const c: PowerColumn = { system: 2, name: 'ENG', bars: 1, capacity: 2, slots: 4, max: 3, heat: 0, heatMax: HEAT_MAX, coolant: 0, cools: true, failed: false, overdriven: false };
+    const c: PowerColumn = { system: 2, name: 'ENG', bars: 1, capacity: 2, slots: 4, max: 3, heat: 0, heatMax: HEAT_MAX, coolant: 0, cools: true, failed: false, overdriven: false, room: null };
     expect([0, 1, 2, 3].map((k) => slotState(c, k))).toEqual(['on', 'empty', 'lost', 'lost']);
     expect([0, 1, 2, 3].map((k) => overdriveSlot(c, k))).toEqual([false, false, false, true]);
     const o2: PowerColumn = { ...c, system: 4, name: 'O2', slots: 2, max: 2, cools: false };

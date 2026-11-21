@@ -29,7 +29,6 @@ import cutter from '../src/renderer/src/sim/ship/cutter.json';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { Room } from '../src/renderer/src/sim/tactical/state';
 import { ShipClass } from '../src/renderer/src/sim/tactical/defs';
-import { readoutRows } from '../src/renderer/src/render/duel/readoutModel';
 import { evadeDir, flightAlert } from '../src/renderer/src/render/duel/situationModel';
 import { fogEvents, fogPan, pushMapEffects, torpedoTone } from '../src/renderer/src/app/duel/scene';
 import { createFx, type ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
@@ -169,19 +168,6 @@ describe('no fog leaks (spec §10.4)', () => {
 });
 
 describe('no fog leaks, review round 1 (spec §10.4)', () => {
-  it('the interior readout: ENEMY NO CONTACT and no BEARING while the enemy is unseen; the range and bearing once seen', () => {
-    const d = createDuel(parseShip(cutter), 5), [crew, enemy] = d.tactical.ships, r = sensorRange(d.tactical.systems[0]!);
-    try {
-      Object.assign(enemy!, { x: crew!.x + r * 2, y: crew!.y, active: true });
-      let rows = readoutRows({ duel: d, mode: 'interior', active: 0 });
-      expect(rows.find((x) => x.label === 'ENEMY')?.value).toBe('NO CONTACT');
-      expect(rows.some((x) => x.label === 'BEARING')).toBe(false);
-      Object.assign(enemy!, { x: crew!.x + r / 2 });
-      rows = readoutRows({ duel: d, mode: 'interior', active: 0 });
-      expect(rows.find((x) => x.label === 'ENEMY')?.value).toBe(String(Math.round(r / 2)));
-      expect(rows.find((x) => x.label === 'BEARING')?.value).toBe('090');
-    } finally { disposeDuel(d); }
-  });
   it('the torpedo lock tone: an unseen enemy is never locked (no beep tracks its distance)', () => {
     const d = createDuel(parseShip(cutter), 5), [crew, enemy] = d.tactical.ships, r = sensorRange(d.tactical.systems[0]!);
     try {

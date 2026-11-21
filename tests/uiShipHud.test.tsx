@@ -17,9 +17,9 @@ import { makeUi } from './helpers/uiStore';
 afterEach(() => { cleanup(); });
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((c) => ({ text: c.dataset.text!, x: Number(c.dataset.x), y: Number(c.dataset.y) }));
 const all = (attr: string, v?: string) => Array.from(document.querySelectorAll<HTMLElement>(v === undefined ? `[${attr}]` : `[${attr}="${v}"]`));
-const shipConsole: ConsoleView = { station: 'ship', tabs: { helm: 'open', weapons: 'locked', science: 'locked', ship: 'current' }, tabActions: { helm: 'interact', weapons: null, science: null, ship: null }, helm: null, weapons: null, science: null, side: null };
+const shipConsole: ConsoleView = { station: 'ship', tabs: { helm: 'open', weapons: 'locked', science: 'locked', ship: 'current' }, tabActions: { helm: 'interact', weapons: null, science: null, ship: null }, helm: null, weapons: null, science: null };
 const col = (system: number, name: string, bars: number, capacity: number, slots: number, max: number, extra: Partial<PowerColumn> = {}): PowerColumn =>
-  ({ system, name, bars, capacity, slots, max, heat: 0, heatMax: 240, coolant: 0, cools: system < 4, failed: false, overdriven: false, ...extra });
+  ({ system, name, bars, capacity, slots, max, heat: 0, heatMax: 240, coolant: 0, cools: system < 4, failed: false, overdriven: false, room: null, ...extra });
 const hud: ShipHudView = {
   hull: { segments: 20, lit: 7, tone: 'warn' },
   shields: { layers: 2, up: 1, cap: 1 },
@@ -27,11 +27,12 @@ const hud: ShipHudView = {
     systems: [col(0, 'SHLD', 2, 5, 5, 4), col(1, 'WEAP', 2, 5, 10, 9), col(2, 'ENG', 5, 5, 5, 4, { overdriven: true, heat: 120, coolant: 1 }),
       col(3, 'SENS', 0, 0, 4, 3, { failed: true, heat: 240 }), col(4, 'O2', 1, 2, 2, 2)],
     spare: 0, reactor: 10, coolantFree: 7, coolantPool: 8
-  }
+  },
+  health: null
 };
 const view = (h: ShipHudView | null = hud): DuelUiView => ({
-  readout: { rows: [{ label: 'CREW', value: '2', labelTint: TEXT, valueTint: TEXT }], help: [] }, end: null,
-  banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: false, console: shipConsole, hud: h });
+  end: null,
+  banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: false, console: shipConsole, hud: h });
 function mount() {
   const ui = makeUi(), duel = createDuelSink(ui.store), ship = vi.fn();
   ui.actions.setConsole({ press: vi.fn(), hold: vi.fn(), lock: vi.fn(), torpLock: vi.fn(), throttle: vi.fn(), frequency: vi.fn(), ship });
@@ -72,6 +73,14 @@ describe('the engineering panel (spec §6)', () => {
     expect(ship.mock.calls.map((c) => c[0])).toEqual([{ kind: 'shipPower', system: 1, delta: 1 }, { kind: 'shipPower', system: 3, delta: -1 }, { kind: 'shipCoolant', system: 2 }]);
     expect(screen.queryByTestId('hud-coolant-4')).toBeNull();
     expect([0, 1, 2, 3, 4].every((s) => screen.getByTestId(`hud-power-${s}`).style.pointerEvents === 'auto')).toBe(true);
+  });
+  it('a weapons-station view with a HUD renders it (UI round §2.4: the HUD on every view)', () => {
+    const { duel } = mount();
+    const weapons: ConsoleView = { ...shipConsole, station: 'weapons', tabs: { helm: 'locked', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' } };
+    act(() => duel.frame({ ...view(), console: weapons }));
+    expect(all('data-ui-hud-crt')).toHaveLength(1);
+    expect(all('data-ui-hud-seg')).toHaveLength(20);
+    expect(all('data-ui-hud-slot').length).toBeGreaterThan(0);
   });
   it('drawn whenever the frame carries a HUD, never without one; an equal HUD keeps the stored view', () => {
     const { duel, store } = mount();

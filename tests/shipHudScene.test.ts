@@ -1,5 +1,5 @@
-// Duel polish i spec §E (the scene): the frame carries the ship HUD on the SHIP view only (standing, console.station
-// 'ship'), and none on the Helm console or while the console is hidden. The real runtime and scene in node, as
+// Duel polish i spec §E (the scene); UI round §2.4: the frame carries the ship HUD on every view: the SHIP view
+// (standing, console.station 'ship') and the Helm console alike. The real runtime and scene in node, as
 // contactScene.test.ts does.
 import { describe, expect, it } from 'vitest';
 import { Container } from 'pixi.js';
@@ -28,7 +28,7 @@ const LIVE = { banner: null, layerPaused: false, end: null };
 const PAUSED = { banner: 'PAUSED', layerPaused: true, end: null };
 
 describe('the scene and the ship HUD (spec §E)', () => {
-  it('standing: the SHIP view frame carries shipHud(d), paused too (UI round §1.5: the console and the hull stay); seated at the Helm: none', () => {
+  it('standing: the SHIP view frame carries shipHud(d), paused too (UI round §1.5: the console and the hull stay); seated at the Helm too (UI round §2.4)', () => {
     let now = 0;
     const keys: KeySample = { moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() };
     const rt = createDuelRuntime({
@@ -45,13 +45,13 @@ describe('the scene and the ship HUD (spec §E)', () => {
       scene.draw(rt, 1 / 60, LIVE);
       const duel = () => store.getState().duel!;
       expect(duel().console?.station).toBe('ship');
-      expect(duel().hud).toEqual(shipHud(rt.duel));
+      expect(duel().hud).toEqual(shipHud(rt.duel, rt.active()));
       scene.draw(rt, 1 / 60, PAUSED);
       // UI round §1.5: a pause keeps the UI
-      expect(duel().console?.station).toBe('ship'); expect(duel().hud).toEqual(shipHud(rt.duel));
+      expect(duel().console?.station).toBe('ship'); expect(duel().hud).toEqual(shipHud(rt.duel, rt.active()));
       seatDuelCrew(rt.duel);
       scene.draw(rt, 1 / 60, LIVE);
-      expect(duel().console?.station).toBe('helm'); expect(duel().hud).toBeNull();
+      expect(duel().console?.station).toBe('helm'); expect(duel().hud).toEqual(shipHud(rt.duel, rt.active()));   // UI round §2.4: the HUD on every view
     } finally { scene.dispose(); rt.dispose(); }
   });
 });

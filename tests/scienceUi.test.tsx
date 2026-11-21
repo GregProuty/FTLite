@@ -18,8 +18,8 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const btn = (name: string) => document.querySelector(`[data-testid="console-${name}"]`) as HTMLElement | null;
 const texts = () => Array.from(document.querySelectorAll('canvas')).map((e) => e.dataset.text);
 const charge = { label: 'CHARGE', value: '40%', labelTint: TEXT, valueTint: TEXT, bar: { fill: 0.4, colour: TEXT } };
-const frame = (console: ConsoleView | null, contact: ContactView | null): DuelUiView => ({ readout: { rows: [], help: [] }, end: null,
-  banners: { interior: null, tactical: null, notice: null }, overlay: null, crt: true, console, contact });
+const frame = (console: ConsoleView | null, contact: ContactView | null): DuelUiView => ({ end: null,
+  banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, console, contact });
 function mount(view: DuelUiView) {
   const ui = makeUi(), duel = createDuelSink(ui.store);
   const c = { close: vi.fn(), arm: vi.fn(), cancelAim: vi.fn(), pick: vi.fn(), scan: vi.fn(), pickUp: vi.fn() };
@@ -31,8 +31,7 @@ function mount(view: DuelUiView) {
 }
 const weapons: ConsoleView = {
   station: 'weapons', tabs: { helm: 'locked', weapons: 'current', science: 'locked', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
-  helm: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 1, weakFreq: 2, laserTarget: -1, torpTarget: -1, burst: 2 }, science: null,
-  side: { zoom: '0.50', free: false, snapLabel: 'CAMERA' }
+  helm: null, weapons: { lock: 1, charge, magazine: '4/4', canLaunch: true, torpedoInRange: true, missileFlying: false, fireHeld: false, held: NO_HELD_FLAGS, freq: 1, weakFreq: 2, laserTarget: -1, torpTarget: -1, burst: 2 }, science: null
 };
 
 describe('the contact window (spec §7.2)', () => {
@@ -84,12 +83,13 @@ describe('the Weapons frequency row (spec §7.4)', () => {
 });
 
 describe('the Science block (spec §7.3)', () => {
-  it('shows the hover readout, a placeholder without a cursor, and the key help', () => {
-    const science: ConsoleView = { ...weapons, station: 'science', weapons: null, science: { hover: 'BRG 327 RNG 1450' }, side: { zoom: '0.50', free: false, snapLabel: 'SNAP' } };
+  it('shows the hover readout, a placeholder without a cursor, the key help and the sensor range (UI round §2.4)', () => {
+    const science: ConsoleView = { ...weapons, station: 'science', weapons: null, science: { hover: 'BRG 327 RNG 1450', range: 900 } };
     mount(frame(science, null));
-    for (const t of ['SCIENCE', 'BRG 327 RNG 1450', 'CLICK: SELECT   S: SCAN   T: NEXT']) expect(texts(), t).toContain(t);
+    for (const t of ['SCIENCE', 'BRG 327 RNG 1450', 'CLICK: SELECT   S: SCAN   T: NEXT', 'SENSOR RANGE 900']) expect(texts(), t).toContain(t);
     cleanup();
-    mount(frame({ ...science, science: { hover: null } }, null));
+    mount(frame({ ...science, science: { hover: null, range: 1200 } }, null));
     expect(texts()).toContain('BRG --- RNG ---');
+    expect(texts()).toContain('SENSOR RANGE 1200');
   });
 });

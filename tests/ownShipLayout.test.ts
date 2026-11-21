@@ -1,8 +1,9 @@
-// Own ship window spec §3: the window's rect clears every console block and its header sits above its drawing box.
+// Own ship window spec §3 (UI round spec §2.4a: under the HUD's top block): the window's rect clears every console block
+// and its header sits above its drawing box.
 import { describe, expect, it } from 'vitest';
 import {
-  CONTACT, FLIGHT, OWN_SHIP, OWN_SHIP_BOX, OWN_SHIP_RIGHT, OWN_SHIP_STATUS_Y, OWN_SHIP_TITLE_Y, OWN_SHIP_X0, SIDE, SIDE_H,
-  STATION, STATUS, stationTop, TABS
+  CONTACT, FLIGHT, HUD_POWER, HUD_TOP, OWN_SHIP, OWN_SHIP_BOX, OWN_SHIP_RIGHT, OWN_SHIP_STATUS_Y, OWN_SHIP_TITLE_Y, OWN_SHIP_X0,
+  STATION, stationTop, TABS
 } from '../src/renderer/src/render/duel/consoleLayout';
 import { FONT_NATIVE } from '../src/renderer/src/render/theme';
 import { INTERNAL_H, INTERNAL_W } from '../src/shared/resolution';
@@ -11,18 +12,18 @@ type Rect = { x: number; y: number; w: number; h: number };
 const overlaps = (a: Rect, b: Rect): boolean => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 describe('the own ship window layout (spec §3)', () => {
-  it('is x 228 to 468, y 42 to 212, with the box x 236 to 460, y 82 to 204', () => {
-    expect(OWN_SHIP).toEqual({ x: 228, y: 42, w: 240, h: 170 });
-    expect(OWN_SHIP_BOX).toEqual({ x: 236, y: 82, w: 224, h: 122 });
+  it('is x 12 to 252, y 160 to 330, with the box x 20 to 244, y 200 to 322', () => {
+    expect(OWN_SHIP).toEqual({ x: 12, y: 160, w: 240, h: 170 });
+    expect(OWN_SHIP_BOX).toEqual({ x: 20, y: 200, w: 224, h: 122 });
   });
-  it('lies on the stage, right of the status column, clear of the tabs, stations, FLIGHT, SIDE and CONTACT', () => {
+  it('lies on the stage, under the HUD\'s top block, clear of the tabs, the HUD, stations, FLIGHT and CONTACT', () => {
     expect(OWN_SHIP.x).toBeGreaterThanOrEqual(0); expect(OWN_SHIP.y).toBeGreaterThanOrEqual(0);
     expect(OWN_SHIP.x + OWN_SHIP.w).toBeLessThanOrEqual(INTERNAL_W); expect(OWN_SHIP.y + OWN_SHIP.h).toBeLessThanOrEqual(INTERNAL_H);
-    expect(OWN_SHIP.x).toBeGreaterThanOrEqual(STATUS.x + STATUS.w);
+    expect(OWN_SHIP.y).toBeGreaterThanOrEqual(HUD_TOP.y + HUD_TOP.h);
     const blocks: Rect[] = [
       { x: TABS.x, y: TABS.y, w: 4 * TABS.w + 3 * TABS.gap, h: TABS.h },
       ...(['helm', 'weapons', 'science'] as const).map((s) => ({ x: STATION.x, y: stationTop(s), w: STATION.w, h: STATION.h[s] })),
-      FLIGHT, { x: SIDE.x, y: SIDE.y, w: SIDE.w, h: SIDE_H }, CONTACT
+      FLIGHT, HUD_TOP, HUD_POWER, CONTACT
     ];
     for (const b of blocks) expect(overlaps(OWN_SHIP, b), JSON.stringify(b)).toBe(false);
   });

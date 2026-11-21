@@ -1,9 +1,9 @@
-// UI round spec §1.5: the pause line sits at top centre on its panel, clear of the tab strip, the ship view's hull bar,
-// the status table, the own ship window and the enemy window, for the longest local text.
+// UI round spec §1.5: the pause line sits at top centre on its panel, clear of the tab strip, the HUD's top block (§2.4a:
+// on every view), the own ship window and the enemy window, for the longest local text.
 import { describe, expect, it } from 'vitest';
 import { INTERNAL_W } from '../src/shared/resolution';
 import { PAUSE_H, PAUSE_Y, pauseLineBox } from '../src/renderer/src/ui/duel/Banners';
-import { CONTACT, OWN_SHIP, STATUS, TABS, TABS_RIGHT } from '../src/renderer/src/render/duel/consoleLayout';
+import { CONTACT, HUD_TOP, OWN_SHIP, TABS, TABS_RIGHT } from '../src/renderer/src/render/duel/consoleLayout';
 import { HUD, HULL_SEGMENTS, hullSegX } from '../src/renderer/src/render/duel/shipHudModel';
 import { STATUS_Y, INFO_Y } from '../src/renderer/src/render/tactical/weaponsModel';
 
@@ -25,6 +25,6 @@ describe('the pause line (spec §1.5)', () => {
     // the ship view's hull bar and shield row (ShipHud's HUD block): from the HULL label to the shield pips' bottom, as
     // wide as the 20-segment bar (the shield row, SHIELDS and its pips, is narrower)
     const hullBar = { x: HUD.x, y: HUD.hull.labelY, w: hullSegX(HULL_SEGMENTS - 1) + HUD.hull.segW - HUD.x, h: HUD.shields.y + HUD.shields.pip - HUD.hull.labelY };
-    for (const p of [tabs, hullBar, { ...STATUS, h: 400 }, OWN_SHIP, CONTACT]) expect(overlaps(b, p), JSON.stringify(p)).toBe(false);
+    for (const p of [tabs, hullBar, HUD_TOP, OWN_SHIP, CONTACT]) expect(overlaps(b, p), JSON.stringify(p)).toBe(false);
   });
 });

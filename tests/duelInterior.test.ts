@@ -11,9 +11,10 @@ import { Room } from '../src/renderer/src/sim/tactical/state';
 import { REPAIR_UNITS } from '../src/renderer/src/sim/duel/tuning';
 import type { GameAssets } from '../src/renderer/src/render/assets';
 import { FEATURE_NAMES } from '../src/renderer/src/render/fallback';
-import { duelFit, interiorOverlay, INTERIOR_BAND, READOUT_COLUMN } from '../src/renderer/src/render/duel/interiorModel';
-import { createInteriorView } from '../src/renderer/src/render/duel/interiorView';
+import { duelFit, interiorOverlay, INTERIOR_BAND } from '../src/renderer/src/render/duel/interiorModel';
+import { crewLabelAt, createInteriorView } from '../src/renderer/src/render/duel/interiorView';
 import { createInteriorCamera, interiorInput } from '../src/renderer/src/render/duel/interiorCamera';
+import { WARN } from '../src/renderer/src/render/theme';
 import { TILE_PX } from '../src/shared/resolution';
 import type { ViewEvent } from '../src/renderer/src/render/tactical/fxModel';
 
@@ -34,15 +35,15 @@ const step = (d: DuelState, commands: { player: number; command: Parameters<type
 const crewAt = (d: DuelState) => d.interior.crew.map((eid) => ({ x: Position.x[eid]!, y: Position.y[eid]! }));
 
 describe('the duel interior through the reused interior layers (H-1 spec §8, §13 risk 1)', () => {
-  it('draws a duel interior: tiles, desks, both crew and the damage overlay, fitted left of the readout column', () => {
+  it('draws a duel interior: tiles, desks, both crew and the damage overlay, fitted in the full-width band', () => {
     const d = createSeatedDuel(layout, 5), view = createInteriorView(assets);
     d.tactical.systems[0].rooms[Room.Shields] = 2;
     view.draw(d, crewAt(d), 1, 1 / 60);
     const fit = duelFit(d.interior.derived.width, d.interior.derived.height, 1);
-    expect(fit).toEqual({ scale: 1, x: 66, y: 173 });   // the 29 × 13 Cutter is 928 × 416 px: centred in 1060 × 678, never upscaled
-    expect([view.world.x, view.world.y, view.world.scale.x]).toEqual([66, 173, 1]);
+    expect(fit).toEqual({ scale: 1, x: 176, y: 173 });   // the 29 × 13 Cutter is 928 × 416 px: centred in 1280 × 678, never upscaled (UI round §2.2: the band is the full width)
+    expect([view.world.x, view.world.y, view.world.scale.x]).toEqual([176, 173, 1]);
     expect(fit.x + 29 * TILE_PX).toBeLessThanOrEqual(INTERIOR_BAND.w);
-    expect(INTERIOR_BAND.w).toBe(1280 - READOUT_COLUMN);
+    expect(INTERIOR_BAND.w).toBe(1280);   // UI round §2.2: the band is the full width
     expect(count(view.container)).toBeGreaterThan(10);
     for (const eid of d.interior.crew) expect(view.memory.lastDrawn.get(Stable.id[eid]!)).toEqual({ x: Position.x[eid]!, y: Position.y[eid]! });
     view.destroy(); disposeDuel(d);
@@ -87,10 +88,10 @@ describe('the duel interior through the reused interior layers (H-1 spec §8, §
     expect(lights).toBe(13);                                                                   // after effects.above (the air tint, Engineering spike §6; the station badges, start-aboard spec §2, sit after the desks)
     expect(kids.length - lights - 1).toBe(30);                                                 // the marks, the three marker labels, the sixteen hazard labels (Engineering spike §6), the four downed labels (duel-health; one per player of the largest crew, Sci-2 spec §7), the healing marks and four REVIVED labels (duel polish i spec §D) and the badge labels above the lights
     view.draw(d, crewAt(d), 1, 1 / 60);
-    expect([view.world.x, view.world.y]).toEqual([66, 173]);
+    expect([view.world.x, view.world.y]).toEqual([176, 173]);
     const hit = { kind: 'laser', ship: 1, hit: true, x1: 0, y1: 0, x2: 1, y2: 1 } as unknown as ViewEvent;
     view.draw(d, crewAt(d), 1, 1 / 60, [hit]);
-    expect(Math.abs(view.world.x - 66) + Math.abs(view.world.y - 173)).toBe(12);              // 6 art pixels (cos 0) at world scale 1
+    expect(Math.abs(view.world.x - 176) + Math.abs(view.world.y - 173)).toBe(12);              // 6 art pixels (cos 0) at world scale 1
     expect(view.container.x).toBe(0);
     view.destroy(); disposeDuel(d);
   });
@@ -100,12 +101,12 @@ describe('the interior view places its world from the zoom camera (interior zoom
   it('level 0 is the fit; +1 follows the active character on whole pixels; the hit shake goes on top', () => {
     const d = createSeatedDuel(layout, 5), view = createInteriorView(assets), camera = createInteriorCamera();
     view.draw(d, crewAt(d), 1, 1 / 60, [], 1 / 60, { camera, active: 0 });
-    expect([view.world.x, view.world.y, view.world.scale.x]).toEqual([66, 173, 1]);
+    expect([view.world.x, view.world.y, view.world.scale.x]).toEqual([176, 173, 1]);
     interiorInput(camera, { notches: 1, anchor: null, dragX: 0, dragY: 0, follow: false });
     view.draw(d, crewAt(d), 1, 1 / 60, [], 1 / 60, { camera, active: 0 });
     const eid = d.interior.crew[0]!, cx = Position.x[eid]! * TILE_PX * 1.5;
     expect(view.world.scale.x).toBe(1.5);
-    expect(view.world.x).toBe(Math.min(0, Math.max(1060 - 29 * TILE_PX * 1.5, Math.round(530 - cx))));
+    expect(view.world.x).toBe(Math.min(0, Math.max(1280 - 29 * TILE_PX * 1.5, Math.round(640 - cx))));   // UI round §2.2: the band is the full width
     expect(view.world.y).toBe(69);   // 624 px tall: centred in the 678-px band
     const at = { x: view.world.x, y: view.world.y };
     const hit = { kind: 'laser', ship: 1, hit: true, x1: 0, y1: 0, x2: 1, y2: 1 } as unknown as ViewEvent;
@@ -132,6 +133,20 @@ describe('healing and revive feedback in the interior (duel polish i spec §D)',
       expect(shown[0]!.x).toBe(Math.round(Position.x[e1]! * TILE_PX));
       for (let k = 0; k < 30; k++) { d.tactical.tick += 1; view.draw(d, crewAt(d), 1, 1 / 60); }
       expect(count(view.container)).toBe(n0);
+    } finally { view.destroy(); disposeDuel(d); }
+  });
+
+  it('a downed character shows its DOWNED label under the character in the DOWNED red, not at (0,0) (UI round 2a final review)', () => {
+    const d = createSeatedDuel(layout, 5), view = createInteriorView(assets), e1 = d.interior.crew[1]!;
+    try {
+      Life.state[e1] = LifeState.Downed;
+      view.draw(d, crewAt(d), 1, 1 / 60);
+      const shown = view.world.children.filter((k) => (k as BitmapText).text === 'DOWNED' && k.visible) as BitmapText[];
+      expect(shown).toHaveLength(1);
+      expect(shown[0]!.x).toBe(Math.round(Position.x[e1]! * TILE_PX));
+      expect(shown[0]!.y).toBe(Math.round((Position.y[e1]! + 0.5) * TILE_PX));
+      expect(shown[0]!.tint).toBe(WARN);
+      expect(crewLabelAt(10.4, 20.4)).toEqual({ x: 10, y: Math.round(20.4 + TILE_PX * 0.5), tint: WARN });
     } finally { view.destroy(); disposeDuel(d); }
   });
 });

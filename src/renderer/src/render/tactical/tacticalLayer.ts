@@ -438,8 +438,9 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       }
       lockText.visible = lk !== null;
       if (lk) { setText(lockText, lk.label.text); lockText.position.set(Math.round(lk.label.x), Math.round(lk.label.y)); }
-      info.visible = wd !== null;
-      if (wd) { setText(info, wd.info.text); info.tint = wd.inArc ? CRT.main : CRT.mid; info.position.set(Math.round(wd.info.x), Math.round(wd.info.y)); }
+      const infoLine = wd?.info ?? c?.helmInfo ?? null;
+      info.visible = infoLine !== null;
+      if (infoLine) { setText(info, infoLine.text); info.tint = wd?.inArc ? CRT.main : CRT.mid; info.position.set(Math.round(infoLine.x), Math.round(infoLine.y)); }
       const st = c?.status ?? null;
       status.visible = st !== null;
       if (st) { setText(status, st.label.text); status.tint = st.colour; status.position.set(Math.round(st.label.x), Math.round(st.label.y)); }

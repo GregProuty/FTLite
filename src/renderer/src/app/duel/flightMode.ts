@@ -62,7 +62,7 @@ export function startFlightMode(deps: FlightModeDeps): () => void {
     const model = tacticalModel({ state: runtime.state, prev: runtime.prev, alpha: runtime.alpha(), camera: runtime.camera, viewport, console: 'helm', axes: runtime.axes(), ships: [0], paused, reserveRight: FLIGHT_RESERVE_RIGHT, mapGrid: deps.renderer.mapGrid?.() ?? DEFAULT_MAP_GRID });
     layer.setCrt(crtScale(deps.renderer.crt()));   // CRT map spec section 1: the flight view is a console screen
     layer.draw(model, null, performance.now() / 1000);
-    deps.ui.frame({ feel: feelRows(feelReadout(runtime.feel, ship, runtime.state.map.planet)), banners: { interior: null, tactical: paused ? PAUSE_TEXT : null, notice: null }, overlay: mapOverlayOf(model.overlay), crt: true });
+    deps.ui.frame({ feel: feelRows(feelReadout(runtime.feel, ship, runtime.state.map.planet)), banners: { interior: null, tactical: paused ? PAUSE_TEXT : null, notice: null, alert: null }, overlay: mapOverlayOf(model.overlay), crt: true });
   };
   renderer.app.ticker.add(frame);
 

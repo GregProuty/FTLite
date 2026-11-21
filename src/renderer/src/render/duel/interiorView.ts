@@ -17,6 +17,7 @@ import { createRenderMemory, type RenderMemory } from '../memory';
 import { createIconLayer, drawIcon } from '../roomIcons';
 import { INK } from '../painted/ink';
 import { AMBER, DIM, FONT_NATIVE, GOOD, TEXT, WARN } from '../theme';
+import { ALERT_BLINK_HZ, blink } from '../tactical/crtTheme';
 import { HEALTH_LOW } from './readoutModel';
 import { HEALTH_MAX } from '../../sim/tuning';
 import { createTileLayer } from '../tiles';
@@ -61,6 +62,11 @@ export const HAZARD_LABELS = 16;
 /** `stageScale`: the letterbox's stage scale, read every frame so the fit snaps to whole screen pixels per art pixel (Art-i spec section 4); tests leave it at 1.
  *  `feel`: the feel setting (Art-i spec section 7), read every frame; tests leave it at full.
  *  `crew3d`: the 3D crew art or the old art (Crew3D spec section 4), read every frame; tests leave it on. */
+/** Where a crew label (DOWNED, AWAY) sits for a character drawn at (x, y) px: under it, in the DOWNED red. */
+export function crewLabelAt(x: number, y: number): { x: number; y: number; tint: number } {
+  return { x: Math.round(x), y: Math.round(y + TILE_PX * 0.5), tint: WARN };
+}
+
 export function createInteriorView(assets: GameAssets, stageScale: () => number = () => 1, feel: () => FeelSetting = () => DEFAULT_FEEL, crew3d: () => boolean = () => true): InteriorView {
   const container = new Container(), world = new Container();
   const missing = new Set(assets.missing);
@@ -69,7 +75,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
     blasts: featureReady(missing, 'blastArt') ? { room: assets.animation('fx.blast.room'), hit: assets.animation('fx.blast.hit') } : undefined,
     painted: (id) => battlemapFor(id, missing) !== null   // the art spike: painted fire, blasts and particles on a painted ship
   });
-  // Interior zoom: a zoomed ship is clipped to the band so it never runs under the readout column; the backdrop stays unclipped.
+  // Interior zoom: a zoomed ship is clipped to the band (the full stage width); the backdrop stays unclipped.
   const clip = new Graphics().rect(INTERIOR_BAND.x, INTERIOR_BAND.y, INTERIOR_BAND.w, INTERIOR_BAND.h).fill(0xffffff);
   container.addChild(fx.starfield, world, clip);   // the starfield under the world, filling INTERIOR_BAND; Art-v: or the painted backdrop over the whole stage
   const memory = createRenderMemory();
@@ -91,6 +97,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   // label on top with the other labels. The glyphs are drawn white once and tinted each frame.
   const badges = new Container(), badgeLabels: BitmapText[] = [];
   let badgesFor: string | null = null, badgeScale = 0;
+  let clock = 0;
   const BADGE = 32, BADGE_GLYPH = 22, LABEL_ADVANCE = 6, BADGE_TINT: Record<StationBadge['tint'], number> = { normal: TEXT, offline: WARN, faint: DIM };
   // Duel polish i spec §D: the healing motes and revive rings in one Graphics redrawn each frame, and a pooled REVIVED label
   // per character, over the crew and the other labels. The motes' x jitter is a view-side random (never the sim's).
@@ -105,16 +112,17 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
   });
   // Back to front as renderer.ts (Art-i spec section 5): the battlemap painting (Art-iv), tiles, the props (Art-iii), grade, effects below, room icons, desks, then the duel's
   // damage tint under the crew, crew, boarders (always empty in the duel), effects above, the lights, and the markers and
-  // labels on top so the lights never wash them out.
+  // labels on top so the lights never wash them out; the crew labels draw last, above the console badge names.
   const battlemap = createBattlemapLayer(assets);
-  world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, badges, air, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels, ...hazardLabels, ...crewLabels, healMarks, ...revivedLabels);
+  world.addChild(battlemap.container, tiles.container, props.container, fx.grade, effects.below, icons.container, desks.container, badges, air, damage, crew.container, boarders.container, effects.above, fx.lights, marks, ...labels, ...hazardLabels, healMarks, ...revivedLabels);
   const badgeText = new Container();
-  world.addChild(badgeText);
+  world.addChild(badgeText, ...crewLabels);   // UI round 2a: the crew labels (DOWNED, AWAY) above the console badge names
   desks.container.addChild(fx.fixtures); effects.below.addChild(fx.paintedBelow); effects.above.addChild(fx.above, fx.paintedAbove);
   return {
     container, world, memory,
     placement: () => last,
     draw(d, crewPrev, alpha, dt, events = [], presentDt = dt, zoom, hover = null, override = null) {
+      clock += presentDt;   // UI round §2.4a: the badge blink's presentation clock; frozen while paused
       const st = d.interior, stage = stageScale(), rect = fitRect(st.layout.id, st.derived.width, st.derived.height, missing), fit0 = duelFit(st.derived.width, st.derived.height, stage, rect);
       // The zoom camera places the world on whole screen pixels per art pixel; it follows the active character's drawn (interpolated) position.
       const eid = zoom ? st.crew[zoom.active] : undefined;
@@ -147,7 +155,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         }
         badgesFor = st.derived.layoutHash; badgeScale = k2;
       }
-      bs.forEach((b, k) => { const c = BADGE_TINT[b.tint]; (badges.children[k * 2 + 1] as Graphics).tint = c; badgeLabels[k]!.tint = c; });
+      bs.forEach((b, k) => { const c = b.empty && blink(clock, ALERT_BLINK_HZ) ? WARN : BADGE_TINT[b.tint]; (badges.children[k * 2 + 1] as Graphics).tint = c; badgeLabels[k]!.tint = c; });
       const o = interiorOverlay(d);
       damage.clear(); marks.clear(); air.clear();
       for (const t of airTints(d)) for (const p of t.tiles) air.rect(p.x, p.y, TILE_PX, TILE_PX).fill({ color: t.color, alpha: t.alpha });
@@ -194,7 +202,8 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
         t.visible = c.label !== '';
         if (!t.visible) continue;
         if (t.text !== c.label) t.text = c.label;
-        t.tint = WARN; t.position.set(Math.round(x), Math.round(y + TILE_PX * 0.5));
+        const at2 = crewLabelAt(x, y);
+        t.tint = at2.tint; t.position.set(at2.x, at2.y);   // UI round 2a: AWAY reads in the DOWNED red (amber vanished on the light floor)
       }
       // Duel polish i spec §D: healing motes and the revive, on the presentation clock (held while paused).
       const life = crewLife(d);
@@ -211,7 +220,7 @@ export function createInteriorView(assets: GameAssets, stageScale: () => number 
       // Light and feel: the duel's hull alert, a hit flashes the whole interior, sparks at damaged repair rooms, repair work.
       const working = duelWorking(d);
       const { shake, bob } = fx.draw({ state: st, grade: duelGradeInput(d), hit: duelHit(events) ? { whole: true } : null, sparks: damagedRepairPoints(d), working, artPx: 2 * fit.scale, starPx: 2 * fit0.scale }, presentDt, dt);
-      world.position.set(fit.x + shake.x, fit.y + shake.y);   // only the interior world shakes; the readout column stays still
+      world.position.set(fit.x + shake.x, fit.y + shake.y);   // only the interior world shakes; the UI over it stays still
       // Crew3D spec section 4: the 3D crew pose from the same list, on the presentation clock: `presentDt` is 0 while the
       // duel is paused or decided, and then they hold their pose and frame. Net-4a §3.6: online, the other players' crew
       // are drawn from the confirmed publications (crewPresentation).
