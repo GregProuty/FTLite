@@ -1224,6 +1224,10 @@ Spec `docs/superpowers/specs/2026-11-20-asteroids-iv-cell-rocks-design.md`, plan
 
   Starting numbers, all in `src/renderer/src/sim/tactical/rockTuning.ts`: `RIM_DROP` 30 (how ragged), `CUT_KICK` 0.12 (how fast halves part), `CRATER_K` 0.75, `SHATTER_DEPTH` 1.6 (how far in a torpedo bursts). The big outer lane is the fourth entry of `LANES` in `src/renderer/src/sim/tactical/tuning.ts` (ρ 1390, radius 40 to 55, 5 rocks). The cell counts (7, 19, 31) are `SHELLS` in `rockCells.ts`. Nothing spins yet: that is iv-b.
 
+## Sensor range doubled (owner 2026-11-20, SIM 69)
+- [x] SENSOR_RANGE_BY_BARS 300/900/1400/2000/2800 -> 600/1800/2800/4000/5600 (start 1800; 4 bars covers the whole 5600-wide map). Scans, locks, designate, AUTO fire, the fog and the blip all read it. At Sensors 0 the range (600) now reaches every weapon's range, so "unseen but in gun range" no longer happens.
+- [ ] Owner playtest: is the enemy now spotted too early? The table is in sim/tactical/bars.ts.
+
 ## UI round Part 2b (fill the window)
 
 Plan: docs/superpowers/plans/2026-11-20-ui-round-part2b.md. Report: docs/superpowers/research/2026-11-20-ui-round-2b-report.md. No sim change (SIM 68 after the asteroids-iv merge).

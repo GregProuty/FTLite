@@ -57,7 +57,7 @@ describe('AUTO firing (W-4 spec §4.3)', () => {
   });
   it('no AUTO fire on an unseen enemy, behind a rock, out of the arc, unattended or unpowered', () => {
     const fired = (st: TacticalState, input: ShipInput = IDLE_INPUT): number => { let n = 0; for (let k = 0; k < 200; k++) { const f = tick(st, input); n += f.gun + f.pew; } return n; };
-    const unseen = scene([1, 1, 1], 0, 400); unseen.systems[0]!.bars[3] = 0;   // sensor range 300
+    const unseen = scene([1, 1, 1], 0, 700); unseen.systems[0]!.bars[3] = 0;   // sensor range 600 (doubled, owner 2026-11-20: Sensors 0 now reaches every weapon's range, so unseen is also out of range; was 400 against 300)
     expect(fired(unseen)).toBe(0);
     const rock = scene([1, 1, 1]); mover(rock, 0, 0, 1500 + hy(0) * 150, 0, 0, 20);
     expect(fired(rock)).toBe(0);

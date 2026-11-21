@@ -55,7 +55,7 @@ describe('the Science console (spec §7.3)', () => {
     try {
       sitDown(d.interior, 0, d.science);
       expect(consoleModel({ duel: d, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: { zoomText: 'ZOOM 0.50', scaleBar: { px: 50, units: 100 }, snapHint: false } }))
-        .toMatchObject({ station: 'science', helm: null, weapons: null, science: { hover: null, range: 900 } });
+        .toMatchObject({ station: 'science', helm: null, weapons: null, science: { hover: null, range: 1800 } });   // the start range, doubled (owner 2026-11-20)
     } finally { disposeDuel(d); }
   });
   it('the Science block sits at the bottom left, 96 high', () => {
