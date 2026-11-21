@@ -16,7 +16,9 @@ export interface Fit { scale: number; x: number; y: number }
  * worldScale = n / (2 x stage). The 1e-9 guards against a product such as 2 x 0.75 x 2 landing a hair under a whole number in floating point.
  */
 export function snapWorldScale(fit: number, stage: number): number {
-  const n = Math.floor(2 * fit * stage + 1e-9);
+  // UI round 2b: +0.02 so a stage scale a hair under a half step (2560x1080 rounds to a 1707-wide stage, scale 1.4997)
+  // still takes the whole number just above (3 px per art px, the ship at fit, at most 1% over it) instead of dropping to 2/3.
+  const n = Math.floor(2 * fit * stage + 0.02);
   if (n >= 1 && n / (2 * stage) >= (2 / 3) * fit - 1e-12) return n / (2 * stage);
   return fit;
 }

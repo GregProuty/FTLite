@@ -30,6 +30,11 @@ describe('snapWorldScale (Art-i spec section 4 table)', () => {
       expect(Math.abs(px - Math.round(px))).toBeLessThan(1e-9); expect(Math.round(px)).toBeGreaterThanOrEqual(1);
     }
   });
+  it('UI round 2b: a stage scale a hair under a half step (2560x1080: 2560 / 1707) keeps the whole number above, not 2/3', () => {
+    const stage = 2560 / 1707, s = snapWorldScale(1, stage), px = 2 * s * stage;
+    expect(Math.round(px)).toBe(3); expect(Math.abs(px - 3)).toBeLessThan(1e-9);
+    expect(s).toBeGreaterThan(0.99); expect(s).toBeLessThan(1.01);
+  });
   it('below stage 1 a fit that rounds to 0 art pixels, or snaps too small, is kept', () => {
     expect(snapWorldScale(CUTTER_FIT, 0.7)).toBe(CUTTER_FIT);   // n = floor(0.917) = 0
     expect(snapWorldScale(1, 0.9)).toBe(1);                      // n = 1, 1 / 1.8 = 0.556 < 2/3
