@@ -51,7 +51,9 @@ export interface ConsoleLayout {
   readonly flightCard: (slot: 0 | 1) => FlightCardBox;
 }
 
-function buildLayout(stage: StageSize): ConsoleLayout {
+function buildLayout(live: StageSize): ConsoleLayout {
+  // Task 4 review: copy the size first, so no closure reads a caller's mutable viewport later (the scene's is synced in place).
+  const stage: StageSize = Object.freeze({ w: live.w, h: live.h });
   const panel = powerPanel(stage.h);
   const HUD_POWER = { x: panel.x, y: panel.y - 30, w: panel.w, h: panel.h + 30 } as const;
   const stationTop = (s: 'helm' | 'weapons' | 'science'): number => stage.h - EDGE - STATION.h[s];
@@ -85,7 +87,7 @@ function buildLayout(stage: StageSize): ConsoleLayout {
   const CONTACT_RESERVE = stage.w - CONTACT.x + EDGE;
   /** The map's top band (the status sentence and the info line): from the tab strip to the contact window's left edge. */
   const INFO_BAND = { left: TABS_RIGHT, right: CONTACT.x } as const;
-  return Object.freeze({ stage: Object.freeze({ w: stage.w, h: stage.h }), stationTop, FLIGHT, CONTACT, CONTACT_BOX, CONTACT_RESERVE, INFO_BAND, HUD_POWER, weaponCard, weaponPips, flightCard });
+  return Object.freeze({ stage, stationTop, FLIGHT, CONTACT, CONTACT_BOX, CONTACT_RESERVE, INFO_BAND, HUD_POWER, weaponCard, weaponPips, flightCard });
 }
 
 const memo = new Map<string, ConsoleLayout>();

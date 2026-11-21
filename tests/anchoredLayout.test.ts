@@ -70,3 +70,13 @@ describe('the anchored console layout', () => {
     expect(onWeaponsMap({ x: 400, y: 600 }, true)).toBe(false);
   });
 });
+
+describe('a layout never reads a caller\'s mutable stage later (Task 4 review)', () => {
+  it('mutating the object it was built from does not move stationTop', () => {
+    const live = { w: 1500, h: 850 };
+    const lay = consoleLayout(live), before = lay.stationTop('weapons');
+    live.h = 1000;
+    expect(lay.stationTop('weapons')).toBe(before);
+    expect(lay.stage).toEqual({ w: 1500, h: 850 });
+  });
+});
