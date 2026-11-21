@@ -123,3 +123,28 @@ Files: `render/duel/contactModel.ts` + `ui/duel/ContactWindow.tsx`; `render/tact
 4. Visual check per the visual-check memory: build and screenshot the Science block and the enemy window with a room
    hacked (a test hook or a scripted state), look at both.
 5. Fable code review of the branch diff; apply findings; re-test; commit.
+
+## Fable plan review amendments (R1, all taken)
+
+1. **Oracle proof**: `ADDITIONS[70]` in scripts/golden/duelOracle.ts declares the four new fields (frozen). The proof runs
+   `npx tsx scripts/golden/duel-oracle.ts added` and `npx tsx scripts/golden/canonical-trace.ts same` from
+   `.worktrees/hack-bump` (where the SIM 70 baseline was recorded; baselines are keyed by cwd) after
+   `git merge --ff-only spike/hacking` there, after Task 4 and again in Task 8, before the same-version bless.
+2. Pinned tests: tests/duelCheckpoint.test.ts (codec examples) and tests/tacticalDeterminism.test.ts (flatten key guard
+   and length) join Task 1's list.
+3. Typecheck is `npm run typecheck` (`tsc -b`); `-p .` checks nothing. No lint script.
+4. ScienceStation sends both commands through `actions.console.ship?.(…)` (already forwarded in ui/actions.ts and queued);
+   no new ConsoleInput methods.
+5. Click exclusion: widen flightPointer's `stationBlock` to `'science'`, export a Science-block test helper, and AND
+   `!(station === 'science' && inside the Science block)` into scene.ts's contact-click branch (~:296). Only the station
+   block is excluded. Tests in tests/contactScene.test.ts / tests/flightPointer.test.ts.
+6. Task 6 pins: tests/scienceSeat.test.ts:62 (STATION.h.science) and tests/scienceConsole.test.ts:77 (the panel shape).
+7. Task 7: the enemy ShipDraw is skipped while `known[Enemy] === 0`; also mark the "?" contact mark as hacked (or the
+   test sets known 1). `ShipDraw.hacked` is optional (tests/crtColours.test.ts builds a literal).
+8. Task 2 / spec D10 correction: a non-crew pew is unpowered by a **hack** only (`hacked[Weapons] === 0`), not by damage
+   level 2, so no-hack runs are unchanged (as committed in 5306937b).
+9. Task 3 also: the contactScan admission reads `scannerBars`; `ShipInput.hacker` is optional (absent true).
+10. Task 5: no predictor code change (commands are logged generically); a predictor test only. `Counters` gains a
+    `hacked` triple and gapEvents a `hack done` view event; its consumer is the hack zap (audio/duelSounds, a reused
+    SFX) and the fx flash, else the derivation is dropped.
+11. Tests added: rematch reset and the end card's duel-decided for both commands (Task 4).

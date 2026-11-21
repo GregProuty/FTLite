@@ -13,9 +13,10 @@ import { oxygenStep } from '../hazards/oxygen';
 import { movementSystem } from '../movement';
 import { DuelSystem, effectiveBars, scannerBars, throttleAllowed, WeaponSlot, WEAPON_SLOTS } from '../tactical/bars';
 import { applyWeaponPower } from './weaponSlots';
+import { applySciencePower } from './scienceSlots';
 import { stepDuel } from '../tactical/duel';
 import { autoFaceTurn, headingTurn } from '../tactical/hunter';
-import { contactSeen, scanCommand, shipSeen } from '../tactical/science';
+import { contactSeen, hackBlocked, scanCommand, shipSeen } from '../tactical/science';
 import { AIM_STEPS, HEADING_COUNT, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from '../tactical/tuning';
 import { classOf, CONTACT_MAX_LEVEL, Outcome, type Axes } from '../tactical/state';
 import { HAZARD_EVERY } from '../tuning';
@@ -43,7 +44,7 @@ const NO_HELD: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 const WEAPON_ORDER = ['laserMode', 'torpMode', 'gunMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire'] as const;
 /** Every duel command kind the step handles; any other kind is rejected not-in-duel. */
 const DUEL_KINDS = ['sit', 'stand', 'presence', 'laserMode', 'torpMode', 'gunMode', 'laserLock', 'torpLock', 'rockLock', 'laserCharge', 'laserFire', 'missileLaunch', 'pewFire', 'rematch', 'throttle', 'heading', 'throttleCut', 'contactScan', 'designate', 'laserFrequency',
-  'shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock', 'weaponPower'];   // Engineering spike spec §7, §10.3
+  'shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock', 'weaponPower', 'sciencePower', 'hack'];   // Engineering spike spec §7, §10.3; the hacking spike (not SHIP_KINDS: Science's seat only)
 /** Engineering spike spec §7: the ship-view commands. */
 const SHIP_KINDS = new Set(['shipPower', 'shipCoolant', 'shipDoor', 'shipAirlock']);
 
@@ -465,6 +466,30 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (gunner < 0 || e.id.player !== gunner) { result(e, 'not-at-weapons'); continue; }
     if (!Number.isInteger(c.slot) || c.slot < 0 || c.slot >= WEAPON_SLOTS || (c.delta !== 1 && c.delta !== -1)) { result(e, 'malformed'); continue; }
     if (applyWeaponPower(d, c.slot, c.delta) === 'applied') result(e); else result(e, 'unavailable');
+  }
+  // Hacking spike §2.4, R1-4: sciencePower from the Science seat's attendant in (player, sequence) order (stale, the seat,
+  // the delta, then the allocation rules), after the ship commands so a same-tick Sensors bar counts; then hack in envelope
+  // order (stale, the seat, the room, then −1 cancels or a room starts), the last applied winning.
+  for (const e of input.commands.filter((x) => x.command.kind === 'sciencePower').sort((a, b) => a.id.player - b.id.player || a.id.sequence - b.id.sequence)) {
+    const c = e.command;
+    if (c.kind !== 'sciencePower') continue;
+    if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
+    if (scientist < 0 || e.id.player !== scientist) { result(e, 'invalid-seat'); continue; }
+    if (c.delta !== 1 && c.delta !== -1) { result(e, 'malformed'); continue; }
+    if (applySciencePower(d, c.delta) === 'applied') result(e); else result(e, 'unavailable');
+  }
+  for (const e of input.commands) if (e.command.kind === 'hack') {
+    const room = e.command.room;
+    if (e.requestedTick !== tick) { result(e, 'stale-tick'); continue; }
+    if (scientist < 0 || e.id.player !== scientist) { result(e, 'invalid-seat'); continue; }
+    if (!Number.isInteger(room) || room < -1 || room > 2) { result(e, 'malformed'); continue; }
+    if (room === -1) {
+      if (t.hackRoom < 0) { result(e, undefined, 'noop'); continue; }
+      t.hackRoom = -1; t.hackTicks = 0; result(e); continue;   // a cancel: no event
+    }
+    if (hackBlocked(t, room) !== null) { result(e, 'unavailable'); continue; }
+    if (room === t.hackRoom) { result(e, undefined, 'noop'); continue; }
+    t.hackRoom = room; t.hackTicks = 0; result(e);
   }
   clampThrottle(d);   // Task 8, spec §10.2: an Engines bar removed this tick lowers the throttle before the axes read it
   for (const e of input.commands) if (e.command.kind === 'rematch') result(e, 'duel-running');

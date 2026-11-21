@@ -129,7 +129,12 @@ export const ADDITIONS: Readonly<Record<number, Migration>> = {
   /** W-3 (57): the torpedo mode on every systems record and the manual bit on every missile pool entry; no oracle run sends
    *  torpMode, so they stay at their first recorded value (false), which `frozen` makes recordRun check at every tick. */
   57: { change: 'W-3: the torpedo mode and the per-torpedo manual flag', rename: () => undefined, derived: [], frozen: true,
-    added: [/^ship\.systems\.\d+\.torpManual$/, /^space\.missiles\.\d+\.manual$/] }
+    added: [/^ship\.systems\.\d+\.torpManual$/, /^space\.missiles\.\d+\.manual$/] },
+  /** The hacking spike (70): the hack bars and each Room's hack clock on every systems record, and the running hack; no
+   *  oracle run sends sciencePower or hack, so they stay at their first recorded values (0, and −1 for hackRoom), which
+   *  `frozen` makes recordRun check at every tick. */
+  70: { change: 'hacking spike: Science hacks an enemy room', rename: () => undefined, derived: [], frozen: true,
+    added: [/^ship\.systems\.\d+\.(hackPower|hacked)$/, /^science\.(hackRoom|hackTicks)$/] }
 };
 
 /** The duel's named canonical fields after SIM_VERSION, in flattenDuel order: `<module id>.<field name>`, with the
