@@ -126,7 +126,7 @@ describe('no fog leaks (spec §10.4)', () => {
     const t = createTacticalState(5, 2, ShipClass.ValkyrnLaser), sys = t.systems[0], me = t.ships[0]!, e = t.ships[1]!;   // W-4 spec §14.1: the beam's rule, on the laser fit
     t.map = { ...t.map, asteroids: [] }; t.rocks = initRocks(t.map);   // a clear line
     sys.bars[1] = 4; sys.weaponPower.splice(0, 3, 0, 2, 2);   // the beam powered
-    e.x = me.x + hx(me.heading) * 1200; e.y = me.y + hy(me.heading) * 1200; e.active = true;   // ahead, beyond the 900 start range
+    e.x = me.x + hx(me.heading) * 2400; e.y = me.y + hy(me.heading) * 2400; e.active = true;   // ahead, beyond the 1800 start range (doubled, owner 2026-11-20; was 1200 beyond 900)
     expect(laserSituation(t).kind).toBe('none');
     e.x = me.x + hx(me.heading) * 600; e.y = me.y + hy(me.heading) * 600;   // seen, beyond the laser's 450
     expect(laserSituation(t)).toMatchObject({ kind: 'range' });

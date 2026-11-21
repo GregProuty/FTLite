@@ -28,7 +28,7 @@ const enemyAt = (d: DuelState, dist: number) => { const a = d.tactical.ships[0],
 describe('engineering spike: Sensors (spec §10.4)', () => {
   it('range and scan rate by bars', () => {
     const s = createTacticalState(1), sys = s.systems[0];
-    expect([0, 1, 2, 3, 4].map((b) => { sys.bars[DuelSystem.Sensors] = b; return sensorRange(sys); })).toEqual([300, 900, 1400, 2000, 2800]);
+    expect([0, 1, 2, 3, 4].map((b) => { sys.bars[DuelSystem.Sensors] = b; return sensorRange(sys); })).toEqual([600, 1800, 2800, 4000, 5600]);   // doubled (owner 2026-11-20)
     s.scan.rate = SCAN_RATE_SCIENCE;
     expect([0, 1, 2, 3, 4].map((b) => { sys.bars[DuelSystem.Sensors] = b; return scanProgressRate(s); })).toEqual([0, 5, 6, 7, 8]);
     s.scan.rate = SCAN_RATE_OTHER;
@@ -38,8 +38,9 @@ describe('engineering spike: Sensors (spec §10.4)', () => {
     const d = createDuel(HOUND, 13);
     try {
       const t = d.tactical;
-      enemyAt(d, 800); expect(shipSeen(t, 1)).toBe(true); expect(contactSeen(t, Contact.Enemy)).toBe(true);
-      enemyAt(d, 1000); expect(shipSeen(t, 1)).toBe(false); expect(contactSeen(t, Contact.Enemy)).toBe(false);
+      enemyAt(d, 1600); expect(shipSeen(t, 1)).toBe(true);   // the start range 1800 (doubled, owner 2026-11-20; was 800 / 1000 about 900)
+       expect(contactSeen(t, Contact.Enemy)).toBe(true);
+      enemyAt(d, 2000); expect(shipSeen(t, 1)).toBe(false); expect(contactSeen(t, Contact.Enemy)).toBe(false);
       { const p = derelictPos(t), a = t.ships[0], r = sensorRange(t.systems[0]); expect(contactSeen(t, Contact.Derelict)).toBe((p.x - a.x) ** 2 + (p.y - a.y) ** 2 <= r * r); }   // the wreck by derelictPos
       t.scan.contact = 0; t.scan.level = 1; t.scan.progress = 10; t.scan.rate = SCAN_RATE_SCIENCE;
       scanStep(t, true); expect(t.scan.progress).toBe(10);
@@ -49,7 +50,8 @@ describe('engineering spike: Sensors (spec §10.4)', () => {
   it('the gates: contactScan, laser and torpedo locks, and designate need the contact seen', () => {
     const d = createDuel(HOUND, 13, 0, 3, ShipClass.ValkyrnLaser);   // W-4 spec §14.1: the beam's rule, on the laser fit. a crew of 3: designate is the Science seat's (step.ts answers invalid-seat first)
     try {
-      sitDown(d.interior, 0, d.nav); sitDown(d.interior, 1, d.weapons); sitDown(d.interior, 2, d.science); enemyAt(d, 1200);
+      sitDown(d.interior, 0, d.nav); sitDown(d.interior, 1, d.weapons); sitDown(d.interior, 2, d.science); enemyAt(d, 2400);   // beyond the 1800 start range (was 1200)
+      
       for (const [pid, c] of [[0, { kind: 'contactScan', contact: 0 }], [1, { kind: 'laserLock', room: 1 }], [1, { kind: 'torpLock', room: 2 }], [2, { kind: 'designate', contact: 0 }]] as [number, DuelCommand][])
         expect(step(d, [env(d, pid, c)])[0], c.kind).toMatchObject({ status: 'rejected', reason: 'unavailable' });
       enemyAt(d, 600);

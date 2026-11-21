@@ -75,7 +75,7 @@ describe('the console model (spec §7.3, §7.4)', () => {
         const range = sensorRange(sci.tactical.systems[0]!);   // UI round §2.4: the range the power strip showed rides the Science panel
         expect([m.station, m.science, m.weapons, m.helm]).toEqual(['science', { hover: 'BRG 090 RNG 100', range }, null, null]);
         expect(consoleModel({ duel: sci, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: OVERLAY })!.science).toEqual({ hover: null, range });
-        expect(range).toBe(900);   // Engineering spike §10.4: the start sensor range (the gone strip's RANGE 900)
+        expect(range).toBe(1800);   // Engineering spike §10.4: the start sensor range, doubled (owner 2026-11-20; was 900)
       } finally { disposeDuel(sci); }
     } finally { disposeDuel(d); }
   });

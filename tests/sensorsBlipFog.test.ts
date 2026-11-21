@@ -46,7 +46,7 @@ describe('the ping (sensors blip spec §2.3)', () => {
     const { t, e, f } = scene(1000), b = stepFog(f, t, 0, 0).blip!;
     const { u, v } = blipHash(t.seed, 0, 0), len = 0.8 * 400 * Math.sqrt(u), a = 2 * Math.PI * v;
     expect(b.x).toBeCloseTo(e.x + Math.cos(a) * len, 9); expect(b.y).toBeCloseTo(e.y + Math.sin(a) * len, 9);
-    expect(b.x).toBeCloseTo(3011.011907, 5); expect(b.y).toBeCloseTo(1897.211776, 5);   // pinned: the enemy at (2900, 2000), seed 5
+    expect(b.x).toBeCloseTo(3911.011907, 5); expect(b.y).toBeCloseTo(1897.211776, 5);   // pinned: the enemy at (3800, 2000), seed 5 (the doubled range, owner 2026-11-20: was 3011 with the enemy at 2900)
     const s = scene(1000);
     for (let epoch = 0; epoch < 5; epoch++) for (let index = 0; index < 40; index++) {
       s.t.tick = index * BLIP_PING_TICKS + 7;

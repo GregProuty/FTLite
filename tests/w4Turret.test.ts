@@ -148,8 +148,8 @@ describe('when a turret slews (W-4 spec §3.4)', () => {
   it('AUTO: no solution (unseen, out of range, behind a rock, outside the arc) and the turret goes back to the nose', () => {
     const st = scene([1, 1, 1], 0, 6), s = st.systems[0]!;
     for (let k = 0; k < 10; k++) tick(st, IDLE_INPUT);
-    s.bars[3] = 0;   // Sensors 0: sensor range 300 (Engineering spike §10.4); the Hunter at 300 is still seen
-    Object.assign(st.ships[1], { x: hx(6) * 400, y: 1500 + hy(6) * 400 });
+    s.bars[3] = 0;   // Sensors 0: sensor range 600 (doubled, owner 2026-11-20; was 300 with the Hunter at 400): unseen at 700, which is also beyond every weapon's range now
+    Object.assign(st.ships[1], { x: hx(6) * 700, y: 1500 + hy(6) * 700 });
     expect([autoSolution(st, 0, 'pew'), autoSolution(st, 0, 'gun')]).toEqual([null, null]);   // unseen
     s.bars[3] = 1;
     Object.assign(st.ships[1], { x: hx(6) * 700, y: 1500 + hy(6) * 700 });
