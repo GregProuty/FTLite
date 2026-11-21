@@ -7,7 +7,7 @@ import type { TacticalState } from '../src/renderer/src/sim/tactical/state';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { peekRockGrid } from '../src/renderer/src/sim/tactical/grid';
 import { breakRock } from '../src/renderer/src/sim/tactical/rockBreak';
-import { beginRockStep, beginRockTick, endRockStep, rockAlive, RockKind, regridRock, rocksNearGrid, rockSlots, ROCK_STRIDE, rockX, rockY } from '../src/renderer/src/sim/tactical/rocks';
+import { beginRockStep, beginRockTick, endRockStep, rockAlive, rockAt, RockKind, regridRock, rocksNearGrid, rockSlots, ROCK_STRIDE, rockX, rockY } from '../src/renderer/src/sim/tactical/rocks';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
 import { stressInput, switchOff } from './helpers/rockStress';
 import { mover, rockEvents } from './helpers/rockArena';
@@ -27,7 +27,7 @@ describe('the rock grid (spec §6.1)', () => {
       const st = createTacticalState(seed), wrong: string[] = [];
       switchOff(st, 1);
       let broken = 0;
-      for (let k = 0; k < st.map.asteroids.length && broken < 6; k++) if (st.map.asteroids[k]!.r >= 40) { breakRock(st, k, 1, 0, 'torpedo', 0, 'burst'); broken++; }
+      for (let k = 0; k < st.map.asteroids.length && broken < 6; k++) if (st.map.asteroids[k]!.r >= 40) { const a = rockAt(st, k); breakRock(st, k, a.x, a.y, 1, 0, 'torpedo', 0, 'shatter'); broken++; }
       beginRockTick(st);
       const splits0 = st.rockSplits;
       for (let t = 0; t < 200; t++) {
@@ -75,7 +75,7 @@ describe('the rock grid (spec §6.1)', () => {
     const st = createTacticalState(4);
     beginRockStep(st);
     const big = st.map.asteroids.findIndex((a) => a.r >= 40);
-    breakRock(st, big, 0, 1, 'torpedo', 0, 'burst');
+    { const a = rockAt(st, big); breakRock(st, big, a.x, a.y, 0, 1, 'torpedo', 0, 'shatter'); }
     for (const p of rockEvents(st, 'split')[0]!.pieces!) expect(nearList(st, rockX(st, p), rockY(st, p), 1)).toContain(p);
     endRockStep(st);
     const far = createTacticalState(4), slot = rockSlots(far) - 1;

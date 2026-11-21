@@ -2,7 +2,7 @@
 // the CRT map, staged through the solo hook globalThis.__spikeAsteroids (app/duel/duelMode.ts; set only behind the __FTLITE_STAGE__ flag, which this script sets). Usage: install
 // playwright-core@1.48.2 in a scratch folder, copy this file there, run `npm run build` in the worktree, then
 // `node spike-asteroids-iii-shots.cjs [out dir] [worktree]`. Shots: the belt at 0 and 120 s; a burst at 0, 2, 10 and 30 s;
-// cracks at wear 0.25, 0.5 and 1. The crew is pinned co-rotating with the main lane, 300 u outward of its target.
+// worn rocks at wear 0.25, 0.5 and 1 (seams since asteroids-iv); a laser cut at 0, 3 and 15 s (asteroids-iv). The crew is pinned co-rotating with the main lane, 300 u outward of its target.
 const { _electron } = require('playwright-core');
 const { mkdtempSync, mkdirSync } = require('node:fs'); const { join } = require('node:path'); const { tmpdir } = require('node:os');
 (async () => {
@@ -65,6 +65,10 @@ const { mkdtempSync, mkdirSync } = require('node:fs'); const { join } = require(
     globalThis.__triple.slice(0, 3).forEach((k, i) => { const r = t.rocks[k * 8 + 5], max = Math.ceil(r / 10), wear = [0.25, 0.5, 1][i]; t.rocks[k * 8 + 6] = Math.max(0.001, max * (1 - wear)); });
   });
   await zoom(6, 'Equal'); await page.waitForTimeout(600); await shot('cracks-025-050-100');
+  // asteroids-iv: a laser cut through the middle of the largest main-lane rock, then a torpedo's direct hit on another
+  const c = await stage({ gap: 200, triple: false });
+  await page.evaluate((k) => { const h = globalThis.__spikeAsteroids, t = h.duel().tactical, a = h.rockAt(t, k); h.beginRockTick(t); h.breakRock(t, k, a.x, a.y, 0, 1, 'laser', 0, 'cut'); h.beginRockTick(t); }, c.rock);
+  await page.waitForTimeout(150); await shot('cut-00s'); await page.waitForTimeout(3000); await shot('cut-03s'); await page.waitForTimeout(12000); await shot('cut-15s');
   await page.evaluate(() => clearInterval(globalThis.__pin));
   console.log('errors', JSON.stringify(errs.slice(0, 10)));
   await app.close();

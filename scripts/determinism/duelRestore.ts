@@ -26,7 +26,7 @@ function biggestBelt(d: DuelState): number {
 /** A torpedo-style burst of the biggest live belt rock, toward the planet (spike-asteroids-iii-idle's script-side burst). */
 export function burstRock(d: DuelState): void {
   const t = d.tactical, k = biggestBelt(d);
-  if (k >= 0) { const a = rockAt(t, k); breakRock(t, k, -a.x, -a.y, 'torpedo', 0, 'burst'); beginRockTick(t); }
+  if (k >= 0) { const a = rockAt(t, k); breakRock(t, k, a.x, a.y, -a.x, -a.y, 'torpedo', 0, 'shatter'); beginRockTick(t); }
 }
 /** A step function that, every `every` ticks (0: never), bursts the biggest belt rock first. A deterministic function
  *  of the state, so a straight run and a restored copy (or the predictor, through its `step` option) burst alike. */

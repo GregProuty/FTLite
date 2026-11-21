@@ -15,7 +15,7 @@ import { createScriptedPair, scriptedInput } from '../src/renderer/src/sim/duel/
 import { validateMap } from '../src/renderer/src/sim/tactical/map';
 import { createTacticalState } from '../src/renderer/src/sim/tactical/state';
 import { breakRock } from '../src/renderer/src/sim/tactical/rockBreak';
-import { beginRockTick, RockKind, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
+import { beginRockTick, rockAt, RockKind, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
 import { duelPublicationToImage, imageToDuelPublication, type DuelPublication } from '../src/network/modes/duelStream';
 import { decodeState, encodeDelta, encodeFull, type StateImage } from '../src/network/state/imageCodec';
 import { hashF64 } from '../src/shared/hash';
@@ -48,7 +48,7 @@ try {
   if (movers > 0) {
     beginRockTick(d.tactical);
     for (let k = 0; k < d.tactical.map.asteroids.length && moving() < movers; k++)
-      if (d.tactical.rocks[k * ROCK_STRIDE] === RockKind.Rail && d.tactical.rocks[k * ROCK_STRIDE + 5]! >= 25) breakRock(d.tactical, k, 1, 0, 'collision', -1, 'fan');
+      if (d.tactical.rocks[k * ROCK_STRIDE] === RockKind.Rail && d.tactical.rocks[k * ROCK_STRIDE + 5]! >= 25) { const a = rockAt(d.tactical, k); breakRock(d.tactical, k, a.x, a.y, 1, 0, 'collision', -1, 'cut'); }
   }
   const moversAtStart = moving();
   const host: number[] = [], client: number[] = [];

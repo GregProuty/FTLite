@@ -29,7 +29,7 @@
 5. **The shatter's point** is the centre of the cell nearest the torpedo, not the torpedo's own place, so the crater always takes at least one cell and the three lines pass through the rock. If the three lines still leave one group, that group is cut once through its centre of mass.
 6. **World cells are worked out on demand** into a scratch (at most 31 additions), with no per-slot memo. Task 7 measures the cost; a memo is added only if the budget fails.
 7. **Drawn corners are fixed per template.** The spec eased a rim corner by the cells a rock has now; the plan eases it by the template's own rim, so no corner moves when a rock is divided and two pieces fit exactly along their cut. A fresh cut face is therefore jagged, and the original rim smooth.
-8. **Circles kept:** the single-ship flight view's `hitStatics`, the Helm's predicted path, the Hunter's avoidance and `rockOnTarget` read the bounding circle, as the spec's §6 says for predictions.
+8. **Circles kept:** the single-ship flight view's `hitStatics`, the Helm's predicted path, the Hunter's avoidance and `rockOnTarget` read the bounding circle, as the spec's §6 says for predictions; `predictMissile`'s rock check (the Weapons torpedo-path preview) likewise stops at the bounding circle, which errs on the safe side.
 
 ## File Structure
 

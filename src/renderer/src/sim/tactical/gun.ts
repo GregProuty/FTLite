@@ -7,7 +7,7 @@ import type { GunDef, GunRockDef } from './defs';
 import { weaponBars, WeaponSlot } from './bars';
 import { dirBetween, hx, hy } from './direction';
 import { hitRock, pushRock } from './rockBreak';
-import { rockAt, rockMass, rocksNear } from './rocks';
+import { rockEntry, rockMassOf, rocksNear } from './rocks';
 import { classOf, CREW_SLOT, emptyRound, handControl, Room, roundRoom, type GunRound, type TacticalState } from './state';
 import { interceptTime, nearestHeading } from './lead';
 import { AIM_STEPS, DT, GUN_AUTO_HEAT_STOP, HEADING_COUNT } from './tuning';
@@ -160,13 +160,14 @@ function gunHit(state: TacticalState, owner: number, k: number, ox: number, oy: 
 }
 
 /** W-4 spec §5.1: owner's round on (ox, oy) -> (nx, ny) meets rock k first: push it pushPerRound / m along the round's
- *  segment (waking a static rock), then wear it 1 / roundsPerHp hp (a `hit` event by 'gun', rockHits + 1, a fan break
- *  along the round at 0 hp, the owner's rocksBroken), as the laser's laserStrikesRock does: push first, then damage. */
-function roundStrikesRock(state: TacticalState, owner: number, k: number, ox: number, oy: number, nx: number, ny: number, rd: GunRockDef): void {
+ *  segment (waking a static rock), then wear it 1 / roundsPerHp hp (a `hit` event by 'gun', rockHits + 1, a cut along
+ *  the round through the point it struck (the segment's entry parameter t) at 0 hp, the owner's rocksBroken), as the
+ *  laser's laserStrikesRock does: push first, then damage. */
+function roundStrikesRock(state: TacticalState, owner: number, k: number, ox: number, oy: number, nx: number, ny: number, t: number, rd: GunRockDef): void {
   const dx = nx - ox, dy = ny - oy, d = Math.sqrt(dx * dx + dy * dy), ux = d > 0 ? dx / d : 0, uy = d > 0 ? dy / d : -1;
-  const j = rd.pushPerRound / rockMass(rockAt(state, k).r);
+  const j = rd.pushPerRound / rockMassOf(state, k);
   pushRock(state, k, ux * j, uy * j);
-  hitRock(state, k, 1 / rd.roundsPerHp, ux, uy, 'gun', owner);
+  hitRock(state, k, 1 / rd.roundsPerHp, ox + dx * t, oy + dy * t, ux, uy, 'gun', owner);
 }
 
 const roundNear: number[] = [];   // stepRounds rocksNear scratch (the loop body never re-enters it)
@@ -200,13 +201,13 @@ export function stepRounds(state: TacticalState): void {
     for (let ii = 0; ii < nn; ii++) {
       const k = roundNear[ii]!;
       if (state.rockBorn[k] === 1) continue;   // as firstBlocker: a piece made earlier this tick is not in the way
-      const a = rockAt(state, k), t = segmentEntry(ox, oy, r.x, r.y, a.x, a.y, a.r);
+      const t = rockEntry(state, k, ox, oy, r.x, r.y, segmentEntry);
       if (t >= 0 && t < best) { best = t; ship = -1; rock = k; }
     }
     const p = state.map.planet, tp = segmentEntry(ox, oy, r.x, r.y, p.x, p.y, p.r);
     if (tp >= 0 && tp < best) { best = tp; ship = -1; rock = -1; }
     if (ship >= 0) gunHit(state, r.owner, ship, ox, oy, r.x, r.y, r.room);
-    else if (rock >= 0 && g !== null && g !== undefined && g.rock !== null) roundStrikesRock(state, r.owner, rock, ox, oy, r.x, r.y, g.rock);   // W-4 spec §5.1; GUN.rock is null: absorbed, as before
+    else if (rock >= 0 && g !== null && g !== undefined && g.rock !== null) roundStrikesRock(state, r.owner, rock, ox, oy, r.x, r.y, best, g.rock);   // W-4 spec §5.1; GUN.rock is null: absorbed, as before
     if (best <= 1 || r.age >= life) Object.assign(r, emptyRound());
   }
 }

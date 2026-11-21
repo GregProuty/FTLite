@@ -53,11 +53,13 @@ export function turnPowerOut(c: number, s: number, n: number, out: Pair): void {
 export function turnPower(c: number, s: number, n: number): [number, number] {
   const o = { c: 0, s: 0 }; turnPowerOut(c, s, n, o); return [o.c, o.s];
 }
-/** §13.2: the lane whose zone holds orbital radius ρ (0 inner, 1 main, 2 outer), or −1 outside [1092, 1308]. */
+/** §13.2: the lane whose zone holds orbital radius ρ (0 inner, 1 main, 2 outer, 3 big: asteroids-iv §10b), or −1 outside
+ *  [LANE_ZONE_EDGES first, last] (= [1092, 1450]). Zone i is [e[i], e[i + 1]), the last one closed. */
 export function laneZone(rho: number): number {
-  const e = LANE_ZONE_EDGES;
-  if (rho < e[0]! || rho > e[3]!) return -1;
-  return rho < e[1]! ? 0 : rho < e[2]! ? 1 : 2;
+  const e = LANE_ZONE_EDGES, last = e.length - 1;
+  if (rho < e[0]! || rho > e[last]!) return -1;
+  for (let i = 1; i < last; i++) if (rho < e[i]!) return i - 1;
+  return last - 1;
 }
 /** §13.2 (revised, spec 73497bc4): V* at (x, y), the drag and rejoin target: V_c(p) everywhere. */
 export function targetVelocity(x: number, y: number): [number, number] { return circularVelocity(x, y); }

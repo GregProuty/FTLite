@@ -13,13 +13,17 @@ import {
 import { Outcome, Room } from '../src/renderer/src/sim/tactical/state';
 import { hx, hy } from '../src/renderer/src/sim/tactical/direction';
 import type { DuelState } from '../src/renderer/src/sim/duel/state';
-import { BELT_OUTER, R_MAP } from '../src/renderer/src/sim/tactical/tuning';
+import { ASTEROID_GAP, BELT_OUTER, LANES, R_MAP } from '../src/renderer/src/sim/tactical/tuning';
 
 const layout = parseShip(cutter);
 
 describe('the scripted pair (H-0c-ii-a spec §3)', () => {
   it('draws its orbit radius once per seed from its own stream, inside the band outside the belt and inside the edge', () => {
-    expect(ORBIT_MIN).toBeGreaterThanOrEqual(BELT_OUTER + 200);
+    // Asteroids-iv §10b (owner 2026-11-20): BELT_OUTER moved 1300 -> 1450 to take the big outer lane (1390 ± 55). The scripted
+    // orbit band is unchanged (no tuning in that task): it stays 200 outside the three-lane belt's edge (1278 + 20 = 1298,
+    // spec's 1300) and clears the big lane's rock surfaces (1445) by more than ASTEROID_GAP. Was: ≥ BELT_OUTER + 200 (1500 ≥ 1500).
+    expect(ORBIT_MIN).toBeGreaterThanOrEqual(LANES[2]!.rho + LANES[2]!.rMax + 200);
+    expect(ORBIT_MIN).toBeGreaterThanOrEqual(BELT_OUTER + ASTEROID_GAP);
     expect(ORBIT_MAX).toBeLessThanOrEqual(R_MAP - 600);
     expect([AVOID_TICKS, AVOID_MARGIN, ORBIT_GAIN, SPEED_SLACK, MISSILE_GAP].every((v) => v > 0)).toBe(true);
     for (let seed = 1; seed <= 10; seed++) {
@@ -84,7 +88,7 @@ describe('the scripted pair (H-0c-ii-a spec §3)', () => {
     disposeDuel(d);
   });
   it('plays a whole duel with every command admitted: never a weapon command away from Weapons, never a refused sit', () => {
-    const d = createSeatedDuel(layout, 2), pair = createScriptedPair(2), kinds = new Set<string>();   // seed 2: the lowest whose duel uses every kind (the slingshot (SIM 66), kind b: seed 1 stopped sitting; the W-4 merge with asteroids-iii, SIM 62, kind b: seed 3 stopped sitting again; W-4b Task 7, kind b: seed 5 stopped sitting again once the AUTO guns replaced the stand-in pew; the merge with the Engineering spike and owner 2026-11-19 (playtest2feedback merge, SIM 59), kind b: seed 2 stopped sending laserLock and sit; merge with the Engineering spike, kind b: seed 1 stopped sending laserLock; seed 3 stopped sitting and standing with W-1's pew and duel hull ×1.75, SIM_VERSION 54; seed 1 stopped sending laserLock with Feel-i's SHIELDS opener, SIM_VERSION 50; seed 5 stopped sitting and standing with homing torpedoes, SIM_VERSION 46; seed 4 stopped locking after the Hunter's grace)
+    const d = createSeatedDuel(layout, 3), pair = createScriptedPair(3), kinds = new Set<string>();   // seed 3: the lowest whose duel uses every kind (the asteroids-iv merge with master (SIM 68), kind b: seeds 1 and 2 do not sit; the slingshot (SIM 66), kind b: seed 1 stopped sitting; the W-4 merge with asteroids-iii, SIM 62, kind b: seed 3 stopped sitting again; W-4b Task 7, kind b: seed 5 stopped sitting again once the AUTO guns replaced the stand-in pew; the merge with the Engineering spike and owner 2026-11-19 (playtest2feedback merge, SIM 59), kind b: seed 2 stopped sending laserLock and sit; merge with the Engineering spike, kind b: seed 1 stopped sending laserLock; seed 3 stopped sitting and standing with W-1's pew and duel hull ×1.75, SIM_VERSION 54; seed 1 stopped sending laserLock with Feel-i's SHIELDS opener, SIM_VERSION 50; seed 5 stopped sitting and standing with homing torpedoes, SIM_VERSION 46; seed 4 stopped locking after the Hunter's grace)
     while (d.tactical.outcome === Outcome.Running) {
       const input = scriptedInput(pair, d);
       for (const e of input.commands) { kinds.add(e.command.kind); expect(e.requestedTick).toBe(d.interior.tick); }

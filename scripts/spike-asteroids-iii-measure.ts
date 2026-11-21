@@ -1,15 +1,15 @@
 // Asteroids-iii measurements (docs/superpowers/specs/2026-11-19-asteroids-iii-design.md §8.2, §8.3, §13.7):
-//   npx tsx scripts/spike-asteroids-iii-measure.ts [--json <path>] [--only feel|stress|cost|idle|burst]
+//   npx tsx scripts/spike-asteroids-iii-measure.ts [--json <path>] [--no-shatter (cost: skip the six shatters)] [--only feel|stress|cost|idle|burst]
 // feel   §8.2: seed 2026, the Hunter off, the crew on a circular orbit 300 u outward of each of the 10 largest main-lane
-//        rocks, one rock-targeted torpedo each. A shot passes with (a) ≥ 6 real pieces, (b) ≥ 3 touch events within 20 s,
-//        (c) ≥ 50% of the burst's born piece mass (by the active mass law, rockMass) alive at 30 s (plan deviation 23), (d) ≥ 4 burst pieces whose velocity relative to V_c turned ≥ 25°
+//        rocks, one rock-targeted torpedo each. A shot passes with (a) ≥ 3 real pieces (asteroids-iv: a shatter gives real chunks of the rock, about four to six), (b) ≥ 3 touch events within 20 s,
+//        (c) ≥ 50% of the burst's born piece mass (by the active mass law, rockMassOf) alive at 30 s (plan deviation 23), (d) ≥ 4 burst pieces whose velocity relative to V_c turned ≥ 25°
 //        by 20 s. Gate: ≥ 7 of 10. §13.7: run with all four switches on (the gate) and all four off (reported).
 // stress §8.3: seeds 1-20 × 4,000 ticks, the Hunter off, the stress driver; twins hashed every 500 ticks; a save and
 //        restore at 4,000 then 1,000 more ticks; the safety counters (edge dust, rockSlotDust, rockCapHits: gates 0), tidal
 //        breaks and their pieces, rejoins by how, refused rejoins by reason every 60 ticks (plan deviation 3), the grid
 //        against a brute-force scan every 60 ticks (plan deviation 18), the free count every 10 s, stepDuel's p99.
 // cost   §8.3: seeds 1-3, every empty slot filled with a free rock (about 240 live), 2,000 ticks of the stress driver:
-//        stepDuel's p99 under 0.5 ms; once with the fill flying; once settled and over 60 s old (every rock a rejoin
+//        stepDuel's p99 under 0.6 ms (asteroids-iv spec §9); once with the fill flying; once settled and over 60 s old (every rock a rejoin
 //        candidate, so the refused-rejoin loops run, on the §14 staggered path: each re-checked every 30th tick); and
 //        (reported, not gated) settled with every fill rock kept 120-149 ticks old, so each is re-checked every tick.
 // idle   §8.3: seeds 1-20, 600 s with no player action (the quiet scene, crew at IDLE_ORBIT_R, Hunter off): 0 rocks ever
@@ -25,7 +25,7 @@ import { parkCoOrbit, stressInput, switchOff } from '../tests/helpers/rockStress
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { flattenTactical, hashTactical, unflattenTactical, validateTacticalValues } from '../src/renderer/src/sim/tactical/hash';
 import { circularVelocity } from '../src/renderer/src/sim/tactical/rails';
-import { beginRockTick, rockAlive, rockAt, rockHp, RockKind, rockMass, rocksNearGrid, rockSlots, ROCK_STRIDE, rockX, rockY, writeRock } from '../src/renderer/src/sim/tactical/rocks';
+import { beginRockTick, rockAlive, rockAt, rockHp, RockKind, rockMassOf, rocksNearGrid, rockSlots, ROCK_STRIDE, rockX, rockY, writeRock } from '../src/renderer/src/sim/tactical/rocks';
 import { breakRock } from '../src/renderer/src/sim/tactical/rockBreak';
 import { rejoinChoice, type RejoinRefusal } from '../src/renderer/src/sim/tactical/rockSettle';
 import { ROCK_SWITCHES } from '../src/renderer/src/sim/tactical/rockTuning';
@@ -57,7 +57,7 @@ function feelShot(rock: number) {
     const now = st.tick - 1;
     for (const e of st.events) {
       if (e.kind !== 'rock') continue;
-      if (e.what === 'split' && e.burst && blastAt < 0) { blastAt = now; pieces = e.pieces!.length; for (const p of e.pieces!) { family.add(p); bornMass += rockMass(rockAt(st, p).r); } continue; }
+      if (e.what === 'split' && e.burst && blastAt < 0) { blastAt = now; pieces = e.pieces!.length; for (const p of e.pieces!) { family.add(p); bornMass += rockMassOf(st, p); } continue; }
       if (blastAt < 0) continue;
       if (e.what === 'touch' && now <= blastAt + 1200) touches++;
       if (e.what === 'split' && family.has(e.rock)) { u0.delete(e.rock); for (const p of e.pieces ?? []) family.add(p); }
@@ -74,11 +74,11 @@ function feelShot(rock: number) {
     }
     if (blastAt >= 0 && now === blastAt + 1800) {
       let m = 0;
-      for (const p of family) if (rockAlive(st, p)) m += rockMass(rockAt(st, p).r);
+      for (const p of family) if (rockAlive(st, p)) m += rockMassOf(st, p);
       massShare = bornMass > 0 ? m / bornMass : 0;   // plan deviation 23: of the born pieces' mass, by the active mass law
     }
   }
-  const crit = { a: pieces >= 6, b: touches >= 3, c: massShare >= 0.5, d: turned >= 4 }, pass = crit.a && crit.b && crit.c && crit.d;
+  const crit = { a: pieces >= 3, b: touches >= 3, c: massShare >= 0.5, d: turned >= 4 }, pass = crit.a && crit.b && crit.c && crit.d;
   return { rock, r: round(parent.r, 1), blasted: blastAt >= 0, pieces, touches, massShare: round(massShare, 3), turned, crit, pass };
 }
 function feelRun() {
@@ -170,6 +170,7 @@ function costRun(variant: 'flying' | 'settled' | 'young') {
     switchOff(st, 1);
     if (settled) st.tick = 3700;   // the fill's clocks (t = 0) are then over 60 s old: full drag, rejoin candidates (staggered)
     fillFree(st, settled);
+    if (!process.argv.includes('--no-shatter')) { let done = 0; for (let k = 0; k < st.map.asteroids.length && done < 6; k++) if (st.map.asteroids[k]!.r >= 40 && rockAlive(st, k)) { const a = rockAt(st, k); breakRock(st, k, a.x, a.y, 1, 0, 'torpedo', 0, 'shatter'); beginRockTick(st); done++; } }   // six shattered rocks, so the run exercises cells (--no-shatter isolates their cost)
     for (let k = 0; k < 2000; k++) {
       if (variant === 'young') for (let j = 0; j < rockSlots(st); j++) if (st.rocks[j * ROCK_STRIDE] === RockKind.Free) st.rocks[j * ROCK_STRIDE + 7] = st.tick + 1 - 120 - (j % 30);
       const input = stressInput(st), t0 = performance.now();
@@ -178,7 +179,7 @@ function costRun(variant: 'flying' | 'settled' | 'young') {
     }
   }
   const p99 = quantile(times, 0.99);
-  return { seeds: [1, 2, 3], ticks: 2000, liveMedian: median(live), liveMin: Math.min(...live), stepDuelMs: { median: round(median(times)), p99: round(p99) }, p99GateMs: 0.5, p99Pass: p99 < 0.5 };
+  return { seeds: [1, 2, 3], ticks: 2000, liveMedian: median(live), liveMin: Math.min(...live), stepDuelMs: { median: round(median(times)), p99: round(p99) }, p99GateMs: 0.6, p99Pass: p99 < 0.6 };
 }
 const cost = want('cost') ? (() => { const flying = costRun('flying'), settled = costRun('settled'), young = costRun('young'); return { flying, settled, young, p99Pass: flying.p99Pass && settled.p99Pass }; })() : null;
 
@@ -225,7 +226,7 @@ const burstWhy = want('burst') ? IDLE_SEEDS.map((seed) => {
     if (BURST_TIMES.some((t) => t * 60 === k)) {
       let big = -1;
       for (let j = 0; j < st.map.beltCount; j++) if (st.rocks[j * ROCK_STRIDE] === RockKind.Rail && (big < 0 || st.rocks[j * ROCK_STRIDE + 5]! > st.rocks[big * ROCK_STRIDE + 5]!)) big = j;
-      if (big >= 0) { const a = rockAt(st, big); breakRock(st, big, -a.x, -a.y, 'torpedo', 0, 'burst'); beginRockTick(st); }
+      if (big >= 0) { const a = rockAt(st, big); breakRock(st, big, a.x, a.y, -a.x, -a.y, 'torpedo', 0, 'shatter'); beginRockTick(st); }
     }
     if (k >= 30 * 60 && k % 60 === 0) tallyRefusals(st, refusedBy);
   }

@@ -10,7 +10,8 @@ import { flag, flattenModule, moduleLength, scalar, unflattenModule, vector, typ
 import { DUEL_SYSTEM_COUNT, SYSTEM_SLOTS, WEAPON_BAR_MAX, WEAPON_SLOTS } from './bars';
 import { pewFullCharge, SHIP_CLASSES, type ShipClassDef } from './defs';
 import { AIM_STEPS, DERELICT_FAR_MAX, DERELICT_FAR_MIN, DERELICT_NEAR_MAX, DERELICT_NEAR_MIN, GUN_POOL, HEADING_COUNT, HUNTER_PEW_GAP, HUNTER_TRAIL_TICKS, PEW_POOL, SCAN_RATE_OTHER, SCAN_RATE_SCIENCE } from './tuning';
-import { RockKind, rockCapacity, ROCK_RESERVE, ROCK_STRIDE } from './rocks';
+import { templateFor } from './rockCells';
+import { CELL_STRIDE, RockKind, rockCapacity, ROCK_RESERVE, ROCK_STRIDE } from './rocks';
 import { RAIL_OFFSET_MAX, ROCK_MIN_R, ROCK_R_MAX, ROCK_RAIL_MIN } from './rockTuning';
 import { CREW_SLOT, emptyMissile, emptyRound, HunterMode, Outcome, type GunRound, type Missile, type MissileFlight, type Ship, type ShipSystems, type TacticalState } from './state';
 
@@ -115,9 +116,10 @@ function spaceFields(asteroids: number, slots: number): ModuleField<TacticalStat
     ? flag('hunter.working', (s) => s.hunter.working, (s, v) => { s.hunter.working = v; })
     : scalar(`hunter.${key}`, (s) => s.hunter[key] as number, (s, v) => { (s.hunter as unknown as Record<string, number>)[key] = v; }));
   fields.push(vector('hunter.trail', 2 * HUNTER_TRAIL_TICKS, (s) => s.hunter.trail));
-  // Spike ii (§8), asteroids-iii §3.1: the rock pool (8 values a slot) and its nine counters, last in the space module.
+  // Spike ii (§8), asteroids-iii §3.1: the rock pool (8 values a slot) and its nine counters; the cells (rockCells, asteroids-iv §3.3) close the space module.
   fields.push(vector('rocks', (asteroids + ROCK_RESERVE) * ROCK_STRIDE, (s) => s.rocks),
-    ...(['rockHits', 'rockSplits', 'rockDust', 'rockBlasts', 'rockCollisions', 'rockEvictions', 'rockTouches', 'rockSlotDust', 'rockCapHits'] as const).map((k) => scalar<TacticalState>(k, (s) => s[k], (s, v) => { s[k] = v; })));
+    ...(['rockHits', 'rockSplits', 'rockDust', 'rockBlasts', 'rockCollisions', 'rockEvictions', 'rockTouches', 'rockSlotDust', 'rockCapHits'] as const).map((k) => scalar<TacticalState>(k, (s) => s[k], (s, v) => { s[k] = v; })),
+    vector('rockCells', (asteroids + ROCK_RESERVE) * CELL_STRIDE, (s) => s.rockCells));   // asteroids-iv spec §3.3: last in the space module
   spaceCache.set(key, fields);
   return fields;
 }
@@ -207,7 +209,7 @@ export function hashTactical(s: TacticalState): string { return hashF64(flattenT
  *  modules' fields): the copy gets fresh containers of the state's shape, then every field's values are written into it.
  *  The map is immutable after creation and is shared; the per-tick events are copied. −0 is kept. */
 export function cloneTacticalFromModule(s: TacticalState): TacticalState {
-  const copy: TacticalState = { ...s, rng: { s: 0 }, rocks: new Float64Array(s.rocks.length),
+  const copy: TacticalState = { ...s, rng: { s: 0 }, rocks: new Float64Array(s.rocks.length), rockCells: new Float64Array(s.rockCells.length),
     rockBorn: new Uint8Array(s.rockBorn.length), rockDone: new Uint8Array(s.rockDone.length), rockTouched: new Uint8Array(s.rockTouched.length),
     ships: s.ships.map((b) => ({ ...b, graceUntil: new Int32Array(b.graceUntil.length) })) as TacticalState['ships'],
     systems: s.systems.map((y) => ({ ...y, rooms: [0, 0, 0], gunRoomWear: [0, 0, 0], bars: [0, 0, 0, 0, 0], weaponPower: [0, 0, 0] })) as TacticalState['systems'],
@@ -304,6 +306,17 @@ function rockSlotProblem(v: readonly number[], b: number, tick: number): string 
   }
   return null;
 }
+/** Asteroids-iv spec §8, §10a 2: what is wrong with slot k's cells (template + 1, mask) given its pool kind, or null: a
+ *  gone slot holds zeros; template + 1 is a whole number 0..asteroids; a plain rock (0) has mask 0; a cell rock's mask is
+ *  a whole, non-empty subset of its template. */
+function rockCellsProblem(shape: TacticalState, kind: number, tmpl1: number, mask: number): string | null {
+  if (kind === RockKind.Gone) return tmpl1 !== 0 || mask !== 0 ? 'a gone slot holds cells' : null;
+  if (!Number.isInteger(tmpl1) || tmpl1 < 0 || tmpl1 > shape.map.asteroids.length) return 'the template is not a seeded asteroid';
+  if (tmpl1 === 0) return mask !== 0 ? 'a plain rock holds a mask' : null;
+  const full = templateFor(shape.map, tmpl1 - 1).full;
+  if (!Number.isInteger(mask) || mask <= 0 || mask > full || (mask & ~full) !== 0) return 'the mask is not a non-empty subset of its template';
+  return null;
+}
 
 /** A field name's slot parts, parsed once per name (Perf-i spec §2.4): validateTacticalValues reads them for every field
  *  of every publication, on the host and on each client. The names are a fixed set per map and slot count. */
@@ -318,6 +331,8 @@ function fieldNameParts(name: string): FieldNameParts {
   return parts;
 }
 
+/** validateTacticalValues' rock kinds by slot, reused across calls. */
+const rockKindsScratch: number[] = [];
 /** Check tactical values (the space then the ship module's) against their field bounds and slot invariants without
  *  writing them anywhere: heading indices, integer counters, room levels 0..2, shields, the laser and the magazine
  *  against the largest class, the hunter's and the outcome's enums, the map's asteroid count and the slot count; an
@@ -326,14 +341,15 @@ function fieldNameParts(name: string): FieldNameParts {
  *  from the same seed and slot count (only its map and slot count are read). Throws naming the first bad field; returns
  *  the offset after the values. Asteroids-iii §3.1: every rock slot by rockSlotProblem against the tick. */
 export function validateTacticalValues(shape: TacticalState, values: ArrayLike<number>, offset = 0): number {
-  let at = offset, tickSeen = 0;
+  let at = offset, tickSeen = 0; const rockKinds = rockKindsScratch; rockKinds.length = 0;
   const top = topRules(), slots = shape.ships.length, sys = systemsRules(slots, rockCapacity(shape.map)), inactive = new Set<number>(), owners = new Set<number>(), clsOf = new Map<number, number>(), burstOf = new Map<number, number>();
   for (const m of TACTICAL_MODULES) for (const f of m.fields(shape)) {
     const slice = Array.from({ length: f.count }, (_, k) => values[at + k]!);
     const bad = (why: string): never => { throw new Error(`duel snapshot tactical ${f.name}: ${why} (${slice.slice(0, 8).join(', ')})`); };
     if (slice.some((v) => typeof v !== 'number' || !Number.isFinite(v))) bad('not finite');
     if (f.name === 'tick') tickSeen = slice[0]!;
-    if (f.name === 'rocks') for (let k = 0; k * ROCK_STRIDE < slice.length; k++) { const why = rockSlotProblem(slice, k * ROCK_STRIDE, tickSeen); if (why) bad(`slot ${k}: ${why}`); }
+    if (f.name === 'rocks') { rockKinds.length = 0; for (let k = 0; k * ROCK_STRIDE < slice.length; k++) { rockKinds.push(slice[k * ROCK_STRIDE]!); const why = rockSlotProblem(slice, k * ROCK_STRIDE, tickSeen); if (why) bad(`slot ${k}: ${why}`); } }
+    if (f.name === 'rockCells') for (let k = 0; k * CELL_STRIDE < slice.length; k++) { const why = rockCellsProblem(shape, rockKinds[k] ?? 0, slice[k * CELL_STRIDE]!, slice[k * CELL_STRIDE + 1]!); if (why) bad(`slot ${k}: ${why}`); }
     const { ship, missile, round } = fieldNameParts(f.name);
     if (f.name === 'map.asteroids.length') { if (slice[0] !== shape.map.asteroids.length) bad('does not match the map'); }
     else if (f.name === 'ships.length') { if (slice[0] !== slots) bad('does not match the slot count'); }

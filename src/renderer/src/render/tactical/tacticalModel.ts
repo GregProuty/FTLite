@@ -5,11 +5,13 @@ import { shipGravityAccel } from '../../sim/tactical/physics';
 import { predictFlight, predictRock } from '../../sim/tactical/predict';
 import { derelictPos } from '../../sim/tactical/science';
 import { classOf, Contact, CREW_SLOT, missileOf, targetOf, type Axes, type TacticalState } from '../../sim/tactical/state';
-import { rockAlive, rockAt, rockHpMax, rockSlots } from '../../sim/tactical/rocks';
+import { rockAlive, rockAt, rockHpMax, rockMaskOf, rockSlots, rockTmpl } from '../../sim/tactical/rocks';
+import { templateFor } from '../../sim/tactical/rockCells';
+import { rockOutline, type RockOutline } from './rockOutline';
 import { AIM_STEPS, HEADING_COUNT, R_MAP, SALVAGE_TICKS, SCAN_UNITS, SHIP_RADIUS, SLING_MIN_SPEED } from '../../sim/tactical/tuning';
 import { TICK_HZ } from '../../sim/tuning';
 import { visibleWorld, worldToScreen, type Camera, type Follow, type Point, type Viewport } from './camera';
-import { rockDrawPos, rockDrawTick, type RockTrack } from './rockTrack';
+import { rockDrawPos, type RockTrack } from './rockTrack';
 import { hullFor, type HullId } from './hullModel';
 import type { HelmVent } from '../../sim/duel/helmFlight';
 import type { FogView, GhostKind } from './fogModel';
@@ -64,9 +66,9 @@ export const DENT_MIN_PX = 0.75;
  *  whatever is on the map, so the lines' points do not jump as bodies come and go). */
 export const WELL_PAD = WELL_MAX_SHIFT + dentOf(0, 0, 2 * DENT_FULL_R).shift;
 export interface CircleDraw { x: number; y: number; r: number }
-/** Spike ii: `wear` 0 (whole) .. 1 from hp / hpMax, drawn as cracks only (look pass spec §2: no streak, no trail, the
- *  same fill and outline at any wear); `spin` the outline's turn. */
-export interface AsteroidDraw extends CircleDraw { index: number; dot: boolean; wear?: number; spin?: number }
+/** `wear` 0 (whole) .. 1 from hp / hpMax, drawn as the seams' strength; asteroids-iv spec §7: `outline` a cell rock's
+ *  outline and seams in world units about its centre, drawn at `scale` (the zoom). A rock with no outline is plain. */
+export interface AsteroidDraw extends CircleDraw { index: number; dot: boolean; wear?: number; outline?: RockOutline; scale?: number }
 /** §7.2: the predicted path of the Weapons map's rock target: ticks and the dot spacing (20 s, a dot every 0.5 s). */
 export const ROCK_PATH_TICKS = 1200, ROCK_PATH_EVERY = 30;
 export interface ShipDraw {
@@ -504,7 +506,9 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     const a = rockAt(state, index), r = a.r * z, w = rockDrawPos(input.rockTrack ?? null, state, index, alpha);
     if (r < DOT_MIN_PX || !onScreen(w.x, w.y, a.r)) continue;
     const p = toS(w.x, w.y);
-    asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX, wear: Math.max(0, Math.min(1, 1 - a.hp / rockHpMax(a.r))), spin: (asteroidSpin(index) * rockDrawTick(input.rockTrack ?? null, state, alpha)) / TICK_HZ });
+    const tm = rockTmpl(state, index);
+    asteroids.push({ index, x: p.x, y: p.y, r, dot: r < ASTEROID_DOT_PX, wear: Math.max(0, Math.min(1, 1 - a.hp / rockHpMax(a.r))),
+      ...(tm >= 0 ? { outline: rockOutline(templateFor(map, tm), rockMaskOf(state, index)), scale: z } : {}) });
   }
 
   const ships: ShipDraw[] = [];
@@ -754,11 +758,6 @@ export function cachedRockPath(state: TacticalState, k: number): Point[] {
   return pathCache.pts;
 }
 const shapeCache = new Map<number, number[]>();
-/** Asteroids-iii §13.5: rock `index`'s outline spin, a hashed ±0.1 to 0.5 rad/s (drawing only; the cracks turn with it). */
-export function asteroidSpin(index: number): number {
-  const h = Math.imul((((index + 1) * 2654435761) >>> 0) ^ 0x9e3779b9, 2246822519) >>> 0, f = (h % 10000) / 10000;
-  return (h & 1 ? 1 : -1) * (0.1 + 0.4 * f);
-}
 /** A rough asteroid outline as radius multipliers (9 vertices, 0.72..1.08), seeded by the asteroid's index. Render-only randomness. */
 export function asteroidShape(index: number): number[] {
   let out = shapeCache.get(index);
@@ -769,111 +768,5 @@ export function asteroidShape(index: number): number[] {
   shapeCache.set(index, out);
   return out;
 }
-/** Asteroids-iii §7.3 (D10): four fixed cracks per rock, revealed by wear and drawn inside the outline. Look pass spec
- *  §2: each is one CRT.faint stroke at CRACK_ALPHA. */
-export const CRACK_COUNT = 4, CRACK_INSET = 0.88, CRACK_MIN_PX = 6, CRACK_ALPHA = 0.6;
-/** A crack polyline in rock-local units (unit radius; multiply by r and add the centre to draw). */
-export type CrackLine = Point[];
-const CRACK_TAU = Math.PI * 2, CRACK_DEG = Math.PI / 180;
-/** §7.3 step 2: the outline's radius along the ray at `angle`: where the ray meets the polygon edge between the two
- *  neighbouring vertices (never one vertex's multiplier). */
-export function outlineRadius(shape: readonly number[], angle: number): number {
-  const n = shape.length, a = ((angle % CRACK_TAU) + CRACK_TAU) % CRACK_TAU, k = Math.min(n - 1, Math.floor(a / (CRACK_TAU / n))), k1 = (k + 1) % n;
-  const a0 = (k * CRACK_TAU) / n, a1 = ((k + 1) * CRACK_TAU) / n;
-  const px = shape[k]! * Math.cos(a0), py = shape[k]! * Math.sin(a0), qx = shape[k1]! * Math.cos(a1), qy = shape[k1]! * Math.sin(a1);
-  const ex = qx - px, ey = qy - py, dx = Math.cos(a), dy = Math.sin(a);
-  return (px * ey - py * ex) / (dx * ey - dy * ex);
-}
-/** The crack set's own generator (§7.3 step 1: the asteroidShape hash, salt 17), fresh per rock. */
-function crackRandom(index: number): () => number {
-  let h = ((((index + 1) * 2654435761) >>> 0) ^ 17) >>> 0;
-  return () => { h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0; return (h % 100000) / 100000; };
-}
-/** §7.3 step 3: a point pulled back inside CRACK_INSET of the outline along its own ray. */
-function clampInside(shape: readonly number[], x: number, y: number): Point {
-  const d = Math.hypot(x, y);
-  if (d === 0) return { x, y };
-  const lim = CRACK_INSET * outlineRadius(shape, Math.atan2(y, x));
-  return d > lim ? { x: (x * lim) / d, y: (y * lim) / d } : { x, y };
-}
-function lineLength(line: CrackLine): number {
-  let t = 0;
-  for (let i = 1; i < line.length; i++) t += Math.hypot(line[i]!.x - line[i - 1]!.x, line[i]!.y - line[i - 1]!.y);
-  return t;
-}
-interface FullCrack { main: CrackLine; branch: CrackLine | null; forkAt: number }
-const crackCache = new Map<number, FullCrack[]>();
-/** §7.3 steps 1–4: crack i starts at a_i = (i + h)·2π/4 at CRACK_INSET of the outline and runs inward as 4 segments of
- *  0.16–0.22, each aimed at the centre ± 35° and clamped inside after the step; cracks 1 and 3 fork once at the end of
- *  segment 2 into a 2-segment branch of 0.12 per segment at ±40° (the second segment turns a further ±15°). */
-function fullCracks(index: number): FullCrack[] {
-  const cached = crackCache.get(index);
-  if (cached) return cached;
-  const shape = asteroidShape(index), rnd = crackRandom(index), h = rnd(), out: FullCrack[] = [];
-  for (let i = 0; i < CRACK_COUNT; i++) {
-    const a = ((i + h) * CRACK_TAU) / CRACK_COUNT, r0 = CRACK_INSET * outlineRadius(shape, a);
-    let p: Point = { x: Math.cos(a) * r0, y: Math.sin(a) * r0 }, dir = a + Math.PI, branch: CrackLine | null = null, forkAt = 0;
-    const main: CrackLine = [p];
-    for (let s = 0; s < 4; s++) {
-      const toCentre = Math.hypot(p.x, p.y) > 1e-9 ? Math.atan2(-p.y, -p.x) : dir;
-      dir = toCentre + (rnd() * 2 - 1) * 35 * CRACK_DEG;
-      const len = 0.16 + 0.06 * rnd();
-      p = clampInside(shape, p.x + Math.cos(dir) * len, p.y + Math.sin(dir) * len);
-      main.push(p);
-      if (s === 1 && (i === 1 || i === 3)) {
-        let q = p, bd = dir + (i === 1 ? 40 : -40) * CRACK_DEG;
-        forkAt = lineLength(main);
-        branch = [q];
-        for (let b = 0; b < 2; b++) {
-          if (b === 1) bd += (rnd() * 2 - 1) * 15 * CRACK_DEG;
-          q = clampInside(shape, q.x + Math.cos(bd) * 0.12, q.y + Math.sin(bd) * 0.12);
-          branch.push(q);
-        }
-      }
-    }
-    out.push({ main, branch, forkAt });
-  }
-  crackCache.set(index, out);
-  return out;
-}
-/** The prefix of `line` of arc length `len`. */
-function cutLine(line: CrackLine, len: number): CrackLine {
-  const out: CrackLine = [line[0]!];
-  let left = len;
-  for (let i = 1; i < line.length && left > 0; i++) {
-    const a = line[i - 1]!, b = line[i]!, seg = Math.hypot(b.x - a.x, b.y - a.y);
-    if (seg <= left) { out.push(b); left -= seg; continue; }
-    const t = left / seg;
-    out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-    left = 0;
-  }
-  return out;
-}
-/** §7.3 step 5: wear (0 whole .. 1) shows ceil(wear · 4) of the fixed cracks, each cut to (0.35 + 0.45 · wear) of its
- *  length; a fork's branch shows once the main cut passes the fork, cut to the same share of its own length. Higher wear
- *  always holds lower wear as a prefix. Rock-local units. */
-export function crackPaths(index: number, wear: number): CrackLine[] {
-  if (!(wear > 0)) return [];
-  const w = Math.min(1, wear), n = Math.ceil(w * CRACK_COUNT), share = 0.35 + 0.45 * w, out: CrackLine[] = [], full = fullCracks(index);
-  for (let i = 0; i < n; i++) {
-    const c = full[i]!, main = share * lineLength(c.main);
-    out.push(cutLine(c.main, main));
-    if (c.branch && main > c.forkAt) out.push(cutLine(c.branch, share * lineLength(c.branch)));
-  }
-  return out;
-}
-/** One crack stroke in screen px. */
-export interface CrackSegDraw { x1: number; y1: number; x2: number; y2: number }
-/** §7.3 steps 6–7 with the look pass (spec §2): the screen strokes of a rock's cracks at centre (cx, cy) and screen
- *  radius r, one per cut segment and no highlight; none when r < CRACK_MIN_PX. `spin`: the outline's turn (§13.5). */
-export function crackDraw(index: number, wear: number, cx: number, cy: number, r: number, spin = 0): CrackSegDraw[] {
-  if (r < CRACK_MIN_PX) return [];
-  const cuts: CrackSegDraw[] = [], c = Math.cos(spin), sn = Math.sin(spin);
-  for (const line of crackPaths(index, wear)) for (let i = 1; i < line.length; i++) {
-    const lx0 = line[i - 1]!.x * c - line[i - 1]!.y * sn, ly0 = line[i - 1]!.x * sn + line[i - 1]!.y * c, lx1 = line[i]!.x * c - line[i]!.y * sn, ly1 = line[i]!.x * sn + line[i]!.y * c;
-    const x1 = cx + lx0 * r, y1 = cy + ly0 * r, x2 = cx + lx1 * r, y2 = cy + ly1 * r;
-    if (x1 === x2 && y1 === y2) continue;
-    cuts.push({ x1, y1, x2, y2 });
-  }
-  return cuts;
-}
+/** Asteroids-iv spec §7: a rock's seams show at CRACK_ALPHA · wear, once the rock is at least SEAM_MIN_PX across on screen. */
+export const CRACK_ALPHA = 0.6, SEAM_MIN_PX = 6;

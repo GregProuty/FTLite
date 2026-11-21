@@ -67,19 +67,28 @@ describe('the duel mode over Net-3 (hostRuntime level)', () => {
     const h = harness(duelMode);
     h.command({ kind: 'start', initBytes: encode(duelInit(4, 'mode-duel')) });
     expect(() => h.runtime.attachPeer('third', [2], portEndpoint().port)).toThrow();
-    const p = portEndpoint(), off = h.runtime.attachPeer('crew', [0, 1], p.port);
+    // Asteroids-iv merge with master (2026-11-20): the streamed attachment, as production online play uses (onlineSession
+    // passes streamed: true). The non-streamed JSON duel state no longer fits one 16 KiB unreliable-latest frame
+    // (MAX_LATEST_BYTES) once the hashed rockCells and net-4a's held inputs are both in it; that path is test-only.
+    const p = portEndpoint(), off = h.runtime.attachPeer('crew', [0, 1], p.port, { streamed: true, latestPayloadLimit: 16088 });
     ticks(h, 0, 5);
-    p.receive({ version: 1, type: 'data', id: 1, kind: 'reliable-ordered', bytes: codec.encodeMessage({ kind: 'command', envelope: {
-      runId: 'mode-duel', id: { player: 1, sequence: 1 }, requestedTick: 5, command: { kind: 'presence', present: false } } }) });
+    const data = () => p.sent.filter((x: any) => x.type === 'data').map((x: any) => x.bytes as Uint8Array);
+    const full = data().find((b) => classifyStreamPacket(b).stream === 'state');
+    expect(full).toBeDefined();
+    let id = 0;
+    const send = (bytes: Uint8Array) => p.receive({ version: 1, type: 'data', id: ++id, kind: 'reliable-ordered', bytes });
+    const results = () => data().filter((b) => classifyStreamPacket(b).stream === 'duel-notification')
+      .map((b) => codec.decodeMessage(decodeOpaquePacket(b).bytes.subarray(9)));   // after the envelope's version byte and publication floor
+    send(encodeControl({ kind: 'ack', sequence: inspectState(decodeStatePacket(full!)).sequence }, 1));
+    send(encodeOpaquePacket('input', 'command', 2, codec.encodeMessage({ kind: 'command', envelope: {
+      runId: 'mode-duel', id: { player: 1, sequence: 1 }, requestedTick: 5, command: { kind: 'presence', present: false } } })));
     ticks(h, 5, 2);
-    const messages = p.sent.filter((x: any) => x.type === 'data').map((x: any) => codec.decodeMessage(x.bytes));
-    expect(messages.find((m) => m.kind === 'state')).toBeDefined();
-    expect(messages).toContainEqual(expect.objectContaining({ kind: 'result', result: expect.objectContaining({ id: { player: 1, sequence: 1 }, status: 'applied' }) }));
-    p.receive({ version: 1, type: 'data', id: 2, kind: 'reliable-ordered', bytes: codec.encodeMessage({ kind: 'command', envelope: {
-      runId: 'mode-duel', id: { player: 0, sequence: 1 }, requestedTick: 7, command: { kind: 'laserCharge', held: true } } }) });
+    expect(p.closed).toBe(false);
+    expect(results()).toContainEqual(expect.objectContaining({ kind: 'result', result: expect.objectContaining({ id: { player: 1, sequence: 1 }, status: 'applied' }) }));
+    send(encodeOpaquePacket('input', 'command', 3, codec.encodeMessage({ kind: 'command', envelope: {
+      runId: 'mode-duel', id: { player: 0, sequence: 1 }, requestedTick: 7, command: { kind: 'laserCharge', held: true } } })));
     ticks(h, 7, 2);
-    const later = p.sent.filter((x: any) => x.type === 'data').map((x: any) => codec.decodeMessage(x.bytes));
-    expect(later).toContainEqual(expect.objectContaining({ kind: 'result', result: expect.objectContaining({ id: { player: 0, sequence: 1 }, status: 'rejected', reason: 'not-at-weapons' }) }));
+    expect(results()).toContainEqual(expect.objectContaining({ kind: 'result', result: expect.objectContaining({ id: { player: 0, sequence: 1 }, status: 'rejected', reason: 'not-at-weapons' }) }));
     off(); expect(p.closed).toBe(true); expect(p.listeners).toBe(0);
     const q = portEndpoint(); h.runtime.attachPeer('crew', [0], q.port); expect(q.closed).toBe(false);
   });

@@ -29,8 +29,29 @@ describe('duel map (spec §3)', () => {
 });
 
 
+describe('the big outer lane (asteroids-iv §10b, owner 2026-11-20)', () => {
+  it('over seeds 1-50: valid, lanes 17/36/17/5, five big rocks at ρ 1390 radius 40-55, the old lanes unchanged, cluster surfaces ≥ 1455 out', () => {
+    for (let seed = 1; seed <= 50; seed++) {
+      const m = generateMap(createRng(seed));
+      expect(validateMap(m), `seed ${seed}`).toEqual([]);
+      expect(m.laneSizes, `seed ${seed}`).toEqual([17, 36, 17, 5]);
+      expect(m.beltCount).toBe(75);
+      const bands: [number, number, number][] = [[1122, 15, 20], [1200, 25, 45], [1278, 15, 20], [1390, 40, 55]];
+      for (let k = 0; k < m.beltCount; k++) {
+        const a = m.asteroids[k]!, [rho, lo, hi] = bands[laneOf(m, k)]!;
+        expect(Math.abs(Math.sqrt(a.x * a.x + a.y * a.y) - rho), `seed ${seed} rock ${k}`).toBeLessThan(1e-9);
+        expect(a.r).toBeGreaterThanOrEqual(lo); expect(a.r).toBeLessThanOrEqual(hi);
+      }
+      for (let k = m.beltCount; k < m.asteroids.length; k++) {
+        const a = m.asteroids[k]!;
+        expect(Math.sqrt(a.x * a.x + a.y * a.y) - a.r, `seed ${seed} cluster rock ${k}`).toBeGreaterThanOrEqual(1455);
+      }
+    }
+  });
+});
+
 describe('lanes and rigid clusters (asteroids-iii §3.5)', () => {
-  it('over 200 seeds: 17, 36 and 17 rocks on their lane radii in their size bands, clusters at least 420 apart in ρ', () => {
+  it('over 200 seeds: 17, 36, 17 (and, §10b, 5 big) rocks on their lane radii in their size bands, clusters at least 420 apart in ρ', () => {
     for (let seed = 1; seed <= 200; seed++) {
       const m = generateMap(createRng(seed));
       expect(m.laneSizes, `seed ${seed}`).toEqual(LANES.map((l) => l.count));

@@ -5,13 +5,8 @@ import { DT } from './tuning';
 /** §3.1: hp at birth (and hpMax for the cracks) is ceil(r / ROCK_HP_PER): 2 to 6 for the seeded rocks. */
 export const ROCK_HP_PER = 10;
 
-/** §3.4: a piece under this radius is dust instead. */
+/** §3.4, asteroids-iv §5.2: a group of cells whose bounding radius is under this is dust instead of a piece. */
 export const ROCK_MIN_R = 8;
-/** §3.4: the fan pattern's piece counts: 3 pieces at r ≥ FAN_TRIPLE_MIN_R, 2 at r ≥ FAN_SPLIT_MIN_R, else dust. The 2-piece
- *  threshold was tuned 2026-11-18 from 25 to 13 after the §9.4 feel proxy (1/10) so chain breaks keep making pieces
- *  (at r 13 each piece is 0.9 · 13 / √2 ≈ 8.27, just over ROCK_MIN_R). */
-export const FAN_TRIPLE_MIN_R = 40;
-export const FAN_SPLIT_MIN_R = 13;
 
 /** Spike ii §3.2, asteroids-iii §13.3: rock gravity as a share of the ships', and the speed cap (u/s), a safety net counted in rockCapHits. */
 export const ROCK_GRAVITY = 1.0;
@@ -67,9 +62,9 @@ export const K_EDGE_ROCK = 0.25, EDGE_SETTLE_K = 0.3, ROCK_EDGE_SLACK = 400, ROC
 /** §13.2: the lane pull's strength (/s², inside a lane zone, scaled by k / SETTLE_K_MAX) and how close to its lane's radius
  *  (u) a rock must be for a lane capture. */
 export const LANE_PULL = 0.004, LANE_CAPTURE_DR = 5;
-/** §13.3 (rocheBreak): a free rock inside ROCHE_R with r ≥ FAN_SPLIT_MIN_R and at least ROCHE_MIN_AGE ticks old fan-breaks
- *  ('tidal'), its pieces kicked v_esc · (TIDAL_KICK_MIN + TIDAL_KICK_SPAN · f_j). */
-export const ROCHE_R = 175, ROCHE_MIN_AGE = 30, TIDAL_KICK_MIN = 0.03, TIDAL_KICK_SPAN = 0.05;
+/** §13.3 (rocheBreak): a free cell rock inside ROCHE_R with at least TIDAL_MIN_CELLS cells and at least ROCHE_MIN_AGE ticks
+ *  old breaks tidally (asteroids-iv §5.2: a cut through its centre of mass along its velocity, kicked TIDAL_CUT_KICK). */
+export const ROCHE_R = 175, ROCHE_MIN_AGE = 30;
 /** §13.4 (massCube): m = r³ / ROCK_MASS_DIVISOR (r 30 weighs 900, the ship's mass); r² with the switch off. */
 export const ROCK_MASS_DIVISOR = 30;
 /** §5.4, §13.4: a bounce above BOUNCE_MIN (u/s) closing with e = E_LOW + E_SPAN · clamp((vc − BOUNCE_MIN) / E_RAMP, 0, 1),
@@ -81,13 +76,21 @@ export const ROCK_GRID_CELL = 96;
 export const ROCK_GRID_PAD = ROCK_MAX_SPEED * DT + ROCK_SEPARATE_MAX + 1;
 /** §6.2: a ship-rock impact (u/s) under this is soft: no hull, no asteroidHits, no grace stamp. */
 export const RAM_SOFT = 15;
-/** §5.1: the burst's piece counts by parent radius (8 at ≥ 40, 6 at ≥ 30, 4 at ≥ 20, else dust; spike ii's 35 and 25
- *  change on purpose) and birth offsets (× parent r); §5.2: the fan's offset. */
-export const BURST_8_MIN_R = 40, BURST_6_MIN_R = 30, BURST_4_MIN_R = 20;
-export const BURST_OFFSET: Readonly<Record<4 | 6 | 8, number>> = { 8: 0.85, 6: 0.8, 4: 0.7 };
-export const FAN_OFFSET = 0.6;
-/** §13.6, §5.2, §14 D13 (burst back to medium, 0.30 + 0.30 f): piece j's kick is v_esc(ρ) · (MIN + SPAN · f_j), f_j the fractional part of j · GOLDEN_FRAC. */
-export const BURST_KICK_MIN = 0.3, BURST_KICK_SPAN = 0.3, FAN_KICK_MIN = 0.1, FAN_KICK_SPAN = 0.15;
+/** §13.6, §14 D13, asteroids-iv §5.4: a shatter's piece j flies at v_esc(ρ) · (BURST_KICK_MIN + BURST_KICK_SPAN · f_j), f_j
+ *  the fractional part of j · GOLDEN_FRAC. */
+export const BURST_KICK_MIN = 0.3, BURST_KICK_SPAN = 0.3;
 export const GOLDEN_FRAC = 0.6180339887498949;
 /** §5.3: a blast's push on a rock is at most BLAST_PUSH_CAP · v_esc(ρ), a laser's at most LASER_PUSH_CAP · v_esc(ρ). */
 export const BLAST_PUSH_CAP = 0.5, LASER_PUSH_CAP = 0.25;
+
+// ---- Asteroids-iv (docs/superpowers/specs/2026-11-20-asteroids-iv-cell-rocks-design.md) ----
+/** §3.2: a rim cell is a candidate to drop when its hash mod 100 is under RIM_DROP. §5.3: a shatter's crater takes the
+ *  cells whose centre lies within CRATER_K spacings of the struck cell's centre. */
+export const RIM_DROP = 30, CRATER_K = 0.75;
+/** §5.4: a cut parts its two sides at v_esc(ρ) · CUT_KICK along the line's normal (a tidal cut: TIDAL_CUT_KICK), shared by
+ *  inverse mass. §5.1: a free rock breaks tidally only with at least TIDAL_MIN_CELLS cells. */
+export const CUT_KICK = 0.12, TIDAL_CUT_KICK = 0.04, TIDAL_MIN_CELLS = 4;
+/** §5.3 (owner 2026-11-20): a torpedo's direct hit bursts SHATTER_DEPTH spacings inside the rock along its path, at the cell nearest that point.
+ *  1.6, not 1.5: at exactly 1.5 a hit along a hex row lands midway between two cells and the lower index wins (so the burst
+ *  sometimes drills only one cell in); 1.6 has no tie (420 hits: median 6 pieces, mean 5.10, share ≥ 4 0.88). */
+export const SHATTER_DEPTH = 1.6;
