@@ -130,3 +130,51 @@ online already forward; `ShipCommand` widens to include them. The sim refuses th
 ## 5. Out of scope
 
 Enemy hacking the crew; hack defence; new art or sound assets; balance tuning beyond the owner's numbers.
+
+## 6. Fable spec review amendments (R1, all taken; these override §1–§4 where they differ)
+
+1. **Hostility is state-derived** (replaces §2.5's undecided wording and D12). `hostilityStep` also turns the enemy hostile
+   while the crew target's `hacked` has any value > 0, cause `'hack'` (after `missile`, before `clock`; the hostile
+   event's cause union widens). Since hostilityStep runs before hackStep, hostility lands the tick after the hack lands
+   (`hostileAt = landing rt + 1`); a test pins it. No transient flag.
+2. **Bump hygiene.** hash.ts imports HACK_BAR_MAX, HACK_DISABLE_TICKS, HACK_TICKS. The pinned command lists in
+   tests/scienceState.test.ts and tests/duelModules.test.ts gain `hack`, `sciencePower`. The in-progress edits are set
+   aside (patch file) for the "SIM 69 → 70 alone" step and re-applied after it.
+3. **Value rules** (validateTacticalValues, following the crew-only checks): `hackPower` 0 off the crew slot; `hacked`
+   all 0 on the crew slot; `hackRoom === −1 ⇔ hackTicks === 0`; `hackTicks ≤ HACK_TICKS − 1`; the target's
+   `hacked[hackRoom]` is 0 while a hack runs.
+4. **Admission placement.** `hack` and `sciencePower` are **not** SHIP_KINDS (those admit any player). They get their own
+   loops after `weaponPower` (sciencePower first, then hack), and both join DUEL_KINDS. They still ride the client's
+   ship-command queue (§3.4). `contactScan` is admitted earlier in the tick and so reads start-of-tick scanner bars.
+5. **hackPower is clamped like weaponPower.** Copy `applyWeaponPower` / `clampWeaponPower` (sim/duel/weaponSlots.ts): a
+   ±1 first writes back the trimmed `hackBars`, refusals are judged on the trimmed value, and `clampToCapacity` clamps
+   `hackPower` to the effective Sensors bars, so lost Sensors bars never silently return to HACK. A
+   `sciencePowerRefusal` helper mirrors `weaponPowerRefusal` for the UI.
+6. **Online events.** Tactical events are not in snapshots; the online source derives them from counters (`gapEvents`).
+   Add the target's `hacked` rise (0 → > 0 on any room) as the online `hack done` derivation. `lost` is not derived
+   online (a cancel and a loss look alike in a snapshot); the UI shows status from state only. Every visual reads only
+   `hacked`, `hackRoom`, `hackTicks`.
+7. **Science block click exclusion.** The taller block (176 px; fits at 1280×720) must swallow map clicks: add the
+   Science block to the station-block exclusion the Science map click uses (scene.ts / flightPointer.ts pattern) with
+   a test. The key help line moves to the block's bottom.
+8. **Contact window, both branches.** The hacked look applies in the level-0 "?" silhouette branch and the level 1–2
+   branch (no scan gate; revealing which "?" room is hacked is accepted). The label is `HACK 23` (short, fits).
+9. **Gates.** §2.3's list is complete. Only `shipEngineFactor` matters for engines (the `engines` argument to flyShip /
+   predict is dead; leave it). A hacked enemy pew **holds its charge** (no gain while hacked) so it does not burst the
+   moment the hack ends; a hacked Hunter therefore makes no pew rng draws (test).
+10. **Engines is the strongest hack** (factor 0 stops turning too, so the Hunter cannot bring weapons to bear for 30 s).
+    Kept as the owner's numbers; flagged in the report for tuning.
+11. `sensorRange`'s Pick type gains `'hackPower'`; the only Sensors readers are science.ts (range, scan rate) and the
+    contactScan admission.
+12. **Intended:** the shorter range while hacking also blinds the crew's own AUTO fire, locks and turret (they read
+    `shipSeen`). Tested.
+13. **No-hack behaviour proof.** The new fields change every hash, so instead of "goldens hold", the change step runs
+    the duel oracle / canonical trace check against the SIM 70 baseline; if the new fields make it refuse, a test
+    compares a no-hack run's telemetry and final bodies against values captured before the change.
+14. The target slot is `systems[CREW_SLOT].target`. `ShipInput.hacker` is added to every ShipInput literal, default true
+    (as `scanner`). Pins: a hack admitted on tick N lands at the end of tick N + 419; the room is gated for exactly 1800
+    ticks.
+15. **Extra tests:** snapshot restore mid-hack and on the tick after landing equals an uninterrupted run; the predictor
+    verifies with `hack` / `sciencePower` in its log; codec strict accept/reject for both; a rematch resets all four
+    fields; a cancel emits no event; same-seed two-run hash equality with hack commands; the Science block click
+    exclusion.
