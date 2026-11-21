@@ -3,10 +3,10 @@ import { Application, Container } from 'pixi.js';
 import { worldFit, WORLD_BAND } from './worldFit';
 import { createBattlemapLayer } from './battlemapLayer';
 import { battlemapFor, fitRect } from './battlemapModel';
-import { INTERNAL_W, INTERNAL_H, TILE_PX } from '../../../shared/resolution';
+import { INTERNAL_W, INTERNAL_H, TILE_PX, REFERENCE_STAGE, type StageSize } from '../../../shared/resolution';
 import type { SimState } from '../sim/state';
 import { Position, Stable } from '../sim/components';
-import { computeLetterbox } from './letterbox';
+import { stageFit } from './letterbox';
 import type { GameAssets } from './assets';
 import { createRenderMemory } from './memory';
 import { createTileLayer } from './tiles';
@@ -40,8 +40,10 @@ import { featureReady } from './fallback';
 export interface Renderer {
   app: Application; world: Container; assets: GameAssets;
   resize(winW: number, winH: number): void;
-  /** The letterbox stage scale set by the last resize (1 before the first); the duel interior reads it for its fit (Art-i spec section 4). */
+  /** The smooth stage scale set by the last resize (1 before the first; UI round §2.1); the duel interior reads it for its fit (Art-i spec section 4). */
   stageScale(): number;
+  /** UI round §2.1: the stage size in internal px set by the last resize (the 1280x720 reference before the first). */
+  stage(): StageSize;
   /** The feel setting (Art-i spec section 7), set at boot from storage (app/feelBoot.ts); the duel interior reads it too. */
   feel(): FeelSetting;
   setFeel(setting: FeelSetting): void;
@@ -98,16 +100,20 @@ export async function createRenderer(assets: GameAssets): Promise<Renderer> {
   consoleDesks.container.addChild(feel.fixtures); effects.below.addChild(feel.paintedBelow); effects.above.addChild(feel.above, feel.paintedAbove);
   app.stage.addChildAt(feel.starfield, 0);   // the starfield under the world, filling WORLD_BAND (spec section 8); Art-v: or the painted backdrop over the whole stage
   let lastDraw: number | null = null, stage = 1, seenImpact: Int32Array | null = null;
+  let size: StageSize = REFERENCE_STAGE;
 
   return {
     app, world, assets,
     resize(winW, winH) {
-      const lb = computeLetterbox(winW, winH, INTERNAL_W, INTERNAL_H);
+      const f = stageFit(winW, winH);   // UI round §2.1: the stage follows the window at a smooth scale
       app.renderer.resize(winW, winH);
-      app.stage.scale.set(lb.scale); app.stage.position.set(lb.offsetX, lb.offsetY);
-      if (lb.scale !== stage) { stage = lb.scale; projectiles.reset(); }   // the snapped fit moves the ship: shots in flight cached paths to the old room centres (presentation only)
+      app.stage.scale.set(f.scale); app.stage.position.set(f.offsetX, f.offsetY);
+      // The snapped world fit follows the stage scale, so a change moves the ship: shots in flight cached paths to the old
+      // room centres (presentation only). Not gated on the size alone: a same-size stage at a new scale re-snaps too.
+      if (f.w !== size.w || f.h !== size.h || f.scale !== stage) { stage = f.scale; size = { w: f.w, h: f.h }; projectiles.reset(); }
     },
     stageScale: () => stage,
+    stage: () => size,
     feel: () => feelSetting,
     setFeel(setting) { feelSetting = setting; },
     crt: () => crtSetting,

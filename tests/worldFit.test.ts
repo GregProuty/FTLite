@@ -22,6 +22,14 @@ describe('snapWorldScale (Art-i spec section 4 table)', () => {
       expect(s).toBeGreaterThanOrEqual(0.75 * fit - 1e-12);
     }
   });
+  it('UI round §2.1: at a smooth (non-half-step) stage scale a snapped scale still gives whole screen pixels per art pixel', () => {
+    const stage = 1.37;
+    for (const fit of [STARTER_FIT, 0.9, 0.45]) {
+      const s = snapWorldScale(fit, stage), px = 2 * s * stage;
+      expect(s, `fit ${fit}`).not.toBe(fit);
+      expect(Math.abs(px - Math.round(px))).toBeLessThan(1e-9); expect(Math.round(px)).toBeGreaterThanOrEqual(1);
+    }
+  });
   it('below stage 1 a fit that rounds to 0 art pixels, or snaps too small, is kept', () => {
     expect(snapWorldScale(CUTTER_FIT, 0.7)).toBe(CUTTER_FIT);   // n = floor(0.917) = 0
     expect(snapWorldScale(1, 0.9)).toBe(1);                      // n = 1, 1 / 1.8 = 0.556 < 0.75

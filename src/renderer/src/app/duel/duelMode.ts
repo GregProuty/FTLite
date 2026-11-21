@@ -4,7 +4,7 @@
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { ShipLayout } from '../../sim/ship/schema';
 import type { Renderer } from '../../render/renderer';
-import { computeLetterbox } from '../../render/letterbox';
+import { pointerToStage } from './pointerToStage';
 import { endModel } from '../../render/duel/endModel';
 import type { DuelPlaytestRecord } from '../../net/duelRecord';
 import { createDuelKeyboard, createPointerSource, PING_CODE, type ConsoleInput, type EventSource } from './input';
@@ -60,10 +60,7 @@ export function startDuelMode(deps: DuelModeDeps): () => void {
   deps.setConsole?.(keyboard.ui);
   deps.setContact?.(contact);
   const trackConsole = consoleChange(() => keyboard.clearUi());   // Artemis spec §6.2: a console change drops its holds
-  const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => {
-    const rect = canvas.getBoundingClientRect(), lb = computeLetterbox(rect.width, rect.height, INTERNAL_W, INTERNAL_H);
-    return { x: (cx - rect.left - lb.offsetX) / lb.scale, y: (cy - rect.top - lb.offsetY) / lb.scale };
-  }, window as unknown as EventSource);   // Valkyrn spec §5.1: a release off the canvas or a blur ends the gun
+  const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => pointerToStage(canvas, cx, cy), window as unknown as EventSource);   // Valkyrn spec §5.1: a release off the canvas or a blur ends the gun
   const runtime = createDuelRuntime({
     now: () => performance.now(),
     scheduler: { schedule(delay, cb) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } },

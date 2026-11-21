@@ -25,7 +25,7 @@ import { GAS_SPEND } from '../../sim/duel/tuning';
 import { canCharge, canLaunch } from '../../sim/tactical/weapons';
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
 import { HEADING_COUNT } from '../../sim/tactical/tuning';
-import { computeLetterbox } from '../../render/letterbox';
+import { pointerToStage } from './pointerToStage';
 import { endModel } from '../../render/duel/endModel';
 import { createKeyToggle, latencyOverlayLines, type KeyTarget } from '../../render/duel/latencyOverlay';
 import { snapBack } from '../../render/tactical/camera';
@@ -116,10 +116,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   deps.setConsole?.(keyboard.ui);
   deps.setContact?.(contact);
   const trackConsole = consoleChange(() => keyboard.clearUi());   // Artemis spec §6.2: a console change drops its holds
-  const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => {
-    const rect = canvas.getBoundingClientRect(), lb = computeLetterbox(rect.width, rect.height, INTERNAL_W, INTERNAL_H);
-    return { x: (cx - rect.left - lb.offsetX) / lb.scale, y: (cy - rect.top - lb.offsetY) / lb.scale };
-  });
+  const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => pointerToStage(canvas, cx, cy));
   let client: ReturnType<typeof createDuelRemoteClient> | null = null, link: Link | null = null, source: OnlineDuelSource | null = null, scene: DuelScene | null = null;
   let descriptor: OnlinePortDescriptor | null = null, status: OnlineStatus | null = null;
   let frozen: DuelState | null = null, frozenPublication: { publicationSequence: number; tick: number; phase: string; pauseReason: string | null; pauseOwner: number | null } | null = null;

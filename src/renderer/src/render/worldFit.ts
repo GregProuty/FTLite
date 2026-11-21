@@ -10,7 +10,8 @@ export interface Fit { scale: number; x: number; y: number }
 /**
  * Art-i spec section 4: screen pixels per art pixel = 2 x worldScale x stageScale. Snap the world scale so that is a whole number,
  * unless snapping would shrink the ship below 0.75 of its fit (readability beats crispness), or no whole number fits (n = 0).
- * The 1e-9 guards against a product such as 2 x 0.75 x 2 landing a hair under a whole number in floating point.
+ * It holds at any stage scale, not only half steps (UI round §2.1: the stage scale is smooth): n = floor(2 x fit x stage),
+ * worldScale = n / (2 x stage). The 1e-9 guards against a product such as 2 x 0.75 x 2 landing a hair under a whole number in floating point.
  */
 export function snapWorldScale(fit: number, stage: number): number {
   const n = Math.floor(2 * fit * stage + 1e-9);

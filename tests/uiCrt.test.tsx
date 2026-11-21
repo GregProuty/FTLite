@@ -17,7 +17,7 @@ const view = (patch: Partial<DuelUiView> = {}): DuelUiView => ({
   end: null, banners, overlay: { zoomText: 'ZOOM 0.50', scaleBar: { px: 80, units: 500 }, snapHint: false }, crt: true, ...patch });
 function mount() {
   const ui = makeUi(); const duel = createDuelSink(ui.store), flight = createFlightSink(ui.store), latency = createLatencySink(ui.store);
-  act(() => setLayout(ui.store, { scale: 1.5, offsetX: 0, offsetY: 0, dpr: 1 }));
+  act(() => setLayout(ui.store, { scale: 1.5, offsetX: 0, offsetY: 0, stageW: 1280, stageH: 720, dpr: 1 }));
   render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);
   return { ...ui, duel, flight, latency };
 }

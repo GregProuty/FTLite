@@ -38,7 +38,7 @@ import { createDuelSink, createFlightSink, createHudSink, createLatencySink } fr
 import { buildImageCache, hudImageNames } from './ui/images';
 import { createPixiImageSource } from './app/uiImages';
 import { ICON_KINDS } from './render/roomIconModel';
-import { computeLetterbox } from './render/letterbox';
+import { stageFit } from './render/letterbox';
 import { createUiActions } from './ui/actions';
 import { inputBlockedOf } from './ui/menuState';
 import { mountUi } from './ui/mount';
@@ -48,7 +48,6 @@ import { installCrew3d } from './app/crew3dBoot';
 import { installCrt } from './app/crtBoot';
 import type { Renderer } from './render/renderer';
 import type { OnlineStatus } from '../../shared/onlineSession';
-import { INTERNAL_H, INTERNAL_W } from '../../shared/resolution';
 
 /** The dev UI budget counter (?uiperf=1): shared by the app and both dev views' sinks. */
 const perf = createUiPerf(new URLSearchParams(location.search).get('uiperf') === '1');
@@ -192,8 +191,8 @@ async function startApp(): Promise<void> {
     const top = store.getState().layout.stripHeight;
     renderer.app.canvas.style.cssText = `position:fixed;left:0;top:${top}px;display:block`;
     renderer.resize(window.innerWidth, Math.max(1, window.innerHeight - top));
-    const lb = computeLetterbox(window.innerWidth, Math.max(1, window.innerHeight - top), INTERNAL_W, INTERNAL_H);
-    setLayout(store, { scale: lb.scale, offsetX: lb.offsetX, offsetY: lb.offsetY, dpr: window.devicePixelRatio || 1 });
+    const f = stageFit(window.innerWidth, Math.max(1, window.innerHeight - top));   // UI round §2.1: the same fit the renderer uses
+    setLayout(store, { scale: f.scale, offsetX: f.offsetX, offsetY: f.offsetY, stageW: f.w, stageH: f.h, dpr: window.devicePixelRatio || 1 });
   };
   let strip = store.getState().layout.stripHeight;
   const offStrip = store.subscribe((s) => { if (s.layout.stripHeight !== strip) { strip = s.layout.stripHeight; resize(); } });
@@ -238,8 +237,8 @@ async function startFlight(seed: number): Promise<void> {
   await mountUi({ el: uiRoot, store, actions, menu: false });
   const resize = (): void => {
     renderer.resize(window.innerWidth, window.innerHeight);
-    const lb = computeLetterbox(window.innerWidth, window.innerHeight, INTERNAL_W, INTERNAL_H);
-    setLayout(store, { scale: lb.scale, offsetX: lb.offsetX, offsetY: lb.offsetY, dpr: window.devicePixelRatio || 1 });
+    const f = stageFit(window.innerWidth, window.innerHeight);
+    setLayout(store, { scale: f.scale, offsetX: f.offsetX, offsetY: f.offsetY, stageW: f.w, stageH: f.h, dpr: window.devicePixelRatio || 1 });
   };
   window.addEventListener('resize', resize); resize();
   startFlightMode({ renderer, seed, ui: createFlightSink(store, perf), lifecycle: window.ftlite });
@@ -258,8 +257,8 @@ async function startDuel(seed: number): Promise<void> {
   await mountUi({ el: uiRoot, store, actions, menu: false });
   const resize = (): void => {
     renderer.resize(window.innerWidth, window.innerHeight);
-    const lb = computeLetterbox(window.innerWidth, window.innerHeight, INTERNAL_W, INTERNAL_H);
-    setLayout(store, { scale: lb.scale, offsetX: lb.offsetX, offsetY: lb.offsetY, dpr: window.devicePixelRatio || 1 });
+    const f = stageFit(window.innerWidth, window.innerHeight);
+    setLayout(store, { scale: f.scale, offsetX: f.offsetX, offsetY: f.offsetY, stageW: f.w, stageH: f.h, dpr: window.devicePixelRatio || 1 });
   };
   window.addEventListener('resize', resize); resize();
   startDuelMode({ renderer, seed, layout, ui: createDuelSink(store, perf), lifecycle: window.ftlite, setConsole: (input) => actions.setConsole(input), setContact: (contact) => actions.setContact(contact) });
@@ -280,8 +279,8 @@ async function startProbe(): Promise<void> {
   if (duelProbe || reactHud) await mountUi({ el: uiRoot, store, actions, menu: false, images }); else if (!hudProbe) await mountProbe({ el: uiRoot, store, actions });
   const resize = (): void => {
     renderer.resize(window.innerWidth, window.innerHeight);
-    const lb = computeLetterbox(window.innerWidth, window.innerHeight, INTERNAL_W, INTERNAL_H);
-    setLayout(store, { scale: lb.scale, offsetX: lb.offsetX, offsetY: lb.offsetY, dpr: window.devicePixelRatio || 1 });
+    const f = stageFit(window.innerWidth, window.innerHeight);
+    setLayout(store, { scale: f.scale, offsetX: f.offsetX, offsetY: f.offsetY, stageW: f.w, stageH: f.h, dpr: window.devicePixelRatio || 1 });
   };
   window.addEventListener('resize', resize); resize();
   startUiProbe(renderer, !duelProbe && !hudProbe);

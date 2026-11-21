@@ -4,7 +4,7 @@
 import { Container } from 'pixi.js';
 import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { Renderer } from '../../render/renderer';
-import { computeLetterbox } from '../../render/letterbox';
+import { pointerToStage } from './pointerToStage';
 import { crtScale } from '../../render/crt';
 import { feelReadout, feelRows, FEEL_PANEL_MARGIN, FEEL_PANEL_W } from '../../render/tactical/feelModel';
 import { createTacticalLayer, PAUSE_TEXT } from '../../render/tactical/tacticalLayer';
@@ -36,10 +36,7 @@ export function startFlightMode(deps: FlightModeDeps): () => void {
 
   const canvas = renderer.app.canvas;
   const keyboard = createDuelKeyboard(window as unknown as EventSource);
-  const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => {
-    const rect = canvas.getBoundingClientRect(), lb = computeLetterbox(rect.width, rect.height, INTERNAL_W, INTERNAL_H);
-    return { x: (cx - rect.left - lb.offsetX) / lb.scale, y: (cy - rect.top - lb.offsetY) / lb.scale };
-  });
+  const pointer = createPointerSource(canvas as unknown as EventSource, (cx, cy) => pointerToStage(canvas, cx, cy));
   const runtime = createFlightRuntime({
     now: () => performance.now(),
     scheduler: { schedule(delay, cb) { const timer = window.setTimeout(cb, delay); return () => window.clearTimeout(timer); } },

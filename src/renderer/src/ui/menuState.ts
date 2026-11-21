@@ -31,8 +31,9 @@ export interface SettingsSlice extends Volumes {
   available: boolean; fullscreenAvailable: boolean; controls: readonly ControlSection[]; shake: import('../render/shake').ShakeSetting; mapGrid: import('../render/tactical/mapGrid').MapGridSetting;
   ships: readonly ShipChoice[]; soloShip: string; valkyrnLaserFit: boolean; throttleTapMs: number; fpsCounter: boolean;   // helm round 2 §6.3; UI round §1.7
 }
-/** The canvas's place (React UI spec §4): the strip above it, the letterbox scale and offsets, the device pixel ratio. */
-export interface LayoutSlice { stripHeight: number; scale: number; offsetX: number; offsetY: number; dpr: number }
+/** The canvas's place (React UI spec §4): the strip above it, the stage scale and offsets, the device pixel ratio.
+ *  `stageW`, `stageH` (UI round §2.1): the stage size in internal px, following the window (1280x720 the reference). */
+export interface LayoutSlice { stripHeight: number; scale: number; offsetX: number; offsetY: number; stageW: number; stageH: number; dpr: number }
 /** Browser-only menu facts (web build spec §5.4, §7.4, §7.5, §7.7); all off in Electron. `unsupported` replaces Home's
  *  Multiplayer button, `note` is the Safari line, `onlineBlocked` the Multiplayer screen's one-tab text, `playtestLog`
  *  shows Settings' Download playtest log and `playtestLogText` its last result. `web`: the page runs in a browser (no
