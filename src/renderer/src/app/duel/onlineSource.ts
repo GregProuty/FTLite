@@ -43,12 +43,12 @@ export interface PredictionView {
   /** Rock jump brief §2: the smoother's draw-tick offset now, added to the rocks' draw tick; absent, none. */
   rockShift?(): number;
 }
-interface Counters { shots: number; laserHits: number; stripped: number; launched: number; ended: number; missileHits: number; gunHits: number; pewShots: number; pewHits: number; contacts: [number, number, number]; rooms: [number, number, number] }
+interface Counters { shots: number; laserHits: number; stripped: number; launched: number; ended: number; missileHits: number; gunHits: number; pewShots: number; pewHits: number; contacts: [number, number, number]; rooms: [number, number, number]; hacked: [number, number, number] }
 /** Ship i's cumulative counters, which the snapshot carries. `ended` is every missile that has ended: launched minus the
  *  one in flight, which also counts a self-hit (neither a hit nor a loss); never fewer than hits plus losses. */
 export const duelCounters = (t: TacticalState, i: number): Counters => {
   const s = t.systems[i]!, b = t.ships[i]!, ended = Math.max(s.missileHits + s.missilesLost, s.missilesLaunched - (missileOf(t, i) ? 1 : 0));
-  return { shots: s.shots, laserHits: s.laserHits, stripped: s.layersStripped, launched: s.missilesLaunched, ended, missileHits: s.missileHits, gunHits: s.gunHits, pewShots: s.pewShots, pewHits: s.pewHits, contacts: [b.planetHits, b.asteroidHits, b.shipHits], rooms: [s.rooms[0], s.rooms[1], s.rooms[2]] };
+  return { shots: s.shots, laserHits: s.laserHits, stripped: s.layersStripped, launched: s.missilesLaunched, ended, missileHits: s.missileHits, gunHits: s.gunHits, pewShots: s.pewShots, pewHits: s.pewHits, contacts: [b.planetHits, b.asteroidHits, b.shipHits], rooms: [s.rooms[0], s.rooms[1], s.rooms[2]], hacked: [s.hacked[0], s.hacked[1], s.hacked[2]] };
 };
 const body = (s: TacticalState['ships'][number]): PrevBody => ({ x: s.x, y: s.y, h: s.heading + s.headingAcc });
 const missileBody = (m: Missile | null): PrevBody | null => (m ? { x: m.x, y: m.y, h: m.heading + m.headingAcc } : null);
@@ -106,6 +106,9 @@ export function gapEvents(beforeCounters: readonly Counters[], beforeMissiles: r
     // §3.4: online a room hit by a gun shows no callout, as the gun's).
     for (let k = 0; k < now.pewShots - was.pewShots; k++) out.push({ kind: 'pewFire', ship: i, x: ship.x, y: ship.y } satisfies DuelEvent);
     if (tgt) for (let k = 0; k < now.pewHits - was.pewHits; k++) out.push({ kind: 'pewHit', ship: target, owner: i, stripped: false, hull: false, room: -1, level: false, x: tgt.x, y: tgt.y } satisfies DuelEvent);
+    // Hacking spike R1-6: a room's hack clock only counts down, so a rise is a hack that landed on this ship in the gap.
+    // A lost hack is not derived (a cancel looks the same in a snapshot).
+    for (let r = 0; r < 3; r++) if (now.hacked[r]! > was.hacked[r]!) out.push({ kind: 'hack', what: 'done', room: r } satisfies DuelEvent);
     (['planet', 'asteroid', 'ship'] as const).forEach((kind, k) => {
       for (let n = 0; n < now.contacts[k]! - was.contacts[k]!; n++) out.push({ kind: 'contact', ship: i, body: kind, x: ship.x, y: ship.y });
     });

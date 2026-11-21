@@ -49,6 +49,8 @@ export function duelEventSounds(events: readonly ViewEvent[], pan: Pan): EventSo
     } else if (e.kind === 'pewHit') {   // the existing hit sounds: a stripped layer's field, else metal
       combat = true;
       sounds.push(e.stripped ? { key: 'forceField', gain: 0.4, dur: 0.3, pan: pan(e.x, e.y) } : { key: 'impactMetal', gain: 0.5, rate: 1.3, pan: pan(e.x, e.y) });
+    } else if (e.kind === 'hack') {   // hacking spike §2.6: the existing force field pitched up as an electrical zap; a lost hack a low fizzle
+      sounds.push(e.what === 'done' ? { key: 'forceField', gain: 0.6, rate: 1.8, dur: 0.5, pan: 0 } : { key: 'forceField', gain: 0.3, rate: 0.6, dur: 0.3, pan: 0 });
     }
     if (hitsCrew(e)) { duck = true; sounds.push({ key: 'lowBoom', gain: 0.8, pan: 0 }); }
   }
