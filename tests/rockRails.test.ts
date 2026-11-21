@@ -66,8 +66,10 @@ describe('the rail maths (spec §2, §3.2, §13.1)', () => {
 });
 
 describe('lane zones, V* and the lane pull (spec §13.2)', () => {
-  it('splits [1092, 1308] at 1161 and 1239; V* is V_c everywhere, inside a zone too', () => {
-    expect([1091, 1092, 1160.9, 1161, 1238.9, 1239, 1308, 1308.1].map(laneZone)).toEqual([-1, 0, 0, 1, 1, 2, 2, -1]);
+  // Asteroids-iv §10b (owner 2026-11-20): a fourth zone for the big outer lane at 1390; the outer lane's zone now ends at
+  // 1334 (midway between 1278 and 1390) and the big lane's runs to 1450 (was [1092, 1308] in three zones).
+  it('splits [1092, 1450] at 1161, 1239 and 1334; V* is V_c everywhere, inside a zone too', () => {
+    expect([1091, 1092, 1160.9, 1161, 1238.9, 1239, 1308, 1333.9, 1334, 1390, 1450, 1450.1].map(laneZone)).toEqual([-1, 0, 0, 1, 1, 2, 2, 2, 3, 3, 3, -1]);
     expect(targetVelocity(0, 1230)).toEqual(circularVelocity(0, 1230));
     expect(targetVelocity(0, 1700)).toEqual(circularVelocity(0, 1700));
   });
@@ -82,18 +84,26 @@ describe('lane zones, V* and the lane pull (spec §13.2)', () => {
 });
 
 describe('the new numbers (spec §3.5, §6.1, §13.7)', () => {
-  it('three lanes of 17 + 36 + 17, 78 apart, whose largest cross-lane radius sum plus the gap is at most 75', () => {
-    expect(LANES.map((l) => l.rho)).toEqual([1122, 1200, 1278]);
+  // Asteroids-iv §10b (owner 2026-11-20): the three belt lanes are unchanged; a fourth lane of 5 big rocks (radius 40-55)
+  // sits at 1390, 112 outside the outer lane, where the cross-lane sum plus the gap is 20 + 55 + 10 = 85 (BELT_COUNT 70 -> 75).
+  it('three lanes of 17 + 36 + 17, 78 apart, whose largest cross-lane radius sum plus the gap is at most 75; then 5 big rocks at 1390', () => {
+    expect(LANES.map((l) => l.rho)).toEqual([1122, 1200, 1278, 1390]);
+    expect(LANES.map((l) => l.count)).toEqual([17, 36, 17, 5]);
     expect(LANES.reduce((t, l) => t + l.count, 0)).toBe(BELT_COUNT);
-    for (let i = 1; i < LANES.length; i++) {
+    expect(BELT_COUNT).toBe(75);
+    for (let i = 1; i < 3; i++) {
       expect(LANES[i]!.rho - LANES[i - 1]!.rho).toBe(78);
       expect(LANES[i]!.rMax + LANES[i - 1]!.rMax + ASTEROID_GAP).toBeLessThanOrEqual(75);
     }
+    expect(LANES[3]).toEqual({ rho: 1390, rMin: 40, rMax: 55, count: 5 });
+    expect(LANES[3]!.rMax + LANES[2]!.rMax + ASTEROID_GAP).toBeLessThanOrEqual(LANES[3]!.rho - LANES[2]!.rho);
   });
-  it('cluster centres 420 apart fit three in 1550 to 2550 with 160 of slack; the grid pad is 14; every switch defaults on', () => {
+  // §10b: the clusters moved out to make room for the big lane (CLUSTER_CENTRE_MIN 1550 -> 1670, slack 160 -> 40).
+  it('cluster centres 420 apart fit three in 1670 to 2550 with 40 of slack; the grid pad is 14; every switch defaults on', () => {
     expect(CLUSTER_RHO_SEPARATION).toBe(420);
+    expect(CLUSTER_CENTRE_MIN).toBe(1670);
     expect(CLUSTER_RHO_SLACK).toBe(CLUSTER_CENTRE_MAX - CLUSTER_CENTRE_MIN - (CLUSTER_COUNT - 1) * 420);
-    expect(CLUSTER_RHO_SLACK).toBe(160);
+    expect(CLUSTER_RHO_SLACK).toBe(40);
     expect(ROCK_GRID_PAD).toBe(14);
     expect(ROCK_SWITCHES).toEqual({ massCube: true, softEdge: true, clusterTumble: true, rocheBreak: true });
   });

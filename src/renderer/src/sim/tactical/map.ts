@@ -17,7 +17,7 @@ export interface MapDef {
   asteroids: Circle[];
   beltCount: number;
   clusterSizes: number[];
-  /** Asteroids-iii §3.5: rocks placed per lane, in LANES order (the belt's slots: the inner lane's, the main lane's, the outer lane's). */
+  /** Asteroids-iii §3.5: rocks placed per lane, in LANES order (the belt's slots: the inner lane's, the main lane's, the outer lane's, the big lane's: asteroids-iv §10b). */
   laneSizes: number[];
   /** Asteroids-iii §3.5: each cluster centre's orbital radius, in cluster order (its rocks turn at this radius's rate). */
   clusterRho: number[];

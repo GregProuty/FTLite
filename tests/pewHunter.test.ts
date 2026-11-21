@@ -30,8 +30,10 @@ const fineDiff = (a: number, b: number) => ((a - b + AIM_STEPS + AIM_STEPS / 2) 
  *  Re-pinned at the merge with asteroids-ii (billiard rocks; HUNTER_PEW_ERROR 8 -> 16, SIM_VERSION 55): 4 -> 19, 6 of 60 shot.
  *  Re-pinned at asteroids-iii (SIM_VERSION 60, the new map generation gives every seed a new random stream): 19 -> 58; the
  *  first 60 seeds had only 1 shot (0.017, under the band's 0.02), so the band runs over 120 seeds, 6 shot (0.05); over 1000
- *  seeds the rate is 0.041 here against 0.051 at the branch base ab6b0ef2, so the defence itself is unchanged. */
-const PD_SEED = 58;
+ *  seeds the rate is 0.041 here against 0.051 at the branch base ab6b0ef2, so the defence itself is unchanged.
+ *  Re-pinned at asteroids-iv's big outer lane (SIM_VERSION 67, the map changed for every seed): 58 -> 26; 3 of 120 shot
+ *  (seeds 26, 104, 112; 0.025, inside the band). */
+const PD_SEED = 26;
 
 describe('the Hunter attacks (spec §1)', () => {
   it('aims at the crew\'s lead point with an error within ±HUNTER_PEW_ERROR', () => {

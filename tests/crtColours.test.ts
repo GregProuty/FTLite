@@ -9,6 +9,8 @@ import { BEAM_HIT, BEAM_MISS, BURST } from '../src/renderer/src/render/tactical/
 import { CALLOUT_COLOUR, CHARGE_COLOUR } from '../src/renderer/src/render/tactical/hitModel';
 import { createTacticalLayer } from '../src/renderer/src/render/tactical/tacticalLayer';
 import { ringDraw, type ShipDraw, type TacticalDraw } from '../src/renderer/src/render/tactical/tacticalModel';
+import { buildTemplate } from '../src/renderer/src/sim/tactical/rockCells';
+import { rockOutline } from '../src/renderer/src/render/tactical/rockOutline';
 import type { CombatDraw } from '../src/renderer/src/render/tactical/weaponsModel';
 import type { GunSightDraw } from '../src/renderer/src/render/duel/leadModel';
 
@@ -21,7 +23,7 @@ function fullFrame(console: 'helm' | 'weapons', inRange = true): { d: TacticalDr
   const d: TacticalDraw = {
     grid: { spacing: 250, lines: [{ x1: 100, y1: 0, x2: 100, y2: 720, major: true }, { x1: 0, y1: 200, x2: 1280, y2: 200, major: false }], columns: [{ text: 'H', x: 100, y: 4 }], rows: [{ text: '9', x: 4, y: 200 }] },
     contours: [{ accel: 40, x: 900, y: 500, r: 120 }], edge: { x: 900, y: 500, r: 400 }, planet: { x: 900, y: 500, r: 40 },
-    asteroids: [{ index: 3, x: 300, y: 600, r: 14, dot: false }, { index: 4, x: 320, y: 640, r: 1, dot: true }, { index: 5, x: 360, y: 600, r: 18, dot: false, wear: 0.8 }, { index: 6, x: 400, y: 600, r: 12, dot: false }],   // SPIKE: a worn rock's cracks
+    asteroids: [{ index: 3, x: 300, y: 600, r: 14, dot: false }, { index: 4, x: 320, y: 640, r: 1, dot: true }, { index: 5, x: 360, y: 600, r: 18, dot: false, wear: 0.8 }, { index: 6, x: 400, y: 600, r: 12, dot: false }, { index: 7, x: 440, y: 600, r: 30, dot: false, wear: 0.6, outline: rockOutline(buildTemplate(7, 44, 3), buildTemplate(7, 44, 3).full), scale: 0.7 }],   // SPIKE: a worn rock's cracks
     ships: [ship({}), ship({ index: 1, x: 760, y: 260, crew: false, hull: 'scout', rooms: [2, 1, 0], shields: 1 }), ship({ index: 2, x: 200, y: 200, chevron: true }), ship({ index: 3, x: 220, y: 240, chevron: true, crew: false, hull: 'scout' }), ship({ index: 4, x: 420, y: 520, rooms: [0, 1, 2], hull: 'valkyrn' }), ship({ index: 5, x: 640, y: 560, crew: false, hull: 'scout', rooms: [0, 1, 2], shields: 0 })],
     helm: console === 'helm' ? { path: [{ x: 520, y: 340 }, { x: 560, y: 300 }, { x: 610, y: 280 }], origin: { x: 500, y: 360 }, velocity: { x: 560, y: 330 }, headingFrom: { x: 510, y: 340 }, headingTo: { x: 530, y: 300 }, thrust: 1, turn: -1, ring,
       // Feel-ii: the collision X and tag, the held heading's chevron and line, SLINGSHOT

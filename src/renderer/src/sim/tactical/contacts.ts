@@ -2,7 +2,8 @@
 // meets the planet, then asteroids in ascending index, then every later active ship. Push out, bounce keeping
 // RESTITUTION of the normal speed, and cost hull only once per CONTACT_GRACE_TICKS per pair.
 import { breakRock, crushDamage, wearRock } from './rockBreak';
-import { freeRock, isRail, markTouched, regridRock, restartClock, rockAlive, rockAt, rockMass, rocksNear, ROCK_STRIDE, rockX, rockY } from './rocks';
+import { freeRock, isRail, markTouched, regridRock, restartClock, rockAlive, rockAt, rockMassOf, rocksNear, ROCK_STRIDE, rockX, rockY } from './rocks';
+import { makeContact, rockCircleContact } from './rockShape';
 import { RAM_HULL_FREE, RAM_HULL_MAX, RAM_HULL_STEP, RAM_SOFT, ROCK_SEPARATE_MAX, SHIP_MASS } from './rockTuning';
 import { classOf, shipBody, type TacticalState } from './state';
 import { ASTEROID_CONTACT_HULL, CONTACT_GRACE_TICKS, PLANET_CONTACT_HULL, RESTITUTION, SHIP_CONTACT_HULL } from './tuning';
@@ -56,6 +57,7 @@ export function hitStatics(state: TacticalState, i: number): void {
   }
 }
 
+const shipHit = makeContact();
 const staticsNear: number[] = [], duelNear: number[] = [];   // rocksNear scratches, one per call site (neither loop body re-enters its own site)
 /** Spike ii §5.1: a moving rock's hull cost for an impact vc · mk / (mk + ms). */
 export function ramHull(impact: number): number { return Math.min(RAM_HULL_MAX, 1 + Math.floor(Math.max(0, impact - RAM_HULL_FREE) / RAM_HULL_STEP)); }
@@ -65,16 +67,19 @@ export function ramHull(impact: number): number { return Math.min(RAM_HULL_MAX, 
  * velocity); every rock is then a second body. Normal n from the rock to the ship, closing speed vc = (vk − vs) · n. The
  * overlap is shared by inverse mass, the impulse (1 + RESTITUTION) vc / (1/ms + 1/mk) when closing, hull by ramHull of the
  * impact vc · mk / (mk + ms). A ship contact is a push: the rock's clock restarts and it is touched. Outside the pair's
- * grace: the hull cost, then the rock's ram damage (the §3.3 formula with the ship as the other body; a fan break along −n).
+ * grace: the hull cost, then the rock's ram damage (the §3.3 formula with the ship as the other body; at hp ≤ 0 a cut
+ * through the contact point along −n).
+ * Asteroids-iv spec §6: the contact is with the rock's deepest cell (contact radius), after the bounding circle.
  */
 function shipRock(state: TacticalState, i: number, k: number): void {
   const s = state.ships[i]!, sys = state.systems[i]!, v = state.rocks, b = k * ROCK_STRIDE, radius = classOf(state, i).radius;
   const dx = s.x - rockX(state, k), dy = s.y - rockY(state, k), rr = radius + v[b + 5]!, d2 = dx * dx + dy * dy;
-  if (d2 >= rr * rr) return;
+  if (d2 >= rr * rr) return;                                              // the bounding circle
+  if (!rockCircleContact(state, k, s.x, s.y, radius, shipHit)) return;    // asteroids-iv spec §6: no cell touches
   freeRock(state, k); markTouched(state, k); restartClock(state, k);
-  const d = Math.sqrt(d2), nx = d > 0 ? dx / d : 0, ny = d > 0 ? dy / d : -1, body = k + 1;
-  const vc = (v[b + 3]! - s.vx) * nx + (v[b + 4]! - s.vy) * ny, mk = rockMass(v[b + 5]!);
-  const is = 1 / SHIP_MASS, ik = 1 / mk, overlap = rr - d, sk = Math.min(ROCK_SEPARATE_MAX, (overlap * ik) / (is + ik)), ss = overlap - sk;
+  const nx = shipHit.nx, ny = shipHit.ny, body = k + 1;
+  const vc = (v[b + 3]! - s.vx) * nx + (v[b + 4]! - s.vy) * ny, mk = rockMassOf(state, k);
+  const is = 1 / SHIP_MASS, ik = 1 / mk, overlap = shipHit.depth, sk = Math.min(ROCK_SEPARATE_MAX, (overlap * ik) / (is + ik)), ss = overlap - sk;
   s.x += nx * ss; s.y += ny * ss; v[b + 1]! -= nx * sk; v[b + 2]! -= ny * sk;
   regridRock(state, k);
   if (vc > 0) {
@@ -92,7 +97,7 @@ function shipRock(state: TacticalState, i: number, k: number): void {
   if (dmg <= 0) return;
   const broke = wearRock(state, k, dmg), a = rockAt(state, k);
   state.events.push({ kind: 'rock', what: 'bump', by: 'ram', rock: k, x: s.x - nx * radius, y: s.y - ny * radius, r: a.r, vx: a.vx, vy: a.vy, ship: i });
-  if (broke) breakRock(state, k, -nx, -ny, 'ram', i, 'fan', [k]);
+  if (broke) breakRock(state, k, s.x - nx * radius, s.y - ny * radius, -nx, -ny, 'ram', i, 'cut', [k]);   // asteroids-iv spec §5.2: a cut through the contact point along the normal
 }
 
 /** Spike ii §5.1: ship slot i's static contacts in the duel: the planet as today, then each rock of rocksNear (taken once,

@@ -1,7 +1,7 @@
 // Combat geometry without angles (spec §4): arcs by dot product, sides by cross product, line of sight by segment
 // against circle, and the room a missile strikes by its impact point (spec §5).
 import { hx, hy } from './direction';
-import { rockAt, rocksNear } from './rocks';
+import { rockNear, rocksNear } from './rocks';
 import { Room, type Ship, type TacticalState } from './state';
 
 /** Whether direction (dx, dy) lies inside the ±arc around heading h, given cos(arc) as a literal. A zero vector counts as inside. */
@@ -28,8 +28,7 @@ export function lineOfSight(state: TacticalState, ax: number, ay: number, bx: nu
   for (let i = 0; i < n; i++) {
     const k = sightNear[i]!;
     if (state.rockBorn[k] === 1) continue;   // spike ii §6.2: as firstBlocker, a piece made this tick is not in the way
-    const a = rockAt(state, k);
-    if (segmentNear(ax, ay, bx, by, a.x, a.y, a.r)) return false;
+    if (rockNear(state, k, ax, ay, bx, by, segmentNear)) return false;
   }
   return true;
 }

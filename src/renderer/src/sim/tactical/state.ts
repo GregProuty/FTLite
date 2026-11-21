@@ -8,7 +8,7 @@ import { DUEL_SYSTEM_COUNT, SHIELD_LAYERS_BY_BARS, START_BARS, START_WEAPON_POWE
 import { dirBetween } from './direction';
 import { generateMap, type MapDef, type Spawn } from './map';
 import { cloneTacticalFromModule } from './hash';
-import { initRocks, rockCapacity } from './rocks';
+import { initRockCells, initRocks, rockCapacity } from './rocks';
 import { DERELICT_FAR_MIN, DERELICT_NEAR_MIN, DERELICT_PHASE_DRAWS, DERELICT_SPAWN_CLEAR, GUN_POOL, HEADING_COUNT, HUNTER_MISSILE_COOLDOWN_TICKS, HUNTER_TRAIL_TICKS, PEW_POOL } from './tuning';
 
 /** Tactical rooms (spec §5); the index into ShipSystems.rooms. */
@@ -188,6 +188,9 @@ export interface TacticalState {
    *  §13.3 rockCapHits), then the per-tick transient masks (not hashed, not snapshotted, cleared at the start and the end
    *  of every stepDuel). */
   rocks: Float64Array; rockHits: number; rockSplits: number; rockDust: number; rockBlasts: number; rockCollisions: number; rockEvictions: number; rockTouches: number; rockSlotDust: number; rockCapHits: number;
+  /** Asteroids-iv spec §3.3, §10a 2: 2 values a slot beside the pool: the seeded asteroid this rock is a piece of + 1
+   *  (0: a plain round rock), then the mask of that template's cells it still has (0 when plain). */
+  rockCells: Float64Array;
   rockBorn: Uint8Array; rockDone: Uint8Array; rockTouched: Uint8Array;
   /** Each slot's body in space. */
   ships: Slots<Ship>;
@@ -293,7 +296,7 @@ export function createTacticalState(seed: number, slots = DUEL_CLASSES.length, c
   const science = scienceDraws(rng, map);   // Sci-1 spec §4.5: right after the map, before anything else reads the rng
   const bodies = rockCapacity(map) + slots, extra = Array.from({ length: slots - 2 });
   return {
-    tick: 0, seed, rng, map, rocks: initRocks(map), rockHits: 0, rockSplits: 0, rockDust: 0, rockBlasts: 0, rockCollisions: 0, rockEvictions: 0, rockTouches: 0, rockSlotDust: 0, rockCapHits: 0,
+    tick: 0, seed, rng, map, rocks: initRocks(map), rockHits: 0, rockSplits: 0, rockDust: 0, rockBlasts: 0, rockCollisions: 0, rockEvictions: 0, rockTouches: 0, rockSlotDust: 0, rockCapHits: 0, rockCells: initRockCells(map),
     rockBorn: new Uint8Array(rockCapacity(map)), rockDone: new Uint8Array(rockCapacity(map)), rockTouched: new Uint8Array(rockCapacity(map)),
     ships: [shipAt(map.spawns[0], bodies), shipAt(map.spawns[1], bodies), ...extra.map(() => emptyShip(bodies))],
     systems: [systemsFor(crewClass, 1, true),systemsFor(DUEL_CLASSES[1]!, 0), ...extra.map(emptySystems)],

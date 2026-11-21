@@ -14,8 +14,8 @@ export const PLANET_RADIUS = 70;
 export const GM = 2.5e6;
 export const GRAVITY_EPS = 20;
 export const BELT_INNER = 1100;
-export const BELT_OUTER = 1300;
-export const BELT_COUNT = 70;
+export const BELT_OUTER = 1450;                // asteroids-iv §10b: was 1300; the big outer lane reaches 1390 + 55 = 1445
+export const BELT_COUNT = 75;                  // the lanes' counts' sum: 17 + 36 + 17 + 5 (was 70)
 export const BELT_R_MIN = 15;
 export const BELT_R_MAX = 45;
 export const GAP_COUNT = 3;
@@ -27,24 +27,29 @@ export const CLUSTER_MIN = 4;
 export const CLUSTER_MAX = 7;
 export const CLUSTER_R_MIN = 20;
 export const CLUSTER_R_MAX = 55;
-export const CLUSTER_CENTRE_MIN = 1550;        // clear of the belt: 1300 + 150 + 55 + margin
+export const CLUSTER_CENTRE_MIN = 1670;        // clear of the belt: rock surfaces reach 1670 − 150 − 55 = 1465 ≥ 1445 + 10 (was 1550)
 export const CLUSTER_CENTRE_MAX = 2550;        // clear of the edge: 2800 - 150 - 55 - margin
 export const EDGE_MARGIN = 100;                // no asteroid surface within this of the edge
 export const ASTEROID_GAP = 10;                // minimum clear space between asteroid surfaces
 export const SPAWN_RADIUS = 2000;
 export const SPAWN_CLEARANCE = 300;            // no asteroid surface within this of a spawn point
-/** Asteroids-iii §3.5: the belt as three lanes (inner, main, outer): each lane's orbital radius, its rock-radius band and
- *  its count (17 + 36 + 17 = BELT_COUNT). Lanes are 78 apart; the largest cross-lane radius sum plus ASTEROID_GAP is 75. */
+/** Asteroids-iii §3.5: the belt as lanes (inner, main, outer, big): each lane's orbital radius, its rock-radius band and
+ *  its count (17 + 36 + 17 + 5 = BELT_COUNT). The first three are 78 apart; the largest cross-lane radius sum plus
+ *  ASTEROID_GAP is 75. Asteroids-iv §10b (owner 2026-11-20): the fourth lane, just outside the belt, carries five big rocks
+ *  (radius 40-55); its cross-lane sum with the outer lane plus the gap is 20 + 55 + 10 = 85 ≤ 1390 − 1278 = 112. */
 export interface Lane { rho: number; rMin: number; rMax: number; count: number }
 export const LANES: readonly Lane[] = [
   { rho: 1122, rMin: 15, rMax: 20, count: 17 },
   { rho: 1200, rMin: 25, rMax: 45, count: 36 },
-  { rho: 1278, rMin: 15, rMax: 20, count: 17 }
+  { rho: 1278, rMin: 15, rMax: 20, count: 17 },
+  { rho: 1390, rMin: 40, rMax: 55, count: 5 }
 ];
-/** §13.2: the lane zones: [1092, 1161) inner, [1161, 1239) main, [1239, 1308] outer (the part of the belt nearest each lane). */
-export const LANE_ZONE_EDGES: readonly number[] = [1092, 1161, 1239, 1308];
+/** §13.2: the lane zones: [1092, 1161) inner, [1161, 1239) main, [1239, 1334) outer, [1334, 1450] big (the part of the belt
+ *  nearest each lane; 1334 is midway between 1278 and 1390; asteroids-iv §10b, was [1092, 1161, 1239, 1308]). */
+export const LANE_ZONE_EDGES: readonly number[] = [1092, 1161, 1239, 1334, 1450];
 /** §3.5: cluster centres' orbital radii differ by at least 2·(CLUSTER_RADIUS + CLUSTER_R_MAX) + ASTEROID_GAP (420), so
- *  clusters never meet each other or the belt; and the slack CLUSTER_CENTRE_MIN..MAX leaves for three of them (160). */
+ *  clusters never meet each other or the belt; and the slack CLUSTER_CENTRE_MIN..MAX leaves for three of them
+ *  (2550 − 1670 − 2·420 = 40; asteroids-iv §10b, was 160). */
 export const CLUSTER_RHO_SEPARATION = 2 * (CLUSTER_RADIUS + CLUSTER_R_MAX) + ASTEROID_GAP;
 export const CLUSTER_RHO_SLACK = CLUSTER_CENTRE_MAX - CLUSTER_CENTRE_MIN - (CLUSTER_COUNT - 1) * CLUSTER_RHO_SEPARATION;
 
@@ -159,7 +164,8 @@ export const SALVAGE_SPEED = 40;                  // ... at most this fast relat
 export const SALVAGE_TICKS = 300;                 // ... for 5 s salvages it
 export const TRAP_HULL = 3;                       // a trapped derelict costs this much hull
 export const LOOT_HULL = 8;                       // Hull loot, capped at the class hull
-/** The derelict's orbit bands, clear of the belt (BELT_INNER 1100 to BELT_OUTER 1300). */
+/** The derelict's orbit bands, clear of the three-lane belt (BELT_INNER 1100 to 1300). Since asteroids-iv §10b the far band's
+ *  inner edge passes through the big outer lane (1390 ± 55); the derelict never collides with rocks. */
 export const DERELICT_NEAR_MIN = 700, DERELICT_NEAR_MAX = 1000, DERELICT_FAR_MIN = 1400, DERELICT_FAR_MAX = 1599;
 /** Its phase is redrawn while it would start within this of either spawn, at most DERELICT_PHASE_DRAWS draws in all. */
 export const DERELICT_SPAWN_CLEAR = 600, DERELICT_PHASE_DRAWS = 16;

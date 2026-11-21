@@ -5,9 +5,11 @@
 import { inArc } from './geometry';
 import { escapeSpeed } from './rails';
 import { hitRock, pushRock } from './rockBreak';
-import { firstBlocker, rockAlive, rockAt, rockMass } from './rocks';
+import { firstBlocker, rockAimPoint, rockAlive, rockAt, rockMassOf } from './rocks';
+
 import { LASER_PUSH_CAP, LASER_ROCK_DAMAGE, LASER_ROCK_PUSH } from './rockTuning';
 import { classOf, type TacticalState } from './state';
+const aimAt = { x: 0, y: 0 };   // rockShotLine's aim-point scratch
 
 /** §6.2: whether rock k is alive with its centre in ship i's laser arc and its surface within the laser's range. */
 export function rockOnTarget(state: TacticalState, i: number, k: number): boolean {
@@ -20,15 +22,17 @@ export function rockOnTarget(state: TacticalState, i: number, k: number): boolea
 /** §6.2: what the line from ship i to rock k's centre meets first, with the impact point: rock −1 the planet, else a rock
  *  slot (k, or one in the way); null when nothing (the line ends inside k, so only a gone k gives null). */
 export function rockShotLine(state: TacticalState, i: number, k: number): { rock: number; x: number; y: number } | null {
-  const a = state.ships[i]!, c = rockAt(state, k), f = firstBlocker(state, a.x, a.y, c.x, c.y);
+  const a = state.ships[i]!;
+  rockAimPoint(state, k, aimAt);
+  const f = firstBlocker(state, a.x, a.y, aimAt.x, aimAt.y);
   if (!f) return null;
-  return { rock: f.rock, x: a.x + (c.x - a.x) * f.t, y: a.y + (c.y - a.y) * f.t };
+  return { rock: f.rock, x: a.x + (aimAt.x - a.x) * f.t, y: a.y + (aimAt.y - a.y) * f.t };
 }
 
-/** §4.1: ship i's laser shot meets rock k at (x, y): push first, then damage (a fan break along the line at hp ≤ 0). */
+/** §4.1: ship i's laser shot meets rock k at (x, y): push first, then damage (at hp ≤ 0 a cut through (x, y) along the line). */
 export function laserStrikesRock(state: TacticalState, i: number, k: number, x: number, y: number): void {
   const a = state.ships[i]!, dx = x - a.x, dy = y - a.y, d = Math.sqrt(dx * dx + dy * dy), ux = d > 0 ? dx / d : 0, uy = d > 0 ? dy / d : -1;
-  const r = rockAt(state, k), j = Math.min(LASER_ROCK_PUSH / rockMass(r.r), LASER_PUSH_CAP * escapeSpeed(Math.sqrt(r.x * r.x + r.y * r.y)));   // §5.3: capped
+  const r = rockAt(state, k), j = Math.min(LASER_ROCK_PUSH / rockMassOf(state, k), LASER_PUSH_CAP * escapeSpeed(Math.sqrt(r.x * r.x + r.y * r.y)));   // §5.3: capped
   pushRock(state, k, ux * j, uy * j);
-  hitRock(state, k, LASER_ROCK_DAMAGE, ux, uy, 'laser', i);
+  hitRock(state, k, LASER_ROCK_DAMAGE, x, y, ux, uy, 'laser', i);
 }

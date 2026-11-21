@@ -6,14 +6,18 @@ import { cloneTactical } from '../src/renderer/src/sim/tactical/state';
 import { stepDuel } from '../src/renderer/src/sim/tactical/duel';
 import { lineOfSight } from '../src/renderer/src/sim/tactical/geometry';
 import { IDLE_INPUT } from '../src/renderer/src/sim/tactical/weapons';
-import { rockAlive, rockAt, rockSlots } from '../src/renderer/src/sim/tactical/rocks';
-import { arena, mover, rockEvents } from './helpers/rockArena';
+import { rockAlive, rockAt, rockSlots, ROCK_STRIDE } from '../src/renderer/src/sim/tactical/rocks';
+import { arena, rockEvents, shaped, tmplOf } from './helpers/rockArena';
 
 describe('the transient masks between ticks (R1-F1)', () => {
   it('are all zero after stepDuel returns, so a line of sight across a new piece reads the same live and restored', () => {
     const st = arena();
     const before = Array.from({ length: rockSlots(st) }, (_, k) => rockAlive(st, k));
-    mover(st, 100, -30, 2000, 200, 0, 20, 1); mover(st, 101, 5, 2000, -200, 0, 20, 1);
+    // Asteroids-iv: a plain rock now turns to dust whole when it breaks (it has no cells to divide), so the pair is two cell
+    // rocks of one 19-cell template, worn to hp 1, meeting head on: each divides into real pieces.
+    const t = tmplOf(st, 19);
+    shaped(st, 100, t, -30, 2000, 200, 0); shaped(st, 101, t, 30, 2000, -200, 0);
+    st.rocks[100 * ROCK_STRIDE + 6] = 1; st.rocks[101 * ROCK_STRIDE + 6] = 1;
     stepDuel(st, IDLE_INPUT);
     expect(rockEvents(st, 'split').length + rockEvents(st, 'dust').length).toBeGreaterThan(0);
     const pieces = Array.from({ length: rockSlots(st) }, (_, k) => k).filter((k) => rockAlive(st, k) && (!before[k] || k === 100 || k === 101));

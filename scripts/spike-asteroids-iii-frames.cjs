@@ -1,5 +1,5 @@
 // Asteroids-iii renderer frame-time check (owner request 2026-11-19): the real app, single player at Weapons on the map. A quiet
-// scene (the untouched belt) and a busy one (script-side torpedo bursts, `breakRock(..., 'torpedo', 'burst')`, on the rocks
+// scene (the untouched belt) and a busy one (script-side torpedo bursts, `breakRock(..., 'torpedo', 0, 'shatter')`, on the rocks
 // nearest the crew, 0.5 s apart, so there are many free rocks, trails and shards). Frame times are requestAnimationFrame deltas
 // in the page. Usage: playwright-core@1.48.2 in a scratch folder, `npm run build` in the worktree, then
 // `node spike-asteroids-iii-frames.cjs [seconds per scene] [worktree] [json out]` (CPU_THROTTLE=4 slows the page 4x). The rAF delta is locked to the display's refresh when the page keeps up, so the numbers read as headroom only against that refresh interval. Reads the hooks __spikeAsteroids and
@@ -63,7 +63,7 @@ const { mkdtempSync, writeFileSync } = require('node:fs'); const { join } = requ
       await page.evaluate((kk) => {
         const h = globalThis.__spikeAsteroids, t = h.duel().tactical, a = h.rockAt(t, kk);
         if (!globalThis.__carry) { globalThis.__carry = []; let cur = t.events; Object.defineProperty(t, 'events', { configurable: true, enumerable: true, get: () => cur, set: (v) => { cur = v; if (globalThis.__carry.length) { for (const e of globalThis.__carry) v.push(e); globalThis.__carry.length = 0; } } }); }
-        const n0 = t.events.length; h.breakRock(t, kk, -a.x, -a.y, 'torpedo', 0, 'burst'); h.beginRockTick(t);
+        const n0 = t.events.length; h.breakRock(t, kk, a.x, a.y, -a.x, -a.y, 'torpedo', 0, 'shatter'); h.beginRockTick(t);
         for (const e of t.events.slice(n0)) globalThis.__carry.push(e);
       }, k);
       await page.waitForTimeout(500);
