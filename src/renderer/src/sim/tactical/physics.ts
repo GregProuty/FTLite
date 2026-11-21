@@ -4,7 +4,7 @@ import { CUTTER_CLASS, type ShipClassDef } from './defs';
 import { hx, hy, wrapHeading } from './direction';
 import { hitStatics, resolveContacts } from './contacts';
 import { classOf, CREW_SLOT, Room, type Axes, type Ship, type TacticalState } from './state';
-import { DuelSystem, effectiveBars, ENGINE_FACTOR_BY_BARS } from './bars';
+import { DuelSystem, effectiveBars, ENGINE_FACTOR_BY_BARS, roomLevel } from './bars';
 import { CREW_FLIGHT, DEFAULT_FLIGHT, DT, GM, GRAVITY_EPS, K_EDGE, MAX_SPEED, R_MAP, RCS_THRUST, SHIP_GRAVITY, SLING_CALM_R, SLING_MIN_SPEED, SLING_OUT_CUT, type FlightTuning } from './tuning';
 
 /** Acceleration toward the planet at the origin: a = −GM · d / (|d|² + ε²)^{3/2}. */
@@ -109,7 +109,7 @@ export function flightFor(state: TacticalState, i: number): FlightTuning {
  *  bars (times its class's undamaged factor, 1 for every class today), any other slot's from its Engines level as before. */
 export function shipEngineFactor(state: TacticalState, i: number): number {
   const sys = state.systems[i]!, cls = classOf(state, i);
-  return i === CREW_SLOT ? cls.engineFactor[0]! * ENGINE_FACTOR_BY_BARS[effectiveBars(sys, DuelSystem.Engines)]! : engineFactor(cls, sys.rooms[Room.Engines]);
+  return i === CREW_SLOT ? cls.engineFactor[0]! * ENGINE_FACTOR_BY_BARS[effectiveBars(sys, DuelSystem.Engines)]! : engineFactor(cls, roomLevel(sys, Room.Engines));   // hacking spike: a hacked Engines room is off
 }
 
 /** Ship slot i's flight for one tick: its body, its engine factor and its class. */

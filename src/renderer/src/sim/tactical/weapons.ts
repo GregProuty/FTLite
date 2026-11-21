@@ -10,7 +10,7 @@ import { laserStrikesRock, rockOnTarget, rockShotLine } from './rockWeapons';
 import { hx, hy } from './direction';
 import { tickGun } from './gun';
 import { hasTurret } from './defs';
-import { BEAM_RATE_BY_BARS, BEAM_SHOTS_BY_BARS, DuelSystem, effectiveBars, MAGAZINE_REGEN_UNITS, SHIELD_LAYERS_BY_BARS, SHIELD_RATE_BY_BARS, TORPEDO_RELOAD_BY_BARS, weaponBars, WeaponSlot } from './bars';
+import { BEAM_RATE_BY_BARS, BEAM_SHOTS_BY_BARS, DuelSystem, effectiveBars, MAGAZINE_REGEN_UNITS, SHIELD_LAYERS_BY_BARS, SHIELD_RATE_BY_BARS, roomLevel, TORPEDO_RELOAD_BY_BARS, weaponBars, WeaponSlot } from './bars';
 import { aimDir, clampAim, firePew, firePewTrigger, pewAutoReady, tickPew } from './pew';
 import { classOf, CREW_SLOT, handControl, missileOf, Room, type Axes, type TacticalState } from './state';
 import { enemyHostile, shipSeen } from './science';
@@ -102,7 +102,7 @@ export function torpedoInRange(state: TacticalState, i: number, torpRock = state
  *  target, `torpRock`) within torpedo range (weapons update spec §2). W-3 (pew pew spec §3): in MANUAL (`manual`, default the ship's torpedo mode) there is no target and no range test. */
 export function canLaunch(state: TacticalState, i: number, torpRock = state.systems[i]!.torpRock, manual = state.systems[i]!.torpManual): boolean {
   const s = state.systems[i]!;
-  const up = i === CREW_SLOT ? weaponBars(s, WeaponSlot.Torpedo) >= 1 : s.rooms[Room.Weapons] < 2;   // spec §10.3: the crew's torpedo bars
+  const up = i === CREW_SLOT ? weaponBars(s, WeaponSlot.Torpedo) >= 1 : roomLevel(s, Room.Weapons) < 2;   // hacking spike: a hacked Weapons room is off   // spec §10.3: the crew's torpedo bars
   return missileOf(state, i) === null && s.magazine > 0 && up && (manual || torpedoInRange(state, i, torpRock));
 }
 /** A lock target must be a Room index. */
@@ -119,7 +119,7 @@ export function validRockLock(state: TacticalState, weapon: unknown, rock: numbe
  *  non-crew ship's canLaunch refuses missiles). A laserCharge command is still admitted (canCharge): it is held, to no
  *  effect, and the laser starts charging again once the beam has a bar (the crew) or the room is repaired to 1. */
 export function laserOffline(state: TacticalState, i: number): boolean {
-  return i === CREW_SLOT ? beamShots(state, i) === 0 : state.systems[i]!.rooms[Room.Weapons] >= 2;   // spec §10.3: the beam's bars
+  return i === CREW_SLOT ? beamShots(state, i) === 0 : roomLevel(state.systems[i]!, Room.Weapons) >= 2;   // hacking spike: or hacked   // spec §10.3: the beam's bars
 }
 
 /** W-2 (pew pew spec §2): whether ship i's MANUAL laser would fire on a laserFire now, a torpedo in flight aside
@@ -363,7 +363,7 @@ export function tickWeapons(state: TacticalState, i: number, input: ShipInput): 
   else if (laser !== null && s.laserBurst === 0 && !laserFrozen(state, i, input)) {   // no charging while a burst shot is pending, nor without a laser
     // FTL targeting spec §2: the crew's laser charges by itself, with no hold, and stays full (no vent) until it fires.
     if (i === CREW_SLOT) { if (!laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + BEAM_RATE_BY_BARS[weaponBars(s, WeaponSlot.Beam)]!); }   // spec §10.3
-    else if (s.fireHeld && !laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + laser.chargeRate[s.rooms[Room.Weapons]]!);
+    else if (s.fireHeld && !laserFull(state, i)) s.laserCharge = Math.min(laser.chargeUnits, s.laserCharge + laser.chargeRate[roomLevel(s, Room.Weapons)]!);
     else if (laserFull(state, i) && ++s.laserHold >= laser.holdTicks) { s.laserCharge = 0; s.laserHold = 0; }   // vents; recharges if still held
   }
   if (i === CREW_SLOT) {   // Engineering spike spec §2: the crew's shields by bars; layers above the cap drop at once
@@ -372,7 +372,7 @@ export function tickWeapons(state: TacticalState, i: number, input: ShipInput): 
     if (s.shields >= cap) s.shieldClock = 0;
     else if ((s.shieldClock += SHIELD_RATE_BY_BARS[bars]!) >= c.shields.rechargeUnits) { s.shields++; s.shieldClock = 0; }   // rate 0: held
   } else if (s.shields >= c.shields.layers) s.shieldClock = 0;
-  else if ((s.shieldClock += c.shields.rate[s.rooms[Room.Shields]]!) >= c.shields.rechargeUnits) { s.shields++; s.shieldClock = 0; }   // rate 0: held
+  else if ((s.shieldClock += c.shields.rate[roomLevel(s, Room.Shields)]!) >= c.shields.rechargeUnits) { s.shields++; s.shieldClock = 0; }   // rate 0: held
   if (s.magazine >= c.slots.missile.magazine) s.magazineClock = 0;
   else if (i === CREW_SLOT) {   // spec §10.3: the torpedo's reload by its bars on a units clock; 0 bars holds the clock
     const rate = TORPEDO_RELOAD_BY_BARS[weaponBars(s, WeaponSlot.Torpedo)]!;
