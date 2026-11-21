@@ -33,6 +33,7 @@ add('optional', 'crew.sit');
 add('optional', ...CREW_ART_NAMES);
 add('optional', ...CREW3D_NAMES);       // Crew3D spec section 4: the pre-rendered 3D crew and boarder; the old art without them
 add('optional', ...CONSOLE_ART_NAMES);   // Art-ii spec section 2: the bought consoles; the procedural desks without them
+add('optional', 'ship.hunter.art');   // UI round Part 3: the original Hunter, rendered by tools/ship-render/hunter.py
 add('optional', 'ship.hound.map');   // Art-iv: the 2-Minute Tabletop Hound battlemap, a paid painting
 add('optional', 'ship.valkyrn.map');   // Valkyrn spec §4.1: the 2-Minute Tabletop Valkyrn battlemap, a paid painting
 add('optional', 'space.backdrop');   // Art-v: the 2-Minute Tabletop Deep Space (Red) backdrop; the procedural starfield without it

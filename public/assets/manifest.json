@@ -2110,6 +2110,15 @@
     "name": "music.combat"
   },
   {
+    "file": "art/ships/hunter.png",
+    "title": "FTLite rendered Hunter (enemy ship, top down)",
+    "author": "FTLite project owner",
+    "source": "assets/art",
+    "license": "original",
+    "required": false,
+    "name": "ship.hunter.art"
+  },
+  {
     "file": "art/crew3d/crewA.png",
     "title": "FTLite rendered crew (heavy suit)",
     "author": "FTLite project owner",
