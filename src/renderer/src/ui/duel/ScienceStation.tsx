@@ -61,7 +61,7 @@ function HackRows({ hack, top }: { hack: HackPanel; top: number }) {
       <ModulePips name="hack" x={x0 + HACK_COLUMN_X + 44} y={top + SCIENCE_ROWS.pips} bars={hack.hack} pips={hack.pips} crt={crt} onPower={power} />
       {hack.rooms.map((r, k) => (
         <Button key={k} name={`hack-${k}`} label={r.label} x={x0 + k * (bw + 6)} y={top + SCIENCE_ROWS.rooms} w={bw} h={24}
-          lit={r.state === 'running'} dim={r.state === 'dim' || r.state === 'down'}
+          lit={r.state === 'running'} dim={r.state === 'dim'}
           onPress={() => actions.console.ship?.({ kind: 'hack', room: r.state === 'running' ? -1 : k })} />
       ))}
       <Bar x={x0} y={top + SCIENCE_ROWS.bar} w={right - x0} h={3} fill={hack.progress ?? 0} colour={hot} />
