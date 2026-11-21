@@ -5,7 +5,7 @@
 // decided round is written as a playtest record through the preload, with the link's route and RTT read from main
 // about once a second (H-2b); F3 shows the live latency overlay over the scene.
 import type { OnlinePortDescriptor, OnlinePreloadApi, OnlineStatus } from '../../../../shared/onlineSession';
-import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
+import { createLiveViewport, syncViewport } from './liveViewport';
 import { createPortLink } from '../../../../network/portLink';
 import { browserPortEndpoint } from '../../../../network/transport/bridge';
 import { classifyStreamPacket } from '../../../../network/state/imageCodec';
@@ -106,6 +106,7 @@ export function leavePromptKeys(prompt: LeavePrompt, d: DuelState, phase: string
 
 export function createOnlineDuelSession(deps: OnlineDuelDeps) {
   const canvas = deps.renderer.app.canvas;
+  const viewport = createLiveViewport(deps.renderer);   // UI round 2b: one live viewport for every source, synced from the stage each frame
   // Enemy ship window spec §6.1, §6.2: local to this screen, never sent. While the window is shown its intercept takes Esc
   // (and T), so the leave prompt and setPaused below never see that Escape.
   const contact = createContactController(), requests = createMapRequests();
@@ -579,7 +580,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       offClose = link.onClose(() => { freeze(); stopInput(); linkClosed = true; predictor?.dispose(); predictor = null; confirmedSequence = 0; smoother.clear(); });   // Net-4a §3.4: no hidden P steps on after a close
       client = createDuelRemoteClient(link, [next.seatId], { runId: next.runId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout, clock: { nowMs: deps.now } });
       predictor = createDuelPredictor({ seat: next.seatId, contentDigest: deps.contentDigest, resolveLayout: deps.resolveLayout }); seenRetargets = 0; capped = false; smoother.clear();   // Net-4a §3.4: one per client
-      source = createOnlineDuelSource({ client: { state, publication, live }, seat: next.seatId, now: deps.now, viewport: { w: INTERNAL_W, h: INTERNAL_H },
+      source = createOnlineDuelSource({ client: { state, publication, live }, seat: next.seatId, now: deps.now, viewport,
         prediction: { active: () => !linkClosed && (predictor?.active() ?? false), state: () => predictor?.state() ?? null, before: () => predictor?.before() ?? null,
           alpha: () => (capped ? 1 : Math.max(0, Math.min(1, (deps.now() - lastLocalAt) / LOCAL_TICK_MS))), offsets: () => smoother.offsets(deps.now()), rockShift: () => smoother.tickOffset(deps.now()) } });   // §3.8; rock jump brief §2
     },
@@ -597,6 +598,7 @@ export function createOnlineDuelSession(deps: OnlineDuelDeps) {
       if (client && !linkClosed) runLocalTicks();   // Fable #7: the ticks due by now, so alpha stays in [0, 1] without a clamp
       const now = deps.now(), dt = lastFrame ? Math.min(0.1, (now - lastFrame) / 1000) : 1 / 60; lastFrame = now;
       const d = state(); if (!d) { deps.latency?.clear(); return; }
+      syncViewport(viewport, deps.renderer);   // UI round 2b: the source's cameras see the stage's size
       source.frame(dt, focused && !blocked ? cameraKeys : null, focused && !blocked ? pointer.sample() : null);
       cameraKeys = keysOnly(sampleIdle());
       const ticks = (d.decidedTick >= 0 ? d.decidedTick : d.tactical.tick) - d.baseTick;

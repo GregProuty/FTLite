@@ -6,7 +6,6 @@
 import { Container } from 'pixi.js';
 import { enemyHostile, pointSeen, shipSeen } from '../../sim/tactical/science';
 import { manualTorpedoFlying } from '../../sim/tactical/manualTorpedo';
-import { INTERNAL_H, INTERNAL_W } from '../../../../shared/resolution';
 import type { CrewOverride } from '../../render/duel/crewOverride';
 import type { Renderer } from '../../render/renderer';
 import { crtActive, crtScale } from '../../render/crt';
@@ -36,6 +35,7 @@ import { screenToWorld, worldToScreen, zoomTo, type Camera } from '../../render/
 import { screenPan, worldPan } from '../../audio/voices';
 import type { AudioOut } from '../audio';
 import { createDuelAudio } from './duelAudio';
+import { createLiveViewport, stageOf, syncViewport } from './liveViewport';
 import { crewLife } from '../../render/duel/healFxModel';
 import type { DuelSink } from '../../ui/sinks';
 import { mapOverlayOf, type Banners, type MapOverlayView } from '../../ui/views';
@@ -211,13 +211,15 @@ export interface DuelSceneOptions {
 }
 
 export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
-  const viewport = { w: INTERNAL_W, h: INTERNAL_H }, font = renderer.assets.fontFamily;
+  // UI round 2b: one live viewport, updated from the stage at the top of every draw (the stage follows the window).
+  const stageNow = () => stageOf(renderer);   // test renderers may have no stage: the reference
+  const viewport = createLiveViewport(renderer), font = renderer.assets.fontFamily;
   const hidden = renderer.app.stage.children.filter((child) => child.visible);
   for (const child of hidden) child.visible = false;   // world, enemy window, projectiles, callouts, HUD; shown again on dispose
   const root = new Container(), scene = new Container();
   const layer = createTacticalLayer({ fontFamily: font, viewport, seed: options.seed });
   const crew3dOn = (): boolean => (renderer.crew3d?.() ?? 'on') === 'on';   // Crew3D spec section 4: F8 in dev builds
-  let interior: InteriorView = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel, crew3dOn);
+  let interior: InteriorView = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel, crew3dOn, stageNow);
   scene.addChild(layer.container, interior.container);
   root.addChild(scene);
   renderer.app.stage.addChild(root);
@@ -244,6 +246,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
     /** One frame from `source`; `dt` in seconds. Returns the station of the console drawn, or null when none (Artemis
      *  spec §6.2: the mode clears the console's holds when it changes). */
     draw(source: DuelViewSource, dt: number, overlay: SceneOverlay): ConsoleStation | null {
+      syncViewport(viewport, renderer); layer.resize(viewport);   // UI round 2b: a no-op when unchanged
       if (epoch === null) { epoch = source.epoch(); lastOutcome = (source.confirmed?.() ?? source.duel).tactical.outcome; if (source.seed !== options.seed) layer.reseed(source.seed); }   // the online duel learns its seed from the first publication; a round already decided on attach is no kill to show
       if (source.epoch() !== epoch) {   // a new round (a restart before H-2): every view-owned cache starts again
         epoch = source.epoch();
@@ -251,7 +254,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
         lastOutcome = Outcome.Running; pings.length = 0; refused = null;
         fires = null; flashUntil = 0;
         options.requests?.resetReticle();   // W-2, W-4 spec §10: a new round's reticle aim starts empty (the MANUAL laser aims along the nose, the Hound's reticle waits for the pointer)
-        interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel, crew3dOn); scene.addChildAt(interior.container, 1);
+        interior.destroy(); interior = createInteriorView(renderer.assets, renderer.stageScale, renderer.feel, crew3dOn, stageNow); scene.addChildAt(interior.container, 1);
       }
       const d = source.duel, view = source.view(), alpha = source.alpha(), contact = options.contact;
       const c = source.confirmed?.() ?? d;   // Net-4a §3.6: the outcome and the one-shots
@@ -268,7 +271,7 @@ export function createDuelScene(renderer: Renderer, options: DuelSceneOptions) {
       const crewSeat = crewHelmSeat(d, source.active()), crewHelmMap = station === 'helm' && view === 'helm' && crewSeat;   // playtest2feedback §4a
       // Engineering spike §5: on the ship view a left click on a door or an airlock toggles it, for anyone, from anywhere.
       if (click && view === 'interior' && options.shipCommand) {
-        const at = interior.placement(), c = at ? shipControlAt(d, at, click.x, click.y) : null;
+        const at = interior.placement(), c = at ? shipControlAt(d, at, click.x, click.y, interior.band()) : null;
         if (c) options.shipCommand(shipCommandOf(c));
       }
       // W-1 (pew pew spec §1): at the Weapons seat a left click on the open map fires the pew at the map point (the bearing from

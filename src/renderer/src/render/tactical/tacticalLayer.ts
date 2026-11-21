@@ -48,6 +48,11 @@ export interface TacticalLayer {
   reseed(seed: number): void;
   starSeed(): number;
   setCrt(scale: CrtScale): void;
+  /** UI round 2b: follow a new viewport size (the stage follows the window): redraws the background, the star tiling and
+   *  the CRT filter area. A no-op when the size is unchanged. */
+  resize(vp: Viewport): void;
+  /** Test hook: the size the layer is drawn for. */
+  debugSize(): { w: number; h: number };
 }
 
 /** The star field for a run seed: STAR_COUNT stars in one w × h screen, from an xorshift (render-only randomness). */
@@ -62,7 +67,7 @@ export interface TacticalLayerOptions {
 export const PAUSE_TEXT = 'PAUSED   ESC: RESUME   F11: FULLSCREEN';   // UI round §1.5, §1.6
 
 export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
-  const { w, h } = opts.viewport;
+  let { w, h } = opts.viewport;
   const container = new Container(), bloom = new Container();
   container.addChild(bloom);
   // The lock label (bar and text) sits in `container` above the filtered `bloom`, so neighbouring strokes never soften it.
@@ -97,7 +102,8 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
 
   // The star field: render-only randomness, seeded (H-1 spec §7 item 1). One screen of stars is drawn as a 2 × 2 tile, so
   // shifting it by the parallax offset (0..w, 0..h, minus one tile) always covers the screen with no gap.
-  bg.rect(0, 0, w, h).fill(SPACE);
+  const drawBg = (): void => { bg.clear(); bg.rect(0, 0, w, h).fill(SPACE); };
+  drawBg();
   let shownSeed = opts.seed ?? 2026;
   const drawStars = (seed: number): void => {
     stars.clear(); shownSeed = seed;
@@ -504,6 +510,13 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
     reset() { for (const t of texts) t.visible = false; for (const g of drawn) g.clear(); },
     reseed(seed) { if (seed !== shownSeed) drawStars(seed); },
     starSeed: () => shownSeed,
+    resize(vp) {
+      if (vp.w === w && vp.h === h) return;
+      w = vp.w; h = vp.h;
+      drawBg(); drawStars(shownSeed);
+      bloom.filterArea = new Rectangle(0, 0, w, h);
+    },
+    debugSize: () => ({ w, h }),
     setCrt(scale) {
       if (scale === crtShown) return;
       crtShown = scale;
