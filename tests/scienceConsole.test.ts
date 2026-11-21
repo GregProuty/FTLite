@@ -73,8 +73,8 @@ describe('the console model (spec §7.3, §7.4)', () => {
         sitDown(sci.interior, 0, sci.science);
         const m = consoleModel({ duel: sci, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: OVERLAY, hover: 'BRG 090 RNG 100' })!;
         const range = sensorRange(sci.tactical.systems[0]!);   // UI round §2.4: the range the power strip showed rides the Science panel
-        expect([m.station, m.science, m.weapons, m.helm]).toEqual(['science', { hover: 'BRG 090 RNG 100', range }, null, null]);
-        expect(consoleModel({ duel: sci, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: OVERLAY })!.science).toEqual({ hover: null, range });
+        expect([m.station, m.science, m.weapons, m.helm]).toMatchObject(['science', { hover: 'BRG 090 RNG 100', range }, null, null]);   // hacking spike: plus the hack rows
+        expect(consoleModel({ duel: sci, me: 0, mode: 'single', hidden: false, held: NO_HELD_FLAGS, overlay: OVERLAY })!.science).toMatchObject({ hover: null, range, hack: { scan: 1, hack: 0, online: false, status: 'HACK: NEED 2 BARS' } });   // hacking spike: the SCAN / HACK rows
         expect(range).toBe(1800);   // Engineering spike §10.4: the start sensor range, doubled (owner 2026-11-20; was 900)
       } finally { disposeDuel(sci); }
     } finally { disposeDuel(d); }
@@ -82,7 +82,7 @@ describe('the console model (spec §7.3, §7.4)', () => {
 });
 
 describe('the layout (spec §7.3, §7.4)', () => {
-  it('the Weapons block is 268 high (the frequency row where the steer row was; W-1: the PEW row on top; the Engineering spike: the bar pips, merge kind a, was 244), the contact window 420, the Science block 96', () => {
-    expect([STATION.h.weapons, stationTop('weapons'), CONTACT.h, STATION.h.science, stationTop('science')]).toEqual([268, 440, 420, 96, 612]);
+  it('the Weapons block is 268 high (the frequency row where the steer row was; W-1: the PEW row on top; the Engineering spike: the bar pips, merge kind a, was 244), the contact window 420, the Science block 176 (hacking spike: was 96)', () => {
+    expect([STATION.h.weapons, stationTop('weapons'), CONTACT.h, STATION.h.science, stationTop('science')]).toEqual([268, 440, 420, 176, 532]);
   });
 });

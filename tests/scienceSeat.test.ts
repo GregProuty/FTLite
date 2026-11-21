@@ -58,9 +58,9 @@ describe('the Science console (spec §7.3)', () => {
         .toMatchObject({ station: 'science', helm: null, weapons: null, science: { hover: null, range: 1800 } });   // the start range, doubled (owner 2026-11-20)
     } finally { disposeDuel(d); }
   });
-  it('the Science block sits at the bottom left, 96 high', () => {
-    expect(STATION.h.science).toBe(96);
-    expect(stationTop('science')).toBe(720 - 12 - 96);
+  it('the Science block sits at the bottom left, 176 high (hacking spike: was 96)', () => {
+    expect(STATION.h.science).toBe(176);
+    expect(stationTop('science')).toBe(720 - 12 - 176);
   });
   it('the CRT is on at science (UI round §2.2: the readout heading and help are gone)', () => {
     expect(crtActive('science')).toBe(true);

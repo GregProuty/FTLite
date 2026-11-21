@@ -8,6 +8,7 @@ import { gunInterval } from '../../sim/tactical/gun';
 import { autocannonRateText } from '../../app/duel/weaponsSeat';
 import { classOf, Contact, CREW_SLOT, handControl, missileOf, Room, type TacticalState } from '../../sim/tactical/state';
 import { enemyHostile, sensorRange } from '../../sim/tactical/science';
+import { hackPanel, type HackPanel } from './scienceModel';
 import { HEADING_COUNT, MAGAZINE } from '../../sim/tactical/tuning';
 import { beamShots, canLaunch, torpedoInRange } from '../../sim/tactical/weapons';
 import type { MapOverlayView } from '../../ui/views';
@@ -83,7 +84,9 @@ export interface GunPanel { state: 'READY' | 'OVERHEAT' | 'OFFLINE'; heat: numbe
 export interface FlightPanel { gun: GunPanel | null; weapons: WeaponsPanel }
 /** The Science block (Sci-1 spec §7.3): the hover readout, or null with no cursor over the map; UI round §2.4: and the
  *  sensor range (the gone power strip's RANGE). */
-export interface SciencePanel { hover: string | null; range: number }
+export interface SciencePanel { hover: string | null; range: number;
+  /** Hacking spike §3.1: the SCAN / HACK rows (absent in older fixtures). */
+  hack?: HackPanel }
 export interface ConsoleView {
   station: ConsoleStation;
   tabs: ConsoleTabs;
@@ -183,6 +186,6 @@ export function consoleModel(i: ConsoleModelInput): ConsoleView | null {
     ? { gun: gunDef ? { state: sys.rooms[Room.Weapons] >= 2 ? 'OFFLINE' : sys.gunLocked === true ? 'OVERHEAT' : 'READY', heat: Math.max(0, Math.min(1, sys.gunHeat / gunDef.heatMax)), locked: sys.gunLocked === true } : null,
         weapons: weaponsPanel() }
     : null;
-  const science = station === 'science' ? { hover: i.hover ?? null, range: sensorRange(t.systems[CREW_SLOT]!) } : null;   // UI round §2.4: the range the power strip showed
+  const science = station === 'science' ? { hover: i.hover ?? null, range: sensorRange(t.systems[CREW_SLOT]!), hack: hackPanel(t) } : null;   // hacking spike §3.1: the SCAN / HACK rows   // UI round §2.4: the range the power strip showed
   return { station, tabs, tabActions, helm, weapons, science, ...(flight ? { flight } : {}) };
 }
