@@ -14,6 +14,9 @@ import { HULLS, hullFor, roomCentre } from '../tactical/hullModel';
 import { CONTACT_BOX } from './consoleLayout';
 import type { WeaponsPanel } from './consoleModel';
 import { FREQ_NAMES, hostilityLine, LOOT_NAMES, scanButton, type ScanButton } from './scienceModel';
+import { shortArcs } from './hackFx';
+import { HACK_TICKS } from '../../sim/tactical/tuning';
+import { TICK_HZ } from '../../sim/tuning';
 
 /** The room labels, rooms[0] Weapons, rooms[1] Shields, rooms[2] Engines (the lock buttons' words). */
 export const ROOM_LABELS = ['WEAP', 'SHLD', 'ENG'] as const;
@@ -44,6 +47,11 @@ export interface ContactRoom {
   fill: number | null; stroke: number;
   /** Null when roomLook gives no hatch; else its colour and flat segment endpoints [x1, y1, x2, y2, ...]. */
   hatch: { colour: number; segments: number[] } | null;
+  /** Hacking spike §3.2, R1-8: switched off by a landed hack: the seconds left and this frame's short-circuit arcs (flat
+   *  segments); absent or null when not hacked. */
+  hacked?: { seconds: number; arcs: number[] } | null;
+  /** Hacking spike §3.2: the running hack's hold 0..1 while this room is being hacked, else absent or null. */
+  hacking?: number | null;
 }
 export interface ContactLaser { label: string; value: string; fill: number; lit: boolean; enabled: boolean; note: string | null }
 /** One info line under the drawing: its text, its resolved ramp colour (an alert blinks hot and main), and a bar 0..1. */
@@ -116,6 +124,14 @@ export function contactFit(outline: readonly number[], box: { x: number; y: numb
 }
 
 const line = (text: string, tint: number = CRT.main, bar: number | null = null): ContactLine => ({ text, tint, bar });
+/** Hacking spike §3.2, R1-8: room r of the crew's target as a hack shows it, at every scan level (the "?" rooms too: which
+ *  room is hacked is shown, accepted): off (`HACK n`, the arcs) or being hacked (the hold). */
+function hackLook(i: ContactModelInput, room: ContactRoom, r: number): ContactRoom {
+  const t = i.state, down = t.systems[targetOf(t, CREW_SLOT)]?.hacked[r] ?? 0;
+  if (down > 0) { const seconds = Math.ceil(down / TICK_HZ); return { ...room, label: `HACK ${seconds}`, hacked: { seconds, arcs: shortArcs(room.points, i.t, r) } }; }
+  if (t.hackRoom === r) return { ...room, hacking: Math.min(1, t.hackTicks / HACK_TICKS) };
+  return room;
+}
 
 export function contactModel(i: ContactModelInput): ContactView | null {
   const { state } = i, b = i.box ?? CONTACT_BOX, box = { x: b.x, y: b.y, w: b.w, h: b.h };
@@ -157,10 +173,10 @@ export function contactModel(i: ContactModelInput): ContactView | null {
       for (let k = 0; k + 1 < poly.length; k += 2) { const q = at(poly[k]!, poly[k + 1]!); out.push(q.x, q.y); }
       return out;
     };
-    const rooms: ContactRoom[] = UNKNOWN_SHAPE.rooms.map((poly) => {
+    const rooms: ContactRoom[] = UNKNOWN_SHAPE.rooms.map((poly, r) => {
       let f = 0, sd = 0;
       for (let k = 0; k + 1 < poly.length; k += 2) { f += poly[k]!; sd += poly[k + 1]!; }
-      return { label: '?', centre: at(f / (poly.length / 2), sd / (poly.length / 2)), points: place(poly), fill: null, stroke: CRT.mid, hatch: null };
+      return hackLook(i, { label: '?', centre: at(f / (poly.length / 2), sd / (poly.length / 2)), points: place(poly), fill: null, stroke: CRT.mid, hatch: null }, r);
     });
     const weapons = weaponRows(), picked = i.aim && weapons !== null;
     const lines = s.contact === Contact.Enemy && s.level === 1
@@ -181,10 +197,10 @@ export function contactModel(i: ContactModelInput): ContactView | null {
   const phase = blink(i.t, DAMAGE_BLINK_HZ);
   const rooms: ContactRoom[] = shape.rooms.map((poly, r) => {
     const look = roomLook(false, full ? roomLevel(sys.rooms[r] ?? 0) : 0, phase), points = place(poly), c = roomCentre(hull, r);   // Level 1: no damage
-    return {
+    return hackLook(i, {
       label: full ? ROOM_LABELS[r] ?? '' : '?', centre: at(c.f, c.s), points, fill: look.fill, stroke: look.stroke,
       hatch: look.hatch === null ? null : { colour: look.hatch, segments: hatchSegments(points, HATCH_SPACING, HATCH_ANGLE) }
-    };
+    }, r);
   });
   const weapons = weaponRows();
   const lines: ContactLine[] = [], hostile = hostilityLine(state);

@@ -4,6 +4,7 @@
 // in the amber ramp (crtTheme.ts); friend and foe, damage, the lock and the arcs are told apart by brightness, solid vs
 // hollow, solid vs dashed, hatching and two-state blinks on the presentation time `t`. Section 3: `setCrt` attaches the
 // bloom and noise filters (none at glow 0).
+import { sparkSegments } from '../duel/hackFx';
 import { BitmapText, Container, Graphics, Rectangle } from 'pixi.js';
 import { FONT_NATIVE, FONT_SIZE, textPx } from '../theme';
 import { SHIP_RADIUS } from '../../sim/tactical/tuning';
@@ -139,6 +140,7 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       const poly = [...pt(1.1, 0), ...pt(-0.9, 0.85), ...pt(-0.45, 0), ...pt(-0.9, -0.85)];
       if (s.crew) g.poly(poly).fill(CRT.hot).stroke({ width: 1, color: CRT.glass });
       else { g.poly(poly).fill(CRT.glass).stroke({ width: 1, color: CRT.main }); segments(g, dashCircle(s.x, s.y, CHEVRON_SIZE * 0.95, DASH, GAP, seg), 1, ring); }
+      if (s.hacked) segments(g, sparkSegments(s.x, s.y, CHEVRON_SIZE * 1.1, t, s.index), 1, CRT.hot);   // hacking spike §3.3: the short's sparks
       return;
     }
     const k = SHIP_RADIUS * s.scale, phase = blink(t, DAMAGE_BLINK_HZ), hull = HULLS[s.hull];
@@ -158,6 +160,7 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
       if (hatch !== null) segments(g, hatchSegments(pts, HATCH_SPACING, HATCH_ANGLE, seg), 1, hatch);
     });
     if (!s.crew) segments(g, dashCircle(s.x, s.y, k * ENEMY_RING, DASH, GAP, seg), 1, ring);
+    if (s.hacked) segments(g, sparkSegments(s.x, s.y, k * 1.2, t, s.index, 6), 1, CRT.hot);   // hacking spike §3.3: the short's sparks
     for (let l = 0; l < s.shields; l++) segments(g, dashCircle(s.x, s.y, k * (1.6 + 0.25 * l), DASH, GAP, seg), 1, s.crew ? CRT.mid : CRT.dim, 0.9 - 0.2 * l);
   }
 
@@ -217,6 +220,7 @@ export function createTacticalLayer(opts: TacticalLayerOptions): TacticalLayer {
         if (m.scan > 0) marks.moveTo(m.x, m.y - m.r).arc(m.x, m.y, m.r, -Math.PI / 2, -Math.PI / 2 + m.scan * 2 * Math.PI).stroke({ width: 2, color: CRT.main });
       }
       if (m.designated) bracket(marks, m.x, m.y, m.r + 6, blink(t, DESIGNATE_PULSE_HZ) ? 1 : 0.45);
+      if (m.hacked) segments(marks, sparkSegments(m.x, m.y, m.r, t, m.contact), 1, CRT.hot);   // hacking spike §3.3, plan R1-7: the unscanned enemy's sparks
     }
     const s = d.salvage ?? null;
     if (s) {

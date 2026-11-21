@@ -120,6 +120,15 @@ export const ContactWindow = memo(function ContactWindow({ contact }: { contact:
       ))}
       {drawn && (
         <svg data-ui-contact-marks="" viewBox={`${b.x} ${b.y} ${b.w} ${b.h}`} preserveAspectRatio="none" style={{ ...boxStyle, pointerEvents: 'none' }}>
+          {contact.rooms.map((r, k) => r.hacked ? (   // hacking spike §3.2: the room's electrical short, its arcs re-seeded on the clock
+            <g key={`h${k}`} data-ui-contact-hacked={k}>
+              <polygon points={polyPoints(r.points)} fill={hex(CRT.dim)} fillOpacity={0.55} stroke={hex(CRT.hot)} strokeWidth={1} strokeDasharray="3 3" />
+              <path d={segPath(r.hacked.arcs)} stroke={hex(CRT.glass)} strokeWidth={3} fill="none" />
+              <path d={segPath(r.hacked.arcs)} stroke={hex(CRT.hot)} strokeWidth={1} fill="none" />
+            </g>
+          ) : r.hacking != null ? (   // the hold: the room's edge in hot, a dash that fills as it holds
+            <polygon key={`h${k}`} data-ui-contact-hacking={k} points={polyPoints(r.points)} fill="none" stroke={hex(CRT.hot)} strokeWidth={2} strokeDasharray={`${Math.max(1, Math.round(r.hacking * 12))} ${Math.max(1, 12 - Math.round(r.hacking * 12))}`} />
+          ) : null)}
           {contact.flash.map((f) => (   // duel polish i spec §B: the struck room flashes, the ramp's hot as the spec's white
             <polygon key={`f${f.room}`} data-ui-contact-flash={contact.rooms[f.room]?.label ?? ''} points={polyPoints(f.points)} fill={hex(CRT.hot)} fillOpacity={f.alpha} stroke="none" />
           ))}
