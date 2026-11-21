@@ -45,7 +45,7 @@ describe('the console\'s power (spec §10.2; UI round §2.4)', () => {
   it('on a console view the HUD\'s power columns render (UI round §2.4: the HUD on every view); no power strip', () => {
     const { duel } = mount();
     const col = (system: number, name: string, slots: number) => ({ system, name, bars: 1, capacity: slots, slots, max: slots, heat: 0, heatMax: 240, coolant: 0, cools: system < 4, failed: false, overdriven: false, room: null });
-    const hud: ShipHudView = { hull: { segments: 20, lit: 20, tone: 'good' }, shields: { layers: 2, up: 2, cap: 2 },
+    const hud: ShipHudView = { hull: { segments: 20, lit: 20, tone: 'good' }, shields: { layers: 2, up: 2, cap: 2, recharge: 0 },
       power: { systems: [col(0, 'SHLD', 5), col(1, 'WEAP', 10), col(2, 'ENG', 5), col(3, 'SENS', 4), col(4, 'O2', 2)], spare: 1, reactor: 10, coolantFree: 8, coolantPool: 8 }, health: null };
     act(() => duel.frame({ ...view({ ...helm, station: 'weapons', helm: null }), hud }));
     expect(all('data-ui-hud-slot').length).toBeGreaterThan(0);
