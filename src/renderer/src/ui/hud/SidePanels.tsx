@@ -2,12 +2,13 @@
 // game over. Re-renders per model; its children are memo, so canvases redraw only on change.
 import { memo } from 'react';
 import { clockLine, directorText, sectorLine, STATION_SHORT, threatTint, timeLine, type HudModel } from '../../render/hudModel';
-import { CLOCK, POWER, POWER_ROW, THREAT_ROWS, THREATS } from '../../render/hudLayout';
+import { CLOCK, POWER, POWER_ROW, THREAT_ROWS } from '../../render/hudLayout';
 import { AMBER, DIM, FONT_SIZE, LINE, PAD, TEXT, WARN } from '../../render/theme';
 import { CellRow, type CellRowSet } from '../stage/CellRow';
 import { Panel } from '../stage/Panel';
 import { PixelText } from '../stage/PixelText';
 import { Row } from '../stage/Row';
+import { useHudLayout } from '../stage/useStage';
 
 type Station = HudModel['stations'][number];
 type Threat = HudModel['threats'][number];
@@ -18,14 +19,14 @@ const PowerRow = memo(function PowerRow({ k, st, lit }: { k: number; st: Station
 });
 
 const ThreatRow = memo(function ThreatRow({ i, t }: { i: number; t: Threat }) {
-  const parts = [{ icon: t.icon, text: t.text, tint: threatTint(t) }];
+  const parts = [{ icon: t.icon, text: t.text, tint: threatTint(t) }], THREATS = useHudLayout().THREATS;
   return <Row x={THREATS.x + PAD} y={THREATS.y + i * LINE} parts={parts} />;
 });
 
 const CLOCK_TINTS = [TEXT, TEXT, DIM, DIM, DIM] as const;
 
 export const SidePanels = memo(function SidePanels({ m, flash }: { m: HudModel; flash: readonly number[] }) {
-  const clock = [clockLine(m), sectorLine(m), timeLine(m), directorText(m), m.run.quirk];
+  const THREATS = useHudLayout().THREATS, clock = [clockLine(m), sectorLine(m), timeLine(m), directorText(m), m.run.quirk];
   return (
     <>
       <Panel {...CLOCK} />

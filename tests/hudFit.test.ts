@@ -4,7 +4,7 @@ import skiff from '../src/renderer/src/sim/ship/skiff.json';
 import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createSimState, type SimState } from './helpers/simLifetime';
 import { textPx, rowPx, TEXT_SCALE, TITLE_SCALE, PAD, contrast, TEXT_PAIRS, FONT_SIZE, FONT_NATIVE, LINE } from '../src/renderer/src/render/theme';
-import { CLOCK, POWER, THREATS, POWER_ROW, CARD_ROW, CARD_INNER_W, BLOCK_INNER_W, BLOCK_HP_X, BLOCK_HP_W, BLOCK_O2_X, NOTICE, EVENT_CARD, SUMMARY_W, CREDITS } from '../src/renderer/src/render/hudLayout';
+import { CLOCK, POWER, THREATS, POWER_ROW, CARD_ROW, CARD_INNER_W, BLOCK_INNER_W, BLOCK_HP_X, BLOCK_HP_W, BLOCK_O2_X, NOTICE, EVENT_CARD, SUMMARY_W, CREDITS, hudLayout, blockRect, cardRect, overlaps, inside } from '../src/renderer/src/render/hudLayout';
 import { buildHudModel, clockLine, sectorLine, timeLine, directorText, weaponsStrip, weaponsFooterLines, weaponsLootLine, navigationFooterLines, scienceFooter, engineeringFooter, targetRowText, tabLabel, skillsLine, seatName, runNotice, lobbyLines, upgradeRowText, STATION_SHORT, HIDDEN_SHIP, HELM_NOTICE, EVENT_CARD_HELP, objectThreatText, type HudModel, type WeaponsPanel, type NavigationPanel, type SciencePanel, type EngineeringPanel, type DebrisTarget, type DoorsPanel } from '../src/renderer/src/render/hudModel';
 import { STATION_NAMES } from '../src/renderer/src/sim/stationKinds';
 import { PHASE_NAMES } from '../src/renderer/src/sim/director';
@@ -196,3 +196,24 @@ function targetRows(): string[] {
   for (let sys = 0; sys < 3; sys++) out.push(targetRowText({ ...enemy, system: sys, status: { hp: 30, repairIn: null, ionIn: 99 } }), targetRowText({ ...enemy, system: sys, status: { hp: 0, repairIn: 99 } }));
   return out;
 }
+
+describe('the sector HUD anchors to the stage (UI round 2b)', () => {
+  const stages = [{ w: 1280, h: 720 }, { w: 1707, h: 720 }, { w: 1280, h: 960 }];
+  it('is the reference layout at 1280x720, under the long-standing names', () => {
+    const r = hudLayout({ w: 1280, h: 720 });
+    expect(r).toBe(hudLayout());
+    expect(r.THREATS).toEqual(THREATS); expect(r.NOTICE).toEqual(NOTICE); expect(r.EVENT_CARD).toEqual(EVENT_CARD); expect(r.CREDITS).toEqual(CREDITS);
+    for (let i = 0; i < 4; i++) { expect(r.blockRect(i)).toEqual(blockRect(i)); expect(r.cardRect(i, true)).toEqual(cardRect(i, true)); }
+  });
+  for (const st of stages) it(`at ${st.w}x${st.h} every rect is on the stage, the margins hold and nothing new overlaps`, () => {
+    const r = hudLayout(st), stage = { x: 0, y: 0, w: st.w, h: st.h }, ref = hudLayout();
+    expect(r.THREATS.x + r.THREATS.w).toBe(st.w - 8);
+    expect(r.blockRect(0).y + r.blockRect(0).h).toBe(st.h - 8);
+    const all = [CLOCK, POWER, r.THREATS, r.blockRect(0), r.blockRect(1), r.blockRect(2), r.blockRect(3), r.cardRect(0, true), r.cardRect(1, true), r.cardRect(2, true), r.cardRect(3, true), r.NOTICE, r.CREDITS];
+    for (const a of all) expect(inside(a, stage)).toBe(true);
+    const refAll = [CLOCK, POWER, ref.THREATS, ref.blockRect(0), ref.blockRect(1), ref.blockRect(2), ref.blockRect(3), ref.cardRect(0, true), ref.cardRect(1, true), ref.cardRect(2, true), ref.cardRect(3, true), ref.NOTICE];
+    for (let i = 0; i < 12; i++) for (let j = i + 1; j < 12; j++) if (!overlaps(refAll[i]!, refAll[j]!)) expect(overlaps(all[i]!, all[j]!), `${i}/${j}`).toBe(false);
+    expect(r.CREDITS.x + r.CREDITS.w).toBe(st.w - 40); expect(r.CREDITS.y + r.CREDITS.h).toBe(st.h - 40);
+    expect(r.NOTICE.x + r.NOTICE.w / 2 - (CLOCK.x + CLOCK.w + r.THREATS.x) / 2).toBe(0);
+  });
+});

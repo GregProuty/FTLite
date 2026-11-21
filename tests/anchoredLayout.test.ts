@@ -80,3 +80,13 @@ describe('a layout never reads a caller\'s mutable stage later (Task 4 review)',
     expect(lay.stage).toEqual({ w: 1500, h: 850 });
   });
 });
+
+import { hudLayout } from '../src/renderer/src/render/hudLayout';
+describe('the anchored sector HUD', () => {
+  it('copies the stage size, so a cached layout ignores later mutation of the caller object', () => {
+    const st = { w: 1500, h: 800 }, a = hudLayout(st); st.w = 1000;
+    expect(hudLayout({ w: 1500, h: 800 })).toBe(a);
+    expect(a.THREATS.x + a.THREATS.w).toBe(1492);
+    expect(a.CENTER_X).toBe(750);
+  });
+});

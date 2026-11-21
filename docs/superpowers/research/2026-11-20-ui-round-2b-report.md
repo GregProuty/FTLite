@@ -44,3 +44,7 @@
 - TDD: tests/anchoredLayout.test.ts went RED on the hit tests, then GREEN (12 tests). It covers 5 stages: on-stage, no overlap, margins, INFO_BAND and hit tests. A new contactWindow render test checks that the left edge is at 1395 at stage 1707.
 - The brief's point (1700, 100) is in the 12 px margin, not inside the window (x 1395 to 1695). The test uses (1690, 100) instead.
 - Full suite: 548 files, 6439 passed, 3 skipped, 0 failed. Typecheck is clean.
+
+## Task 5
+
+Status: DONE. Added hudLayout(stage) (memoised, copies the stage size) with THREATS, NOTICE/EVENT_CARD (centred on the gap between the columns, x + dw/2), CREDITS, BLOCK_Y/blockRect/cardRect (bottom and right anchored); reference names unchanged. useHudLayout() in ui/stage/useStage.ts. SidePanels, PlayerBlock, ConsoleCard, Credits, EventCardView, Headline (CENTER_X = stage.w/2) and SummaryCard (useStage) read it. Flight view: nothing left (viewport synced in Task 3, FeelPanel/Banners in Task 4). TDD note: the implementation was written before the new tests, so no separate RED run was recorded; the tests were added to hudFit.test.ts (reference equality, on-stage, margins, no new overlaps at 1707x720 and 1280x960, notice centring) and anchoredLayout.test.ts (stage-copy memo). Tests: 11 files / 168 pass; tsc -b clean. Files: render/hudLayout.ts, ui/stage/useStage.ts, ui/hud/{SidePanels,PlayerBlock,ConsoleCard,Credits,EventCardView,Headline,SummaryCard}.tsx, tests.

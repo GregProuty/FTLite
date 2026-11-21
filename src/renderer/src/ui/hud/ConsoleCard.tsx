@@ -2,7 +2,7 @@
 // the selector, two footers and the charge strip, in hud.ts's child order.
 import { memo, useMemo } from 'react';
 import { tabLabel, type HudPlayer } from '../../render/hudModel';
-import { CARD_ROW, cardRect } from '../../render/hudLayout';
+import { CARD_ROW } from '../../render/hudLayout';
 import { AMBER, DIM, LINE, PAD, RULE, TEXT, WARN } from '../../render/theme';
 import { Bar } from '../stage/Bar';
 import { Box } from '../stage/Box';
@@ -12,9 +12,10 @@ import { Panel } from '../stage/Panel';
 import { Row } from '../stage/Row';
 import type { RowPart } from '../stage/rowLayout';
 import { consoleRows } from './consoleRows';
+import { useHudLayout } from '../stage/useStage';
 
 export const ConsoleCard = memo(function ConsoleCard({ i, p, flash }: { i: number; p: HudPlayer; flash: readonly number[] }) {
-  const tabbed = !!p.tabs, r = cardRect(i, tabbed), BX = r.x + PAD, BY = r.y + (tabbed ? LINE + 2 : 0);
+  const tabbed = !!p.tabs, r = useHudLayout().cardRect(i, tabbed), BX = r.x + PAD, BY = r.y + (tabbed ? LINE + 2 : 0);
   const v = useMemo(() => consoleRows(p, flash), [p.console, flash]);   // consoleRows reads only p.console
   const tabs: RowPart[] | null = p.tabs ? p.tabs.flatMap((t, k) => [...(k ? [{ text: '|', tint: DIM }] : []), { text: tabLabel(t, p.tabFocus), tint: t.offline ? WARN : t.active ? (p.tabFocus ? AMBER : TEXT) : DIM }]) : null;
   return (
