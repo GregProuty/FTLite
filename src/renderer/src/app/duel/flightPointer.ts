@@ -32,7 +32,8 @@ function blocksOf(L: ConsoleLayout): Blocks {
   return b;
 }
 /** Hacking spike R1-7: whether p is inside the Science station block (taller since the hack rows): a press there is the
- *  block's, never a map click, so it cannot clear Science's designation (which loses a running hack). */
+ *  block's, never a map click, so it cannot pick a contact drawn under the block (re-designating, say, the derelict would
+ *  lose a running hack). */
 export function onScienceBlock(p: Point, L: ConsoleLayout = consoleLayout()): boolean { return inside(p, stationBlock(L, 'science')); }
 /** On the layout's stage, clear of the contact window while it is shown and of every block in `blocks`. */
 function onMap(p: Point, contactShown: boolean, L: ConsoleLayout, blocks: readonly Rect[]): boolean {

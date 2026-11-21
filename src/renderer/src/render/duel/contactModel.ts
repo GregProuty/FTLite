@@ -125,10 +125,10 @@ export function contactFit(outline: readonly number[], box: { x: number; y: numb
 
 const line = (text: string, tint: number = CRT.main, bar: number | null = null): ContactLine => ({ text, tint, bar });
 /** Hacking spike §3.2, R1-8: room r of the crew's target as a hack shows it, at every scan level (the "?" rooms too: which
- *  room is hacked is shown, accepted): off (`HACK n`, the arcs) or being hacked (the hold). */
+ *  room is hacked is shown, accepted): off (`ENG 23`: the room's name and seconds, code review 5; the arcs) or being hacked (the hold). */
 function hackLook(i: ContactModelInput, room: ContactRoom, r: number): ContactRoom {
   const t = i.state, down = t.systems[targetOf(t, CREW_SLOT)]?.hacked[r] ?? 0;
-  if (down > 0) { const seconds = Math.ceil(down / TICK_HZ); return { ...room, label: `HACK ${seconds}`, hacked: { seconds, arcs: shortArcs(room.points, i.t, r) } }; }
+  if (down > 0) { const seconds = Math.ceil(down / TICK_HZ); return { ...room, label: `${ROOM_LABELS[r] ?? ''} ${seconds}`, hacked: { seconds, arcs: shortArcs(room.points, i.t, r) } }; }
   if (t.hackRoom === r) return { ...room, hacking: Math.min(1, t.hackTicks / HACK_TICKS) };
   return room;
 }

@@ -3,11 +3,14 @@
 // first, so Sensors bars lost to damage or Engineering never come back to the hack by themselves.
 import { DuelSystem, effectiveBars, hackBars, HACK_BAR_MAX } from '../tactical/bars';
 import type { DuelState } from './state';
+import type { ShipSystems } from '../tactical/state';
 
 /** Why sciencePower {delta} would be refused now, or null: NO BAR (−1 at 0), NO FREE BAR (+1 with every effective Sensors
  *  bar already on the hack), MAX (+1 at HACK_BAR_MAX). Judged on the trimmed value. */
-export function sciencePowerRefusal(d: DuelState, delta: number): 'NO BAR' | 'NO FREE BAR' | 'MAX' | null {
-  const sys = d.tactical.systems[0], now = hackBars(sys);
+export function sciencePowerRefusal(d: DuelState, delta: number): 'NO BAR' | 'NO FREE BAR' | 'MAX' | null { return hackPowerRefusal(d.tactical.systems[0], delta); }
+/** sciencePowerRefusal on a systems record (the Science panel's refusal words read it too). */
+export function hackPowerRefusal(sys: Pick<ShipSystems, 'rooms' | 'bars' | 'hackPower'>, delta: number): 'NO BAR' | 'NO FREE BAR' | 'MAX' | null {
+  const now = hackBars(sys);
   if (delta === -1) return now === 0 ? 'NO BAR' : null;
   return now >= HACK_BAR_MAX ? 'MAX' : now >= effectiveBars(sys, DuelSystem.Sensors) ? 'NO FREE BAR' : null;
 }

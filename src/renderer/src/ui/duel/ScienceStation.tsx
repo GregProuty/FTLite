@@ -5,7 +5,7 @@
 // them as Weapons splits its own: a left click on HACK's pips adds a bar, a right click removes one; SCAN shows the rest),
 // the three room buttons (a click hacks that enemy room, a click on the running one cancels), the hold's bar and the
 // status line. Both commands ride the console's ship queue.
-import { memo, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from 'react';
+import { memo, useRef, useState, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from 'react';
 import type { SciencePanel } from '../../render/duel/consoleModel';
 import type { HackPanel } from '../../render/duel/scienceModel';
 import { STATION } from '../../render/duel/consoleLayout';
@@ -28,6 +28,10 @@ export const SCIENCE_ROWS = { pips: 64, rooms: 86, bar: 116, status: 124, help: 
 /** HACK's label and pips start this far right of the block's left edge (SCAN's at 0). */
 export const HACK_COLUMN_X = 142;
 export const SCIENCE_HELP = 'CLICK: SELECT   S: SCAN   T: NEXT';
+/** Code review 2: a refused click's reason shows on the status line this long (ms). Code review 3: a press on the running
+ *  room within this long of starting it (a double click) does not cancel it (ms). */
+export const REFUSAL_SHOW_MS = 1500, CANCEL_GUARD_MS = 500;
+const clock = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 /** One module's pips; `onPower` (HACK only) takes a left click as +1 and a right click as −1. */
 function ModulePips({ name, x, y, bars, pips, crt, onPower }: { name: 'scan' | 'hack'; x: number; y: number; bars: number; pips: number; crt: boolean; onPower?: (delta: 1 | -1) => void }) {
@@ -51,7 +55,21 @@ function ModulePips({ name, x, y, bars, pips, crt, onPower }: { name: 'scan' | '
 function HackRows({ hack, top }: { hack: HackPanel; top: number }) {
   const actions = useActions(), { crt } = useCrt(), x0 = STATION.x + 8, right = STATION.x + STATION.w - 8;
   const dim = crt ? CRT.mid : DIM, main = crt ? CRT.main : TEXT, hot = crt ? CRT.hot : AMBER;
-  const power = (delta: 1 | -1): void => actions.console.ship?.({ kind: 'sciencePower', delta });
+  const [note, setNote] = useState<{ text: string; at: number } | null>(null), started = useRef(-Infinity);
+  const refuse = (text: string): void => setNote({ text, at: clock() });
+  const power = (delta: 1 | -1): void => {   // code review 2: a refused click says why instead of doing nothing
+    const why = delta === 1 ? hack.addRefusal : hack.removeRefusal;
+    if (why !== null) { refuse(`HACK: ${why}`); return; }
+    actions.console.ship?.({ kind: 'sciencePower', delta });
+  };
+  const room = (k: number): void => {
+    const r = hack.rooms[k]!;
+    if (r.state === 'running') { if (clock() - started.current >= CANCEL_GUARD_MS) actions.console.ship?.({ kind: 'hack', room: -1 }); return; }   // code review 3: no double-click cancel
+    if (r.state === 'down' || r.state === 'dim') { refuse(r.refusal ?? hack.status); return; }
+    started.current = clock();
+    actions.console.ship?.({ kind: 'hack', room: k });
+  };
+  const shown = note !== null && clock() - note.at < REFUSAL_SHOW_MS ? note.text : null;
   const bw = Math.floor((right - x0 - 2 * 6) / 3);
   return (
     <>
@@ -62,10 +80,10 @@ function HackRows({ hack, top }: { hack: HackPanel; top: number }) {
       {hack.rooms.map((r, k) => (
         <Button key={k} name={`hack-${k}`} label={r.label} x={x0 + k * (bw + 6)} y={top + SCIENCE_ROWS.rooms} w={bw} h={24}
           lit={r.state === 'running'} dim={r.state === 'dim'}
-          onPress={() => actions.console.ship?.({ kind: 'hack', room: r.state === 'running' ? -1 : k })} />
+          onPress={() => room(k)} />
       ))}
       <Bar x={x0} y={top + SCIENCE_ROWS.bar} w={right - x0} h={3} fill={hack.progress ?? 0} colour={hot} />
-      <PixelText text={hack.status} x={x0} y={top + SCIENCE_ROWS.status} size={FONT_NATIVE} tint={hack.alert ? hot : dim} />
+      <PixelText text={shown ?? hack.status} x={x0} y={top + SCIENCE_ROWS.status} size={FONT_NATIVE} tint={shown !== null || hack.alert ? hot : dim} />
     </>
   );
 }

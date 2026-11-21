@@ -23,6 +23,19 @@ function ready(): TacticalState {
   return t;
 }
 
+let ui: ReturnType<typeof makeUi> | null = null;
+const view = (t: TacticalState): DuelUiView => ({ end: null, banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, contact: null,
+  console: { station: 'science', tabs: { helm: 'locked', weapons: 'locked', science: 'current', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
+    helm: null, weapons: null, science: { hover: null, range: 1800, hack: hackPanel(t) } } satisfies ConsoleView });
+function mount(t: TacticalState) {
+  ui = makeUi(); const duel = createDuelSink(ui.store), ship = vi.fn();
+  ui.actions.setConsole({ press: vi.fn(), hold: vi.fn(), lock: vi.fn(), torpLock: vi.fn(), throttle: vi.fn(), frequency: vi.fn(), ship });
+  render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);
+  act(() => duel.frame(view(t)));
+  return ship;
+}
+const texts = () => Array.from(document.querySelectorAll('canvas')).map((e) => e.dataset.text);
+
 describe('the hack panel model (§3.1)', () => {
   it('says why a hack cannot start, in order: bars, the designation, the range; then PICK A ROOM', () => {
     const t = createTacticalState(3);
@@ -40,22 +53,11 @@ describe('the hack panel model (§3.1)', () => {
     expect(hackPanel(t).rooms[1]).toMatchObject({ state: 'running' });
     t.hackRoom = -1; t.hackTicks = 0; t.systems[HUNTER].hacked[Room.Engines] = 1500;
     expect(hackPanel(t)).toMatchObject({ status: 'ENG DOWN 25 s', alert: false, progress: null });
-    expect(hackPanel(t).rooms[2]).toEqual({ label: 'ENG 25', state: 'down', seconds: 25 });
+    expect(hackPanel(t).rooms[2]).toEqual({ label: 'ENG 25', state: 'down', seconds: 25, refusal: 'ENG: ALREADY DOWN' });
   });
 });
 
 describe('the Science block (§3.1)', () => {
-  const view = (t: TacticalState): DuelUiView => ({ end: null, banners: { interior: null, tactical: null, notice: null, alert: null }, overlay: null, crt: true, contact: null,
-    console: { station: 'science', tabs: { helm: 'locked', weapons: 'locked', science: 'current', ship: 'open' }, tabActions: { helm: null, weapons: null, science: null, ship: 'stand' },
-      helm: null, weapons: null, science: { hover: null, range: 1800, hack: hackPanel(t) } } satisfies ConsoleView });
-  function mount(t: TacticalState) {
-    const ui = makeUi(), duel = createDuelSink(ui.store), ship = vi.fn();
-    ui.actions.setConsole({ press: vi.fn(), hold: vi.fn(), lock: vi.fn(), torpLock: vi.fn(), throttle: vi.fn(), frequency: vi.fn(), ship });
-    render(<UiContext.Provider value={{ store: ui.store, actions: ui.actions }}><UiRoot menu={false} /></UiContext.Provider>);
-    act(() => duel.frame(view(t)));
-    return ship;
-  }
-  const texts = () => Array.from(document.querySelectorAll('canvas')).map((e) => e.dataset.text);
   it('draws the SCAN and HACK pips, the room buttons and the status line', () => {
     mount(ready());
     const pips = Array.from(document.querySelectorAll('[data-ui-science-pip]')).map((e) => (e as HTMLElement).dataset.uiSciencePip);
@@ -74,6 +76,32 @@ describe('the Science block (§3.1)', () => {
     const ship = mount(t), room = document.querySelector('[data-testid="console-hack-0"]') as HTMLElement;
     fireEvent.pointerDown(room, { button: 0 }); fireEvent.pointerUp(room, { button: 0 });
     expect(ship.mock.calls.map((c) => c[0])).toEqual([{ kind: 'hack', room: -1 }]);
+  });
+});
+
+describe('the Science block refusals and the cancel guard (code review 2, 3)', () => {
+  it('a refused pip click says why on the status line and sends nothing', () => {
+    const t = ready(); t.systems[CREW_SLOT].bars[DuelSystem.Sensors] = 2;   // both Sensors bars already on HACK
+    const ship = mount(t), pips = document.querySelector('[data-testid="console-science-pips-hack"]') as HTMLElement;
+    fireEvent.pointerDown(pips, { button: 0 });
+    expect(ship).not.toHaveBeenCalled();
+    expect(texts()).toContain('HACK: NO FREE BAR');
+  });
+  it('a dim room says why, a down room says ALREADY DOWN, and neither sends', () => {
+    const t = ready(); t.designated = -1; t.systems[HUNTER].hacked[Room.Shields] = 600;
+    const ship = mount(t), press = (k: number) => { const b = document.querySelector(`[data-testid="console-hack-${k}"]`) as HTMLElement; fireEvent.pointerDown(b, { button: 0 }); fireEvent.pointerUp(b, { button: 0 }); };
+    press(1); expect(texts()).toContain('SHLD: ALREADY DOWN');
+    press(0); expect(texts()).toContain('HACK: SELECT THE ENEMY');
+    expect(ship).not.toHaveBeenCalled();
+  });
+  it('a second press on a room within the guard after starting it does not cancel it', () => {
+    const t = ready(), ship = mount(t), b = () => document.querySelector('[data-testid="console-hack-2"]') as HTMLElement;
+    const press = () => { fireEvent.pointerDown(b(), { button: 0 }); fireEvent.pointerUp(b(), { button: 0 }); };
+    press();
+    t.hackRoom = Room.Engines; t.hackTicks = 3;
+    act(() => createDuelSink(ui!.store).frame(view(t)));
+    press();
+    expect(ship.mock.calls.map((c) => c[0])).toEqual([{ kind: 'hack', room: Room.Engines }]);
   });
 });
 

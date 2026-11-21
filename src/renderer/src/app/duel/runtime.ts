@@ -264,7 +264,7 @@ export interface DuelRuntime {
 
 const isWeaponsCommand = (c: DuelCommand): boolean => c.kind === 'laserMode' || c.kind === 'torpMode' || c.kind === 'gunMode' || c.kind === 'laserLock' || c.kind === 'torpLock' || c.kind === 'rockLock' || c.kind === 'laserCharge' || c.kind === 'laserFire' || c.kind === 'missileLaunch' || c.kind === 'pewFire';
 /** The commands only a seated console's player sends (Weapons, the Helm's throttle, Sci-1's three): a Tab or a stand drops them. */
-const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'throttle' || c.kind === 'throttleCut' || c.kind === 'heading' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';   // helm round 2 §2.3: a Tab or a stand drops a queued cut
+const isConsoleCommand = (c: DuelCommand): boolean => isWeaponsCommand(c) || c.kind === 'hack' || c.kind === 'sciencePower' || c.kind === 'throttle' || c.kind === 'throttleCut' || c.kind === 'heading' || c.kind === 'laserFrequency' || c.kind === 'designate' || c.kind === 'contactScan';   // helm round 2 §2.3: a Tab or a stand drops a queued cut
 const NO_REQUESTS: ContactRequests = { designate: null, scan: null };
 const NEUTRAL: HeldInput = { moveX: 0, moveY: 0, interactHeld: false };
 const IDLE_KEYS = (): KeySample => ({ moveX: 0, moveY: 0, interactHeld: false, fireHeld: false, presses: emptyPresses() });

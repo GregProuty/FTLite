@@ -17,7 +17,7 @@ describe('the contact window\'s hacked rooms (§3.2, R1-8)', () => {
     st.known[Contact.Enemy] = level;
     st.systems[HUNTER].hacked[Room.Engines] = 1500; st.hackRoom = Room.Weapons; st.hackTicks = 210;
     const rooms = view(st).rooms;
-    expect(rooms[Room.Engines]!.label).toBe('HACK 25');
+    expect(rooms[Room.Engines]!.label).toBe('ENG 25');   // code review 5: the room's name stays
     expect(rooms[Room.Engines]!.hacked!.seconds).toBe(25);
     expect(rooms[Room.Engines]!.hacked!.arcs.length).toBe(2 * 5 * 4);
     expect(rooms[Room.Weapons]!.hacking).toBe(0.5);
@@ -43,6 +43,7 @@ describe('the map carries the hack (§3.3, plan R1-7)', () => {
     expect(tacticalModel(input(st)).ships.find((s) => s.index === HUNTER)!.hacked).toBeUndefined();
     st.systems[HUNTER].hacked[Room.Weapons] = 30;
     expect(tacticalModel(input(st)).ships.find((s) => s.index === HUNTER)!.hacked).toBe(true);
+    expect(tacticalModel(input(st)).marks!.find((m) => m.contact === Contact.Enemy)?.hacked).toBeUndefined();   // code review 1: one set of sparks
     st.known[Contact.Enemy] = 0;
     expect(tacticalModel(input(st)).marks!.find((m) => m.contact === Contact.Enemy)!.hacked).toBe(true);
   });

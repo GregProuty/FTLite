@@ -47,11 +47,14 @@ describe('the ship-command queue (§3.4)', () => {
   });
 });
 
-describe('the predictor with Science commands (plan R1-10)', () => {
-  it('keeps a predicted sciencePower from its local tick on, and verifies once the authority has run it', () => {
+describe('the predictor with Science commands (plan R1-10, code review 6)', () => {
+  /** Seat 0 at Science, Sensors 3; `prep` readies more. A command predicted on local tick 10 runs at the authority on 15;
+   *  returns what `read` saw from local tick 10 on, the authority's duel and the last confirm results. */
+  function predicted(command: DuelCommand, read: (d: DuelState) => number, prep: (d: DuelState) => void = () => {}) {
     const d = createDuel(CUTTER, 4, 0, 2); live.push(d);
     sitDown(d.interior, 0, d.science);
     d.tactical.systems[0].bars[DuelSystem.Sensors] = 3;
+    prep(d);
     let sequence = 0;
     const water = { held: [0, 0], command: [0, 0] };
     const publication = (): DuelPublication => {
@@ -60,7 +63,7 @@ describe('the predictor with Science commands (plan R1-10)', () => {
         pauseReason: null, lagTicks: 0, tickTimeMs: null, commandHighWater: [...water.command], heldHighWater: [...water.held], auxiliaryHighWater: [0, 0], eventSequence: 0, held: [N(), N()] };
     };
     const confirmed = (): DuelState => { const c = loadDuelSnapshot(CUTTER, saveDuelSnapshot(d, DIGEST), DIGEST); live.push(c); return c; };
-    const cmd: CommandEnvelope<DuelCommand> = { runId: 'r', id: { player: 0, sequence: 1 }, requestedTick: 0, command: { kind: 'sciencePower', delta: 1 } };
+    const cmd: CommandEnvelope<DuelCommand> = { runId: 'r', id: { player: 0, sequence: 1 }, requestedTick: 0, command };
     const entry = (L: number, commands: CommandEnvelope<DuelCommand>[]): LocalInput => ({ heldSequence: L, held: N(), commands });
     const p = createDuelPredictor({ seat: 0, contentDigest: DIGEST, resolveLayout: () => CUTTER });
     p.confirm(publication(), confirmed());
@@ -70,11 +73,24 @@ describe('the predictor with Science commands (plan R1-10)', () => {
       stepDuelTick(d, { held: [N(), N()], commands: L === 15 ? [{ ...cmd, requestedTick: d.interior.tick }] : [] });
       water.held[0] = Math.max(0, L - 3); water.command[0] = L >= 15 ? 1 : 0;
       if (d.interior.tick % 3 === 0) results.push(p.confirm(publication(), confirmed()));
-      if (L >= 10) seen.push(p.state()!.tactical.systems[0].hackPower);
+      if (L >= 10) seen.push(read(p.state()!));
     }
+    p.dispose();
+    return { seen, d, results };
+  }
+  it('keeps a predicted sciencePower from its local tick on, and verifies once the authority has run it', () => {
+    const { seen, d, results } = predicted({ kind: 'sciencePower', delta: 1 }, (s) => s.tactical.systems[0].hackPower);
     expect(seen.every((v) => v === 1)).toBe(true);
     expect(d.tactical.systems[0].hackPower).toBe(1);
     expect(results.slice(-3)).toEqual(['verified', 'verified', 'verified']);
-    p.dispose();
+  });
+  it('keeps a predicted hack running from its local tick on, and verifies once the authority runs it', () => {
+    const { seen, d, results } = predicted({ kind: 'hack', room: Room.Shields }, (s) => s.tactical.hackRoom, (d) => {
+      const t = d.tactical, a = t.ships[0], b = t.ships[1];
+      t.systems[0].hackPower = 2; t.designated = 0; b.x = a.x + 500; b.y = a.y; b.vx = a.vx; b.vy = a.vy;
+    });
+    expect(seen.every((v) => v === Room.Shields)).toBe(true);
+    expect(d.tactical.hackRoom).toBe(Room.Shields);
+    expect(results.slice(-3)).toEqual(['verified', 'verified', 'verified']);
   });
 });

@@ -632,7 +632,7 @@ export function tacticalModel(input: TacticalModelInput): TacticalDraw {
     if (state.ships[enemy]?.active && input.ships.includes(enemy)) {
       const b = interpolatedShip(state, prev, alpha, enemy), p = toS(b.x, b.y), unknown = state.known[Contact.Enemy] === 0;
       if (onScreen(b.x, b.y, SHIP_RADIUS * 3)) {
-        marks.push({ contact: Contact.Enemy, x: p.x, y: p.y, r: unknown ? 14 : Math.max(14, ringR), unknown, wreck: false, label: null, alert: null, scan: scanOf(Contact.Enemy), designated: state.designated === Contact.Enemy, ...(enemyHacked(state) ? { hacked: true } : {}) });   // hacking spike §3.3
+        marks.push({ contact: Contact.Enemy, x: p.x, y: p.y, r: unknown ? 14 : Math.max(14, ringR), unknown, wreck: false, label: null, alert: null, scan: scanOf(Contact.Enemy), designated: state.designated === Contact.Enemy, ...(unknown && enemyHacked(state) ? { hacked: true } : {}) });   // hacking spike §3.3, code review 1: only the "?" mark (a scanned enemy's ShipDraw has its own sparks)
         if (input.console === 'science') lockRing = { x: p.x, y: p.y, r: Math.max(18, ringR + 6) };
       }
     }
