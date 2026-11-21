@@ -11,7 +11,7 @@ import { roomAt } from '../grid';
 import { fireStep } from '../hazards/fire';
 import { oxygenStep } from '../hazards/oxygen';
 import { movementSystem } from '../movement';
-import { DuelSystem, effectiveBars, throttleAllowed, WeaponSlot, WEAPON_SLOTS } from '../tactical/bars';
+import { DuelSystem, effectiveBars, scannerBars, throttleAllowed, WeaponSlot, WEAPON_SLOTS } from '../tactical/bars';
 import { applyWeaponPower } from './weaponSlots';
 import { stepDuel } from '../tactical/duel';
 import { autoFaceTurn, headingTurn } from '../tactical/hunter';
@@ -431,11 +431,12 @@ export function stepDuelTick(d: DuelState, input: DuelInput): DuelResult[] {
     if (station < 0) { result(e, 'invalid-seat'); continue; }
     if (c !== 0 && c !== 1) { result(e, 'malformed'); continue; }
     if (t.known[c]! >= CONTACT_MAX_LEVEL[c]!) { result(e, 'unavailable'); continue; }
-    if (effectiveBars(t.systems[0], DuelSystem.Sensors) === 0) { result(e, 'unavailable'); continue; }   // Task 10, spec §2 Scans: no Sensors, no scan
+    if (scannerBars(t.systems[0]) === 0) { result(e, 'unavailable'); continue; }   // Task 10, spec §2 Scans: no Sensors, no scan (hacking spike: no scanner bars)
     if (!contactSeen(t, c)) { result(e, 'unavailable'); continue; }   // Task 10, spec §10.4: unseen
     result(e, undefined, scanCommand(t, c, station === d.science ? SCAN_RATE_SCIENCE : SCAN_RATE_OTHER, station));
   }
   crew.scanner = t.scan.contact < 0 || attendant(d, t.scan.by) >= 0;   // spec §4.6: after admission, so a same-tick takeover keeps it
+  crew.hacker = scientist >= 0;   // hacking spike §2.5: a running hack holds only while Science is attended
   // Engineering spike spec §7 (Decision 12): shipPower, shipCoolant, shipDoor and shipAirlock from any valid, present,
   // conscious player, seated or standing, with no range or view check, applied in (player, sequence) order so the last
   // in player order wins. The tactical admissions above read the bars as they stood at the start of the tick.

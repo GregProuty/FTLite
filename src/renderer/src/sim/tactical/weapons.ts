@@ -59,6 +59,9 @@ export interface ShipInput {
   /** Sci-1 spec §4.6: whether the station running the ship's scan is attended (true when no scan runs). The duel step
    *  computes it for the crew; every other input sets true. */
   scanner: boolean;
+  /** Hacking spike: whether the Science console is attended, so a running hack holds (absent: true, as on every input
+   *  but the duel crew's). */
+  hacker?: boolean;
 }
 
 /** A crew that sits at both consoles and does nothing. */

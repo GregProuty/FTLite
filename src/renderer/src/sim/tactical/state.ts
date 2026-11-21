@@ -157,7 +157,9 @@ export type DuelEvent =
   /** A missile ended. `target`: the ship it landed on (its own ship for a self-hit), or −1; `room`: the Room it struck, or −1. */
   | { kind: 'missileEnd'; ship: number; cause: 'ship' | 'planet' | 'asteroid' | 'edge' | 'expired' | 'missile' | 'shot'; target: number; room: number; x: number; y: number }
   /** Sci-1 spec §4.6: the enemy turned hostile this tick, and why (laser before gun before missile before clock; Valkyrn spec §7.2). */
-  | { kind: 'hostile'; cause: 'clock' | 'laser' | 'gun' | 'pew' | 'missile' }
+  | { kind: 'hostile'; cause: 'clock' | 'laser' | 'gun' | 'pew' | 'missile' | 'hack' }   // 'hack': the hacking spike (R1-1)
+  /** Hacking spike §2.6: Science's hack on the target's `room` landed ('done') or broke ('lost'). Not sent online (R1-6). */
+  | { kind: 'hack'; what: 'done' | 'lost'; room: number }
   /** Valkyrn spec §7.1: ship `ship` fired a gun round from muzzle `muzzle` (0 starboard, 1 port). */
   | { kind: 'gunFire'; ship: number; muzzle: number }
   /** Valkyrn spec §7.2: a round hit ship `ship` (the target) at the closest-approach point (x, y): `room` the Room it
