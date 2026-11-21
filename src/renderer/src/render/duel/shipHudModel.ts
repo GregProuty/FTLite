@@ -118,11 +118,21 @@ export function powerPanel(stageH: number = INTERNAL_H): { x: number; y: number;
 /** Hull segment `k`'s height (owner 2026-11-20, after an FTL-style stepped hull bar): three heights by thirds of the bar,
  *  short at the left (the last hull) to the full `segH` at the right, bottoms aligned at `barY + segH`. */
 export const HULL_TIER_H: readonly number[] = [8, 12, HUD.hull.segH];
-export function hullSegH(k: number, segments = HULL_SEGMENTS): number { return HULL_TIER_H[Math.min(2, Math.floor((3 * k) / segments))]!; }
-/** The first segment of tier `t` (0, 1, 2). */
-export function hullTierStart(t: number, segments = HULL_SEGMENTS): number { return Math.ceil((t * segments) / 3); }
-/** The shield panel (owner 2026-11-20): a framed row of layer boxes with a recharge bar under them, right of the SHIELDS label. */
-export const SHIELD_PANEL = { x: HUD.x + textPx('SHIELDS', 2) + 4, y: HUD.shields.y - 3, pad: 3, box: HUD.shields.pip, gap: HUD.shields.gap, barGap: 2, barH: 3 } as const;
+export function hullSegH(k: number, segments = HULL_SEGMENTS): number { return HULL_TIER_H[tierOf(k, segments)]!; }
+/** The crew health bar in the hull bar's stepped style (owner 2026-11-20): HEALTH_SEGMENTS segments across the health row,
+ *  lit `ceil(fill · HEALTH_SEGMENTS)`, three heights by thirds, bottoms on the row's bar bottom. */
+export const HEALTH_SEGMENTS = 10;
+export const HEALTH_SEG = { w: 10, gap: 2 } as const;
+export const HEALTH_TIER_H: readonly number[] = [4, 7, 10];
+export function healthSegX(k: number): number { return HEALTH_ROW.barX + k * (HEALTH_SEG.w + HEALTH_SEG.gap); }
+export function healthSegH(k: number): number { return HEALTH_TIER_H[tierOf(k, HEALTH_SEGMENTS)]!; }
+export function healthLit(fill: number): number { return Math.max(0, Math.min(HEALTH_SEGMENTS, Math.ceil(fill * HEALTH_SEGMENTS - 1e-9))); }
+/** A stepped bar's tier by thirds: 0 at the left (short) to 2 at the right (full height). */
+export function tierOf(k: number, segments: number): number { return Math.min(2, Math.floor((3 * k) / segments)); }
+/** The shield badge (owner 2026-11-20): a ring with an S in place of the SHIELDS label, beside the panel. */
+export const SHIELD_BADGE = { x: HUD.x, y: HUD.shields.y - 3, d: 20 } as const;
+/** The shield panel (owner 2026-11-20): a framed row of layer boxes with a recharge bar under them, right of the S badge. */
+export const SHIELD_PANEL = { x: SHIELD_BADGE.x + SHIELD_BADGE.d + 6, y: HUD.shields.y - 3, pad: 3, box: HUD.shields.pip, gap: HUD.shields.gap, barGap: 2, barH: 3 } as const;
 export function shieldBoxX(k: number): number { const p = SHIELD_PANEL; return p.x + p.pad + k * (p.box + p.gap); }
 export function shieldPanelBox(layers: number): { x: number; y: number; w: number; h: number } {
   const p = SHIELD_PANEL, n = Math.max(1, layers);

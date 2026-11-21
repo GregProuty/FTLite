@@ -10,7 +10,7 @@ import { UiRoot } from '../src/renderer/src/ui/UiRoot';
 import { createDuelSink } from '../src/renderer/src/ui/sinks';
 import type { DuelUiView } from '../src/renderer/src/ui/views';
 import type { ConsoleView } from '../src/renderer/src/render/duel/consoleModel';
-import { HUD, hullSegH, type PowerColumn, type ShipHudView } from '../src/renderer/src/render/duel/shipHudModel';
+import { HEALTH_SEGMENTS, healthLit, HUD, hullSegH, type PowerColumn, type ShipHudView } from '../src/renderer/src/render/duel/shipHudModel';
 import { TEXT } from '../src/renderer/src/render/theme';
 import { makeUi } from './helpers/uiStore';
 
@@ -78,6 +78,20 @@ describe('the engineering panel (spec §6)', () => {
     expect(all('data-ui-hud-shield-recharge').map((e) => e.getAttribute('data-ui-hud-shield-recharge'))).toEqual(['40']);
     act(() => duel.frame(view({ ...hud, shields: { layers: 2, up: 2, cap: 2, recharge: 0 } })));
     expect(all('data-ui-hud-shield-recharge').map((e) => e.getAttribute('data-ui-hud-shield-recharge'))).toEqual(['0']);
+  });
+  it('an S badge in place of the SHIELDS label; the health bar in the same stepped style, lit by the fill (owner 2026-11-20)', () => {
+    const { duel } = mount(); act(() => duel.frame(view({ ...hud, health: { fill: 0.45, downed: false } })));
+    expect(all('data-ui-hud-shield-badge')).toHaveLength(1);
+    expect(texts().some((c) => c.text === 'SHIELDS')).toBe(false);
+    expect(texts().some((c) => c.text === 'S')).toBe(true);
+    const segs = all('data-ui-hud-health-seg');
+    expect(segs).toHaveLength(HEALTH_SEGMENTS);
+    expect(all('data-ui-hud-health-seg', 'lit')).toHaveLength(healthLit(0.45));
+    expect(healthLit(0.45)).toBe(5);
+    expect(new Set(segs.map((e) => e.getAttribute('data-ui-hud-seg-h'))).size).toBe(3);
+    expect(all('data-ui-hud-health-frame')).toHaveLength(1);
+    expect(all('data-ui-hud-health', '45')).toHaveLength(1);
+    expect([healthLit(1), healthLit(0.01), healthLit(0), healthLit(0.3)]).toEqual([10, 1, 0, 3]);
   });
   it('a left click adds a bar, a right click removes one, a pip click cycles coolant; O2 has no coolant control', () => {
     const { duel, ship } = mount(); act(() => duel.frame(view()));
