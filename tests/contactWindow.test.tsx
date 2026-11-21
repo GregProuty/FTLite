@@ -14,6 +14,8 @@ import { CRT } from '../src/renderer/src/render/tactical/crtTheme';
 import { hex } from '../src/renderer/src/ui/stage/color';
 import { makeUi } from './helpers/uiStore';
 import { setLayout } from '../src/renderer/src/ui/store';
+import { addShieldHit, createShieldFx } from '../src/renderer/src/render/shieldFx';
+import { HUNTER_FRAME } from '../src/renderer/src/render/duel/hunterArt';
 import { consoleLayout } from '../src/renderer/src/render/duel/consoleLayout';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -133,5 +135,34 @@ describe('the contact window on a wider stage (UI round 2b)', () => {
     act(() => duel.frame(view(contactModel({ state: st, contact: 0, aim: false, station: 'helm', t: 0, weapons: null, box: consoleLayout({ w: 1707, h: 720 }).CONTACT_BOX })!)));
     expect((root() as HTMLElement).style.left).toBe('1395px');
     expect((box() as SVGElement).getAttribute('viewBox')?.split(' ')[0]).toBe('1407');
+  });
+});
+
+describe('the Hunter art in the window (UI round Part 3 §3.4)', () => {
+  const withArt = (): ContactView => {
+    const st = createTacticalState(4, 2, ShipClass.ValkyrnLaser); st.known[0] = 1; st.systems[1]!.shields = 2;
+    const fx = createShieldFx(2); addShieldHit(fx, 1, 0, false, false); fx.hits[1]![0]!.age = 0.01;
+    return contactModel({ state: st, contact: 0, aim: false, station: 'helm', t: 0, weapons: null, art: { url: 'hunter.png', frame: HUNTER_FRAME }, shield: { fx, slot: 1 } })!;
+  };
+  it('draws the amber filter once, the art under the outline (fill none), the bubble, the cells and the status row under the box', () => {
+    const c = withArt();
+    mount(c);
+    const f = document.querySelectorAll('filter#crt-amber');
+    expect(f.length).toBe(1);
+    expect(f[0]!.querySelector('feColorMatrix')!.getAttribute('values')).toBe('0');
+    expect(f[0]!.querySelectorAll('feComponentTransfer > *').length).toBe(3);
+    const img = document.querySelector('[data-ui-contact-art]')!;
+    expect(img.getAttribute('filter')).toBe('url(#crt-amber)');
+    expect(img.nextElementSibling!.tagName.toLowerCase()).toBe('polygon');
+    expect(img.nextElementSibling!.getAttribute('fill')).toBe('none');
+    expect(document.querySelector('[data-ui-contact-bubble]')).not.toBeNull();
+    expect(document.querySelectorAll('[data-ui-contact-cell]').length).toBeGreaterThan(0);
+    expect(document.querySelector('[data-ui-contact-shield-panel]')).not.toBeNull();
+    expect(c.statusY).toBe(c.box.y + c.box.h + 6);
+  });
+  it('without art the outline keeps its glass fill', () => {
+    mount(contactOf('helm', false));
+    expect(document.querySelector('[data-ui-contact-art]')).toBeNull();
+    expect(box().querySelector('polygon')!.getAttribute('fill')).not.toBe('none');
   });
 });

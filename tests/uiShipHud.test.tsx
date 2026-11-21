@@ -79,6 +79,13 @@ describe('the engineering panel (spec §6)', () => {
     act(() => duel.frame(view({ ...hud, shields: { layers: 2, up: 2, cap: 2, recharge: 0 } })));
     expect(all('data-ui-hud-shield-recharge').map((e) => e.getAttribute('data-ui-hud-shield-recharge'))).toEqual(['0']);
   });
+  it('the layer that just dropped flashes (Part 3 §3.3)', () => {
+    const { duel } = mount();
+    act(() => duel.frame(view({ ...hud, shields: { layers: 2, up: 1, cap: 2, recharge: 0, flash: { layer: 1, alpha: 1 } } })));
+    expect(all('data-ui-hud-shield').map((e) => e.hasAttribute('data-ui-hud-shield-flash'))).toEqual([false, true]);
+    act(() => duel.frame(view({ ...hud, shields: { layers: 2, up: 1, cap: 2, recharge: 0, flash: null } })));
+    expect(all('data-ui-hud-shield-flash')).toHaveLength(0);
+  });
   it('an S badge in place of the SHIELDS label; the health bar in the same stepped style, lit by the fill (owner 2026-11-20)', () => {
     const { duel } = mount(); act(() => duel.frame(view({ ...hud, health: { fill: 0.45, downed: false } })));
     expect(all('data-ui-hud-shield-badge')).toHaveLength(1);
