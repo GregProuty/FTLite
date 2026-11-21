@@ -6,9 +6,9 @@ import { parseShip } from '../src/renderer/src/sim/ship/schema';
 import { createDuel, disposeDuel } from '../src/renderer/src/sim/duel/state';
 import { capacityOf, DUEL_SYSTEM_COUNT, REACTOR_BARS, SYSTEM_MAX, SYSTEM_SLOTS } from '../src/renderer/src/sim/duel/power';
 import { Room } from '../src/renderer/src/sim/tactical/state';
-import { SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
+import { SHIELD_RECHARGE_UNITS, SHIP_HULL } from '../src/renderer/src/sim/tactical/tuning';
 import { HEAT_MAX } from '../src/renderer/src/sim/tuning';
-import { coolantY, heatY, HUD, HULL_PER_SEGMENT, hullSegX, hullTone, overdriveSlot, POWER_NAMES, powerBarY, powerColumnX, powerNameY, powerPanel, shipHud, slotState, type PowerColumn } from '../src/renderer/src/render/duel/shipHudModel';
+import { coolantY, heatY, HUD, HULL_PER_SEGMENT, hullSegH, hullSegX, hullTone, overdriveSlot, POWER_NAMES, powerBarY, powerColumnX, powerNameY, powerPanel, shipHud, slotState, type PowerColumn } from '../src/renderer/src/render/duel/shipHudModel';
 import { INTERIOR_BAND } from '../src/renderer/src/render/duel/interiorModel';
 import { TABS } from '../src/renderer/src/render/duel/consoleLayout';
 
@@ -47,6 +47,21 @@ describe('shipHud (spec §E; Engineering spike §6)', () => {
       sys.bars[2] = SYSTEM_MAX[2]! + 1;
       expect(shipHud(d, 0).power.systems[2]!.overdriven).toBe(true);
     } finally { disposeDuel(d); }
+  });
+  it('shields.recharge: the next layer\'s charge 0..1 while below the cap, 0 when full (owner 2026-11-20)', () => {
+    const d = createDuel(HOUND, 5), sys = d.tactical.systems[0];
+    try {
+      sys.shields = 0; sys.shieldClock = SHIELD_RECHARGE_UNITS / 4;
+      expect(shipHud(d, 0).shields).toMatchObject({ up: 0, cap: 1, recharge: 0.25 });
+      sys.shields = 1;
+      expect(shipHud(d, 0).shields.recharge).toBe(0);   // at the cap: nothing charging
+    } finally { disposeDuel(d); }
+  });
+  it('hullSegH: three heights by thirds, short to tall left to right, the tallest the bar\'s segH', () => {
+    const h = Array.from({ length: 20 }, (_, k) => hullSegH(k));
+    expect(new Set(h).size).toBe(3);
+    expect(h[19]).toBe(HUD.hull.segH);
+    expect(h.every((v, k) => k === 0 || v >= h[k - 1]!)).toBe(true);
   });
   it('slotState: on below the bars, empty below the capacity, lost above it; the overdrive slot is the one past max', () => {
     const c: PowerColumn = { system: 2, name: 'ENG', bars: 1, capacity: 2, slots: 4, max: 3, heat: 0, heatMax: HEAT_MAX, coolant: 0, cools: true, failed: false, overdriven: false, room: null };

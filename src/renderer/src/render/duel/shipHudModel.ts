@@ -30,7 +30,7 @@ export const HUD = {
 } as const;
 
 /** UI round §2.2, §2.4a: the health row under the shields, only when the active player is hurt or downed. */
-export const HEALTH_ROW = { y: 124, barX: HUD.x + textPx('SHIELDS', 2) + 8, barY: 132, barW: 120, barH: 10 } as const;
+export const HEALTH_ROW = { y: 132, barX: HUD.x + textPx('SHIELDS', 2) + 8, barY: 140, barW: 120, barH: 10 } as const;   // 8 px lower for the shield panel (owner 2026-11-20; was y 124, bar 132)
 
 export type HullTone = 'good' | 'warn' | 'alert';
 /** The column names in DuelSystem order (Engineering spike §2). */
@@ -45,7 +45,8 @@ export interface PowerView { systems: PowerColumn[]; spare: number; reactor: num
 /** `shields.cap`: the layers the Shields bars hold now (Engineering spike §2), never above `layers`. */
 export interface ShipHudView {
   hull: { segments: number; lit: number; tone: HullTone };
-  shields: { layers: number; up: number; cap: number };
+  /** `recharge`: the next layer's charge 0..1 while `up` is below `cap`, else 0 (owner 2026-11-20: the bar under the layers). */
+  shields: { layers: number; up: number; cap: number; recharge: number };
   power: PowerView;
   /** The active player's health (UI round §2.4a): null at full health and not downed. */
   health: { fill: number; downed: boolean } | null;
@@ -83,9 +84,11 @@ export function powerView(d: DuelState): PowerView {
 export function shipHud(d: DuelState, active: number): ShipHudView {
   const t = d.tactical, sys = t.systems[CREW_SLOT]!, cls = classOf(t, CREW_SLOT), hull = Math.max(0, Math.min(cls.hull, sys.hull));
   const layers = cls.shields.layers, eid = d.interior.crew[active]!, hp = Health.cur[eid]!, downed = Life.state[eid] === LifeState.Downed;
+  const up = Math.max(0, Math.min(layers, sys.shields)), cap = Math.min(layers, SHIELD_LAYERS_BY_BARS[effectiveBars(sys, 0)] ?? 0);
+  const recharge = up < cap ? Math.round(100 * Math.max(0, Math.min(1, sys.shieldClock / cls.shields.rechargeUnits))) / 100 : 0;   // in hundredths, so equal frames stay equal
   return {
     hull: { segments: Math.ceil(cls.hull / HULL_PER_SEGMENT), lit: Math.ceil(hull / HULL_PER_SEGMENT), tone: hullTone(hull, cls.hull) },
-    shields: { layers, up: Math.max(0, Math.min(layers, sys.shields)), cap: Math.min(layers, SHIELD_LAYERS_BY_BARS[effectiveBars(sys, 0)] ?? 0) },
+    shields: { layers, up, cap, recharge },
     power: powerView(d),
     health: downed ? { fill: 0, downed: true } : Math.ceil(hp) < HEALTH_MAX ? { fill: hp / HEALTH_MAX, downed: false } : null
   };
@@ -111,6 +114,19 @@ export function powerBarY(k: number, stageH: number = INTERNAL_H): number { cons
 export function powerPanel(stageH: number = INTERNAL_H): { x: number; y: number; w: number; h: number } {
   const P = HUD.power, x = HUD.x - P.pad, y = powerBarY(Math.max(REACTOR_BARS, ...SYSTEM_SLOTS) - 1, stageH) - P.pad;
   return { x, y, w: powerColumnX(DUEL_SYSTEM_COUNT) + P.colW + P.pad - x, h: powerBottom(stageH) + 4 - y };
+}
+/** Hull segment `k`'s height (owner 2026-11-20, after an FTL-style stepped hull bar): three heights by thirds of the bar,
+ *  short at the left (the last hull) to the full `segH` at the right, bottoms aligned at `barY + segH`. */
+export const HULL_TIER_H: readonly number[] = [8, 12, HUD.hull.segH];
+export function hullSegH(k: number, segments = HULL_SEGMENTS): number { return HULL_TIER_H[Math.min(2, Math.floor((3 * k) / segments))]!; }
+/** The first segment of tier `t` (0, 1, 2). */
+export function hullTierStart(t: number, segments = HULL_SEGMENTS): number { return Math.ceil((t * segments) / 3); }
+/** The shield panel (owner 2026-11-20): a framed row of layer boxes with a recharge bar under them, right of the SHIELDS label. */
+export const SHIELD_PANEL = { x: HUD.x + textPx('SHIELDS', 2) + 4, y: HUD.shields.y - 3, pad: 3, box: HUD.shields.pip, gap: HUD.shields.gap, barGap: 2, barH: 3 } as const;
+export function shieldBoxX(k: number): number { const p = SHIELD_PANEL; return p.x + p.pad + k * (p.box + p.gap); }
+export function shieldPanelBox(layers: number): { x: number; y: number; w: number; h: number } {
+  const p = SHIELD_PANEL, n = Math.max(1, layers);
+  return { x: p.x, y: p.y, w: 2 * p.pad + n * p.box + (n - 1) * p.gap, h: 2 * p.pad + p.box + p.barGap + p.barH };
 }
 /** The left edge of hull segment `k`. */
 export function hullSegX(k: number): number { const h = HUD.hull; return HUD.x + k * (h.segW + h.gap); }

@@ -6,7 +6,7 @@
 // UI round §2.4a: a power column's name shows its room (FIRE blinking inverse, OFFLINE inverse, damaged hot, a 2 px repair or
 // extinguish bar under it), and a HEALTH bar under the shields shows when the active player is hurt (DOWNED when downed).
 import { memo, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from 'react';
-import { coolantY, HEALTH_ROW, heatY, HUD, hullSegX, overdriveSlot, powerBarY, powerColumnX, powerNameY, powerPanel, slotState, type HullTone, type PowerColumn, type ShipHudView } from '../../render/duel/shipHudModel';
+import { coolantY, HEALTH_ROW, heatY, HUD, HULL_TIER_H, hullSegH, hullSegX, hullTierStart, overdriveSlot, SHIELD_PANEL, shieldBoxX, shieldPanelBox, powerBarY, powerColumnX, powerNameY, powerPanel, slotState, type HullTone, type PowerColumn, type ShipHudView } from '../../render/duel/shipHudModel';
 import { ALERT_BLINK_HZ, blink, CRT } from '../../render/tactical/crtTheme';
 import { FONT_SIZE, textPx } from '../../render/theme';
 import { useActions, useUi } from '../context';
@@ -80,23 +80,46 @@ function Reactor({ hud }: { hud: ShipHudView }) {
   );
 }
 
+/** The hull bar's stepped frame (owner 2026-11-20): an outline FRAME_PAD px round the three tiers, stepping up with them. */
+const FRAME_PAD = 3;
+function HullFrame({ segments }: { segments: number }) {
+  const H = HUD.hull, x0 = hullSegX(0) - FRAME_PAD, x1 = hullSegX(segments - 1) + H.segW + FRAME_PAD, bottom = H.barY + H.segH + FRAME_PAD;
+  const top = (t: number) => H.barY + H.segH - HULL_TIER_H[t]! - FRAME_PAD, step = (t: number) => hullSegX(hullTierStart(t, segments)) - H.gap / 2;
+  const fy = top(2), fh = bottom - fy, w = x1 - x0, X = (x: number) => x - x0, Y = (y: number) => y - fy;
+  const d = `M0.5 ${Y(bottom) - 0.5}V${Y(top(0)) + 0.5}H${X(step(1))}V${Y(top(1)) + 0.5}H${X(step(2))}V0.5H${w - 0.5}V${Y(bottom) - 0.5}Z`;
+  return (
+    <Box x={x0} y={fy} w={w} h={fh} attrs={{ 'data-ui-hud-hull-frame': '' }}>
+      <svg width="100%" height="100%" viewBox={`0 0 ${w} ${fh}`} preserveAspectRatio="none" style={{ display: 'block' }}>
+        <path d={d} fill={hex(CRT.glass, 0.6)} stroke={hex(CRT.dim)} strokeWidth={1} />
+      </svg>
+    </Box>
+  );
+}
+
 function HudBody({ hud }: { hud: ShipHudView }) {
   const { now } = useCrt(), H = HUD.hull, SH = HUD.shields, panel = powerPanel(useStage().h);   // UI round 2b: on the stage's bottom edge
-  const tone = hud.hull.tone === 'alert' && blink(now, ALERT_BLINK_HZ) === 0 ? CRT.dim : TONE[hud.hull.tone], pipX = HUD.x + textPx('SHIELDS', 2) + 8;
+  const tone = hud.hull.tone === 'alert' && blink(now, ALERT_BLINK_HZ) === 0 ? CRT.dim : TONE[hud.hull.tone];
+  const sp = shieldPanelBox(hud.shields.layers), SP = SHIELD_PANEL, rowW = sp.w - 2 * SP.pad, barY = SP.y + SP.pad + SP.box + SP.barGap;
   return (
     <>
       <PixelText text="HULL" x={HUD.x} y={H.labelY} size={FONT_SIZE} tint={CRT.mid} />
+      <HullFrame segments={hud.hull.segments} />
       {Array.from({ length: hud.hull.segments }, (_, k) => {
-        const lit = k < hud.hull.lit;
-        return <Box key={k} x={hullSegX(k)} y={H.barY} w={H.segW} h={H.segH} attrs={{ 'data-ui-hud-seg': lit ? 'lit' : 'off', 'data-ui-hud-tone': hud.hull.tone }}
+        const lit = k < hud.hull.lit, h = hullSegH(k, hud.hull.segments);
+        return <Box key={k} x={hullSegX(k)} y={H.barY + H.segH - h} w={H.segW} h={h} attrs={{ 'data-ui-hud-seg': lit ? 'lit' : 'off', 'data-ui-hud-seg-h': String(h), 'data-ui-hud-tone': hud.hull.tone }}
           style={lit ? { background: hex(tone), border: `1px solid ${hex(tone)}` } : { background: hex(CRT.glass, 0.8), border: `1px solid ${hex(CRT.faint)}` }} />;
       })}
       <PixelText text="SHIELDS" x={HUD.x} y={SH.y - 2} size={FONT_SIZE} tint={CRT.mid} />
+      <Box x={sp.x} y={sp.y} w={sp.w} h={sp.h} attrs={{ 'data-ui-hud-shield-panel': '' }} style={{ background: hex(CRT.glass, 0.85), border: `1px solid ${hex(CRT.dim)}`, borderRadius: 3 }} />
       {Array.from({ length: hud.shields.layers }, (_, k) => {
         const state = k < hud.shields.up ? 'up' : k < hud.shields.cap ? 'down' : 'unpowered';
-        return <Box key={k} x={pipX + k * (SH.pip + SH.gap)} y={SH.y} w={SH.pip} h={SH.pip} attrs={{ 'data-ui-hud-shield': state }}
-          style={{ background: state === 'up' ? hex(CRT.main) : 'transparent', border: `1px ${state === 'unpowered' ? 'dashed' : 'solid'} ${hex(state === 'unpowered' ? CRT.faint : CRT.mid)}` }} />;
+        return <Box key={k} x={shieldBoxX(k)} y={SP.y + SP.pad} w={SP.box} h={SP.box} attrs={{ 'data-ui-hud-shield': state }}
+          style={{ boxSizing: 'border-box', borderRadius: 3, background: state === 'up' ? hex(CRT.dim) : hex(CRT.glass),
+            border: state === 'up' ? `2px solid ${hex(CRT.main)}` : `1px ${state === 'unpowered' ? 'dashed' : 'solid'} ${hex(state === 'unpowered' ? CRT.faint : CRT.dim)}` }} />;
       })}
+      <Box x={SP.x + SP.pad} y={barY} w={rowW} h={SP.barH} attrs={{ 'data-ui-hud-shield-recharge': String(Math.round(100 * hud.shields.recharge)) }} style={{ background: hex(CRT.faint) }}>
+        <div style={{ width: `${Math.round(100 * hud.shields.recharge)}%`, height: '100%', background: hex(CRT.main) }} />
+      </Box>
       {hud.health && (hud.health.downed
         ? <PixelText text="DOWNED" x={HUD.x} y={HEALTH_ROW.y} size={FONT_SIZE} tint={blink(now, ALERT_BLINK_HZ) ? CRT.hot : CRT.dim} />
         : <>
